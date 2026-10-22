@@ -17,7 +17,6 @@ on:
         'scripts/build-android-core.sh',
         'scripts/android-core-contract.py',
         'scripts/fix-android-uniffi-callbacks.py',
-        'android/uniffi.toml',
         'scripts/deploy-expo-web.mjs',
         'scripts/expo-web-*.mjs',
         'scripts/expo-web-tests/**',
@@ -41,7 +40,6 @@ on:
         'scripts/build-android-core.sh',
         'scripts/android-core-contract.py',
         'scripts/fix-android-uniffi-callbacks.py',
-        'android/uniffi.toml',
         'scripts/deploy-expo-web.mjs',
         'scripts/expo-web-*.mjs',
         'scripts/expo-web-tests/**',
@@ -97,6 +95,10 @@ jobs:
         run: |
           npm ci --prefix apps/zoen
           cargo install cargo-ndk --version 4.1.2 --locked
+      - name: Verify Android binding source and callback contracts
+        run: |
+          python3 scripts/test-android-core-contract.py
+          python3 scripts/test-android-uniffi-callbacks.py
       - name: Build shared Rust core and generate Expo Android project
         run: |
           node scripts/build-expo-core.mjs android --release

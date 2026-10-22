@@ -4,7 +4,7 @@ cd "$(dirname "$0")/.."
 
 PROFILE=dev
 ABIS=arm64-v8a,x86_64
-OUT=android/app/build/generated/core
+OUT=apps/zoen/modules/zoen-core/generated/android
 for arg in "$@"; do
   case "$arg" in
     --release) PROFILE=release ;;
@@ -38,7 +38,7 @@ case "$(uname -s)" in
   *) echo "Build the Android core on macOS or Linux." >&2; exit 1 ;;
 esac
 "${CARGO_TARGET_DIR:-target}/debug/uniffi-bindgen" generate --library "$HOST_LIB" --language kotlin \
-  --config android/uniffi.toml --out-dir "$OUT/kotlin" --no-format
+  --config apps/zoen/modules/zoen-core/android/uniffi.toml --out-dir "$OUT/kotlin" --no-format
 python3 scripts/fix-android-uniffi-callbacks.py "$OUT/kotlin"
 
 IFS=',' read -ra ABI_LIST <<< "$ABIS"

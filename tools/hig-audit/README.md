@@ -6,7 +6,7 @@ exit status and positive-pattern count do not certify HIG compliance.
 
 ```sh
 npm ci --prefix tools/hig-audit --ignore-scripts --no-audit --no-fund
-bash scripts/audit-hig.sh apple > apple-hig.json
+bash scripts/audit-hig.sh ios > ios-hig.json
 bash scripts/audit-hig.sh web > web-hig.json
 ```
 
@@ -41,7 +41,7 @@ clickable HTML divs without keyboard behavior and removed focus outlines.
 It also reproduced false positives for labeled native button icons, nested
 sidebar layout divs and replacement focus rings. A gesture with a button trait
 and an unused Reduce Motion declaration escaped the relevant checks. Review
-these cases in [validation.json](validation.json).
+these historical cases in the [archived validation report](https://github.com/EnzoTironi/zoen-native/tree/5149ae48be3b104fbe23b4e6a91bef80f131844c/tools/hig-audit/validation.json).
 
 The tool's HIG snapshot is dated **2 February 2025**, before the current Liquid
 Glass guidance. Do not use its bundled references as the current design policy.

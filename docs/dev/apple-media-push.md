@@ -1,3 +1,7 @@
+> Historical standalone-client guide. Current application setup is in
+> [the Expo README](../../apps/zoen/README.md). Source paths below refer to
+> [the archived native clients](https://github.com/EnzoTironi/zoen-native/tree/5149ae48be3b104fbe23b4e6a91bef80f131844c).
+
 # Apple attachments and push
 
 Updated 2026-10-12. This document records the native media unit and its remaining Core and provider dependencies.
@@ -8,16 +12,16 @@ Updated 2026-10-12. This document records the native media unit and its remainin
 
 Send calls the existing `fileAdd(spaceId:path:name:mime:bytes:thumbnail:)`. Core signs the File Item, derives chunk secrets with HKDF-SHA256, encrypts chunks with XChaCha20-Poly1305 and queues uploads. There is no separate attachment endpoint. This API has no thread identifier, so the thread composer has no attachment button.
 
-| Boundary | Native limit or behavior |
-| --- | --- |
-| File | 32 MiB, nonempty, regular file |
-| Selection | 10 files, 64 MiB combined |
-| Raster image | 64 million pixels, 16,384 pixels per dimension |
-| Review thumbnail | Downsample to at most 480 pixels per dimension |
-| Other Quick Look thumbnail | Request 240 points at scale 2; reject a result over 512 pixels per dimension or 2 MiB encoded |
-| Supplied filename | Strip directory components and control characters; cap at 200 UTF-8 bytes |
-| Provider URL | Hold security-scoped access while making the private copy |
-| File descriptor | Open with `O_NOFOLLOW`, `O_NONBLOCK` and `O_CLOEXEC`; require a regular file via `fstat`; read and copy the same descriptor |
+| Boundary                   | Native limit or behavior                                                                                                    |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| File                       | 32 MiB, nonempty, regular file                                                                                              |
+| Selection                  | 10 files, 64 MiB combined                                                                                                   |
+| Raster image               | 64 million pixels, 16,384 pixels per dimension                                                                              |
+| Review thumbnail           | Downsample to at most 480 pixels per dimension                                                                              |
+| Other Quick Look thumbnail | Request 240 points at scale 2; reject a result over 512 pixels per dimension or 2 MiB encoded                               |
+| Supplied filename          | Strip directory components and control characters; cap at 200 UTF-8 bytes                                                   |
+| Provider URL               | Hold security-scoped access while making the private copy                                                                   |
+| File descriptor            | Open with `O_NOFOLLOW`, `O_NONBLOCK` and `O_CLOEXEC`; require a regular file via `fstat`; read and copy the same descriptor |
 
 Selection reads in 1 MiB pieces and checks limits again while reading. Import tasks propagate cancellation. Cancel, dismissal, successful sends and selection removal explicitly discard the draft's decrypted copies. Quick Look, markup and sending hold separate use leases. Discard removes a copy after its last active use closes, even if SwiftUI still retains its sheet closure or state. Quick Look releases its lease in the representable's dismantle callback; the Mac preview is also explicitly closed. Markup copies the edited provider file before the provider can remove it. Deinitialization remains a cleanup fallback.
 
@@ -53,7 +57,7 @@ The coordinator handles permission and APNs callback input, forwards canonical t
 
 `PushWake` decodes the source-backed [wake contract](push-contract.md). It accepts `aps.content-available` as integer 1 and `zoen` with integer `v: 1`, an ASCII `space_id` of 1 through 128 letters, digits, underscores or hyphens, and a nonzero `event_seq` as a canonical decimal UInt64 string. Boolean or floating values, numeric cursors, unknown versions, extra fields and payloads over 4096 bytes are rejected. Cursors above 2^53 and UInt64.max stay exact. The decoder produces only a sync hint. The store must authenticate the current device and validate membership and the signed log before reporting synchronized data. Receiving this background payload never navigates, approves requests, executes actions or creates a tappable notification. AppDelegate wiring, Core adapters, registration transport and provider delivery remain pending.
 
-Apple's entitlement uses `development` or `production`. Core accepts `sandbox` or `production`, so native maps the signed `development` entitlement to `sandbox`. The Core input contract accepts 1 through 256 token bytes as even-length hexadecimal and normalizes it to lowercase. APNs tokens have variable length. The app must request a fresh token each launch and forward the returned bytes without assuming a fixed length. See [APS environment](https://developer.apple.com/documentation/bundleresources/entitlements/aps-environment), [registration callback](https://developer.apple.com/documentation/uikit/uiapplicationdelegate/application(_:didregisterforremotenotificationswithdevicetoken:)) and [APNs request token encoding](https://developer.apple.com/documentation/usernotifications/sending-notification-requests-to-apns).
+Apple's entitlement uses `development` or `production`. Core accepts `sandbox` or `production`, so native maps the signed `development` entitlement to `sandbox`. The Core input contract accepts 1 through 256 token bytes as even-length hexadecimal and normalizes it to lowercase. APNs tokens have variable length. The app must request a fresh token each launch and forward the returned bytes without assuming a fixed length. See [APS environment](https://developer.apple.com/documentation/bundleresources/entitlements/aps-environment), [registration callback](<https://developer.apple.com/documentation/uikit/uiapplicationdelegate/application(_:didregisterforremotenotificationswithdevicetoken:)>) and [APNs request token encoding](https://developer.apple.com/documentation/usernotifications/sending-notification-requests-to-apns).
 
 The Personal Team Device configuration still excludes paid push capabilities. Provider credentials, APNs signing and physical-device delivery proof are separate remaining gates.
 

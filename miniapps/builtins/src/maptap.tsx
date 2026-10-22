@@ -292,8 +292,8 @@ function Globe({ pick, actual, disabled, onPick, L }: GlobeProps) {
     if (disabled) gesture.current = null;
   }, [disabled]);
 
-  // Natural Earth 1:110m, public domain; byte-identical to the existing native
-  // apple/Shared/Resources/land110.json. No map/network request is involved.
+  // Natural Earth 1:110m, public domain; exact retained bytes are pinned by
+  // globe.test.mjs. No map/network request is involved.
   const continents = useMemo(() => landPath(land, center), [center]);
   const grid = useMemo(() => graticulePath(center), [center]);
   const line = pick && actual ? arcPath(pick, actual, center) : '';

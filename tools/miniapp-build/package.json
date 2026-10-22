@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Builds a Zoen mini-app (React or plain HTML) into one offline, hash-pinned HTML bundle.",
-  "license": "UNLICENSED",
+  "license": "AGPL-3.0-only",
   "bin": {
     "miniapp-build": "build.mjs"
   },

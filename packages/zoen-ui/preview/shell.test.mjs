@@ -247,18 +247,12 @@ test('the focus fixture can move the sole positive footer tab stop between rovin
   }
 });
 
-test('light, dark, and system colors agree with the native semantic Palette', async () => {
-  const [nativeTheme, shellStyles] = await Promise.all([
-    readFile(join(here, '../../../apple/Shared/DesignSystem/Theme.swift'), 'utf8'),
+test('light, dark, and system colors preserve the semantic palette contract', async () => {
+  const [paletteContract, shellStyles] = await Promise.all([
+    readFile(join(here, 'fixtures/semantic-palette.json'), 'utf8'),
     readFile(join(here, '../src/shell.css'), 'utf8'),
   ]);
-  const palette = new Map(
-    [
-      ...nativeTheme.matchAll(
-        /static let (\w+) = Color\.adaptive\(light: "(#[\dA-Fa-f]{6})", dark: "(#[\dA-Fa-f]{6})"\)/g,
-      ),
-    ].map(([, name, light, dark]) => [name, { light, dark }]),
-  );
+  const palette = new Map(Object.entries(JSON.parse(paletteContract).colors));
   const lightStyles = shellStyles.match(/\.zs-shell \{([^}]+)\}/)?.[1];
   const darkStyles = shellStyles.match(/\.zs-shell\[data-theme='dark'\] \{([^}]+)\}/)?.[1];
   const systemStyles = shellStyles.match(/\.zs-shell\[data-theme='system'\] \{([^}]+)\}/)?.[1];

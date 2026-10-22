@@ -1,3 +1,7 @@
+> Historical standalone-client guide. Current application setup is in
+> [the Expo README](../../apps/zoen/README.md). Source paths below refer to
+> [the archived native clients](https://github.com/EnzoTironi/zoen-native/tree/5149ae48be3b104fbe23b4e6a91bef80f131844c).
+
 # Instalar o Zoen no seu iPhone com Apple ID grátis
 
 Sem a conta paga de desenvolvedor (US$ 99/ano) dá para rodar o Zoen no **seu** iPhone com o

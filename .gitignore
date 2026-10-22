@@ -2,15 +2,12 @@
 /target/
 **/*.rs.bk
 
-# Artefatos gerados (recriados por scripts/build-core.sh)
+# Local build outputs
 /build/
-apple/Packages/ClientCore/ClientFFI.xcframework/
-apple/Packages/ClientCore/Sources/ClientCore/ClientFFI.generated.swift
-
-# Xcode (o projeto é gerado pelo XcodeGen a partir de apple/project.yml)
-apple/Zoen.xcodeproj/
-apple/iOS/Info.plist
-apple/Mac/Info.plist
+# Retired standalone clients: retain ignore coverage for old local artifacts.
+/apple/
+/android/
+# Xcode/Swift build state
 DerivedData/
 xcuserdata/
 *.xcuserstate
@@ -24,6 +21,8 @@ xcuserdata/
 # local model tooling (venvs, HF cache)
 .tools/
 node_modules/
+__pycache__/
+*.py[cod]
 
 # secrets: never committed
 *.env

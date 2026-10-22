@@ -1,7 +1,9 @@
 {
   "name": "@zoen/ui",
   "version": "0.1.0",
+  "private": true,
   "description": "Zoen React UI, with mini-app components and an independent application shell.",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "main": "src/index.tsx",
   "exports": {
@@ -20,10 +22,8 @@
     "build:preview": "node preview/build.mjs",
     "preview": "node preview/build.mjs --serve"
   },
-  "license": "UNLICENSED",
-  "private": true,
-  "peerDependencies": {
-    "react": "^19"
+  "dependencies": {
+    "qrcode": "1.5.4"
   },
   "devDependencies": {
     "@types/qrcode": "1.5.6",
@@ -36,7 +36,7 @@
     "react-dom": "19.1.1",
     "typescript": "5.9.2"
   },
-  "dependencies": {
-    "qrcode": "1.5.4"
+  "peerDependencies": {
+    "react": "^19"
   }
 }

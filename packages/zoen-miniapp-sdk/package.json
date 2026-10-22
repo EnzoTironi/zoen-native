@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Official MCP Apps client with feature-detected Zoen native services.",
-  "license": "UNLICENSED",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
