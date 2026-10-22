@@ -1,0 +1,28 @@
+[Native surface index](../expo-native-surfaces.md).
+
+## Integration and command map
+
+| Journey                                              | Existing authoritative operations                                                        | Remaining integration                                                                                                                                                                                                                                                                                                                                       |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Read a miniapp widget                                | `items`, `item`, `item_at`, `app.snapshot_json`                                          | CNG widget kind/App Group, per-instance item selection, active-account publisher, freshness and cleanup on access loss.                                                                                                                                                                                                                                     |
+| In-app Home favorites and miniapp rails              | Canonical `items`, `app.snapshot_json`; identity/device-scoped local Item-ID preferences | Signed v50 accepts isolated Home/conversation swap-and-restore, all-hidden/restore with retained drag handles, cold order and preserving primary delivery. The primary menu/organizer opens without preference mutations. Installed failure-injection rollback and clean formal replay remain unverified. No conversation preference command is repurposed. |
+| Open an item/chat through Siri                       | `item` plus current conversation membership                                              | Swift entities/query and read-only intents, app-target setup, local device authentication, single queue consumer, catalog update/clear lifecycle and actual Shortcuts/Siri QA.                                                                                                                                                                              |
+| Perform a miniapp tool from a widget/intent          | `app_specs`, `app_call_tool`; Rust grant/confirmation checks                             | Durable invocation-ID deduplication atomic with the mutation and outcome, then native result/confirmation semantics. No props-only Feed/Nap/vote simulation.                                                                                                                                                                                                |
+| Send a message or decide a request through an intent | `send_message`, `decide_request`                                                         | Persistent idempotency for invocation replay; approval/account/access checks and honest queued/acknowledged/refused results. These actions are not accepted by this router.                                                                                                                                                                                 |
+| Live countdown or current operation                  | Rust-derived item state and target time                                                  | Explicit start/stop UX, system availability, bounded duration/staleDate, activity ownership/recovery and immediate end on sign-out or access loss; actual Dynamic Island/Lock Screen checks.                                                                                                                                                                |
+| Remote Live Activity updates                         | Existing `register_push` is a content-free message-wake registration                     | Separate token purpose/ownership/provider contract for push-to-start and per-activity tokens. Do not treat a notification token as an activity token or send private E2E content through APNs.                                                                                                                                                              |
+
+Before the next CNG integration, register only actual home/Lock Screen widget kinds with
+supported families. A Live Activity uses `createLiveActivity` and must not receive an
+empty `widgets[]` entry. The App Group stores compact projections and selected public
+assets only; the existing primary SQLite database and Keychain remain application-owned.
+
+Runtime acceptance must cover first-run widget gallery, selection of two distinct items,
+updates after a real signed change and relaunch, light/dark/tinted/Lock Screen rendering,
+content redaction, item removal and account change cleanup. App Intents additionally need
+warm/cold delivery, rename/delete/access loss and queue-removal failure/replay. A future
+mutating intent needs a crash between commit and dequeue to demonstrate durable deduplication.
+
+Useful primary references: [Expo SwiftUI Text timers](https://docs.expo.dev/versions/v58.0.0/sdk/ui/swift-ui/text/),
+[Expo SwiftUI modifiers](https://docs.expo.dev/versions/v58.0.0/sdk/ui/swift-ui/modifiers/),
+[Apple intent authentication](https://developer.apple.com/documentation/appintents/intentauthenticationpolicy).

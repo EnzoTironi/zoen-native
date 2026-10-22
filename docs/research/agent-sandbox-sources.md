@@ -1,0 +1,58 @@
+[Research index](agent-sandbox.md).
+
+## Sources
+
+- [G] GitHub repository metadata (license, activity) read on 2026-10-08 for firecracker-microvm/firecracker, firecracker-microvm/firecracker-containerd, kata-containers/kata-containers, google/gvisor, bytecodealliance/wasmtime, superradcompany/microsandbox, e2b-dev/infra, steel-dev/steel-browser, browser-use/browser-use, m1k1o/neko, kubernetes-sigs/agent-sandbox, mattsse/chromiumoxide (all Apache-2.0 or MIT).
+- [W1] Wasmtime 1.0 performance: https://bytecodealliance.org/articles/wasmtime-10-performance ; pooling allocator: https://docs.wasmtime.dev/examples-fast-instantiation.html
+- [F1] Firecracker specification: https://github.com/firecracker-microvm/firecracker/blob/main/SPECIFICATION.md
+- [F2] Firecracker snapshot support: https://github.com/firecracker-microvm/firecracker/blob/main/docs/snapshotting/snapshot-support.md
+- [F3] Firecracker production host setup (jailer, seccomp, disable SMT): https://github.com/firecracker-microvm/firecracker/blob/main/docs/prod-host-setup.md
+- [AP1] App Review Guidelines 5.4 (VPN apps) and 2.4.2: https://developer.apple.com/app-store/review/guidelines/
+- [LX1] Linux core scheduling: https://www.kernel.org/doc/html/latest/admin-guide/hw-vuln/core-scheduling.html
+- [F4] Random for clones / VMGenID: https://github.com/firecracker-microvm/firecracker/blob/main/docs/snapshotting/random-for-clones.md
+- [F5] PCIe in Firecracker 1.13: https://github.com/firecracker-microvm/firecracker/issues/5133 ; VFIO: https://github.com/firecracker-microvm/firecracker/pull/5870 , https://github.com/firecracker-microvm/firecracker/issues/5679
+- [CH1] Cloud Hypervisor README: https://github.com/cloud-hypervisor/cloud-hypervisor ; snapshot: https://github.com/cloud-hypervisor/cloud-hypervisor/blob/main/docs/snapshot_restore.md
+- [CH2] VFIO migration v2: https://github.com/cloud-hypervisor/cloud-hypervisor/pull/8303
+- [K1] Kata with Firecracker: https://github.com/kata-containers/kata-containers/blob/main/docs/how-to/how-to-use-kata-containers-with-firecracker.md
+- [GV1] gVisor GPU: https://gvisor.dev/docs/user_guide/gpu/
+- [GV2] gVisor platforms: https://gvisor.dev/docs/architecture_guide/platforms/ , https://gvisor.dev/docs/user_guide/platforms/
+- [LK1] libkrunfw licensing: https://github.com/libkrun/libkrunfw/blob/main/README.md ; libkrun: https://github.com/libkrun/libkrun
+- [MS1] microsandbox: https://github.com/superradcompany/microsandbox
+- [U1] Unikraft Cloud: https://unikraft.com/ , https://unikraft.com/docs/features/checkpoints
+- [AS1] Kubernetes agent-sandbox: https://github.com/kubernetes-sigs/agent-sandbox
+- [E1] E2B architecture: https://github.com/e2b-dev/infra/blob/main/docs/ARCHITECTURE.md
+- [E2] E2B pricing: https://e2b.dev/docs/faq/calculate-sandbox-price , https://e2b.dev/pricing
+- [D1] Daytona architecture: https://www.daytona.io/docs/en/architecture/
+- [D2] Daytona isolation: https://www.daytona.io/docs/en/isolation/
+- [D3] Daytona going closed source: https://www.daytona.io/dotfiles/updates/daytona-is-going-closed-source
+- [V1] Vercel Sandbox concepts: https://vercel.com/docs/sandbox/concepts
+- [CF1] Cloudflare Sandbox architecture: https://developers.cloudflare.com/sandbox/sdk/concepts/architecture/
+- [CF2] Cloudflare Browser Run human in the loop: https://developers.cloudflare.com/browser-run/features/human-in-the-loop/
+- [CF3] Cloudflare signed agents / Web Bot Auth: https://blog.cloudflare.com/signed-agents/ , https://developers.cloudflare.com/bots/reference/bot-verification/web-bot-auth/
+- [CF4] Cloudflare Browser Run pricing: https://developers.cloudflare.com/browser-run/pricing/
+- [M1] Modal sandbox resources (gVisor default, GPU only on gVisor): https://modal.com/docs/guide/sandbox-resources.md
+- [M2] Modal pricing: https://modal.com/products/sandboxes , https://modal.com/pricing
+- [FL1] Fly Machines API (suspend): https://docs.fly.io/machines/api/machines-resource
+- [FL2] Fly suspend and resume: https://fly.io/docs/reference/suspend-resume/
+- [FL3] Fly community, nested virtualization: https://community.fly.io/t/nested-virtualization-on-fly-io/11778
+- [FL4] Fly pricing: https://fly.io/docs/about/pricing/ , https://fly.io/pricing
+- [FL5] Fly billing (stopped and suspended Machines): https://docs.fly.io/about/billing
+- [FL6] Fly custom private networks: https://fly.io/docs/networking/custom-private-networks/
+- [A1] EC2 nested virtualization docs: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/amazon-ec2-nested-virtualization.html
+- [A2] AWS announcement, Feb 2026: https://aws.amazon.com/about-aws/whats-new/2026/02/amazon-ec2-nested-virtualization-on-virtual/
+- [A3] AWS announcement, Jun 2026: https://aws.amazon.com/about-aws/whats-new/2026/06/nested-virtualization-intel-us-gov-cloud/
+- [A4] InfoQ summary: https://www.infoq.com/news/2026/03/aws-ec2-nested-virtualization/
+- [A5] m7i.metal-24xl price: https://cloud-bench.com/instance/aws-m7i-metal-24xl
+- [A6] c7i.metal-24xl price: https://aws-pricing.com/c7i.metal-24xl.html
+- [GC1] GCE nested virtualization: https://docs.cloud.google.com/compute/docs/instances/nested-virtualization/overview
+- [AZ1] Azure Dv5 series: https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/general-purpose/dv5-series
+- [H1] Hetzner price adjustment, 15 Jun 2026: https://docs.hetzner.com/general/infrastructure-and-availability/price-adjustment/
+- [H2] Hetzner AX102 / AX162: https://www.hetzner.com/dedicated-rootserver/ax102/ , https://www.hetzner.com/dedicated-rootserver/ax162
+- [ST1] steel-browser: https://github.com/steel-dev/steel-browser
+- [ST2] Steel self-hosting with Docker: https://docs.steel.dev/overview/self-hosting/docker
+- [ST3] Steel pricing: https://docs.steel.dev/overview/pricinglimits
+- [BB1] Browserbase plans: https://docs.browserbase.com/account/billing/plans
+- [HB1] Hyperbrowser pricing: https://www.hyperbrowser.ai/docs/pricing
+- [BU1] Browser Use live preview and human in the loop: https://docs.browser-use.com/cloud/browser/live-preview , https://docs.browser-use.com/cloud/agent/human-in-the-loop
+- [CDP1] CDP Page.startScreencast: https://chromedevtools.github.io/devtools-protocol/tot/Page/#method-startScreencast
+- [BR1] Chrome memory per instance (secondary): https://www.pandastack.ai/blog/browser-automation-concurrency-limits/ , https://server.express/blog/how-many-chrome-instances-fit-on-a-9950x/
