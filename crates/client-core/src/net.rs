@@ -1306,6 +1306,27 @@ impl RecoveryRetries {
     }
 }
 
+/// Background deadlines survive one admitted foreground attempt and its failure.
+#[derive(Default)]
+struct MediaDownloadRetries(HashMap<String, (tokio::time::Instant, u32)>);
+
+impl MediaDownloadRetries {
+    fn ready(&self, blob: &str, foreground: bool, now: tokio::time::Instant) -> bool {
+        foreground || self.0.get(blob).is_none_or(|(at, _)| *at <= now)
+    }
+
+    fn completed(&mut self, blob: &str) {
+        self.0.remove(blob);
+    }
+
+    fn failed(&mut self, blob: &str, now: tokio::time::Instant) {
+        let tries = self.0.get(blob).map(|(_, n)| n + 1).unwrap_or(1);
+        let wait =
+            Duration::from_secs(2u64.saturating_pow(tries.min(8))).min(Duration::from_secs(300));
+        self.0.insert(blob.into(), (now + wait, tries));
+    }
+}
+
 /// Uploads queued encrypted copies and downloads the ones the chats need, retrying with
 /// backoff (a peer's event can arrive before their upload finishes).
 async fn media_worker(
@@ -1332,7 +1353,7 @@ async fn media_worker(
         tracing_like("media: no HTTP client");
         return;
     };
-    let mut retry_at: HashMap<String, (tokio::time::Instant, u32)> = HashMap::new();
+    let mut download_retries = MediaDownloadRetries::default();
     let mut recovery_retries = RecoveryRetries::default();
     loop {
         // ── up ──
@@ -1419,6 +1440,7 @@ async fn media_worker(
         }
 
         // ── down ──
+        let mut foreground = engine!(|engine| engine.take_foreground_file_attempts());
         let wanted = engine!(|engine| engine.wanted_media());
         let now = tokio::time::Instant::now();
         let mut changed: Vec<String> = Vec::new();
@@ -1428,7 +1450,7 @@ async fn media_worker(
             if !engine!(|engine| engine.wanted_media().contains(&w)) {
                 continue;
             }
-            if retry_at.get(&w.blob).is_some_and(|(t, _)| *t > now) {
+            if !download_retries.ready(&w.blob, foreground.remove(&w), now) {
                 continue;
             }
             let url = format!("{base}/v1/blobs/{}", w.blob);
@@ -1447,7 +1469,7 @@ async fn media_worker(
                     None => false,
                 };
             if ok {
-                retry_at.remove(&w.blob);
+                download_retries.completed(&w.blob);
                 if let Some(id) = &w.profile {
                     if let Some(l) = &listener {
                         l.on_profile_changed(id.clone());
@@ -1456,10 +1478,7 @@ async fn media_worker(
                     changed.push(w.space.clone());
                 }
             } else {
-                let tries = retry_at.get(&w.blob).map(|(_, n)| n + 1).unwrap_or(1);
-                let wait = Duration::from_secs(2u64.saturating_pow(tries.min(8)))
-                    .min(Duration::from_secs(300));
-                retry_at.insert(w.blob.clone(), (now + wait, tries));
+                download_retries.failed(&w.blob, now);
             }
         }
         if !changed.is_empty() {

@@ -1032,37 +1032,62 @@ impl Engine {
     }
 
     fn demanded_file_blobs(&self) -> Vec<Wanted> {
+        self.net
+            .file_demands
+            .active()
+            .into_iter()
+            .flat_map(|(key, bound)| self.file_demand_blobs(&key, bound))
+            .collect()
+    }
+
+    /// A foreground open is a bounded fresh attempt, not evidence of a human
+    /// button press. Initial loads use the same API; background snapshots do not.
+    pub(crate) fn take_foreground_file_attempts(&self) -> std::collections::HashSet<Wanted> {
+        let mut out = std::collections::HashSet::new();
+        for (key, bound) in self.net.file_demands.foreground_attempts() {
+            let wanted = self.file_demand_blobs(&key, bound);
+            // Unsynced demands retain their pulse until they can be admitted.
+            if !wanted.is_empty() && self.net.file_demands.consume_foreground_attempt(&key) {
+                out.extend(wanted);
+            }
+        }
+        out
+    }
+
+    fn file_demand_blobs(
+        &self,
+        key: &crate::file_demand::FileDemandKey,
+        bound: u64,
+    ) -> Vec<Wanted> {
         let mut out = Vec::new();
-        for (key, bound) in self.net.file_demands.active() {
-            let Ok(info) = self.file_demand_info(&key, bound) else {
-                self.net.file_demands.remove(&key);
-                continue;
-            };
-            if info.ready {
-                self.net.file_demands.remove(&key);
+        let Ok(info) = self.file_demand_info(key, bound) else {
+            self.net.file_demands.remove(key);
+            return out;
+        };
+        if info.ready {
+            self.net.file_demands.remove(key);
+            return out;
+        }
+        let item = &self.state.items[&key.item];
+        if !self.net.synced.contains(&item.space) {
+            return out;
+        }
+        let file = self
+            .file_doc_at(&key.item, Some(key.version))
+            .expect("validated canonical file");
+        for chunk in &file.chunks {
+            if self.store.has_media(&chunk.sha256).unwrap_or(false) {
                 continue;
             }
-            let item = &self.state.items[&key.item];
-            if !self.net.synced.contains(&item.space) {
-                continue;
-            }
-            let file = self
-                .file_doc_at(&key.item, Some(key.version))
-                .expect("validated canonical file");
-            for chunk in &file.chunks {
-                if self.store.has_media(&chunk.sha256).unwrap_or(false) {
-                    continue;
-                }
-                out.push(Wanted {
-                    plain: chunk.sha256.clone(),
-                    blob: chunk.blob.clone(),
-                    key: chunk.key.clone(),
-                    mime: "application/octet-stream".into(),
-                    space: item.space.clone(),
-                    profile: None,
-                    maximum_sealed_bytes: Some(chunk.bytes + 40),
-                });
-            }
+            out.push(Wanted {
+                plain: chunk.sha256.clone(),
+                blob: chunk.blob.clone(),
+                key: chunk.key.clone(),
+                mime: "application/octet-stream".into(),
+                space: item.space.clone(),
+                profile: None,
+                maximum_sealed_bytes: Some(chunk.bytes + 40),
+            });
         }
         out
     }

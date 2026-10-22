@@ -159,6 +159,8 @@ impl Fixture {
 struct BlobServer {
     base: String,
     requests: Arc<Mutex<Vec<String>>>,
+    served: Arc<Mutex<Vec<String>>>,
+    blobs: Arc<Mutex<HashMap<String, Vec<u8>>>>,
     allow_old: Arc<AtomicBool>,
     stopped: Arc<AtomicBool>,
     thread: Option<std::thread::JoinHandle<()>>,
@@ -169,9 +171,12 @@ impl BlobServer {
         listener.set_nonblocking(true).unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         let requests = Arc::new(Mutex::new(Vec::new()));
+        let served = Arc::new(Mutex::new(Vec::new()));
+        let blobs = Arc::new(Mutex::new(blobs));
         let allow_old = Arc::new(AtomicBool::new(false));
         let stopped = Arc::new(AtomicBool::new(false));
         let (seen, allowed, stop) = (requests.clone(), allow_old.clone(), stopped.clone());
+        let (bodies, completed) = (blobs.clone(), served.clone());
         let thread = std::thread::spawn(move || {
             while !stop.load(Ordering::SeqCst) {
                 let (mut socket, _) = match listener.accept() {
@@ -182,6 +187,9 @@ impl BlobServer {
                     }
                     Err(error) => panic!("fixture HTTP accept: {error}"),
                 };
+                // Accepted sockets can inherit the listener's nonblocking mode.
+                // A read deadline must wait for delayed headers, not treat WouldBlock as EOF.
+                socket.set_nonblocking(false).unwrap();
                 socket
                     .set_read_timeout(Some(Duration::from_secs(2)))
                     .unwrap();
@@ -217,7 +225,9 @@ impl BlobServer {
                 {
                     std::thread::sleep(Duration::from_millis(2));
                 }
-                let mut body = blobs
+                let mut body = bodies
+                    .lock()
+                    .unwrap()
                     .get(&blob)
                     .expect("only signed fixture ciphertext")
                     .clone();
@@ -228,13 +238,17 @@ impl BlobServer {
                     "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
                     body.len()
                 );
-                let _ = socket.write_all(response.as_bytes());
-                let _ = socket.write_all(&body);
+                if socket.write_all(response.as_bytes()).is_ok() && socket.write_all(&body).is_ok()
+                {
+                    completed.lock().unwrap().push(blob);
+                }
             }
         });
         Self {
             base,
             requests,
+            served,
+            blobs,
             allow_old,
             stopped,
             thread: Some(thread),
@@ -253,6 +267,38 @@ impl Drop for BlobServer {
         // unwind, cleanup must preserve that failure instead of aborting twice.
         let _ = self.stop();
     }
+}
+
+#[test]
+fn historical_file_fixture_keeps_accepted_socket_until_delayed_headers() {
+    let body = b"sealed delayed-header fixture bytes".to_vec();
+    let mut server = BlobServer::start(
+        HashMap::from([("selected".into(), body.clone())]),
+        String::new(),
+        false,
+    );
+    let mut socket =
+        std::net::TcpStream::connect(server.base.strip_prefix("http://").unwrap()).unwrap();
+    socket
+        .set_read_timeout(Some(Duration::from_millis(100)))
+        .unwrap();
+    let mut peek = [0];
+    assert!(
+        matches!(socket.peek(&mut peek), Err(error) if matches!(error.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut)),
+        "accepted HTTP connection must wait for headers rather than close"
+    );
+    socket
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    socket
+        .write_all(b"GET /v1/blobs/selected HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        .unwrap();
+    let mut response = Vec::new();
+    socket.read_to_end(&mut response).unwrap();
+    assert!(response.starts_with(b"HTTP/1.1 200 OK\r\n"));
+    assert!(response.ends_with(&body));
+    assert_eq!(server.requests.lock().unwrap().as_slice(), ["selected"]);
+    server.stop().expect("delayed header fixture finishes");
 }
 
 #[test]
@@ -519,6 +565,15 @@ async fn mixed_historical_downloads_preserve_item_routing_and_retry_after_corrup
         let first = ensure(&f.reader, &ids[0], HTTP_JOURNEY_TIMEOUT_MS);
         let second = ensure(&f.reader, &ids[1], HTTP_JOURNEY_TIMEOUT_MS);
         until(|| f.reader.lock().net.file_demands.waiter_count() == 2).await;
+        let admitted_blobs: Vec<_> = f
+            .reader
+            .lock()
+            .wanted_media()
+            .into_iter()
+            .map(|w| w.blob)
+            .collect();
+        assert!(admitted_blobs.contains(&f.old_blob), "old blob absent before wake; corrupt_first={corrupt_first}; admitted={admitted_blobs:?}");
+        assert!(admitted_blobs.contains(&f.unrelated_old_blob), "neighbor blob absent before wake; corrupt_first={corrupt_first}; admitted={admitted_blobs:?}");
         kick.notify_one();
         let results = [first.await.unwrap(), second.await.unwrap()];
         let ready = results[good].as_ref().expect("unrelated version succeeds");
@@ -539,8 +594,8 @@ async fn mixed_historical_downloads_preserve_item_routing_and_retry_after_corrup
         );
         assert!(f.reader.lock().net.file_demands.active().is_empty());
         let requested = server.requests.lock().unwrap().clone();
-        assert!(requested.contains(&f.old_blob));
-        assert!(requested.contains(&f.unrelated_old_blob));
+        assert!(requested.contains(&f.old_blob), "old blob not requested; corrupt_first={corrupt_first}; admitted={admitted_blobs:?}; requests={requested:?}; served={:?}", server.served.lock().unwrap());
+        assert!(requested.contains(&f.unrelated_old_blob), "neighbor blob not requested; corrupt_first={corrupt_first}; admitted={admitted_blobs:?}; requests={requested:?}; served={:?}", server.served.lock().unwrap());
         task.abort();
         let _ = task.await;
         server.stop().expect("corrupt HTTP worker finishes");
@@ -578,6 +633,181 @@ async fn mixed_historical_downloads_preserve_item_routing_and_retry_after_corrup
         let _ = task.await;
         healthy.stop().expect("healthy HTTP worker finishes");
     }
+}
+
+#[tokio::test]
+async fn new_foreground_demand_retries_same_worker_and_coalesces_before_backoff() {
+    let f = Fixture::new();
+    let mut corrupt = f.uploads();
+    corrupt.get_mut(&f.old_blob).unwrap()[0] ^= 1;
+    let mut server = BlobServer::start(corrupt, String::new(), false);
+    let kick = Arc::new(tokio::sync::Notify::new());
+    let task = worker(&f.reader, &server, kick.clone());
+    until(|| {
+        f.reader.items().iter().all(|item| {
+            f.reader
+                .file_info_at(item.id.clone(), Some(2))
+                .unwrap()
+                .ready
+        })
+    })
+    .await;
+    let before = (
+        f.reader.item(f.item.clone()).unwrap(),
+        f.reader.timeline(f.space.clone()).unwrap(),
+        outbox(&f.reader),
+    );
+    server.requests.lock().unwrap().clear();
+    server.served.lock().unwrap().clear();
+
+    let first = ensure(&f.reader, &f.item, HTTP_JOURNEY_TIMEOUT_MS);
+    until(|| f.reader.lock().net.file_demands.waiter_count() == 1).await;
+    kick.notify_one();
+    until(|| server.served.lock().unwrap().contains(&f.old_blob)).await;
+    // End only the first foreground demand. The exact same HTTP server, worker,
+    // account and signed version survive its real corrupt-ciphertext response.
+    first.abort();
+    assert!(first.await.unwrap_err().is_cancelled());
+    assert!(f.reader.lock().net.file_demands.active().is_empty());
+    assert!(
+        !f.reader
+            .file_info_at(f.item.clone(), Some(1))
+            .unwrap()
+            .ready
+    );
+    server
+        .blobs
+        .lock()
+        .unwrap()
+        .insert(f.old_blob.clone(), f.uploads()[&f.old_blob].clone());
+
+    // This is a deadline/backoff contract, rather than a generic HTTP journey:
+    // the new episode must make one fresh attempt before the old 2s backoff.
+    let retry = ensure(&f.reader, &f.item, 1_000);
+    let joined = ensure(&f.reader, &f.item, 1_000);
+    until(|| f.reader.lock().net.file_demands.waiter_count() == 2).await;
+    kick.notify_one();
+    for result in [retry.await.unwrap(), joined.await.unwrap()] {
+        assert!(
+            result
+                .expect("new foreground episode bypasses old backoff once")
+                .ready
+        );
+    }
+    assert_eq!(
+        server.requests.lock().unwrap().as_slice(),
+        [f.old_blob.clone(), f.old_blob.clone()]
+    );
+    assert_eq!(
+        f.reader
+            .file_bytes_bounded(f.item.clone(), Some(1), 1024)
+            .unwrap(),
+        Some(f.old.clone())
+    );
+    assert_eq!(
+        (
+            f.reader.item(f.item.clone()).unwrap(),
+            f.reader.timeline(f.space.clone()).unwrap(),
+            outbox(&f.reader),
+        ),
+        before,
+        "foreground retry cannot change canonical content or outgoing intent"
+    );
+    assert!(f.reader.verify_log(f.space).valid);
+    assert!(f.reader.lock().net.file_demands.active().is_empty());
+    task.abort();
+    let _ = task.await;
+    server.stop().expect("same HTTP worker finishes");
+}
+
+#[test]
+fn foreground_attempt_does_not_reset_background_deadline_or_failure_count() {
+    let now = tokio::time::Instant::now();
+    let mut retries = MediaDownloadRetries::default();
+    retries.failed("selected", now);
+    retries.failed("neighbor", now);
+    let first_retry = now + Duration::from_secs(1);
+    assert!(!retries.ready("selected", false, first_retry));
+    assert!(retries.ready("selected", true, first_retry));
+    assert!(!retries.ready("selected", false, first_retry));
+    assert!(!retries.ready("neighbor", false, first_retry));
+    retries.failed("selected", first_retry);
+    assert!(!retries.ready("selected", false, first_retry + Duration::from_secs(3)));
+    assert!(retries.ready("selected", false, first_retry + Duration::from_secs(4)));
+    retries.completed("selected");
+    assert!(retries.ready("selected", false, first_retry));
+    assert!(!retries.ready("neighbor", false, first_retry));
+}
+
+#[test]
+fn foreground_attempt_revalidates_scope_and_retains_unsynced_demand() {
+    let mut f = Fixture::new();
+    {
+        let e = f.reader.lock();
+        assert!(!e.wanted_media().is_empty());
+        for _ in 0..3 {
+            assert!(
+                e.take_foreground_file_attempts().is_empty(),
+                "background snapshots cannot create an attempt"
+            );
+        }
+    }
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    let key = f.reader.lock().file_demand_key(&f.item, 1, 1024).unwrap();
+    let lease = f
+        .reader
+        .lock()
+        .net
+        .file_demands
+        .acquire(key.clone(), 1024, deadline)
+        .unwrap();
+    {
+        let mut e = f.reader.lock();
+        e.net.synced.remove(&f.space);
+        assert!(e.take_foreground_file_attempts().is_empty());
+        assert_eq!(
+            e.net.file_demands.foreground_attempts(),
+            [(key.clone(), 1024)]
+        );
+        e.net.synced.insert(f.space.clone());
+        let attempts = e.take_foreground_file_attempts();
+        assert_eq!(attempts.len(), 1);
+        assert_eq!(attempts.iter().next().unwrap().blob, f.old_blob);
+        assert!(e.take_foreground_file_attempts().is_empty());
+    }
+    drop(lease);
+    // These are stale local demand keys, not altered canonical events.
+    for field in ["identity", "device", "version", "sha256"] {
+        let mut stale = key.clone();
+        match field {
+            "identity" => stale.identity = "foreign".into(),
+            "device" => stale.device = "foreign".into(),
+            "version" => stale.version = 2,
+            "sha256" => stale.sha256 = "00".repeat(32),
+            _ => unreachable!(),
+        }
+        let e = f.reader.lock();
+        let stale_lease = e.net.file_demands.acquire(stale, 1024, deadline).unwrap();
+        assert!(
+            e.take_foreground_file_attempts().is_empty(),
+            "stale {field}"
+        );
+        assert!(!stale_lease.active());
+    }
+    let lease = f
+        .reader
+        .lock()
+        .net
+        .file_demands
+        .acquire(key, 1024, deadline)
+        .unwrap();
+    f.sender
+        .remove_member(f.space.clone(), f.reader.account().unwrap().identity_id)
+        .unwrap();
+    f.catch_up();
+    assert!(f.reader.lock().take_foreground_file_attempts().is_empty());
+    assert!(!lease.active());
+    assert!(f.reader.verify_log(f.space).valid);
 }
 
 #[tokio::test]
