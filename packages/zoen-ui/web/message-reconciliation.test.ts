@@ -293,3 +293,52 @@ test('unsupported/missing Core policy is refused before any browser socket start
     messages.stop();
   }
 });
+
+test('queued receive and repair share actual serial Core time after a write releases within budget', async (t) => {
+  const held = deferred();
+  const f = fixture(t, async (snapshot) => {
+    if (snapshot === 'retained-write') await held.promise;
+  });
+  const call = f.core.text;
+  let coreClock = 0;
+  const observed: Array<{ kind: string; clock: number }> = [];
+  f.core.text = async (operation) => {
+    if (operation.kind === 'reconcile' || operation.kind === 'receive') {
+      const clock = operation.kind === 'reconcile' ? operation.now : operation.repairNow;
+      observed.push({ kind: operation.kind, clock });
+      // This is the exact strict monotonic boundary enforced by the real Rust
+      // Client::note_repair_clock, not a permissive or clamping fixture.
+      if (clock < coreClock) throw new Error('browser reconciliation clock moved backwards');
+      coreClock = clock;
+    }
+    return call(operation);
+  };
+  await f.messages.start();
+  await authenticate();
+  await f.receive({ kind: 'sync_done' });
+  await f.advance(30_000);
+  await f.receive({ kind: 'pong' });
+  await f.advance(29_000);
+  const sent = f.messages.send({ space: conversation.id, text: 'synthetic write' });
+  await settle();
+  await f.advance(1_000); // Periodic tick enters the serial behind the save.
+  await f.advance(1_000);
+  await f.receive({ kind: 'pong' }); // Arrival61 follows tick60.
+  f.set(65_000);
+  held.resolve();
+  await sent;
+  await settle();
+  await settle();
+  assert.equal(
+    f.core.closed,
+    false,
+    'A forward-moving host clock must never close the encrypted account',
+  );
+  const state = f.current();
+  assert.equal(state?.kind === 'active' && state.connection.kind, 'ready');
+  assert.deepEqual(observed.slice(-2), [
+    { kind: 'reconcile', clock: 65_000 },
+    { kind: 'receive', clock: 65_000 },
+  ]);
+  assert.equal(socket().sent.filter((bytes) => bytes[0] === 90).length, 1);
+});

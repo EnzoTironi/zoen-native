@@ -54,12 +54,16 @@ export function received(
       return Promise.resolve();
   }
   const generation = this.generation;
-  const repairNow = this.cursorRepair.now();
-  if (frame.kind === 'ready') this.cursorRepair.start(generation, repairNow);
+  const readyAt = this.cursorRepair.now();
+  if (frame.kind === 'ready') this.cursorRepair.start(generation, readyAt);
   return this.enqueue(async () => {
     if (generation !== this.generation || this.connection.kind !== 'ready') return;
     if (frame.kind === 'ready' || frame.kind === 'pong')
       await this.core.text({ kind: 'claim_clock', value: this.transport.claimClock });
+    if (!this.cursorRepair.check(generation)) return;
+    // Ready owns its outer watchdog from arrival. All later verified ingestion
+    // shares the serial Core clock with reconcile, before any durable save.
+    const repairNow = frame.kind === 'ready' ? readyAt : this.cursorRepair.now();
     const update =
       frame.kind === 'ready'
         ? await this.core.text({ kind: 'bootstrap', repairNow })
