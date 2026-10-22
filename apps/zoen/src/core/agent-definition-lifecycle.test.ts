@@ -204,6 +204,34 @@ for (const field of ['identity_id', 'device_id', 'relay_url'] as const) {
     assert.equal(first.session.getSnapshot().scope, '');
   });
 }
+for (const stage of ['reconcile', 'read']) {
+  test(`hook retires a ${stage} callback after a raw relay swap with the same HTTP base`, async () => {
+    const f = hookFixture(),
+      pending = deferred<AgentDefinitionUpdateDto | AgentDefinitionDto>();
+    f.state.snapshot!.account!.relay_url = 'https://relay.example/';
+    f.handle((command) =>
+      stage === 'read' && command.op === 'agent_definition_reconcile'
+        ? Promise.resolve(null)
+        : pending.promise,
+    );
+    const first = f.render(),
+      old = first.session.ticket()!;
+    await settle();
+    assert.equal(f.calls.at(-1)?.op, `agent_definition_${stage}`);
+    f.state.snapshot!.account!.relay_url = 'wss://relay.example';
+    f.changed();
+    pending.resolve(stage === 'read' ? baseline : receipt);
+    await settle();
+    assert.equal(first.session.acceptsSession(old), false);
+    assert.equal(first.session.getSnapshot().scope, '');
+    assert.equal(first.session.getSnapshot().current, null);
+    assert.equal(first.session.getSnapshot().receipt, null);
+    assert.equal(
+      f.calls.some((command) => command.op === 'agent_definition_update'),
+      false,
+    );
+  });
+}
 test('hook erasure cleanup and route A→B→A use a fresh generation, retaining only canonical receipts', async () => {
   const f = hookFixture(),
     pending = deferred<AgentDefinitionUpdateDto | null>();
