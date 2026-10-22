@@ -86,7 +86,7 @@ function fixture(platform: 'ios' | 'android' = 'ios', width = 402, fontScale = 1
       }),
     },
     './primitives': { Icon: 'Icon' },
-    './navigation-backdrop': { NavigationBackdrop: 'NavigationBackdrop' },
+    './navigation-container': { NavigationContainer: 'View' },
     './chat-title': { ChatTitle: 'ChatTitle' },
   };
   const load = (code: string) => {
@@ -108,6 +108,7 @@ function fixture(platform: 'ios' | 'android' = 'ios', width = 402, fontScale = 1
   const title = load(compiled[1]!);
   const props = {
     id: 'space-one',
+    scrollViewTag: 1234,
     title: 'A real conversation with a long name',
     counterpart: { id: 'person', tint_hex: '#123' },
     activityLabel: 'typing',
@@ -153,9 +154,9 @@ test('public custom header is the only bar and preserves real Back, title, Detai
     false,
   );
   const all = nodes(f.bar());
-  const backdrop = all.find((node) => node.type === 'NavigationBackdrop')!;
-  assert.equal(backdrop.props.height, 122);
-  assert.equal(backdrop.props.solidHeight, 62);
+  assert.equal(f.bar().props.scrollViewTag, 1234);
+  assert.equal(options.scrollEdgeEffects.top, 'automatic');
+  assert.equal(options.scrollEdgeEffects.bottom, 'hidden');
   const back = all.find((node) => node.props.testID === 'chat-back')!;
   assert.equal(back.props.accessibilityLabel, 'access.back');
   back.props.onPress();
@@ -263,9 +264,7 @@ test('old conversation/viewport measurements cannot move the current title', () 
   fresh.props.onLayout({ nativeEvent: { layout: { width: 178 } } });
   current.props.onLayout({ nativeEvent: { layout: { width: 100 } } });
   const after = nodes(f.bar());
-  const backdrop = after.find((node) => node.type === 'NavigationBackdrop')!;
-  assert.equal(backdrop.props.height, 60);
-  assert.equal(backdrop.props.solidHeight, 0);
+  assert.equal(f.bar().props.scrollViewTag, 1234);
   assert.equal(
     after.find((node) => node.props.testID === 'chat-title-position')!.props.style.left,
     348,

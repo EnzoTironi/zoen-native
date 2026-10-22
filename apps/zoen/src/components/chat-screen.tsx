@@ -19,6 +19,8 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
     chat,
     id,
     activityLabel,
+    nativeScrollTag,
+    bindNativeTimeline,
     searchState,
     cancelInitialEnd,
     store,
@@ -73,6 +75,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
     <ConversationContainer style={{ flex: 1, backgroundColor: 'transparent' }}>
       <ChatHeader
         id={id}
+        scrollViewTag={nativeScrollTag}
         title={chat.title}
         counterpart={chat.counterpart}
         activityLabel={activityLabel}
@@ -97,6 +100,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
           searchReveal.onScroll(event.nativeEvent);
         }}
         onNativeLayout={(height) => {
+          bindNativeTimeline();
           initialEnd.onViewportLayout(height);
           searchReveal.onLayout(height);
         }}
@@ -275,6 +279,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
               testID="conversation-timeline"
               renderScrollComponent={ScrollComponent}
               onLoad={() => {
+                bindNativeTimeline();
                 setLoadedSpace(timelineKey);
                 initialEnd.onLoad();
               }}

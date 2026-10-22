@@ -75,14 +75,12 @@ public class ZoenCoreModule: Module {
       OnViewDidUpdateProps { (view: ZoenPageTextInput) in view.bind() }
     }
     Constant("composerGlassVersion") { 1 }
-    Constant("navigationBackdropVersion") { 1 }
-    View(ZoenNavigationBackdrop.self) {
-      ViewName("NavigationBackdrop")
-      Prop("isDark") { (view: ZoenNavigationBackdrop, value: Bool) in view.isDark = value }
-      Prop("solidHeight") { (view: ZoenNavigationBackdrop, value: Double) in view.solidHeight = value }
-      OnViewDidUpdateProps { (view: ZoenNavigationBackdrop) in view.apply() }
+    Constant("navigationContainerVersion") { 1 }
+    View(ZoenNavigationContainer.self) {
+      ViewName("NavigationContainer")
+      Prop("scrollViewTag") { (view: ZoenNavigationContainer, value: Int) in view.scrollViewTag = value }
+      OnViewDidUpdateProps { (view: ZoenNavigationContainer) in view.bind() }
     }
-    Constant("failedMediaRecoveryVersion") { 1 }
     View(ZoenComposerGlassSurface.self) {
       ViewName("ComposerGlassSurface")
       Prop("isDark") { (view: ZoenComposerGlassSurface, value: Bool) in view.isDark = value }

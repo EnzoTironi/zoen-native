@@ -9,7 +9,7 @@ import { ProfileAvatar } from '../profile/profile-avatar';
 import { useTheme } from '../theme';
 import { ChatTitle, type ChatHeaderProps } from './chat-title';
 import { Icon } from './primitives';
-import { NavigationBackdrop } from './navigation-backdrop';
+import { NavigationContainer } from './navigation-container';
 
 export function ChatHeader(props: ChatHeaderProps) {
   return (
@@ -18,6 +18,7 @@ export function ChatHeader(props: ChatHeaderProps) {
         title: props.title,
         headerShown: true,
         headerTransparent: true,
+        scrollEdgeEffects: { top: 'automatic', bottom: 'hidden' },
         // NativeStackView hides its UIKit bar for this public replacement and
         // measures its full height. ScreenStackItem/stack gestures remain native.
         header: (native) => <ChatNavigationBar {...props} native={native} />,
@@ -80,12 +81,12 @@ function ChatNavigationBar({
       <View style={{ borderRadius: 22, backgroundColor: p.navigation.background }}>{children}</View>
     );
   return (
-    <View
+    <NavigationContainer
+      scrollViewTag={props.scrollViewTag ?? 0}
       testID="chat-navigation-bar"
       pointerEvents="box-none"
       style={{ height: layout.height, width: '100%' }}
     >
-      <NavigationBackdrop height={layout.height} solidHeight={insets.top} />
       {native.back ? (
         <View style={{ position: 'absolute', top: layout.controlTop, left: layout.leading }}>
           {group(
@@ -184,6 +185,6 @@ function ChatNavigationBar({
           </View>,
         )}
       </View>
-    </View>
+    </NavigationContainer>
   );
 }

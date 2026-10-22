@@ -26,7 +26,6 @@ import {
 } from '../../../components/conversation-viewport';
 import { ConversationTimelineMessage as ConversationMessage } from '../../../components/conversation-timeline-message';
 import { useMessageActions } from '../../../components/use-message-actions';
-import { NavigationBackdrop } from '../../../components/navigation-backdrop';
 
 export default function Thread() {
   const { space, root } = useLocalSearchParams<{ space: string; root: string }>();
@@ -107,7 +106,12 @@ export default function Thread() {
   }
   return (
     <ConversationContainer style={{ flex: 1, backgroundColor: 'transparent' }}>
-      <Stack.Screen options={{ title: t('chat.replies') }} />
+      <Stack.Screen
+        options={{
+          title: t('chat.replies'),
+          scrollEdgeEffects: { top: 'automatic', bottom: 'hidden' },
+        }}
+      />
       <ConversationViewport
         composer={
           <>
@@ -246,7 +250,6 @@ export default function Thread() {
           )
         }
       </ConversationViewport>
-      <NavigationBackdrop height={headerHeight} solidHeight={statusBarHeight} />
       {actions.panel}
     </ConversationContainer>
   );

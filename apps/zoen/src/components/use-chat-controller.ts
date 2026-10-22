@@ -60,6 +60,7 @@ export function useChatController() {
   const sendingNow = useRef(false);
   const [loadedSpace, setLoadedSpace] = useState<string | null>(null);
   const [scrollTarget, setScrollTarget] = useState<string | null>(null);
+  const [nativeTimeline, setNativeTimeline] = useState<{ scope: string; tag: number } | null>(null);
   const [railHeight, setRailHeight] = useState(0);
   const [noticeHeight, setNoticeHeight] = useState(0);
   const composerText = editing ? editDraft : draft;
@@ -135,6 +136,18 @@ export function useChatController() {
   );
   const visibleEntries = useMemo(() => rows.map((row) => row.entry), [rows]);
   const timelineKey = searchState.active && searchThread ? `${id}:${searchThread.root}` : id;
+  const nativeTimelineScope = `${timelineKey}:${owner}`;
+  const nativeScrollTag = nativeTimeline?.scope === nativeTimelineScope ? nativeTimeline.tag : 0;
+  const bindNativeTimeline = useCallback(() => {
+    if (process.env.EXPO_OS !== 'ios') return;
+    const tag = list.current?.getScrollableNode();
+    if (typeof tag !== 'number' || !Number.isSafeInteger(tag) || tag <= 0) return;
+    setNativeTimeline((previous) =>
+      previous?.scope === nativeTimelineScope && previous.tag === tag
+        ? previous
+        : { scope: nativeTimelineScope, tag },
+    );
+  }, [nativeTimelineScope]);
   const initialEnd = useMemo(
     () =>
       new InitialTimelineEnd(`${id}:${owner}`, undefined, {
@@ -486,6 +499,8 @@ export function useChatController() {
     chat,
     id,
     activityLabel,
+    nativeScrollTag,
+    bindNativeTimeline,
     searchState,
     cancelInitialEnd,
     store,
