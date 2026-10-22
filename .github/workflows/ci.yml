@@ -54,8 +54,6 @@ jobs:
   rust:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
-    env:
-      ZOEN_SYNC_DIAGNOSTIC_DIR: ${{ runner.temp }}/zoen-sync-diagnostics
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -134,11 +132,15 @@ jobs:
           cargo test --locked -p client-core --lib --features serde_json/preserve_order,serde_json/float_roundtrip,serde_json/raw_value agent_binary_documents::tool_approvals::tests::json_order
 
       - name: Prepare safe synthetic Sync diagnostics
+        env:
+          ZOEN_SYNC_DIAGNOSTIC_DIR: ${{ runner.temp }}/zoen-sync-diagnostics
         run: |
           mkdir -p "$ZOEN_SYNC_DIAGNOSTIC_DIR"
           chmod 700 "$ZOEN_SYNC_DIAGNOSTIC_DIR"
 
       - name: Tests and journeys
+        env:
+          ZOEN_SYNC_DIAGNOSTIC_DIR: ${{ runner.temp }}/zoen-sync-diagnostics
         run: cargo test --workspace --no-fail-fast
 
       # Only typed, bounded observations written by a failed synthetic World.
