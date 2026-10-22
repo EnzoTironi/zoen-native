@@ -75,6 +75,7 @@ public class ZoenCoreModule: Module {
       OnViewDidUpdateProps { (view: ZoenPageTextInput) in view.bind() }
     }
     Constant("composerGlassVersion") { 1 }
+    Constant("failedMediaRecoveryVersion") { 1 }
     Constant("navigationContainerVersion") { 1 }
     View(ZoenNavigationContainer.self) {
       ViewName("NavigationContainer")
