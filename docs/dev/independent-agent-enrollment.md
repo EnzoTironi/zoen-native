@@ -87,6 +87,12 @@ is retained under `zoen-agent-enrollment-native24-v304`, with source-bound CLI,
 core and relay receipts under versions v302, v293 and v297 in the local build
 evidence directory.
 
+The later keyboard correction makes Check and keyboard Go share the guarded
+preview action, preserves secure entry, and opts this flow into keyboard insets
+and persistent taps. Sixty affected tests and the final integrated app check
+(1,627 tests, types, Oxlint and Oxfmt) passed. Native24 predates this correction;
+its keyboard geometry, long labels and Dynamic Type await the next native batch.
+
 The owner definition editor, real MLS task with native tool approvals, persistent
 host supervision, natural expiry races and physical pairing remain separate
 acceptance work. Version-only owner status cannot verify exact definition bytes
