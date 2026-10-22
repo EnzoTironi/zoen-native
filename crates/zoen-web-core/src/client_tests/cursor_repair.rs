@@ -424,3 +424,42 @@ fn invalid_browser_clock_cannot_reset_the_existing_repair_owner_or_snapshot() {
         (60_000, 30_000, 60_000)
     );
 }
+
+/// Export only this independently keyed, synthetic SQLite/MLS fixture for the
+/// opt-in headless browser contract. The output is never a user/account vault.
+#[test]
+#[ignore = "requires an explicitly chosen new synthetic fixture output file"]
+fn export_synthetic_cursor_fixture_for_real_browser_worker() {
+    use std::io::Write;
+    let path = std::env::var_os("ZOEN_BROWSER_CURSOR_FIXTURE_OUTPUT")
+        .expect("an owned synthetic output path must be explicit");
+    let mut f = Fixture::new();
+    let snapshot = f.client.update(Vec::new()).unwrap().snapshot;
+    let tail = f.retained_tail();
+    let nonce = "synthetic-browser-cursor-challenge";
+    let relay = "synthetic-browser-cursor-relay";
+    let body = serde_json::json!({
+        "format": "zoen-synthetic-browser-cursor-fixture-v1",
+        "account": f.client.account,
+        "snapshot": snapshot,
+        "tail": tail,
+        "space": SPACE,
+        "expected_text": TEXT,
+        "auth_message": protocol::auth_message(nonce, relay),
+        "challenge": ServerFrame::Challenge { nonce: nonce.into(), relay: relay.into(),
+            protocol: 4, capabilities: Vec::new(), server_time_ms: None }.encode(),
+        "ready": ServerFrame::Ready { identity: f.author.identity.clone(), registered: true }.encode(),
+        "sync_done": ServerFrame::SyncDone.encode(),
+        "pong": ServerFrame::Pong { server_time_ms: None }.encode(),
+    });
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path).unwrap();
+    file.write_all(&serde_json::to_vec(&body).unwrap()).unwrap();
+    file.sync_all().unwrap();
+}
