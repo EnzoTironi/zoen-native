@@ -435,6 +435,12 @@ impl State {
             }
         }
         if let Some(s) = self.spaces.get_mut(&r.space) {
+            s.last_at_ms = s.last_at_ms.max(e.at_ms);
+            // Canonical tool decisions are control events, not new user messages.
+            // The signed RequestResolved still has its ordinary System entry.
+            if r.req.tool_proposal.is_some() {
+                return;
+            }
             s.entries.push(Entry {
                 hash: e.hash.clone(),
                 client_id: format!("{}:result", e.client_id),
@@ -453,7 +459,6 @@ impl State {
                     marks: Default::default(),
                 },
             });
-            s.last_at_ms = s.last_at_ms.max(e.at_ms);
         }
     }
 }
