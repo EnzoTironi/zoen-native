@@ -54,6 +54,8 @@ jobs:
   rust:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    env:
+      ZOEN_SYNC_DIAGNOSTIC_DIR: ${{ runner.temp }}/zoen-sync-diagnostics
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -131,8 +133,24 @@ jobs:
           cargo test --locked -p client-core --lib agent_binary_documents::tool_approvals::tests::json_order
           cargo test --locked -p client-core --lib --features serde_json/preserve_order,serde_json/float_roundtrip,serde_json/raw_value agent_binary_documents::tool_approvals::tests::json_order
 
+      - name: Prepare safe synthetic Sync diagnostics
+        run: |
+          mkdir -p "$ZOEN_SYNC_DIAGNOSTIC_DIR"
+          chmod 700 "$ZOEN_SYNC_DIAGNOSTIC_DIR"
+
       - name: Tests and journeys
         run: cargo test --workspace --no-fail-fast
+
+      # Only typed, bounded observations written by a failed synthetic World.
+      # Never upload its home, vault, SQLite, raw stderr/stdout or relay log.
+      - name: Safe synthetic Sync failure observations
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-sync-readiness
+          path: ${{ runner.temp }}/zoen-sync-diagnostics/*.json
+          if-no-files-found: ignore
+          retention-days: 3
 
   # The web client end to end: two CLI "phones" link two headless Chromes through a real relay
   # (Postgres + FoundationDB) and chat, react, thread, and send photos, video, files and voice.
