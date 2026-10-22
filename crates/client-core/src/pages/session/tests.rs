@@ -1722,13 +1722,19 @@ fn only_complete_canonical_exact_source_acks() {
         plan::source(&f.space, &f.item, &wrong_digest, false).event_id,
         plan::source(&f.space, &f.item, &event, false).event_id
     );
-    deliver(&mut f.engine, &wrong_digest, Ingest::Confirmed);
-    assert_eq!(f.engine.store.outbox_len().unwrap(), 0);
-    assert!(s.read(&f.engine).unwrap().unsaved);
+    // A valid signature and matching CID do not acknowledge different content.
+    deliver(&mut f.engine, &wrong_digest, Ingest::Applied);
+    assert_eq!(f.engine.store.outbox_len().unwrap(), 1);
+    assert_eq!(f.pending(&reference), event);
+    let still_pending = s.read(&f.engine).unwrap();
+    assert!(still_pending.unsaved);
+    assert!(still_pending.pending_sync);
     assert!(journal(&s).commit.is_some());
-    deliver(&mut f.engine, &event, Ingest::Applied);
+    deliver(&mut f.engine, &event, Ingest::Confirmed);
+    assert_eq!(f.engine.store.outbox_len().unwrap(), 0);
     let final_read = s.read(&f.engine).unwrap();
     assert!(!final_read.unsaved);
+    assert!(!final_read.pending_sync);
     assert!(journal(&s).commit.is_none());
     assert_eq!(final_read.view, accepted.current.view);
     let peer = f.peer();
