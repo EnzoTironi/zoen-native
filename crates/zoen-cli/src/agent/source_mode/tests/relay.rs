@@ -34,6 +34,7 @@ pub(super) struct Relay {
     pub url: String,
     pub calls: Arc<Mutex<Vec<&'static str>>>,
     pub cursors: Arc<Mutex<Vec<(String, u64)>>>,
+    pub delivered: Arc<Mutex<Option<(String, String, u64)>>>,
     task: tokio::task::JoinHandle<()>,
 }
 impl Drop for Relay {
@@ -46,11 +47,12 @@ pub(super) async fn relay(mode: Mode) -> Relay {
     let url = format!("http://{}", listener.local_addr().unwrap());
     let calls = Arc::new(Mutex::new(Vec::new()));
     let cursors = Arc::new(Mutex::new(Vec::<(String, u64)>::new()));
-    let (seen, positions) = (calls.clone(), cursors.clone());
+    let delivered = Arc::new(Mutex::new(None::<(String, String, u64)>));
+    let (seen, positions, receipts) = (calls.clone(), cursors.clone(), delivered.clone());
     let task = tokio::spawn(async move {
         loop {
             let (socket, _) = listener.accept().await.unwrap();
-            let (seen, positions) = (seen.clone(), positions.clone());
+            let (seen, positions, receipts) = (seen.clone(), positions.clone(), receipts.clone());
             tokio::spawn(async move {
                 let mut ws = tokio_tungstenite::accept_async(socket).await.unwrap();
                 let Some(Ok(Message::Binary(bytes))) = ws.next().await else {
@@ -111,6 +113,20 @@ pub(super) async fn relay(mode: Mode) -> Relay {
                             seen.lock().unwrap().push("sync");
                             if matches!(mode, Mode::Unsynced) {
                                 continue;
+                            }
+                            let delivered = receipts.lock().unwrap().take();
+                            if let Some((space, from, seq)) = delivered {
+                                ws.send(Message::Binary(
+                                    ServerFrame::Ephemeral {
+                                        space,
+                                        from,
+                                        kind: protocol::EphemeralKind::Delivered { seq },
+                                    }
+                                    .encode()
+                                    .into(),
+                                ))
+                                .await
+                                .unwrap();
                             }
                             ServerFrame::SyncDone
                         }
@@ -216,6 +232,7 @@ pub(super) async fn relay(mode: Mode) -> Relay {
         url,
         calls,
         cursors,
+        delivered,
         task,
     }
 }

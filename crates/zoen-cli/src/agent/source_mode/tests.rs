@@ -299,7 +299,27 @@ async fn an_existing_accepted_own_reply_completes_without_model_or_cursor_effect
         unreachable!()
     };
     *reply = Some(types::ReplyRef::inline(f.source.clone()));
-    f.append(body, false);
+    let reply_id = f.append(body, false);
+    let reply = f
+        .client
+        .timeline(f.space.clone())
+        .unwrap()
+        .into_iter()
+        .find(|entry| entry.id == reply_id)
+        .unwrap();
+    assert_eq!(reply.delivery, client_core::Delivery::Local);
+    *server.delivered.lock().unwrap() = Some((f.space.clone(), f.owner.clone(), reply.seq));
+    online(&f.client, true).await;
+    assert_eq!(
+        f.client
+            .timeline(f.space.clone())
+            .unwrap()
+            .into_iter()
+            .find(|entry| entry.id == reply_id)
+            .unwrap()
+            .delivery,
+        client_core::Delivery::Delivered
+    );
     let mut run = Run::prepare(&f.client, source(&f.source)).unwrap();
     let calls = Arc::new(AtomicUsize::new(0));
     assert!(run
@@ -341,13 +361,15 @@ async fn deleted_empty_self_and_nonmessage_sources_are_refused() {
         Run::prepare(&f.client, source(&f.source)).err().unwrap(),
         "agent_host_source_not_text_message"
     );
+    let system = f.append(types::EventBody::SpaceEncrypted, false);
     let event = f
         .client
         .timeline(f.space.clone())
         .unwrap()
         .into_iter()
-        .find(|e| matches!(e.kind, EntryKind::System { .. }))
+        .find(|e| e.id == system)
         .unwrap();
+    assert!(matches!(event.kind, EntryKind::System { .. }));
     assert_eq!(
         Run::prepare(&f.client, source(&event.id)).err().unwrap(),
         "agent_host_source_not_text_message"
