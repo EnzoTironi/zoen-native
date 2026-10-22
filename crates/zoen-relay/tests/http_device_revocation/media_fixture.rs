@@ -246,6 +246,7 @@ fn repeat(length: usize) -> Value {
     json!({"repeat_byte":0,"length":length.to_string()})
 }
 
+#[path = "media_fixture/cases.rs"]
 mod cases;
 use cases::produce;
 
