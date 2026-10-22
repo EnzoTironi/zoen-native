@@ -63,7 +63,8 @@ type Request = {
   epoch: number;
   needsReconciliation: boolean;
   pageOffset: number;
-  action: 'camera' | 'document' | 'recentPreview' | null;
+  action: 'camera' | 'document' | 'recentPreview' | 'route' | null;
+  route?: (current: () => boolean) => void;
   preview?: (current: () => boolean) => Promise<void>;
   result: AttachmentAsset[] | null;
   albumDetails: Map<string, object>;
@@ -566,6 +567,14 @@ export class AttachmentPhotoSession {
     request.action = 'document';
     this.publish({ visible: false });
   }
+  /** Explicit empty-selection route handoff, only after the actual native owner closes. */
+  openRoute(open: (current: () => boolean) => void) {
+    const request = this.request;
+    if (!request || !this.isInteractive(this.state.token) || this.state.selected.length) return;
+    request.action = 'route';
+    request.route = open;
+    this.publish({ visible: false });
+  }
   dismissing(token: number) {
     // User interactive dismissal revokes queued actions before the closing animation.
     // Our own approved/camera handoff has already hidden the sheet and must await onDismiss.
@@ -586,6 +595,19 @@ export class AttachmentPhotoSession {
       return;
     }
     const action = request.action;
+    if (action === 'route') {
+      const open = request.route;
+      request.route = undefined;
+      request.action = null;
+      try {
+        if (this.current(request)) open?.(() => this.current(request));
+      } catch (error) {
+        if (this.current(request)) this.publish({ visible: true, error });
+        return;
+      }
+      this.finish(request, []);
+      return;
+    }
     if (action === 'recentPreview') {
       const preview = request.preview;
       request.preview = undefined;

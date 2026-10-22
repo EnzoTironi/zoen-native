@@ -1,3 +1,4 @@
+import * as attachmentCategories from '../media/attachment-categories.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
@@ -79,6 +80,7 @@ function runtime(ports: Record<string, unknown>) {
   };
   const jsx = (type: unknown, props: Record<string, any>): Tree => ({ type, props });
   const values: Record<string, unknown> = {
+    './attachment-categories': attachmentCategories,
     ...ports,
     react: {
       useState: (initial: unknown) => {
@@ -161,6 +163,7 @@ function fixture(recentConfiguration?: RecentAttachmentConfiguration) {
     copies: string[][] = [],
     discarded: string[] = [];
   const nativePorts: Record<string, unknown> = {
+    './attachment-categories': attachmentCategories,
     './attachment-recent-session': { AttachmentRecentSession, recentAttachmentId },
     './attachment-photo-options': { photoSendOptions },
     '../../modules/zoen-core/src/ZoenCoreModule': { releaseLocalFile: async () => {} },

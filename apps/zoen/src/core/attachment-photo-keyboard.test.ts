@@ -1,3 +1,4 @@
+import * as attachmentCategories from '../media/attachment-categories.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
@@ -141,6 +142,7 @@ async function fixture(
     !!a && a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
   const jsx = (type: unknown, props: Record<string, any>) => ({ type, props });
   const ports: Record<string, unknown> = {
+    './attachment-categories': attachmentCategories,
     './attachment-photo-options': { photoSendOptions },
     './attachment-recent-session': { AttachmentRecentSession, recentAttachmentId },
     '../../modules/zoen-core/src/ZoenCoreModule': { releaseLocalFile: async () => {} },
@@ -218,7 +220,13 @@ async function fixture(
   };
   ports['./keyboard-panel-native.ios'] = load(nativeCode);
   const component = load(panelCode).AttachmentPhotoKeyboard;
-  const render = (state: PhotoPickerState = photos.getSnapshot()) => {
+  const render = (
+    state: PhotoPickerState = photos.getSnapshot(),
+    routes?: {
+      categories: readonly ('article' | 'poll' | 'location' | 'contact')[];
+      open(category: string, current: () => boolean): void;
+    },
+  ) => {
     slotIndex = 0;
     effects = [];
     const tree = component({
@@ -228,6 +236,7 @@ async function fixture(
       request,
       sendAsFileAllowed,
       existingOptions,
+      routes,
       ...(recent ? { recent: { session: recent, state: recent.getSnapshot() } } : {}),
       onPreferredIndex: (value: number | null) => {
         preferred = value;
@@ -829,6 +838,7 @@ test('actual Photos hook subscription retains its initial task owner across a re
   keyboard.bind({ tag: 7, context: 'chat', label: 'Message', placeholder: 'Message' });
   const jsx = (type: unknown, props: Record<string, any>) => ({ type, props });
   const ports: Record<string, unknown> = {
+    './attachment-categories': attachmentCategories,
     './attachment-recent-session': { AttachmentRecentSession, recentAttachmentId },
     '../../modules/zoen-core/src/ZoenCoreModule': { releaseLocalFile: async () => {} },
     react: {
@@ -1395,4 +1405,39 @@ test('an existing grouped draft keeps its grouped preview and cannot be partiall
   f.close(tree);
   await tick();
   f.retire();
+});
+
+test('actual mounted category projection hands Article off only after native removal; foreign category and stale model cannot navigate', async () => {
+  const f = await fixture();
+  const opened: string[] = [];
+  const routes = {
+    categories: ['article'] as const,
+    open: (category: string, current: () => boolean) => {
+      assert.equal(current(), true);
+      opened.push(category);
+    },
+  };
+  const initial = f.render(undefined, routes);
+  assert.ok(
+    JSON.parse(initial.props.model).categories.some(
+      (category: { id: string }) => category.id === 'article',
+    ),
+  );
+  f.act(initial, 'category', 'location');
+  assert.equal(f.photos.getSnapshot().visible, true);
+  f.act(initial, 'category', 'article');
+  assert.deepEqual(opened, []);
+  assert.equal(f.photos.getSnapshot().visible, false);
+  const closing = f.render(undefined, routes);
+  f.act(initial, 'category', 'article');
+  assert.deepEqual(opened, []);
+  f.close(closing);
+  await tick();
+  assert.deepEqual(opened, ['article']);
+  assert.deepEqual(f.picked(), []);
+  assert.equal(f.copies.length, 0);
+  assert.equal(f.submissions.length, 0);
+  f.close(closing);
+  await tick();
+  assert.deepEqual(opened, ['article']);
 });
