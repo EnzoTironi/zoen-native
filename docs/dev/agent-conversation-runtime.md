@@ -61,6 +61,17 @@ could therefore consume its own approval status as a new task. This is an actual
 observed defect; the earlier source audit, recorded before the native correlation
 was available, correctly left that association unverified.
 
+Core now omits the synthetic Message specifically for typed canonical tool
+decisions. The signed RequestResolved event, System entry, status, receipt and
+original-source continuation remain. Legacy item-proposal delivery keeps its
+existing Message and card. This changes projection, not the wire format, grants,
+permission checks or signed history. Reprojection will refuse a historical child
+Request whose sole source was that removed synthetic receipt; it does not cancel
+or delete its signed events. The original genuine-source Request remains valid.
+The focused batch passed 53 core approval tests and strict all-target Clippy.
+Native26 still contains the earlier Core, so this source correction is not yet
+qualified by a fresh installed native journey.
+
 Both hosts exited normally, with their owned process groups absent. A normal CLI
 read after the resume recovered the same v1 file, 4,592 bytes and unchanged
 SHA256. No Agent edit was accepted. The diagnostics do not establish whether the
