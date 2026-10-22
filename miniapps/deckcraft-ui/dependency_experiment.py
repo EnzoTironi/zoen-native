@@ -20,6 +20,13 @@ EXPERIMENT_FILES = {
     ],
 }
 EXPERIMENT_NAMES = tuple(EXPERIMENT_FILES)
+IOS_INPUT_PATCHES = (
+    'patches/0017a-eframe-vendor-binding.patch',
+    'patches/0017b-eframe-text-activation.patch',
+    'patches/0017c-eframe-primary-contact.patch',
+    'patches/0017d-deckcraft-text-admission.patch',
+    'patches/0017e-deckcraft-input-contracts.patch',
+)
 EXPERIMENT_CHAINS = (('eframe-shift',), ('eframe-ios-input',),
                      ('eframe-ios-input', 'egui-touch-input'))
 EXPERIMENT_SOURCE_FILES = {
@@ -64,6 +71,29 @@ def checked(path, expected):
     return data
 
 
+def experiment_patches(data):
+    """Retain single-patch recipes; the input family has one closed ordered chain."""
+    if 'patches' not in data:
+        return [data.get('patch')]
+    patches = data['patches']
+    if ('patch' in data or data.get('name') != 'eframe-ios-input'
+            or not isinstance(patches, list)
+            or any(not isinstance(item, dict) for item in patches)
+            or [item.get('path') for item in patches] != list(IOS_INPUT_PATCHES)):
+        raise ValueError('Unexpected experiment patch sequence')
+    return patches
+
+
+def valid_patch(patch):
+    patch_path = patch.get('path') if isinstance(patch, dict) else None
+    return (isinstance(patch_path, str) and '\\' not in patch_path
+            and PurePosixPath(patch_path).parts[:1] == ('patches',)
+            and len(PurePosixPath(patch_path).parts) == 2
+            and '..' not in PurePosixPath(patch_path).parts
+            and PurePosixPath(patch_path).as_posix() == patch_path
+            and patch_path.endswith('.patch') and is_sha(patch.get('sha256')))
+
+
 def load_experiment(root, name, upstream):
     if name not in EXPERIMENT_FILES:
         raise ValueError('Unknown dependency experiment')
@@ -87,13 +117,7 @@ def load_experiment(root, name, upstream):
                    or not is_sha(item['before']) or not is_sha(item['after']) for item in sources)
             or [item['path'] for item in sources] != EXPERIMENT_SOURCE_FILES[name]):
         raise ValueError('Unexpected experiment source files')
-    patch = data.get('patch')
-    patch_path = patch.get('path') if isinstance(patch, dict) else None
-    if (not isinstance(patch_path, str) or '\\' in patch_path
-            or PurePosixPath(patch_path).parts[:1] != ('patches',)
-            or len(PurePosixPath(patch_path).parts) != 2 or '..' in PurePosixPath(patch_path).parts
-            or PurePosixPath(patch_path).as_posix() != patch_path or not patch_path.endswith('.patch')
-            or not is_sha(patch.get('sha256'))
+    if (not all(valid_patch(patch) for patch in experiment_patches(data))
             or not isinstance(data.get('status'), str) or not data['status']
             or not is_sha(data.get('managedCargoLockSha256'))
             or any(not is_sha(crate.get(key)) for key in ['archiveSha256', 'beforeTreeSha256', 'afterTreeSha256'])
@@ -143,12 +167,15 @@ def stage_experiment(source, metadata, archive, package_root, apply_patch):
     vcs = json.loads((vendor / '.cargo_vcs_info.json').read_text())
     if vcs.get('git', {}).get('sha1') != crate['sourceRevision']:
         raise ValueError('Dependency source revision mismatch')
-    patch_path = PurePosixPath(metadata['patch']['path'])
-    if patch_path.is_absolute() or '..' in patch_path.parts:
-        raise ValueError('Unsafe experiment patch path')
-    patch = package_root.joinpath(*patch_path.parts)
-    checked(patch, metadata['patch']['sha256'])
-    apply_patch(source, patch)
+    patches = experiment_patches(metadata)
+    # Check every part before applying the first. Ordering is a recipe contract,
+    # not inferred from the directory or whichever patches happen to apply.
+    for item in patches:
+        if not valid_patch(item):
+            raise ValueError('Unsafe experiment patch path')
+        checked(package_root / item['path'], item['sha256'])
+    for item in patches:
+        apply_patch(source, package_root / item['path'])
     checked(source / 'Cargo.lock', metadata['managedCargoLockSha256'])
     for item in metadata['sourceFiles']:
         checked(source / item['path'], item['after'])
@@ -159,7 +186,8 @@ def stage_experiment(source, metadata, archive, package_root, apply_patch):
                      if before_by_path.get(name) != after_by_path.get(name))
     if changed != crate['changedFiles'] or tree_digest(after) != crate['afterTreeSha256']:
         raise ValueError('Unexpected patched dependency tree')
+    patch_proof = {'patch': metadata['patch']} if 'patch' in metadata else {'patches': patches}
     return {'name': metadata['name'], 'status': metadata['status'],
-            'crate': crate, 'patch': metadata['patch'],
+            'crate': crate, **patch_proof,
             'managedCargoLockSha256': metadata['managedCargoLockSha256'],
             'verifiedBeforeTree': before, 'verifiedAfterTree': after}

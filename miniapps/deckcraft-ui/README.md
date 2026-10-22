@@ -125,6 +125,24 @@ Its six dependency paths and four source paths have separate closed allowlists
 and complete before/after hashes. The original Shift experiment and default
 dependency remain available as controls. No shared Cargo source is modified.
 
+The input recipe applies five ordered, separately hashed patches. Each contains
+complete file diffs from the original `0017-eframe-ios-input.patch`; no upstream
+code or final source hashes change:
+
+| Part    | Responsibility                                        |
+| ------- | ----------------------------------------------------- |
+| `0017a` | Local eframe dependency and lock binding              |
+| `0017b` | Activation state, DOM text agent and runner handshake |
+| `0017c` | Primary pointer/touch contact routing                 |
+| `0017d` | DeckCraft canvas text admission                       |
+| `0017e` | Existing input contract tests                         |
+
+The builder refuses missing, repeated or reordered parts, checks every patch
+hash before applying the first, then verifies the same complete dependency tree
+and managed source hashes. Other experiments keep their single-patch receipt
+shape. Historical receipts retain the original patch identity in Git history;
+this source-only decomposition does not rebuild or qualify new runtime assets.
+
 The normal managed engine patch handles surrounding IME deletion through the
 existing Session, composition snapshot and undo/journal. It preserves selected
 text, Unicode scalar bounds, inherited run properties and paragraph marks.
@@ -175,7 +193,7 @@ that viewport state, so it previously refused this admitted click. The bounded
 host regression reproduces refusal with `RawInput.focused = false` and passes
 with `true` as the control.
 
-Patch 0017 now requires the current TextEdit memory owner for that real clicked,
+Patch family 0017 requires the current TextEdit memory owner for that real clicked,
 enabled response, together with current IME. It retains the synchronous outer
 contact/release eligibility, focus-loss cancellation, multitouch, drag and custom
 canvas ownership gates. It does not change global egui focus behavior. Patch

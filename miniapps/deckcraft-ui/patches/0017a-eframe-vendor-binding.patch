@@ -1,0 +1,27 @@
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -2,6 +2,7 @@
+ resolver = "3"
+ members = ["crates/*", "apps/*", "xtask"]
+ default-members = ["crates/*", "apps/deckcraft", "apps/deckcraft-cli"]
++exclude = ["vendor/eframe-0.36.2"]
+ 
+ [workspace.package]
+ version = "0.9.0"
+@@ -96,4 +97,5 @@
+ debug = 0
+ 
+ [patch.crates-io]
++eframe = { path = "vendor/eframe-0.36.2" }
+ krilla = { git = "https://github.com/storytold/craft-libs", rev = "c3487320b2d1de657b860b3c8abb44e1f2b32bd8", version = "=0.8.2" }
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -1356,8 +1356,6 @@
+ [[package]]
+ name = "eframe"
+ version = "0.36.2"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "55ad41fac6e3149abb4866e93df37dbd33baa95db525c3368c944584e95a5dc2"
+ dependencies = [
+  "ahash",
+  "bytemuck",

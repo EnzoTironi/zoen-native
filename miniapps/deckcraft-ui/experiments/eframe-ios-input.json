@@ -23,10 +23,6 @@
       "src/web/text_input_activation.rs"
     ]
   },
-  "patch": {
-    "path": "patches/0017-eframe-ios-input.patch",
-    "sha256": "8fe0cc6aeb9a31248c310c0a21c666e474caf4ba960e349ed8752bccfd0c5604"
-  },
   "sourceFiles": [
     {
       "path": "Cargo.toml",
@@ -47,6 +43,28 @@
       "path": "crates/ui-egui/src/host_phone_landscape_tests.rs",
       "before": "fee671e3cf6ec30a760395dd51bf2352c628ce60987eec75b2946cea115ce83d",
       "after": "7ec0046ffd9dc5f93f01a30089ca5eb2055027771b6712db46e860d7ce67277d"
+    }
+  ],
+  "patches": [
+    {
+      "path": "patches/0017a-eframe-vendor-binding.patch",
+      "sha256": "7ac54becccc7a4ba73aa1e910c65be21dc3e5c5068d663d5f9e00a54f848ea65"
+    },
+    {
+      "path": "patches/0017b-eframe-text-activation.patch",
+      "sha256": "e1aaf3f4afd978ff0b7e87a2912542d754f96fc249b3a749d6b90732f28d69bd"
+    },
+    {
+      "path": "patches/0017c-eframe-primary-contact.patch",
+      "sha256": "52ef89a672af8316450cee77fd09ec123b836f6372ad8637a32361762e01d0bb"
+    },
+    {
+      "path": "patches/0017d-deckcraft-text-admission.patch",
+      "sha256": "a77ec301bea6c12f36ab211538fa761da12f6727046fe205e5fbbcbb8fad9702"
+    },
+    {
+      "path": "patches/0017e-deckcraft-input-contracts.patch",
+      "sha256": "3b6039ed3c9384764186c73dacdb82fc69ce281c51f9a559f015cd72a47d36da"
     }
   ]
 }
