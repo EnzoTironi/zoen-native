@@ -121,7 +121,15 @@ fn replied_sources<'a>(timeline: &'a [TimelineEntry], agent: &str) -> BTreeSet<&
 
 fn entry(entry: &TimelineEntry, replied: &BTreeSet<&str>) -> Result<Value> {
     let (kind, artifact, version, request) = match &entry.kind {
-        EntryKind::Message { .. } => ("message", None, None, None),
+        EntryKind::Message {
+            card: Some(card), ..
+        } => (
+            "message",
+            Some(identifier(&card.item_id)?),
+            Some(card.version),
+            None,
+        ),
+        EntryKind::Message { card: None, .. } => ("message", None, None, None),
         EntryKind::ItemEdited {
             item_id, version, ..
         } => (

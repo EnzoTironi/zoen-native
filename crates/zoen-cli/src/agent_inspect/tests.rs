@@ -301,3 +301,34 @@ fn malformed_identifier_is_refused_instead_of_exporting_unstructured_text() {
         Ok("sp_01m5gzx268502veq1swckhwrfg")
     );
 }
+
+#[test]
+fn typed_message_card_scope_is_visible_without_caption_or_card_details() {
+    let agent = citizen("http://127.0.0.1:1", true);
+    let space = agent
+        .0
+        .create_group_with(PRIVATE.into(), vec![], PrivacyDto::Closed)
+        .unwrap();
+    let mut source = agent.0.send_message(space, PRIVATE.into()).unwrap();
+    source.kind = EntryKind::Message {
+        text: PRIVATE.into(),
+        card: Some(client_core::ItemCard {
+            item_id: "it_deck_owned".into(),
+            title: PRIVATE.into(),
+            summary: PRIVATE.into(),
+            kind_label: PRIVATE.into(),
+            kind_id: "app".into(),
+            version: 27,
+            total_cents: Some(123),
+            budget_cents: Some(456),
+            line_count: 1,
+            done_count: 0,
+            app: None,
+        }),
+    };
+    let output = entry(&source, &BTreeSet::new()).unwrap();
+    assert_eq!(output["kind"], "message");
+    assert_eq!(output["artifactId"], "it_deck_owned");
+    assert_eq!(output["version"], 27);
+    assert!(!output.to_string().contains(PRIVATE));
+}
