@@ -863,10 +863,11 @@ impl Engine {
                             .filter(|event| {
                                 event.space == rejected.space
                                     && event.author == rejected.author
+                                    && event.device == rejected.device
                                     && event_log::verify_author(event).is_ok()
                                     && matches!(&event.body, EventBody::MessagePosted {
-                                attaches: Some(attaches), media: Some(media), ..
-                            } if attaches == item && media.is_valid())
+                                attaches: Some(attaches), media, ..
+                            } if attaches == item && media.as_ref().is_none_or(|media| media.is_valid()))
                             }),
                     );
                 }
@@ -881,6 +882,7 @@ impl Engine {
         let is_member = |event: &Event| {
             event.space == rejected.space
                 && event.author == rejected.author
+                && event.device == rejected.device
                 && event_log::verify_author(event).is_ok()
                 && seeds
                     .iter()
@@ -911,6 +913,7 @@ impl Engine {
         for row in &rows {
             let same_owner = row.event.space == rejected.space
                 && row.event.author == rejected.author
+                && row.event.device == rejected.device
                 && event_log::verify_author(&row.event).is_ok();
             let orphan = same_owner
                 && matches!(&row.event.body,

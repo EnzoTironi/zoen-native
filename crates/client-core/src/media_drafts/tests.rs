@@ -1888,12 +1888,18 @@ fn media_contract_permanent_file_refusal_fails_dependents_and_releases_later_hea
 
 #[test]
 fn media_contract_refused_duplicate_creation_cannot_poison_confirmed_file_reference() {
+    for presentation in ["media", "file"] {
+        media_contract_refused_duplicate_creation(presentation);
+    }
+}
+
+fn media_contract_refused_duplicate_creation(presentation: &str) {
     let f = fixture(":memory:");
     media_contract_confirm_scope(&f);
     let draft = save(
         &f,
         "0",
-        &media_options(&["a"], "file", "separate"),
+        &media_options(&["a"], presentation, "separate"),
         vec![input("a")],
     );
     let sent = f
@@ -2036,11 +2042,22 @@ fn media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped() {
         .author_for(&f.scope.expected_identity_id)
         .unwrap();
     let foreign = event_log::Author::root(event_log::Signer::generate());
+    let identity_secret: [u8; 32] = f
+        .vault
+        .load(crate::sync::VAULT_IDENTITY.into())
+        .unwrap()
+        .try_into()
+        .unwrap();
+    let sibling = event_log::Author::device(
+        &event_log::Signer::from_secret(&identity_secret),
+        event_log::Signer::generate(),
+    );
     let mut unrelated = Vec::new();
     // Authenticated negative fixtures deliberately do not represent authorized local sends.
     for (author, space) in [
         (&foreign, f.scope.space_id.as_str()),
         (&own, "unrelated-space"),
+        (&sibling, f.scope.space_id.as_str()),
     ] {
         let event = author.sign_event(
             space,
