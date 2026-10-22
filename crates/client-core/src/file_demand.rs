@@ -1,7 +1,7 @@
 //! Device-local, bounded leases for explicitly opened historical file versions.
 //! A canceled future releases only its waiter; no event, preference or key is stored.
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
     time::Instant,
 };
@@ -19,6 +19,7 @@ pub(crate) struct FileDemandKey {
 struct State {
     next: u64,
     requests: HashMap<FileDemandKey, HashMap<u64, (Instant, u64)>>,
+    foreground_attempts: HashSet<FileDemandKey>,
 }
 
 impl State {
@@ -28,6 +29,8 @@ impl State {
             waiters.retain(|_, (deadline, _)| *deadline > now);
             !waiters.is_empty()
         });
+        self.foreground_attempts
+            .retain(|key| self.requests.contains_key(key));
     }
 }
 
@@ -50,6 +53,10 @@ impl FileDemands {
         }
         state.next = state.next.checked_add(1)?;
         let id = state.next;
+        // One pulse per new foreground-demand episode, not per waiter or poll.
+        if !state.requests.contains_key(&key) {
+            state.foreground_attempts.insert(key.clone());
+        }
         state
             .requests
             .entry(key.clone())
@@ -77,6 +84,29 @@ impl FileDemands {
             .collect()
     }
 
+    pub fn foreground_attempts(&self) -> Vec<(FileDemandKey, u64)> {
+        let mut state = self.0.lock().unwrap_or_else(|p| p.into_inner());
+        state.prune();
+        state
+            .foreground_attempts
+            .iter()
+            .map(|key| {
+                let waiters = &state.requests[key];
+                (
+                    key.clone(),
+                    waiters.values().map(|(_, bound)| *bound).min().unwrap(),
+                )
+            })
+            .collect()
+    }
+
+    /// Consume only after the engine has revalidated this exact active demand.
+    pub fn consume_foreground_attempt(&self, key: &FileDemandKey) -> bool {
+        let mut state = self.0.lock().unwrap_or_else(|p| p.into_inner());
+        state.prune();
+        state.foreground_attempts.remove(key)
+    }
+
     #[cfg(test)]
     pub fn waiter_count(&self) -> usize {
         self.0
@@ -89,19 +119,15 @@ impl FileDemands {
     }
 
     pub fn remove(&self, key: &FileDemandKey) {
-        self.0
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .requests
-            .remove(key);
+        let mut state = self.0.lock().unwrap_or_else(|p| p.into_inner());
+        state.requests.remove(key);
+        state.foreground_attempts.remove(key);
     }
 
     pub fn clear(&self) {
-        self.0
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .requests
-            .clear();
+        let mut state = self.0.lock().unwrap_or_else(|p| p.into_inner());
+        state.requests.clear();
+        state.foreground_attempts.clear();
     }
 }
 
@@ -129,6 +155,7 @@ impl Drop for FileDemandLease {
             waiters.remove(&self.id);
             if waiters.is_empty() {
                 state.requests.remove(&self.key);
+                state.foreground_attempts.remove(&self.key);
             }
         }
     }
@@ -182,5 +209,51 @@ mod tests {
             .unwrap();
         assert!(!expired.active());
         assert!(demands.active().is_empty());
+    }
+
+    #[test]
+    fn foreground_attempt_is_once_per_episode_not_joiner_snapshot_or_wake() {
+        let demands = FileDemands::default();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let first = demands.acquire(key(0), 1024, deadline).unwrap();
+        let joined = demands.acquire(key(0), 512, deadline).unwrap();
+        for _ in 0..3 {
+            assert_eq!(demands.foreground_attempts(), [(key(0), 512)]);
+            assert_eq!(demands.active(), [(key(0), 512)]);
+        }
+        assert!(!demands.consume_foreground_attempt(&key(1)));
+        assert!(demands.consume_foreground_attempt(&key(0)));
+        assert!(!demands.consume_foreground_attempt(&key(0)));
+        let later_joiner = demands.acquire(key(0), 512, deadline).unwrap();
+        drop(first);
+        assert!(demands.foreground_attempts().is_empty());
+        drop(joined);
+        assert!(demands.foreground_attempts().is_empty());
+        drop(later_joiner);
+        let fresh = demands.acquire(key(0), 1024, deadline).unwrap();
+        assert_eq!(demands.foreground_attempts(), [(key(0), 1024)]);
+        drop(fresh);
+        assert!(demands.foreground_attempts().is_empty());
+        assert!(!demands.consume_foreground_attempt(&key(0)));
+    }
+
+    #[test]
+    fn canceled_expired_removed_and_cleared_demands_discard_unconsumed_attempts() {
+        let demands = FileDemands::default();
+        let expired = demands
+            .acquire(key(0), 1024, Instant::now() - Duration::from_millis(1))
+            .unwrap();
+        assert!(demands.foreground_attempts().is_empty());
+        assert!(!demands.consume_foreground_attempt(&key(0)));
+        drop(expired);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let removed = demands.acquire(key(1), 1024, deadline).unwrap();
+        demands.remove(&key(1));
+        assert!(!demands.consume_foreground_attempt(&key(1)));
+        let cleared = demands.acquire(key(2), 1024, deadline).unwrap();
+        demands.clear();
+        assert!(!demands.consume_foreground_attempt(&key(2)));
+        assert!(!removed.active() && !cleared.active());
+        assert!(demands.foreground_attempts().is_empty());
     }
 }
