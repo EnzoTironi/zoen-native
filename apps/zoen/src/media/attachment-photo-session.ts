@@ -1,90 +1,23 @@
 import type { AttachmentAsset } from './attachment-draft';
-import type { MediaDraftAttachmentOptions } from './media-draft-types';
-import type {
-  PhotoLibraryAlbum,
-  PhotoLibraryItem,
-  PhotoLibraryPermission,
-} from './attachment-photo-library';
-export type PhotoPickerState = Readonly<{
-  token: number;
-  visible: boolean;
-  busy: boolean;
-  permission: PhotoLibraryPermission | null;
-  items: readonly PhotoLibraryItem[];
-  selected: readonly PhotoLibraryItem[];
-  albums: readonly PhotoLibraryAlbum[];
-  albumId: string | null;
-  loading: boolean;
-  hasMore: boolean;
-  error: unknown;
-  screen: 'grid' | 'albums' | 'preview' | 'selected';
-  previewId: string | null;
-  category: 'photos' | 'document' | 'audio';
-}>;
-export type PhotoPickerPort = {
-  permission(): Promise<PhotoLibraryPermission>;
-  requestPermission(): Promise<PhotoLibraryPermission>;
-  load(albumId: string | null, offset: number): Promise<PhotoLibraryItem[]>;
-  refresh(items: readonly PhotoLibraryItem[]): Promise<PhotoLibraryItem[]>;
-  albums(): Promise<PhotoLibraryAlbum[]>;
-  albumDetails?(id: string): Promise<{ count: number; previewId: string | null }>;
-  manage(): Promise<void>;
-  materialize(
-    items: readonly PhotoLibraryItem[],
-    current: () => boolean,
-  ): Promise<AttachmentAsset[]>;
-  capture(remaining: number, current: () => boolean): Promise<AttachmentAsset[]>;
-  browse?(
-    remaining: number,
-    current: () => boolean,
-    category?: 'document' | 'audio',
-  ): Promise<AttachmentAsset[]>;
-  discard(uri: string): void;
-};
-export type PhotoPickerSubmission = Readonly<{
-  caption: string;
-  /** Ordered exactly like the materialized selection; never addressed by filename. */
-  captions?: readonly string[];
-  send: boolean;
-  requestEdit?: boolean;
-  options?: MediaDraftAttachmentOptions;
-}>;
-/** Derived by the current durable draft owner; never a second draft authority. */
-export type PhotoPickerAdmission = Readonly<{
-  sendAsFileAllowed: boolean;
-  existingOptions?: MediaDraftAttachmentOptions;
-}>;
-type Request = {
-  current(): boolean;
-  remaining: number;
-  resolve(files: AttachmentAsset[]): void;
-  retired: boolean;
-  working: boolean;
-  epoch: number;
-  needsReconciliation: boolean;
-  pageOffset: number;
-  action: 'camera' | 'document' | 'recentPreview' | 'route' | null;
-  route?: (current: () => boolean) => void;
-  preview?: (current: () => boolean) => Promise<void>;
-  result: AttachmentAsset[] | null;
-  albumDetails: Map<string, object>;
-};
-const empty: PhotoPickerState = {
-  token: 0,
-  visible: false,
-  busy: false,
-  permission: null,
-  items: [],
-  selected: [],
-  albums: [],
-  albumId: null,
-  loading: false,
-  hasMore: false,
-  error: null,
-  screen: 'grid',
-  previewId: null,
-  category: 'photos',
-};
+import type { PhotoLibraryItem } from './attachment-photo-library';
+import {
+  empty,
+  type PhotoPickerPort,
+  type PhotoPickerState,
+  type Request,
+} from './attachment-photo-types.ts';
+import { reconcilePhotoSelection } from './photo-permission-reconciliation.ts';
+import {
+  canApprovePhotoSelection,
+  reorderPhotoSelection,
+  togglePhotoSelection,
+} from './photo-selection.ts';
+export type {
+  PhotoPickerAdmission,
+  PhotoPickerPort,
+  PhotoPickerState,
+  PhotoPickerSubmission,
+} from './attachment-photo-types.ts';
 
 /** Ephemeral library selection only. The existing channel remains the sole durable draft authority. */
 export class AttachmentPhotoSession {
@@ -220,49 +153,19 @@ export class AttachmentPhotoSession {
           void this.reload();
           return;
         }
-        const verified = new Map(refreshed.map((item) => [item.id, item]));
-        if (verified.size !== refreshed.length || refreshed.some((item) => !retained.has(item.id)))
-          throw new Error('Invalid Photos reconciliation');
-        // A user may deselect/reorder while the read is in flight. Reconcile
-        // CURRENT identities, never restore the selection captured before await.
-        if (
-          this.state.selected.some((item) => !retained.has(item.id)) ||
-          (this.state.previewId !== null && !retained.has(this.state.previewId))
-        ) {
+        const projection = reconcilePhotoSelection(this.state, retained, refreshed, items);
+        if (!projection) {
           void this.reload();
           return;
         }
-        const selected = this.state.selected.flatMap((item) => {
-          const current = verified.get(item.id);
-          return current ? [current] : [];
-        });
-        const currentPreview =
-          this.state.previewId === null ? null : verified.get(this.state.previewId);
-        // The visible item may be beyond the refreshed first page. Retain only
-        // its freshly authorized metadata, while the next offset stays based on
-        // actual queried rows rather than this additional display identity.
-        const reconciled = items.flatMap((item) => {
-          if (retained.has(item.id) && !verified.has(item.id)) return [];
-          return [verified.get(item.id) ?? item];
-        });
-        const displayed =
-          currentPreview && !reconciled.some((item) => item.id === currentPreview.id)
-            ? [...reconciled, currentPreview]
-            : reconciled;
-        const screen = this.state.screen;
-        const lostPreview = this.state.previewId !== null && !currentPreview;
         request.needsReconciliation = false;
         request.pageOffset = items.length;
         this.publish({
-          items: displayed,
+          items: projection.items,
           albums,
-          selected,
-          hasMore: items.length === 60,
-          ...(lostPreview
-            ? screen === 'selected' && selected.length
-              ? { previewId: selected[0]!.id }
-              : { screen: 'grid', previewId: null }
-            : {}),
+          selected: projection.selected,
+          hasMore: projection.hasMore,
+          ...projection.preview,
         });
       } else {
         request.pageOffset = items.length;
@@ -390,15 +293,9 @@ export class AttachmentPhotoSession {
     this.publish({ screen: 'selected', previewId });
   }
   reorder(ids: readonly string[]) {
-    if (
-      !this.isInteractive(this.state.token) ||
-      ids.length !== this.state.selected.length ||
-      new Set(ids).size !== ids.length
-    )
-      return;
-    const selected = new Map(this.state.selected.map((item) => [item.id, item]));
-    if (ids.some((id) => !selected.has(id))) return;
-    this.publish({ selected: ids.map((id) => selected.get(id)!) });
+    if (!this.isInteractive(this.state.token)) return;
+    const selected = reorderPhotoSelection(this.state.selected, ids);
+    if (selected) this.publish({ selected });
   }
   select(item: PhotoLibraryItem) {
     const request = this.request;
@@ -407,22 +304,8 @@ export class AttachmentPhotoSession {
     );
     if (!request || !this.current(request) || !this.state.visible || this.state.busy || !knownItem)
       return;
-    const existing = this.state.selected.some((value) => value.id === item.id);
-    if (!existing && this.state.selected.length >= request.remaining) return;
-    const selected = existing
-      ? this.state.selected.filter((value) => value.id !== item.id)
-      : [...this.state.selected, knownItem];
-    this.publish({
-      selected,
-      ...(this.state.screen === 'selected'
-        ? {
-            screen: selected.length ? 'selected' : 'grid',
-            previewId: selected.some((value) => value.id === this.state.previewId)
-              ? this.state.previewId
-              : (selected[0]?.id ?? null),
-          }
-        : {}),
-    });
+    const update = togglePhotoSelection(this.state, knownItem, request.remaining);
+    if (update) this.publish(update);
   }
   async manage() {
     const request = this.request;
@@ -438,12 +321,7 @@ export class AttachmentPhotoSession {
     const request = this.request;
     if (!request || request.needsReconciliation || !this.isInteractive(this.state.token))
       return false;
-    if (currentItemId === undefined) return this.state.selected.length > 0;
-    if (this.state.selected.some((item) => item.id === currentItemId)) return true;
-    return (
-      this.state.selected.length < request.remaining &&
-      this.state.items.some((item) => item.id === currentItemId)
-    );
+    return canApprovePhotoSelection(this.state, request.remaining, currentItemId);
   }
   async approve(currentItemId?: string, prepared?: () => void) {
     const request = this.request;

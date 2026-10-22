@@ -1,30 +1,26 @@
-import { BrowserVault } from '../../../../packages/zoen-ui/web/vault';
-import { CoreWorker } from '../../../../packages/zoen-ui/web/worker-client';
+import { authorityJson } from '../../../../packages/zoen-ui/web/authority';
+import { unavailableCapability } from '../../../../packages/zoen-ui/web/capabilities';
 import {
   Messages,
-  parseDevices,
-  parseInvite,
-  type MessagesState,
   type Conversation,
   type Message,
+  type MessagesState,
   type Profile,
 } from '../../../../packages/zoen-ui/web/messages';
 import { Pairing } from '../../../../packages/zoen-ui/web/pairing';
-import { unavailableCapability } from '../../../../packages/zoen-ui/web/capabilities';
-import type { StoredSession } from '../../../../packages/zoen-ui/web/session';
 import { enrollPrimary } from '../../../../packages/zoen-ui/web/primary';
-import { authorityJson } from '../../../../packages/zoen-ui/web/authority';
-import type { ProfileDto } from './generated/ProfileDto';
-import type { Persona } from './generated/Persona';
-import type { SpaceSummary } from './generated/SpaceSummary';
-import assets from './generated/web-assets.json';
+import type { StoredSession } from '../../../../packages/zoen-ui/web/session';
+import { BrowserVault } from '../../../../packages/zoen-ui/web/vault';
+import { CoreWorker } from '../../../../packages/zoen-ui/web/worker-client';
 import { locale as appLocale } from '../i18n/index.ts';
-import { searchBrowser, searchBrowserMessages } from './browser-search';
-import { activateBrowserMediaHost } from './browser-media';
-import { browserMessageEntry } from './browser-message-entry';
 import { createBrowserMediaDriver } from '../media/driver.web';
 import { createBrowserProfilePhotoDriver } from '../profile/driver.web';
-import { array, integer, object, string } from '../../../../packages/zoen-ui/web/boundary';
+import { browserSnapshot, browserTimelineEntry } from './browser-driver-projection';
+import { activateBrowserMediaHost } from './browser-media';
+import { browserMessageCommand } from './browser-message-commands';
+import type { Persona } from './generated/Persona';
+import type { ProfileDto } from './generated/ProfileDto';
+import assets from './generated/web-assets.json';
 import type {
   Command,
   CommandResult,
@@ -277,130 +273,34 @@ class BrowserDriver implements CoreDriver {
     return conversation.messages.map((message) => this.entry(message, conversation));
   }
   private entry(message: Message, conversation: Conversation): TimelineEntry {
-    const quoted = conversation.messages.find((candidate) => candidate.entry === message.quote?.id);
-    const root = message.thread
-      ? conversation.messages.find((candidate) => candidate.entry === message.thread)
-      : undefined;
-    return {
-      id: message.id,
-      seq: message.seq ?? '0',
-      author: this.persona(message.author, message.name),
-      at_ms: String(message.at_ms),
-      ...browserMessageEntry(message),
-      delivery:
-        message.delivery === 'sending'
-          ? 'Sending'
-          : message.delivery === 'failed'
-            ? 'Failed'
-            : message.ticks === 'read'
-              ? 'Read'
-              : message.ticks === 'delivered'
-                ? 'Delivered'
-                : 'Sent',
-      reply_to: message.quote
-        ? {
-            id: quoted?.id ?? message.quote.id,
-            author: this.persona(quoted?.author ?? '', message.quote.name),
-            text: message.quote.text,
-          }
-        : null,
-      in_thread: root?.id ?? message.thread,
-      thread_replies: message.replies,
-      edited: message.edited,
-      deleted: message.deleted,
-      forwarded: message.forwarded,
-      reactions: message.reactions.map((reaction) => ({
-        emoji: reaction.emoji,
-        mine: reaction.mine,
-        people: reaction.participants.map((person) => this.persona(person.identity, person.name)),
-      })),
-    };
+    return browserTimelineEntry(message, conversation, (identity, name) =>
+      this.persona(identity, name),
+    );
   }
   private snapshot(): Snapshot {
     const account =
       this.session.kind === 'linked' || this.session.kind === 'provider_pending'
         ? this.session.account
         : null;
-    const conversations: SpaceSummary[] = this.conversations().map((conversation) => {
-      const last = conversation.messages.at(-1);
-      return {
-        id: conversation.id,
-        title: conversation.title,
-        kind:
-          conversation.kind === 'group'
-            ? 'Group'
-            : conversation.kind === 'community'
-              ? 'Community'
-              : 'Direct',
-        privacy: conversation.privacy,
-        members: conversation.roster.map((member) =>
-          this.persona(member.id, member.id === account?.identity ? account.name : 'Desconhecido'),
-        ),
-        counterpart:
-          conversation.kind === 'direct'
-            ? (conversation.roster
-                .filter((member) => member.id !== account?.identity)
-                .map((member) => this.persona(member.id, 'Desconhecido'))[0] ?? null)
-            : null,
-        last_preview: last?.deleted ? 'Mensagem apagada' : (last?.text ?? ''),
-        last_author: last ? this.persona(last.author, last.name) : null,
-        last_at_ms: String(last?.at_ms ?? 0),
-        unread: conversation.unread,
-        last_delivery: last ? this.entry(last, conversation).delivery : null,
-        pinned: conversation.prefs.pinned,
-        archived: conversation.prefs.archived,
-        muted:
-          conversation.prefs.muted_until_ms !== null &&
-          BigInt(conversation.prefs.muted_until_ms) > BigInt(Date.now()),
-        muted_until_ms: conversation.prefs.muted_until_ms,
-        pending_requests: 0,
-        event_count: conversation.event_count,
-      };
-    });
-    const connection = this.state.kind === 'active' ? this.state.connection : null;
-    return {
+    return browserSnapshot({
       account: account
         ? {
-            identity_id: account.identity,
-            device_id: account.device,
-            name: this.selfProfile?.name ?? account.name,
+            identity: account.identity,
+            device: account.device,
+            name: account.name,
             handle: account.handle,
-            relay_url: account.relay,
-            registered: this.session.kind === 'linked',
-            unlocked: true,
-            setup_pending: this.session.kind === 'provider_pending',
+            relay: account.relay,
           }
         : null,
-      me: account
-        ? { ...this.persona(account.identity, account.name), handle: account.handle }
-        : null,
-      connection: {
-        state:
-          connection?.kind === 'ready'
-            ? 'online'
-            : connection?.kind === 'failed' || connection?.kind === 'stopped'
-              ? 'offline'
-              : 'connecting',
-        synced: connection?.kind === 'ready',
-        pending: String(
-          this.conversations().reduce(
-            (total, chat) =>
-              total + chat.messages.filter((message) => message.delivery === 'sending').length,
-            0,
-          ),
-        ),
-        error: this.state.kind === 'failed' ? this.state.message : null,
-      },
-      conversations,
-      integrity_warnings: Object.fromEntries(
-        this.conversations().flatMap((chat) =>
-          chat.integrity_error ? [[chat.id, chat.integrity_error]] : [],
-        ),
-      ),
-      has_unreadable_local_history: false,
-      requests: [],
-      agents: [],
-    };
+      registered: this.session.kind === 'linked',
+      setupPending: this.session.kind === 'provider_pending',
+      ownName: this.selfProfile?.name ?? null,
+      connection: this.state.kind === 'active' ? this.state.connection : null,
+      error: this.state.kind === 'failed' ? this.state.message : null,
+      sourceConversations: this.conversations(),
+      persona: (identity, name) => this.persona(identity, name),
+      entry: (message, conversation) => this.entry(message, conversation),
+    });
   }
 
   async request<C extends Command>(command: C): Promise<CommandResult<C>> {
@@ -470,343 +370,43 @@ class BrowserDriver implements CoreDriver {
       }
       result = snapshot;
     } else if (!messages) throw new Error('Vincule este navegador pelo seu celular primeiro.');
-    else
-      switch (command.op) {
-        case 'timeline': {
-          const entries = this.entries(command.space_id).filter(
-            (entry) => entry.in_thread === null,
-          );
-          const end = command.before
-            ? entries.findIndex((entry) => entry.id === command.before)
-            : entries.length;
-          if (end < 0) throw new Error('A conversa mudou. Abra-a novamente.');
-          const start = Math.max(0, end - Math.min(200, Math.max(1, command.limit)));
-          result = {
-            entries: entries.slice(start, end),
-            before: entries[start]?.id ?? null,
-            has_more: start > 0,
+    else if (
+      command.op === 'profile' ||
+      command.op === 'update_profile' ||
+      command.op === 'block_person' ||
+      command.op === 'unblock_person' ||
+      command.op === 'blocked_people'
+    ) {
+      result = await messages.profileRequest(command);
+      if (command.op === 'update_profile' && this.session.kind === 'linked') {
+        const own = (await messages.profileRequest({
+          op: 'profile',
+          identity_id: this.session.account.identity,
+        })) as ProfileDto;
+        if (requestGeneration !== this.generation)
+          throw new Error('A conta mudou. Abra esta tela novamente.');
+        if (own.name)
+          this.selfProfile = {
+            name: own.name,
+            bio: own.bio ?? '',
+            photo_sha256: own.photo_sha256,
+            photo_ready: own.photo_ready,
+            photo_mime: own.photo_mime,
           };
-          break;
-        }
-        case 'send_message':
-          await messages.post({
-            space: command.space_id,
-            text: command.text,
-            replyTo: this.target(command.space_id, command.reply_to),
-            thread: command.thread,
-          });
-          result = this.entries(command.space_id).at(-1);
-          break;
-        case 'start_direct':
-        case 'create_group':
-        case 'create_community':
-        case 'add_member':
-        case 'add_admin':
-        case 'remove_member':
-        case 'leave_space':
-        case 'encrypt_chat':
-          result = await messages.membershipRequest(command);
-          break;
-        case 'mark_read':
-          await messages.markRead(command.space_id);
-          break;
-        case 'profile':
-        case 'update_profile':
-        case 'block_person':
-        case 'unblock_person':
-        case 'blocked_people':
-          result = await messages.profileRequest(command);
-          if (command.op === 'update_profile' && this.session.kind === 'linked') {
-            const own = (await messages.profileRequest({
-              op: 'profile',
-              identity_id: this.session.account.identity,
-            })) as ProfileDto;
-            if (requestGeneration !== this.generation)
-              throw new Error('A conta mudou. Abra esta tela novamente.');
-            if (own.name)
-              this.selfProfile = {
-                name: own.name,
-                bio: own.bio ?? '',
-                photo_sha256: own.photo_sha256,
-                photo_ready: own.photo_ready,
-                photo_mime: own.photo_mime,
-              };
-            this.changed();
-          }
-          break;
-        case 'update_handle':
-          await messages.updateHandle(command.handle);
-          result = this.snapshot().account;
-          break;
-        case 'link_code_check':
-          result = await messages.linkRequest({ op: 'link_code_check', code: command.code });
-          break;
-        case 'link_device':
-          result = await messages.linkDevice(command.code);
-          break;
-        case 'link_progress':
-          result = await messages.linkProgress(command.device_id);
-          break;
-        case 'send_history':
-          result = await messages.sendHistory(command.device_id);
-          break;
-        case 'load_older':
-          result = await messages.loadOlder(command.space_id, Number(command.timeout_ms));
-          break;
-        case 'history_status':
-          result = await messages.historyStatus();
-          break;
-        case 'receive_history':
-          result = await messages.receiveHistory(Number(command.timeout_ms));
-          break;
-        case 'react':
-          await messages.annotate(
-            command.space_id,
-            this.target(command.space_id, command.message_id),
-            command.emoji ? { React: { emoji: command.emoji } } : 'Unreact',
-          );
-          break;
-        case 'edit_message':
-          await messages.annotate(
-            command.space_id,
-            this.target(command.space_id, command.message_id),
-            { Edit: { text: command.text } },
-          );
-          break;
-        case 'delete_message':
-          await messages.annotate(
-            command.space_id,
-            this.target(command.space_id, command.message_id),
-            'Delete',
-          );
-          break;
-        case 'thread': {
-          const root = this.conversations()
-            .find((chat) => chat.id === command.space_id)
-            ?.messages.find(
-              (message) => message.id === command.root_id || message.entry === command.root_id,
-            );
-          if (!root) throw new Error('A mensagem original não está disponível neste aparelho.');
-          result = this.entries(command.space_id).filter(
-            (entry) =>
-              entry.id === (root?.id ?? command.root_id) ||
-              entry.in_thread === (root?.id ?? command.root_id),
-          );
-          break;
-        }
-        case 'message':
-          result = this.entries(command.space_id).find((entry) => entry.id === command.message_id);
-          if (!result) throw new Error('Mensagem indisponível nesta conversa.');
-          break;
-        case 'search_messages':
-          result = searchBrowserMessages(
-            this.conversations(),
-            command.query,
-            command.space_id,
-            command.cursor,
-            command.limit,
-            (id, name) => this.persona(id, name),
-          );
-          break;
-        case 'universal_search':
-          result = searchBrowser(
-            this.conversations(),
-            command.query,
-            command.kinds,
-            command.limit,
-            (id, name) => this.persona(id, name),
-          );
-          break;
-        case 'forward_message': {
-          const source = this.entries(command.source_space).find(
-            (entry) => entry.id === command.message_id,
-          );
-          if (!source || source.deleted || !('Message' in source.kind))
-            throw new Error('Esta mensagem não pode ser encaminhada como texto.');
-          await messages.post({
-            space: command.target_space,
-            text: source.kind.Message.text,
-            forwarded: true,
-          });
-          break;
-        }
-        case 'devices':
-          result = parseDevices(
-            await messages.devices(),
-            this.session.kind === 'linked' ? this.session.account.device : '',
-          );
-          break;
-        case 'unlink_device':
-          await messages.unlinkDevice(command.device_id);
-          break;
-        case 'find_people': {
-          const query = command.query.trim().replace(/^@/, '').toLocaleLowerCase();
-          if (!query) {
-            result = [];
-            break;
-          }
-          const response = object(await messages.rpc('lookup', query));
-          if (response.kind !== 'profiles') throw new Error('O servidor não retornou os perfis.');
-          result = (
-            (await messages.directoryProfiles(array(response.profiles))) as Persona[]
-          ).filter((person) => !person.is_me);
-          break;
-        }
-        case 'agent_status': {
-          const response = object(await messages.rpc('agent_status', command.agent_id));
-          const status = string(response.status);
-          if (response.kind !== 'agent_state' || !['active', 'paused', 'revoked'].includes(status))
-            throw new Error('O servidor não retornou o estado do agente.');
-          result = status === 'active' ? 'Active' : status === 'paused' ? 'Paused' : 'Revoked';
-          break;
-        }
-        case 'control_agent':
-        case 'revoke_agent_invite': {
-          const response = object(
-            await messages.rpc(
-              command.op === 'control_agent' ? 'control_agent' : 'revoke_agent_invite',
-              command.op === 'control_agent'
-                ? JSON.stringify({ agent: command.agent_id, action: command.action.toLowerCase() })
-                : command.agent_id,
-            ),
-          );
-          if (response.kind !== 'done') throw new Error('O servidor não confirmou esta ação.');
-          break;
-        }
-        case 'create_invite':
-        case 'create_agent_invite': {
-          const agent = command.op === 'create_agent_invite';
-          const response = object(
-            await messages.rpc(
-              'create_invite',
-              JSON.stringify({
-                space: command.op === 'create_invite' ? command.space_id : '',
-                agent: command.op === 'create_agent_invite' ? command.agent_id : null,
-                role: 'Member',
-                max_uses: agent ? 10_000 : 50,
-                ttl_secs: (agent ? 365 : 7) * 24 * 3600,
-              }),
-            ),
-          );
-          if (response.kind !== 'invite') throw new Error('O servidor não criou o convite.');
-          const code = string(response.code);
-          const expires = string(response.expires_at_ms);
-          if (!/^[0-9]+$/.test(expires) || BigInt(expires) > 9223372036854775807n)
-            throw new Error('O convite tem uma validade inválida.');
-          result = {
-            code,
-            link: agent ? `https://tryzoen.com/a/${code}` : `zoen://join/${code}`,
-            expires_at_ms: expires,
-          };
-          break;
-        }
-        case 'preview_invite': {
-          const response = object(await messages.rpc('preview_invite', command.code));
-          if (response.kind !== 'preview') throw new Error('Este link não está mais disponível.');
-          const records = [response.agent, response.inviter].filter((profile) => profile !== null);
-          const people = (await messages.directoryProfiles(records)) as Persona[];
-          const persona = (record: unknown) =>
-            record ? (people.find((person) => person.id === object(record).id) ?? null) : null;
-          result = {
-            space_id: string(response.space),
-            title: string(response.title),
-            members: integer(response.members),
-            kind: string(response.invite_kind),
-            agent: persona(response.agent),
-            inviter: persona(response.inviter),
-          };
-          break;
-        }
-        case 'join_invite': {
-          const code = command.code.trim().toUpperCase();
-          const response = object(await messages.rpc('preview_invite', code));
-          if (response.invite_kind !== 'space')
-            throw new Error(
-              'Este link de agente ainda não pode ser aberto neste navegador. Abra no iPhone por enquanto.',
-            );
-          const invite = parseInvite(response);
-          await messages.join({ invite, code });
-          result = invite.space;
-          break;
-        }
-        case 'new_mutation_id':
-        case 'page_parse_markdown':
-        case 'page_block_markdown':
-        case 'items':
-        case 'item':
-        case 'item_at':
-        case 'page':
-        case 'page_at':
-        case 'plan_page':
-        case 'page_create':
-        case 'page_import_markdown':
-        case 'page_apply':
-        case 'page_commit':
-        case 'page_markdown':
-        case 'toggle_plan_line':
-        case 'edit_plan_line':
-        case 'add_plan_line':
-        case 'remove_plan_line':
-        case 'restore_plan_version':
-        case 'restore_version':
-        case 'undo':
-        case 'app_document_read':
-        case 'app_document_save':
-        case 'app_document_copy':
-          result = await messages.documentRequest(command);
-          break;
-        case 'agents':
-        case 'agent_profile':
-        case 'requests':
-        case 'standing_decisions':
-        case 'set_trust':
-        case 'raise_budget':
-        case 'decide_request':
-        case 'revoke_standing':
-        case 'preview_decisions':
-        case 'agent_activity':
-        case 'app_device_grants':
-        case 'revoke_app_device':
-          result = await messages.agentRequest(command);
-          break;
-        case 'mentions': {
-          const references = (await messages.agentRequest(command)) as {
-            space_id: string;
-            space_title: string;
-            message_id: string;
-          }[];
-          result = references.flatMap((reference) => {
-            const message = this.conversations()
-              .find((chat) => chat.id === reference.space_id)
-              ?.messages.find(
-                (message) =>
-                  message.id === reference.message_id || message.entry === reference.message_id,
-              );
-            const entry = message
-              ? this.entries(reference.space_id).find((entry) => entry.id === message.id)
-              : undefined;
-            return entry
-              ? [{ space_id: reference.space_id, space_title: reference.space_title, entry }]
-              : [];
-          });
-          break;
-        }
-        case 'app_specs':
-        case 'app_resource':
-        case 'install_app':
-        case 'app_call_tool':
-          result = await messages.appRequest(command);
-          break;
-        case 'verify_log':
-        case 'log_events_page':
-          result = await messages.integrityRequest(command);
-          break;
-        case 'set_typing':
-          await messages.typing(command.space_id, command.typing);
-          break;
-        default:
-          throw new Error('Este recurso ainda está sendo integrado ao cliente web.');
+        this.changed();
       }
+    } else {
+      result = (
+        await browserMessageCommand(command, messages, {
+          entries: (space) => this.entries(space),
+          conversations: () => this.conversations(),
+          target: (space, id) => this.target(space, id),
+          persona: (identity, name) => this.persona(identity, name),
+          account: () => this.snapshot().account,
+          currentDevice: () => (this.session.kind === 'linked' ? this.session.account.device : ''),
+        })
+      ).result;
+    }
     if (requestGeneration !== this.generation)
       throw new Error('A conta mudou. Abra esta tela novamente.');
     return result as CommandResult<C>;

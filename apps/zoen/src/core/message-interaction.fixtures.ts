@@ -9,6 +9,7 @@ import type { MessageInteractionProps } from '../components/message-interaction.
 import { resolveSkyTheme } from '../theme/sky.ts';
 import { messageMayContainMarkdown } from './message-markdown.ts';
 import * as presentation from './message-presentation.ts';
+import { transformMessageModules } from './message-source-compiler.ts';
 import { messageText } from './presentation.ts';
 import type { TimelineEntry } from './types';
 
@@ -122,7 +123,25 @@ export const conversationCode = (
         },
       ).code,
       loader: 'js',
+      resolveDir: dirname(conversationPath),
     },
+    bundle: true,
+    platform: 'node',
+    plugins: [
+      {
+        name: 'actual-conversation-face',
+        setup(builder) {
+          transformMessageModules(builder, 'ios');
+          builder.onResolve({ filter: /./ }, ({ path }) =>
+            /^(?:\.\/conversation-message-(?:face|details)|\.\/use-conversation-message)$/.test(
+              path,
+            )
+              ? undefined
+              : { path, external: true },
+          );
+        },
+      },
+    ],
     format: 'cjs',
     write: false,
   })

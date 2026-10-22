@@ -6,6 +6,7 @@ import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import { resolveSkyTheme } from '../theme/sky.ts';
+import { messageSourceModules } from './message-source-compiler.ts';
 import type { TimelineEntry } from './types';
 
 export const require = createRequire(import.meta.url);
@@ -70,9 +71,12 @@ export async function compile(platform: 'ios' | 'web') {
             return nativePorts.has(path) ? { path, external: true } : undefined;
           });
           builder.onLoad(
-            { filter: /(?:conversation-message|message-interaction)\.tsx$/ },
+            {
+              filter:
+                /(?:conversation-message(?:-face|-details)?\.tsx|use-conversation-message\.ts|message-interaction\.tsx)$/,
+            },
             ({ path }) => {
-              const source = sources.get(path);
+              const source = sources.get(path) ?? readFileSync(path, 'utf8');
               assert.ok(source, `Unexpected component source: ${path}`);
               transformed.add(path);
               const compiled = transformSync(source, {
@@ -88,11 +92,12 @@ export async function compile(platform: 'ios' | 'web') {
                   supportsReactCompiler: true,
                 },
               }).code;
-              assert.match(
-                compiled,
-                /react\/compiler-runtime/,
-                'Execute the actual compiler output',
-              );
+              if (sources.has(path))
+                assert.match(
+                  compiled,
+                  /react\/compiler-runtime/,
+                  'Execute the actual compiler output',
+                );
               return {
                 contents: compiled,
                 resolveDir: dirname(path),
@@ -104,7 +109,11 @@ export async function compile(platform: 'ios' | 'web') {
       },
     ],
   });
-  assert.equal(transformed.size, 2, 'Both production components must pass through Expo Babel');
+  assert.equal(
+    transformed.size,
+    messageSourceModules.length,
+    'Every extracted production module must pass through Expo Babel',
+  );
   return output.outputFiles[0]!.text;
 }
 export const outputs = { ios: await compile('ios'), web: await compile('web') };

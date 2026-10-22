@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import type { ConversationMessageProps } from '../components/conversation-message';
 import { resolveSkyTheme, type SkyPhase } from '../theme/sky.ts';
+import { transformMessageModules } from './message-source-compiler.ts';
 import type { TimelineEntry } from './types';
 
 export const require = createRequire(import.meta.url);
@@ -64,6 +65,7 @@ export const output = await build({
     {
       name: 'message-caption-native-ports',
       setup(builder) {
+        transformMessageModules(builder, 'ios');
         builder.onResolve({ filter: /./ }, ({ path }) =>
           nativePorts.has(path) ? { path, external: true } : undefined,
         );

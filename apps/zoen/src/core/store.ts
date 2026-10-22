@@ -1,44 +1,19 @@
+import type { ClientState, SessionRetirement } from './client-store-state.ts';
+import { ClientTimeline } from './client-timeline.ts';
 import {
   LiveActivity,
   TypingSender,
   activityClock,
   emptyActivity,
   type ActivityClock,
-  type LiveActivityState,
 } from './live-activity.ts';
-import { NormalMessageDraftService } from './normal-message-draft-service.ts';
 import { MediaDraftService } from './media-draft-service.ts';
-import type {
-  Command,
-  CommandResult,
-  CoreDriver,
-  CoreEvent,
-  DeviceScope,
-  Mode,
-  Snapshot,
-  TimelinePage,
-} from './types';
-
-export type ClientState = {
-  phase: 'opening' | 'erasing' | 'onboarding' | 'ready' | 'failed';
-  erasePending: boolean;
-  mode: Mode;
-  snapshot: Snapshot | null;
-  timelines: Readonly<Record<string, TimelinePage>>;
-  notice: string | null;
-  activity: LiveActivityState;
-};
+import { NormalMessageDraftService } from './normal-message-draft-service.ts';
+import type { Command, CommandResult, CoreDriver, CoreEvent, DeviceScope, Mode } from './types';
+export type { ClientState } from './client-store-state.ts';
 
 const failure = (error: unknown) =>
   error instanceof Error ? error.message : 'Não deu para concluir. Tente novamente.';
-
-type SessionRetirement = {
-  task: Promise<void>;
-  cancelled: boolean;
-  force: boolean;
-  nativeCloseStarted: boolean;
-  forceTask?: Promise<void>;
-};
 
 /** One observable UI projection. Rust remains the durable source of truth. */
 export class ClientStore {
@@ -71,8 +46,15 @@ export class ClientStore {
   // undefined = no queued read; null = an unknown/global change, which dominates scoped reads.
   private refreshSpaces: Set<string> | null | undefined;
   private activeSpace: string | null = null;
-  private readonly timelineVersions = new Map<string, number>();
-  private readonly olderTasks = new Map<string, Promise<void>>();
+
+  private readonly timeline = new ClientTimeline({
+    state: () => this.state,
+    retiring: () => this.retiring,
+    generation: () => this.generation,
+    request: (command) => this.driver.request(command),
+    changing: (spaces) => this.canonicalChanging(spaces),
+    publish: (update) => this.publish(update),
+  });
 
   private readonly live: LiveActivity;
   private readonly typing: TypingSender;
@@ -206,8 +188,7 @@ export class ClientStore {
     this.refreshTask = undefined;
     this.refreshAgain = false;
     this.refreshSpaces = undefined;
-    this.olderTasks.clear();
-    this.timelineVersions.clear();
+    this.timeline.clear();
     return generation;
   }
 
@@ -362,7 +343,7 @@ export class ClientStore {
               : 'onboarding',
         });
         if (this.activeSpace && (!affected || affected.has(this.activeSpace)))
-          await this.readTimeline(this.activeSpace, false, false);
+          await this.timeline.read(this.activeSpace, false, false);
       } while (this.refreshAgain && generation === this.generation);
     })().catch((error: unknown) => {
       if (generation === this.generation) this.publish({ notice: failure(error) });
@@ -388,74 +369,12 @@ export class ClientStore {
       throw error;
     }
   }
-
   loadTimeline(space: string, older = false): Promise<void> {
-    if (this.state.erasePending) return Promise.reject(new Error('A sessão está sendo apagada.'));
-    if (this.retiring) return Promise.reject(new Error('A sessão está sendo encerrada.'));
-    if (older) {
-      const pending = this.olderTasks.get(space);
-      if (pending) return pending;
-    }
-    const task = this.readTimeline(space, older);
-    if (older) {
-      this.olderTasks.set(space, task);
-      void task
-        .finally(() => {
-          if (this.olderTasks.get(space) === task) this.olderTasks.delete(space);
-        })
-        .catch(() => {});
-    }
-    return task;
+    return this.timeline.load(space, older);
   }
 
-  private async readTimeline(space: string, older: boolean, announce = true): Promise<void> {
-    const current = this.state.timelines[space];
-    if (older && !current?.has_more) return;
-    const generation = this.generation;
-    if (announce) this.canonicalChanging([space]);
-    if (generation !== this.generation || this.state.erasePending || this.retiring) return;
-    const version = (this.timelineVersions.get(space) ?? 0) + 1;
-    this.timelineVersions.set(space, version);
-    let next = await this.driver.request({
-      op: 'timeline',
-      space_id: space,
-      before: older ? (current?.before ?? null) : null,
-      limit: 80,
-    });
-    // Re-read the whole visible window so sync preserves history and updates older edits.
-    const anchor = !older ? current?.entries[0]?.id : undefined;
-    const cursors = new Set<string>();
-    while (anchor && next.has_more && !next.entries.some((entry) => entry.id === anchor)) {
-      if (generation !== this.generation || this.timelineVersions.get(space) !== version) return;
-      if (!next.before || cursors.has(next.before))
-        throw new Error('Não foi possível carregar o histórico da conversa.');
-      cursors.add(next.before);
-      const earlier = await this.driver.request({
-        op: 'timeline',
-        space_id: space,
-        before: next.before,
-        limit: 200,
-      });
-      next = { ...earlier, entries: [...earlier.entries, ...next.entries] };
-    }
-    if (generation !== this.generation || this.timelineVersions.get(space) !== version) return;
-    const page =
-      older && current ? { ...next, entries: [...next.entries, ...current.entries] } : next;
-    this.publish({ timelines: { ...this.state.timelines, [space]: page } });
-  }
-
-  async revealMessage(space: string, message: string): Promise<number> {
-    const generation = this.generation;
-    if (!this.state.timelines[space]) await this.loadTimeline(space);
-    for (;;) {
-      if (generation !== this.generation) return -1;
-      const page = this.state.timelines[space];
-      const index = page?.entries.findIndex((entry) => entry.id === message) ?? -1;
-      if (index >= 0 || !page?.has_more) return index;
-      const cursor = page.before;
-      await this.loadTimeline(space, true);
-      if (this.state.timelines[space]?.before === cursor) return -1;
-    }
+  revealMessage(space: string, message: string): Promise<number> {
+    return this.timeline.reveal(space, message);
   }
 
   selectSpace(space: string | null) {
@@ -534,8 +453,7 @@ export class ClientStore {
     const retirement = this.retireSession(true);
     ++this.ownerEpoch;
     this.activeSpace = null;
-    this.olderTasks.clear();
-    this.timelineVersions.clear();
+    this.timeline.clear();
     this.publish({
       phase: 'erasing',
       erasePending: true,

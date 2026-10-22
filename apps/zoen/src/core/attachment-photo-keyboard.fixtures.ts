@@ -1,6 +1,7 @@
 import { build } from 'esbuild';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import * as attachmentCategories from '../media/attachment-categories.ts';
 import type { AttachmentAsset } from '../media/attachment-draft';
@@ -28,6 +29,11 @@ export const compile = async (name: string) =>
         {
           name: 'actual-native-panel-ports',
           setup(b) {
+            b.onResolve({ filter: /^\.\/attachment-photo-keyboard-actions$/ }, () => ({
+              path: fileURLToPath(
+                new URL('../media/attachment-photo-keyboard-actions.ts', import.meta.url),
+              ),
+            }));
             b.onResolve({ filter: /./ }, ({ path }) => ({ path, external: true }));
           },
         },

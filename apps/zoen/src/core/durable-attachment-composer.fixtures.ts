@@ -1,6 +1,7 @@
 import { build } from 'esbuild';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import type { AttachmentApprovalProps } from '../media/attachment-approval.types.ts';
 import * as attachmentCategories from '../media/attachment-categories.ts';
@@ -48,6 +49,20 @@ export const compiled = await build({
     {
       name: 'native-attachment-hook-ports',
       setup(builder) {
+        builder.onResolve(
+          {
+            filter:
+              /^\.\/(?:use-durable-attachment-(?:controller)|durable-attachment-(?:types|view|pick|commands|contract|review))$/,
+          },
+          ({ path }) => ({
+            path: fileURLToPath(
+              new URL(
+                `../media/${path.slice(2)}.${path.endsWith('-view') ? 'tsx' : 'ts'}`,
+                import.meta.url,
+              ),
+            ),
+          }),
+        );
         builder.onResolve({ filter: /./ }, ({ path }) => ({ path, external: true }));
       },
     },

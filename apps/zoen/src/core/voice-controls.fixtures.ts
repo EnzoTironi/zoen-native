@@ -1,6 +1,4 @@
-import { build } from 'esbuild';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { SensitiveCacheWork } from '../media/cache-work.ts';
 import { VoiceDraftOwner, frozenVoicePreview } from '../media/voice-draft-owner.ts';
@@ -12,6 +10,8 @@ import * as voiceSuggestions from '../media/voice-suggestions.ts';
 import * as voiceTrimPreview from '../media/voice-trim-preview.ts';
 import { telegramPresentation } from '../theme/telegram.ts';
 import { telegramAudio } from './telegram-audio-presentation.ts';
+import type { files } from './voice-controls-compile.ts';
+import { compiled } from './voice-controls-compile.ts';
 
 export type Element = { type: unknown; props: Record<string, any> };
 export type Slot = {
@@ -20,38 +20,6 @@ export type Slot = {
   cleanup?: () => void;
   effect?: () => void | (() => void);
 };
-export const files = [
-  'MediaComposer',
-  'voice-review.ios',
-  'voice-waveform.ios',
-  'voice-dock',
-] as const;
-export const compiled = Object.fromEntries(
-  await Promise.all(
-    files.map(async (name) => {
-      const output = await build({
-        stdin: {
-          contents: readFileSync(new URL(`../media/${name}.tsx`, import.meta.url), 'utf8'),
-          loader: 'tsx',
-        },
-        bundle: true,
-        platform: 'node',
-        format: 'cjs',
-        jsx: 'automatic',
-        write: false,
-        plugins: [
-          {
-            name: 'native-voice-ports',
-            setup(builder) {
-              builder.onResolve({ filter: /./ }, ({ path }) => ({ path, external: true }));
-            },
-          },
-        ],
-      });
-      return [name, output.outputFiles[0]!.text];
-    }),
-  ),
-);
 export function component(name: (typeof files)[number], ports: Record<string, unknown>) {
   let slots: Slot[] = [];
   type Instance = {
