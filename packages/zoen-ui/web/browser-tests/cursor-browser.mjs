@@ -16,7 +16,7 @@ export async function runBrowser(chrome, folder, url) {
       '--disable-background-networking',
       '--disable-component-update',
       '--disable-sync',
-      '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost',
+      '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1',
       '--remote-debugging-address=127.0.0.1',
       '--remote-debugging-port=0',
       `--user-data-dir=${join(folder, 'profile')}`,
