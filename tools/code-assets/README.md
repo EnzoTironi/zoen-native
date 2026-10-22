@@ -36,6 +36,17 @@ authorization, CSP and WebView guards remain unchanged.
   parent must already exist. `owner.json` binds package/root/origin/certificate;
   `active.json` is an exclusive PID/run-ID lease; bounded `receipt.json` records
   ready/closed/failed state and public hashes. These files use `0600`.
+- One optional retained package can be supplied with the complete
+  `--retained-package`, `--retained-package-sha256`, `--retained-root` tuple
+  (API: `retainedPackage`, `retainedPackageSha256`, `retainedRoot`). Both packages
+  undergo the same independent manifest, ownership, length, hash and code checks.
+  Their origins must match exactly, and every asset path must be distinct; even
+  identical duplicate routes are refused. Only these four immutable assets are
+  then served. The existing per-asset limits apply independently to each package.
+  `owner.json` and `receipt.json` bind the retained tuple under `retainedPackage`;
+  the receipt lists all four assets. Omitting the tuple keeps the original
+  two-asset contract and receipt shape. This can retain an older pinned runtime
+  while a new build uses a different pair of URLs on the same origin.
 - A changed tuple/certificate requires an explicit **new profile**. Active or
   stale leases are refused; nothing is killed, adopted or silently removed.
   After a crash, inspect the owner, PID and listener manually before removing
