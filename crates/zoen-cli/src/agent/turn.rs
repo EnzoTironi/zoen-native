@@ -132,14 +132,14 @@ async fn checked(
             stop(category);
             return true;
         }
-        let Some(worker) = tools.deckcraft else {
-            stop(trace::Stop::ExecutorUnavailable);
-            return true;
-        };
         let Some(proposal) = &request.tool_proposal else {
             stop(trace::Stop::InvalidContinuation);
             return true;
         };
+        if proposal.schema == 1 && tools.deckcraft.is_none() {
+            stop(trace::Stop::ExecutorUnavailable);
+            return true;
+        }
         let ask: ToolAsk = match serde_json::from_str(&proposal.continuation_json) {
             Ok(ask) => ask,
             Err(_) => {
@@ -193,11 +193,7 @@ async fn checked(
                     return true;
                 }
             };
-            let verified = match e.recover_tool_results(
-                &request.id,
-                worker.binding_sha256(),
-                &encoded,
-            ) {
+            let verified = match tools.recover_canonical(&request.id, proposal.schema, &encoded) {
                 Ok(results) => results,
                 Err(_) => {
                     say(
@@ -243,14 +239,15 @@ async fn checked(
                 .resume_tool_progress(tc, &history, &inbound, &tools, ask, progress)
                 .await
         } else {
-            let permit = match e.approved_tool_turn(&request.id, worker.binding_sha256()) {
-                Ok(permit) => permit,
-                Err(_) => {
-                    say("reviewed action is stale or no longer authorized");
-                    stop(trace::Stop::ApprovalRefused);
-                    return true;
-                }
-            };
+            let permit =
+                match page_tools::CanonicalPermit::new(&tools, &request.id, proposal.schema) {
+                    Ok(permit) => permit,
+                    Err(_) => {
+                        say("reviewed action is stale or no longer authorized");
+                        stop(trace::Stop::ApprovalRefused);
+                        return true;
+                    }
+                };
             let admission = CanonicalToolAdmission {
                 tools: &tools,
                 permit,

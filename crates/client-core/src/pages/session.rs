@@ -15,6 +15,8 @@ use super::drafts::{self, tagged::*};
 use super::plan::{self, Acceptance, PlanFold};
 use super::PageBlockDto;
 
+mod agent;
+
 pub(super) enum SessionDocument {
     BinaryPage(Page),
     Plan(PlanDocument),

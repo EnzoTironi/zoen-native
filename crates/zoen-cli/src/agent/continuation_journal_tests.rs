@@ -38,6 +38,7 @@ fn tools<'a>(client: &'a Arc<Client>, journal: &'a Path) -> SpaceTools<'a> {
         names: vec![],
         deckcraft: None,
         deckcraft_items: vec![],
+        page_items: vec![],
     }
 }
 

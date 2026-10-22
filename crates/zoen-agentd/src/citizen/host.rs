@@ -15,6 +15,9 @@ use std::collections::BTreeMap;
 /// The capability a Creator's `create_agent` action is gated as.
 pub const CREATE_AGENT_CAPABILITY: &str = "agent.create";
 
+/// A stricter native review after Gate Allow; it never overrides Gate Block or Ask.
+pub const NATIVE_REVIEW_REQUIRED: &str = "native:review-required";
+
 /// A conversation message admitted by the host from its authenticated timeline.
 /// The host establishes authenticity; constructing this value is not proof.
 /// The author and text do not grant tool access or bypass the owner's policy.
@@ -123,66 +126,8 @@ pub struct ToolCall {
     pub arguments: Value,
 }
 
-/// Public canonical references minted by a trusted host after exact artifact/head
-/// validation. This type cannot designate semantic payload fields as public and is
-/// deliberately not deserializable from model or browser input.
-#[derive(Clone, Debug)]
-pub struct PublicArtifactReferences {
-    canonical_tool: String,
-    artifact_id: String,
-    sha256: Option<String>,
-}
-impl PublicArtifactReferences {
-    pub fn new(
-        canonical_tool: String,
-        artifact_id: String,
-        sha256: Option<String>,
-    ) -> Option<Self> {
-        let token = |s: &str, max: usize| {
-            !s.is_empty()
-                && s.len() <= max
-                && s.bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
-        };
-        if !token(&canonical_tool, 64)
-            || !token(&artifact_id, 128)
-            || sha256.as_ref().is_some_and(|sha| {
-                sha.len() != 64
-                    || !sha
-                        .bytes()
-                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-            })
-        {
-            return None;
-        }
-        Some(Self {
-            canonical_tool,
-            artifact_id,
-            sha256,
-        })
-    }
-    fn gate_text(&self, call: &ToolCall, definition: &ToolDef) -> Option<String> {
-        let mut semantic = call.arguments.as_object()?.clone();
-        let exact_sha = match (&self.sha256, semantic.get("sha256")) {
-            (None, None) => true,
-            (Some(expected), Some(Value::String(actual))) => expected == actual,
-            _ => false,
-        };
-        if semantic.get("artifactId").and_then(Value::as_str) != Some(self.artifact_id.as_str())
-            || !exact_sha
-        {
-            return None;
-        }
-        semantic.remove("artifactId");
-        semantic.remove("sha256");
-        Some(format!(
-            "mini-app tool {} ({}) {}",
-            self.canonical_tool,
-            definition.description,
-            Value::Object(semantic)
-        ))
-    }
-}
+mod public_references;
+pub use public_references::PublicArtifactReferences;
 
 /// A call and what came back, in the order they ran.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -344,8 +289,13 @@ pub trait ApprovedToolAdmission: Send + Sync {
 /// is for, the mini-app's own rules); the model only picks the tool and the arguments.
 pub trait ToolHost: Send + Sync {
     fn tools(&self) -> Vec<ToolDef>;
+    /// Native first-delivery policy may require a canonical review after Gate Allow.
+    /// This cannot override Block, repeat an Ask or authorize execution itself.
+    fn requires_native_review(&self, _call: &ToolCall) -> bool {
+        false
+    }
     /// Default: inspect the complete raw call. A trusted host may classify only
-    /// exact validated artifactId/sha256 references; Runtime still owns the Gate
+    /// exact validated public artifact/head references; Runtime still owns the Gate
     /// and retains every other argument and the full user-facing description.
     fn gate_public_references(&self, _call: &ToolCall) -> Option<PublicArtifactReferences> {
         None
@@ -568,3 +518,5 @@ mod conversation_gate_tests;
 
 #[cfg(test)]
 mod continuation_tests;
+#[cfg(test)]
+mod native_review_tests;
