@@ -1,0 +1,336 @@
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
+index d634549f4b14b84580429666eebe73a37ccd41fe..4769f62357c82e8a10b3c3d5f5c272c089908452 100644
+--- a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
+@@ -2237,6 +2237,331 @@ - (void)submitOnKeyDownIfNeeded:(NSEvent *)event
+ 
+ #endif
+ 
++#pragma mark - Opt-in native draft checkpoints (iOS)
++
++- (ENRMDraftSnapshotModel *)draftLiveModel
++{
++  NSArray *all = [_clipboardCoordinator allRangesIncludingTransient];
++  NSArray *stored = _formattingStore.allRanges;
++  NSMutableArray *detected = [NSMutableArray array];
++  for (ENRMFormattingRange *range in all) if (![stored containsObject:range]) [detected addObject:range];
++  return [[ENRMDraftSnapshotModel alloc] initWithText:ENRMGetPlainText(_textView)
++    ranges:stored detected:detected blocks:_blockStore.allRanges];
++}
++
++- (void)draftDidFail:(NSError *)error
++{
++  if (!_draftFailure) {
++    _draftFailure = error;
++    [_draftSink draftCheckpointFailed:error];
++  }
++  // Do not set editable=false or resign first responder here: UIKit could unmark
++  // the user's live composition. Subsequent native edits/format commands are refused.
++}
++
++- (BOOL)draftMayMutate
++{
++  return !_draftSealed && !_draftDiscardFrozen && !_draftBinding && (!_draftRequired || (_draftSink && !_draftFailure));
++}
++
++- (BOOL)bindDraftCheckpointToken:(NSString *)token error:(NSError **)error
++{
++  NSAssert(NSThread.isMainThread, @"Draft binding must be on main");
++#if TARGET_OS_OSX
++  if (error) *error=ENRMDraftError(ENRMDraftSnapshotUnavailable); return NO;
++#else
++  if ([token isEqual:_draftToken] && _draftSink) { if(error)*error=_draftFailure;return _draftFailure==nil; }
++  _draftRequired = YES;
++  // Never drop pending bytes or reopen a sealed session through a props rebind.
++  // A new session requires revocation of the old token and a pre-focus boundary.
++  if (_draftNativeDepth || _draftSemanticDepth || _draftRestoring || _draftRetaining || _draftBinding ||
++      _draftPending || _textView.isFirstResponder || _editSession.isComposing ||
++      ((_draftSealed || _draftDiscardFrozen) && _draftToken)) {
++    if(error)*error=ENRMDraftError(ENRMDraftSnapshotUnavailable);return NO;
++  }
++  BOOL wasSealed = _draftSealed;
++  BOOL wasDiscardFrozen = _draftDiscardFrozen;
++  [self unbindDraftCheckpoint];
++  id<ENRMDraftCheckpointSink> sink=[ENRMDraftCheckpointRegistry claimToken:token producer:self];
++  if (!sink) {
++    if(error)*error=ENRMDraftError(ENRMDraftSnapshotUnavailable);return NO;
++  }
++  _draftToken=[token copy];_draftSink=sink;_draftFailure=nil;
++  _draftModel=[self draftLiveModel];
++  NSError *failure=nil;
++  NSData *initial=nil;
++  _draftBinding = YES;
++  @try {
++    if([sink respondsToSelector:@selector(initialDraftSnapshotWithError:)]) initial=[sink initialDraftSnapshotWithError:&failure];
++  } @finally { _draftBinding = NO; }
++  if (![_draftToken isEqual:token] || _draftSink != sink || ![self draftOwnsCheckpointToken]) {
++    _draftSealed = wasSealed;
++    _draftDiscardFrozen = wasDiscardFrozen;
++    if(error)*error=ENRMDraftError(ENRMDraftSnapshotUnavailable);return NO;
++  }
++  _draftSealed = NO;
++  _draftDiscardFrozen = NO;
++  if(failure || (initial && ![self restoreDraftSnapshotData:initial error:&failure])) {
++    _draftSealed = wasSealed;
++    _draftDiscardFrozen = wasDiscardFrozen;
++    [self draftDidFail:failure ?: ENRMDraftError(ENRMDraftSnapshotInvalid)];
++    if(error)*error=_draftFailure;return NO;
++  }
++  return YES;
++#endif
++}
++
++- (void)unbindDraftCheckpoint
++{
++  NSAssert(NSThread.isMainThread, @"Draft unbinding must be on main");
++  if(_draftToken)[ENRMDraftCheckpointRegistry releaseToken:_draftToken producer:self];
++  _draftToken=nil;_draftSink=nil;
++  _draftPending=nil;_draftRetained=nil;_draftModel=nil;_draftFailure=nil;_draftCompositionPending=NO;_draftSealedSnapshot=nil;
++  // Revocation does not make an opted-in input silently become volatile.
++}
++
++- (BOOL)draftNativeMutationWillBegin
++{
++  if(![self draftMayMutate])return NO;
++  if(_draftRequired) {
++    if(_draftNativeDepth==0 && !_draftCompositionPending) _draftModel=[self draftLiveModel];
++    _draftNativeDepth++;
++  }
++  return YES;
++}
++
++- (void)draftNativeMutationDidEnd
++{
++  if(!_draftRequired)return;
++  if(_draftNativeDepth) _draftNativeDepth--;
++  // replaceRange: is also used inside explicit paste/cut replacements. Their
++  // text primitive finishes before the package updates stored/block/detected
++  // semantics; that enclosing boundary adopts the completed model and retains.
++  if(_draftNativeDepth==0 && _draftSemanticDepth==0 && !_draftSealed && !_draftDiscardFrozen && !_draftBinding && !_draftFailure) {
++    NSError *failure=nil;
++    if(![self flushDraftSnapshotWithError:&failure]) [self draftDidFail:failure];
++  }
++}
++
++- (BOOL)draftReconcileFinishedComposition:(NSError **)error
++{
++  if (!_draftCompositionPending || _editSession.isComposing) return YES;
++  if (!_draftModel || ![_draftModel.text isEqual:ENRMGetPlainText(_textView)]) {
++    if (error) *error = ENRMDraftError(ENRMDraftSnapshotUnexplainedMutation);
++    return NO;
++  }
++  // UIKit does not promise a fresh character callback from unmarkText. Replay has
++  // already consumed each exact storage primitive; commit those detached stores now.
++  [_formattingStore setRanges:[[NSArray alloc] initWithArray:_draftModel.formatting.allRanges copyItems:YES]];
++  [_blockStore setRanges:[[NSArray alloc] initWithArray:_draftModel.blocks.allRanges copyItems:YES]];
++  [_autoLinkDetector restoreDraftDetectedRanges:_draftModel.detected.allRanges];
++  _lastTextLength = _draftModel.text.length;
++  _lastSelectedRange = _textView.selectedRange;
++  _preEditSelectedRange = _textView.selectedRange;
++  _preEditBlockType = ENRMInputBlockTypeParagraph;
++  _preEditBlockLevel = 0;
++  _preEditParagraphWasEmpty = NO;
++  _preEditReplacedNewline = NO;
++  _draftCompositionPending = NO;
++  [self applyFormatting];
++  [self updatePlaceholderVisibility];
++  ENRMDraftSnapshotModel *live = [self draftLiveModel];
++  NSData *detached = [_draftModel encodeSequence:0 selection:NSMakeRange(0,0) composition:NSMakeRange(NSNotFound,0)
++    add:[NSSet set] remove:[NSSet set] error:error];
++  NSData *canonical = [live encodeSequence:0 selection:NSMakeRange(0,0) composition:NSMakeRange(NSNotFound,0)
++    add:[NSSet set] remove:[NSSet set] error:error];
++  if (!detached || ![detached isEqual:canonical]) {
++    if (error) *error = ENRMDraftError(ENRMDraftSnapshotUnexplainedMutation);
++    return NO;
++  }
++  _draftModel = live;
++  return YES;
++}
++
++- (NSData *)copyDraftSnapshotWithError:(NSError **)error
++{
++  NSAssert(NSThread.isMainThread, @"Draft capture must be on main");
++#if TARGET_OS_OSX
++  if(error)*error=ENRMDraftError(ENRMDraftSnapshotUnavailable);return nil;
++#else
++  if(_draftFailure) {if(error)*error=_draftFailure;return nil;}
++  if (_draftBinding) {if(error)*error=ENRMDraftError(ENRMDraftSnapshotUnavailable);return nil;}
++  if (_draftSealed) {
++    if (!_draftSealedSnapshot && error) *error=ENRMDraftError(ENRMDraftSnapshotUnavailable);
++    return [_draftSealedSnapshot copy];
++  }
++  return [self draftCopyLiveSnapshotWithError:error];
++#endif
++}
++
++- (NSData *)draftCopyLiveSnapshotWithError:(NSError **)error
++{
++#if TARGET_OS_OSX
++  if(error)*error=ENRMDraftError(ENRMDraftSnapshotUnavailable);return nil;
++#else
++  if(!_draftModel) _draftModel=[self draftLiveModel];
++  if(![_draftModel.text isEqual:ENRMGetPlainText(_textView)]) {
++    if(error)*error=ENRMDraftError(ENRMDraftSnapshotUnexplainedMutation);return nil;
++  }
++  NSRange marked=NSMakeRange(NSNotFound,0);
++  UITextRange *nativeMarked=_textView.markedTextRange;
++  if(nativeMarked) {
++    NSInteger start=[_textView offsetFromPosition:_textView.beginningOfDocument toPosition:nativeMarked.start];
++    NSInteger end=[_textView offsetFromPosition:_textView.beginningOfDocument toPosition:nativeMarked.end];
++    if(start<0 || end<start){if(error)*error=ENRMDraftError(ENRMDraftSnapshotInvalid);return nil;}
++    marked=NSMakeRange((NSUInteger)start,(NSUInteger)(end-start));
++    _draftCompositionPending=YES;
++  } else if(_draftCompositionPending) {
++    if (![self draftReconcileFinishedComposition:error]) return nil;
++  } else if(_draftNativeDepth==0) {
++    _draftModel=[self draftLiveModel];
++  }
++  return [_draftModel encodeSequence:_draftSequence selection:_textView.selectedRange composition:marked
++    add:_typingController.pendingStyles remove:_typingController.pendingStyleRemovals error:error];
++#endif
++}
++
++- (BOOL)draftRejectSnapshot:(NSError *)failure error:(NSError **)error
++{
++  [self draftDidFail:failure];
++  if (error) *error = failure;
++  return NO;
++}
++
++- (BOOL)draftOwnsCheckpointToken
++{
++  return _draftRequired && _draftToken && _draftSink &&
++    [ENRMDraftCheckpointRegistry claimToken:_draftToken producer:self] == _draftSink;
++}
++
++- (BOOL)draftRetainPendingSnapshotWithError:(NSError **)error
++{
++  NSData *pending = _draftPending;
++  NSString *token = [_draftToken copy];
++  id<ENRMDraftCheckpointSink> sink = _draftSink;
++  NSError *failure = nil;
++  NSString *receipt = nil;
++  _draftRetaining = YES;
++  @try { receipt = [sink retainDraftSnapshot:pending sequence:_draftSequence error:&failure]; }
++  @finally { _draftRetaining = NO; }
++  // A callback may synchronously revoke this producer. Such a write cannot ACK
++  // the session which the application has already cancelled.
++  if (![_draftToken isEqual:token] || _draftSink != sink || ![self draftOwnsCheckpointToken])
++    return [self draftRejectSnapshot:ENRMDraftError(ENRMDraftSnapshotUnavailable) error:error];
++  if (!receipt || failure)
++    return [self draftRejectSnapshot:failure ?: ENRMDraftError(ENRMDraftSnapshotRetentionFailed) error:error];
++  _draftRetained=pending;_draftPending=nil;_draftFailure=nil;
++  return YES;
++}
++
++- (BOOL)freezeDraftInputForDiscardWithError:(NSError **)error
++{
++  NSAssert(NSThread.isMainThread, @"Draft discard freeze must be synchronous on main");
++  if (_draftNativeDepth || _draftSemanticDepth || _draftRestoring || _draftRetaining || _draftBinding ||
++      ![self draftOwnsCheckpointToken]) {
++    if(error)*error=ENRMDraftError(ENRMDraftSnapshotUnavailable);return NO;
++  }
++  // Discard needs an admission boundary even if serialization or a previous
++  // retention failed. Keep the actual UIKit state and pending bytes untouched.
++  _draftDiscardFrozen = YES;
++  if (![self draftOwnsCheckpointToken]) {
++    if(error)*error=ENRMDraftError(ENRMDraftSnapshotUnavailable);return NO;
++  }
++  return YES;
++}
++
++- (BOOL)sealDraftSnapshotWithError:(NSError **)error
++{
++  NSAssert(NSThread.isMainThread, @"Draft sealing must be synchronous on main");
++  // Marked text is allowed; an admitted mutation or sink callback still in flight
++  // is not a final boundary and must never produce a successful seal receipt.
++  if (_draftNativeDepth || _draftSemanticDepth || _draftRestoring || _draftRetaining || _draftBinding ||
++      ![self draftOwnsCheckpointToken]) {
++    if(error)*error=ENRMDraftError(ENRMDraftSnapshotUnavailable);return NO;
++  }
++  _draftSealed = YES;
++  if (!_draftSealedSnapshot) {
++    if (_draftFailure && !_draftPending) { if(error)*error=_draftFailure;return NO; }
++    NSError *failure = nil;
++    // Freeze before the first sink callback, including selection/marked metadata.
++    // A retryable rejected pending write does not invalidate the detached model.
++    NSData *snapshot = [self draftCopyLiveSnapshotWithError:&failure];
++    if (!snapshot) return [self draftRejectSnapshot:failure ?: ENRMDraftError(ENRMDraftSnapshotInvalid) error:error];
++    _draftSealedSnapshot = [snapshot copy];
++  }
++  return [self flushDraftSnapshotWithError:error];
++}
++
++- (BOOL)flushDraftSnapshotWithError:(NSError **)error
++{
++  NSAssert(NSThread.isMainThread, @"Draft retention must be synchronous on main");
++  if (_draftRetaining || _draftBinding) {
++    if(error)*error=ENRMDraftError(ENRMDraftSnapshotUnavailable);return NO;
++  }
++  if(!_draftRequired)return YES;
++  if(![self draftOwnsCheckpointToken])
++    return [self draftRejectSnapshot:ENRMDraftError(ENRMDraftSnapshotUnavailable) error:error];
++  NSError *failure=nil;
++  if(_draftPending) {
++    if (![self draftRetainPendingSnapshotWithError:&failure]) {if(error)*error=failure;return NO;}
++  } else if(_draftFailure) {return [self draftRejectSnapshot:_draftFailure error:error];}
++  NSData *snapshot=[self copyDraftSnapshotWithError:&failure];
++  if(!snapshot){return [self draftRejectSnapshot:failure ?: ENRMDraftError(ENRMDraftSnapshotInvalid) error:error];}
++  if([snapshot isEqual:_draftRetained])return YES;
++  if(_draftSequence==UINT64_MAX){return [self draftRejectSnapshot:ENRMDraftError(ENRMDraftSnapshotInvalid) error:error];}
++  _draftSequence++;
++  if (_draftSealed) {
++    NSMutableDictionary *value = [[ENRMDraftSnapshotModel decode:_draftSealedSnapshot error:&failure] mutableCopy];
++    value[@"sequence"] = [NSString stringWithFormat:@"%llu",(unsigned long long)_draftSequence];
++    snapshot = value ? [NSJSONSerialization dataWithJSONObject:value options:NSJSONWritingSortedKeys error:&failure] : nil;
++    // Sequence digit growth must still obey the same closed schema/1 MiB bound.
++    if (snapshot && ![ENRMDraftSnapshotModel decode:snapshot error:&failure]) snapshot=nil;
++    if (snapshot) _draftSealedSnapshot = [snapshot copy];
++  } else {
++    snapshot=[self copyDraftSnapshotWithError:&failure];
++  }
++  if(!snapshot){return [self draftRejectSnapshot:failure ?: ENRMDraftError(ENRMDraftSnapshotInvalid) error:error];}
++  _draftPending=[snapshot copy];
++  return [self draftRetainPendingSnapshotWithError:error];
++}
++
++- (BOOL)restoreDraftSnapshotData:(NSData *)snapshot error:(NSError **)error
++{
++  NSAssert(NSThread.isMainThread, @"Draft restoration must precede focus on main");
++#if TARGET_OS_OSX
++  if(error)*error=ENRMDraftError(ENRMDraftSnapshotUnavailable);return NO;
++#else
++  if(_draftSealed || _draftDiscardFrozen || _draftRetaining || _draftBinding || _textView.isFirstResponder || _editSession.isComposing ||
++     _draftNativeDepth || _draftSemanticDepth || _draftPending) {
++    if(error)*error=ENRMDraftError(ENRMDraftSnapshotUnavailable);return NO;
++  }
++  NSDictionary *value=[ENRMDraftSnapshotModel decode:snapshot error:error];
++  ENRMDraftSnapshotModel *model=value ? [ENRMDraftSnapshotModel modelFromValue:value error:error] : nil;
++  if(!model)return NO;
++  _draftRestoring=YES;
++  [_editSession enterPhase:ENRMEditPhaseImporting];
++  ENRMSetPlainText(_textView,model.text);
++  [_formattingStore setRanges:[[NSArray alloc] initWithArray:model.formatting.allRanges copyItems:YES]];
++  [_blockStore setRanges:[[NSArray alloc] initWithArray:model.blocks.allRanges copyItems:YES]];
++  [_autoLinkDetector restoreDraftDetectedRanges:model.detected.allRanges];
++  NSArray *styles=@[@"strong",@"emphasis",@"underline",@"strikethrough",@"link",@"spoiler"];
++  NSMutableSet *add=[NSMutableSet set],*remove=[NSMutableSet set];
++  for(NSString *name in value[@"typing"][@"add"]) [add addObject:@([styles indexOfObject:name])];
++  for(NSString *name in value[@"typing"][@"remove"]) [remove addObject:@([styles indexOfObject:name])];
++  _textView.selectedRange=NSMakeRange([value[@"selection"][@"start"] unsignedIntegerValue],
++    [value[@"selection"][@"end"] unsignedIntegerValue]-[value[@"selection"][@"start"] unsignedIntegerValue]);
++  _lastTextLength=model.text.length;_lastSelectedRange=_textView.selectedRange;
++  [_typingController restoreDraftPendingStyles:add removals:remove];
++  [_editSession exitPhase];
++  [self applyFormatting];
++  [self updatePlaceholderVisibility];
++  _draftRestoring=NO;_draftModel=[self draftLiveModel];
++  _draftSequence=strtoull([value[@"sequence"] UTF8String],NULL,10);_draftCompositionPending=NO;
++  // Composition remains in the supplied immutable snapshot as provenance only.
++  return YES;
++#endif
++}
++
+ @end
+ 
+ Class<RCTComponentViewProtocol> EnrichedMarkdownTextInputCls(void)

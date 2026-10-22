@@ -1,0 +1,311 @@
+diff --git a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownNativeComponent.ts b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownNativeComponent.ts
+index b4041e54f47e2fd73a4337f5cea73d3f25665c82..f045690404423da17fe828d48a3ef3441a25c687 100644
+--- a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownNativeComponent.ts
++++ b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownNativeComponent.ts
+@@ -356,6 +356,8 @@ export interface AccessibilityLabelsProps {
+  * Controls how the markdown parser interprets certain syntax.
+  */
+ export interface Md4cFlagsInternal {
++  /** iOS-only media-free AST admission; defaults false in the public wrapper. */
++  noMedia: boolean;
+   /**
+    * Enable underline syntax support (__text__).
+    * When enabled, underscores are treated as underline markers.
+diff --git a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInput.js b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInput.js
+index 5b348e8fa95157e8092e37fb4a7538fe559874c2..a7dc84ccb667625332904ef33d7f53dcd6102318 100644
+--- a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInput.js
++++ b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInput.js
+@@ -41,6 +41,7 @@ export const EnrichedMarkdownTextInput = ({
+   placeholder,
+   placeholderTextColor,
+   editable = true,
++  draftCheckpointToken,
+   autoFocus = false,
+   scrollEnabled = true,
+   markdownShortcuts,
+@@ -393,6 +394,7 @@ export const EnrichedMarkdownTextInput = ({
+     placeholder: placeholder,
+     placeholderTextColor: placeholderTextColor,
+     editable: editable,
++    draftCheckpointToken: draftCheckpointToken,
+     autoFocus: autoFocus,
+     scrollEnabled: scrollEnabled,
+     markdownShortcuts: normalizedMarkdownShortcuts,
+diff --git a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInputNativeComponent.ts b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInputNativeComponent.ts
+index c2fec26187cbec03b8eeb9a1fddac3b438b0ae62..8cc675ca7068c380024f01c9a5b263a1fba6d79e 100644
+--- a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInputNativeComponent.ts
++++ b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInputNativeComponent.ts
+@@ -205,6 +205,8 @@ export interface NativeProps extends ViewProps {
+    * @default true
+    */
+   editable?: boolean;
++  /** iOS-only opaque native checkpoint lease. Absent preserves ordinary volatile behavior. */
++  draftCheckpointToken?: string;
+   /**
+    * Whether the input should auto-focus on mount.
+    * @default false
+diff --git a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextNativeComponent.ts b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextNativeComponent.ts
+index efdc3003117de9583e78d1076fcab4c833c2bcc5..2a9c6ff82a9625a3e4f0e985a313a4350b1e5184 100644
+--- a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextNativeComponent.ts
++++ b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextNativeComponent.ts
+@@ -357,6 +357,8 @@ export interface AccessibilityLabelsProps {
+  * Controls how the markdown parser interprets certain syntax.
+  */
+ export interface Md4cFlagsInternal {
++  /** iOS-only media-free AST admission; defaults false in the public wrapper. */
++  noMedia: boolean;
+   /**
+    * Enable underline syntax support (__text__).
+    * When enabled, underscores are treated as underline markers.
+diff --git a/node_modules/react-native-enriched-markdown/lib/module/native/EnrichedMarkdownText.js b/node_modules/react-native-enriched-markdown/lib/module/native/EnrichedMarkdownText.js
+index ab5f4a794bac16e8e8a6ca9fba753cadf17e0532..5d0ef326b5e47e2b8055ea1e81c244aac51ac416 100644
+--- a/node_modules/react-native-enriched-markdown/lib/module/native/EnrichedMarkdownText.js
++++ b/node_modules/react-native-enriched-markdown/lib/module/native/EnrichedMarkdownText.js
+@@ -1,3 +1,4 @@
++import { Platform } from 'react-native';
+ "use strict";
+ 
+ import { useMemo, useCallback, useRef, useEffect } from 'react';
+@@ -62,6 +63,7 @@ const defaultMd4cFlags = {
+   subscript: false,
+   latexMath: true,
+   highlight: false,
++  noMedia: false,
+   hardSoftBreaks: false,
+   preserveBlankLines: false,
+   admonitions: true
+@@ -102,6 +104,10 @@ export const EnrichedMarkdownText = ({
+   ellipsizeMode,
+   ...rest
+ }) => {
++  if (md4cFlags.noMedia && Platform.OS !== 'ios') {
++    throw new Error('md4cFlags.noMedia is supported only on iOS.');
++  }
++
+   const normalizedStyleRef = useRef(null);
+   const normalized = normalizeMarkdownStyle(markdownStyle);
+   // normalizeMarkdownStyle returns cached objects for structurally equal inputs,
+@@ -116,6 +122,7 @@ export const EnrichedMarkdownText = ({
+     subscript: md4cFlags.subscript ?? false,
+     latexMath: md4cFlags.latexMath ?? true,
+     highlight: md4cFlags.highlight ?? false,
++    noMedia: md4cFlags.noMedia ?? false,
+     hardSoftBreaks: md4cFlags.hardSoftBreaks ?? false,
+     preserveBlankLines: md4cFlags.preserveBlankLines ?? false,
+     // Admonitions are a GitHub-flavor feature; force them off in commonmark so
+diff --git a/node_modules/react-native-enriched-markdown/lib/module/web/EnrichedMarkdownText.js b/node_modules/react-native-enriched-markdown/lib/module/web/EnrichedMarkdownText.js
+index 8b5d3af9576b39eaedd390fbb03897df3531227c..bde2ec977f74629e52b9db656b64d17d1d943b69 100644
+--- a/node_modules/react-native-enriched-markdown/lib/module/web/EnrichedMarkdownText.js
++++ b/node_modules/react-native-enriched-markdown/lib/module/web/EnrichedMarkdownText.js
+@@ -28,6 +28,10 @@ export const EnrichedMarkdownText = ({
+   testID,
+   ...rest
+ }) => {
++  if (md4cFlags.noMedia) {
++    throw new Error('md4cFlags.noMedia is supported only on iOS.');
++  }
++
+   const normalizedStyle = useMemo(() => normalizeMarkdownStyle(markdownStyle), [markdownStyle]);
+   const [ast, setAst] = useState(null);
+   const [katex, setKatex] = useState(null);
+diff --git a/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownNativeComponent.d.ts b/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownNativeComponent.d.ts
+index 56e42c8104cec1ee74ba94b9e9dfd2811cf216ff..8478394a501aeca39febfc605daedc01126c730c 100644
+--- a/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownNativeComponent.d.ts
++++ b/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownNativeComponent.d.ts
+@@ -303,6 +303,8 @@ export interface AccessibilityLabelsProps {
+  * Controls how the markdown parser interprets certain syntax.
+  */
+ export interface Md4cFlagsInternal {
++  /** iOS-only media-free AST admission; defaults false in the public wrapper. */
++  noMedia: boolean;
+     /**
+      * Enable underline syntax support (__text__).
+      * When enabled, underscores are treated as underline markers.
+diff --git a/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextInput.d.ts b/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextInput.d.ts
+index 631fb19b499bc8505c264a4c0360524e5b47697f..cac9cae79fe7ac74f5e18fd6534fa08e06ee7d9f 100644
+--- a/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextInput.d.ts
++++ b/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextInput.d.ts
+@@ -181,6 +181,8 @@ export interface EnrichedMarkdownTextInputProps extends Omit<ViewProps, 'style'
+     placeholder?: string;
+     placeholderTextColor?: ColorValue;
+     editable?: boolean;
++    /** iOS-only opaque native checkpoint lease. */
++    draftCheckpointToken?: string;
+     autoFocus?: boolean;
+     scrollEnabled?: boolean;
+     /**
+diff --git a/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextInputNativeComponent.d.ts b/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextInputNativeComponent.d.ts
+index 6f9148cf8c95a6a3dcc74971a84c7bbe9f5ce16d..35d55184ee5ecf30023892473d457a44f101bec6 100644
+--- a/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextInputNativeComponent.d.ts
++++ b/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextInputNativeComponent.d.ts
+@@ -210,6 +210,8 @@ export interface NativeProps extends ViewProps {
+      * @default true
+      */
+     editable?: boolean;
++    /** iOS-only opaque native checkpoint lease. */
++    draftCheckpointToken?: string;
+     /**
+      * Whether the input should auto-focus on mount.
+      * @default false
+diff --git a/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextNativeComponent.d.ts b/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextNativeComponent.d.ts
+index 5fa30a67159a2c290ba0b0f737bab4674caf1068..95de4d43a0290ba7f7246c1cf10d80c0ac8b3ed1 100644
+--- a/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextNativeComponent.d.ts
++++ b/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextNativeComponent.d.ts
+@@ -303,6 +303,8 @@ export interface AccessibilityLabelsProps {
+  * Controls how the markdown parser interprets certain syntax.
+  */
+ export interface Md4cFlagsInternal {
++  /** iOS-only media-free AST admission; defaults false in the public wrapper. */
++  noMedia: boolean;
+     /**
+      * Enable underline syntax support (__text__).
+      * When enabled, underscores are treated as underline markers.
+diff --git a/node_modules/react-native-enriched-markdown/lib/typescript/src/types/MarkdownStyle.d.ts b/node_modules/react-native-enriched-markdown/lib/typescript/src/types/MarkdownStyle.d.ts
+index 614074bcdf98fad31a0d27184c393573bcec1822..ea72e0ddf130df5aa00053d4c817324b8ac42777 100644
+--- a/node_modules/react-native-enriched-markdown/lib/typescript/src/types/MarkdownStyle.d.ts
++++ b/node_modules/react-native-enriched-markdown/lib/typescript/src/types/MarkdownStyle.d.ts
+@@ -361,6 +361,10 @@ export interface MarkdownStyle {
+  * Controls how the markdown parser interprets certain syntax.
+  */
+ export interface Md4cFlags {
++  /** Parse images as explicit links and disable HTML media promotion before rendering.
++   * Supported on iOS. Other platform wrappers reject true instead of ignoring it.
++   * @default false */
++  noMedia?: boolean;
+     /**
+      * Enable underline syntax support (__text__).
+      * When enabled, underscores are treated as underline markers.
+diff --git a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts
+index b4041e54f47e2fd73a4337f5cea73d3f25665c82..f045690404423da17fe828d48a3ef3441a25c687 100644
+--- a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts
++++ b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts
+@@ -356,6 +356,8 @@ export interface AccessibilityLabelsProps {
+  * Controls how the markdown parser interprets certain syntax.
+  */
+ export interface Md4cFlagsInternal {
++  /** iOS-only media-free AST admission; defaults false in the public wrapper. */
++  noMedia: boolean;
+   /**
+    * Enable underline syntax support (__text__).
+    * When enabled, underscores are treated as underline markers.
+diff --git a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextInput.tsx b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextInput.tsx
+index 4100c709093f7fb002f08869ccb1d4306a975bd1..f6241e43a946bbc84eb093b10f2e16451e7d7651 100644
+--- a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextInput.tsx
++++ b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextInput.tsx
+@@ -229,6 +229,8 @@ export interface EnrichedMarkdownTextInputProps
+   placeholder?: string;
+   placeholderTextColor?: ColorValue;
+   editable?: boolean;
++  /** iOS-only opaque native checkpoint lease; the application owns storage. */
++  draftCheckpointToken?: string;
+   autoFocus?: boolean;
+   scrollEnabled?: boolean;
+   /**
+@@ -320,6 +322,7 @@ export const EnrichedMarkdownTextInput = ({
+   placeholder,
+   placeholderTextColor,
+   editable = true,
++  draftCheckpointToken,
+   autoFocus = false,
+   scrollEnabled = true,
+   markdownShortcuts,
+@@ -734,6 +737,7 @@ export const EnrichedMarkdownTextInput = ({
+       placeholder={placeholder}
+       placeholderTextColor={placeholderTextColor}
+       editable={editable}
++      draftCheckpointToken={draftCheckpointToken}
+       autoFocus={autoFocus}
+       scrollEnabled={scrollEnabled}
+       markdownShortcuts={normalizedMarkdownShortcuts}
+diff --git a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextInputNativeComponent.ts b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextInputNativeComponent.ts
+index c2fec26187cbec03b8eeb9a1fddac3b438b0ae62..8cc675ca7068c380024f01c9a5b263a1fba6d79e 100644
+--- a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextInputNativeComponent.ts
++++ b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextInputNativeComponent.ts
+@@ -205,6 +205,8 @@ export interface NativeProps extends ViewProps {
+    * @default true
+    */
+   editable?: boolean;
++  /** iOS-only opaque native checkpoint lease. Absent preserves ordinary volatile behavior. */
++  draftCheckpointToken?: string;
+   /**
+    * Whether the input should auto-focus on mount.
+    * @default false
+diff --git a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextNativeComponent.ts b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextNativeComponent.ts
+index efdc3003117de9583e78d1076fcab4c833c2bcc5..2a9c6ff82a9625a3e4f0e985a313a4350b1e5184 100644
+--- a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextNativeComponent.ts
++++ b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextNativeComponent.ts
+@@ -357,6 +357,8 @@ export interface AccessibilityLabelsProps {
+  * Controls how the markdown parser interprets certain syntax.
+  */
+ export interface Md4cFlagsInternal {
++  /** iOS-only media-free AST admission; defaults false in the public wrapper. */
++  noMedia: boolean;
+   /**
+    * Enable underline syntax support (__text__).
+    * When enabled, underscores are treated as underline markers.
+diff --git a/node_modules/react-native-enriched-markdown/src/native/EnrichedMarkdownText.tsx b/node_modules/react-native-enriched-markdown/src/native/EnrichedMarkdownText.tsx
+index 267a2463ec341b677b10943b531f2055cb34662d..85357c85c66ad5929a2d2bdc6dd316cda259237d 100644
+--- a/node_modules/react-native-enriched-markdown/src/native/EnrichedMarkdownText.tsx
++++ b/node_modules/react-native-enriched-markdown/src/native/EnrichedMarkdownText.tsx
+@@ -1,3 +1,4 @@
++import { Platform } from 'react-native';
+ import { useMemo, useCallback, useRef, useEffect } from 'react';
+ import EnrichedMarkdownTextNativeComponent from '../EnrichedMarkdownTextNativeComponent';
+ import type { MarkdownStyleInternal } from '../EnrichedMarkdownTextNativeComponent';
+@@ -113,6 +114,7 @@ const defaultMd4cFlags: Md4cFlags = {
+   subscript: false,
+   latexMath: true,
+   highlight: false,
++  noMedia: false,
+   hardSoftBreaks: false,
+   preserveBlankLines: false,
+   admonitions: true,
+@@ -154,6 +156,10 @@ export const EnrichedMarkdownText = ({
+   ellipsizeMode,
+   ...rest
+ }: EnrichedMarkdownTextProps) => {
++  if (md4cFlags.noMedia && Platform.OS !== 'ios') {
++    throw new Error('md4cFlags.noMedia is supported only on iOS.');
++  }
++
+   const normalizedStyleRef = useRef<MarkdownStyleInternal | null>(null);
+   const normalized = normalizeMarkdownStyle(markdownStyle);
+   // normalizeMarkdownStyle returns cached objects for structurally equal inputs,
+@@ -170,6 +176,7 @@ export const EnrichedMarkdownText = ({
+       subscript: md4cFlags.subscript ?? false,
+       latexMath: md4cFlags.latexMath ?? true,
+       highlight: md4cFlags.highlight ?? false,
++      noMedia: md4cFlags.noMedia ?? false,
+       hardSoftBreaks: md4cFlags.hardSoftBreaks ?? false,
+       preserveBlankLines: md4cFlags.preserveBlankLines ?? false,
+       // Admonitions are a GitHub-flavor feature; force them off in commonmark so
+diff --git a/node_modules/react-native-enriched-markdown/src/types/MarkdownStyle.ts b/node_modules/react-native-enriched-markdown/src/types/MarkdownStyle.ts
+index 11ec780d9133da4a64c6ee1c72919f4f0f688575..b4c1690029c834b90a67853b43d7883f7385d2e3 100644
+--- a/node_modules/react-native-enriched-markdown/src/types/MarkdownStyle.ts
++++ b/node_modules/react-native-enriched-markdown/src/types/MarkdownStyle.ts
+@@ -394,6 +394,10 @@ export interface MarkdownStyle {
+  * Controls how the markdown parser interprets certain syntax.
+  */
+ export interface Md4cFlags {
++  /** Parse images as explicit links and disable HTML media promotion before rendering.
++   * Supported on iOS. Other platform wrappers reject true instead of ignoring it.
++   * @default false */
++  noMedia?: boolean;
+   /**
+    * Enable underline syntax support (__text__).
+    * When enabled, underscores are treated as underline markers.
+diff --git a/node_modules/react-native-enriched-markdown/src/web/EnrichedMarkdownText.tsx b/node_modules/react-native-enriched-markdown/src/web/EnrichedMarkdownText.tsx
+index f8677868517e5c9ea69ecd00d7070ef3170f6ab7..df0ef47ab2a957cb25518b9925fe6f3aa33a13cc 100644
+--- a/node_modules/react-native-enriched-markdown/src/web/EnrichedMarkdownText.tsx
++++ b/node_modules/react-native-enriched-markdown/src/web/EnrichedMarkdownText.tsx
+@@ -33,6 +33,10 @@ export const EnrichedMarkdownText = ({
+   testID,
+   ...rest
+ }: EnrichedMarkdownTextProps) => {
++  if (md4cFlags.noMedia) {
++    throw new Error('md4cFlags.noMedia is supported only on iOS.');
++  }
++
+   const normalizedStyle = useMemo(
+     () => normalizeMarkdownStyle(markdownStyle),
+     [markdownStyle]
