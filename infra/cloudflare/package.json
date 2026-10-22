@@ -1,6 +1,7 @@
 {
   "name": "zoen-cloudflare",
   "private": true,
+  "license": "AGPL-3.0-only",
   "type": "module",
   "devDependencies": {
     "wrangler": "4.151.1"
