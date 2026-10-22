@@ -9,6 +9,7 @@ import { ProfileAvatar } from '../profile/profile-avatar';
 import { useTheme } from '../theme';
 import { ChatTitle, type ChatHeaderProps } from './chat-title';
 import { Icon } from './primitives';
+import { NavigationBackdrop } from './navigation-backdrop';
 
 export function ChatHeader(props: ChatHeaderProps) {
   return (
@@ -84,6 +85,7 @@ function ChatNavigationBar({
       pointerEvents="box-none"
       style={{ height: layout.height, width: '100%' }}
     >
+      <NavigationBackdrop height={layout.height} solidHeight={insets.top} />
       {native.back ? (
         <View style={{ position: 'absolute', top: layout.controlTop, left: layout.leading }}>
           {group(

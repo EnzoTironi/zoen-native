@@ -46,7 +46,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
     colors,
     notice,
     page,
-    statusBarHeight,
+    timelineTopInset,
     list,
     setLoadedSpace,
     timelineKey,
@@ -269,7 +269,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
             <Loading />
           ) : (
             <FlashList
-              style={{ flex: 1, marginTop: statusBarHeight, overflow: 'hidden' }}
+              style={{ flex: 1, marginTop: timelineTopInset, overflow: 'hidden' }}
               key={initialEnd.scope}
               ref={list}
               testID="conversation-timeline"
@@ -302,7 +302,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
               ListFooterComponent={composerSpacer}
               contentContainerStyle={{
                 paddingHorizontal: 16,
-                paddingTop: Math.max(0, headerHeight - statusBarHeight) + noticeHeight + 8,
+                paddingTop: Math.max(0, headerHeight - timelineTopInset) + noticeHeight + 8,
                 paddingBottom: 12,
               }}
               maintainVisibleContentPosition={{

@@ -237,6 +237,8 @@ function renderScreen(
       return { useKeyboardMotion: () => ({ progress: { value: 0 } }) };
     if (path.endsWith('/components/use-message-actions'))
       return { useMessageActions: () => ({ busy: false }) };
+    if (path.endsWith('/components/navigation-backdrop'))
+      return { NavigationBackdrop: 'NavigationBackdrop' };
     if (path.endsWith('/components/dialogs')) return { useDialogs: () => ({ inform: noop }) };
     if (path.endsWith('/media/message-audio-provider')) return { useMessageAudioFocus: noop };
     if (path.endsWith('/components/primitives'))

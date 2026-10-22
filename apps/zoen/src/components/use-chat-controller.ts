@@ -46,6 +46,7 @@ export function useChatController() {
   const cards = useConversationCards(id);
   const headerHeight = useHeaderHeight();
   const { top: statusBarHeight } = useSafeAreaInsets();
+  const timelineTopInset = process.env.EXPO_OS === 'ios' ? 0 : statusBarHeight;
   const { progress: keyboardProgress } = useKeyboardMotion();
   const conversationMiniapps = cards.visible;
   const { inform } = useDialogs();
@@ -145,7 +146,7 @@ export function useChatController() {
     entries: [] as readonly TimelineEntry[],
     ready: false,
     headerHeight,
-    statusBarHeight,
+    timelineTopInset,
     railHeight,
     noticeHeight,
   });
@@ -179,7 +180,7 @@ export function useChatController() {
           bottomAligned: true,
           topObstruction:
             current.headerHeight -
-            current.statusBarHeight +
+            current.timelineTopInset +
             current.railHeight * (1 - Math.min(1, Math.max(0, keyboardProgress.value))) +
             current.noticeHeight +
             8,
@@ -213,7 +214,7 @@ export function useChatController() {
         !cards.loading &&
         (conversationMiniapps.length === 0 || railHeight > 0),
       headerHeight,
-      statusBarHeight,
+      timelineTopInset,
       railHeight,
       noticeHeight,
     };
@@ -226,7 +227,7 @@ export function useChatController() {
     cards.loading,
     conversationMiniapps.length,
     headerHeight,
-    statusBarHeight,
+    timelineTopInset,
     railHeight,
     noticeHeight,
     searchReveal,
@@ -402,7 +403,7 @@ export function useChatController() {
           viewPosition: 0,
           viewOffset: -(
             headerHeight -
-            statusBarHeight +
+            timelineTopInset +
             railHeight * (1 - Math.min(1, Math.max(0, keyboardProgress.value))) +
             noticeHeight +
             8
@@ -423,7 +424,7 @@ export function useChatController() {
     visibleEntries,
     inform,
     headerHeight,
-    statusBarHeight,
+    timelineTopInset,
     railHeight,
     noticeHeight,
     keyboardProgress,
@@ -512,7 +513,7 @@ export function useChatController() {
     colors,
     notice,
     page,
-    statusBarHeight,
+    timelineTopInset,
     list,
     setLoadedSpace,
     timelineKey,
