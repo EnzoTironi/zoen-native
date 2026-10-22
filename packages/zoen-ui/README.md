@@ -43,8 +43,10 @@ requests and does not store chat data.
 belongs to the host. The local preview validates stored values and catches storage
 errors, so blocked storage does not break the controls.
 
-Shell colors follow the light and dark semantic values in
-`apple/Shared/DesignSystem/Theme.swift` (`Palette`). The outer background uses
+Shell colors follow the light and dark values pinned in
+[`preview/fixtures/semantic-palette.json`](preview/fixtures/semantic-palette.json).
+The fixture records the immutable standalone-client source of all 16 colors;
+tests require no archived checkout. The outer background uses
 `background`, the sidebar uses `surface`, and the search field uses `surfaceMuted`.
 Selected chats use `action` at 10% opacity; selected rail controls use 11% opacity
 with the action color for their icon. The sample conversation uses the native

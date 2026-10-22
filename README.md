@@ -6,7 +6,7 @@ Copyright © 2026 Enzo Tironi. Original source code and documentation are licens
 
 The Expo application in `apps/zoen` is the product entry point, powered by the shared Rust core. Current implementation work focuses on iOS; Android, Web and desktop remain part of the complete product goal.
 
-The earlier standalone SwiftUI clients in `apple/` and Compose client in `android/` are still retained during replacement. They also contain assets, fixtures and build inputs used by current scripts. Their retirement is incomplete. Swift and Kotlin under `apps/zoen/modules/zoen-core` are active Expo platform modules and remain part of the shared application.
+The standalone SwiftUI and Compose clients are retired. Swift and Kotlin under `apps/zoen/modules/zoen-core` are active Expo platform modules. Their binding configuration, assets and verification tools belong to the shared application; see the [retirement record](docs/dev/legacy-client-retirement.md).
 
 ## Current progress
 
@@ -51,17 +51,15 @@ This builds the local Rust module and the native Expo development client. See
 [the application instructions](apps/zoen/README.md) for native dependencies,
 backend configuration and the required `npm run check` validation.
 
-The following commands and Apple project scripts support the retained native
-clients while their replacement is being completed:
+For shared Rust validation, use the pinned CI toolchain:
 
 ```sh
-rustup toolchain install 1.99.0 --profile minimal --component rustfmt,clippy
-export RUSTUP_TOOLCHAIN=1.99.0
+rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy
+export RUSTUP_TOOLCHAIN=1.99.1
 cargo fmt --all --check
-scripts/build-core.sh
 ```
 
-Apple builds require Xcode, XcodeGen and the Rust Apple targets. Run `scripts/dev-stack.sh` in a separate terminal; it remains attached to the relay. The full Rust suite also requires PostgreSQL, FoundationDB, NATS and the sandbox providers configured by [CI](.github/workflows/ci.yml). Read [development setup](docs/dev/setup.md) before account/device journeys. The [web package](packages/zoen-ui/README.md) describes the reusable shell and preview.
+Run `scripts/dev-stack.sh` in a separate terminal; it remains attached to the relay. The full Rust suite also requires PostgreSQL, FoundationDB, NATS and the sandbox providers configured by [CI](.github/workflows/ci.yml). Read [development setup](docs/dev/setup.md) before account/device journeys. The [web package](packages/zoen-ui/README.md) describes the reusable shell and preview.
 
 The certified runtime reads reply receipts in batches of at most 64 real history positions. A prefix retains every pending event, retry field, reference, and sealed publication byte for cold restore. Concurrent member messages can share an earlier verified `seen` without proving a fork. A signed `seen` that contradicts the held chain, or an authenticated checkpoint with an incompatible prefix or group digest, still parks sending and rejects cold activation. Restore also requires the exact certified agent device and owner bound to the image.
 

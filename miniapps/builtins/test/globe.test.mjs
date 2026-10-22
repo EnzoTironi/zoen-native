@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
@@ -18,9 +19,6 @@ import {
 
 const near = (actual, expected, tolerance = 1e-8) =>
   assert.ok(Math.abs(actual - expected) < tolerance, `${actual} != ${expected}`);
-const original = readFileSync(
-  new URL('../../../apple/Shared/Resources/land110.json', import.meta.url),
-);
 const embedded = readFileSync(new URL('../src/land110.json', import.meta.url));
 const land = JSON.parse(embedded);
 const center = { lat: 0, lon: 0 };
@@ -108,9 +106,10 @@ test('great-circle interpolation takes the short dateline route and handles equa
 });
 
 test('land is the actual existing public-domain asset and horizon clipping never projects outside the disc', () => {
-  assert.ok(
-    original.equals(embedded),
-    'do not replace the real coastline with schematic/demo geography',
+  assert.equal(
+    createHash('sha256').update(embedded).digest('hex'),
+    'e19d97d26c2094ef4db470a56aa1e64d0b96e080b9d92d034fed4dcdacf13af1',
+    'preserve the exact retained public-domain coastline',
   );
   assert.ok(land.length > 100);
   const front = landPath([[-10, -10, 10, -10, 0, 10, -10, -10]], center);

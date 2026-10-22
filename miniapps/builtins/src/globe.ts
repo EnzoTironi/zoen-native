@@ -1,4 +1,5 @@
-/** Orthographic globe math ported from apple/Shared/Apps/Native/MapTap.swift.
+/** Orthographic globe math ported from the archived standalone MapTap.swift
+ * (apple/Shared/Apps/Native at revision 5149ae48be3b104fbe23b4e6a91bef80f131844c).
  * Coordinates are degrees; projected x/y/z use a unit sphere (z < 0 is hidden).
  */
 export type GeoPoint = { lat: number; lon: number };

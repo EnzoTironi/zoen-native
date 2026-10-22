@@ -5,12 +5,12 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TOOL="$ROOT/tools/hig-audit/node_modules/hig-doctor/dist/index.js"
 
 case "${1:-}" in
-  apple) SOURCE="$ROOT/apple" ;;
+  ios) SOURCE="$ROOT/apps/zoen/modules/zoen-core/ios" ;;
   web) SOURCE="$ROOT/packages/zoen-ui/src" ;;
-  *) echo "Usage: scripts/audit-hig.sh apple|web" >&2; exit 2 ;;
+  *) echo "Usage: scripts/audit-hig.sh ios|web" >&2; exit 2 ;;
 esac
 if [[ $# -ne 1 ]]; then
-  echo "Usage: scripts/audit-hig.sh apple|web" >&2
+  echo "Usage: scripts/audit-hig.sh ios|web" >&2
   exit 2
 fi
 if [[ ! -f "$TOOL" ]]; then

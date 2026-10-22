@@ -22,7 +22,8 @@ except ModuleNotFoundError:
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / "android/app/build/generated/core"
+OUTPUT = ROOT / "apps/zoen/modules/zoen-core/generated/android"
+KOTLIN_CONFIG = "apps/zoen/modules/zoen-core/android/uniffi.toml"
 ABI_MACHINES = {"arm64-v8a": 183, "x86_64": 62}
 META_PREFIX = "UNIFFI_META_CLIENT_CORE_"
 CHECKSUM_PREFIX = "uniffi_client_core_checksum_"
@@ -48,7 +49,7 @@ def revision(root):
 
 
 def input_hashes(root):
-    fixed = ["Cargo.toml", "Cargo.lock", "android/uniffi.toml",
+    fixed = ["Cargo.toml", "Cargo.lock", KOTLIN_CONFIG,
              "scripts/build-android-core.sh", "scripts/fix-android-uniffi-callbacks.py",
              "scripts/android-core-contract.py"]
     paths = {root / name for name in fixed}
@@ -169,6 +170,13 @@ def library_at(root, ref=None):
 
 def contract_at(root, ref=None):
     return library_at(root, ref)["contract"]
+
+
+def contract_delta(baseline, current):
+    before, after = baseline["metadata"], current["metadata"]
+    return {"added": sorted(after.keys() - before.keys()),
+            "removed": sorted(before.keys() - after.keys()),
+            "changed": sorted(name for name in before.keys() & after.keys() if before[name] != after[name])}
 
 
 def capture(root):

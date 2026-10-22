@@ -1,0 +1,74 @@
+{
+  "source": {
+    "revision": "5149ae48be3b104fbe23b4e6a91bef80f131844c",
+    "path": "apple/Shared/DesignSystem/Theme.swift",
+    "sha256": "38d19e25ca04d0ce80a5babfaac8d244447e11f16b0dc1ebb4dd4e8824a50406",
+    "purpose": "Retained semantic color contract for the reusable shell; the standalone native client is retired."
+  },
+  "colors": {
+    "background": {
+      "light": "#F4F6FB",
+      "dark": "#090D15"
+    },
+    "surface": {
+      "light": "#FFFFFF",
+      "dark": "#121826"
+    },
+    "surfaceRaised": {
+      "light": "#FFFFFF",
+      "dark": "#182032"
+    },
+    "surfaceMuted": {
+      "light": "#ECEFF6",
+      "dark": "#1A2233"
+    },
+    "hairline": {
+      "light": "#E1E5EE",
+      "dark": "#253047"
+    },
+    "textPrimary": {
+      "light": "#0E1320",
+      "dark": "#EEF2FA"
+    },
+    "textSecondary": {
+      "light": "#5B6478",
+      "dark": "#93A0B8"
+    },
+    "textTertiary": {
+      "light": "#8C95A8",
+      "dark": "#5F6B82"
+    },
+    "action": {
+      "light": "#3D7A28",
+      "dark": "#86C25A"
+    },
+    "actionDeep": {
+      "light": "#2C5E1C",
+      "dark": "#5E9A35"
+    },
+    "onAction": {
+      "light": "#FFFFFF",
+      "dark": "#0E1320"
+    },
+    "myBubble": {
+      "light": "#111113",
+      "dark": "#F2F2F0"
+    },
+    "myBubbleText": {
+      "light": "#FFFFFF",
+      "dark": "#111113"
+    },
+    "receiptRead": {
+      "light": "#53BDEB",
+      "dark": "#1F8FD8"
+    },
+    "otherBubble": {
+      "light": "#F2F2F2",
+      "dark": "#26272B"
+    },
+    "otherBubbleOnBackdrop": {
+      "light": "#FFFFFF",
+      "dark": "#2E2F34"
+    }
+  }
+}

@@ -1,43 +1,59 @@
 # Development setup
 
-Use the integrated main tree for backend baseline work and fetch the exact feature PR head when testing changes in review. The [version ledger](../roadmap-status.md#version-ledger) identifies those heads. Keep another owner's dirty checkout intact.
+The application is `apps/zoen`: React Native/Expo with active Swift/Kotlin modules
+and a shared Rust core. Use the integrated main tree for the backend baseline and
+the exact feature PR head for changes under review. Keep other owners’ checkouts,
+simulators, accounts and retained service data intact.
 
-## Rust and service journeys
+## iOS application
+
+Install the native dependencies described in the [application README](../../apps/zoen/README.md),
+then use its current scripts:
 
 ```sh
-rustup toolchain install 1.99.0 --profile minimal --component rustfmt,clippy
-export RUSTUP_TOOLCHAIN=1.99.0
-rustup target add wasm32-wasip2
+cd apps/zoen
+npm ci
+npm run ios
+```
+
+`npm run ios:device` builds matching device and simulator core slices before the
+physical-iPhone development client. `npm run ios:release` selects the Release
+configuration. Signing and actual device acceptance remain separate from a build.
+Do not edit generated Expo projects in `apps/zoen/ios` or `apps/zoen/android`.
+
+Run `npm run check` for app changes. Regenerate the Rust TypeScript contract with
+`npm run core:types` when its exported API changes, and regenerate native bindings
+with the matching platform build script. Never pair bindings with a library from
+another source revision.
+
+## Rust and backend journeys
+
+```sh
+rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy
+export RUSTUP_TOOLCHAIN=1.99.1
 cargo fmt --all --check
 ```
 
-Run `scripts/dev-stack.sh` in a separate terminal. It remains attached to the relay process.
+Run `scripts/dev-stack.sh` in a separate terminal. For the production-like local
+composition, use [infra/local](../../infra/local/README.md). Current CI provisions
+PostgreSQL, FoundationDB, NATS and sandbox prerequisites; see
+[ci.yml](../../.github/workflows/ci.yml). `cargo test` without the required services
+cannot qualify service journeys. Use disposable owned fixtures for failures and
+restores; a health response alone does not establish protocol compatibility.
 
-The complete CI setup also provisions PostgreSQL, FoundationDB, NATS, gVisor and Firecracker/browser images. Use [.github/workflows/ci.yml](../../.github/workflows/ci.yml) as the executable setup reference. A host without those dependencies cannot validate the complete suite by running `cargo test` alone.
+## Web and Android
 
-## Apple
+Both use the same Expo application. Its `npm run android`, `android:release`,
+`web` and `export:web` scripts select the correct binding and frontend builds.
+The active Kotlin configuration is
+`apps/zoen/modules/zoen-core/android/uniffi.toml`; source/ABI checks are part of
+the Expo Android workflow.
 
-Install Xcode and XcodeGen, then build the core and generate the project:
+Follow the [Web](expo-web-acceptance.md) and [Android](expo-android-acceptance.md)
+acceptance records for their dated evidence and remaining gaps. iOS remains the
+current manual acceptance focus. Desktop platforms retain their later delivery
+phase in the product goal.
 
-```sh
-rustup target add aarch64-apple-ios aarch64-apple-ios-sim aarch64-apple-darwin
-scripts/build-core.sh
-cd apple
-xcodegen generate
-```
-
-The build script produces the XCFramework and matching UniFFI bindings. Regenerate both whenever shared-core APIs change. Existing package/build identifiers are listed in the [naming migration](naming.md).
-
-Choose an available iOS simulator or the native Mac scheme in Xcode. Use a dedicated simulator, database and Keychain service for recovery tests. Demo UI recordings use explicit development flags and do not establish real-account encryption or transport.
-
-For physical iPhone setup, read [installing on iPhone](instalar-no-iphone.md). For Apple Silicon's designed-for-iPhone destination, read [iPhone on Mac](iphone-no-mac.md). XCUITest requires a supported simulator or physical iPhone destination.
-
-## Android and web
-
-Until their PRs integrate, use the README and verification instructions in [Android PR 41](https://github.com/EnzoTironi/zoen-native/pull/41) and [web-shell PR 44](https://github.com/EnzoTironi/zoen-native/pull/44). Match each native library with its generated bindings. A compile that skips the Rust ABI task is not an Android runtime result.
-
-The web shell uses sample data. It is suitable for layout and interaction review; account enrollment, encrypted messaging and browser storage remain separate completion gates.
-
-## Public staging
-
-Current clients require protocol 4. The public relay was last observed on protocol 2. Verify negotiation before using it for a current-client journey. Build a same-source isolated relay for development rather than treating a health response as protocol compatibility.
+The [standalone-client retirement record](legacy-client-retirement.md) identifies
+the archived source and migrated consumers. Its old build scripts and workflows
+are no longer the application setup.

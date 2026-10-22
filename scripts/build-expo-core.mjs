@@ -77,23 +77,35 @@ async function validateGeneratedInventory() {
       ...iosArchitectures.flatMap((architecture) => {
         const slice = architecture.endsWith('-sim') ? 'ios-arm64-simulator' : 'ios-arm64';
         const prefix = `ClientFFI.xcframework/${slice}/`;
-        return [`${prefix}libclient_core.a`, `${prefix}Headers/client_coreFFI.h`, `${prefix}Headers/module.modulemap`];
+        return [
+          `${prefix}libclient_core.a`,
+          `${prefix}Headers/client_coreFFI.h`,
+          `${prefix}Headers/module.modulemap`,
+        ];
       }),
     ]);
     await exactFiles(join(moduleRoot, 'generated/swift'), [
-      'client_core.swift', 'client_coreFFI.h', 'client_coreFFI.modulemap',
-      'headers/client_coreFFI.h', 'headers/module.modulemap',
+      'client_core.swift',
+      'client_coreFFI.h',
+      'client_coreFFI.modulemap',
+      'headers/client_coreFFI.h',
+      'headers/module.modulemap',
     ]);
   }
 }
 async function sourceHash() {
   const hash = createHash('sha256');
-  hash.update(JSON.stringify({
-    platform, profile, iosArchitectures, androidAbis,
-    // The registry is compiled into Rust. A config-only change must not reuse
-    // native artifacts from another verified code package or deployment URL.
-    deckcraftResourceManifest: process.env.ZOEN_DECKCRAFT_RESOURCE_MANIFEST_JSON ?? null,
-  }));
+  hash.update(
+    JSON.stringify({
+      platform,
+      profile,
+      iosArchitectures,
+      androidAbis,
+      // The registry is compiled into Rust. A config-only change must not reuse
+      // native artifacts from another verified code package or deployment URL.
+      deckcraftResourceManifest: process.env.ZOEN_DECKCRAFT_RESOURCE_MANIFEST_JSON ?? null,
+    }),
+  );
   // The browser core evolves independently. Hash the actual native dependency
   // closure, including the binding generator, rather than every workspace crate.
   const { stdout } = await promisify(execFile)(
@@ -103,11 +115,13 @@ async function sourceHash() {
   );
   const packages = JSON.parse(stdout).packages;
   const byDirectory = new Map(packages.map((pkg) => [dirname(pkg.manifest_path), pkg]));
-  const pending = ['client-core', ...(platform === 'types' ? [] : ['uniffi-bindgen'])].map((name) => {
-    const pkg = packages.find((candidate) => candidate.name === name);
-    if (!pkg) throw new Error(`Missing build package: ${name}`);
-    return dirname(pkg.manifest_path);
-  });
+  const pending = ['client-core', ...(platform === 'types' ? [] : ['uniffi-bindgen'])].map(
+    (name) => {
+      const pkg = packages.find((candidate) => candidate.name === name);
+      if (!pkg) throw new Error(`Missing build package: ${name}`);
+      return dirname(pkg.manifest_path);
+    },
+  );
   const directories = new Set();
   while (pending.length) {
     const directory = pending.pop();
@@ -126,7 +140,14 @@ async function sourceHash() {
     join(root, 'Cargo.lock'),
     fileURLToPath(import.meta.url),
     ...(platform === 'android'
-      ? ['build-android-core.sh', 'android-core-contract.py', 'fix-android-uniffi-callbacks.py'].map((name) => join(root, 'scripts', name))
+      ? [
+          ...[
+            'build-android-core.sh',
+            'android-core-contract.py',
+            'fix-android-uniffi-callbacks.py',
+          ].map((name) => join(root, 'scripts', name)),
+          join(moduleRoot, 'android/uniffi.toml'),
+        ]
       : []),
   ];
   for (const path of files.sort()) {
@@ -218,20 +239,25 @@ if (platform === 'types') {
       },
     );
   }
-  await run('cargo', [
-    'run',
-    '--locked',
-    '-p',
-    'uniffi-bindgen',
-    '--',
-    'generate',
-    '--library',
-    join(target, folder, 'libclient_core.dylib'),
-    '--language',
-    'swift',
-    '--out-dir',
-    binding,
-  ], root, { SDKROOT: hostSdk });
+  await run(
+    'cargo',
+    [
+      'run',
+      '--locked',
+      '-p',
+      'uniffi-bindgen',
+      '--',
+      'generate',
+      '--library',
+      join(target, folder, 'libclient_core.dylib'),
+      '--language',
+      'swift',
+      '--out-dir',
+      binding,
+    ],
+    root,
+    { SDKROOT: hostSdk },
+  );
   await cp(join(binding, 'client_coreFFI.h'), join(binding, 'headers/client_coreFFI.h'));
   await cp(join(binding, 'client_coreFFI.modulemap'), join(binding, 'headers/module.modulemap'));
   const framework = join(out, 'ClientFFI.xcframework');

@@ -1,4 +1,4 @@
-/* Scoped application styles. Palette matches apple/Shared/DesignSystem/Theme.swift. */
+/* Scoped application styles. Semantic colors are pinned by the preview palette contract. */
 .zs-shell {
   box-sizing: border-box;
   --zs-bg: #f4f6fb;
@@ -598,7 +598,11 @@
   padding: 14px;
   border: 1px solid var(--zs-border);
   border-radius: 24px;
-  background: linear-gradient(145deg, color-mix(in srgb, var(--zs-action) 22%, var(--zs-surface)), var(--zs-surface));
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--zs-action) 22%, var(--zs-surface)),
+    var(--zs-surface)
+  );
   color: var(--zs-ink);
   box-shadow: 0 3px 8px #0000001a;
   text-align: left;

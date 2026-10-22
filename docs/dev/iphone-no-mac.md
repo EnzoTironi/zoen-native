@@ -1,3 +1,7 @@
+> Historical standalone-client guide. Current application setup is in
+> [the Expo README](../../apps/zoen/README.md). Source paths below refer to
+> [the archived native clients](https://github.com/EnzoTironi/zoen-native/tree/5149ae48be3b104fbe23b4e6a91bef80f131844c).
+
 # O app de iPhone no Mac, sem simulador
 
 Num Mac com Apple Silicon o app de iPhone roda nativo, numa janela no formato de iPhone
@@ -25,17 +29,17 @@ o invólucro que o macOS espera (`build/ZoenPhone.app/Wrapper/Zoen.app` +
 
 ## O que funciona e o que não
 
-| | No Mac (Designed for iPhone) |
-| --- | --- |
-| Telas, navegação, sincronização, MLS | Iguais ao iPhone |
-| Toques, rolagem, arrastar | Com mouse/trackpad: clique = toque, arrastar com o botão pressionado = deslizar; rolagem pelo trackpad |
-| Deslizar para voltar, gestos de borda | Não há borda de tela; use o botão Voltar |
-| Pinça e gestos com vários dedos | Só os que o trackpad traduz (pinça vira zoom) |
-| Hápticos | `UIImpactFeedbackGenerator` não faz nada no Mac (sem erro). O app de Mac nativo usa `NSHapticFeedbackManager` no trackpad; este não |
-| Câmera | A câmera do chat (`InlineCamera`) pede a traseira (`position: .back`), que o Mac não tem: deve cair no estado "indisponível" (não testado). Para usar a FaceTime do Mac seria preciso cair para `.front`/`.unspecified` |
-| Microfone e transcrição | Funcionam com o microfone do Mac (pedem permissão) |
-| Teclado | O teclado físico; o teclado da tela e o comportamento dele (por exemplo os testes de teclado) não aparecem |
-| Notificações e passkeys | Fora, como no Apple ID grátis no iPhone |
+|                                       | No Mac (Designed for iPhone)                                                                                                                                                                                            |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Telas, navegação, sincronização, MLS  | Iguais ao iPhone                                                                                                                                                                                                        |
+| Toques, rolagem, arrastar             | Com mouse/trackpad: clique = toque, arrastar com o botão pressionado = deslizar; rolagem pelo trackpad                                                                                                                  |
+| Deslizar para voltar, gestos de borda | Não há borda de tela; use o botão Voltar                                                                                                                                                                                |
+| Pinça e gestos com vários dedos       | Só os que o trackpad traduz (pinça vira zoom)                                                                                                                                                                           |
+| Hápticos                              | `UIImpactFeedbackGenerator` não faz nada no Mac (sem erro). O app de Mac nativo usa `NSHapticFeedbackManager` no trackpad; este não                                                                                     |
+| Câmera                                | A câmera do chat (`InlineCamera`) pede a traseira (`position: .back`), que o Mac não tem: deve cair no estado "indisponível" (não testado). Para usar a FaceTime do Mac seria preciso cair para `.front`/`.unspecified` |
+| Microfone e transcrição               | Funcionam com o microfone do Mac (pedem permissão)                                                                                                                                                                      |
+| Teclado                               | O teclado físico; o teclado da tela e o comportamento dele (por exemplo os testes de teclado) não aparecem                                                                                                              |
+| Notificações e passkeys               | Fora, como no Apple ID grátis no iPhone                                                                                                                                                                                 |
 
 ## Testes de interface (XCUITest)
 
