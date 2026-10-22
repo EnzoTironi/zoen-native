@@ -27,6 +27,9 @@ Before adopting an existing nonempty target, establish that it has no active
 unguarded writers, then pass `--adopt-idle-target`. This is an operator statement
 about an idle cache, not process detection. The guard refuses another guarded
 invocation immediately. Keep using the guard for that target afterwards.
+An unreadable JSON stamp or invalid schema/target/cache history also requires
+explicit adoption before any cleanup in a nonempty cache; unknown history is
+never adopted implicitly.
 
 The owned private sidecar holds an OS lease and atomic source stamps for each
 target/profile namespace. Git-visible local package inputs, Cargo configuration

@@ -297,6 +297,32 @@ class CargoSourceGuardTests(unittest.TestCase):
         self.assertNotIn("cleanedPackages", value)
         self.assertEqual(f.dependency(), dependency)
 
+    def test_invalid_source_stamp_requires_explicit_idle_adoption(self):
+        f = self.fixture()
+        result, _ = f.guarded(f.a)
+        self.assertEqual(result.returncode, 0, result.stdout.decode())
+        dependency = f.dependency()
+        state_path = next(f.root.glob(".cargo-source-guard-*/state.json"))
+        original = json.loads(state_path.read_text())
+        missing_history = {key: value for key, value in original.items() if key != "thirdPartyNames"}
+        variants = ("{", json.dumps({**original, "schema": 2}),
+                    json.dumps({**original, "target": str(f.root / "other-target")}),
+                    json.dumps(missing_history), json.dumps({**original, "thirdPartyNames": "invalid"}))
+        for value in variants:
+            with self.subTest(stamp=value[:80]):
+                state_path.write_text(value)
+                result, receipt = f.guarded(f.b)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("Unmanaged nonempty target", receipt["error"])
+                self.assertNotIn("cleanedPackages", receipt)
+                self.assertEqual(f.output(), "A|" + str(f.a) + "|7")
+                self.assertEqual(f.dependency(), dependency)
+        state_path.write_text("{")
+        result, _ = f.guarded(f.b, ("--adopt-idle-target",))
+        self.assertEqual(result.returncode, 0, result.stdout.decode())
+        self.assertEqual(f.output(), "B|" + str(f.b) + "|7")
+        self.assertEqual(f.dependency(), dependency)
+
     def test_config_and_env_are_bound_without_exposing_values(self):
         f = self.fixture()
         secret = "synthetic-build-input-do-not-log"

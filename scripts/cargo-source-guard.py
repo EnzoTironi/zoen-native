@@ -316,8 +316,12 @@ def main():
                 previous = json.loads(state_path.read_text())
             except ValueError:
                 previous = None
-        elif target.exists() and any(target.iterdir()) and not args.adopt_idle_target:
-            raise GuardError("Unmanaged nonempty target; confirm it is idle with --adopt-idle-target")
+        valid = (isinstance(previous, dict) and previous.get("schema") == 1
+                 and previous.get("target") == str(target) and isinstance(previous.get("scopes"), dict)
+                 and isinstance(previous.get("thirdPartyNames"), list)
+                 and all(isinstance(name, str) and name for name in previous["thirdPartyNames"]))
+        if not valid and target.exists() and any(target.iterdir()) and not args.adopt_idle_target:
+            raise GuardError("Unmanaged nonempty target; source stamp invalid or absent; confirm it is idle with --adopt-idle-target")
         env = os.environ.copy()
         env["CARGO_TARGET_DIR"] = str(target)
         env["CARGO_BUILD_BUILD_DIR"] = str(target)
@@ -328,7 +332,6 @@ def main():
         result["scope"] = scope
         scope_key = digest(scope)
         owner_source = digest({"context": before["contextDigest"], "packages": {key: value["digest"] for key, value in before["packages"].items()}})
-        valid = isinstance(previous, dict) and previous.get("schema") == 1 and previous.get("target") == str(target) and isinstance(previous.get("scopes"), dict)
         third_party_names = set(before["thirdPartyNames"]) | set(previous.get("thirdPartyNames", []) if valid else [])
         if third_party_names & {value["name"] for value in before["packages"].values()}:
             raise GuardError("Local package name collides with recorded third-party cache history")
