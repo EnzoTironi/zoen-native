@@ -45,6 +45,9 @@ jobs:
       - name: Resource ownership and backup integrity
         run: python3 -m unittest discover -s infra/local -p 'test_*.py' -v
 
+      - name: Staged file size hook contracts
+        run: python3 -m unittest discover -s scripts/git-hooks -p 'test_*.py' -v
+
   rust:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
