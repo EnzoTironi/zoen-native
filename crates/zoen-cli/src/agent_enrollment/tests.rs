@@ -194,6 +194,35 @@ fn empty_home_preflight_creates_no_keys_or_account() {
 }
 
 #[test]
+fn recovery_and_cancel_share_storage_health_checks_without_requiring_a_terminal() {
+    let home = Home::new();
+    let vault = home.vault();
+    let actions = [
+        Action::Wait { timeout_ms: 8000 },
+        Action::Cancel {
+            digest: "a".repeat(64),
+        },
+    ];
+    for action in &actions {
+        action.preflight(&vault).unwrap();
+    }
+    assert!(!vault.dir.exists());
+    std::fs::create_dir(&vault.dir).unwrap();
+    let root = vault.dir.join("agent_root");
+    std::fs::create_dir(&root).unwrap();
+    for action in &actions {
+        assert!(action.preflight(&vault).is_err());
+        assert!(root.is_dir());
+    }
+    std::fs::remove_dir(&root).unwrap();
+    std::fs::write(&root, b"retained-malformed-root").unwrap();
+    for action in &actions {
+        assert!(action.preflight(&vault).is_err());
+        assert_eq!(std::fs::read(&root).unwrap(), b"retained-malformed-root");
+    }
+}
+
+#[test]
 fn unreadable_or_malformed_existing_root_is_never_treated_as_missing() {
     let home = Home::new();
     let vault = home.vault();

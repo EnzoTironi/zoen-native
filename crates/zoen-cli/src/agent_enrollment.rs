@@ -108,10 +108,7 @@ impl Action {
     /// Read errors are never an invitation to replace a legacy host root. The
     /// core still validates every pending schema, key binding and permission.
     pub(crate) fn preflight(&self, vault: &FileVault) -> Result<(), String> {
-        if !matches!(self, Self::Request { .. }) {
-            return Ok(());
-        }
-        if !std::io::stdout().is_terminal() {
+        if matches!(self, Self::Request { .. }) && !std::io::stdout().is_terminal() {
             return Err(error(
                 "Show the pairing code only in a trusted interactive terminal.",
             ));
