@@ -1,0 +1,29 @@
+{
+  "status": "PASS_PRIVATE_NATIVE_AND_WORKERD_ONLY",
+  "sourceCommit": "094a5bb0",
+  "nativeAssertionCases": 18,
+  "nodeAssertionCases": 18,
+  "workerdAssertionCases": 18,
+  "nativePostgresScenarios": 20,
+  "providerWorkerdCases": 35,
+  "providerWorkerdSkipped": 0,
+  "existingDirectoryRegressionCases": 18,
+  "receipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/provider-host-final-acceptance/acceptance.json",
+  "receiptSha256": "52ef524c34eb50a2787645190bcd2817441d96dfd1b5b1af02b486b6d5a9e8e1",
+  "fullRunnerSummary": "/private/tmp/zoen-cloudflare-admission-v96/validation/provider-host-complete-run-01/summary.json",
+  "sameDirectoryTransactionDomain": true,
+  "separateAccountDatabase": false,
+  "publicRoutesEnabled": false,
+  "deployedAtOriginalProof": false,
+  "includedInPrivateMediaDeploymentV100": true,
+  "privateDeploymentVersion": "9882fa56-24bb-4573-a592-a50b4c138972",
+  "checks": [
+    "Atomic one-use challenge/proof issuance and provider/account/device binding",
+    "Original request JSON reaches strict Rust parsing; duplicate fields refused before writes",
+    "Exact active-certificate retry and existing-account immutability",
+    "Fixed provider HTTPS URLs, manual redirect refusal, bounded JWKS and refresh/cache rules",
+    "Late SQL rollback and concurrent verification/binding",
+    "No raw provider assertions, authorization codes or opaque proof tokens persisted"
+  ],
+  "limits": "Private adapter/source evidence only. Public gateway IP limits, real Apple/Google confirmation, secure recovery integration and complete public relay/MLS remain open. Worker fetch cannot separately impose native3s connect timeout; overall JWKS5s and operation10s limits remain. No public deployment or full parity claim."
+}

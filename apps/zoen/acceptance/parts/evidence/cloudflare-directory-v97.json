@@ -1,0 +1,51 @@
+{
+  "status": "PASS_PRIVATE_LOCAL_DIFFERENTIAL_AND_DEPLOYMENT_ONLY",
+  "sourceCommit": "46128a65",
+  "documentation": "infra/cloudflare/relay-state/DIRECTORY.md",
+  "receipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/directory-acceptance.json",
+  "receiptSha256": "1ac38254fee308706603f7cc09571c75d6bdc6f4d1cb3181539ff2a2c12a894e",
+  "frozenSources": 16,
+  "checks": {
+    "sharedRustTests": 40,
+    "directoryRustTests": 11,
+    "nativePostgresSteps": 33,
+    "workerdCases": 9,
+    "strictNativeAndOracleClippy": true,
+    "strictAdmissionAllTargetClippy": true,
+    "privateDryRun": true,
+    "ownedPgStoppedAndRemoved": true
+  },
+  "deployment": {
+    "worker": "zoen-relay-directory",
+    "version": "759ffee3-0ef9-4ff5-a53b-1c971a3e2197",
+    "sourceCommit": "46128a6506d13eaf93407630564f50ea73258711",
+    "receipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/directory-deployment-acceptance.json",
+    "receiptSha256": "ccf3f1d6b54701e69962b62e9a6b0ef14fd5709835628c3977dbe68ca554314c",
+    "publicRoutes": [],
+    "workersDev": false,
+    "previewUrls": false,
+    "wasmBytes": 1167482,
+    "wasmSha256": "6a718562c996b2fba75cf11918fa6fb0abadd00223a6f67f814401ece83233b7",
+    "remoteDirectoryJourneyRun": false
+  },
+  "scope": "Private single-cell Person/device directory only. Native PostgreSQL policy versus shared Rust/WASM and SQLite transactions; no public socket/auth provider, delivery fence, recovery, agent registration or MLS key-package claims.",
+  "remainingGates": [
+    "public sockets and final durable send fence",
+    "provider proof/JWT unique binding",
+    "backup/recovery authorization and enrollment",
+    "agent ownership/directory state",
+    "MLS key-package claims across identities and revoke cleanup",
+    "Space/directory integration and public encrypted protocol"
+  ],
+  "ci": {
+    "run": 39204333306,
+    "testedMergeCommit": "59998b677ce581bd49a045538ee62f3d17b55347",
+    "artifactId": 12164869200,
+    "passed": true,
+    "nativePostgresSteps": 33,
+    "workerdCases": 9,
+    "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-52da-evidence/acceptance.json",
+    "receiptSha256": "433598e928827681ac6d3d062d30f5dceddc3eec8a9bc51e46d4c9d551b965ed",
+    "scope": "Private Directory registration/link/revocation source46128a65 included in exactmerge. Predates subsequent key-package extension; no publicrelay acceptance."
+  }
+}

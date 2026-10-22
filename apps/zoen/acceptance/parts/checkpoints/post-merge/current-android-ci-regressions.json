@@ -1,0 +1,20 @@
+{
+  "receipt": {
+    "path": "/private/tmp/zoen-ci-pr140-1b292-android/classification.json",
+    "sha256": "3e5492c9844ebe75d511f27981a791bf85c76ac5325fd36bda1a47f3385751c6"
+  },
+  "failedSourceHead": "365dde865258853f4a04268e011189e924af5918",
+  "api35": "Both corrected original ParityJourneys pass in the current API35 suite: 106 passed, 0 failures, 0 skips. Original assertions and ten-second readiness waits remain.",
+  "api28": "Current suite: 104 passed, 0 failures, two unchanged WebView capability skips; ten mandatory rich-page repeats plus separate visual run pass. Earlier repeat 4 Compose measure/layout crash was not reproduced; its cause is still unproven, with rich-page method/script and dependency pins unchanged.",
+  "resolved": false,
+  "api35FixCommit": "475f72548827a580ef4827f976411d620b860988",
+  "api35CiRerunAccepted": true,
+  "historicalFailedReceipt": {
+    "path": "/private/tmp/zoen-ci-pr140-365-android/classification.json",
+    "sha256": "b06b838839d0a38d344798458dc13920e9cdf943851fd94d74c07b73be5eeb5d"
+  },
+  "currentPassedHead": "1b292c423336f3d9541c869808c10b95fbea641c",
+  "currentRun": 39344596621,
+  "currentGatePassed": true,
+  "historicalApi28CauseEstablished": false
+}

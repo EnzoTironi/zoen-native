@@ -1,0 +1,23 @@
+{
+  "requestedAt": "2026-10-20",
+  "primary": "Signal",
+  "scope": ["ios-client", "shared-core", "backend", "operations"],
+  "specification": "docs/dev/signal-reliability-reference.md",
+  "sourceCommits": {
+    "Signal-iOS": "d13b9da9e4622e16297b111243755c4c2972091a",
+    "Signal-Server": "48a5fa529d641827f1cca3998e2cbea1de48c953",
+    "libsignal": "1738ead8a12ffe539f6309958123dadb16dc3b95",
+    "RingRTC": "84c5b2aff246392b365d73d6628529a149d6aed2"
+  },
+  "requiredInvariants": [
+    "durable-operation-and-defined-local-relay-delivered-read-evidence",
+    "conversation-anchor-and-interaction-continuity-under-updates",
+    "media-lifecycle-independent-of-recycled-message-rows",
+    "provider-login-device-authorization-and-history-recovery-separated",
+    "content-local-disk-metadata-backup-and-agent-privacy-declared-separately",
+    "background-notification-and-call-lifecycle-integrated-with-durable-work"
+  ],
+  "reusePolicy": "Prefer maintained OSS and native platform capabilities after verifying license, supported targets, lifecycle and ownership. Preserve existing Rust storage, outbox, ordered log and authorization; no duplicate durable authority or unmeasured backend rewrite.",
+  "evidenceScope": "Pinned source study and current Zoen code comparisons. Signal runtime, comparative benchmarks, public production and complete parity remain unqualified.",
+  "accepted": false
+}

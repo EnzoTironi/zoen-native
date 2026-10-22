@@ -1,0 +1,126 @@
+{
+  "status": "BOUNDED_LOCAL_PROGRESS_NOT_COMPLETE",
+  "document": "docs/dev/zoen-product-progress-v102.md",
+  "sourceBaseCommit": "4da0d9f759ea59dce1f7c2476f7ff89b96c44d39",
+  "sourceAtVerification": "Working-tree inputs and exact frozen artifacts are identified separately in each receipt; no single final production artifact is accepted.",
+  "fullAppParityAccepted": false,
+  "productionReadinessAccepted": false,
+  "scaleReadinessAccepted": false,
+  "publicDeploymentAccepted": false,
+  "app": {
+    "typecheck": true,
+    "oxlintDenyWarnings": true,
+    "oxfmt": true,
+    "tests": 801,
+    "passed": 801,
+    "failed": 0,
+    "skipped": 0,
+    "receipt": "/private/tmp/zoen-android-auth-v102/app-check.json",
+    "receiptSha256": "c43e5bfb94421685ef879fbb144aa17f682b63d1c363600484b2437edbc8cd25"
+  },
+  "androidGoogle": {
+    "status": "PASS_SOURCE_AND_SYNTHETIC_CONTRACTS_ONLY",
+    "clientContext": "android",
+    "explicitAndroidRegistrationAndMandatoryPresenter": true,
+    "sharedEnrollmentTests": 19,
+    "originalNativeSqlScenarios": 20,
+    "androidNativeSqlScenarios": 3,
+    "frozenProviderWorkerdTests": 40,
+    "frozenProviderWorkerdPassed": 40,
+    "frozenProviderWorkerdSkipped": 0,
+    "realRsaSignaturesWithSyntheticKey": true,
+    "productionMigrationAccepted": false,
+    "realProviderConfirmationAccepted": false,
+    "signedAndroidRuntimeAccepted": false,
+    "receipt": "/private/tmp/zoen-android-auth-v102/acceptance.json",
+    "receiptSha256": "c6d6fa935c84d13e1f499e95166f553fa1214c924620d519d220c87c93c3d85e"
+  },
+  "syncPlanning": {
+    "status": "PASS_SHARED_VISIBILITY_PLANNING_ONLY",
+    "rustTests": 7,
+    "nativeProtobufVectorsPerRuntime": 8,
+    "nodeTestInvocations": 1,
+    "workerdTestInvocations": 1,
+    "publicSyncAccepted": false,
+    "receipt": "/private/tmp/zoen-sync-v102/acceptance.json",
+    "receiptSha256": "385100a3dd52bbbee41846fa86313182f4fab5dd99c37f9fa78f1b3ca8a0d09e"
+  },
+  "privateHistoryTransfer": {
+    "status": "PASS_LOCAL_NATIVE_HTTP_WASM_R2_ADAPTER",
+    "nativeHttpTests": 1,
+    "nativeHttpVectors": 31,
+    "workerdTests": 7,
+    "workerdPassed": 7,
+    "workerdSkipped": 0,
+    "publicEndpointAccepted": false,
+    "remoteR2AcceptedForThisSlice": false,
+    "fullHistoryRecoveryAccepted": false,
+    "receipt": "/private/tmp/zoen-transfer-v102/differential-03/summary.json",
+    "receiptSha256": "1f38270e8c9c12a7094745fffd8c5924cd0e4d01623fc5fd20a466d2108dd646"
+  },
+  "mediaCompatibility": {
+    "status": "PASS_LOCAL_NATIVE_HTTP_AND_SHARED_IO",
+    "nativeHttpTests": 7,
+    "nativeHttpVectors": 28,
+    "workerdTests": 16,
+    "workerdPassed": 16,
+    "workerdSkipped": 0,
+    "sharedStorageDeadlineMs": 15000,
+    "realStorageDeadlineExercised": true,
+    "boundedOwnedBuffers": true,
+    "uncancellableStorageFencesNewReadersUntilSettlement": true,
+    "receipt": "/private/tmp/zoen-transfer-v102/media-compatibility-01/summary.json",
+    "receiptSha256": "168c4548b2673238653b3e0952acf4d33d4560d21d0986cefa090fa686d57bbb"
+  },
+  "auditedCi": {
+    "status": "NOT_GREEN",
+    "head": "4da0d9f759ea59dce1f7c2476f7ff89b96c44d39",
+    "expoRun": 39253948698,
+    "androidRun": 39253948550,
+    "ciRun": 39253948641,
+    "mediaNativeHttpTests": 6,
+    "mediaNativeHttpVectors": 28,
+    "mediaWorkerdTests": 13,
+    "webCheckpointsPerLocale": 22,
+    "webLocales": ["en-US", "pt-BR"],
+    "webBrowserErrors": 0,
+    "directorySocketTests": 34,
+    "directorySocketPassed": 32,
+    "directorySocketFailed": 2,
+    "directorySocketSkipped": 0,
+    "legacyAndroidApi28": {
+      "discovered": 106,
+      "passed": 104,
+      "mcpSkipped": 2
+    },
+    "legacyAndroidApi35": {
+      "discovered": 106,
+      "passed": 104,
+      "mcpFailed": 2
+    },
+    "limits": "Audit applies to the earlier exact CI head. New local app/auth/sync/transfer/media results do not make that run green or certify final Expo Android journeys.",
+    "receipt": "/private/tmp/zoen-ci-v102/acceptance.json",
+    "receiptSha256": "dbbc80bfb83d8f419ec742b312b6ee994e116f367fbb79f39ad56c36a79c0edf"
+  },
+  "ciFixtureIsolation": {
+    "status": "PASS_LOCAL_ACTUAL_FIXTURE_COMPILATION_ONLY",
+    "fixture": "journey_m1",
+    "noRun": true,
+    "journeyRuntimeAccepted": false,
+    "newCiAccepted": false,
+    "receipt": "/private/tmp/zoen-ci-v102/fixture-compile-acceptance.json",
+    "receiptSha256": "b1e2801e364df54a893e7c5bda5f3b099c25a5095d94845a46035077f02f3204"
+  },
+  "directoryReadsV103": {
+    "status": "IN_PROGRESS_NOT_ACCEPTED",
+    "accepted": false,
+    "limits": "Root is implementing the next Directory read slice; no passed-case or runtime claim is attached at this checkpoint."
+  },
+  "limits": [
+    "Canonical scope remains 30 required journeys and six platforms; full-product readiness flags stay false and production completion gates stay pending.",
+    "No new public backend/deployment, real provider confirmation, final-device release, complete recovery, scale, operational or whole-product acceptance.",
+    "Android provider Workerd evidence uses its own frozen files; later shared I/O and Directory work retain separate artifact attribution.",
+    "Existing local socket-close failures and legacy Android MCP skips/failures remain visible; no deadlines or tests were relaxed.",
+    "Prior evidence and artifact objects are preserved without reattribution."
+  ]
+}

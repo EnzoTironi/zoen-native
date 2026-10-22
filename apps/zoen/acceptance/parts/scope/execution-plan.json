@@ -1,0 +1,56 @@
+{
+  "updatedOn": "2026-10-20",
+  "status": "ACTIVE",
+  "currentMilestone": "ios-conversation-and-media",
+  "currentManualValidationPlatforms": ["ios"],
+  "currentEnvironment": "Local production-like composition with the real Rust services; final release still requires the compatible public backend and real providers.",
+  "currentPullRequest": "https://github.com/EnzoTironi/zoen-native/pull/144",
+  "milestones": [
+    {
+      "id": "ios-conversation-and-media",
+      "status": "IN_PROGRESS",
+      "exit": "Complete chat interactions, timeline/keyboard continuity, full-aspect media, explicit review/cancel/restart/recovery/send and independent-recipient content/context."
+    },
+    {
+      "id": "identity-recovery-and-delivery",
+      "status": "PENDING",
+      "exit": "Real Apple/Google provisioning, distinct trusted devices, revoke/recovery and durable offline/retry delivery without silent loss or unauthorized history."
+    },
+    {
+      "id": "ios-background-and-calls",
+      "status": "PENDING",
+      "exit": "Physical-iPhone push, terminated/background/locked navigation and encrypted voice/video call lifecycle under interruption."
+    },
+    {
+      "id": "apps-and-durable-agents",
+      "status": "PENDING",
+      "exit": "Persistent isolated MCP Apps, Excalidraw and real external authorization; agents resume without clients and reconcile grants, approvals, effects and costs."
+    },
+    {
+      "id": "shared-creation-workspace",
+      "status": "PENDING",
+      "exit": "All declared creationWorkspace capabilities across Pages, Slides, Sites, Images and Files, with collaboration, permissions, recovery and explicit publication."
+    },
+    {
+      "id": "ios-release",
+      "status": "PENDING",
+      "exit": "Complete all applicable iOS journeys and creation capabilities on a signed physical-iPhone artifact with real providers and compatible public backend; accessibility, lifecycle, integrity and release blockers resolved, unused legacy retired. Qualify an explicitly frozen iOS/backend operating profile including security, abuse, recovery/rollback and cost."
+    },
+    {
+      "id": "mobile-web-expansion",
+      "status": "PENDING",
+      "exit": "Qualify the same product journeys on Web/Android and interoperate with iOS, including media, offline/recovery, creation, Apps and agents."
+    },
+    {
+      "id": "desktop-and-final-qualification",
+      "status": "PENDING",
+      "exit": "Complete the retained desktop/platform matrix and measured operating-envelope, security, recovery, rollback, availability and cost gates."
+    }
+  ],
+  "iosLaunchAccepted": false,
+  "iosLaunchAcceptancePolicy": "Accept only the applicable iOS journeys and declared creation capabilities on final public-backend/physical-device artifacts, plus an iOS/backend workload profile declared and frozen before measurement with security, abuse, restore/rollback and cost gates. This separate milestone does not approve the retained mixed-platform profile or six-platform global flags; monthly availability still requires 30 observed days.",
+  "validationPolicy": "Implement coherent front/core/backend batches, review then validate once together. Repeat broad checks/builds only when code changes, failures or unresolved concerns justify it; preserve integrity/auth/durability assertions and record environment failures separately.",
+  "referencePolicy": "Signal is the principal reliability and messaging-interaction reference; evaluate maintained OSS/library reuse independently. Expo remains the product interface, Rust the shared authority; no complete Signal fork or duplicate durable store is introduced.",
+  "completionScope": "Thirty requiredJourneys plus all declared creationWorkspace capabilities and the numerical operating envelope. Competitor quality is a design reference, not an unbounded all-features/global-scale acceptance target.",
+  "currentSimulatorCheckpoint": "iosContinuityCheckpoint"
+}

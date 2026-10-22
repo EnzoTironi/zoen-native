@@ -1,0 +1,48 @@
+{
+  "requestedOn": "2026-10-20",
+  "specification": "docs/dev/signal-test-contracts.json",
+  "scope": "Bounded assertion mappings across six pinned repositories:51 overlapping scenario families, not51 runnable tests or exhaustive suite/fuzz coverage.",
+  "sourceRepositories": [
+    "Signal-iOS",
+    "Signal-Android",
+    "Signal-Desktop",
+    "Signal-Server",
+    "libsignal",
+    "RingRTC"
+  ],
+  "mappingRecords": 51,
+  "upstreamSuitesExecuted": false,
+  "policy": "Extract initial state, sequence, injected fault and actual assertions; classify equivalent/partial/gap/incompatible at a pinned Zoen source. Implement original priority tests against Zoen boundaries, not copied retry counts/time windows or conflicting protocol policies.",
+  "priority": ["data-loss", "duplication", "authorization", "recovery", "media"],
+  "execution": "Core/backend batches; actual devices for input, audio/camera/calls, lifecycle and visible UI.",
+  "globalAcceptanceGranted": false,
+  "implementedOriginalRegressions": {
+    "mlsAuthenticationRejection": {
+      "sourceCommit": "80f00f89",
+      "testsAdded": 1,
+      "libraryTestsPassed": 19,
+      "strictAllTargetClippy": "PASS"
+    },
+    "backupEnvelopeBoundaries": {
+      "sourceCommit": "2e984d99",
+      "testsAdded": 3,
+      "libraryTestsPassed": 539,
+      "strictAllTargetClippy": "PASS"
+    },
+    "boundary": "Original native Rust regressions at Zoen cryptographic/envelope boundaries. No upstream test code or fixtures copied, upstream suites not executed, no whole-product or full recovery acceptance.",
+    "canonicalBackupAndIncomingPipeline": {
+      "sourceCommit": "4f175f4048119517306b2b3cdb9df641a967cf8e",
+      "testsAdded": 2,
+      "mappedFamilies": ["C07", "C12", "C13"],
+      "status": "PASS",
+      "verificationReceipt": "/private/tmp/zoen-continuity-batch-v146/client-core-library-tests-12.json",
+      "boundary": "One canonical backup corpus maps to both C12/C13; one real-WebSocket malformed/signature-rejection continuity case maps to C07. Existing historical partial classifications remain partial. No Signal source/tests copied or executed; no production cryptography/protocol policy change.",
+      "libraryTestsPassed": 543,
+      "failed": 0,
+      "ignored": 0,
+      "filtered": 0,
+      "strictAllTargetClippy": "PASS",
+      "clippyReceipt": "/private/tmp/zoen-continuity-batch-v146/client-core-clippy-13.json"
+    }
+  }
+}

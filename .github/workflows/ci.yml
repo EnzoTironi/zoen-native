@@ -45,6 +45,9 @@ jobs:
       - name: Resource ownership and backup integrity
         run: python3 -m unittest discover -s infra/local -p 'test_*.py' -v
 
+      - name: Canonical acceptance composition and source writes
+        run: python3 scripts/test-acceptance.py
+
   rust:
     runs-on: ubuntu-24.04
     timeout-minutes: 60

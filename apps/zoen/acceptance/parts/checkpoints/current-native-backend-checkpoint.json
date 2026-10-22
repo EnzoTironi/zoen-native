@@ -1,0 +1,38 @@
+{
+  "id": "native-local-production-environment-v118",
+  "guide": "infra/local/README.md",
+  "receipt": {
+    "path": "/private/tmp/zoen-native-deploy-v118/final-seal/acceptance.json",
+    "sha256": "a5fa24612efefc755dbe6ecb2a087e8469424a7c66545244ca44ae3ca660a756"
+  },
+  "nativePolicyReceipt": {
+    "path": "/private/tmp/zoen-native-policy-v119/final-receipt.json",
+    "sha256": "9b29d88f53fe04916e9b2254839606391828d0644a227c9c428bb7df83e15071"
+  },
+  "nativeRelayImage": "sha256:29225876d19e78c021c871f35503dc13548ce91c31505c8cef345165b3da6a05",
+  "nativeSharedUniqueTestsPassed": 151,
+  "ownershipIntegrityTestsPassed": 10,
+  "actualPublicClientChecksPassed": 7,
+  "actualS3ConditionalCreateRaceAndImmutableRetry": true,
+  "actualStorageRestart": true,
+  "actualColdRestoreOnNewVolumesWithExactImages": true,
+  "postgresTablesCompared": 41,
+  "observedFdbSpaceKeysCompared": 30,
+  "actualAttachmentCiphertextBytesRestored": 1049393,
+  "actualRecoveryCiphertextBytesRestored": 1465,
+  "clientReopenedAfterExternalRestore": false,
+  "osKeychainRecoveryVerified": false,
+  "twoNativeRelaysAndNatsHealthy": true,
+  "crossRelayDeliveryVerified": true,
+  "highAvailabilityVerified": false,
+  "releaseRollbackVerified": false,
+  "productionReadinessAccepted": false,
+  "scaleReadinessAccepted": false,
+  "postBuildSourceDeltas": "At the original v118 seal, three test-only deltas remained and production inputs matched the image. Subsequent Apps terminology changes alter display strings in Client/shared/Web sources; new artifacts retain their own source and build attribution. The deployed relay image and original restore evidence keep their original scope.",
+  "clientReceiptGuardTestsPassed": 13,
+  "clientReceiptGuardReceipt": {
+    "path": "/private/tmp/zoen-native-policy-v119/client-guards-xci_0lfb/receipt.json",
+    "sha256": "4c5c70847aabfe8d10d95a424e2be64e6314bfe151296899b1ab716bb3b151bf"
+  },
+  "webAccountRecoveredAfterExternalRestart": true
+}

@@ -1,0 +1,78 @@
+{
+  "scope": "Directory read/capacity integration, latest stable Expo58 patch and Android FCM source; local proofs only. No public backend, final native artifact, real provider delivery or full product acceptance.",
+  "sourceBaseHead": "4da0d9f759ea59dce1f7c2476f7ff89b96c44d39",
+  "directoryReads": {
+    "nativeOriginalScenarios": 71,
+    "nativeReadSteps": 70,
+    "finalWorkerdTestsPassed": 21,
+    "skipped": 0,
+    "aggregateFactsLimitBytes": 786432,
+    "partialSuccessForbidden": true,
+    "proof": {
+      "path": "/private/tmp/zoen-directory-read-v102/final-acceptance.json",
+      "sha256": "137d76d3b8479bfc4949a4b23875d82c44ad0d070472e7d627db412cff643535"
+    },
+    "knownSocketGate": {
+      "passed": 14,
+      "failed": 2,
+      "skipped": 0,
+      "unchangedTimeouts": true
+    },
+    "limits": [
+      "Private Person directory; revoked devices included, SQLite enrollment order preserved without invented historical timestamps.",
+      "Signed/encrypted profiles, agent enrollment, custom limits and complete public delivery remain pending.",
+      "ClaimKeyPackages native shared lookup-budget integration remains pending; existing bounded claim/state proofs retain their original scope."
+    ]
+  },
+  "combinedHostCompatibility": {
+    "proof": {
+      "path": "/private/tmp/zoen-transfer-v102/final-compatible-01/acceptance.json",
+      "sha256": "9c137c1a4f4351110595d7f6cdac9e61208cbd7dfae6ff386d46037eab3247e4"
+    },
+    "passed": 83,
+    "failed": 0,
+    "skipped": 0,
+    "boundary": "Combined83 tests preceded the final streaming Directory capacity delta; that delta has its own21-test proof. Both retain exact WASM and source hashes."
+  },
+  "androidNotifications": {
+    "proof": {
+      "path": "/private/tmp/zoen-android-notifications-v103/acceptance.json",
+      "sha256": "65f0879d5891ff95639cdd262618054a452794eee5345178b9095e3c1823be78"
+    },
+    "appTestsPassed": 813,
+    "failed": 0,
+    "skipped": 0,
+    "realExpoConfigBranches": [
+      "inert-default",
+      "explicit-synthetic-FCM-client",
+      "wrong-package-refused"
+    ],
+    "providerDeliveryAccepted": false,
+    "headlessBackgroundAccepted": false,
+    "nativeArtifactAccepted": false,
+    "constraints": "Explicit opt-in Firebase app/server configuration and later permission request; current authenticated Rust register_push operation, no Expo Push Service and no second engine."
+  },
+  "expoStablePatch": {
+    "proof": {
+      "path": "/private/tmp/zoen-transfer-v102/expo58-patch-acceptance.json",
+      "sha256": "3181627842ce6677e84356dc6447581ff0a4a0c610755452258aafb719e80f61"
+    },
+    "expo": "58.0.15",
+    "sdkCompatibility": "PASS",
+    "doctorChecksPassed": 20,
+    "newNativeBuildAccepted": false
+  },
+  "dependencyAudit": {
+    "proof": {
+      "path": "/private/tmp/zoen-transfer-v102/npm-audit-expo58-01.json",
+      "sha256": "b6cd466299e73ce98717f175997a287a6f5f404cf212e33d9eaf1f8824227971"
+    },
+    "reportedDependencyGraphNodes": 31,
+    "underlyingAdvisories": ["GHSA-vfj7-8cjw-p6xm", "GHSA-86w9-cpqp-85rv", "GHSA-w5hq-g745-h8pq"],
+    "status": "OPEN_PENDING_REACHABILITY_AND_UPSTREAM_FIX_VALIDATION",
+    "forcedDowngradesApplied": false
+  },
+  "productionReadinessAccepted": false,
+  "scaleReadinessAccepted": false,
+  "fullAppParityAccepted": false
+}

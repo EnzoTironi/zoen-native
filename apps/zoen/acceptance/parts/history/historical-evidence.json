@@ -1,0 +1,8 @@
+{
+  "commit": "e76c74be4af4bfe483f4de4b63b6f932a83f0d8b",
+  "path": "apps/zoen/acceptance.json",
+  "url": "https://github.com/EnzoTironi/zoen-native/blob/e76c74be4af4bfe483f4de4b63b6f932a83f0d8b/apps/zoen/acceptance.json",
+  "read": "git show e76c74be4af4bfe483f4de4b63b6f932a83f0d8b:apps/zoen/acceptance.json",
+  "sha256": "7560cde52823722c871a05c834f334ffdf6140de23ded7085467cb84a9661ba7",
+  "scope": "Immutable full trial history, earlier artifact objects and superseded gap statements. Older documentation evidence keys resolve in this historical manifest; external receipts and recordings retain their original attribution. Compaction changes documentation only."
+}

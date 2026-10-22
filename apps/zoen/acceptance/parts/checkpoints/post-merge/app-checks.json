@@ -1,0 +1,16 @@
+{
+  "testsPassed": 882,
+  "failed": 0,
+  "skipped": 0,
+  "receipt": {
+    "path": "/private/tmp/zoen-app-fullbleed-v129-check-final.json",
+    "sha256": "439e16f0ff5dad2061f0ba63f9c70adec0a69e5766f8a66f4da2966faa88d6ff"
+  },
+  "sourceHead": "acdedb52262e97732d2964d0b1890544ffa86f2a",
+  "sourceCutIncludesUncommittedChanges": true,
+  "integratedSourcePaths": 16,
+  "sourceBytesMatchReceipt": true,
+  "sourceCommitAfterCheck": "cd578f8c70034b454ee8cb7463b1c1178eec042f",
+  "sourceBytesMatchCommittedFollowup": true,
+  "qualification": "Final integrated source check only:14production paths plus2test sources, no new native build. Separate iOS Demo UI uses exact12production predecessor hashes on historicalv110 native body. Later generic!fill band condition and Permissions helper/route/tests have source checks, not actual device-grant acceptance."
+}

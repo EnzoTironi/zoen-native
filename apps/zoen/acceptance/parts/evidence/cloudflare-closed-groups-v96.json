@@ -1,0 +1,71 @@
+{
+  "status": "PASS_PRIVATE_CLOSED_GROUP_NATIVE_LOCAL_AND_DEPLOYED_REMOTE_ONLY",
+  "sourceCommit": "c7de156f",
+  "documentation": "infra/cloudflare/closed-groups.md",
+  "receipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/closed-acceptance.json",
+  "receiptSha256": "524a38f64b3572e51a6d94b77f022bc5f203668958a4032ce03d28a2157b3d82",
+  "frozenSourceInputs": 32,
+  "checks": {
+    "rustTests": 29,
+    "strictSharedClippy": "passed",
+    "strictNativeOracleClippy": "passed",
+    "nativeDifferentialSteps": 17,
+    "negativeNoWriteCases": 4,
+    "closedWorkerdCases": 5,
+    "sharedSqlContractCases": 4,
+    "rootConfigDryRun": "passed after cwd repair",
+    "npmWorkspaceDryRun": "passed",
+    "formatAndDiff": "passed"
+  },
+  "deployment": {
+    "worker": "zoen-relay-closed",
+    "version": "b5a34a7e-4305-46de-b595-06a909864e8a",
+    "publicRoutes": [],
+    "workersDev": false,
+    "previewUrls": false,
+    "namespace": "separate ClosedSpace; original zoen-relay-state untouched",
+    "wasmBytes": 987417,
+    "wasmSha256": "8b8c407bb0dbc27256b2acd2168654194bfe403d37adecc2925fd52c30369023"
+  },
+  "remoteProof": {
+    "summary": "/private/tmp/zoen-cloudflare-admission-v96/validation/closed-remote-run/summary.json",
+    "summarySha256": "91084d9f9429421809a8bc46ba831f9413c101bb612cffe9dab9957b7c2c849c",
+    "spaceId": "sp_01m596rwp7pd2tqr7v4xwx635e",
+    "nativePublishSteps": 11,
+    "acceptedEvents": 6,
+    "canonicalEventBytes": 4608,
+    "privateHttpPaths404": 7,
+    "invalidSignatureRejected": true,
+    "previewClientReopened": true,
+    "forcedRemoteDoRestartClaim": false,
+    "scope": "Deployed private closed Group via authenticated remote service binding; one fresh synthetic Space and a second preview client session. No public authentication/sync, invite/clock overrides, encrypted groups, or forced remote Durable Object restart acceptance."
+  },
+  "limits": "Private trusted-service closed Group only; no public protocol/auth, global invite resolver, MLS/holds/pruning or encrypted sync",
+  "ci": {
+    "run": 39204333306,
+    "testedMergeCommit": "59998b677ce581bd49a045538ee62f3d17b55347",
+    "artifactId": 12165337045,
+    "passed": true,
+    "nativeSteps": 17,
+    "negativeCases": 4,
+    "workerdCases": 5,
+    "sharedSQLCases": 4,
+    "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-52da-evidence/acceptance.json",
+    "receiptSha256": "433598e928827681ac6d3d062d30f5dceddc3eec8a9bc51e46d4c9d551b965ed"
+  },
+  "ciPriorDb60": {
+    "run": 39201639333,
+    "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39201639333",
+    "testedMergeCommit": "d126484348aded89d131b018933545dd858374c2",
+    "head": "db60c33efb998bde7f8b455ac8f9712c9747589f",
+    "artifactId": 12164510542,
+    "artifactName": "cloudflare-closed-evidence",
+    "passed": true,
+    "nativeSteps": 17,
+    "negativeCases": 4,
+    "workerdCases": 5,
+    "sharedStorageCases": 4,
+    "sourceDirty": false,
+    "index": "/private/tmp/zoen-cloudflare-web-v96/ci-db60-evidence/index.json"
+  }
+}

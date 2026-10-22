@@ -1,0 +1,51 @@
+{
+  "id": "typed-web-miniapp-activity-v118",
+  "receipt": {
+    "path": "/private/tmp/zoen-miniapp-web-v118/rust-verification-v3-1.json",
+    "sha256": "f29a98fffbc367d80cb6786b7ce3f5cd8a07ba1f0fabfde75447832e33dea61b"
+  },
+  "appTests": 828,
+  "rustTests": 72,
+  "strictAllTargetClippy": true,
+  "actualSignedDtoBoundaryCases": 2,
+  "canonicalDocumentFoldReused": true,
+  "humanThreadAndVoiceHistoryPreserved": true,
+  "ambiguousItemOwnershipWarningSurfaced": true,
+  "savedIntegrityWarningsPreserved": true,
+  "freshWasmBuilt": true,
+  "actualBrowserRuntimeVerified": true,
+  "androidRuntimeVerified": false,
+  "testFormattingFollowup": "Canonical cargo fmt through the crate module changed only whitespace in client_tests.rs after the receipt; all production source is identical.",
+  "actualBrowserRuntimeProof": {
+    "path": "/private/tmp/zoen-miniapp-web-v118/session_rw7tefs6/web-runtime-receipt.json",
+    "sha256": "8dbfc2d61997022ae7a19d9f63cac05c8f58a887cd1c924ccdafc2db800a0c19"
+  },
+  "actualRuntimeScope": {
+    "canonicalTimelineEntries": 7,
+    "typedItemEditedEntries": 4,
+    "projectedRows": 5,
+    "activityRuns": [3, 1],
+    "exactSearchResults": 4,
+    "currentDrawingVersion": 5,
+    "visibleElementsAfterBackendAndBrowserRestart": 4,
+    "nativeVerifiedSignedEvents": 18,
+    "sameAccountAndDeviceAfterRestart": true,
+    "selectedCanonicalFieldsExact": true,
+    "rawSceneByteDigestCompared": false,
+    "osKeychainRecoveryVerified": false
+  },
+  "releaseJourneyProof": {
+    "path": "/private/tmp/zoen-ci-2908-release-web/final-existing-entrypoint.json",
+    "sha256": "a288d78947174599901e1b21f609153c0e4205e0e8e5020077c7f0f259d83c66",
+    "entrypoint": "node scripts/expo-web-e2e.mjs",
+    "scriptSha256": "cac1e982aac9ee6ffeada2b5465e46b83dbb628d554b107ddfb88c83e3f2a03d",
+    "locales": ["en-US", "pt-BR"],
+    "checkpointsPerLocale": 22,
+    "actualPass": true,
+    "uncaughtBrowserErrors": 0,
+    "originalMessageIdsAuthorsAndFullBodiesRequired": true,
+    "sameRetainedExportAndCli": true,
+    "backendRestartDuringThisJourney": false,
+    "otherCiJobsQualified": false
+  }
+}

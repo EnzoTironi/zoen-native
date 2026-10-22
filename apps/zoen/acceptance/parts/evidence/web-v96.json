@@ -1,0 +1,264 @@
+{
+  "status": "PASS_LOCAL_AND_CI_EN_PT_22_CHECKPOINTS_BOUNDED_SCOPE",
+  "documentation": "docs/dev/expo-web-acceptance.md",
+  "ciBaseline": {
+    "run": 39189115561,
+    "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39189115561",
+    "testedMergeCommit": "165d67cd7c023e2e4e4e267b6f12bdc2e7582259",
+    "head": "e76c74be4af4bfe483f4de4b63b6f932a83f0d8b",
+    "artifactId": 12158963205,
+    "artifactName": "expo-release-web-evidence",
+    "locales": ["en-US", "pt-BR"],
+    "passed": true,
+    "checkpointsEach": 14,
+    "browser": "155.0.8059.39"
+  },
+  "source": {
+    "head": "e76c74be4af4bfe483f4de4b63b6f932a83f0d8b",
+    "workingTreePatchSha256": "7fe52d40a4d9e10964c5919c685465a988b6f80583caf7bda49d038c2f8dd365",
+    "sourcePaths": [
+      "apps/zoen/src",
+      "packages/zoen-ui/web",
+      "miniapps/builtins",
+      "crates/roda-apps",
+      "crates/zoen-web-core"
+    ],
+    "testScriptsSha256": {
+      "scripts/expo-web-e2e.mjs": "0e92fa8e28a8bf9a70c34d9ba81069eaf03d39e0a2d51dac4109f843d79efd0d",
+      "scripts/expo-web-miniapp-journey.mjs": "276c5a48aa80df7703c121ff086239ff487c595b86de05f7dfe4c1641ea048a4",
+      "scripts/expo-web-media-journey.mjs": "f3680e6c708908cde2bd25db9f420321f6223c5a0a0e18280a550d4794364601",
+      "scripts/expo-web-expectations.mjs": "3fb3fbeb4417891fa52d956c900524de6c1ed56effab7aac428e48a74551b338"
+    },
+    "builtWith": "rustc 1.99.1, Node v26.12.0, Expo SDK58",
+    "configuration": "synthetic loopback relay; OAuth providers disabled for QA",
+    "workerIntegrity": "sha384-5lhNMH1yUGXCJcds6hQwwqxce9rFjyYH5ABCkzRUpP70btnwC/2vOLvpz4P6rhtw",
+    "notes": "19-step EN/PT export predates decorative SkyLayer aria-hidden and accessibilityLabel correction; that two-line delta has separate release/axe evidence."
+  },
+  "evidenceRoot": "/private/tmp/zoen-web-v96",
+  "locales": {
+    "en-US": {
+      "passed": true,
+      "steps": 19,
+      "browser": "155.0.8059.85",
+      "sourceHead": "e76c74be4af4bfe483f4de4b63b6f932a83f0d8b",
+      "manifestSHA256": "18eb0166ab4c911825bf25099152480c451cd2810a797e94d022074cb1188bc5"
+    },
+    "pt-BR": {
+      "passed": true,
+      "steps": 19,
+      "browser": "155.0.8059.85",
+      "sourceHead": "e76c74be4af4bfe483f4de4b63b6f932a83f0d8b",
+      "manifestSHA256": "18eb0166ab4c911825bf25099152480c451cd2810a797e94d022074cb1188bc5"
+    }
+  },
+  "acceptanceReceipts": [
+    "/private/tmp/zoen-web-v96/final-evidence/en-US/acceptance.json",
+    "/private/tmp/zoen-web-v96/final-evidence/pt-BR/acceptance.json"
+  ],
+  "checkpointNames": [
+    "release-asset-integrity",
+    "cloudflare-auth-isolation-and-dynamic-route-policy",
+    "synthetic-encrypted-history-created",
+    "normal-device-link-and-encrypted-history-recovery",
+    "expo-to-native-core-message-roundtrip",
+    "cold-dynamic-chat-reload-retains-keys-and-history",
+    "markdown-file-chooser-imports-encrypted-page",
+    "markdown-checkbox-interaction-updates-visible-state-and-draft",
+    "markdown-block-edit-draft-survives-cold-route-reload",
+    "markdown-commit-and-browser-download-preserve-edited-content",
+    "markdown-browser-and-native-core-exports-match",
+    "sandboxed-builtin-list-toggle-button-and-keyboard-use-canonical-mcp-tools",
+    "builtin-list-cold-route-reload-retains-canonical-changes",
+    "builtin-list-browser-changes-match-canonical-native-peer",
+    "mouse-attachment-menu-and-file-chooser-publish-encrypted-file",
+    "browser-and-canonical-native-peer-download-exact-attachment-bytes",
+    "cancel-local-erasure-retains-account-and-encrypted-history",
+    "confirmed-local-erasure-cold-reload-keeps-onboarding",
+    "browser-erasure-preserves-canonical-peer-history"
+  ],
+  "artifact": {
+    "workerIntegrity": "sha384-5lhNMH1yUGXCJcds6hQwwqxce9rFjyYH5ABCkzRUpP70btnwC/2vOLvpz4P6rhtw",
+    "wasm": {
+      "path": "core/zoen_web_core_bg.wasm",
+      "bytes": 25718302,
+      "sha256": "25d558b47a6182bef979cccdc753100dc1ab508556490a112a89e8d325a6b896"
+    },
+    "journeyArtifactManifestSHA256": "18eb0166ab4c911825bf25099152480c451cd2810a797e94d022074cb1188bc5"
+  },
+  "artifactFiles": 90,
+  "manifestHashAlgorithm": "sha256 of JSON.stringify(artifact.manifest)",
+  "accessibility": {
+    "status": "SEPARATE_FINAL_ONBOARDING_EXPORT_ONLY",
+    "manifestSha256": "cc14c9d16e66e7d14025185a64299986ca7c4a71d77ac43ec62d601c11765970",
+    "sourceBoundary": "Journey artifact includes form and media Host fixes; separate a11y export adds final decorative SkyLayer aria-hidden and Image accessibilityLabel. Only common JS chunk and index.html differ; worker/WASM identical.",
+    "dom": {
+      "decorativeImages": [
+        {
+          "alt": "",
+          "ancestorAriaHidden": true
+        },
+        {
+          "alt": "",
+          "ancestorAriaHidden": true
+        }
+      ]
+    },
+    "axe": {
+      "violations": 0,
+      "tags": ["wcag2a", "wcag2aa"],
+      "manualReviewRemaining": ["color-contrast:8 nodes"],
+      "passes": 16,
+      "incompleteRules": 1
+    },
+    "receipts": ["a11y-artifact.json", "onboarding-final-wcag.json", "onboarding-final.png"],
+    "limits": "Manual contrast, screen-reader and whole-app accessibility remain pending. Separate local onboarding axe proof; the later exact-merge CI independently passed all19 checkpoints including the decorative attribute correction."
+  },
+  "manualBaseline": {
+    "source": "e76c74be4af4bfe483f4de4b63b6f932a83f0d8b",
+    "quotedReplyThreadAndScopedSearch": "Observed in actual browser and independent canonical peer, separately from the 19-checkpoint runner.",
+    "warmOffline": "After settled history: queued message absent at peer while offline, automatically delivered after reconnect. History transiently empty offline.",
+    "coldStartupOfflineGap": "Cutoff during startup produced closed-session error after reconnect; page reload did not restore history. Full browser restart recovered history and delivered preserved queue. Unresolved; PWA cold offline load not tested."
+  },
+  "limits": [
+    "This prior19 source did not support canonical Excalidraw read/save/copy. Successor webDrawingsV97 accepts those operations and actual22 canvas/reload/peer journeys locally.",
+    "Plain file upload/preview/download accepted; captions, file inline replies/threads and immutable retry metadata incomplete.",
+    "Loopback QA uses synthetic identities and unavailable external providers; never deploy this export.",
+    "No provider login, Safari/WebKit, real camera/microphone, whole-app accessibility or full-parity acceptance."
+  ],
+  "sourceChecks": {
+    "appPassed": 795,
+    "typescriptOxlintOxfmt": "PASS",
+    "sourceCommit": "762ceb51",
+    "receipt": "/private/tmp/zoen-web-v96/final-app-check.json",
+    "logSha256": "6921996d0baa20f3460063aa5a2ebffb30ffce60e18f1a2291db0c1fec901eec",
+    "scope": "Combined final source including Android status/header changes and localized sign-in connection failure. Separate from the19-checkpoint CI artifact and onboarding axe receipts."
+  },
+  "ciCurrent": {
+    "run": 39204333306,
+    "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39204333306",
+    "head": "52da9729e76e74fbfb3156c4ce39885717ccb653",
+    "testedMergeCommit": "59998b677ce581bd49a045538ee62f3d17b55347",
+    "artifactId": 12165466316,
+    "artifactName": "expo-release-web-evidence",
+    "passed": true,
+    "checkpointsEach": 22,
+    "locales": ["en-US", "pt-BR"],
+    "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-52da-evidence/acceptance.json",
+    "receiptSha256": "433598e928827681ac6d3d062d30f5dceddc3eec8a9bc51e46d4c9d551b965ed",
+    "artifact": {
+      "manifestSha256": "e8b53caaa16a41bf70180a199e23d8a4a408fbdaa55dee3d1e58c0da07135148",
+      "workerIntegrity": "sha384-G+FBawXSjU8xvICEvECAGpBEexoGFpJ5t5OgBpqDgu+EGsUuU0XGjZphgoKMMfBS",
+      "wasmBytes": 25879517
+    },
+    "client": {
+      "discovered": 795,
+      "passed": 793,
+      "skipped": 2,
+      "reason": "Linux CI skips exactly two Darwin-only Swift harnesses; both passed in separate local macOS795 check.",
+      "darwinOnly": [
+        {
+          "path": "apps/zoen/src/core/native-core-error-message.test.ts",
+          "line": 41,
+          "name": "native CoreError presentation preserves real reasons and localizes safe fallbacks without reflection"
+        },
+        {
+          "path": "apps/zoen/src/core/native-media-draft-bridge.test.ts",
+          "line": 65,
+          "name": "native voice admission accepts JSON-rounded Float32 peaks and rejects changed audio metadata"
+        }
+      ]
+    },
+    "scope": "Allsix Expo jobs passed. Actual22 browser checkpoints per locale, original Directory33/9 and Closed17+4+5+4. CI uses namedWASM and precedes release-only name stripping and key-package extension. Separate Android artifact inspection accepts the minified Release build and14 JVM tests, without full runtime parity."
+  },
+  "ciPrior19": {
+    "run": 39194529436,
+    "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39194529436",
+    "head": "e2b0ea0736a51ff23737a5de3ddc48f3c86c982c",
+    "testedMergeCommit": "10276df12927fd6c562ca9e64920089224639770",
+    "artifactId": 12161960284,
+    "artifactName": "expo-release-web-evidence",
+    "passed": true,
+    "checkpointsEach": 19,
+    "locales": ["en-US", "pt-BR"],
+    "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-e2b-receipts.json",
+    "scope": "Includes the decorative sky attribute correction. Separate from the later 762ceb51 Android layout/status and auth error copy; no claim that all jobs of this workflow passed.",
+    "artifact": {
+      "manifestSHA256": "44abaf303e2e6890431895ba275ce99e4965cbd65b5d6c03de00bf3e848270c7",
+      "workerIntegrity": "sha384-L+9+jxotxheYp9vbLHFT/KfMrU8ylmtaxzcR1mU6cbJiA47p+Ozdyg03C3VnJx2S",
+      "wasm": {
+        "path": "core/zoen_web_core_bg.wasm",
+        "bytes": 25721313,
+        "sha256": "95c666cd9451d48fcc40b2fe251dc1087973b5edb36f62536c813e8b25c44701"
+      }
+    },
+    "browser": "155.0.8059.39"
+  },
+  "retryFont": {
+    "sourceCommit": "75fffd98",
+    "typeScriptOxlintOxfmt": "PASS",
+    "renderedSystemFont": "system-ui",
+    "receipt": "/private/tmp/zoen-app-domain-v96/final-web/guest-boot.json",
+    "scope": "One font-family correction after the795-test source checkpoint; scoped compile/lint/format and actual canonical guest render."
+  },
+  "ciPrior7c71": {
+    "run": 39198364287,
+    "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39198364287",
+    "head": "7c71cecbf3e71fb502c9213b97bd909854dfa2d2",
+    "testedMergeCommit": "bfd35da7d52271a332e8b439b69d23850e87a973",
+    "artifactId": 12162482735,
+    "artifactName": "expo-release-web-evidence",
+    "passed": true,
+    "checkpointsEach": 19,
+    "locales": ["en-US", "pt-BR"],
+    "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-7c71-receipts.json",
+    "browser": "155.0.8059.39",
+    "artifact": {
+      "manifestSHA256": "184a76ed4667d5d37a4acdce7f3a90fe55fa5d75e1595972f7643cf2bee74570",
+      "workerIntegrity": "sha384-L+9+jxotxheYp9vbLHFT/KfMrU8ylmtaxzcR1mU6cbJiA47p+Ozdyg03C3VnJx2S",
+      "wasm": {
+        "path": "core/zoen_web_core_bg.wasm",
+        "bytes": 25721313,
+        "sha256": "95c666cd9451d48fcc40b2fe251dc1087973b5edb36f62536c813e8b25c44701"
+      }
+    },
+    "scope": "Includes the Android access/layout and localized auth failure source. The later no-transform header and font-only correction have separate hosting/render proof. AndroidRelease job was pending at receipt creation; no wholeworkflowpass claim."
+  },
+  "ciPriorDb60": {
+    "run": 39201639333,
+    "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39201639333",
+    "head": "db60c33efb998bde7f8b455ac8f9712c9747589f",
+    "testedMergeCommit": "d126484348aded89d131b018933545dd858374c2",
+    "artifactId": 12163494249,
+    "artifactName": "expo-release-web-evidence",
+    "passed": true,
+    "checkpointsEach": 19,
+    "locales": ["en-US", "pt-BR"],
+    "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-db60-evidence/index.json",
+    "receiptSha256": "2f4f8ac748da80c90d0eea998f78485ff9af6a56350e9dd8905e5318cbb05110",
+    "browser": "155.0.8059.39",
+    "artifact": {
+      "manifestSHA256": "884e16ad8b831309c7b085701822e665d1fd1c7c4e460afa4ba2dc4a0aecc44e",
+      "workerIntegrity": "sha384-cuuu51ynijNnOGbPsp+HZT6jZ2MKTk6eJ+qkhJN74KZ1CALnCghCv4KMk4KVTOXW",
+      "wasm": {
+        "path": "core/zoen_web_core_bg.wasm",
+        "bytes": 25775772,
+        "sha256": "2bb7d8e1185f117834bfd4f5b646cd8f8785aedb15e366381e1ded5575376f29"
+      }
+    },
+    "scope": "19-checkpoint browser and closed-group CI passed; predates local22 drawing/Directory changes. Android Release failed on R8 heap exhaustion; no whole-workflow pass."
+  },
+  "latestCi": {
+    "run": 39207994304,
+    "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39207994304",
+    "head": "c727b1f94ccfbf31f7cd42d748fc8370024bfd00",
+    "merge": "85c7f2d58aef38fc5853fb7b8efab3641aee0d91",
+    "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-c727-evidence/acceptance.json",
+    "receiptSha256": "47ba634a497895c0479035eb9b3241b18cc7ca11edb722a479eba66570c8b1d0",
+    "limits": "Five Expo jobs pass; admission stops at formatting before its tests. Formatting corrected in8d64d762; no full-green inference. Linux artifacts are separate from deployed Mac release09 bytes.",
+    "checkpointsPerLocale": 22,
+    "locales": ["en-US", "pt-BR"],
+    "browserErrors": 0,
+    "artifact": 12167030781,
+    "wasmBytes": 23250613
+  }
+}

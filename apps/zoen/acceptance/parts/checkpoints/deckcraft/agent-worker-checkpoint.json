@@ -1,0 +1,26 @@
+{
+  "status": "PRIVATE_UNQUALIFIED",
+  "manifestSha256": "65b90e6fde908f3bb3b7d3bc58b7db0b053fd8138ca8de7c3991029bf880d911",
+  "actualWasiBuild": "PASS",
+  "coreAuthorityCasesPassed": 3,
+  "actualProductionDispatch": "TIMEOUT during cold component translation before Session execution",
+  "modelCalls": "NONE",
+  "notIntegrated": true,
+  "subsequentActualRuntimeBatch": {
+    "status": "PRIVATE_PARTIAL; actual production runtime journey PASS, not integrated",
+    "componentSha256": "facb0ce69b11974cfee090f0ff1114a8058015e6d53b2b57c5b23b803d805f68",
+    "componentBytes": 31107894,
+    "actualJourney": "PASS actual Runtime/Gate/SpaceTools/WASI Session with four reversible commands, canonical versions2-8, second-artifact isolation, A-to-B-to-A and lost-reply replay assertions",
+    "receipt": "/private/tmp/zoen-deckcraft-agent-worker-v160/worker-release-journey-02.json",
+    "coldComponentLoadSeconds": 444.553,
+    "totalTestElapsedSeconds": 447.329,
+    "performanceBoundary": "Cold synchronous translation under concurrent Xcode work; not an isolated benchmark. The guest execution budget does not bound this compile/load.",
+    "recoveryBoundary": "SQLite client reopen in the same test process retains the compiled Worker Arc; whole agent-host process restart NOT_RUN",
+    "gateBoundary": "Typed authenticated public artifact references are projected before the unchanged Gate; all original descriptions, intent and remaining values remain inspected. Fresh write authorization and CAS precede compute.",
+    "negativeControls": "Removing the unoffered-binding fence and removing typed projection each failed their intended assertions; source restored",
+    "brain": "ScriptedBrain test-only tool calls",
+    "modelCalls": "NONE",
+    "nativeInteroperability": "NOT_RUN",
+    "notIntegrated": true
+  }
+}

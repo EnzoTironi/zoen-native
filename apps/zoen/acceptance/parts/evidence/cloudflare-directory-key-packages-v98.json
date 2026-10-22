@@ -1,0 +1,55 @@
+{
+  "status": "PASS_PRIVATE_NATIVE_WORKERD_AND_DEPLOYMENT_ONLY",
+  "sourceCommit": "8bb0ae1e643e09ade5489b39da60087d3ef5f0a6",
+  "documentation": "infra/cloudflare/relay-state/DIRECTORY.md",
+  "sharedRustTests": 47,
+  "nativeReceiptRegressions": 3,
+  "nativePostgresScenarios": 71,
+  "workerdCases": 18,
+  "workerdSkipped": 0,
+  "strictClippyAndFormatting": "PASS",
+  "receipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/key-packages-acceptance.json",
+  "receiptSha256": "e6c40ce4be1f6bb11bf24e5c8dfc36ef404a821d77a2aece902f92ca48cd2b8e",
+  "independentReviewReceipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/key-packages-reviewed-acceptance.json",
+  "independentReviewReceiptSha256": "32e8eea170a81448bad56f2dc663a305e93cd276f4bcfe9fbc24e956237f250b",
+  "deployment": {
+    "worker": "zoen-relay-directory",
+    "version": "1fd4bab4-7013-4749-bb1e-3c59efa146c3",
+    "previousVersion": "759ffee3-0ef9-4ff5-a53b-1c971a3e2197",
+    "namespaceUnchanged": true,
+    "receipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/directory-keypackages-deployment-acceptance.json",
+    "receiptSha256": "4b3cb67beee155ae69e724520805f04f170849aae83f2b2bc312c8633f92067a",
+    "publicRoutes": [],
+    "workersDev": false,
+    "previewUrls": false,
+    "remoteDirectoryJourneyRun": false
+  },
+  "privateCapacity": {
+    "recordsPerReply": 128,
+    "responseBytes": 786432,
+    "contextBytes": 1048576,
+    "overflow": "Explicit refusal before key consumption; no truncation"
+  },
+  "covers": [
+    "Native-valid MLS package publication and identity/device binding",
+    "Single-use inventory and replaceable last-resort package",
+    "Original24h receipt replay with fresh source authorization",
+    "Revocation, claim/publication races and late SQL rollback",
+    "4096 receipt capacity and8MiB aggregate quota"
+  ],
+  "ci": {
+    "run": 39207994304,
+    "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39207994304",
+    "head": "c727b1f94ccfbf31f7cd42d748fc8370024bfd00",
+    "merge": "85c7f2d58aef38fc5853fb7b8efab3641aee0d91",
+    "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-c727-evidence/acceptance.json",
+    "receiptSha256": "47ba634a497895c0479035eb9b3241b18cc7ca11edb722a479eba66570c8b1d0",
+    "limits": "Five Expo jobs pass; admission stops at formatting before its tests. Formatting corrected in8d64d762; no full-green inference.",
+    "nativePostgresScenarios": 71,
+    "workerdCases": 18,
+    "skipped": 0,
+    "artifact": 12166444089,
+    "sourceFilesVerified": 19
+  },
+  "limits": "Private bounded Directory extension only. No stock-low/refill notification, final outbound fence, complete Space MLS/public WebSockets, provider recovery or remote Directory journey."
+}

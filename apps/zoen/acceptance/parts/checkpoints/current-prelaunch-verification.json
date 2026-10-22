@@ -1,0 +1,21 @@
+{
+  "id": "prelaunch-contract-checks-v114",
+  "historicalApiChanges": "report-only; update current callers directly without aliases or compatibility registry",
+  "currentGeneratedAbiChecks": "blocking; stale source/generated metadata/checksum mismatches still fail",
+  "sourceVerifierTests": 15,
+  "actualArtAndRuntimePayloadsUnchanged": true,
+  "receipt": {
+    "path": "/private/tmp/zoen-ci-cbb-v111/acceptance.json",
+    "sha256": "76cb338d98f89bf8720ded7f666ccb5e21d829152fec33052b1b00b8ae45c721"
+  },
+  "browserLaunchDiagnostics": {
+    "receipt": {
+      "path": "/private/tmp/zoen-chrome-startup-v114/acceptance.json",
+      "sha256": "c960ebdd177246501f86c5ddcca8459d4fe1453f80e93ede282adf819ae9c615"
+    },
+    "appChecksPassed": true,
+    "tests": 816,
+    "skipped": 0,
+    "scope": "Bounded stderr/exit/spawn diagnostics, original real-browser flow and deadlines unchanged. Linux CI startup cause is still unknown; no causal browser fix is claimed."
+  }
+}

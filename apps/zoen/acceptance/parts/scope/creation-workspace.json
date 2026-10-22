@@ -1,0 +1,28 @@
+{
+  "requestedAt": "2026-10-20",
+  "references": [
+    {
+      "product": "Notion",
+      "url": "https://www.notion.com/help/collaborate-with-people"
+    },
+    {
+      "product": "ChatGPT Space",
+      "url": "https://learn.chatgpt.com/docs/space/pages"
+    }
+  ],
+  "direction": "A shared creation workspace inside Zoen, using Zoen's native components and sky design. People and authorized agents work on the same persistent artifacts. The original thirty journeys and six-platform completion scope remain required.",
+  "requiredCapabilities": [
+    "spaces-and-parent-child-organization-with-all-items-and-recent-items",
+    "live-block-pages-direct-editing-agent-edits-comments-presence-and-history",
+    "slides-create-edit-reorder-present-export-and-recover",
+    "sites-create-preview-explicit-publish-version-and-rollback",
+    "images-generate-upload-edit-reference-variants-and-save-to-library",
+    "files-upload-preview-download-share-and-encrypted-private-storage",
+    "scoped-cross-artifact-search-sharing-roles-and-revocation",
+    "trash-restore-and-explicit-permanent-deletion",
+    "artifact-scoped-agent-context-reviewable-changes-and-attributed-results",
+    "offline-reopen-conflict-recovery-and-idempotent-operations"
+  ],
+  "currentImplementationScope": "iOS first, with the real shared Rust core and backend. Current Page input and attachment review work is a foundation; it does not establish the complete creation workspace.",
+  "accepted": false
+}

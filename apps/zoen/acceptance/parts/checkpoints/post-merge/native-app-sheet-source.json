@@ -1,0 +1,75 @@
+{
+  "sourceCheckReceipt": {
+    "path": "/private/tmp/zoen-fullscreen-sheet-check-v128.json",
+    "sha256": "65252260772df7e7bc7871d69de3a5290371f714eba23cfe7f36f08411a801dc"
+  },
+  "currentRuntimeAccepted": false,
+  "platformPresentation": {
+    "ios": "Native formSheet with single maximum detent [1]",
+    "android": "Native fullScreenModal with slide_from_bottom; installed SDK Material formSheet does not support nested native stack",
+    "web": "Full-height route"
+  },
+  "intent": "Historical v128: nested native App stack and local sky with Close/Details/header/status. Bounded Android first visual and Demo-only historical-native iOS checks below do not qualify later titleless/fullbleed changes.",
+  "priorActualNegative": {
+    "receipt": {
+      "path": "/private/tmp/zoen-expo-android-sheet-v127/acceptance.json",
+      "sha256": "c1e7d8d3ef01a27addcc8eb4eeefeaeb31dcf7b287314c0c9298d0633425996a"
+    },
+    "apkSha256": "7393adb463d42e6b9a98a329455ec5751521bdd19799d996ed79a31a82959744",
+    "nativeCloseAndDetailsHeaderAbsent": true,
+    "underlyingHomeVisibleThroughAppSurface": true,
+    "noEditAttempted": true,
+    "currentCorrectionAcceptedByThisReceipt": false
+  },
+  "qualificationBoundary": "This sourceCheckReceipt and prior intent describe v128 with Close/Details/status band. Latest v129 removes the App main HUD; its current source/runtime qualification is recorded separately and remains pending.",
+  "v128AndroidPartial": {
+    "receipt": {
+      "path": "/private/tmp/zoen-expo-android-sheet-v128/acceptance.json",
+      "sha256": "cdac63745c0bdd14f604c042fa45da787a23f30973f1433b4ecacb1bda247a25"
+    },
+    "manifest": {
+      "path": "/private/tmp/zoen-expo-android-sheet-v128/evidence-manifest.json",
+      "sha256": "641d27507c182bd544e32f1a053f7e1fb03a4f28af959ce9feead71a93defd28"
+    },
+    "apkSha256": "59839a9243fd1b268299f498cad0185e323eb81ef42ca37efafb661772e1bcff",
+    "buildSeconds": 35.2,
+    "effectiveInputsExactBeforeAfter": 501,
+    "firstActualMaximumEditorWithNativeCloseDetailsAccepted": true,
+    "underlyingHomeGhostingAbsent": true,
+    "savedBandStillPresent": true,
+    "fullRuntimeAccepted": false,
+    "limits": "Genuine Homecard tap, retained rectangle and first actual editor PNG only. AX canvas wait was unmet at30seconds despite rendered screenshot; no exact latency. Native Details action remained unqualified amid guest/control stalls; close/save/reopen/List/day-photo/tab/pin tours were not completed.",
+    "guestAndToolFailures": "Observed ANR title is Digital Wellbeing, not Zoen. Historical Argent disconnect and later UiAutomation already-registered errors, transient absent input service and bounded capture timeouts remain preserved; no App-source root cause established. One own reboot retained Home2Apps/account; no reset/wipe.",
+    "cleanup": {
+      "path": "/private/tmp/zoen-android-app-sheet-v128-root-cleanup.json",
+      "sha256": "24a66717f348a8047fae585bcaf16c7896e4ad9f3910773fec37c306defe43a7"
+    },
+    "owned5556ShutDownWithDataRetained": true,
+    "protected5554Touched": false
+  },
+  "historicalNativeIos": {
+    "uiReceipt": {
+      "path": "/private/tmp/zoen-ios-app-sheet-v127/ui-acceptance.json",
+      "sha256": "94b142ad05b4d30262c6d6f145c4fcbce62b10653f9688a9405608c112d65bd8"
+    },
+    "finalReceipt": {
+      "path": "/private/tmp/zoen-ios-app-sheet-v127/final.json",
+      "sha256": "d09ba91fc6385bb97cc91176a1128e9ecd69c844e7b43c07ae23f23ab8faa36b"
+    },
+    "nativeArtifact": "historical signed Debugv110 arm64sim, currentv128 tenJS inputs; not freshly built current native bodies",
+    "demoOnlyHikeSheetDetailsBackCloseAccepted": true,
+    "demoOnlyExcalidrawEditSaveCloseReopenAccepted": true,
+    "publicLinkAccepted": false,
+    "publicLinkNegative": {
+      "path": "/private/tmp/zoen-ios-app-sheet-v127/public-link-negative.json",
+      "sha256": "5abe83f121e015ebcf9a63d04113d6ea8eb618744b22daee70cbdfa731037a0f"
+    },
+    "stackAudit": {
+      "path": "/private/tmp/zoen-ios-link-stack-v128/evidence.json",
+      "sha256": "caa961e929e017de385422119b8203a7d7fa0b2e8c3c602eb63cf0aea29140a6"
+    },
+    "publicLinkFailure": "Actual SIGBUS/KERN_PROTECTION_FAILURE at compiler stack probe in exactv110 TLS future poll; Mach-O UUID matches IPS. Relevant pickup bodies/link_api/client_api and locked dependencies remain unchanged; current native binary reproduction has not been performed.",
+    "currentNativeOrProvidersAccepted": false,
+    "demoUiDoesNotWaivePublicLinkFailure": true
+  }
+}

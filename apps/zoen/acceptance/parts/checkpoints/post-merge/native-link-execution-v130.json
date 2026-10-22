@@ -1,0 +1,145 @@
+{
+  "status": "BOUNDED_FIXED_NATIVE_FLOW_PASSED_NO_READINESS_PROMOTION",
+  "sourceBaseHead": "783edae15d8ed89849d189dc70ba699bfd2b672b",
+  "currentNativeBaseline": {
+    "build": {
+      "path": "/private/tmp/zoen-ios-public-link-v130/baseline-01/build-acceptance.json",
+      "sha256": "84f40b987cdeab27f1a3edb58142c1431ae9c63e2b2d9a8a9b523a52b7791128"
+    },
+    "runtime": {
+      "path": "/private/tmp/zoen-ios-public-link-v130/baseline-01/runtime/final.json",
+      "sha256": "9b14b83f82c0eea3467e2c0e12226831e76e8b4928e0f702e6caedec5f21b42f"
+    },
+    "ips": {
+      "path": "/private/tmp/zoen-ios-public-link-v130/baseline-01/runtime/Zoen-2026-10-19-223858.ips",
+      "sha256": "14e93d398971f30619490008840c172830388cbd72f2c736413a9bb80f11cff0"
+    },
+    "debugDylibUuid": "E272D661-8983-328F-ADA1-596799E50E81",
+    "result": "One genuine public-link attempt reproduced current-native SIGBUS/StackGuard on the reported Swift cooperative executor. Not a historical artifact relabel; no Demo fallback, history or cold-reopen acceptance."
+  },
+  "integratedLifecycleSource": {
+    "rustAcceptance": {
+      "path": "/private/tmp/zoen-ios-link-worker-v130/final-seal/acceptance.json",
+      "sha256": "6157964327650677747a1808fecbe71f2bb134601fb971079e890e26eda75552"
+    },
+    "rustFocusedTests": 24,
+    "rustTestScope": "14lifecycle+3original transport+7existing link identity/history/refusal; not the full client-core suite",
+    "strictClippyAndFormatPassed": true,
+    "swiftHelperAcceptance": {
+      "path": "/private/tmp/zoen-native-link-execution-v130/swift/helper-acceptance.json",
+      "sha256": "3d492fa7a2cc60dac08c180195c7af5a5998f198727cf27173d9fcaec6e9ec68"
+    },
+    "integration": {
+      "path": "/private/tmp/zoen-native-link-execution-v130/live-integration.json",
+      "sha256": "eb6190336617418d88d6e4924fea2da962f2dd6d1d5f49f05e50af3c58f33311"
+    },
+    "boundary": "Ten exact live paths; two new prelaunch UniFFI methods require fresh native generation. Foundation helper proof is not full Expo close/erase or native link acceptance."
+  },
+  "fixedNativeArtifact": {
+    "build": {
+      "path": "/private/tmp/zoen-ios-public-link-v130/fixed-01/build-acceptance.json",
+      "sha256": "cff1769783fa51d67671ea8160890375a7f8653e4ffde824fd30fdcf1a0d00c5"
+    },
+    "debugDylibUuid": "19821CD3-3A87-30E9-BF7D-1811DE6FBCB8",
+    "nativeInputsExact": 176,
+    "broadInputBoundary": "909stable of910; sole exact SDKProvider regeneration transition independently reproduced",
+    "qualification": "Signed Debug build/seal; distinct current baseline and fixed UUIDs; sealer assumption failures retained. Later actual runtime is separately attributed below."
+  },
+  "fixedNativeLinkHistoryColdReopen": {
+    "status": "ACTUAL_BOUNDED_SIGNED_DEBUG_FLOW_PASSED",
+    "final": {
+      "path": "/private/tmp/zoen-ios-public-link-v130/fixed-01/runtime/final.json",
+      "sha256": "870a979ee7badc21c3a933d33d48bcf8234802cb680881a57a9966dab2716674"
+    },
+    "acceptance": {
+      "path": "/private/tmp/zoen-ios-public-link-v130/fixed-01/runtime/acceptance.json",
+      "sha256": "057876a484126d59ebd5a44e2475bb5d33b57b64ec2a31707ac61fc1745b9fd9"
+    },
+    "primaryApproval": {
+      "path": "/private/tmp/zoen-ios-public-link-v130/fixed-01/runtime/primary-link-terminal.json",
+      "sha256": "bdd46010d739145765786d0ea4e91044bab14e08cf2da65475d777ec1593c8a5"
+    },
+    "primaryExitCode": 0,
+    "primaryElapsedSeconds": 16.236,
+    "historyEventsSent": 9,
+    "coldReopen": {
+      "path": "/private/tmp/zoen-ios-public-link-v130/fixed-01/runtime/cold-reopen-proof.json",
+      "sha256": "21e7c9a7e7aa17b961faa5549ae189d6ec987b176b1cb5f3b5e5935838ef2fcb"
+    },
+    "differentNativeProcess": true,
+    "sameAccountAndDevice": true,
+    "semanticTimelineEntriesExact": 5,
+    "sceneVersion": 3,
+    "sceneBytes": 680,
+    "sceneSha256": "be5ce5ec25b32fe0098768d27b8226995a475eea7bcefab99edc35c41afcbb98",
+    "sceneExactBeforeAfterAndPublicPrimary": true,
+    "cleanup": {
+      "path": "/private/tmp/zoen-ios-public-link-v130/fixed-01/runtime/cleanup.json",
+      "sha256": "3ca1b940312929af0c46e6b615b93b9132a2546c55bfd21d2aab4e77aa7868cf"
+    },
+    "ownedSimulatorShutdownDataRetained": true,
+    "ownedMetroTerminated": true,
+    "sheet": {
+      "path": "/private/tmp/zoen-ios-public-link-v130/fixed-01/runtime/sheet-proof.json",
+      "sha256": "c2933f994f771fa03fcfbcea766214360598de572f54662c96d2b880176418b2"
+    },
+    "boundary": "Current native public account, never Demo. Fullbleed visual and native grabber dismiss return the same two Home items and unmodified scene. No new editor mutation, latency, pending-network save, whole lifecycle or journey acceptance.",
+    "qaOrderingDefect": "An early empty primary-log assertion failed but the UI confirmation tap still ran; matching check 775952 was verified afterward. No claim that visual verification preceded the tap."
+  },
+  "freshApplicationCheck": {
+    "receipt": {
+      "path": "/private/tmp/zoen-ios-public-link-v130/fixed-01/app-check-01.json",
+      "sha256": "a2fdbdcabf2eeee917ed47a273cee74d5a278b0839c6290a62433c22cb9aae9c"
+    },
+    "passed": 883,
+    "failed": 0,
+    "skipped": 0,
+    "elapsedSeconds": 18.45,
+    "typescriptOxlintOxfmtPassed": true,
+    "runtimeAcceptance": false
+  },
+  "freshNativeGeneration": {
+    "receipt": {
+      "path": "/private/tmp/zoen-ios-public-link-v130/fixed-01/core-generation-01.json",
+      "sha256": "1870acf36d8e39469c84718590530abd1806d1599ff61e07dc4526b619d4d92e"
+    },
+    "elapsedSeconds": 27.99,
+    "abiReceipt": {
+      "path": "/private/tmp/zoen-ios-public-link-v130/fixed-01/generated-abi-current.json",
+      "sha256": "f410cd40c03c2affa68917183dba05ddd27a0ab71c7df2cf73ae06aa81945512"
+    },
+    "sourceContractSha256": "6e5332fcb1d04e71336a8f28807f4360fae62d2d7cebcfc763dd7ea92518388a",
+    "swiftChecksumCalls": 218,
+    "old216ChecksumValuesRetained": true,
+    "runtimeAcceptance": false
+  },
+  "experimentalHostDispatcher": {
+    "status": "BOUNDED_HOST_PAIR_PASSED_OUTSIDE_PRODUCTION",
+    "plan": {
+      "path": "/private/tmp/zoen-native-link-regression-v130/v3/source-plan.json",
+      "sha256": "685f08f33de8d51bc1dbe2dd387d6ac54170ba1993beba58f46455119945a942"
+    },
+    "baselineLowStackOverflows": 4,
+    "baseline2MiBControlPasses": 2,
+    "candidatePasses": 6,
+    "actualMeasuredStacksKiB": [508, 540, 2044],
+    "pairedReceipt": {
+      "path": "/private/tmp/zoen-native-link-cabi-v130-v3/paired-final-seal/acceptance.json",
+      "sha256": "86b6e3855953a6bae93670a3227fefd62e0057dbf1a57c62b63adff051969dc2"
+    },
+    "notAUserDeliveryBlocker": true,
+    "boundary": "Same pinned-host harness; actual caps512/544/2048KiB unchanged. Actual generated ABI and real signed WebSocket/HPKE installation paths are exercised. Explicit worker/drain lease destruction is covered separately by lifecycle tests. Prior pre-ABI failures and invalid stale-cache candidate01 are retained. No production-patch, Windows, general-runtime or iOS acceptance claim."
+  },
+  "ciSnapshot": {
+    "head": "783edae15d8ed89849d189dc70ba699bfd2b672b",
+    "success": 10,
+    "inProgress": ["rust"],
+    "receipt": {
+      "path": "/private/tmp/zoen-native-link-execution-v130/pr140-ci-head783-final.json",
+      "sha256": "0e9cce7c465143c805bc05e7fc932eab5cfb78970be6bbb4f864a4115f1189d3"
+    },
+    "terminalFailureWaived": false
+  },
+  "postProofMetadataBoundary": "This checkpoint changes acceptance metadata after the immutable runtime proof. Its recorded 910 broad inputs remain the historical proof point; the metadata-only acceptance JSON delta does not change runtime code or any of the 176 native inputs.",
+  "readinessPromoted": false
+}

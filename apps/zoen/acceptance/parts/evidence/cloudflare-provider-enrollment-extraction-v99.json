@@ -1,0 +1,16 @@
+{
+  "status": "PASS_SHARED_POLICY_EXTRACTION_AND_NATIVE_SQL_ONLY",
+  "sourceCommit": "d54b0829cc1343d1ba5fc76fb747179dc19f6fa5",
+  "sharedRustTests": 18,
+  "nativeAuthTests": 4,
+  "nativePostgresScenarios": 20,
+  "strictClippy": "PASS both packages lib+tests -D warnings",
+  "receipt": "/private/tmp/zoen-provider-enrollment-v96/enrollment-extraction-acceptance.json",
+  "receiptSha256": "c34792223683369c17fd61afd28cea208b3a075eba0d330da120827a3f6fc15a",
+  "receiptCheckoutBase": "839b0e26303706f14d25b70439b7db83cd9359e1",
+  "receiptCapturedUncommittedSources": true,
+  "committedSourceHashesVerified": 6,
+  "sourceHashDrift": [],
+  "scope": "Shared challenge/bind policy and native transaction delegation: canonical signed profile, active exact-certificate retry, existing-account immutability, expiry/races and SQL atomicity.",
+  "limits": "Extraction/native SQL scope only. Private Directory host has separate evidence; no real external credentials or public deployment acceptance. Whole-app parity remains false."
+}

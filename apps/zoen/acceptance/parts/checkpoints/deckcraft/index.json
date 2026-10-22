@@ -1,0 +1,151 @@
+{
+  "date": "2026-10-20",
+  "branch": "codex/deckcraft-canonical-editor",
+  "source": "0f30f53003ec1aee1eb390200c7cede0ffcf9e4b",
+  "parentPullRequest": "https://github.com/EnzoTironi/zoen-native/pull/144",
+  "status": "IN_PROGRESS; native creation and restart passed, editor opening failed",
+  "canonicalAuthority": "Existing encrypted AppDoc/FileDoc, signed Item/outbox and atomic mutation receipts; no parallel durable WebView store.",
+  "upstreamRevision": "a31b990d32f2c8562f1588562f922960c3fde48b",
+  "integratedPackets": {
+    "verifiedRuntimeLoaderFiles": 50,
+    "canonicalBinaryFiles": 20,
+    "registrationFiles": 12,
+    "nativeUiBootstrapFiles": 23,
+    "guestLifecycleFiles": 2
+  },
+  "sourceEvidence": {
+    "canonicalCoreCasesPassed": 10,
+    "canonicalInstalledSdkCasesPassed": 36,
+    "guestLifecycleSdkCasesPassed": 37,
+    "engineBridgeCasesPassed": 11,
+    "scope": "Packet-specific original tests; counts overlap and are not a current whole-core suite total."
+  },
+  "appCheck": {
+    "status": "PASS",
+    "passed": 1073,
+    "failed": 0,
+    "skipped": 0,
+    "typescript": true,
+    "oxlint": true,
+    "oxfmt": true,
+    "receipt": "/private/tmp/zoen-deckcraft-live-v160/app-check-02.json"
+  },
+  "controlledArtifact": {
+    "sourceHead": "0f30f53003ec1aee1eb390200c7cede0ffcf9e4b",
+    "createdAt": "2026-10-20T19:11:10.941301+00:00",
+    "artifact": "/private/tmp/zoen-deckcraft-live-v160/release-01/Zoen.app",
+    "configuration": "Release",
+    "codesignVerify": "PASS",
+    "executableSha256": "858627d30c82340debb210cc1202da69c647a7566cef97de9afa496118be5502",
+    "bundleManifestSha256": "8775287478fc78a5248d7258572b2ec04cf9c50fc383eb2fd382839f913b1076",
+    "bundleDigestAlgorithm": "SHA256 of sorted compact JSON file entries path/sha256/bytes and symlink targets; UTF-8",
+    "bundleFiles": 431,
+    "phoneOrientations": [
+      "UIInterfaceOrientationPortrait",
+      "UIInterfaceOrientationPortraitUpsideDown",
+      "UIInterfaceOrientationLandscapeLeft",
+      "UIInterfaceOrientationLandscapeRight"
+    ],
+    "buildReceipt": "../ios-release-build-03.json",
+    "appCheckReceipt": "../app-check-02.json",
+    "nativeUiQualification": "PENDING",
+    "device": "591F1216-9B73-4BE1-807A-309DB937D6FA",
+    "wholeProductAcceptance": false,
+    "appCheckStatusAtSeal": "PASS",
+    "checkedSourceHead": "0f30f53003ec1aee1eb390200c7cede0ffcf9e4b",
+    "sourceDelta": "Build and checked production sources are identical"
+  },
+  "installedVerification": {
+    "status": "PASS",
+    "exactEntries": 431,
+    "sourceHead": "0f30f53003ec1aee1eb390200c7cede0ffcf9e4b",
+    "preservingInstall": true,
+    "device": "591F1216-9B73-4BE1-807A-309DB937D6FA"
+  },
+  "nativeObserved": {
+    "account": "qa_media143_1020",
+    "conversation": "Media review143",
+    "item": "it_deck_ba058d336d3c49685405a2b31ee1228f43220e14e5ee7baca12de0db94adf304",
+    "title": "QA160 Shared deck",
+    "slides": 1,
+    "createdFromNativeCatalog": true,
+    "catalogInstallAutoOpenedApp": true,
+    "fullScreenFloatingClose": true,
+    "unopenedCloseReturnedHome": true,
+    "sameCardAfterProcessRestart": true,
+    "editorOpen": "FAILED: opening cover persisted more than five minutes after exact JS/WASM resource GETs; root cause not established.",
+    "manualEdit": "NOT_RUN",
+    "certifiedAgentEdit": "NOT_RUN",
+    "nativeExports": "NOT_RUN",
+    "diagnosticFlowReplayQualified": false,
+    "receipt": "/private/tmp/zoen-deckcraft-live-v160/native-qa-01/outcome.json"
+  },
+  "runtimeHosting": "Exact hash-pinned JS/WASM served by root-owned read-only HTTPS on127.0.0.1:9443. Short-lived QA CA trusted only on owned simulator; no public deployment or system trust change.",
+  "signalOriginalRegression": {
+    "commit": "07f0ea68e134f80dcd54ca494cb5e2ad20f35040",
+    "scenario": "C17 mixed historical downloads with corrupt transport and replacement-worker retry",
+    "focusedPassed": 1,
+    "strictClientCoreClippy": "PASS",
+    "scope": "Actual media_worker, signed historical ciphertext/hash and item routing; signed-hash rejection before AEAD. No upstream suite execution or complete Signal policy parity.",
+    "receipt": "/private/tmp/zoen-signal-c17-v161/manifest.json"
+  },
+  "postArtifactRecoveryFix": {
+    "commit": "c5ac7652",
+    "packetManifestSha256": "4f0d6ec302b151c4905ea06aefb8263726e81b4632f585bfa63c77acb92d390b",
+    "realSdkFocusedPassed": 12,
+    "scope": "Latch timeout recovery across late save notifications/resume ACK; current installed artifact predates this change. Full batch/native rebuild pending."
+  },
+  "agentWorkerCheckpoint": {
+    "$part": "checkpoints/deckcraft/agent-worker-checkpoint.json"
+  },
+  "remaining": [
+    "Surface startup failures and qualify a real WK Session open",
+    "Safe-area/close exclusion and export-menu integration",
+    "Manual edit, keyboard, portrait/landscape and recovery on iPhone",
+    "Actual isolated certified-agent edit through production runtime, then native interoperability",
+    "PPTX/PDF exact-version native Share and independent artifact inspection",
+    "Other selected ArtCraft editors after the first complete DeckCraft journey"
+  ],
+  "wholeProductAcceptance": false,
+  "historicalArtifactPolicy": "Existing prior artifact/checkpoint objects keep their original historical evidence. This controlledArtifact records the newer installed QA simulator artifact; it does not replace or qualify the human device.",
+  "subsequentNativeOpenBatch": {
+    "$part": "checkpoints/deckcraft/subsequent-native-open-batch.json"
+  },
+  "subsequentNativeCompactBatch": {
+    "$part": "checkpoints/deckcraft/subsequent-native-compact-batch.json"
+  },
+  "subsequentNativeInputBatch": {
+    "$part": "checkpoints/deckcraft/subsequent-native-input-batch.json"
+  },
+  "subsequentInputSourceBatch": {
+    "$part": "checkpoints/deckcraft/subsequent-input-source-batch.json"
+  },
+  "subsequentNativeInputCorrectionBatch": {
+    "$part": "checkpoints/deckcraft/subsequent-native-input-correction-batch.json"
+  },
+  "subsequentNativeContactObservationBatch": {
+    "$part": "checkpoints/deckcraft/subsequent-native-contact-observation-batch.json"
+  },
+  "subsequentContactReleaseSourceBatch": {
+    "$part": "checkpoints/deckcraft/subsequent-contact-release-source-batch.json"
+  },
+  "agentGateTransportMerge": {
+    "pullRequest": "https://github.com/EnzoTironi/zoen-native/pull/151",
+    "head": "d895215c5346a2abbd4eb3103f8555ad7af0b069",
+    "mergeCommit": "773a4e6ffe718661dad51520c3e898cc975c4dab",
+    "status": "MERGED after actual GitHub UI11/11 success and no conflicts",
+    "scope": "Bounded approval HTTP/TLS transport; real provider and native agent interoperability unqualified"
+  },
+  "currentRemaining": [
+    "Complete native single-tap activation; broaden IME, selection/delete/undo, Notes and software-keyboard qualification beyond the bounded correction/recovery proof above",
+    "Qualify retained/failing canonical saves, independent source read, conflicts and version recovery",
+    "Repair landscape compact layout and qualify both orientations with keyboard and gestures",
+    "Integrate qualified isolated agent worker; prove a real provider/model and authorized native interoperability with a newly admitted artifact",
+    "Qualify export failure/cancellation and sharing to an independent recipient; version7 native PDF/PPTX content proof is recorded above",
+    "Implement editor semantic accessibility; qualify physical-device memory, startup and lifecycle",
+    "Integrate the other selected Storytold editors after the first complete DeckCraft journey"
+  ],
+  "currentNativeRuntimeBatch": {
+    "$part": "checkpoints/deckcraft/current-native-runtime-batch.json"
+  }
+}

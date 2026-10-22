@@ -1,0 +1,38 @@
+{
+  "status": "PASS_SHARED_RUST_NATIVE_AND_LOCAL_WORKERD_FOUNDATION_ONLY",
+  "sourceCommit": "db3f3885",
+  "documentation": "infra/cloudflare/admission.md",
+  "receipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/foundation-acceptance.json",
+  "receiptSha256": "2f3f5733350e2475e78540c7561de198afd048db0282083b7c413327332ddbbc",
+  "frozenSourceInputs": 14,
+  "nativeRuleTests": 9,
+  "portableBoundaryTests": 11,
+  "nativeFdbContractScenarios": 11,
+  "strictClippyAndFormatting": "PASS",
+  "lockedCargoResolution": "PASS",
+  "wasm": {
+    "bytes": 885129,
+    "sha256": "24c629124795efc9c7ea8f2382259a5370a18163fbf6a303972b71106cf6bdc6"
+  },
+  "localRuntime": {
+    "node": "PASS",
+    "workerd": "PASS",
+    "fixturesEach": 2,
+    "checks": [
+      "exact native canonical protobuf bytes and effects",
+      "verified authenticated lookup keys",
+      "invalid signature rejection",
+      "genesis and UInt64 above2^53"
+    ],
+    "receipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/complete-run/summary.json"
+  },
+  "limits": "Extraction and portable validation foundation only. No deployed admission adapter, directory/revocation/auth, complete MLS projection, WebSockets or public encrypted synchronization.",
+  "ci": {
+    "run": 39198364287,
+    "testedMergeCommit": "bfd35da7d52271a332e8b439b69d23850e87a973",
+    "artifactId": 12163470298,
+    "passed": true,
+    "receipt": "/private/tmp/zoen-cloudflare-admission-v96/ci-7c71-evidence/summary.json",
+    "scope": "Exact-merge standalone admission foundation job, before the closed-group adapter source."
+  }
+}

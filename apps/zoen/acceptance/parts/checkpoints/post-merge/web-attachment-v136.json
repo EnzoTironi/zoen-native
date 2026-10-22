@@ -1,0 +1,41 @@
+{
+  "id": "web-attachment-integrity-v136-bounded-release",
+  "baseCommit": "0ec83ea10ee9886317b4c7a1436d2efa8fe5b878",
+  "source": "17 v3 code/test paths plus edition2021 formatting of two Rust files, three browser acceptance paths and generated worker integrity. Final Release exported from actual checkout with dedicated Metro TMPDIR; live2358 inputs unchanged through export.",
+  "checks": {
+    "rustPassed": 79,
+    "focusedNodePassed": "34 App subset + 36 separate transport tests",
+    "typesLintFormat": "PASS",
+    "releaseExportSeconds": 19.68,
+    "fullAppCurrentWebCut": "PASS: final integrated check890 tests, zero failures/skips, TypeScript/Oxlint/Oxfmt; 20.91s after source, generated output and acceptance edits. Subsequent receipt metadata only.",
+    "repositoryRustFormat": "PASS: workspace cargo fmt --all --check, edition2021",
+    "strictClippy": "PASS: zoen-web-core all targets, warnings denied; 5.15s"
+  },
+  "browser": {
+    "locales": "Current Runtime06: pt-BR27 PASS with browserErrors=[]. Two English attempts failed peer admission rate limits before browser creation; current English browser execution is NOT_QUALIFIED. Historical Runtime04 pt-BR27/en-US27 PASS belong to an earlier artifact and are not combined with current proof.",
+    "boundedMedia": "Three exact peer files/caption bodies once; public editable caption/inline/thread actions; original rendered message IDs and peer item IDs retained after reload; main UI excludes thread and chosen root shows one reply.",
+    "currentReleaseFiles": 91
+  },
+  "limits": "CLI read returns all raw entries including threads, without canonical reply/thread/message metadata. Peer targets, placement, caption-to-item linkage and canonical message-ID uniqueness remain NOT_PROVEN. No actual browser attachment quota/offline/held-upload/revocation fault or new native/production/scale qualification. Pre-Send Web selections remain volatile across reload.",
+  "retainedNegatives": "v1 strict input-equality negative and generated-output qualification; two real malformed-length v1 failures; generation control; removed v2 mini React runtime; Runtime01/02 hidden-trigger diagnostics and Runtime03 invalid CLI exclusion. Runtime04 is a harness-only correction with product17/dist91 unchanged. Runtime05 failed startup with duplicate localization owners143/1056; actual-checkout Runtime06 has one initialized owner143. Generation/cache/realpath mechanism is not established. English06 peer admission rate limit remains separate from browser execution; no rate-limit override. English06 repeat also failed public peer admission before browser creation (62.21s); no further local retry or limit override.",
+  "receipts": {
+    "source": "/private/tmp/zoen-web-attachment-intent-v136/revision-03/source-map.json",
+    "ptBR": "/private/tmp/zoen-web-attachment-intent-v136/runtime-06/evidence/pt-BR/acceptance.json",
+    "enUS": "/private/tmp/zoen-web-attachment-intent-v136/runtime-06/evidence/en-US/acceptance.json",
+    "contract": "/private/tmp/zoen-web-attachment-intent-v136/runtime-06/live-source-before.json",
+    "negativeEvidenceRoot": "/private/tmp/zoen-web-attachment-intent-v136",
+    "fullApp": "/private/tmp/zoen-web-attachment-intent-v136/app-check-live-final-02.json",
+    "fullAppLogSha256": "bdb81b4a3d071ca20b8310937972a29df7539c57d6b6eeac742085e67c86726b",
+    "enUSRetry": "/private/tmp/zoen-web-attachment-intent-v136/runtime-06/retry-after-admission-cooldown/en-US/acceptance.json",
+    "artifactManifest": "/private/tmp/zoen-web-attachment-intent-v136/runtime-06/artifact-manifest.json",
+    "historicalRuntime04Qualification": "/private/tmp/zoen-web-attachment-intent-v136/qualification-final/qualification.json",
+    "localizationGraph": "/private/tmp/zoen-web-attachment-intent-v136/review-runtime-05/dual-localization-review.json",
+    "rustClippy": "/private/tmp/zoen-web-attachment-intent-v136/rust-clippy-final-01.json",
+    "repositoryRustFormat": "/private/tmp/zoen-web-attachment-intent-v136/rust-fmt-live-final-02.json",
+    "fullAppPrior": "/private/tmp/zoen-web-attachment-intent-v136/app-check-live-final-01.json",
+    "fullAppPriorLogSha256": "7ec3d5486efe74279a347f8ea770564ca2c5320f6e55394da673eb8a018f14b4",
+    "qualification": "/private/tmp/zoen-web-attachment-intent-v136/qualification-final-06/qualification.json",
+    "qualificationSha256": "387399d37718b79c549fba33eb8fa076b47f009137bc6d6d901e606735c04c2f"
+  },
+  "behaviorPatchSha256": "430b7f3b83f2f81c04b0af75ab523e29b7eae5fa829405498062d619542be3f9"
+}
