@@ -243,7 +243,7 @@ async fn journey_gate_blocks_injected_inbound_before_the_brain() {
         }
     }
     let transport = Arc::new(Fixed(
-        r#"{"success":true,"errors":[],"result":{"answers":{"indirect_prompt_injection":{"noul":0.97},"hidden_instructions":{"noul":0.9}}}}"#
+        r#"{"success":true,"errors":[],"result":{"model":"clef-flash","usage":{"input_tokens":10,"output_tokens":0},"answers":{"indirect_prompt_injection":{"type":"noul","noul":0.97},"hidden_instructions":{"type":"noul","noul":0.9}}}}"#
             .into(),
     ));
     let gate = Gate {

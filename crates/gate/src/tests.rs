@@ -357,7 +357,7 @@ fn clef_gate(reply: &'static str, model: ClefModel) -> (Gate, Arc<Cloudflare>) {
 #[test]
 fn journey_clef_blocks_an_injected_web_page_and_lets_a_plain_one_through() {
     let (gate, cf) = clef_gate(
-        r#"{"success":true,"errors":[],"result":{"answers":{"indirect_prompt_injection":{"noul":0.97},"hidden_instructions":{"noul":0.91}}}}"#,
+        r#"{"success":true,"errors":[],"result":{"model":"clef-flash","usage":{"input_tokens":10,"output_tokens":0},"answers":{"indirect_prompt_injection":{"type":"noul","noul":0.97},"hidden_instructions":{"type":"noul","noul":0.91}}}}"#,
         ClefModel::Flash,
     );
     let d = gate.check(&Check::new(
@@ -380,7 +380,7 @@ fn journey_clef_blocks_an_injected_web_page_and_lets_a_plain_one_through() {
     );
 
     let (gate, _) = clef_gate(
-        r#"{"success":true,"errors":[],"result":{"answers":{"indirect_prompt_injection":{"noul":0.02},"hidden_instructions":{"noul":0.01}}}}"#,
+        r#"{"success":true,"errors":[],"result":{"model":"clef","usage":{"input_tokens":10,"output_tokens":0},"answers":{"indirect_prompt_injection":{"type":"noul","noul":0.02},"hidden_instructions":{"type":"noul","noul":0.01}}}}"#,
         ClefModel::Clef,
     );
     let d = gate.check(&Check::new(
@@ -401,4 +401,8 @@ fn journey_clef_without_workers_ai_access_fails_closed() {
     let d = gate.check(&c);
     assert_eq!(d.outcome, Outcome::Block);
     assert!(d.rule.starts_with("fail:"), "{}", d.rule);
+}
+
+mod clef_contract {
+    include!("clef_tests.rs");
 }
