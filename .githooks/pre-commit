@@ -19,6 +19,25 @@ THIRD_PARTY_DIRS = {"node_modules", "vendor", "vendored", "third_party", "third-
 GENERATED_ROOTS = ("apps/zoen/ios/", "apps/zoen/android/")
 UPSTREAM_ROOTS = ("miniapps/deckcraft-ui/licenses/",)
 UPSTREAM_FILES = {"miniapps/deckcraft-ui/BOOTSTRAP-LICENSES.txt"}
+# Compiled outputs: the authored entry points/builders remain checked. Producer
+# and upstream provenance are recorded in docs/dev/file-size-artifact-exclusions.md.
+GENERATED_FILES = {
+    "crates/miniapps/resources/" + name + ".html"
+    for name in ("countdown", "deckcraft", "excalidraw", "hike", "list", "maptap",
+                 "pet", "poll", "recipe", "schedule")
+} | {"apps/zoen/modules/zoen-core/ios/EmojiKeyboard/ZoenEmojiKeyboardData.swift"}
+EXTERNAL_FILES = {
+    "LICENSE", "LICENSES/GPL-3.0.txt",
+    "miniapps/excalidraw-ui/THIRD-PARTY-LICENSES.txt",
+    "apps/zoen/modules/zoen-core/ios/EmojiKeyboard/emoji1.txt",
+} | {
+    "apps/zoen/modules/zoen-core/ios/TelegramAttachmentPresentation/Resources/" + name
+    for name in ("TabPhoto.json", "TabFile.json", "TabAudio.json", "TabLocation.json",
+                 "TabPoll.json", "Files.json", "Notices/Telegram-GPL-3.0.txt")
+} | {
+    "apps/zoen/modules/zoen-core/ios/TelegramFileAttachment/Resources/Notices/Telegram-GPL-3.0.txt",
+    "apps/zoen/modules/zoen-core/ios/TelegramVideoEditing/Resources/Notices/GPL-3.0.txt",
+}
 BINARY_SUFFIXES = {
     ".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic", ".heif", ".ico",
     ".avif", ".icns", ".mp4", ".mov", ".webm", ".mkv", ".m4a", ".mp3",
@@ -45,6 +64,8 @@ def exempt(path):
         or ".generated." in name.name
         or path.startswith(GENERATED_ROOTS + UPSTREAM_ROOTS)
         or path in UPSTREAM_FILES
+        or path in GENERATED_FILES
+        or path in EXTERNAL_FILES
         or name.suffix.lower() in BINARY_SUFFIXES
     )
 

@@ -12,6 +12,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 HOOK = ROOT / ".githooks" / "pre-commit"
 INSTALLER = ROOT / "scripts" / "install-git-hooks.py"
+AUDIT = ROOT / "scripts" / "check-file-sizes.py"
 
 
 class StagedFileLimitTests(unittest.TestCase):
@@ -33,6 +34,8 @@ class StagedFileLimitTests(unittest.TestCase):
         (self.repo / "scripts").mkdir()
         shutil.copyfile(HOOK, self.repo / ".githooks" / "pre-commit")
         shutil.copyfile(INSTALLER, self.repo / "scripts" / "install-git-hooks.py")
+        if AUDIT.exists():
+            shutil.copyfile(AUDIT, self.repo / "scripts" / "check-file-sizes.py")
 
     def run_command(self, args, check=True, cwd=None):
         result = subprocess.run(args, cwd=cwd or self.repo, env=self.env,
@@ -58,6 +61,10 @@ class StagedFileLimitTests(unittest.TestCase):
     def hook(self):
         # Use the interpreter explicitly so tests do not depend on checkout mode bits.
         return self.run_command([sys.executable, ".githooks/pre-commit"], check=False)
+
+    def audit(self):
+        return self.run_command([sys.executable, "scripts/check-file-sizes.py", "--json"],
+                                check=False)
 
     def test_exact_boundary_and_explicit_split_instructions(self):
         self.write("source.py", b"a" * 20_000)
@@ -238,6 +245,69 @@ class StagedFileLimitTests(unittest.TestCase):
         result = self.run_command(["git", "commit", "-m", "blocked"], cwd=linked, check=False)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(b"Commit blocked", result.stderr)
+
+    def test_proven_artifact_outputs_are_exempt(self):
+        for name in (
+            "crates/miniapps/resources/excalidraw.html",
+            "crates/miniapps/resources/deckcraft.html",
+            "crates/miniapps/resources/pet.html", "LICENSE", "LICENSES/GPL-3.0.txt",
+            "miniapps/excalidraw-ui/THIRD-PARTY-LICENSES.txt",
+            "apps/zoen/modules/zoen-core/ios/EmojiKeyboard/ZoenEmojiKeyboardData.swift",
+            "apps/zoen/modules/zoen-core/ios/EmojiKeyboard/emoji1.txt",
+            "apps/zoen/modules/zoen-core/ios/TelegramAttachmentPresentation/Resources/Files.json",
+        ):
+            self.write(name, b"x" * 20_001)
+        self.assertEqual(self.hook().returncode, 0)
+        self.assertEqual(self.audit().returncode, 0)
+
+    def test_artifact_exceptions_do_not_cover_authored_neighbors(self):
+        for name in (
+            "crates/miniapps/resources/authored.html",
+            "miniapps/excalidraw-ui/src/canonical-app.tsx",
+            "apps/zoen/modules/zoen-core/ios/EmojiKeyboard/generate-telegram-emoji.py",
+            "apps/zoen/modules/zoen-core/ios/TelegramAttachmentPresentation/ZoenAdapter.swift",
+            "apps/zoen/modules/zoen-core/ios/TelegramAttachmentPresentation/Resources/authored.json",
+        ):
+            self.write(name, b"x" * 20_001)
+            self.assertIn(ascii(name).encode(), self.hook().stderr)
+
+    def test_full_audit_finds_unchanged_historical_violation(self):
+        import json
+        self.write("historical.py", b"x" * 20_001)
+        self.git("commit", "--quiet", "-m", "pre-policy fixture")
+        self.assertEqual(self.hook().returncode, 0)
+        result = self.audit()
+        self.assertEqual(result.returncode, 1)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["violationCount"], 1)
+        self.assertEqual(report["violations"][0]["path"], "historical.py")
+        self.assertEqual(report["violations"][0]["tokens"], 5000.25)
+
+    def test_full_audit_uses_same_index_boundary_and_exclusions(self):
+        import json
+        self.write("unicode.md", ("é" * 10_000).encode())
+        self.write("Cargo.lock", b"x" * 20_001)
+        self.write("binary.unknown", b"\0" + b"x" * 20_001)
+        self.write("unicode.md", b"x" * 30_000, stage=False)
+        result = self.audit()
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(json.loads(result.stdout)["violationCount"], 0)
+        self.write("unicode.md", ("é" * 10_001).encode())
+        self.assertEqual(self.audit().returncode, 1)
+
+    def test_full_audit_fails_closed_on_unmerged_index(self):
+        self.write("source.py", b"initial\n")
+        self.git("commit", "--quiet", "-m", "seed")
+        self.git("checkout", "--quiet", "-b", "other")
+        self.write("source.py", b"other\n")
+        self.git("commit", "--quiet", "-m", "other")
+        self.git("checkout", "--quiet", "-")
+        self.write("source.py", b"current\n")
+        self.git("commit", "--quiet", "-m", "current")
+        self.assertNotEqual(self.git("merge", "other", check=False).returncode, 0)
+        result = self.audit()
+        self.assertEqual(result.returncode, 2)
+        self.assertIn(b"unmerged index", result.stderr)
 
 
 if __name__ == "__main__":

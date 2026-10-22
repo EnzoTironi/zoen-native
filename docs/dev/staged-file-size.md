@@ -34,6 +34,9 @@ conventions in `.githooks/pre-commit`:
   `BOOTSTRAP-LICENSES.txt` are also excluded.
 - Known binary media, archives, fonts and compiled/document formats listed in
   `BINARY_SUFFIXES`; other blobs containing NUL in their first 8 KiB are binary.
+- The exact generated bundles and original external resources documented in
+  [artifact exclusions](file-size-artifact-exclusions.md), with their actual
+  producer or upstream provenance. Their authored source/builders remain checked.
 
 Authored JSON, SVG, tests, documentation and upstream patch files remain subject
 to the limit. Add exclusions only for actual generated or external artifacts,
@@ -56,3 +59,17 @@ Run the real-index and installation regression suite:
 ```sh
 python3 -m unittest discover -s scripts/git-hooks -p 'test_*.py' -v
 ```
+
+Audit the whole tracked index with the **same policy**, including historical
+files unchanged in the current commit:
+
+```sh
+python3 scripts/check-file-sizes.py
+python3 scripts/check-file-sizes.py --json
+```
+
+The audit exits 1 while any violation remains, 0 only for zero violations, and 2
+on an inspection error. Its scope is the tracked index; stage changes before
+using it to assess the next commit. It does not change the staged-only hook.
+Repository-wide remediation is tracked in #208; a passing staged hook alone
+does not establish whole-codebase compliance.
