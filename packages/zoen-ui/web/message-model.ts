@@ -1,3 +1,4 @@
+import { parseCursorRepairStatus } from './cursor-reconciliation.ts';
 // Pure boundary parsing; no session, transport or persistence owner.
 import { string, object, integer, boolean, array, publicKey, bytes } from './boundary.ts';
 import { type FileDoc, parseMessageMedia, parseFile } from './message-file-model.ts';
@@ -272,6 +273,7 @@ export function parseUpdate(json: string) {
     conversations: array(value.conversations).map(parseConversation),
     maintenance: value.maintenance_ms == null ? null : integer(value.maintenance_ms),
     historyReady: value.history_ready === true,
+    cursorRepair: parseCursorRepairStatus(value.cursor_repair),
   };
 }
 

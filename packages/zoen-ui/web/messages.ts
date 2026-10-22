@@ -1,3 +1,10 @@
+import type {
+  MessageControllerOptions,
+  PostInput,
+  HistoryStatus,
+} from './message-command-types.ts';
+import { createReconciliation } from './message-reconciliation.ts';
+import type { CursorReconciliation } from './cursor-reconciliation.ts';
 // Messages remains the sole session, queue, transport and lifecycle owner.
 import { type MessageCore, type MessageVault, type LinkedSession } from './message-operations.ts';
 import {
@@ -43,6 +50,7 @@ export class Messages {
   private readonly session: LinkedSession;
   private readonly changed: (state: MessagesState) => void;
   private readonly transport: AuthenticatedTransport;
+  private readonly cursorRepair: CursorReconciliation;
   private serial: Promise<void> = Promise.resolve();
   private handleChanges: Promise<void> = Promise.resolve();
   private closed = false;
@@ -67,19 +75,7 @@ export class Messages {
     | ((frame: Extract<RelayFrame, { kind: 'ephemeral' | 'presence' }>) => void)
     | undefined;
 
-  constructor({
-    core,
-    vault,
-    session,
-    changed,
-    ephemeral,
-  }: {
-    core: MessageCore;
-    vault: MessageVault;
-    session: LinkedSession;
-    changed: (state: MessagesState) => void;
-    ephemeral?: (frame: Extract<RelayFrame, { kind: 'ephemeral' | 'presence' }>) => void;
-  }) {
+  constructor({ core, vault, session, changed, ephemeral }: MessageControllerOptions) {
     this.ephemeral = ephemeral;
     this.core = core;
     this.vault = vault;
@@ -93,6 +89,7 @@ export class Messages {
         if (this.closed) return;
         this.connection = connection;
         if (connection.kind !== 'ready') {
+          this.cursorRepair.retire();
           ++this.generation;
           clearTimeout(this.maintenanceTimer);
         }
@@ -104,6 +101,7 @@ export class Messages {
       },
       (frame, raw) => this.received(frame, raw),
     );
+    this.cursorRepair = createReconciliation(this.#operations);
   }
 
   start(): Promise<void> {
@@ -146,19 +144,7 @@ export class Messages {
   }
 
   /** Post with an optional inline reply, thread reply or forward. Refusals stay non-fatal. */
-  post({
-    space,
-    text,
-    replyTo = '',
-    thread = false,
-    forwarded = false,
-  }: {
-    space: string;
-    text: string;
-    replyTo?: string;
-    thread?: boolean;
-    forwarded?: boolean;
-  }): Promise<void> {
+  post({ space, text, replyTo = '', thread = false, forwarded = false }: PostInput): Promise<void> {
     return this.act(
       space,
       { kind: 'queue_post', space, text, replyTo, thread, forwarded, now: Date.now() },
@@ -335,13 +321,7 @@ export class Messages {
     return messageHistoryOperations.restoreHistory.call(this.#operations);
   }
 
-  async historyStatus(): Promise<{
-    initial_pending: boolean;
-    manifest_received: boolean;
-    chunks_received: number;
-    chunks_total: number;
-    receive_active: boolean;
-  }> {
+  async historyStatus(): Promise<HistoryStatus> {
     return messageHistoryOperations.historyStatus.call(this.#operations);
   }
 
@@ -460,6 +440,7 @@ export class Messages {
     this.aborted.abort();
     clearTimeout(this.historyTimer);
     clearTimeout(this.maintenanceTimer);
+    this.cursorRepair.retire();
     for (const waiter of this.historyWaiters) {
       clearTimeout(waiter.timer);
       waiter.reject(new Error('Esta sessão está fechada.'));
@@ -475,6 +456,9 @@ export class Messages {
 
   static #borrow(owner: Messages): MessageOperations {
     return {
+      get cursorRepair() {
+        return owner.cursorRepair;
+      },
       get core() {
         return owner.core;
       },

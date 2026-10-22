@@ -1,3 +1,4 @@
+import type { CursorReconciliation } from './cursor-reconciliation.ts';
 // Borrowed execution port. Every mutable field accessor delegates to Messages;
 // this contains no state, snapshot, queue, timer or transport of its own.
 import { type StoredSession } from './session.ts';
@@ -12,6 +13,7 @@ export type LinkedSession = Extract<StoredSession, { kind: 'linked' }>;
 export type MessageCore = Pick<CoreWorker, 'text' | 'bytes' | 'close'>;
 export type MessageVault = Pick<BrowserVault, 'save' | 'sign'>;
 export interface MessageOperations {
+  readonly cursorRepair: CursorReconciliation;
   readonly core: MessageCore;
   readonly closed: boolean;
   conversations: Conversation[];

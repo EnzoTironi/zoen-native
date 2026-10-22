@@ -1,0 +1,5 @@
+{
+  "extends": "../tsconfig.json",
+  "include": ["cursor-page.ts", "../core.d.ts"],
+  "exclude": []
+}
