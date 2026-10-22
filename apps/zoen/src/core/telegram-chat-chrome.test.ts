@@ -194,6 +194,10 @@ test('native bar owns the soft edge and Back while title, Details and Search rem
 test('inbox, conversation actions and title share one native material without a second bar background', () => {
   for (const available of [true, false]) {
     const f = fixture('ios', 402, 1, available);
+    const host = nodes(f.inbox()).find((node) => node.type === 'Host')!;
+    assert.equal(host.props.ignoreSafeArea, 'all');
+    assert.equal(host.props.style.width, 96);
+    assert.equal(host.props.style.height, 44);
     const surfaces = [f.inbox(), f.bar(), ...nodes(f.title()).filter((n) => n.type === f.material)];
     assert.equal(surfaces.length, 3);
     for (const surface of surfaces) {

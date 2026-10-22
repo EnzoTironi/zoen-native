@@ -9,7 +9,7 @@ import { NavigationGlass } from './navigation-glass';
 export function ChatsActions() {
   const { presentation: p, scheme } = useTheme();
   const content = (
-    <Host style={{ width: 96, height: 44 }} colorScheme={scheme}>
+    <Host style={{ width: 96, height: 44 }} colorScheme={scheme} ignoreSafeArea="all">
       <HStack spacing={0}>
         <Button
           label={t('chat.searchAllHistory')}
