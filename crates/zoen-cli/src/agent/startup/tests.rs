@@ -340,6 +340,15 @@ async fn online_synced_empty_outbox_with_unsettled_mls_never_becomes_ready() {
     let lock = HostLock::acquire(&home.0).unwrap();
     let readiness = Readiness::reset(&home.0, &lock).unwrap();
     online(&citizen.0).await;
+    // Online does not mean the background MLS publisher has run. Wait until the
+    // refusal fixture receives the attempt before the bounded readiness check.
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while relay.publications.load(Ordering::SeqCst) == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("the fixture must observe an MLS publication attempt");
     assert!(prepared(&citizen.0, &readiness).await.is_err());
     let connection = citizen.0.connection();
     assert_eq!(connection.state, "online");
