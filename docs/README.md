@@ -4,13 +4,13 @@ The [README](../README.md) introduces the product. [Roadmap status](roadmap-stat
 
 The current verified product baseline is `ff5b519`: native/web consolidation PR 67, private confirmed Plan history PR 68, keyboard controls PR 69 and motion PR 71 are merged. The roadmap records complete CI, source composition and pending shared-main integration units. The [HIG matrix](product/hig-compliance.md) records actual native build, editor, keyboard, settings and chat/thread journeys. PR 70's hosted file-import failure remains open despite its passing FFI suite. Runtime capabilities retain their separate acceptance boundaries.
 
-| Document category | How to read it |
-| --- | --- |
-| Current status and contracts | Implementation and requirements, with explicit verification boundaries. |
-| ADRs | Decisions and compatibility rules. An accepted design does not establish a deployed product. Early superseded decisions link to their replacements. |
-| Product/design policy | Required experience and workflows, including [live pages](product/live-pages.md). |
-| Research and dated reviews | Evidence at their original dates and source versions. Availability and market figures have not been refreshed by this cleanup. |
-| History | Previous audits preserved for traceability. Their PR states do not describe current main. |
+| Document category            | How to read it                                                                                                                                      |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Current status and contracts | Implementation and requirements, with explicit verification boundaries.                                                                             |
+| ADRs                         | Decisions and compatibility rules. An accepted design does not establish a deployed product. Early superseded decisions link to their replacements. |
+| Product/design policy        | Required experience and workflows, including [live pages](product/live-pages.md).                                                                   |
+| Research and dated reviews   | Evidence at their original dates and source versions. Availability and market figures have not been refreshed by this cleanup.                      |
+| History                      | Previous audits preserved for traceability. Their PR states do not describe current main.                                                           |
 
 Technical identifiers inherited from the old project name are tracked in the [Zoen naming migration](dev/naming.md). The product has one Chats inbox; the internal `Space` type describes its conversation/permission boundary.
 
@@ -50,6 +50,7 @@ The current source checkpoint and pause are recorded in the [complete handoff](d
 - [APNs wake contract](dev/push-contract.md)
 - [Authenticated web source/build contract](../packages/zoen-ui/web/README.md)
 - [Development setup](dev/setup.md)
+- [Independent Agent enrollment](dev/independent-agent-enrollment.md)
 - [Shared-main development workflow](dev/shared-main-workflow.md)
 - [Live Page session API and offline Plan admission](dev/live-page-session.md)
 
