@@ -12,6 +12,23 @@ de critérios é [acceptance.json](../../apps/zoen/acceptance.json).
 As evidências anteriores continuam com seu escopo e seus artefatos originais.
 Ampliar a meta não transforma provas parciais em aprovação do produto completo.
 
+## Coordenação durável no GitHub
+
+Por direção do usuário em 22 de outubro de 2026, o registro de trabalho é o
+[issue principal #170](https://github.com/EnzoTironi/zoen-native/issues/170).
+Ele vincula as frentes de entrega #172–#184 e os problemas anteriores ainda
+abertos. Cada novo pedido, defeito ou restante de uma entrega deve estar em um
+issue com responsável lógico, critérios observáveis, dependências, estado e PR.
+O chat e as mensagens entre agentes não substituem esse registro.
+
+Implementação e QA avançam em paralelo em escopos isolados. Um lote pronto segue
+para revisão e validação enquanto outros continuam em desenvolvimento. Agrupar
+o check completo e o build nativo por fonte coerente; repetir por mudança, falha
+ou dúvida material. Cada simulador e serviço tem um operador exclusivo. A fila
+das demais frentes permanece explícita no GitHub e não é anunciada como trabalho
+em execução. Um PR parcial referencia seu issue; não encerra os critérios ainda
+pendentes. Merge normal após fonte limpa e checks aplicáveis aprovados.
+
 ## Execução atual — 20 de outubro de 2026
 
 A meta foi ativada novamente nesta conversa. O próximo marco é **Zoen iOS pronto
