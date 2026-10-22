@@ -8,6 +8,7 @@ import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import { contrastRatio, resolveSkyTheme, SKY_PHASES, type SkyPhase } from '../theme/sky.ts';
 import type { TimelineEntry } from './types';
+import { messageMayContainMarkdown } from './message-markdown.ts';
 import type { ConversationMessageProps } from '../components/conversation-message';
 
 const require = createRequire(import.meta.url);
@@ -886,7 +887,7 @@ test('formatted bodies, file captions and album captions share native Markdown w
   assert.equal(appBody.props.maxWidth, 142);
 });
 
-test('formatting retires prior inline status measurements; possible embedded media stays exact plain text', () => {
+test('formatting retires prior inline status measurements and iOS sends possible media to the guarded native renderer', () => {
   const original = plainMessage('Short');
   const f = render(original);
   measureText(f.tree, original.id);
@@ -906,7 +907,13 @@ test('formatting retires prior inline status measurements; possible embedded med
   ]) {
     const next = plainMessage(text);
     const rendered = render(next);
-    assert.equal(nodeById(rendered.tree, `message-body-${next.id}`).type, 'Text');
-    assert.equal(nodeById(rendered.tree, `message-body-${next.id}`).props.children, text);
+    const body = nodeById(rendered.tree, `message-body-${next.id}`);
+    if (messageMayContainMarkdown(text, true)) {
+      assert.equal(body.type, 'MessageMarkdown');
+      assert.equal(body.props.text, text);
+    } else {
+      assert.equal(body.type, 'Text');
+      assert.equal(body.props.children, text);
+    }
   }
 });

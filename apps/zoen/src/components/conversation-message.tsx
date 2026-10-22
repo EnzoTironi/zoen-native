@@ -174,7 +174,10 @@ export const ConversationMessage = memo(function ConversationMessage({
       : null;
   const messageFontSize = emojiFont ?? p.typography.message.fontSize;
   const formattedText =
-    !entry.deleted && !standaloneAppCard && !emojiFont && messageMayContainMarkdown(text);
+    !entry.deleted &&
+    !standaloneAppCard &&
+    !emojiFont &&
+    messageMayContainMarkdown(text, process.env.EXPO_OS === 'ios');
   const availableWidth = Math.max(0, width - 32 - authorGutter);
   const mediaLimit = Math.min(availableWidth, Math.max(160, Math.min(294, availableWidth * 0.87)));
   const mediaWidth = appCard

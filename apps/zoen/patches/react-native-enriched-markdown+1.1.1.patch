@@ -1,7 +1,8 @@
 diff --git a/node_modules/react-native-enriched-markdown/ReactNativeEnrichedMarkdown.podspec b/node_modules/react-native-enriched-markdown/ReactNativeEnrichedMarkdown.podspec
+index aa87830..70b501c 100644
 --- a/node_modules/react-native-enriched-markdown/ReactNativeEnrichedMarkdown.podspec
 +++ b/node_modules/react-native-enriched-markdown/ReactNativeEnrichedMarkdown.podspec
-@@ -22,11 +22,13 @@
+@@ -22,11 +22,13 @@ Pod::Spec.new do |s|
    s.source       = { :git => "https://github.com/software-mansion/enriched-markdown.git", :tag => "#{s.version}" }
  
    if monorepo
@@ -17,10 +18,198 @@ diff --git a/node_modules/react-native-enriched-markdown/ReactNativeEnrichedMark
      s.source_files = ["ios/**/*.{h,m,mm,cpp,swift}", "cpp/md4c/*.{c,h}", "cpp/parser/*.{hpp,cpp}", "cpp/highlight/*.{hpp,cpp}"] + code_highlight[:source_files]
      s.preserve_paths = "cpp/highlight/vendor/**/*" if code_highlight[:enabled]
    end
+diff --git a/node_modules/react-native-enriched-markdown/cpp/parser/MD4CParser.cpp b/node_modules/react-native-enriched-markdown/cpp/parser/MD4CParser.cpp
+index c99a52d..669afc3 100644
+--- a/node_modules/react-native-enriched-markdown/cpp/parser/MD4CParser.cpp
++++ b/node_modules/react-native-enriched-markdown/cpp/parser/MD4CParser.cpp
+@@ -798,6 +798,21 @@ MD4CParser::MD4CParser() : impl_(std::make_unique<Impl>()) {}
+ 
+ MD4CParser::~MD4CParser() = default;
+ 
++// Media-free parsing is a tree admission boundary, before either platform renderer.
++// Keep alt formatting and an explicit navigable URL; never retain a media node.
++static void replaceMediaWithLinks(MarkdownASTNode &node) {
++  for (auto &child : node.children) {
++    if (child) replaceMediaWithLinks(*child);
++  }
++  if (node.type != NodeType::Image && node.type != NodeType::Video) return;
++  const auto url = node.attributes.find("url");
++  const std::string target = url == node.attributes.end() ? std::string{} : url->second;
++  node.type = target.empty() ? NodeType::Text : NodeType::Link;
++  node.attributes.clear();
++  if (!target.empty()) node.setAttribute("url", target);
++  if (node.children.empty() && node.content.empty()) node.content = target;
++}
++
+ std::shared_ptr<MarkdownASTNode> MD4CParser::parse(const std::string &markdown, const Md4cFlags &md4cFlags,
+                                                    bool isGFM) {
+   if (markdown.empty()) {
+@@ -818,6 +833,7 @@ std::shared_ptr<MarkdownASTNode> MD4CParser::parse(const std::string &markdown,
+   impl_->inputText = markdown.c_str();
+ 
+   unsigned flags = MD_FLAG_NOHTMLSPANS | MD_FLAG_SPOILERS;
++  if (md4cFlags.noMedia) flags |= MD_FLAG_NOHTMLBLOCKS;
+   if (isGFM) {
+     flags |= MD_FLAG_TABLES | MD_FLAG_STRIKETHROUGH | MD_FLAG_TASKLISTS;
+   }
+@@ -871,6 +887,7 @@ std::shared_ptr<MarkdownASTNode> MD4CParser::parse(const std::string &markdown,
+     promoteDisplayMathFromParagraphs(*impl_->root);
+     wrapListItemInlineRuns(*impl_->root);
+     promoteVideosFromListItems(*impl_->root);
++    if (md4cFlags.noMedia) replaceMediaWithLinks(*impl_->root);
+   }
+ 
+   return impl_->root ? impl_->root : std::make_shared<MarkdownASTNode>(NodeType::Document);
+diff --git a/node_modules/react-native-enriched-markdown/cpp/parser/MD4CParser.hpp b/node_modules/react-native-enriched-markdown/cpp/parser/MD4CParser.hpp
+index 10f1afb..ef0d68e 100644
+--- a/node_modules/react-native-enriched-markdown/cpp/parser/MD4CParser.hpp
++++ b/node_modules/react-native-enriched-markdown/cpp/parser/MD4CParser.hpp
+@@ -16,6 +16,7 @@ struct Md4cFlags {
+     bool hardSoftBreaks = false;
+     bool preserveBlankLines = false;
+     bool admonitions = true;
++    bool noMedia = false;
+ };
+ 
+ class MD4CParser {
+diff --git a/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdown.mm b/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdown.mm
+index b7edde7..e024652 100644
+--- a/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdown.mm
++++ b/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdown.mm
+@@ -159,6 +159,7 @@ + (ENRMMd4cFlags *)flagsFromProps:(const EnrichedMarkdownMd4cFlagsStruct &)props
+   flags.hardSoftBreaks = props.hardSoftBreaks;
+   flags.preserveBlankLines = props.preserveBlankLines;
+   flags.admonitions = props.admonitions;
++  flags.noMedia = props.noMedia;
+   return flags;
+ }
+ 
+@@ -1128,7 +1129,8 @@ - (void)updateProps:(Props::Shared const &)props oldProps:(Props::Shared const &
+       newViewProps.md4cFlags.highlight != oldViewProps.md4cFlags.highlight ||
+       newViewProps.md4cFlags.hardSoftBreaks != oldViewProps.md4cFlags.hardSoftBreaks ||
+       newViewProps.md4cFlags.preserveBlankLines != oldViewProps.md4cFlags.preserveBlankLines ||
+-      newViewProps.md4cFlags.admonitions != oldViewProps.md4cFlags.admonitions) {
++      newViewProps.md4cFlags.admonitions != oldViewProps.md4cFlags.admonitions ||
++      newViewProps.md4cFlags.noMedia != oldViewProps.md4cFlags.noMedia) {
+     _md4cFlags = [EnrichedMarkdown flagsFromProps:newViewProps.md4cFlags];
+     _dirtyFlags |= ENRMDirtyForceHeight | ENRMDirtyRender;
+   }
+diff --git a/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdownText.mm b/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdownText.mm
+index 1b38417..d320f60 100644
+--- a/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdownText.mm
++++ b/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdownText.mm
+@@ -146,6 +146,7 @@ + (ENRMMd4cFlags *)flagsFromProps:(const EnrichedMarkdownTextMd4cFlagsStruct &)p
+   flags.hardSoftBreaks = props.hardSoftBreaks;
+   flags.preserveBlankLines = props.preserveBlankLines;
+   flags.admonitions = props.admonitions;
++  flags.noMedia = props.noMedia;
+   return flags;
+ }
+ 
+@@ -647,7 +648,8 @@ - (void)updateProps:(Props::Shared const &)props oldProps:(Props::Shared const &
+       newViewProps.md4cFlags.highlight != oldViewProps.md4cFlags.highlight ||
+       newViewProps.md4cFlags.hardSoftBreaks != oldViewProps.md4cFlags.hardSoftBreaks ||
+       newViewProps.md4cFlags.preserveBlankLines != oldViewProps.md4cFlags.preserveBlankLines ||
+-      newViewProps.md4cFlags.admonitions != oldViewProps.md4cFlags.admonitions) {
++      newViewProps.md4cFlags.admonitions != oldViewProps.md4cFlags.admonitions ||
++      newViewProps.md4cFlags.noMedia != oldViewProps.md4cFlags.noMedia) {
+     _md4cFlags = [EnrichedMarkdownText flagsFromProps:newViewProps.md4cFlags];
+     _forceHeightUpdateOnNextRender = YES;
+     _dirtyFlags |= ENRMDirtyRender;
+diff --git a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.cpp b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.cpp
+index 2d1077e..17f4e9e 100644
+--- a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.cpp
++++ b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.cpp
+@@ -182,6 +182,7 @@ EnrichedMarkdownTextInputProps::EnrichedMarkdownTextInputProps(
+     placeholder(convertRawProp(context, rawProps, "placeholder", sourceProps.placeholder, {})),
+     placeholderTextColor(convertRawProp(context, rawProps, "placeholderTextColor", sourceProps.placeholderTextColor, {})),
+     editable(convertRawProp(context, rawProps, "editable", sourceProps.editable, {false})),
++    draftCheckpointToken(convertRawProp(context, rawProps, "draftCheckpointToken", sourceProps.draftCheckpointToken, {})),
+     autoFocus(convertRawProp(context, rawProps, "autoFocus", sourceProps.autoFocus, {false})),
+     scrollEnabled(convertRawProp(context, rawProps, "scrollEnabled", sourceProps.scrollEnabled, {false})),
+     markdownShortcuts(convertRawProp(context, rawProps, "markdownShortcuts", sourceProps.markdownShortcuts, {})),
+@@ -235,6 +236,10 @@ folly::dynamic EnrichedMarkdownTextInputProps::getDiffProps(
+     result["editable"] = editable;
+   }
+     
++  if (draftCheckpointToken != oldProps->draftCheckpointToken) {
++    result["draftCheckpointToken"] = draftCheckpointToken;
++  }
++    
+   if (autoFocus != oldProps->autoFocus) {
+     result["autoFocus"] = autoFocus;
+   }
+diff --git a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h
+index 06fa054..e2234f7 100644
+--- a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h
++++ b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h
+@@ -2567,6 +2567,7 @@ static inline folly::dynamic toDynamic(const EnrichedMarkdownMarkdownStyleStruct
+ #endif
+ 
+ struct EnrichedMarkdownMd4cFlagsStruct {
++  bool noMedia{false};
+   bool underline{false};
+   bool superscript{false};
+   bool subscript{false};
+@@ -2582,6 +2583,7 @@ struct EnrichedMarkdownMd4cFlagsStruct {
+ 
+   folly::dynamic toDynamic() const {
+     folly::dynamic result = folly::dynamic::object();
++    result["noMedia"] = noMedia;
+     result["underline"] = underline;
+     result["superscript"] = superscript;
+     result["subscript"] = subscript;
+@@ -2598,6 +2600,10 @@ struct EnrichedMarkdownMd4cFlagsStruct {
+ static inline void fromRawValue(const PropsParserContext& context, const RawValue &value, EnrichedMarkdownMd4cFlagsStruct &result) {
+   auto map = (std::unordered_map<std::string, RawValue>)value;
+ 
++  auto tmp_noMedia = map.find("noMedia");
++  if (tmp_noMedia != map.end()) {
++    fromRawValue(context, tmp_noMedia->second, result.noMedia);
++  }
+   auto tmp_underline = map.find("underline");
+   if (tmp_underline != map.end()) {
+     fromRawValue(context, tmp_underline->second, result.underline);
+@@ -4101,6 +4107,7 @@ class EnrichedMarkdownTextInputProps final : public ViewProps {
+   std::string placeholder{};
+   SharedColor placeholderTextColor{};
+   bool editable{false};
++  std::string draftCheckpointToken{};
+   bool autoFocus{false};
+   bool scrollEnabled{false};
+   EnrichedMarkdownTextInputMarkdownShortcutsStruct markdownShortcuts{};
+@@ -6680,6 +6687,7 @@ static inline folly::dynamic toDynamic(const EnrichedMarkdownTextMarkdownStyleSt
+ #endif
+ 
+ struct EnrichedMarkdownTextMd4cFlagsStruct {
++  bool noMedia{false};
+   bool underline{false};
+   bool superscript{false};
+   bool subscript{false};
+@@ -6695,6 +6703,7 @@ struct EnrichedMarkdownTextMd4cFlagsStruct {
+ 
+   folly::dynamic toDynamic() const {
+     folly::dynamic result = folly::dynamic::object();
++    result["noMedia"] = noMedia;
+     result["underline"] = underline;
+     result["superscript"] = superscript;
+     result["subscript"] = subscript;
+@@ -6711,6 +6720,10 @@ struct EnrichedMarkdownTextMd4cFlagsStruct {
+ static inline void fromRawValue(const PropsParserContext& context, const RawValue &value, EnrichedMarkdownTextMd4cFlagsStruct &result) {
+   auto map = (std::unordered_map<std::string, RawValue>)value;
+ 
++  auto tmp_noMedia = map.find("noMedia");
++  if (tmp_noMedia != map.end()) {
++    fromRawValue(context, tmp_noMedia->second, result.noMedia);
++  }
+   auto tmp_underline = map.find("underline");
+   if (tmp_underline != map.end()) {
+     fromRawValue(context, tmp_underline->second, result.underline);
 diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMAutoLinkDetector.h b/node_modules/react-native-enriched-markdown/ios/input/ENRMAutoLinkDetector.h
+index fd601ac..27f488c 100644
 --- a/node_modules/react-native-enriched-markdown/ios/input/ENRMAutoLinkDetector.h
 +++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMAutoLinkDetector.h
-@@ -27,6 +27,8 @@
+@@ -27,6 +27,8 @@ typedef void (^ENRMAutoLinkCallback)(NSString *text, NSString *url, NSRange rang
  /// Remove any auto-link marker attribute in the given range.
  /// Call when a manual link is applied over an auto-detected one.
  - (void)clearAutoLinkInRange:(NSRange)range;
@@ -30,14 +219,13 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMAutoLinkD
  @end
  
 diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMAutoLinkDetector.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMAutoLinkDetector.mm
+index 2d1bb66..a9717c8 100644
 --- a/node_modules/react-native-enriched-markdown/ios/input/ENRMAutoLinkDetector.mm
 +++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMAutoLinkDetector.mm
-@@ -98,6 +98,17 @@
-     return;
-   }
+@@ -100,6 +100,17 @@ - (void)clearAutoLinkInRange:(NSRange)range
    [textStorage removeAttribute:ENRMAutomaticLinkAttributeName range:range];
-+}
-+
+ }
+ 
 +- (void)restoreDraftDetectedRanges:(NSArray<ENRMFormattingRange *> *)ranges
 +{
 +  NSTextStorage *storage = _textStorage;
@@ -47,11 +235,14 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMAutoLinkD
 +      [storage addAttribute:ENRMAutomaticLinkAttributeName value:[range.url copy] range:range.range];
 +  }
 +  [self refreshStyling];
- }
- 
++}
++
  #pragma mark - Link matching
+ 
+ - (nullable NSString *)detectNewLinkAtRange:(NSRange)wordRange
 diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftSnapshot+Internal.h b/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftSnapshot+Internal.h
 new file mode 100644
+index 0000000..2450755
 --- /dev/null
 +++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftSnapshot+Internal.h
 @@ -0,0 +1,36 @@
@@ -93,6 +284,7 @@ new file mode 100644
 +NS_ASSUME_NONNULL_END
 diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftSnapshot.h b/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftSnapshot.h
 new file mode 100644
+index 0000000..dc1b563
 --- /dev/null
 +++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftSnapshot.h
 @@ -0,0 +1,69 @@
@@ -167,6 +359,7 @@ new file mode 100644
 +NS_ASSUME_NONNULL_END
 diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftSnapshot.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftSnapshot.mm
 new file mode 100644
+index 0000000..429bb12
 --- /dev/null
 +++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftSnapshot.mm
 @@ -0,0 +1,274 @@
@@ -446,6 +639,7 @@ new file mode 100644
 +@end
 diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftTextStorage.h b/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftTextStorage.h
 new file mode 100644
+index 0000000..12e457f
 --- /dev/null
 +++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftTextStorage.h
 @@ -0,0 +1,10 @@
@@ -461,6 +655,7 @@ new file mode 100644
 +NS_ASSUME_NONNULL_END
 diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftTextStorage.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftTextStorage.mm
 new file mode 100644
+index 0000000..25fb1f2
 --- /dev/null
 +++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftTextStorage.mm
 @@ -0,0 +1,27 @@
@@ -492,9 +687,10 @@ new file mode 100644
 +}
 +@end
 diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTextView.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTextView.mm
+index a5391c7..c916c21 100644
 --- a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTextView.mm
 +++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTextView.mm
-@@ -15,6 +15,32 @@
+@@ -15,6 +15,32 @@ @implementation ENRMInputTextView {
    CGFloat _lastLayoutWidth;
  }
  
@@ -527,7 +723,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputText
  - (void)copy:(id)sender
  {
    NSRange selection = self.selectedRange;
-@@ -94,7 +120,9 @@
+@@ -94,7 +120,9 @@ - (void)deleteBackward
    if (self.markdownTextInput != nil && [self.markdownTextInput handleBackspaceAtDocumentStart]) {
      return;
    }
@@ -539,9 +735,10 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputText
  
  /// Hardware-keyboard Tab / Shift+Tab indent and outdent the current list item.
 diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTypingAttributesController.h b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTypingAttributesController.h
+index e7e2359..937b228 100644
 --- a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTypingAttributesController.h
 +++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTypingAttributesController.h
-@@ -33,6 +33,7 @@
+@@ -33,6 +33,7 @@ NS_ASSUME_NONNULL_BEGIN
  - (void)syncWithPendingStyles;
  - (void)resetForSelectionChange;
  - (void)clearListParagraphStyle;
@@ -550,27 +747,29 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTypi
  @property (nonatomic, readonly) NSSet<NSNumber *> *pendingStyles;
  @property (nonatomic, readonly) NSSet<NSNumber *> *pendingStyleRemovals;
 diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTypingAttributesController.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTypingAttributesController.mm
+index 8acb7c0..7ed6324 100644
 --- a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTypingAttributesController.mm
 +++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTypingAttributesController.mm
-@@ -38,6 +38,14 @@
- - (NSSet<NSNumber *> *)pendingStyleRemovals
- {
+@@ -40,6 +40,14 @@ - (instancetype)initWithTextView:(ENRMPlatformTextView *)textView
    return [_pendingStyleRemovals copy];
-+}
-+
+ }
+ 
 +- (void)restoreDraftPendingStyles:(NSSet<NSNumber *> *)add removals:(NSSet<NSNumber *> *)remove
 +{
 +  _pendingStyles = [add mutableCopy];
 +  _pendingStyleRemovals = [remove mutableCopy];
 +  [self syncWithCursorBlock];
 +  [self syncWithPendingStyles];
- }
- 
++}
++
  #pragma mark - Style queries
+ 
+ - (BOOL)isEffectiveStyleActive:(ENRMInputStyleType)type atPosition:(NSUInteger)position
 diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput+Internal.h b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput+Internal.h
+index a8d3530..85d0837 100644
 --- a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput+Internal.h
 +++ b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput+Internal.h
-@@ -36,6 +36,9 @@
+@@ -36,6 +36,9 @@ typedef struct {
  @property (nonatomic, readonly) ENRMInputEventEmitter *inputEventEmitter;
  @property (nonatomic, readonly) ENRMInputTypingAttributesController *typingController;
  
@@ -581,6 +780,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
  - (void)toggleItalic;
  - (void)toggleUnderline;
 diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.h b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.h
+index 231d841..cd43441 100644
 --- a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.h
 +++ b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.h
 @@ -1,4 +1,5 @@
@@ -599,6 +799,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
  - (CGSize)measureSize:(CGFloat)maxWidth;
  - (nullable NSString *)markdownForSelectedRange;
 diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
+index 7e72cff..4769f62 100644
 --- a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
 +++ b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
 @@ -1,4 +1,6 @@
@@ -608,7 +809,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
  #import "ContextMenuUtils.h"
  #import "ENRMAutoLinkDetector.h"
  #import "ENRMBlockEditCoordinator.h"
-@@ -58,6 +60,9 @@
+@@ -58,6 +60,9 @@ @interface EnrichedMarkdownTextInput () <RCTEnrichedMarkdownTextInputViewProtoco
                                           ENRMInputTypingAttributesDataSource>
  #endif
  - (void)setupTextView;
@@ -618,7 +819,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
  - (void)applyFormatting;
  - (void)applyFormattingScopedToEditAtLocation:(NSUInteger)editLocation insertedLength:(NSUInteger)insertedLength;
  - (void)applyFormattingScopedFromParagraphAtLocation:(NSUInteger)editLocation;
-@@ -69,6 +74,14 @@
+@@ -69,6 +74,14 @@ - (void)resetBaseTypingAttributes;
  
  @implementation EnrichedMarkdownTextInput {
    ENRMPlatformTextView *_textView;
@@ -633,7 +834,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    ENRMInputLayoutManager *_layoutManager;
    EnrichedMarkdownTextInputShadowNode::ConcreteState::Shared _state;
    int _heightUpdateCounter;
-@@ -177,6 +190,18 @@
+@@ -177,6 +190,18 @@ - (instancetype)initWithFrame:(CGRect)frame
      _inputEventEmitter = [[ENRMInputEventEmitter alloc] initWithDataSource:self];
  
      [self setupDetectorPipeline];
@@ -652,7 +853,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
  
      _editPipeline = [[ENRMEditPipeline alloc] initWithFormattingStore:_formattingStore
                                                             blockStore:_blockStore
-@@ -221,7 +246,7 @@
+@@ -221,7 +246,7 @@ - (void)setupTextView
    textContainer.widthTracksTextView = YES;
    [_layoutManager addTextContainer:textContainer];
  
@@ -661,7 +862,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    [textStorage addLayoutManager:_layoutManager];
  
    ENRMInputTextView *inputTextView = [[ENRMInputTextView alloc] initWithFrame:CGRectZero textContainer:textContainer];
-@@ -378,10 +403,16 @@
+@@ -378,10 +403,16 @@ - (CGSize)measureSize:(CGFloat)maxWidth
  
  - (void)updateProps:(Props::Shared const &)props oldProps:(Props::Shared const &)oldProps
  {
@@ -679,7 +880,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
      _textView.editable = newViewProps.editable;
    }
  
-@@ -536,6 +567,16 @@
+@@ -536,6 +567,16 @@ - (void)updateProps:(Props::Shared const &)props oldProps:(Props::Shared const &
      [self applyFormatting];
    }
  
@@ -696,7 +897,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    [super updateProps:props oldProps:oldProps];
  }
  
-@@ -587,7 +628,7 @@
+@@ -587,7 +628,7 @@ - (void)didMoveToWindow
      [self requestHeightUpdate];
  
      const auto &viewProps = *std::static_pointer_cast<EnrichedMarkdownTextInputProps const>(_props);
@@ -705,7 +906,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
        ENRMFocusTextView(_textView);
      }
    }
-@@ -671,6 +712,7 @@
+@@ -671,6 +712,7 @@ - (void)updatePlaceholderVisibility
  
  - (void)importMarkdown:(NSString *)markdown
  {
@@ -713,7 +914,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    ENRMInputParser *parser = [[ENRMInputParser alloc] init];
    ENRMParseResult *parsed = [parser parseToPlainTextAndRanges:markdown];
  
-@@ -696,6 +738,8 @@
+@@ -696,6 +738,8 @@ - (void)importMarkdown:(NSString *)markdown
    if (parsed.plainText.length == 0) {
      [self resetBaseTypingAttributes];
    }
@@ -722,7 +923,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
  }
  
  - (void)replaceTextInRange:(NSRange)selection
-@@ -703,6 +747,9 @@
+@@ -703,6 +747,9 @@ - (void)replaceTextInRange:(NSRange)selection
            formattingRanges:(NSArray<ENRMFormattingRange *> *)ranges
                 blockRanges:(NSArray<ENRMBlockRange *> *)blockRanges
  {
@@ -732,7 +933,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    NSUInteger editLocation = selection.location;
  
    [_editSession enterPhase:ENRMEditPhaseFormatting];
-@@ -730,6 +777,21 @@
+@@ -730,6 +777,21 @@ - (void)replaceTextInRange:(NSRange)selection
  
    [_detectorPipeline processTextChange:plainText modificationRange:NSMakeRange(editLocation, text.length)];
  
@@ -754,7 +955,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    [self updatePlaceholderVisibility];
    [_inputEventEmitter emitOnChangeText];
    [_inputEventEmitter emitOnChangeSelection];
-@@ -804,6 +866,7 @@
+@@ -804,6 +866,7 @@ - (void)pasteMarkdown:(NSString *)markdown
  
  - (void)resetBaseTypingAttributes
  {
@@ -762,7 +963,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    ENRMSetDefaultTypingAttributes(_textView, @{
      NSFontAttributeName : _formatterStyle.baseFont,
      NSForegroundColorAttributeName : _formatterStyle.baseTextColor,
-@@ -812,6 +875,7 @@
+@@ -812,6 +875,7 @@ - (void)resetBaseTypingAttributes
  
  - (void)applyFormatting
  {
@@ -770,7 +971,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    [self applyFormattingScopedToRange:NSMakeRange(0, ENRMGetPlainText(_textView).length)];
  }
  
-@@ -819,6 +883,7 @@
+@@ -819,6 +883,7 @@ - (void)applyFormatting
  /// line(s) touched by the edit, mirroring Android's applyFormattingScopedToEdit.
  - (void)applyFormattingScopedToEditAtLocation:(NSUInteger)editLocation insertedLength:(NSUInteger)insertedLength
  {
@@ -778,7 +979,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    NSString *plainText = ENRMGetPlainText(_textView);
    NSUInteger textLength = plainText.length;
    if (textLength == 0) {
-@@ -840,6 +905,7 @@
+@@ -840,6 +905,7 @@ - (void)applyFormattingScopedToEditAtLocation:(NSUInteger)editLocation insertedL
  /// whose paragraph range extends back over the joined previous line.
  - (void)applyFormattingScopedFromParagraphAtLocation:(NSUInteger)editLocation
  {
@@ -786,7 +987,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    NSString *plainText = ENRMGetPlainText(_textView);
    NSUInteger textLength = plainText.length;
    if (textLength == 0) {
-@@ -855,6 +921,7 @@
+@@ -855,6 +921,7 @@ - (void)applyFormattingScopedFromParagraphAtLocation:(NSUInteger)editLocation
  
  - (void)applyFormattingScopedToRange:(NSRange)scope
  {
@@ -794,7 +995,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    if (_editSession.shouldSuppressFormatting) {
      return;
    }
-@@ -883,6 +950,7 @@
+@@ -883,6 +950,7 @@ - (void)applyFormattingScopedToRange:(NSRange)scope
  
  - (void)applyWritingDirection
  {
@@ -802,7 +1003,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    NSTextStorage *textStorage = _textView.textStorage;
    if (textStorage.length == 0) {
      return;
-@@ -896,7 +964,7 @@
+@@ -896,7 +964,7 @@ - (void)applyWritingDirection
  
  - (void)focus
  {
@@ -811,7 +1012,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
  }
  
  - (void)blur
-@@ -906,6 +974,7 @@
+@@ -906,6 +974,7 @@ - (void)blur
  
  - (void)setValue:(NSString *)markdown
  {
@@ -819,7 +1020,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    [self importMarkdown:markdown];
    _lastSelectedRange = _textView.selectedRange;
    [_inputEventEmitter emitOnChangeText];
-@@ -916,6 +985,7 @@
+@@ -916,6 +985,7 @@ - (void)setValue:(NSString *)markdown
  
  - (void)setSelection:(NSInteger)start end:(NSInteger)end
  {
@@ -827,7 +1028,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    NSInteger textLen = (NSInteger)ENRMGetPlainText(_textView).length;
    NSInteger clampedStart = MIN(MAX(start, 0), textLen);
    NSInteger clampedEnd = MIN(MAX(end, clampedStart), textLen);
-@@ -951,6 +1021,7 @@
+@@ -951,6 +1021,7 @@ - (void)toggleSpoiler
  
  - (void)toggleInlineStyle:(ENRMInputStyleType)styleType
  {
@@ -835,7 +1036,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    id<ENRMStyleHandler> handler = [_formatter handlerForStyleType:styleType];
    if (!handler) {
      return;
-@@ -986,6 +1057,7 @@
+@@ -986,6 +1057,7 @@ - (void)toggleHeading:(NSInteger)level
  
  - (void)toggleBlockType:(ENRMInputBlockType)type level:(NSInteger)level
  {
@@ -843,7 +1044,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    NSString *text = ENRMGetPlainText(_textView);
    BOOL alreadyActive = [_blockCoordinator toggleBlockType:type
                                                      level:level
-@@ -1038,6 +1110,7 @@
+@@ -1038,6 +1110,7 @@ - (void)outdentList
  
  - (void)changeListDepthBy:(NSInteger)delta
  {
@@ -851,7 +1052,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    NSString *text = ENRMGetPlainText(_textView);
    ENRMDepthChangeResult result = [_blockCoordinator changeDepthBy:delta
                                                     cursorPosition:_textView.selectedRange.location
-@@ -1319,6 +1392,7 @@
+@@ -1319,6 +1392,7 @@ - (NSString *)adjustStoresForEditAtLocation:(NSUInteger)editLocation
  
  - (void)setLink:(NSString *)url
  {
@@ -859,7 +1060,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    NSRange selection = _textView.selectedRange;
    if (![_linkCoordinator setLinkURL:url atCursor:selection.location selection:selection]) {
      return;
-@@ -1329,6 +1403,7 @@
+@@ -1329,6 +1403,7 @@ - (void)setLink:(NSString *)url
  
  - (void)insertLink:(NSString *)text url:(NSString *)url
  {
@@ -867,7 +1068,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    NSString *displayText = text.length > 0 ? text : url;
    NSRange linkRange = NSMakeRange(0, displayText.length);
    ENRMFormattingRange *range = [ENRMFormattingRange rangeWithType:ENRMInputStyleTypeLink
-@@ -1339,6 +1414,7 @@
+@@ -1339,6 +1414,7 @@ - (void)insertLink:(NSString *)text url:(NSString *)url
  
  - (void)insertText:(NSString *)text
  {
@@ -875,7 +1076,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    if (text.length == 0) {
      return;
    }
-@@ -1385,6 +1461,7 @@
+@@ -1385,6 +1461,7 @@ - (void)insertMention:(NSString *)displayText url:(NSString *)url
  
  - (void)removeLink
  {
@@ -883,7 +1084,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    if (![_linkCoordinator removeLinkAtPosition:_textView.selectedRange.location]) {
      return;
    }
-@@ -1472,6 +1549,13 @@
+@@ -1472,6 +1549,13 @@ - (void)handleCommand:(const NSString *)commandName args:(const NSArray *)args
  
  - (std::shared_ptr<EnrichedMarkdownTextInputEventEmitter const>)fabricEventEmitter
  {
@@ -897,14 +1098,14 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    if (_eventEmitter == nullptr || _editSession.shouldSuppressEvents) {
      return nullptr;
    }
-@@ -1681,7 +1765,19 @@
+@@ -1681,9 +1765,21 @@ - (BOOL)applyMarkdownShortcutForEditAtLocation:(NSUInteger)editLocation
  
  - (void)handleTextChanged
  {
 +  if (_draftSealed || _draftDiscardFrozen) return;
    if (_editSession.isComposing) {
-+    return;
-+  }
+     return;
+   }
 +  if (_draftRequired && _draftCompositionPending) {
 +    NSError *failure = nil;
 +    if (![self draftReconcileFinishedComposition:&failure]) {
@@ -914,10 +1115,12 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
 +    [_inputEventEmitter emitOnChangeText];
 +    [_inputEventEmitter emitOnChangeSelection];
 +    [_inputEventEmitter emitFormattingChanged];
-     return;
-   }
++    return;
++  }
  
-@@ -1835,6 +1931,7 @@
+   NSUInteger newLength = ENRMGetPlainText(_textView).length;
+   NSRange selection = _textView.selectedRange;
+@@ -1835,6 +1931,7 @@ - (void)manageSelectionBasedChanges
  
  - (BOOL)textView:(UITextView *)textView shouldChangeTextInRange:(NSRange)range replacementText:(NSString *)text
  {
@@ -925,7 +1128,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    [_inputEventEmitter emitOnKeyPress:text];
    if ([self deleteLinkForReplacementRange:range replacementText:text]) {
      return NO;
-@@ -1917,7 +2014,7 @@
+@@ -1917,7 +2014,7 @@ - (void)schedulePostGestureAtomicSnap
                       return;
                     }
                     strongSelf->_atomicSnapScheduled = NO;
@@ -934,7 +1137,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
                         strongSelf->_editSession.isComposing) {
                       return;
                     }
-@@ -1935,6 +2032,7 @@
+@@ -1935,6 +2032,7 @@ - (void)schedulePostGestureAtomicSnap
  
  - (void)textViewDidChangeSelection:(UITextView *)textView
  {
@@ -942,7 +1145,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    NSRange newSelection = textView.selectedRange;
    if (!_editSession.shouldSuppressSelectionSideEffects && !_editSession.isComposing) {
      if ([self selectionGestureIsActive]) {
-@@ -2139,6 +2237,331 @@
+@@ -2139,6 +2237,331 @@ - (void)submitOnKeyDownIfNeeded:(NSEvent *)event
  
  #endif
  
@@ -1274,10 +1477,138 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
  @end
  
  Class<RCTComponentViewProtocol> EnrichedMarkdownTextInputCls(void)
+diff --git a/node_modules/react-native-enriched-markdown/ios/internals/ENRMViewFreeMeasurement.h b/node_modules/react-native-enriched-markdown/ios/internals/ENRMViewFreeMeasurement.h
+index 8f7b440..6f7552c 100644
+--- a/node_modules/react-native-enriched-markdown/ios/internals/ENRMViewFreeMeasurement.h
++++ b/node_modules/react-native-enriched-markdown/ios/internals/ENRMViewFreeMeasurement.h
+@@ -93,6 +93,7 @@ template <typename Md4cFlagsT> static inline ENRMMd4cFlags *ENRMMd4cFlagsFromPro
+   flags.hardSoftBreaks = props.hardSoftBreaks;
+   flags.preserveBlankLines = props.preserveBlankLines;
+   flags.admonitions = props.admonitions;
++  flags.noMedia = props.noMedia;
+   return flags;
+ }
+ 
+diff --git a/node_modules/react-native-enriched-markdown/ios/internals/MeasurementCache.h b/node_modules/react-native-enriched-markdown/ios/internals/MeasurementCache.h
+index 64604a3..2def2c3 100644
+--- a/node_modules/react-native-enriched-markdown/ios/internals/MeasurementCache.h
++++ b/node_modules/react-native-enriched-markdown/ios/internals/MeasurementCache.h
+@@ -43,6 +43,7 @@ struct MeasurementCacheKey {
+   bool md4cFlagsHardSoftBreaks;
+   bool md4cFlagsPreserveBlankLines;
+   bool md4cFlagsAdmonitions;
++  bool md4cFlagsNoMedia;
+   size_t styleFingerprint;
+   CGFloat fontScale;
+   MarkdownFlavor flavor;
+@@ -55,13 +56,13 @@ struct MeasurementCacheKey {
+   {
+     return std::tie(markdown, maxWidth, allowTrailingMargin, allowFontScaling, maxFontSizeMultiplier,
+                     md4cFlagsUnderline, md4cFlagsSuperscript, md4cFlagsSubscript, md4cFlagsHighlight,
+-                    md4cFlagsLatexMath, md4cFlagsHardSoftBreaks, md4cFlagsPreserveBlankLines, md4cFlagsAdmonitions,
++                    md4cFlagsLatexMath, md4cFlagsHardSoftBreaks, md4cFlagsPreserveBlankLines, md4cFlagsAdmonitions, md4cFlagsNoMedia,
+                     styleFingerprint, fontScale, flavor, lineBreakStrategyIOS, writingDirection, numberOfLines,
+                     ellipsizeMode) ==
+            std::tie(other.markdown, other.maxWidth, other.allowTrailingMargin, other.allowFontScaling,
+                     other.maxFontSizeMultiplier, other.md4cFlagsUnderline, other.md4cFlagsSuperscript,
+                     other.md4cFlagsSubscript, other.md4cFlagsHighlight, other.md4cFlagsLatexMath,
+-                    other.md4cFlagsHardSoftBreaks, other.md4cFlagsPreserveBlankLines, other.md4cFlagsAdmonitions,
++                    other.md4cFlagsHardSoftBreaks, other.md4cFlagsPreserveBlankLines, other.md4cFlagsAdmonitions, other.md4cFlagsNoMedia,
+                     other.styleFingerprint, other.fontScale, other.flavor, other.lineBreakStrategyIOS,
+                     other.writingDirection, other.numberOfLines, other.ellipsizeMode);
+   }
+@@ -84,6 +85,7 @@ struct MeasurementCacheKeyHash {
+     HashUtils::hash_one(h, key.md4cFlagsHardSoftBreaks);
+     HashUtils::hash_one(h, key.md4cFlagsPreserveBlankLines);
+     HashUtils::hash_one(h, key.md4cFlagsAdmonitions);
++    HashUtils::hash_one(h, key.md4cFlagsNoMedia);
+     HashUtils::hash_one(h, key.styleFingerprint);
+     HashUtils::hash_one(h, key.fontScale);
+     HashUtils::hash_one(h, static_cast<uint8_t>(key.flavor));
+@@ -175,6 +177,7 @@ inline MeasurementCacheKey buildMeasurementCacheKey(const PropsType &props, CGFl
+       .md4cFlagsHardSoftBreaks = props.md4cFlags.hardSoftBreaks,
+       .md4cFlagsPreserveBlankLines = props.md4cFlags.preserveBlankLines,
+       .md4cFlagsAdmonitions = props.md4cFlags.admonitions,
++      .md4cFlagsNoMedia = props.md4cFlags.noMedia,
+       .styleFingerprint = computeStyleFingerprint(props.markdownStyle),
+       .fontScale = fontScale,
+       .flavor = flavor,
+diff --git a/node_modules/react-native-enriched-markdown/ios/internals/ShadowMeasurementUtils.h b/node_modules/react-native-enriched-markdown/ios/internals/ShadowMeasurementUtils.h
+index 9904ae5..6857cab 100644
+--- a/node_modules/react-native-enriched-markdown/ios/internals/ShadowMeasurementUtils.h
++++ b/node_modules/react-native-enriched-markdown/ios/internals/ShadowMeasurementUtils.h
+@@ -70,7 +70,8 @@ static inline bool ENRMPropsNeedExactStreamingMeasurement(const PropsT &oldProps
+          oldProps.md4cFlags.highlight != newProps.md4cFlags.highlight ||
+          oldProps.md4cFlags.hardSoftBreaks != newProps.md4cFlags.hardSoftBreaks ||
+          oldProps.md4cFlags.preserveBlankLines != newProps.md4cFlags.preserveBlankLines ||
+-         oldProps.isGFM != newProps.isGFM || oldProps.md4cFlags.admonitions != newProps.md4cFlags.admonitions ||
++         oldProps.isGFM != newProps.isGFM || oldProps.md4cFlags.noMedia != newProps.md4cFlags.noMedia ||
++         oldProps.md4cFlags.admonitions != newProps.md4cFlags.admonitions ||
+          computeStyleFingerprint(oldProps.markdownStyle) != computeStyleFingerprint(newProps.markdownStyle);
+ }
+ 
+diff --git a/node_modules/react-native-enriched-markdown/ios/parser/ENRMMarkdownParser.h b/node_modules/react-native-enriched-markdown/ios/parser/ENRMMarkdownParser.h
+index 7bcba9f..d28e039 100644
+--- a/node_modules/react-native-enriched-markdown/ios/parser/ENRMMarkdownParser.h
++++ b/node_modules/react-native-enriched-markdown/ios/parser/ENRMMarkdownParser.h
+@@ -11,6 +11,7 @@
+ @property (nonatomic, assign) BOOL hardSoftBreaks;
+ @property (nonatomic, assign) BOOL preserveBlankLines;
+ @property (nonatomic, assign) BOOL admonitions;
++@property (nonatomic, assign) BOOL noMedia;
+ 
+ + (instancetype)defaultFlags;
+ 
+diff --git a/node_modules/react-native-enriched-markdown/ios/parser/ENRMMarkdownParser.mm b/node_modules/react-native-enriched-markdown/ios/parser/ENRMMarkdownParser.mm
+index a4a0022..f4d4108 100644
+--- a/node_modules/react-native-enriched-markdown/ios/parser/ENRMMarkdownParser.mm
++++ b/node_modules/react-native-enriched-markdown/ios/parser/ENRMMarkdownParser.mm
+@@ -16,6 +16,7 @@ - (instancetype)init
+     _hardSoftBreaks = NO;
+     _preserveBlankLines = NO;
+     _admonitions = YES;
++    _noMedia = NO;
+   }
+   return self;
+ }
+@@ -36,6 +37,7 @@ - (id)copyWithZone:(NSZone *)zone
+   copy.hardSoftBreaks = self.hardSoftBreaks;
+   copy.preserveBlankLines = self.preserveBlankLines;
+   copy.admonitions = self.admonitions;
++  copy.noMedia = self.noMedia;
+   return copy;
+ }
+ 
+diff --git a/node_modules/react-native-enriched-markdown/ios/parser/MarkdownParserBridge.mm b/node_modules/react-native-enriched-markdown/ios/parser/MarkdownParserBridge.mm
+index e700fce..f908c38 100644
+--- a/node_modules/react-native-enriched-markdown/ios/parser/MarkdownParserBridge.mm
++++ b/node_modules/react-native-enriched-markdown/ios/parser/MarkdownParserBridge.mm
+@@ -167,6 +167,7 @@
+   cppFlags.hardSoftBreaks = flags.hardSoftBreaks;
+   cppFlags.preserveBlankLines = flags.preserveBlankLines;
+   cppFlags.admonitions = flags.admonitions;
++  cppFlags.noMedia = flags.noMedia;
+ 
+   Markdown::MD4CParser parser;
+   auto cppAST = parser.parse(cppMarkdown, cppFlags, isGFM);
+diff --git a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownNativeComponent.ts b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownNativeComponent.ts
+index b4041e5..f045690 100644
+--- a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownNativeComponent.ts
++++ b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownNativeComponent.ts
+@@ -356,6 +356,8 @@ export interface AccessibilityLabelsProps {
+  * Controls how the markdown parser interprets certain syntax.
+  */
+ export interface Md4cFlagsInternal {
++  /** iOS-only media-free AST admission; defaults false in the public wrapper. */
++  noMedia: boolean;
+   /**
+    * Enable underline syntax support (__text__).
+    * When enabled, underscores are treated as underline markers.
 diff --git a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInput.js b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInput.js
+index 5b348e8..a7dc84c 100644
 --- a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInput.js
 +++ b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInput.js
-@@ -41,6 +41,7 @@
+@@ -41,6 +41,7 @@ export const EnrichedMarkdownTextInput = ({
    placeholder,
    placeholderTextColor,
    editable = true,
@@ -1285,7 +1616,7 @@ diff --git a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMark
    autoFocus = false,
    scrollEnabled = true,
    markdownShortcuts,
-@@ -393,6 +394,7 @@
+@@ -393,6 +394,7 @@ export const EnrichedMarkdownTextInput = ({
      placeholder: placeholder,
      placeholderTextColor: placeholderTextColor,
      editable: editable,
@@ -1293,10 +1624,101 @@ diff --git a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMark
      autoFocus: autoFocus,
      scrollEnabled: scrollEnabled,
      markdownShortcuts: normalizedMarkdownShortcuts,
+diff --git a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInputNativeComponent.ts b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInputNativeComponent.ts
+index c2fec26..8cc675c 100644
+--- a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInputNativeComponent.ts
++++ b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInputNativeComponent.ts
+@@ -205,6 +205,8 @@ export interface NativeProps extends ViewProps {
+    * @default true
+    */
+   editable?: boolean;
++  /** iOS-only opaque native checkpoint lease. Absent preserves ordinary volatile behavior. */
++  draftCheckpointToken?: string;
+   /**
+    * Whether the input should auto-focus on mount.
+    * @default false
+diff --git a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextNativeComponent.ts b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextNativeComponent.ts
+index efdc300..2a9c6ff 100644
+--- a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextNativeComponent.ts
++++ b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextNativeComponent.ts
+@@ -357,6 +357,8 @@ export interface AccessibilityLabelsProps {
+  * Controls how the markdown parser interprets certain syntax.
+  */
+ export interface Md4cFlagsInternal {
++  /** iOS-only media-free AST admission; defaults false in the public wrapper. */
++  noMedia: boolean;
+   /**
+    * Enable underline syntax support (__text__).
+    * When enabled, underscores are treated as underline markers.
+diff --git a/node_modules/react-native-enriched-markdown/lib/module/native/EnrichedMarkdownText.js b/node_modules/react-native-enriched-markdown/lib/module/native/EnrichedMarkdownText.js
+index ab5f4a7..5d0ef32 100644
+--- a/node_modules/react-native-enriched-markdown/lib/module/native/EnrichedMarkdownText.js
++++ b/node_modules/react-native-enriched-markdown/lib/module/native/EnrichedMarkdownText.js
+@@ -1,3 +1,4 @@
++import { Platform } from 'react-native';
+ "use strict";
+ 
+ import { useMemo, useCallback, useRef, useEffect } from 'react';
+@@ -62,6 +63,7 @@ const defaultMd4cFlags = {
+   subscript: false,
+   latexMath: true,
+   highlight: false,
++  noMedia: false,
+   hardSoftBreaks: false,
+   preserveBlankLines: false,
+   admonitions: true
+@@ -102,6 +104,10 @@ export const EnrichedMarkdownText = ({
+   ellipsizeMode,
+   ...rest
+ }) => {
++  if (md4cFlags.noMedia && Platform.OS !== 'ios') {
++    throw new Error('md4cFlags.noMedia is supported only on iOS.');
++  }
++
+   const normalizedStyleRef = useRef(null);
+   const normalized = normalizeMarkdownStyle(markdownStyle);
+   // normalizeMarkdownStyle returns cached objects for structurally equal inputs,
+@@ -116,6 +122,7 @@ export const EnrichedMarkdownText = ({
+     subscript: md4cFlags.subscript ?? false,
+     latexMath: md4cFlags.latexMath ?? true,
+     highlight: md4cFlags.highlight ?? false,
++    noMedia: md4cFlags.noMedia ?? false,
+     hardSoftBreaks: md4cFlags.hardSoftBreaks ?? false,
+     preserveBlankLines: md4cFlags.preserveBlankLines ?? false,
+     // Admonitions are a GitHub-flavor feature; force them off in commonmark so
+diff --git a/node_modules/react-native-enriched-markdown/lib/module/web/EnrichedMarkdownText.js b/node_modules/react-native-enriched-markdown/lib/module/web/EnrichedMarkdownText.js
+index 8b5d3af..bde2ec9 100644
+--- a/node_modules/react-native-enriched-markdown/lib/module/web/EnrichedMarkdownText.js
++++ b/node_modules/react-native-enriched-markdown/lib/module/web/EnrichedMarkdownText.js
+@@ -28,6 +28,10 @@ export const EnrichedMarkdownText = ({
+   testID,
+   ...rest
+ }) => {
++  if (md4cFlags.noMedia) {
++    throw new Error('md4cFlags.noMedia is supported only on iOS.');
++  }
++
+   const normalizedStyle = useMemo(() => normalizeMarkdownStyle(markdownStyle), [markdownStyle]);
+   const [ast, setAst] = useState(null);
+   const [katex, setKatex] = useState(null);
+diff --git a/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownNativeComponent.d.ts b/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownNativeComponent.d.ts
+index 56e42c8..8478394 100644
+--- a/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownNativeComponent.d.ts
++++ b/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownNativeComponent.d.ts
+@@ -303,6 +303,8 @@ export interface AccessibilityLabelsProps {
+  * Controls how the markdown parser interprets certain syntax.
+  */
+ export interface Md4cFlagsInternal {
++  /** iOS-only media-free AST admission; defaults false in the public wrapper. */
++  noMedia: boolean;
+     /**
+      * Enable underline syntax support (__text__).
+      * When enabled, underscores are treated as underline markers.
 diff --git a/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextInput.d.ts b/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextInput.d.ts
+index 631fb19..cac9cae 100644
 --- a/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextInput.d.ts
 +++ b/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextInput.d.ts
-@@ -181,6 +181,8 @@
+@@ -181,6 +181,8 @@ export interface EnrichedMarkdownTextInputProps extends Omit<ViewProps, 'style'
      placeholder?: string;
      placeholderTextColor?: ColorValue;
      editable?: boolean;
@@ -1306,9 +1728,10 @@ diff --git a/node_modules/react-native-enriched-markdown/lib/typescript/src/Enri
      scrollEnabled?: boolean;
      /**
 diff --git a/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextInputNativeComponent.d.ts b/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextInputNativeComponent.d.ts
+index 6f9148c..35d5518 100644
 --- a/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextInputNativeComponent.d.ts
 +++ b/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextInputNativeComponent.d.ts
-@@ -210,6 +210,8 @@
+@@ -210,6 +210,8 @@ export interface NativeProps extends ViewProps {
       * @default true
       */
      editable?: boolean;
@@ -1317,10 +1740,52 @@ diff --git a/node_modules/react-native-enriched-markdown/lib/typescript/src/Enri
      /**
       * Whether the input should auto-focus on mount.
       * @default false
+diff --git a/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextNativeComponent.d.ts b/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextNativeComponent.d.ts
+index 5fa30a6..95de4d4 100644
+--- a/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextNativeComponent.d.ts
++++ b/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextNativeComponent.d.ts
+@@ -303,6 +303,8 @@ export interface AccessibilityLabelsProps {
+  * Controls how the markdown parser interprets certain syntax.
+  */
+ export interface Md4cFlagsInternal {
++  /** iOS-only media-free AST admission; defaults false in the public wrapper. */
++  noMedia: boolean;
+     /**
+      * Enable underline syntax support (__text__).
+      * When enabled, underscores are treated as underline markers.
+diff --git a/node_modules/react-native-enriched-markdown/lib/typescript/src/types/MarkdownStyle.d.ts b/node_modules/react-native-enriched-markdown/lib/typescript/src/types/MarkdownStyle.d.ts
+index 614074b..ea72e0d 100644
+--- a/node_modules/react-native-enriched-markdown/lib/typescript/src/types/MarkdownStyle.d.ts
++++ b/node_modules/react-native-enriched-markdown/lib/typescript/src/types/MarkdownStyle.d.ts
+@@ -361,6 +361,10 @@ export interface MarkdownStyle {
+  * Controls how the markdown parser interprets certain syntax.
+  */
+ export interface Md4cFlags {
++  /** Parse images as explicit links and disable HTML media promotion before rendering.
++   * Supported on iOS. Other platform wrappers reject true instead of ignoring it.
++   * @default false */
++  noMedia?: boolean;
+     /**
+      * Enable underline syntax support (__text__).
+      * When enabled, underscores are treated as underline markers.
+diff --git a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts
+index b4041e5..f045690 100644
+--- a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts
++++ b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts
+@@ -356,6 +356,8 @@ export interface AccessibilityLabelsProps {
+  * Controls how the markdown parser interprets certain syntax.
+  */
+ export interface Md4cFlagsInternal {
++  /** iOS-only media-free AST admission; defaults false in the public wrapper. */
++  noMedia: boolean;
+   /**
+    * Enable underline syntax support (__text__).
+    * When enabled, underscores are treated as underline markers.
 diff --git a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextInput.tsx b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextInput.tsx
+index 4100c70..f6241e4 100644
 --- a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextInput.tsx
 +++ b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextInput.tsx
-@@ -229,6 +229,8 @@
+@@ -229,6 +229,8 @@ export interface EnrichedMarkdownTextInputProps
    placeholder?: string;
    placeholderTextColor?: ColorValue;
    editable?: boolean;
@@ -1329,7 +1794,7 @@ diff --git a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTex
    autoFocus?: boolean;
    scrollEnabled?: boolean;
    /**
-@@ -320,6 +322,7 @@
+@@ -320,6 +322,7 @@ export const EnrichedMarkdownTextInput = ({
    placeholder,
    placeholderTextColor,
    editable = true,
@@ -1337,7 +1802,7 @@ diff --git a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTex
    autoFocus = false,
    scrollEnabled = true,
    markdownShortcuts,
-@@ -734,6 +737,7 @@
+@@ -734,6 +737,7 @@ export const EnrichedMarkdownTextInput = ({
        placeholder={placeholder}
        placeholderTextColor={placeholderTextColor}
        editable={editable}
@@ -1346,9 +1811,10 @@ diff --git a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTex
        scrollEnabled={scrollEnabled}
        markdownShortcuts={normalizedMarkdownShortcuts}
 diff --git a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextInputNativeComponent.ts b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextInputNativeComponent.ts
+index c2fec26..8cc675c 100644
 --- a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextInputNativeComponent.ts
 +++ b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextInputNativeComponent.ts
-@@ -205,6 +205,8 @@
+@@ -205,6 +205,8 @@ export interface NativeProps extends ViewProps {
     * @default true
     */
    editable?: boolean;
@@ -1357,48 +1823,82 @@ diff --git a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTex
    /**
     * Whether the input should auto-focus on mount.
     * @default false
-diff --git a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.cpp b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.cpp
---- a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.cpp
-+++ b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.cpp
-@@ -182,6 +182,7 @@
-     placeholder(convertRawProp(context, rawProps, "placeholder", sourceProps.placeholder, {})),
-     placeholderTextColor(convertRawProp(context, rawProps, "placeholderTextColor", sourceProps.placeholderTextColor, {})),
-     editable(convertRawProp(context, rawProps, "editable", sourceProps.editable, {false})),
-+    draftCheckpointToken(convertRawProp(context, rawProps, "draftCheckpointToken", sourceProps.draftCheckpointToken, {})),
-     autoFocus(convertRawProp(context, rawProps, "autoFocus", sourceProps.autoFocus, {false})),
-     scrollEnabled(convertRawProp(context, rawProps, "scrollEnabled", sourceProps.scrollEnabled, {false})),
-     markdownShortcuts(convertRawProp(context, rawProps, "markdownShortcuts", sourceProps.markdownShortcuts, {})),
-@@ -233,6 +234,10 @@
-     
-   if (editable != oldProps->editable) {
-     result["editable"] = editable;
+diff --git a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextNativeComponent.ts b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextNativeComponent.ts
+index efdc300..2a9c6ff 100644
+--- a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextNativeComponent.ts
++++ b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextNativeComponent.ts
+@@ -357,6 +357,8 @@ export interface AccessibilityLabelsProps {
+  * Controls how the markdown parser interprets certain syntax.
+  */
+ export interface Md4cFlagsInternal {
++  /** iOS-only media-free AST admission; defaults false in the public wrapper. */
++  noMedia: boolean;
+   /**
+    * Enable underline syntax support (__text__).
+    * When enabled, underscores are treated as underline markers.
+diff --git a/node_modules/react-native-enriched-markdown/src/native/EnrichedMarkdownText.tsx b/node_modules/react-native-enriched-markdown/src/native/EnrichedMarkdownText.tsx
+index 267a246..85357c8 100644
+--- a/node_modules/react-native-enriched-markdown/src/native/EnrichedMarkdownText.tsx
++++ b/node_modules/react-native-enriched-markdown/src/native/EnrichedMarkdownText.tsx
+@@ -1,3 +1,4 @@
++import { Platform } from 'react-native';
+ import { useMemo, useCallback, useRef, useEffect } from 'react';
+ import EnrichedMarkdownTextNativeComponent from '../EnrichedMarkdownTextNativeComponent';
+ import type { MarkdownStyleInternal } from '../EnrichedMarkdownTextNativeComponent';
+@@ -113,6 +114,7 @@ const defaultMd4cFlags: Md4cFlags = {
+   subscript: false,
+   latexMath: true,
+   highlight: false,
++  noMedia: false,
+   hardSoftBreaks: false,
+   preserveBlankLines: false,
+   admonitions: true,
+@@ -154,6 +156,10 @@ export const EnrichedMarkdownText = ({
+   ellipsizeMode,
+   ...rest
+ }: EnrichedMarkdownTextProps) => {
++  if (md4cFlags.noMedia && Platform.OS !== 'ios') {
++    throw new Error('md4cFlags.noMedia is supported only on iOS.');
 +  }
-+    
-+  if (draftCheckpointToken != oldProps->draftCheckpointToken) {
-+    result["draftCheckpointToken"] = draftCheckpointToken;
-   }
-     
-   if (autoFocus != oldProps->autoFocus) {
-diff --git a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h
---- a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h
-+++ b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h
-@@ -4101,6 +4101,7 @@
-   std::string placeholder{};
-   SharedColor placeholderTextColor{};
-   bool editable{false};
-+  std::string draftCheckpointToken{};
-   bool autoFocus{false};
-   bool scrollEnabled{false};
-   EnrichedMarkdownTextInputMarkdownShortcutsStruct markdownShortcuts{};
-diff --git a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInputNativeComponent.ts b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInputNativeComponent.ts
---- a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInputNativeComponent.ts
-+++ b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInputNativeComponent.ts
-@@ -205,6 +205,8 @@
-    * @default true
-    */
-   editable?: boolean;
-+  /** iOS-only opaque native checkpoint lease. Absent preserves ordinary volatile behavior. */
-+  draftCheckpointToken?: string;
++
+   const normalizedStyleRef = useRef<MarkdownStyleInternal | null>(null);
+   const normalized = normalizeMarkdownStyle(markdownStyle);
+   // normalizeMarkdownStyle returns cached objects for structurally equal inputs,
+@@ -170,6 +176,7 @@ export const EnrichedMarkdownText = ({
+       subscript: md4cFlags.subscript ?? false,
+       latexMath: md4cFlags.latexMath ?? true,
+       highlight: md4cFlags.highlight ?? false,
++      noMedia: md4cFlags.noMedia ?? false,
+       hardSoftBreaks: md4cFlags.hardSoftBreaks ?? false,
+       preserveBlankLines: md4cFlags.preserveBlankLines ?? false,
+       // Admonitions are a GitHub-flavor feature; force them off in commonmark so
+diff --git a/node_modules/react-native-enriched-markdown/src/types/MarkdownStyle.ts b/node_modules/react-native-enriched-markdown/src/types/MarkdownStyle.ts
+index 11ec780..b4c1690 100644
+--- a/node_modules/react-native-enriched-markdown/src/types/MarkdownStyle.ts
++++ b/node_modules/react-native-enriched-markdown/src/types/MarkdownStyle.ts
+@@ -394,6 +394,10 @@ export interface MarkdownStyle {
+  * Controls how the markdown parser interprets certain syntax.
+  */
+ export interface Md4cFlags {
++  /** Parse images as explicit links and disable HTML media promotion before rendering.
++   * Supported on iOS. Other platform wrappers reject true instead of ignoring it.
++   * @default false */
++  noMedia?: boolean;
    /**
-    * Whether the input should auto-focus on mount.
-    * @default false
+    * Enable underline syntax support (__text__).
+    * When enabled, underscores are treated as underline markers.
+diff --git a/node_modules/react-native-enriched-markdown/src/web/EnrichedMarkdownText.tsx b/node_modules/react-native-enriched-markdown/src/web/EnrichedMarkdownText.tsx
+index f867786..df0ef47 100644
+--- a/node_modules/react-native-enriched-markdown/src/web/EnrichedMarkdownText.tsx
++++ b/node_modules/react-native-enriched-markdown/src/web/EnrichedMarkdownText.tsx
+@@ -33,6 +33,10 @@ export const EnrichedMarkdownText = ({
+   testID,
+   ...rest
+ }: EnrichedMarkdownTextProps) => {
++  if (md4cFlags.noMedia) {
++    throw new Error('md4cFlags.noMedia is supported only on iOS.');
++  }
++
+   const normalizedStyle = useMemo(
+     () => normalizeMarkdownStyle(markdownStyle),
+     [markdownStyle]
