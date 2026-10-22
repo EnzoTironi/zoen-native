@@ -3,7 +3,9 @@ import { open } from 'node:fs/promises';
 import { join } from 'node:path';
 
 export type ChromeStartup = {
-  portFile: 'missing' | 'incomplete' | 'ready' | 'invalid' | 'unreadable';
+  portFile: 'unobserved' | 'missing' | 'incomplete' | 'ready' | 'invalid' | 'unreadable';
+  checksStarted: number;
+  checksCompleted: number;
 };
 
 /** Chrome publishes this endpoint in its fresh profile, independently of logging.
@@ -34,18 +36,22 @@ export function chromeEndpoint(
     child.once('error', onError);
     child.once('exit', onExit);
     const inspect = async () => {
+      startup.checksStarted += 1;
       try {
         const file = await open(join(profile, 'DevToolsActivePort'), 'r');
         let text: string;
+        let oversized: boolean;
         try {
           const buffer = Buffer.alloc(1025);
           const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
           text = bytesRead > 1024 ? '' : buffer.subarray(0, bytesRead).toString('utf8');
-          startup.portFile = bytesRead > 1024 ? 'invalid' : 'incomplete';
+          oversized = bytesRead > 1024;
         } finally {
           await file.close();
         }
         if (done) return;
+        startup.checksCompleted += 1;
+        startup.portFile = oversized ? 'invalid' : 'incomplete';
         if (child.exitCode !== null || child.signalCode !== null) return onExit();
         const match = text.match(
           /^(\d{1,5})\n(\/devtools\/browser\/[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12})\n?$/i,
@@ -57,6 +63,7 @@ export function chromeEndpoint(
         }
       } catch (error) {
         if (done) return;
+        startup.checksCompleted += 1;
         const code = (error as NodeJS.ErrnoException).code;
         startup.portFile = code === 'ENOENT' ? 'missing' : 'unreadable';
         if (code !== 'ENOENT') {

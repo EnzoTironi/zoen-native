@@ -13,6 +13,7 @@ import {
   nativeMiniappNavigation,
 } from './host-transport.ts';
 import { sandboxHtml } from './sandbox.ts';
+import { annotateOwnedBrowserFailure } from '../../../../tools/miniapp-build/browser-startup.ts';
 import { chromeEndpoint, type ChromeStartup } from './chrome-startup.fixtures.ts';
 
 const nonce = 'a24582bd-0377-4fee-bb76-73d465c927c3';
@@ -37,13 +38,17 @@ async function realBrowserResult(chrome: string, folder: string, path: string): 
       `--user-data-dir=${join(folder, 'profile')}`,
       'about:blank',
     ],
-    { stdio: ['ignore', 'ignore', 'pipe'] },
+    { stdio: ['ignore', 'pipe', 'pipe'] },
   );
   // Register before awaiting anything: a signaled process can exit before cleanup,
   // and its stdio may still be open after 'exit'.
   const closed = new Promise<void>((resolve) => child.once('close', () => resolve()));
   let stderr = '';
-  const startup: ChromeStartup = { portFile: 'missing' };
+  let stdout = '';
+  child.stdout.on('data', (data: Buffer) => {
+    stdout = (stdout + data.toString()).slice(-16_384);
+  });
+  const startup: ChromeStartup = { portFile: 'unobserved', checksStarted: 0, checksCompleted: 0 };
   child.stderr.on('data', (data: Buffer) => {
     stderr = (stderr + data.toString()).slice(-16_384);
   });
@@ -56,6 +61,7 @@ async function realBrowserResult(chrome: string, folder: string, path: string): 
         signalCode: child.signalCode,
         ...(cause ? { spawnError: cause.message } : {}),
         stderr,
+        stdout,
         startup,
       })}`,
     );
@@ -137,6 +143,9 @@ async function realBrowserResult(chrome: string, folder: string, path: string): 
         );
       }),
     ]);
+  } catch (error) {
+    await annotateOwnedBrowserFailure(error, child, join(folder, 'profile'));
+    throw error;
   } finally {
     clearTimeout(deadline);
     socket?.close();
@@ -168,6 +177,23 @@ test('owned browser startup failures retain executable, process and bounded stde
       assert.ok(detail.stderr.length <= 16_384);
       return true;
     });
+    if (process.platform !== 'win32') {
+      const noisy = join(folder, 'synthetic-chrome');
+      await writeFile(
+        noisy,
+        `#!${process.execPath}\nprocess.stdout.write('x'.repeat(20_000)+'OWNED_STDOUT_END');process.stderr.write('owned synthetic stderr');process.exit(7);\n`,
+        { mode: 0o700 },
+      );
+      await assert.rejects(realBrowserResult(noisy, folder, ''), (error: Error) => {
+        assert.match(error.message, /Owned Chrome exited before connection/);
+        const detail = JSON.parse(error.message.slice(error.message.indexOf(': ') + 2));
+        assert.equal(detail.exitCode, 7);
+        assert.equal(detail.stdout.length, 16_384);
+        assert.ok(detail.stdout.endsWith('OWNED_STDOUT_END'));
+        assert.equal(detail.stderr, 'owned synthetic stderr');
+        return true;
+      });
+    }
     const missing = join(folder, 'missing-chrome');
     await assert.rejects(realBrowserResult(missing, folder, ''), (error: Error) => {
       assert.match(error.message, /Owned Chrome could not spawn/);
