@@ -95,9 +95,7 @@ export async function restoreHistory(this: MessageHistoryOperationsPort): Promis
   }
 }
 
-export async function historyStatus(
-  this: MessageHistoryOperationsPort,
-): Promise<{
+export async function historyStatus(this: MessageHistoryOperationsPort): Promise<{
   initial_pending: boolean;
   manifest_received: boolean;
   chunks_received: number;
