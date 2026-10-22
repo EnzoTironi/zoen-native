@@ -28,7 +28,7 @@ const sources = {
   '@expo/ui/swift-ui/modifiers': ['buttonStyle', 'frame', 'labelStyle'],
   'expo-image': ['Image'],
   'react-native-reanimated': ['useAnimatedRef'],
-  primitives: ['Icon', 'EmptyState', 'NativeButton'],
+  primitives: ['Icon', 'EmptyState', 'NativeButton', 'IconButton'],
   interaction: ['MessagePressable'],
   theme: ['useTheme'],
   i18n: ['t', 'formatLocale', 'locale'],
@@ -41,6 +41,8 @@ const sources = {
 } satisfies Record<string, string[]>;
 const aliases: Record<string, string> = {
   '../components/primitives': 'primitives',
+  './primitives': 'primitives',
+  './message-interaction': 'interaction',
   '../../components/primitives': 'primitives',
   '../components/message-interaction': 'interaction',
   '../theme': 'theme',
@@ -177,7 +179,12 @@ function fixture(
       default: { ScrollView: 'ScrollView' },
       useAnimatedRef: () => ({}),
     },
-    primitives: { Icon: 'Icon', EmptyState: 'EmptyState', NativeButton: 'NativeButton' },
+    primitives: {
+      Icon: 'Icon',
+      EmptyState: 'EmptyState',
+      NativeButton: 'NativeButton',
+      IconButton: 'IconButton',
+    },
     interaction: { MessagePressable: 'Pressable' },
     theme: {
       useTheme: () => ({
@@ -199,6 +206,11 @@ function fixture(
         pinnedItems: [],
         hiddenItems: options.hiddenItems ?? [],
         ownerKey: 'owner',
+        editing: options.stateValues?.[0] === 'owner',
+        editSaving: false,
+        beginEdit() {},
+        discardEdit() {},
+        commitEdit: async () => {},
         isPinned: () => false,
         pendingRequestCount: 0,
       }),
@@ -573,7 +585,7 @@ test('removing the final card cannot strand Done in Saving and restore stays rea
     hiddenItems: [item('stat')],
     stateValues: ['owner', { pinned: true, available: true }],
   });
-  const done = nodes(home.Home({})).find((node) => node.props.testID === 'home-rearrange-done')!;
+  const done = nodes(home.Home({})).find((node) => node.props.testID === 'app-card-edit-done')!;
   assert.ok(done);
   assert.equal(done.props.disabled, false);
   assert.equal(done.props.label, t('home.doneRearranging'));
@@ -617,4 +629,22 @@ test('entering rail editing keeps the held card before Done without inserting a 
       0,
     );
   }
+});
+
+test('header-managed rail keeps160pt cards with jiggle clearance and renders no bottom completion row', () => {
+  const f = fixture();
+  const tree = f.MiniappRail({
+    items: [item('stat')],
+    onReorder: async () => {},
+    editing: true,
+    onEditingChange() {},
+    paddingVertical: 2,
+  });
+  const all = nodes(tree);
+  assert.ok(all.every((n) => n.props.testID !== 'app-rail-rearrange-done'));
+  const scroll = all.find((n) => n.type === 'ScrollView')!;
+  assert.equal(scroll.props.scrollEnabled, false);
+  assert.equal(scroll.props.contentContainerStyle.paddingVertical, 4);
+  assert.equal(style(tree).paddingVertical, 2);
+  assert.equal(all.find((n) => n.type === 'ReorderableAppCards')!.props.editing, true);
 });

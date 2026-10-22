@@ -1,6 +1,9 @@
 /** Candidate selection only. The maintained Markdown renderer owns parsing. */
 export function messageMayContainMarkdown(text: string): boolean {
-  return /[*_`~[\]|]|(?:^|\n) {0,3}(?:#{1,6}\s|>\s?|[-+]\s|\d{1,9}[.)]\s)/u.test(text);
+  return (
+    !messageMarkdownMayLoadMedia(text) &&
+    /[*_`~[\]|]|(?:^|\n) {0,3}(?:#{1,6}\s|>\s?|[-+]\s|\d{1,9}[.)]\s)/u.test(text)
+  );
 }
 
 /** Rendered content cannot choose an executable/local-file URL scheme. */
@@ -19,4 +22,11 @@ export function messageMarkdownLink(value: string): string | null {
   } catch {
     return null;
   }
+}
+
+/** The installed parser can fetch image nodes and promote HTML video blocks.
+ * Keep possible media markup as exact plain text until native image admission exists.
+ * This conservative candidate check intentionally includes escaped/code examples. */
+export function messageMarkdownMayLoadMedia(text: string): boolean {
+  return text.includes('![') || text.includes('<');
 }

@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import {
   memo,
   useCallback,
@@ -18,12 +19,15 @@ import type { TimelineEntry } from '../core/types';
 import type { ItemDetail } from '../core/generated/ItemDetail';
 import {
   isSystemMessage,
+  messageHasStandaloneAppCard,
   largeEmojiFontSize,
   messageCanInteract,
   messageCard,
   messagesAreGrouped,
 } from '../core/message-presentation';
 import { messageText } from '../core/presentation';
+import { messageMayContainMarkdown } from '../core/message-markdown';
+import { MessageMarkdown } from './message-markdown';
 import { t, formatLocale } from '../i18n/index.ts';
 import { MessageMedia, type MediaTile } from '../media/MediaAttachment';
 import { inlineImageFrame, type DecodedMessageImage } from '../media/inline-image-frame';
@@ -35,6 +39,7 @@ import { Icon } from './primitives';
 import { MessageInteraction, MessagePressable as Pressable } from './message-interaction';
 import { MessageReceipt, messageDeliveryLabel } from './message-receipt';
 import { MessageBubbleGraphic } from './message-graphics';
+import { ServiceMessage } from './service-message';
 import type { MessageActionMode, MessageAnchor } from './use-message-actions';
 import { MessageContextSource, MessageContextControl } from './message-context-source';
 import type { MessageContextRequest } from './message-context-ports';
@@ -114,6 +119,7 @@ export const ConversationMessage = memo(function ConversationMessage({
   const mine = entry.author.is_me;
   const card = messageCard(entry);
   const appCard = card?.kind_id === 'app' && !!card.app;
+  const standaloneAppCard = messageHasStandaloneAppCard(entry);
   const imageKey = card?.kind_id === 'file' ? `${card.item_id}:${card.version}` : null;
   const renderedImage = useRef(imageKey);
   const [decodedImage, setDecodedImage] = useState<(DecodedMessageImage & { key: string }) | null>(
@@ -157,7 +163,8 @@ export const ConversationMessage = memo(function ConversationMessage({
   const showAvatar = !mine && groupChat && lastInGroup;
   const authorDisabled = disabled || !messageCanInteract(entry);
   const text = messageText(entry);
-  const fileCaption = !voice && card?.kind_id === 'file' && text.trim() ? text : null;
+  const fileCaption =
+    !voice && !standaloneAppCard && card?.kind_id === 'file' && text.trim() ? text : null;
   const face = mine ? p.chat.outgoing : p.chat.incoming;
   const ink = face.text;
   const paper = face.fill;
@@ -166,6 +173,8 @@ export const ConversationMessage = memo(function ConversationMessage({
       ? largeEmojiFontSize(text, p.largeEmoji)
       : null;
   const messageFontSize = emojiFont ?? p.typography.message.fontSize;
+  const formattedText =
+    !entry.deleted && !standaloneAppCard && !emojiFont && messageMayContainMarkdown(text);
   const availableWidth = Math.max(0, width - 32 - authorGutter);
   const mediaLimit = Math.min(availableWidth, Math.max(160, Math.min(294, availableWidth * 0.87)));
   const mediaWidth = appCard
@@ -175,7 +184,8 @@ export const ConversationMessage = memo(function ConversationMessage({
       : mediaLimit;
   // Telegram RichDataBubbleContentNode.pageContentInset: retain a 2pt media rim.
   // The cover itself is the exact same 160pt canonical tile used in Home/rails.
-  const attachmentWidth = albumContent?.width ?? (appCard ? mediaWidth + 4 : mediaWidth);
+  const attachmentWidth =
+    albumContent?.width ?? (appCard && !standaloneAppCard ? mediaWidth + 4 : mediaWidth);
   const time = new Date(Number(entry.at_ms)).toLocaleTimeString(formatLocale, {
     hour: '2-digit',
     minute: '2-digit',
@@ -264,6 +274,7 @@ export const ConversationMessage = memo(function ConversationMessage({
   const canMeasureInline =
     !attachment &&
     !emojiFont &&
+    !formattedText &&
     !!text.trim() &&
     !/[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufeff]/u.test(text);
   const singleLineWidth =
@@ -385,7 +396,9 @@ export const ConversationMessage = memo(function ConversationMessage({
           backgrounds={outside ? undefined : face.fillColors}
         />
       ) : null}
-      {attachment && !disabled && (outside || (appCard && process.env.EXPO_OS !== 'ios')) ? (
+      {attachment &&
+      !disabled &&
+      ((outside && !appCard) || (appCard && process.env.EXPO_OS !== 'ios')) ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={t('chat.messageActions', { name: entry.author.name })}
@@ -461,16 +474,26 @@ export const ConversationMessage = memo(function ConversationMessage({
                   minHeight: 44,
                 }}
               >
-                <Text
-                  testID={`message-caption-${entry.id}`}
-                  style={{
-                    color: ink,
-                    fontSize: p.typography.message.fontSize,
-                    lineHeight: Math.ceil(p.typography.message.fontSize * 1.3),
-                  }}
-                >
-                  {fileCaption}
-                </Text>
+                {formattedText ? (
+                  <MessageMarkdown
+                    testID={`message-caption-${entry.id}`}
+                    text={fileCaption!}
+                    color={ink}
+                    fontSize={p.typography.message.fontSize}
+                    maxWidth={Math.max(1, mediaWidth - 28)}
+                  />
+                ) : (
+                  <Text
+                    testID={`message-caption-${entry.id}`}
+                    style={{
+                      color: ink,
+                      fontSize: p.typography.message.fontSize,
+                      lineHeight: Math.ceil(p.typography.message.fontSize * 1.3),
+                    }}
+                  >
+                    {fileCaption}
+                  </Text>
+                )}
               </Pressable>
             )}
           </View>
@@ -478,28 +501,157 @@ export const ConversationMessage = memo(function ConversationMessage({
       </MessageInteraction>
     );
   }
-  if (isSystemMessage(entry))
-    return (
-      <Text
-        selectable
-        style={{
-          color: colors.secondary,
-          fontSize: 12,
-          lineHeight: 19,
-          textAlign: 'center',
-          alignSelf: 'center',
-          maxWidth: '95%',
-          marginVertical: 14,
-          paddingHorizontal: 12,
-          paddingVertical: 6,
-          borderRadius: 12,
-          borderWidth: highlighted ? 2 : 0,
-          borderColor: colors.accent,
-        }}
-      >
-        {text}
-      </Text>
+  const details = (
+    <View
+      style={{
+        width: '100%',
+        paddingLeft: authorGutter,
+        alignItems: mine ? 'flex-end' : 'flex-start',
+      }}
+    >
+      {!mine && attachment && (!appCard || standaloneAppCard) ? (
+        <View style={{ width: mediaWidth, maxWidth: '100%' }}>{metadata(true)}</View>
+      ) : null}
+      {entry.reactions.length && !entry.deleted ? (
+        <View
+          style={{
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            gap: 4,
+            paddingHorizontal: 6,
+            paddingTop: 2,
+            maxWidth: '90%',
+          }}
+        >
+          {entry.reactions.map((reaction) => (
+            <Pressable
+              key={reaction.emoji}
+              testID={`message-reaction-${entry.id}-${reaction.emoji}`}
+              accessibilityRole="button"
+              accessibilityState={{
+                selected: reaction.mine,
+                disabled: disabled || reactionPending,
+              }}
+              accessibilityLabel={t('messageReactions.participants', {
+                emoji: reaction.emoji,
+                count: reaction.people.length,
+              })}
+              disabled={disabled || reactionPending}
+              onPress={() => open('participants', reaction.emoji)}
+              onLongPress={() => open('reactions')}
+              style={({ pressed }) => ({
+                minWidth: 44,
+                minHeight: 44,
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: pressed || reactionPending ? 0.6 : 1,
+              })}
+            >
+              <View
+                style={{
+                  minWidth: 38,
+                  minHeight: 32,
+                  paddingHorizontal: 9,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 17,
+                  borderWidth: 1,
+                  borderColor: reaction.mine ? colors.accent : colors.line,
+                  backgroundColor: colors.surface,
+                }}
+              >
+                <Text style={{ color: colors.text, fontSize: 14 }}>
+                  {reaction.emoji}
+                  {reaction.people.length > 1 ? ` ${reaction.people.length}` : ''}
+                </Text>
+              </View>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+      {entry.thread_replies > 0 && !entry.in_thread ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t('chat.viewReplies', { count: entry.thread_replies })}
+          disabled={disabled}
+          onPress={() => onThread(entry)}
+          style={({ pressed }) => ({
+            minHeight: 44,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            paddingHorizontal: 10,
+            opacity: pressed ? 0.6 : 1,
+          })}
+        >
+          <Icon
+            name={{ ios: 'bubble.left.and.bubble.right', android: 'forum', web: 'forum' }}
+            size={14}
+            color={colors.accent}
+          />
+          <Text style={{ color: colors.accent, fontSize: 13, fontWeight: '600' }}>
+            {t('chat.replyCount', { count: entry.thread_replies })}
+          </Text>
+          <Icon
+            name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
+            size={10}
+            color={colors.accent}
+          />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+  if (isSystemMessage(entry) || 'Request' in entry.kind || 'ItemEdited' in entry.kind) {
+    const request = 'Request' in entry.kind ? entry.kind.Request : null;
+    const edit = 'ItemEdited' in entry.kind ? entry.kind.ItemEdited : null;
+    const canOpenItem =
+      !!edit && !entry.deleted && item?.id === edit.item_id && item.space_id === spaceId;
+    const serviceLabel = [
+      !entry.deleted && entry.forwarded ? t('chat.forwarded') : '',
+      !entry.deleted && entry.reply_to
+        ? `${entry.reply_to.author.name}: ${entry.reply_to.text}`
+        : '',
+      !entry.deleted && edit ? `${entry.author.name} · ${text} · ${edit.title}` : text,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    const service = (
+      <ServiceMessage
+        id={entry.id}
+        label={serviceLabel}
+        highlighted={highlighted}
+        accessibilityHint={
+          request
+            ? t('agents.reviewRequest')
+            : canOpenItem
+              ? t('miniapps.timelineHistory', { title: edit!.title })
+              : undefined
+        }
+        onPress={
+          disabled || entry.deleted
+            ? undefined
+            : request
+              ? () => router.push({ pathname: '/request/[id]', params: { id: request.request_id } })
+              : canOpenItem
+                ? () =>
+                    router.push({
+                      pathname: '/item/[id]',
+                      params: { id: edit!.item_id, history: '1' },
+                    })
+                : undefined
+        }
+      />
     );
+    return entry.reactions.length || entry.thread_replies > 0 ? (
+      <View style={{ width: '100%' }}>
+        {service}
+        {details}
+      </View>
+    ) : (
+      service
+    );
+  }
+
   return (
     <View
       testID={`message-row-${entry.id}`}
@@ -577,7 +729,7 @@ export const ConversationMessage = memo(function ConversationMessage({
                 <Bubble
                   {...bubbleInteraction}
                   ref={bubble}
-                  testID={`${albumContent ? 'message-album-bubble' : 'message-bubble'}-${entry.id}`}
+                  testID={`${standaloneAppCard ? 'message-app-card' : albumContent ? 'message-album-bubble' : 'message-bubble'}-${entry.id}`}
                   style={{
                     width: attachment ? attachmentWidth : undefined,
                     maxWidth: attachment ? '100%' : textMaxWidth,
@@ -593,7 +745,7 @@ export const ConversationMessage = memo(function ConversationMessage({
                     paddingBottom: attachment ? 0 : emojiFont ? 20 : 6 - pixel,
                   }}
                 >
-                  {(!attachment || appCard) && !emojiFont ? (
+                  {(!attachment || (appCard && !standaloneAppCard)) && !emojiFont ? (
                     <MessageBubbleGraphic
                       ownerKey={entry.id}
                       incoming={!mine}
@@ -603,7 +755,7 @@ export const ConversationMessage = memo(function ConversationMessage({
                       fillColors={face.fillColors}
                     />
                   ) : null}
-                  {!mine && !grouped && groupChat ? (
+                  {!mine && !grouped && groupChat && !standaloneAppCard ? (
                     <MessageContextControl controlKey={`author:${entry.id}`}>
                       <Pressable
                         testID={`message-author-name-${entry.id}`}
@@ -686,22 +838,42 @@ export const ConversationMessage = memo(function ConversationMessage({
                       {t('chat.forwarded')}
                     </Text>
                   ) : null}
-                  {!voice && card?.kind_id !== 'file' && text.trim() ? (
-                    <Text
-                      testID={`message-body-${entry.id}`}
-                      onTextLayout={attachment ? undefined : onTextLayout}
-                      onLayout={attachment ? undefined : onTextFrame}
-                      style={{
-                        color: attachment && !appCard ? colors.text : ink,
-                        fontSize: messageFontSize,
-                        lineHeight: attachment ? Math.ceil(messageFontSize * 1.3) : undefined,
-                        fontStyle: entry.deleted ? 'italic' : 'normal',
-                        paddingHorizontal: appCard ? 11 : attachment ? 12 : 0,
-                        paddingVertical: appCard ? 6 : attachment ? 8 : 0,
-                      }}
-                    >
-                      {text}
-                    </Text>
+                  {!voice && !standaloneAppCard && card?.kind_id !== 'file' && text.trim() ? (
+                    formattedText ? (
+                      <View
+                        style={{
+                          paddingHorizontal: appCard ? 11 : attachment ? 12 : 0,
+                          paddingVertical: appCard ? 6 : attachment ? 8 : 0,
+                        }}
+                      >
+                        <MessageMarkdown
+                          testID={`message-body-${entry.id}`}
+                          text={text}
+                          color={attachment && !appCard ? colors.text : ink}
+                          fontSize={messageFontSize}
+                          maxWidth={Math.max(
+                            1,
+                            attachment ? attachmentWidth - (appCard ? 22 : 24) : textMaxWidth - 28,
+                          )}
+                        />
+                      </View>
+                    ) : (
+                      <Text
+                        testID={`message-body-${entry.id}`}
+                        onTextLayout={attachment ? undefined : onTextLayout}
+                        onLayout={attachment ? undefined : onTextFrame}
+                        style={{
+                          color: attachment && !appCard ? colors.text : ink,
+                          fontSize: messageFontSize,
+                          lineHeight: attachment ? Math.ceil(messageFontSize * 1.3) : undefined,
+                          fontStyle: entry.deleted ? 'italic' : 'normal',
+                          paddingHorizontal: appCard ? 11 : attachment ? 12 : 0,
+                          paddingVertical: appCard ? 6 : attachment ? 8 : 0,
+                        }}
+                      >
+                        {text}
+                      </Text>
+                    )
                   ) : null}
                   {albumContent ? (
                     albumContent.media
@@ -745,19 +917,28 @@ export const ConversationMessage = memo(function ConversationMessage({
                         opacity: pressed ? 0.8 : 1,
                       })}
                     >
-                      <Text
-                        style={{
-                          color: ink,
-                          fontSize: p.typography.message.fontSize,
-                          lineHeight: Math.ceil(p.typography.message.fontSize * 1.3),
-                        }}
-                      >
-                        {fileCaption}
-                      </Text>
+                      {formattedText ? (
+                        <MessageMarkdown
+                          text={fileCaption}
+                          color={ink}
+                          fontSize={p.typography.message.fontSize}
+                          maxWidth={Math.max(1, mediaWidth - 28)}
+                        />
+                      ) : (
+                        <Text
+                          style={{
+                            color: ink,
+                            fontSize: p.typography.message.fontSize,
+                            lineHeight: Math.ceil(p.typography.message.fontSize * 1.3),
+                          }}
+                        >
+                          {fileCaption}
+                        </Text>
+                      )}
                     </Pressable>
                   ) : null}
                   {card && card.kind_id !== 'file' ? (
-                    <View style={appCard ? { margin: 2 } : undefined}>
+                    <View style={appCard && !standaloneAppCard ? { margin: 2 } : undefined}>
                       <MiniappMessageCard
                         card={card}
                         item={item}
@@ -767,7 +948,9 @@ export const ConversationMessage = memo(function ConversationMessage({
                       />
                     </View>
                   ) : null}
-                  {(!attachment || appCard) && !emojiFont ? metadata() : null}
+                  {(!attachment || (appCard && !standaloneAppCard)) && !emojiFont
+                    ? metadata()
+                    : null}
                   {highlighted ? (
                     <View
                       pointerEvents="none"
@@ -777,115 +960,22 @@ export const ConversationMessage = memo(function ConversationMessage({
                         inset: 0,
                         borderWidth: 2,
                         borderColor: colors.accent,
-                        ...(attachment && !appCard ? { borderRadius: 24 } : textCorners),
+                        ...(standaloneAppCard || (attachment && !appCard)
+                          ? { borderRadius: 24 }
+                          : textCorners),
                       }}
                     />
                   ) : null}
                 </Bubble>
               </MessageContextSource>
-              {(attachment && !appCard && mine) || emojiFont ? metadata(true) : null}
+              {(attachment && (!appCard || standaloneAppCard) && mine) || emojiFont
+                ? metadata(true)
+                : null}
             </View>
           </MessageInteraction>
         </View>
       </View>
-      <View
-        style={{
-          width: '100%',
-          paddingLeft: authorGutter,
-          alignItems: mine ? 'flex-end' : 'flex-start',
-        }}
-      >
-        {!mine && attachment && !appCard ? (
-          <View style={{ width: mediaWidth, maxWidth: '100%' }}>{metadata(true)}</View>
-        ) : null}
-        {entry.reactions.length && !entry.deleted ? (
-          <View
-            style={{
-              flexDirection: 'row',
-              flexWrap: 'wrap',
-              gap: 4,
-              paddingHorizontal: 6,
-              paddingTop: 2,
-              maxWidth: '90%',
-            }}
-          >
-            {entry.reactions.map((reaction) => (
-              <Pressable
-                key={reaction.emoji}
-                testID={`message-reaction-${entry.id}-${reaction.emoji}`}
-                accessibilityRole="button"
-                accessibilityState={{
-                  selected: reaction.mine,
-                  disabled: disabled || reactionPending,
-                }}
-                accessibilityLabel={t('messageReactions.participants', {
-                  emoji: reaction.emoji,
-                  count: reaction.people.length,
-                })}
-                disabled={disabled || reactionPending}
-                onPress={() => open('participants', reaction.emoji)}
-                onLongPress={() => open('reactions')}
-                style={({ pressed }) => ({
-                  minWidth: 44,
-                  minHeight: 44,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  opacity: pressed || reactionPending ? 0.6 : 1,
-                })}
-              >
-                <View
-                  style={{
-                    minWidth: 38,
-                    minHeight: 32,
-                    paddingHorizontal: 9,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderRadius: 17,
-                    borderWidth: 1,
-                    borderColor: reaction.mine ? colors.accent : colors.line,
-                    backgroundColor: colors.surface,
-                  }}
-                >
-                  <Text style={{ color: colors.text, fontSize: 14 }}>
-                    {reaction.emoji}
-                    {reaction.people.length > 1 ? ` ${reaction.people.length}` : ''}
-                  </Text>
-                </View>
-              </Pressable>
-            ))}
-          </View>
-        ) : null}
-        {entry.thread_replies > 0 && !entry.in_thread ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t('chat.viewReplies', { count: entry.thread_replies })}
-            disabled={disabled}
-            onPress={() => onThread(entry)}
-            style={({ pressed }) => ({
-              minHeight: 44,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 6,
-              paddingHorizontal: 10,
-              opacity: pressed ? 0.6 : 1,
-            })}
-          >
-            <Icon
-              name={{ ios: 'bubble.left.and.bubble.right', android: 'forum', web: 'forum' }}
-              size={14}
-              color={colors.accent}
-            />
-            <Text style={{ color: colors.accent, fontSize: 13, fontWeight: '600' }}>
-              {t('chat.replyCount', { count: entry.thread_replies })}
-            </Text>
-            <Icon
-              name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
-              size={10}
-              color={colors.accent}
-            />
-          </Pressable>
-        ) : null}
-      </View>
+      {details}
     </View>
   );
 });

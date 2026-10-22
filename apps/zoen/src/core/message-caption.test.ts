@@ -48,6 +48,8 @@ const nativePorts = new Set([
   '../theme',
   './primitives',
   './message-receipt',
+  './service-message',
+  './message-markdown',
 ]);
 const output = await build({
   stdin: {
@@ -138,6 +140,7 @@ function render(
 ) {
   const theme = resolveSkyTheme(phase, new Date('2026-10-18T12:00:00'));
   const calls: { mode: string; entry: TimelineEntry }[] = [];
+  const routes: unknown[] = [];
   let didPan = false;
   let compilerCursor = 0;
   const caches: unknown[][] = [];
@@ -189,13 +192,15 @@ function render(
     'react-native-reanimated': { default: {} },
     'react-native-worklets': {},
     'expo-haptics': {},
-    'expo-router': {},
+    'expo-router': { router: { push: (value: unknown) => routes.push(value) } },
     '../i18n/index.ts': { t: (key: string) => key, locale: 'en', formatLocale: 'en-US' },
     '../media/MediaAttachment': { MessageMedia: 'MessageMedia' },
     '../miniapps/message-card': { MiniappMessageCard: 'MiniappMessageCard' },
     '../profile/profile-avatar': { ProfileAvatar: 'ProfileAvatar' },
     '../theme': { useTheme: () => theme },
     './primitives': { Icon: 'Icon' },
+    './service-message': { ServiceMessage: 'ServiceMessage' },
+    './message-markdown': { MessageMarkdown: 'MessageMarkdown' },
     './message-receipt': { MessageReceipt: 'MessageReceipt', messageDeliveryLabel: () => 'Sent' },
   };
   const module = {
@@ -249,6 +254,7 @@ function render(
   );
   return {
     tree,
+    routes,
     rerender: draw,
     caption,
     theme,
@@ -523,6 +529,7 @@ test('plain text uses compact Telegram metrics while canonical App/media present
   assert.equal(styleOf(nodeById(f.tree, `message-body-${msg.id}`)).fontSize, 17);
   assert.equal(styleOf(nodeById(f.tree, `message-body-${msg.id}`)).lineHeight, undefined);
   const app = entry('App activity', {
+    author: { ...entry().author, kind: 'Agent' },
     kind: {
       Message: {
         text: 'App activity',
@@ -690,7 +697,11 @@ test('text and App shares own the native background; file and voice boundaries r
       elements(render(msg).tree).filter(
         (node) => typeof node.type === 'function' && node.type.name === 'MessageBubbleGraphic',
       ).length,
-      'Message' in msg.kind && msg.kind.Message.card?.kind_id === 'app' ? 1 : 0,
+      'Message' in msg.kind &&
+        msg.kind.Message.card?.kind_id === 'app' &&
+        msg.author.kind === 'Agent'
+        ? 1
+        : 0,
     );
   }
 });
@@ -780,4 +791,122 @@ test('album cells keep the actual canonical renderer and per-item reply, thread,
     elements(caption.tree).some((node) => node.type === 'MessageMedia'),
     false,
   );
+});
+
+test('typed human App shares show one160pt cover without caption/bubble; Agent text stays exact', () => {
+  const caption = 'Apresentação adicionada a esta conversa';
+  const card = {
+    item_id: 'deck',
+    kind_id: 'app',
+    title: 'Presentation',
+    version: 1,
+    app: { app_id: 'deckcraft' },
+  };
+  for (const kind of ['Person', 'Agent'] as const) {
+    const message = entry(caption, {
+      author: { ...entry().author, kind },
+      kind: { Message: { text: caption, card } } as TimelineEntry['kind'],
+    });
+    const f = render(message);
+    const all = elements(f.tree);
+    const body = all.filter((n) => n.props.testID === `message-body-${message.id}`);
+    const cover = all.find((n) => n.type === 'MiniappMessageCard')!;
+    assert.ok(cover);
+    assert.equal(cover.props.card, card);
+    assert.equal(cover.props.width, 160);
+    assert.equal(body.length, kind === 'Agent' ? 1 : 0);
+    assert.equal(
+      all.some((n) => n.props.testID === `message-bubble-${message.id}`),
+      kind === 'Agent',
+    );
+    if (kind === 'Agent') assert.equal(body[0]!.props.children, caption);
+    else {
+      assert.ok(all.some((n) => n.props.testID === `message-app-card-${message.id}`));
+      assert.ok(all.every((n) => n.props.children !== caption));
+      assert.ok(all.some((n) => n.props.testID === `message-metadata-${message.id}`));
+    }
+  }
+});
+
+test('approval and resolved receipts retain canonical text in the shared compact face and exact review route', () => {
+  for (const approved of [null, true, false]) {
+    const f = render(
+      entry('', {
+        kind: {
+          Request: { request_id: 'canonical_request', title: 'Read presentation', approved },
+        },
+      }),
+    );
+    assert.equal(f.tree.type, 'ServiceMessage');
+    assert.equal(f.tree.props.label, 'Read presentation');
+    (f.tree.props.onPress as () => void)();
+    assert.deepEqual(JSON.parse(JSON.stringify(f.routes)), [
+      { pathname: '/request/[id]', params: { id: 'canonical_request' } },
+    ]);
+  }
+  const receipt = 'Approved once. Waiting for the reviewed action.';
+  const f = render(entry('', { kind: { System: { text: receipt } } }));
+  assert.equal(f.tree.type, 'ServiceMessage');
+  assert.equal(f.tree.props.label, receipt);
+  assert.equal(f.tree.props.onPress, undefined);
+  const disabled = render(
+    entry('', { kind: { Request: { request_id: 'r', title: 'Denied', approved: false } } }),
+    { disabled: true },
+  );
+  assert.equal(disabled.tree.props.onPress, undefined);
+});
+
+test('formatted bodies, file captions and album captions share native Markdown without changing signed source', () => {
+  const text = '**Title**\n\n- one\n- two\n\n```ts\nconst exact = 1;\n```';
+  const message = plainMessage(text);
+  const body = render(message);
+  const formatted = nodeById(body.tree, `message-body-${message.id}`);
+  assert.equal(formatted.type, 'MessageMarkdown');
+  assert.equal(formatted.props.text, text);
+  assert.equal(formatted.props.maxWidth, 317);
+  assert.equal(formatted.props.onTextLayout, undefined);
+  assert.equal(styleOf(nodeById(body.tree, `message-metadata-${message.id}`)).position, undefined);
+  const file = entry(text);
+  for (const options of [{}, { albumPart: { captionOnly: true } }]) {
+    const f = render(file, options);
+    const native = elements(f.tree).find((node) => node.type === 'MessageMarkdown')!;
+    assert.ok(native);
+    assert.equal(native.props.text, text);
+    assert.equal(native.props.maxWidth, 245.18);
+  }
+  const app = entry(text, {
+    author: { ...file.author, kind: 'Agent' },
+    kind: {
+      Message: { text, card: { item_id: 'deck', kind_id: 'app', app: { app_id: 'deckcraft' } } },
+    } as TimelineEntry['kind'],
+  });
+  const appBody = nodeById(render(app).tree, `message-body-${app.id}`);
+  assert.equal(appBody.type, 'MessageMarkdown');
+  assert.equal(appBody.props.text, text);
+  assert.equal(appBody.props.maxWidth, 142);
+});
+
+test('formatting retires prior inline status measurements; possible embedded media stays exact plain text', () => {
+  const original = plainMessage('Short');
+  const f = render(original);
+  measureText(f.tree, original.id);
+  assert.equal(
+    styleOf(nodeById(f.rerender(), `message-metadata-${original.id}`)).position,
+    'absolute',
+  );
+  const text = '**Formatted**';
+  const next = { ...original, kind: { Message: { text, card: null } } };
+  const changed = f.rerender(next);
+  assert.equal(nodeById(changed, `message-body-${original.id}`).type, 'MessageMarkdown');
+  assert.equal(styleOf(nodeById(changed, `message-metadata-${original.id}`)).position, undefined);
+  for (const text of [
+    '**Bold** ![image](https://example.com/image)',
+    '**Code**\n```c\nx < y\n```',
+    '<video src="https://example.com/video"></video>',
+  ]) {
+    const next = plainMessage(text);
+    const rendered = render(next);
+    assert.equal(nodeById(rendered.tree, `message-body-${next.id}`).type, 'Text');
+    assert.equal(nodeById(rendered.tree, `message-body-${next.id}`).props.children, text);
+  }
 });

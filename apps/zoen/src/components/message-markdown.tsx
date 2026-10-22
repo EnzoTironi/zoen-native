@@ -1,7 +1,7 @@
 import { memo, useMemo } from 'react';
-import { Linking } from 'react-native';
+import { Linking, Text } from 'react-native';
 import { EnrichedMarkdownText, type MarkdownStyle } from 'react-native-enriched-markdown';
-import { messageMarkdownLink } from '../core/message-markdown';
+import { messageMarkdownLink, messageMarkdownMayLoadMedia } from '../core/message-markdown';
 import { useTheme } from '../theme';
 
 export type MessageMarkdownProps = {
@@ -86,6 +86,17 @@ export const MessageMarkdown = memo(function MessageMarkdown({
       spoiler: { color: colors.secondary },
     };
   }, [color, colors, fontSize]);
+  if (messageMarkdownMayLoadMedia(text))
+    return (
+      <Text
+        testID={testID}
+        selectable={selectable}
+        allowFontScaling
+        style={{ color, fontSize, lineHeight: Math.ceil(fontSize * 1.3), maxWidth, flexShrink: 1 }}
+      >
+        {text}
+      </Text>
+    );
   return (
     <EnrichedMarkdownText
       testID={testID}

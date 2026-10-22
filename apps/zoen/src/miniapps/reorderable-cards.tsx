@@ -63,7 +63,7 @@ type Props = {
   scrollPort: ScrollPort;
   scrollRef: AnimatedRef<Animated.ScrollView>;
   editing: boolean;
-  onEditingChange: (editing: boolean) => void;
+  onEditingChange: (editing: boolean) => boolean | void;
   onPendingChange?: (pending: boolean) => void;
   onReorder: (ids: readonly string[], expected: readonly string[]) => Promise<unknown>;
   onOpen: (item: ItemDetail) => void;
@@ -223,8 +223,12 @@ export function ReorderableAppCards({
       return;
     if (!latest.current.items.some((item) => item.id === id)) return;
     const entered = !session.getSnapshot().editing;
+    if (latest.current.onEditingChange(true) === false) {
+      cancel();
+      session.retire();
+      return;
+    }
     session.edit();
-    latest.current.onEditingChange(true);
     feedback(true);
     if (entered) AccessibilityInfo.announceForAccessibility(t('home.rearranging'));
   }
@@ -643,14 +647,15 @@ function DraggableCard({
     >
       <GestureDetector gesture={pan}>
         <View collapsable={false} style={{ width: size, height: size }}>
+          {children}
           {editing ? (
             <View
               pointerEvents="none"
               accessible={false}
               style={{
                 position: 'absolute',
-                inset: -2,
-                borderRadius: APP_CARD_METRICS.radius + 2,
+                inset: 0,
+                borderRadius: APP_CARD_METRICS.radius,
                 borderCurve: 'continuous',
                 borderWidth: 1,
                 borderColor: outlineColor,
@@ -658,7 +663,6 @@ function DraggableCard({
               }}
             />
           ) : null}
-          {children}
         </View>
       </GestureDetector>
     </Animated.View>

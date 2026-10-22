@@ -21,6 +21,8 @@ export function HomeProvider({ children }: { children: ReactNode }) {
       new HomeController(
         {
           owner: () => homeOwnerFor(store.getSnapshot()),
+          revision: () =>
+            JSON.stringify([store.sessionEpoch, store.getSnapshot().snapshot?.account?.relay_url]),
           spaces: () => homeSpacesFor(store.getSnapshot()),
           items: () => store.driver.request({ op: 'items' }),
         },
@@ -84,6 +86,12 @@ export function useHome() {
   const owner = current ? state.owner : null;
   return {
     ownerKey: homeOwnerKey(owner),
+    editing: current && state.editing,
+    editSaving: current && state.editSaving,
+    beginEdit: () => controller.beginEdit(owner),
+    requireEdit: () => controller.requireEdit(owner),
+    discardEdit: () => controller.discardEdit(owner),
+    commitEdit: () => controller.commitEdit(owner),
     items,
     allItems,
     hiddenItems,

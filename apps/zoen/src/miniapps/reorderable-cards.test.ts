@@ -918,3 +918,39 @@ test('native editing hit frames follow every translated rail and grid card while
     assert.equal(f.opens, 0);
   }
 });
+
+test('editing outline is painted above the cover inside its rounded160pt frame and shares the jiggle transform', () => {
+  const f = fixture();
+  f.activate();
+  f.release(true);
+  f.render();
+  const native = f.nativeCard('a');
+  const outer = native.render();
+  const detector = outer.props.children as Element;
+  const frame = detector.props.children as Element;
+  const children = frame.props.children as Element[];
+  assert.equal(children.length, 2);
+  const outline = children[1]!;
+  assert.equal(outline.props.pointerEvents, 'none');
+  const style = outline.props.style as Record<string, unknown>;
+  assert.equal(style.inset, 0);
+  assert.equal(style.borderRadius, 24);
+  assert.equal(style.borderCurve, 'continuous');
+  assert.equal(style.borderWidth, 1);
+  assert.equal((frame.props.style as Record<string, unknown>).width, 160);
+  assert.equal((frame.props.style as Record<string, unknown>).height, 160);
+  assert.equal(style.transform, undefined, 'Outline inherits the same complete card transform');
+});
+
+test('a header controller that refuses draft admission retires the native hold without editing or writes', () => {
+  const f = fixture();
+  f.props.onEditingChange = () => false;
+  f.render();
+  f.activate();
+  f.release();
+  f.render();
+  assert.equal(f.editing, false);
+  assert.equal(f.card().props.editing, false);
+  assert.equal(f.opens, 0);
+  assert.deepEqual(f.writes, []);
+});

@@ -10,6 +10,7 @@ import type { MessageInteractionProps } from '../components/message-interaction.
 import { resolveSkyTheme } from '../theme/sky.ts';
 import * as presentation from './message-presentation.ts';
 import { messageText } from './presentation.ts';
+import { messageMayContainMarkdown } from './message-markdown.ts';
 import type { TimelineEntry } from './types';
 
 const require = createRequire(import.meta.url);
@@ -157,6 +158,7 @@ function albumMetadata(delivery: TimelineEntry['delivery']) {
     },
     '../core/message-presentation': presentation,
     '../core/presentation': { messageText },
+    '../core/message-markdown': { messageMayContainMarkdown },
     '../i18n/index.ts': { t: (key: string) => key, formatLocale: 'en-US' },
     '../theme': { useTheme: () => theme },
     '../media/MediaAttachment': { MessageMedia: 'Media' },

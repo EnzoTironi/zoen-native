@@ -46,6 +46,8 @@ const nativePorts = new Set([
   '../profile/profile-avatar',
   '../theme',
   './primitives',
+  './service-message',
+  './message-markdown',
 ]);
 async function compile(platform: 'ios' | 'web') {
   const output = await build({
@@ -324,6 +326,8 @@ function fixture(initial = message(), disabled = false, platform: 'ios' | 'web' 
     '../media/MediaAttachment': { MessageMedia: 'MessageMedia' },
     '../miniapps/message-card': { MiniappMessageCard: 'MiniappMessageCard' },
     '../profile/profile-avatar': { ProfileAvatar: 'ProfileAvatar' },
+    './service-message': { ServiceMessage: 'ServiceMessage' },
+    './message-markdown': { MessageMarkdown: 'MessageMarkdown' },
     './primitives': { Icon: 'Icon' },
   };
   const module = {
@@ -388,7 +392,9 @@ function fixture(initial = message(), disabled = false, platform: 'ios' | 'web' 
     const group = elements(wrapper).find((node) => node.props.collapsable === false);
     assert.ok(group, 'The real wrapper must render its native accessibility host');
     const bubble = elements(tree).find(
-      (node) => node.props.testID === `message-bubble-${entry.id}`,
+      (node) =>
+        node.props.testID === `message-bubble-${entry.id}` ||
+        node.props.testID === `message-app-card-${entry.id}`,
     );
     assert.ok(bubble);
     return { tree, wrapper, group, bubble, interaction };
@@ -573,11 +579,11 @@ test('native media and miniapp boundaries remain ungrouped and never hide indepe
     assert.ok(elements(wrapper).some((node) => node.type === 'MessageMedia'));
     if (entry === miniapp) {
       assert.ok(elements(wrapper).some((node) => node.type === 'MiniappMessageCard'));
-      assert.equal((bubble.props.style as Record<string, unknown>).width, 164);
+      assert.equal((bubble.props.style as Record<string, unknown>).width, 160);
       assert.equal(
         elements(wrapper).find((node) => node.type === 'MiniappMessageCard')?.props.width,
         160,
-        'The Telegram media rim does not resize the canonical App cover',
+        'Human shares have no outer message rim or caption wrapper',
       );
     }
     act(group, 'actions');

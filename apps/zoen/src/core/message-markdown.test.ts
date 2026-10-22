@@ -4,7 +4,11 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
-import { messageMarkdownLink, messageMayContainMarkdown } from './message-markdown.ts';
+import {
+  messageMarkdownLink,
+  messageMayContainMarkdown,
+  messageMarkdownMayLoadMedia,
+} from './message-markdown.ts';
 
 test('ordinary messages keep measured text while Markdown candidates reach the real parser', () => {
   for (const text of ['Hello there', 'Olá 👋', 'First line\nSecond line', '2 + 2 = 4'])
@@ -94,6 +98,7 @@ function fixture() {
         return { jsx: (type: unknown, props: unknown) => ({ type, props }) };
       if (name === 'react-native')
         return {
+          Text: 'PlainText',
           Linking: {
             openURL: (url: string) => {
               opened.push(url);
@@ -167,4 +172,25 @@ test('rendered link events use the navigation boundary, and text selection is an
   assert.deepEqual(f.opened, ['https://example.com/path']);
   assert.equal(props.selectable, true);
   assert.equal(props.enableBlockContextMenu, true);
+});
+
+test('possible images and HTML video never reach native media loading; exact source remains plain text', () => {
+  const f = fixture();
+  for (const text of [
+    '![remote](https://example.com/private.png)',
+    '![local](file:///private/file)',
+    '![data](data:image/png;base64,AA)',
+    '![reference][id]\n\n[id]: https://example.com/image',
+    '**Bold** and ![x](https://example.com/x)',
+    '<video src="https://example.com/video.mp4"></video>',
+    '<IMG src="file:///private/file">',
+    '`![literal](image)`',
+  ]) {
+    assert.equal(messageMarkdownMayLoadMedia(text), true);
+    assert.equal(messageMayContainMarkdown(text), false);
+    const rendered = f.render({ text, color: '#123456', fontSize: 17, maxWidth: 280 });
+    assert.equal(rendered.type, 'PlainText');
+    assert.equal(rendered.props.children, text);
+  }
+  assert.equal(messageMayContainMarkdown('**Hello**!'), true);
 });
