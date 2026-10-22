@@ -181,7 +181,22 @@ async fn pages_and_files_travel_byte_for_byte() {
     for (rel, bytes) in &expected {
         match std::fs::read(out_dir.join(rel)) {
             Ok(b) if &b == bytes => identical += 1,
-            _ => differ.push(rel.clone()),
+            Ok(b) => {
+                let first = bytes.iter().zip(&b).position(|(a, b)| a != b);
+                eprintln!(
+                    "PAGE MISMATCH {rel}: changed expected_bytes={} actual_bytes={} first_difference={first:?}",
+                    bytes.len(), b.len()
+                );
+                differ.push(rel.clone());
+            }
+            Err(error) => {
+                eprintln!(
+                    "PAGE MISMATCH {rel}: unreadable kind={:?} expected_bytes={}",
+                    error.kind(),
+                    bytes.len()
+                );
+                differ.push(rel.clone());
+            }
         }
     }
     println!(
