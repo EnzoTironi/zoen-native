@@ -7,6 +7,10 @@ import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import type { MessageInteractionProps } from '../components/message-interaction.types';
+import { resolveSkyTheme } from '../theme/sky.ts';
+import * as presentation from './message-presentation.ts';
+import { messageText } from './presentation.ts';
+import type { TimelineEntry } from './types';
 
 const require = createRequire(import.meta.url);
 const { transformSync } = require('@babel/core') as {
@@ -86,6 +90,109 @@ function styles(node: Element): Record<string, unknown> {
   return flatten(node.props.style);
 }
 const json = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+
+const conversationPath = fileURLToPath(
+  new URL('../components/conversation-message.tsx', import.meta.url),
+);
+const conversationCode = (
+  await build({
+    stdin: {
+      contents: transformSync(
+        readFileSync(process.env.ZOEN_MESSAGE_ALBUM_SOURCE ?? conversationPath, 'utf8'),
+        {
+          filename: conversationPath,
+          configFile: false,
+          babelrc: false,
+          presets: [require.resolve('babel-preset-expo')],
+          caller: {
+            name: 'metro',
+            platform: 'ios',
+            engine: 'hermes',
+            isDev: false,
+            supportsReactCompiler: true,
+          },
+        },
+      ).code,
+      loader: 'js',
+    },
+    format: 'cjs',
+    write: false,
+  })
+).outputFiles[0]!.text;
+
+/** Take the actual rendered metadata leaf and wrapper policy, not a hand-written album substitute. */
+function albumMetadata(delivery: TimelineEntry['delivery']) {
+  const entry = {
+    id: 'signed-album-first-message',
+    author: { id: 'me', name: 'Me', is_me: true },
+    at_ms: '1000',
+    kind: {
+      Message: {
+        text: 'First caption',
+        card: { kind_id: 'file', item_id: 'signed-file', version: 1 },
+      },
+    },
+    delivery,
+    reactions: [],
+  } as unknown as TimelineEntry;
+  const menus: unknown[] = [];
+  const theme = resolveSkyTheme('night', new Date('2026-10-21T22:00:00'));
+  const jsx = (type: unknown, props: Record<string, unknown>) => ({ type, props });
+  const modules: Record<string, unknown> = {
+    react: {
+      memo: (component: unknown) => component,
+      useRef: (value: unknown) => ({ current: value }),
+      useState: (value: unknown) => [value, () => {}],
+      useLayoutEffect: (effect: Effect) => effect(),
+      useCallback: (callback: unknown) => callback,
+    },
+    'react/compiler-runtime': {
+      c: (size: number) => Array(size).fill(Symbol.for('react.memo_cache_sentinel')),
+    },
+    'react/jsx-runtime': { jsx, jsxs: jsx },
+    'react-native': {
+      View: 'View',
+      Text: 'Text',
+      useWindowDimensions: () => ({ width: 402, height: 874, scale: 3, fontScale: 1 }),
+    },
+    '../core/message-presentation': presentation,
+    '../core/presentation': { messageText },
+    '../i18n/index.ts': { t: (key: string) => key, formatLocale: 'en-US' },
+    '../theme': { useTheme: () => theme },
+    '../media/MediaAttachment': { MessageMedia: 'Media' },
+    './message-interaction': {
+      MessageInteraction: 'Interaction',
+      MessagePressable: 'MessagePressable',
+    },
+    './message-context-source': {
+      MessageContextSource: 'ContextSource',
+      MessageContextControl: 'ContextControl',
+    },
+    './message-receipt': { MessageReceipt: 'Receipt', messageDeliveryLabel: () => delivery },
+    './primitives': { Icon: 'Icon' },
+  };
+  const module = { exports: {} as { ConversationMessage(props: unknown): Element } };
+  runInNewContext(conversationCode, {
+    module,
+    exports: module.exports,
+    require: (name: string) => modules[name] ?? {},
+  });
+  const tree = module.exports.ConversationMessage({
+    spaceId: 'signed-space',
+    entry,
+    albumContent: { width: 294, media: 'OriginalMedia', captions: 'OriginalCaptions', delivery },
+    onReply() {},
+    onThread() {},
+    onMenu: (value: TimelineEntry, mode: string) => menus.push({ id: value.id, mode }),
+  });
+  const interaction = elements(tree).find((node) => node.type === 'Interaction')!;
+  const metadata = elements(tree).find(
+    (node) => node.props.testID === `message-metadata-${entry.id}`,
+  )!;
+  const action = elements(metadata).find((node) => node.type === 'MessagePressable')!;
+  assert.ok(interaction && action, 'Actual album must retain its metadata action');
+  return { interaction: interaction.props as MessageInteractionProps, action: action.props, menus };
+}
 
 /** Real Babel component/hooks execute. Native gesture, focus, animation and RN scheduling are explicit ports, not a device proof. */
 function fixture(initial: Partial<MessageInteractionProps> = {}) {
@@ -304,6 +411,7 @@ function fixture(initial: Partial<MessageInteractionProps> = {}) {
       return pan;
     },
     begin(x = 90) {
+      if ((pan as Record<string, unknown>).enabled === false) return;
       pan.onTouchesDown!(touch(x, 100));
     },
     move(dx: number, dy = 0, x = 90, count = 1) {
@@ -343,10 +451,16 @@ function fixture(initial: Partial<MessageInteractionProps> = {}) {
       for (const read of a11yListeners) read(value);
       render();
     },
-    press() {
+    press(props: Record<string, unknown> = {}) {
       let pressed = 0;
       const node = commit(child, () =>
-        module.exports.MessagePressable({ onPress: () => ++pressed }),
+        module.exports.MessagePressable({
+          ...props,
+          onPress: () => {
+            pressed++;
+            (props.onPress as (() => void) | undefined)?.();
+          },
+        }),
       );
       (node.props.onPress as () => void)();
       return pressed;
@@ -363,6 +477,98 @@ function fixture(initial: Partial<MessageInteractionProps> = {}) {
     },
   };
 }
+
+for (const delivery of ['Failed', 'Sent'] as const)
+  test(`actual ${delivery} album metadata tap opens its own menu without an outer swipe`, () => {
+    const actual = albumMetadata(delivery);
+    const f = fixture(actual.interaction);
+    f.begin();
+    assert.equal(f.press(actual.action), 1);
+    assert.deepEqual(actual.menus, [{ id: 'signed-album-first-message', mode: 'actions' }]);
+    assert.deepEqual(f.states, ['fail']);
+    f.move(-12);
+    f.update(-100);
+    f.end(-100);
+    f.flush();
+    assert.deepEqual(f.calls, []);
+    assert.deepEqual(f.impacts, []);
+  });
+
+for (const policy of ['swipeEnabled', 'disabled'] as const)
+  test(`a real pan retired by ${policy} cannot release into an album control`, () => {
+    const f = fixture();
+    f.begin();
+    f.move(-10);
+    f.update(-80);
+    f.render(policy === 'disabled' ? { disabled: true } : { swipeEnabled: false });
+    assert.equal(f.press(), 0, 'Policy change must not forgive a consumed physical touch');
+    f.end(-80);
+    f.flush();
+    assert.deepEqual(f.calls, []);
+    assert.deepEqual(f.impacts, []);
+    f.render({ disabled: false, swipeEnabled: false });
+    assert.equal(f.press(), 0, 'Re-enable does not itself authorize the old release');
+    f.begin();
+    assert.equal(f.press(), 1, 'Only a new passive-row touch authorizes a new press');
+  });
+
+test('passive album controls retain media-consumption, focus and background retirement fences', () => {
+  const f = fixture({ swipeEnabled: false });
+  assert.equal(f.press(), 0);
+  f.begin();
+  assert.equal(f.press(), 1);
+  f.consume();
+  assert.equal(f.press(), 0);
+  f.begin();
+  assert.equal(f.press(), 1);
+  f.blur();
+  f.focus();
+  assert.equal(f.press(), 0);
+  f.begin();
+  assert.equal(f.press(), 1);
+  f.app('inactive');
+  f.app('active');
+  assert.equal(f.press(), 0);
+  f.begin();
+  assert.equal(f.press(), 1);
+  f.unmount();
+  assert.equal(f.press(), 0);
+});
+
+test('queued active-row intent cannot borrow the new passive album touch after a policy change', () => {
+  const f = fixture();
+  swipe(f, -80);
+  f.render({ swipeEnabled: false });
+  f.begin();
+  assert.equal(f.press(), 1);
+  f.flush();
+  assert.deepEqual(f.calls, []);
+  assert.deepEqual(f.impacts, []);
+});
+
+test('old active native configuration cannot rearm a retired row or steal a new passive control touch', () => {
+  const f = fixture();
+  const old = f.pan;
+  f.begin();
+  f.move(-10);
+  f.render({ swipeEnabled: false });
+  const touch = {
+    handlerTag: 9,
+    numberOfTouches: 1,
+    allTouches: [{ absoluteX: 90, absoluteY: 100 }],
+  };
+  old.onTouchesDown!(touch);
+  assert.equal(f.press(), 0, 'A retired configuration must not rearm the old release');
+  f.begin();
+  old.onTouchesMove!({ ...touch, allTouches: [{ absoluteX: 10, absoluteY: 100 }] });
+  old.onUpdate!({ translationX: -80 });
+  old.onDeactivate!({ translationX: -80, canceled: false });
+  old.onFinalize!({});
+  assert.equal(f.press(), 1, 'The new passive touch remains independently pressable');
+  f.flush();
+  assert.deepEqual(f.calls, []);
+  assert.deepEqual(f.impacts, []);
+});
 
 function swipe(f: ReturnType<typeof fixture>, distance: number) {
   f.begin();

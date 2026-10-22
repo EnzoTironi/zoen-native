@@ -549,7 +549,8 @@ export const ConversationMessage = memo(function ConversationMessage({
           <MessageInteraction
             messageId={entry.id}
             mine={mine}
-            disabled={disabled || !messageCanInteract(entry) || Boolean(albumContent)}
+            disabled={disabled || !messageCanInteract(entry)}
+            swipeEnabled={!albumContent}
             accessibilityLabel={!attachment ? accessibilityMessageLabel : undefined}
             onReply={() => onReply(entry)}
             onThread={() => onThread(entry)}

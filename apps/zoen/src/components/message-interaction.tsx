@@ -275,6 +275,7 @@ export function MessageInteraction({
   messageId,
   mine,
   disabled = false,
+  swipeEnabled = true,
   accessibilityLabel,
   onActions,
   actionsAccessibilityLabel,
@@ -303,7 +304,7 @@ export function MessageInteraction({
       subscription.remove();
     };
   }, []);
-  const rowBinding = `${mine ? 'own' : 'incoming'}:${messageId}`;
+  const rowBinding = JSON.stringify([mine, messageId, disabled, swipeEnabled]);
   const committedRow = useSharedValue(rowBinding);
   const originX = useSharedValue(0),
     originY = useSharedValue(0);
@@ -325,6 +326,7 @@ export function MessageInteraction({
     mounted: false,
     focused: false,
     disabled,
+    swipeEnabled,
     quiet: reducedMotion,
     foreground: AppState.currentState === 'active',
     onReply,
@@ -352,9 +354,9 @@ export function MessageInteraction({
   );
   useLayoutEffect(() => {
     committedRow.set(rowBinding);
-    retire({ mounted: true, disabled });
+    retire({ mounted: true, disabled, swipeEnabled });
     return () => retire({ mounted: false });
-  }, [retire, committedRow, rowBinding, disabled]);
+  }, [retire, committedRow, rowBinding, disabled, swipeEnabled]);
   useLayoutEffect(() => {
     Object.assign(lifetime.current, { quiet: reducedMotion, onReply, onThread });
   }, [reducedMotion, onReply, onThread]);
@@ -377,6 +379,7 @@ export function MessageInteraction({
       current.focused &&
       current.foreground &&
       !current.disabled &&
+      current.swipeEnabled &&
       current.epoch === expectedEpoch &&
       activation.get() === expectedActivation
     );
@@ -416,7 +419,14 @@ export function MessageInteraction({
       exit.set(0);
       pulse.set(1);
       const first = event.allTouches[0];
-      if (!first || event.numberOfTouches !== 1 || first.absoluteX < MESSAGE_EDGE_ZONE) {
+      // Even without an outer swipe, a NEW touch rearms this row's controls.
+      // Disabling the recognizer itself would leave retirement's didPan=true.
+      if (
+        !swipeEnabled ||
+        !first ||
+        event.numberOfTouches !== 1 ||
+        first.absoluteX < MESSAGE_EDGE_ZONE
+      ) {
         GestureStateManager.fail(event.handlerTag);
         return;
       }
@@ -425,7 +435,12 @@ export function MessageInteraction({
     },
     onTouchesMove: (event) => {
       'worklet';
-      if (committedRow.get() !== rowBinding || observedEpoch.get() !== epoch.get() || active.get())
+      if (
+        !swipeEnabled ||
+        committedRow.get() !== rowBinding ||
+        observedEpoch.get() !== epoch.get() ||
+        active.get()
+      )
         return;
       const first = event.allTouches[0];
       if (!first || event.numberOfTouches !== 1) {
