@@ -55,7 +55,16 @@ function websocketFrame(bytes) {
 }
 export function syntheticRelay(server, fixture, failures) {
   const sockets = new Set();
-  const metrics = { connections: 0, authenticated: 0, pongs: 0, delayedPong: false, fullSync: [] };
+  const metrics = {
+    connections: 0,
+    authenticated: 0,
+    pongs: 0,
+    delayedPong: false,
+    fullSync: [],
+    publicationCopies: 0,
+    publicationBytesIdentical: true,
+  };
+  let publication;
   const publicKey = createPublicKey({
     key: Buffer.concat([
       Buffer.from('302a300506032b6570032100', 'hex'),
@@ -129,6 +138,12 @@ export function syntheticRelay(server, fixture, failures) {
           metrics.delayedPong = true;
           delayedPong = setTimeout(pong, 1_000);
         } else pong();
+        return;
+      }
+      if (kind === 4) {
+        ++metrics.publicationCopies;
+        if (publication) metrics.publicationBytesIdentical &&= publication.equals(body);
+        else publication = Buffer.from(body);
         return;
       }
       if (kind !== 5) return; // Unrelated ordinary requests are not fabricated as success.

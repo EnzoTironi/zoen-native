@@ -97,7 +97,10 @@ async function run() {
   const currentState = (): MessagesState | undefined => state;
   let messages: Messages | undefined;
   let reconciliations = 0,
-    decodedPongs = 0;
+    decodedPongs = 0,
+    completedSyncs = 0;
+  const syncSnapshots = new Set<string>();
+  const localText = 'Synthetic retained outbox during cursor repair';
   let firstAdmission: number | undefined;
   let armReadHold = false,
     holdNextSave = false,
@@ -117,11 +120,17 @@ async function run() {
           if (operation.kind === 'decode_server' && JSON.parse(value).kind === 'pong')
             ++decodedPongs;
           if (operation.kind === 'receive') {
-            const metadata = JSON.parse(value).cursor_repair;
+            const update = JSON.parse(value);
+            if (
+              operation.bytes.length === fixture.sync_done.length &&
+              operation.bytes.every((byte, i) => byte === fixture.sync_done[i])
+            )
+              syncSnapshots.add(update.snapshot);
+            const metadata = update.cursor_repair;
             if (firstAdmission === undefined && typeof metadata?.admission_ms === 'number')
               firstAdmission = metadata.admission_ms;
           }
-          if (operation.kind === 'mark_read' && armReadHold) {
+          if (operation.kind === 'queue_message' && armReadHold) {
             armReadHold = false;
             holdNextSave = true;
           }
@@ -139,6 +148,7 @@ async function run() {
             await heldSave;
           }
           await vault.save(session);
+          if (syncSnapshots.delete(session.snapshot)) ++completedSyncs;
         },
       },
       session: session as Extract<StoredSession, { kind: 'linked' }>,
@@ -152,7 +162,8 @@ async function run() {
     state?.kind === 'active' &&
     state.connection.kind === 'ready' &&
     state.conversations.length === 1 &&
-    state.conversations[0]?.messages.length === 1;
+    state.conversations[0]?.messages.filter((message) => message.id === 'final-retained-message')
+      .length === 1;
   try {
     await make();
     phase = 'periodic_repair';
@@ -160,19 +171,22 @@ async function run() {
     const due = firstAdmission!;
     await until(() => performance.now() >= due - 1_000, 65_000);
     armReadHold = true;
-    const read = messages!.markRead(fixture.space);
+    const write = messages!.send({ space: fixture.space, text: localText });
+    void write.catch(() => {});
     await until(() => saveHeld, 1_000);
     check(performance.now() < due, 'The synthetic write must block before repair admission');
     await until(() => decodedPongs >= 2 && performance.now() >= due + 2_000, 10_000);
     check(reconciliations === 0, 'The blocked serial must retain the admitted repair');
     await until(() => performance.now() >= due + 5_000, 5_000);
     releaseSave();
-    await read;
+    await write;
     // Real monotonic time and the unchanged60s production policy; no timer/clock injection.
     await until(verified, 80_000);
     check(state?.kind === 'active', 'Missing active projection');
     if (state?.kind !== 'active') throw new Error('Missing active projection');
-    const first = state.conversations[0]!.messages[0]!;
+    const first = state.conversations[0]!.messages.find(
+      (message) => message.id === 'final-retained-message',
+    )!;
     check(
       first.id === 'final-retained-message' &&
         first.text === fixture.expected_text &&
@@ -206,7 +220,7 @@ async function run() {
     core = await CoreWorker.create(vault, FIXTURE_WORKER_INTEGRITY, 'en');
     state = undefined;
     await make();
-    await until(verified, 10_000);
+    await until(() => verified() && completedSyncs >= 3, 10_000);
     await until(() => state?.kind === 'active' && state.connection.kind === 'ready', 1_000);
     const metrics = await (await fetch('/metrics')).json();
     check(
@@ -219,9 +233,18 @@ async function run() {
     const coldState = currentState();
     check(
       coldState?.kind === 'active' &&
-        coldState.conversations[0]?.messages.length === 1 &&
-        coldState.conversations[0]?.messages[0]?.text === fixture.expected_text,
+        coldState.conversations[0]?.messages.filter(
+          (message) =>
+            message.id === 'final-retained-message' && message.text === fixture.expected_text,
+        ).length === 1 &&
+        coldState.conversations[0]?.messages.filter((message) => message.text === localText)
+          .length === 1 &&
+        coldState.conversations[0]?.messages.length === 2,
       'Duplicate replay changed the exact accepted event',
+    );
+    check(
+      metrics.publicationCopies === 2 && metrics.publicationBytesIdentical,
+      'Cold reopen must retain the exact pending ciphertext',
     );
     return {
       status: 'passed',
@@ -235,6 +258,8 @@ async function run() {
       delayedPongAfterQueuedTick: true,
       healthyConnectionsBeforeCold: 1,
       verifiedMessagesAfterCold: 1,
+      retainedOutboxMessagesAfterCold: 1,
+      samePendingCiphertextAfterCold: true,
       pongs: metrics.pongs,
       firstRepairElapsedMs: metrics.fullSync[1].elapsedMs,
     };
