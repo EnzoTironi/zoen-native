@@ -4,6 +4,7 @@ use super::*;
 
 impl ApprovedToolAdmission for CanonicalToolAdmission<'_, '_> {
     fn execute(&self, ask: &ToolAsk) -> Result<ToolResult, String> {
+        self.tools.check_selection()?;
         let p = self.permit.proposal();
         if serde_json::to_string(ask).map_err(|_| "Invalid held call")? != p.continuation_json {
             return Err("The approved intent changed".into());
@@ -37,6 +38,7 @@ impl ApprovedToolAdmission for CanonicalToolAdmission<'_, '_> {
                 ))
             })?,
         };
+        self.tools.check_selection()?;
         if !self.tools.done().iter().any(|step| step.call == ask.call) {
             fault("before-journal");
             self.tools.record(ToolStep {
@@ -59,9 +61,11 @@ impl ToolHost for SpaceTools<'_> {
     }
 
     fn prepare(&self, prepared: &ToolAsk) -> Result<(), String> {
+        self.check_selection()?;
         self.prepare_continuation(prepared)
     }
     fn checkpoint(&self, progress: &ToolProgress) -> Result<(), String> {
+        self.check_selection()?;
         self.checkpoint_continuation(progress)
     }
 
@@ -69,6 +73,7 @@ impl ToolHost for SpaceTools<'_> {
         &self,
         call: &ToolCall,
     ) -> Option<zoen_agentd::PublicArtifactReferences> {
+        self.check_selection().ok()?;
         let (_, item, tool) = self
             .names
             .iter()
@@ -76,16 +81,19 @@ impl ToolHost for SpaceTools<'_> {
         if !self.deckcraft_items.contains(item) || !crate::deckcraft::recognizes(tool) {
             return None;
         }
-        crate::deckcraft::gate_public_references(
+        let references = crate::deckcraft::gate_public_references(
             self.e,
             item,
             self.source,
             self.serving,
             tool,
             &call.arguments,
-        )
+        );
+        self.check_selection().ok()?;
+        references
     }
     fn call(&self, call: &ToolCall) -> Result<String, String> {
+        self.check_selection()?;
         // Binary intents reconcile through the signed native store, never a journal
         // cache that could bypass current access or an ambiguous accepted result.
         if let Some((_, item, tool)) = self
@@ -108,6 +116,7 @@ impl ToolHost for SpaceTools<'_> {
                         &call.arguments,
                     ))
                 });
+                self.check_selection()?;
                 if let Ok(text) = &result {
                     if !self.done().iter().any(|step| {
                         step.call.name == call.name && step.call.arguments == call.arguments
@@ -135,6 +144,7 @@ impl ToolHost for SpaceTools<'_> {
             .into_iter()
             .find(|s| s.call.name == call.name && s.call.arguments == call.arguments)
         {
+            self.check_selection()?;
             return if s.is_error {
                 Err(s.result)
             } else {
@@ -170,6 +180,7 @@ impl ToolHost for SpaceTools<'_> {
             },
             Err(err) => Err(err.to_string()),
         };
+        self.check_selection()?;
         // Only calls that changed something need to survive a restart; a failed or
         // read-only call is cheap and safe to run again.
         if res.is_ok() {
@@ -181,11 +192,19 @@ impl ToolHost for SpaceTools<'_> {
             });
             fault("after-tool");
         }
-        say(format_args!(
-            "tool {} -> {}",
-            call.name,
-            if res.is_ok() { "ok" } else { "refused" }
-        ));
+        turn_note(
+            self.selection,
+            if res.is_ok() {
+                "agent_host_source_tool_done"
+            } else {
+                "agent_host_source_tool_refused"
+            },
+            format_args!(
+                "tool {} -> {}",
+                call.name,
+                if res.is_ok() { "ok" } else { "refused" }
+            ),
+        );
         res
     }
 }

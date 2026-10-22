@@ -36,6 +36,11 @@ mod providers;
 use providers::{brain, gate};
 mod turn;
 use turn::turn;
+mod messages;
+use messages::{
+    owner_note, selected_owner_note, selected_proposal, selected_reply, tell_owner, text_of,
+    turn_note,
+};
 mod journal;
 mod space_tools;
 #[cfg(test)]
@@ -44,7 +49,9 @@ mod tool_execution;
 #[cfg(test)]
 pub(crate) use test_support::{exercise_deckcraft_dispatch, exercise_deckcraft_operation};
 
+mod source_mode;
 mod startup;
+pub(crate) use source_mode::Source;
 mod trace;
 pub(crate) use startup::Readiness;
 
@@ -150,25 +157,75 @@ pub async fn host(
     home: &Path,
     readiness: &Readiness<'_>,
     for_secs: Option<u64>,
+    source: Option<Source>,
 ) -> Result<(), String> {
-    let runtime = Runtime::new(gate()?, brain()?);
+    // Normal mode retains provider construction before startup. Source mode must
+    // validate the selected signed message before constructing any provider.
+    let scoped = source.is_some();
+    if scoped {
+        Source::preflight(e)?;
+    }
+    let runtime = if scoped {
+        None
+    } else {
+        Some(Runtime::new(gate()?, brain()?))
+    };
     let acct = e.account().ok_or("no account")?;
     let owner = e
         .agent_owner()
         .ok_or("this account is not an agent with an owner")?;
-    let cx = Ctx {
-        me: acct.identity_id.clone(),
-        device: acct.device_id.clone(),
-        owner,
-        runtime,
-        deckcraft: crate::deckcraft::configured()?,
-        journal: home.join("agent-tool-steps.json"),
+    let deckcraft = if scoped {
+        None
+    } else {
+        Some(crate::deckcraft::configured()?)
     };
     let waker = Arc::new(Waker::default());
     e.stop_sync();
     e.start_sync(Some(waker.clone() as Arc<dyn CoreListener>))
-        .map_err(|error| error.to_string())?;
-    let mut cursors = startup::prepare(e, readiness, 15000).await?;
+        .map_err(|error| {
+            if scoped {
+                "agent_host_source_sync_unavailable".into()
+            } else {
+                error.to_string()
+            }
+        })?;
+    let (mut cursors, mut selected) = if let Some(source) = source {
+        let cursors = source_mode::admit(e, 15000).await?;
+        (
+            cursors.into_iter().collect(),
+            Some(source_mode::Run::prepare(e, source)?),
+        )
+    } else {
+        (startup::prepare(e, readiness, 15000).await?, None)
+    };
+    if let Some(selected) = &selected {
+        selected.actor(&acct.identity_id, &acct.device_id, &owner)?;
+        selected.check(e)?;
+    }
+    let cx = Ctx {
+        me: acct.identity_id.clone(),
+        device: acct.device_id.clone(),
+        owner,
+        runtime: match runtime {
+            Some(runtime) => runtime,
+            None => Runtime::new(
+                gate().map_err(|_| "agent_host_source_gate_unavailable")?,
+                brain().map_err(|_| "agent_host_source_brain_unavailable")?,
+            ),
+        },
+        deckcraft: match deckcraft {
+            Some(worker) => worker,
+            None => crate::deckcraft::configured()
+                .map_err(|_| "agent_host_source_worker_unavailable")?,
+        },
+        journal: home.join("agent-tool-steps.json"),
+    };
+    if let Some(selected) = &selected {
+        selected.check(e)?;
+        readiness
+            .publish()
+            .map_err(|_| "agent_host_source_readiness_unavailable")?;
+    }
     let mut known: BTreeSet<String> = cursors.keys().cloned().collect();
     say(format_args!("agent @{} hosting", acct.handle));
 
@@ -180,6 +237,10 @@ pub async fn host(
     let mut failures = 0u32;
     loop {
         if deadline.is_some_and(|d| Instant::now() >= d) {
+            if let Some(selected) = &selected {
+                selected.check(e)?;
+                say("agent_host_source_wait_elapsed");
+            }
             break;
         }
         // Reconnect with backoff when the connection is down; a long-quiet session also
@@ -203,12 +264,30 @@ pub async fn host(
             }
         }
 
-        let status = match e.agent_state().await {
+        if let Some(selected) = &selected {
+            selected.check(e)?;
+        }
+        let state = if scoped {
+            tokio::time::timeout(
+                deadline
+                    .expect("bounded source mode")
+                    .saturating_duration_since(Instant::now()),
+                e.agent_state(),
+            )
+            .await
+            .map_err(|_| "agent_host_source_state_unavailable")?
+        } else {
+            e.agent_state().await
+        };
+        let status = match state {
             Ok(s) => {
                 failures = 0;
                 s
             }
             Err(err) => {
+                if scoped {
+                    return Err("agent_host_source_state_unavailable".into());
+                }
                 // The relay refuses a revoked runtime device; the engine retries the rest.
                 failures += 1;
                 if failures >= MAX_STATE_FAILURES {
@@ -219,11 +298,27 @@ pub async fn host(
                 continue;
             }
         };
+        if let Some(selected) = &selected {
+            selected.check(e)?;
+        }
+        let selected_definition = if scoped {
+            Some(source_mode::definition(
+                &status.status,
+                &status.kind,
+                status.definition_version,
+                &status.definition,
+            )?)
+        } else {
+            None
+        };
         if status.status == "revoked" {
             say("revoked by the owner");
             break;
         }
-        let def = match Definition::decode(&status.definition) {
+        let def = match selected_definition
+            .map(Ok)
+            .unwrap_or_else(|| Definition::decode(&status.definition))
+        {
             Ok(d) => d,
             Err(_) => {
                 say("no definition yet");
@@ -238,6 +333,24 @@ pub async fn host(
         if status.status == "paused" {
             // Paused: answer nothing and keep the cursors where they are, so whatever
             // arrives now is answered (capped, through the gate) once the owner resumes.
+            wait(&waker, deadline).await;
+            continue;
+        }
+
+        // This branch precedes BOTH continuation discovery and the normal backlog
+        // loop. Source mode never seeds/advances a cursor or emits a read watermark.
+        if let Some(selected) = &mut selected {
+            if selected
+                .tick(e, &cx, &def, deadline.expect("bounded source mode"))
+                .await?
+            {
+                e.wait_until_settled(8000)
+                    .await
+                    .map_err(|_| "agent_host_source_reply_unsettled")?;
+                selected.check(e)?;
+                say("agent_host_source_reply_completed");
+                return Ok(());
+            }
             wait(&waker, deadline).await;
             continue;
         }
@@ -314,6 +427,9 @@ pub async fn host(
         wait(&waker, deadline).await;
     }
     e.wait_until_idle(8000).await;
+    if let Some(selected) = &selected {
+        selected.check(e)?;
+    }
     Ok(())
 }
 
@@ -323,100 +439,6 @@ async fn wait(w: &Waker, deadline: Option<Instant>) {
         d = d.min(end.saturating_duration_since(Instant::now()));
     }
     let _ = tokio::time::timeout(d, w.notify.notified()).await;
-}
-
-fn text_of(t: &TimelineEntry) -> Option<&str> {
-    match &t.kind {
-        EntryKind::Message { text, .. } => Some(text),
-        _ => None,
-    }
-}
-
-fn reply(e: &Arc<Client>, space: &str, text: &str, source: &str) -> bool {
-    fault("before-send");
-    let result = e.send_reply(space.into(), text.into(), source.into(), false);
-    trace::delivery(space, source, trace::Delivery::Reply, result.is_ok());
-    match result {
-        Ok(_) => {
-            say(format_args!(
-                "woke in {} -> replied",
-                space.chars().take(10).collect::<String>()
-            ));
-            true
-        }
-        Err(err) => {
-            say(format_args!("reply failed: {err}"));
-            false
-        }
-    }
-}
-
-/// The Creator's proposal goes to the owner's DM for approval on the owner's device; its
-/// own words go to the chat it was asked in.
-fn propose(
-    e: &Arc<Client>,
-    cx: &Ctx,
-    space: &str,
-    t: &TimelineEntry,
-    spec: &AgentSpec,
-    confirmation: Option<&str>,
-) -> bool {
-    if !tell_owner(
-        e,
-        cx,
-        json!({"agent_proposal": {"source": t.id, "space": space, "spec": spec,
-                                  "confirmation": confirmation}}),
-        space,
-        &t.id,
-    ) {
-        return false;
-    }
-    say(format_args!("proposed @{}", spec.handle));
-    match confirmation {
-        Some(c) => reply(e, space, c, &t.id),
-        None => true,
-    }
-}
-
-/// A structured note to the owner (their app renders it), tagged with its source message.
-fn tell_owner(
-    e: &Arc<Client>,
-    cx: &Ctx,
-    body: serde_json::Value,
-    space: &str,
-    source: &str,
-) -> bool {
-    let Ok(dm) = e.start_direct(cx.owner.clone()) else {
-        trace::delivery(space, source, trace::Delivery::OwnerNote, false);
-        return false;
-    };
-    let text = format!("```json\n{body}\n```");
-    let result = e.send_message(dm, text);
-    trace::delivery(space, source, trace::Delivery::OwnerNote, result.is_ok());
-    match result {
-        Ok(_) => {
-            say("told the owner");
-            true
-        }
-        Err(err) => {
-            say(format_args!("owner note failed: {err}"));
-            false
-        }
-    }
-}
-
-/// Our earlier note to the owner about `source`, if one went out.
-fn owner_note(e: &Arc<Client>, cx: &Ctx, source: &str) -> Option<serde_json::Value> {
-    let dm = e.start_direct(cx.owner.clone()).ok()?;
-    let needle = format!("\"source\":\"{source}\"");
-    e.timeline(dm).unwrap_or_default().iter().find_map(|m| {
-        let x = text_of(m).filter(|x| m.author.id == cx.me && x.contains(&needle))?;
-        let body = x
-            .trim()
-            .trim_start_matches("```json")
-            .trim_end_matches("```");
-        Some(serde_json::from_str(body.trim()).unwrap_or(serde_json::Value::Null))
-    })
 }
 
 /// Operational recovery data in the existing tool journal. It is neither an approval
@@ -445,6 +467,7 @@ struct SpaceTools<'a> {
     names: Vec<(ToolDef, String, String)>,
     deckcraft: Option<&'a Arc<zoen_agentd::deckcraft::DeckcraftWorker>>,
     deckcraft_items: Vec<String>,
+    selection: Option<&'a source_mode::Bound>,
 }
 
 struct CanonicalToolAdmission<'a, 'b> {

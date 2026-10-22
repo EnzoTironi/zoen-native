@@ -238,6 +238,16 @@ async fn main() {
         usage();
     }
     let cmd = cli.args.remove(0);
+    let agent_source = if cmd == "agent-host" {
+        agent::Source::parse(&std::env::args().skip(1).collect::<Vec<_>>())
+            .unwrap_or_else(|error| die(error))
+    } else {
+        None
+    };
+    if agent_source.is_some() {
+        agent_inspect::existing_home(&home)
+            .unwrap_or_else(|_| die("agent_host_source_existing_home_required"));
+    }
     if cmd == "agent-inspect" {
         agent_inspect::validate_args(&std::env::args().skip(1).collect::<Vec<_>>())
             .unwrap_or_else(|error| die(error));
@@ -492,11 +502,22 @@ async fn main() {
         return;
     }
 
-    if !e.unlock(vault.clone()).unwrap_or_else(|err| die(err)) {
+    if !e.unlock(vault.clone()).unwrap_or_else(|err| {
+        if agent_source.is_some() {
+            die("agent_host_source_unlock_failed");
+        }
+        die(err)
+    }) {
+        if agent_source.is_some() {
+            die("agent_host_source_account_unavailable");
+        }
         die(format!(
             "no account in {} (run `zoen init`)",
             home.display()
         ));
+    }
+    if agent_source.is_some() {
+        agent::Source::preflight(&e).unwrap_or_else(|error| die(error));
     }
     let me = e.account().map(|a| a.identity_id).unwrap_or_default();
     let watching = cmd == "watch";
@@ -528,6 +549,7 @@ async fn main() {
                 &home,
                 agent_readiness.as_ref().expect("agent-host readiness"),
                 for_secs,
+                agent_source,
             )
             .await
             {

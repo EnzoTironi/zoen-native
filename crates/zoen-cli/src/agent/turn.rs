@@ -11,6 +11,46 @@ pub(super) async fn turn(
     before: &[TimelineEntry],
     t: &TimelineEntry,
 ) -> bool {
+    checked(e, cx, def, space, before, t, None, &mut None).await
+}
+
+pub(super) async fn selected(
+    e: &Arc<Client>,
+    cx: &Ctx,
+    def: &Definition,
+    space: &str,
+    before: &[TimelineEntry],
+    t: &TimelineEntry,
+    selection: &source_mode::Bound,
+) -> source_mode::Attempt {
+    if selection.dispatch(e, cx, space, t).is_err() {
+        return source_mode::Attempt {
+            handled: false,
+            observed: None,
+        };
+    }
+    let mut observed = None;
+    let handled = checked(e, cx, def, space, before, t, Some(selection), &mut observed).await;
+    source_mode::Attempt { handled, observed }
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "normal turn inputs plus optional selector and its actual canonical observation"
+)]
+async fn checked(
+    e: &Arc<Client>,
+    cx: &Ctx,
+    def: &Definition,
+    space: &str,
+    before: &[TimelineEntry],
+    t: &TimelineEntry,
+    selection: Option<&source_mode::Bound>,
+    observed: &mut Option<source_mode::Head>,
+) -> bool {
+    if selection.is_some_and(|selection| selection.check(e).is_err()) {
+        return false;
+    }
     if let EntryKind::ItemEdited {
         item_id, version, ..
     } = &t.kind
@@ -41,7 +81,7 @@ pub(super) async fn turn(
         // Told the owner already. A proposal's confirmation may still be owed to the chat
         // (the reply failed after the note went out): send it now, from the note.
         return match note["agent_proposal"]["confirmation"].as_str() {
-            Some(c) => reply(e, space, c, &t.id),
+            Some(c) => selected_reply(e, space, c, &t.id, selection),
             None => true,
         };
     }
@@ -71,16 +111,23 @@ pub(super) async fn turn(
         owner: &cx.owner,
         definition: def,
     };
-    let tools = SpaceTools::new(e, cx, space, &t.author.id, &t.id);
+    let mut tools = SpaceTools::new(e, cx, space, &t.author.id, &t.id);
+    tools.selection = selection;
     let done = tools.done();
     let pending = e.tool_approval_requests(space, &t.id);
     let resumed = pending.last();
+    if selection.is_some() && resumed.is_none() {
+        *observed = Some(None);
+    }
     let result = if let Some(request) = resumed {
         let stop = |category| trace::stop(space, &t.id, category, Some(&request.id));
         let Some(dto) = e.requests().into_iter().find(|r| r.id == request.id) else {
             stop(trace::Stop::RequestUnavailable);
             return true;
         };
+        if selection.is_some() {
+            *observed = Some(Some((dto.id.clone(), dto.status)));
+        }
         if let Some(category) = trace::Stop::request_status(dto.status) {
             stop(category);
             return true;
@@ -103,7 +150,11 @@ pub(super) async fn turn(
         let checkpoint = match tools.recovery_checkpoint(&request.id, &request.content_hash) {
             Ok(checkpoint) => checkpoint,
             Err(error) => {
-                say(format_args!("continuation checkpoint refused: {error}"));
+                turn_note(
+                    selection,
+                    "agent_host_source_checkpoint_refused",
+                    format_args!("continuation checkpoint refused: {error}"),
+                );
                 stop(trace::Stop::CheckpointRefused);
                 return true;
             }
@@ -177,7 +228,11 @@ pub(super) async fn turn(
                 return true;
             }
             Err(error) => {
-                say(format_args!("continuation reservation refused: {error}"));
+                turn_note(
+                    selection,
+                    "agent_host_source_reservation_refused",
+                    format_args!("continuation reservation refused: {error}"),
+                );
                 stop(trace::Stop::ReservationRefused);
                 return true;
             }
@@ -211,21 +266,32 @@ pub(super) async fn turn(
             .turn_with_tools(tc, &history, &inbound, &tools, done)
             .await
     };
+    if tools.check_selection().is_err() {
+        return false;
+    }
     trace::turn_result(space, &t.id, &result);
     let out = match result {
         Ok(o) => o,
         Err(err) => {
-            say(format_args!("turn failed: {err}"));
+            turn_note(
+                selection,
+                "agent_host_source_runtime_failed",
+                format_args!("turn failed: {err}"),
+            );
             return false;
         }
     };
     match out {
         TurnOutcome::Silence => true,
         TurnOutcome::Blocked { reason } => {
-            say(format_args!("blocked: {reason}"));
+            turn_note(
+                selection,
+                "agent_host_source_blocked",
+                format_args!("blocked: {reason}"),
+            );
             true
         }
-        TurnOutcome::Say { text } => reply(e, space, &text, &t.id),
+        TurnOutcome::Say { text } => selected_reply(e, space, &text, &t.id, selection),
         TurnOutcome::ToolAsk { ask } => match tools.stage_approval(&ask) {
             Ok(dto) => {
                 trace::staged(space, &t.id, &ask, &dto);
@@ -233,20 +299,25 @@ pub(super) async fn turn(
             }
             Err(error) => {
                 trace::delivery(space, &t.id, trace::Delivery::ApprovalStaging, false);
-                say(format_args!("tool approval refused: {error}"));
+                turn_note(
+                    selection,
+                    "agent_host_source_approval_refused",
+                    format_args!("tool approval refused: {error}"),
+                );
                 true
             }
         },
-        TurnOutcome::AskOwner { draft, rule } => tell_owner(
+        TurnOutcome::AskOwner { draft, rule } => selected_owner_note(
             e,
             cx,
             json!({"ask_owner": {"space": space, "source": t.id, "from": t.author.id,
                                  "draft": draft, "rule": rule}}),
             space,
             &t.id,
+            selection,
         ),
         TurnOutcome::ProposeAgent { spec, confirmation } => {
-            propose(e, cx, space, t, &spec, confirmation.as_deref())
+            selected_proposal(e, cx, space, t, &spec, confirmation.as_deref(), selection)
         }
     }
 }
