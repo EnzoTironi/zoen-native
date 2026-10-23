@@ -1,9 +1,11 @@
 /* oxlint-disable jsx-a11y/prefer-tag-over-role -- React Native Text supports role="status"; HTML output is not a native component. */
 import { t } from '../i18n';
-import { useEffect, useRef, useState } from 'react';
-import { Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState, Text, View } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useClient } from '../core/provider';
+import { accountScope, accountScopeKey } from '../core/account-scope';
 import { useDialogs } from './dialogs';
 import { useTheme } from '../theme';
 import { Field, NativeButton, Surface } from './primitives';
@@ -18,42 +20,102 @@ export function AuthorizeDevice({ onLinked }: { onLinked: () => void }) {
   const [device, setDevice] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [available, setAvailable] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const scanning = useRef(false);
+  const busyRef = useRef(false);
+  const scanning = useRef<number | null>(null);
+  const lease = useRef({ generation: 0, owner: '', active: false });
+  const owner = accountScopeKey(accountScope(store));
+  const current = useCallback(
+    (generation = lease.current.generation) =>
+      lease.current.active &&
+      generation === lease.current.generation &&
+      lease.current.owner === accountScopeKey(accountScope(store)),
+    [store],
+  );
+  useFocusEffect(
+    useCallback(() => {
+      const retire = () => {
+        lease.current = { generation: lease.current.generation + 1, owner: '', active: false };
+        busyRef.current = false;
+        if (scanning.current !== null) void CameraView.dismissScanner().catch(() => {});
+        scanning.current = null;
+        setAvailable(false);
+        setBusy(false);
+        setCode('');
+        setCheck(null);
+        setDevice(null);
+        setProgress(null);
+        setError(null);
+      };
+      const activate = () => {
+        retire();
+        if (AppState.currentState !== 'active' || !owner) return;
+        if (owner !== accountScopeKey(accountScope(store))) return;
+        lease.current = { generation: lease.current.generation, owner, active: true };
+        setAvailable(true);
+      };
+      activate();
+      const preflight = store.registerSessionPreflight(retire);
+      const unsubscribe = store.subscribe(() => {
+        if (!current()) retire();
+      });
+      const app = AppState.addEventListener('change', (next) => {
+        if (next === 'active') activate();
+        else retire();
+      });
+      return () => {
+        preflight();
+        unsubscribe();
+        app.remove();
+        retire();
+      };
+    }, [store, owner, current]),
+  );
   useEffect(() => {
     const subscription = CameraView.onModernBarcodeScanned((result) => {
-      if (!scanning.current) return;
-      scanning.current = false;
+      const generation = scanning.current;
+      if (generation === null || !current(generation)) return;
+      scanning.current = null;
       setCode(result.data);
       setCheck(null);
-      void CameraView.dismissScanner();
+      void CameraView.dismissScanner().catch(() => {});
     });
     return () => {
       subscription.remove();
-      if (scanning.current) void CameraView.dismissScanner();
+      if (scanning.current !== null) void CameraView.dismissScanner().catch(() => {});
+      scanning.current = null;
     };
-  }, []);
-  async function run(action: () => Promise<void>) {
-    if (busy) return;
+  }, [current]);
+  async function run(action: (generation: number) => Promise<void>) {
+    if (busyRef.current || !current()) return;
+    const generation = lease.current.generation;
+    busyRef.current = true;
     setBusy(true);
     setError(null);
     try {
-      await action();
+      await action(generation);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t('access.connectDeviceFailed'));
+      if (current(generation))
+        setError(reason instanceof Error ? reason.message : t('access.connectDeviceFailed'));
     } finally {
-      setBusy(false);
+      if (current(generation)) {
+        busyRef.current = false;
+        setBusy(false);
+      }
     }
   }
-  async function transfer() {
-    if (!device) return;
+  async function transfer(generation: number) {
+    if (!device || !current(generation)) return;
     const [done, total] = await store.driver.request({ op: 'link_progress', device_id: device });
+    if (!current(generation)) return;
     if (done < total) {
       setProgress(t('access.conversationsPrepared', { done, count: total }));
       return;
     }
     setProgress(t('access.sendingEncryptedHistory'));
     const count = await store.driver.request({ op: 'send_history', device_id: device });
+    if (!current(generation)) return;
     setProgress(t('access.eventsSent', { count }));
     onLinked();
   }
@@ -69,7 +131,7 @@ export function AuthorizeDevice({ onLinked }: { onLinked: () => void }) {
           </Text>
           <NativeButton
             label={busy ? t('access.wait') : t('access.sendHistory')}
-            disabled={busy}
+            disabled={busy || !available}
             onPress={() => {
               void run(transfer);
             }}
@@ -77,8 +139,9 @@ export function AuthorizeDevice({ onLinked }: { onLinked: () => void }) {
           <NativeButton
             secondary
             label={t('access.connectAnotherDevice')}
-            disabled={busy}
+            disabled={busy || !available}
             onPress={() => {
+              if (!current()) return;
               setDevice(null);
               setCode('');
               setCheck(null);
@@ -95,13 +158,16 @@ export function AuthorizeDevice({ onLinked }: { onLinked: () => void }) {
             <NativeButton
               secondary
               label={t('access.scanQr')}
-              disabled={busy}
+              disabled={busy || !available}
               onPress={() => {
-                void run(async () => {
+                void run(async (generation) => {
                   const access = permission?.granted ? permission : await requestPermission();
+                  if (!current(generation)) return;
                   if (!access.granted) throw new Error(t('access.cameraRequired'));
-                  scanning.current = true;
+                  scanning.current = generation;
                   await CameraView.launchScanner({ barcodeTypes: ['qr'] });
+                  if (!current(generation) && scanning.current === null)
+                    void CameraView.dismissScanner().catch(() => {});
                 });
               }}
             />
@@ -110,10 +176,11 @@ export function AuthorizeDevice({ onLinked }: { onLinked: () => void }) {
             label={t('access.connectionCode')}
             value={code}
             onChangeText={(value) => {
+              if (!current()) return;
               setCode(value);
               setCheck(null);
             }}
-            editable={!busy}
+            editable={!busy && available}
             autoCapitalize="none"
             autoCorrect={false}
             multiline
@@ -145,24 +212,25 @@ export function AuthorizeDevice({ onLinked }: { onLinked: () => void }) {
                   ? t('access.matchingDigitsAuthorize')
                   : t('access.checkCode')
             }
-            disabled={busy || !code.trim()}
+            disabled={busy || !available || !code.trim()}
             onPress={() => {
-              void run(async () => {
+              void run(async (generation) => {
                 if (!check) {
-                  setCheck(
-                    await store.driver.request({ op: 'link_code_check', code: code.trim() }),
-                  );
+                  const checked = await store.driver.request({
+                    op: 'link_code_check',
+                    code: code.trim(),
+                  });
+                  if (current(generation)) setCheck(checked);
                   return;
                 }
-                if (
-                  !(await confirm({
-                    title: t('access.authorizeTitle'),
-                    message: t('access.authorizeExplanation', { code: check }),
-                    confirmLabel: t('access.authorizeDevice'),
-                  }))
-                )
-                  return;
+                const accepted = await confirm({
+                  title: t('access.authorizeTitle'),
+                  message: t('access.authorizeExplanation', { code: check }),
+                  confirmLabel: t('access.authorizeDevice'),
+                });
+                if (!accepted || !current(generation)) return;
                 const linked = await store.driver.request({ op: 'link_device', code: code.trim() });
+                if (!current(generation)) return;
                 setDevice(linked.device_id);
                 setCode('');
                 setCheck(null);

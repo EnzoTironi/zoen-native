@@ -105,6 +105,7 @@ async function fixture() {
           };
         if (path === 'react')
           return {
+            useEffect: (effect: () => void) => effect(),
             useState: () => [
               link,
               (value: unknown) => {
@@ -188,6 +189,11 @@ async function fixture() {
       current = null;
       session.retire();
     },
+    async reactivate() {
+      current = { ...owner };
+      session.activate(current);
+      await session.load(session.ticket());
+    },
   };
 }
 
@@ -242,5 +248,7 @@ test('linking remains behind an explicit action in a native sheet with the real 
   assert.ok(nodes(f.tree()).some((node) => node.type === 'AuthorizeDevice'));
   assert.ok(nodes(f.tree()).some((node) => node.type === 'HistoryTransfer'));
   f.retire();
+  assert.equal(f.target('authorize-device-sheet').props.isPresented, false);
+  await f.reactivate();
   assert.equal(f.target('authorize-device-sheet').props.isPresented, false);
 });
