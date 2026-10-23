@@ -2,7 +2,7 @@ use super::*;
 use std::sync::Mutex;
 
 struct Tokens {
-    current: Vec<Target>,
+    current: Mutex<Vec<Target>>,
     requested: Mutex<Vec<Vec<String>>>,
     removed: Mutex<Vec<String>>,
     fail: bool,
@@ -15,7 +15,7 @@ impl DeviceTokens for Tokens {
         if self.fail {
             Err(())
         } else {
-            Ok(self.current.clone())
+            Ok(self.current.lock().unwrap().clone())
         }
     }
     async fn remove_dead(&self, token: &str) {
@@ -41,14 +41,16 @@ impl WakeTransport for Transport {
 
 fn tokens(platforms: &[&str]) -> Tokens {
     Tokens {
-        current: platforms
-            .iter()
-            .enumerate()
-            .map(|(n, p)| Target {
-                platform: (*p).into(),
-                token: format!("SYNTHETIC_DEVICE_TOKEN_{n}"),
-            })
-            .collect(),
+        current: Mutex::new(
+            platforms
+                .iter()
+                .enumerate()
+                .map(|(n, p)| Target {
+                    platform: (*p).into(),
+                    token: format!("SYNTHETIC_DEVICE_TOKEN_{n}"),
+                })
+                .collect(),
+        ),
         requested: Mutex::default(),
         removed: Mutex::default(),
         fail: false,
@@ -79,6 +81,40 @@ async fn one_online_sibling_cannot_suppress_any_registered_recipient_device() {
         vec!["SYNTHETIC_DEVICE_TOKEN_0", "SYNTHETIC_DEVICE_TOKEN_1"]
     );
     assert!(store.removed.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn every_wake_reloads_current_authorized_devices_after_revocation() {
+    let store = tokens(&["apns", "fcm"]);
+    let transport = Transport::default();
+    let audience = ["author".into(), "recipient".into()];
+    assert_eq!(
+        dispatch(&store, &transport, "author", &audience).await.sent,
+        2
+    );
+    // Model the existing SQL port's current, unrevoked rows at the next lookup.
+    // This does not claim atomic revocation of a provider request already sent.
+    store.current.lock().unwrap().remove(0);
+    transport.0.lock().unwrap().clear();
+    assert_eq!(
+        dispatch(&store, &transport, "author", &audience).await.sent,
+        1
+    );
+    assert_eq!(
+        *transport.0.lock().unwrap(),
+        vec!["SYNTHETIC_DEVICE_TOKEN_1"]
+    );
+    store.current.lock().unwrap().clear();
+    transport.0.lock().unwrap().clear();
+    assert_eq!(
+        dispatch(&store, &transport, "author", &audience).await,
+        WakeAttempts::default()
+    );
+    assert!(transport.0.lock().unwrap().is_empty());
+    assert_eq!(
+        *store.requested.lock().unwrap(),
+        vec![vec!["recipient".to_string()]; 3]
+    );
 }
 
 #[tokio::test]
