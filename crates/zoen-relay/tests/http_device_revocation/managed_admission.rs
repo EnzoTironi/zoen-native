@@ -1,5 +1,6 @@
 //! Actual router/SQL/cryptographic HTTP admission; no fabricated FDB proof.
 use super::*;
+use object_store::ObjectStoreExt;
 use relay_admission::managed_images::{AnchorWriter, Deployment};
 
 struct Home(std::path::PathBuf);
