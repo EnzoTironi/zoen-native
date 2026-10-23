@@ -22,6 +22,7 @@ on:
         'scripts/expo-web-tests/**',
         'infra/cloudflare/web/**',
         '.github/workflows/expo.yml',
+        '.github/actions/setup-test-chrome/**',
       ]
   push:
     branches: [main]
@@ -45,6 +46,7 @@ on:
         'scripts/expo-web-tests/**',
         'infra/cloudflare/web/**',
         '.github/workflows/expo.yml',
+        '.github/actions/setup-test-chrome/**',
       ]
 
 permissions:
@@ -152,6 +154,8 @@ jobs:
         run: npm ci --prefix apps/zoen
       - name: Install pinned Excalidraw dependencies
         run: npm ci --prefix miniapps/excalidraw-ui
+      - name: Pinned Chrome for real renderer tests
+        uses: ./.github/actions/setup-test-chrome
       - name: Verify pinned Excalidraw UI and early MCP event delivery
         run: |
           npm test --prefix miniapps/excalidraw-ui
@@ -200,6 +204,8 @@ jobs:
           npm run core:types
           git diff --exit-code -- src/core/generated
           test -z "$(git ls-files --others --exclude-standard src/core/generated)"
+      - name: Pinned Chrome for real renderer tests
+        uses: ./.github/actions/setup-test-chrome
       - name: TypeScript, Oxlint, Oxfmt and client tests
         run: npm run check
       - name: Expo SDK compatibility
