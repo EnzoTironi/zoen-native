@@ -194,6 +194,21 @@ pub(super) async fn run(
     provider: &Provider,
 ) {
     install_policy(w, config, &runtime).await;
+    let runtime = runtime
+        .open_managed_image_continuity(&config.continuity, &config.agent, &config.device)
+        .await
+        .unwrap()
+        .qualify_managed_images_output(config.host().unwrap().target)
+        .await
+        .unwrap();
+    assert_eq!(
+        runtime
+            .prepare_reply_output("unqualified-reply")
+            .await
+            .unwrap_err(),
+        zoen_runtime::RuntimeError::CoreAuthorityUnavailable,
+        "Images qualification must not open general reply output"
+    );
     drop(runtime);
     let owner = owner_client(w);
     owner.wait_until_settled(20_000).await.unwrap();
@@ -339,7 +354,17 @@ pub(super) async fn run(
             .await,
         1
     );
-    assert_eq!(owner.items().iter().filter(|i| i.id == item).count(), 1);
+    let files: Vec<_> = owner
+        .items()
+        .into_iter()
+        .filter(|i| i.space_id == space && i.file.as_ref().is_some_and(|file| file.sha256 == sha))
+        .collect();
+    assert_eq!(
+        files.len(),
+        1,
+        "one capture must not create duplicate FileDocs"
+    );
+    assert_eq!(files[0].id, item);
     assert_eq!(
         owner
             .requests()

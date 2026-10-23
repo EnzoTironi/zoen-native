@@ -141,7 +141,12 @@ fn run(path: &Path, action: &str) -> Result<(), String> {
             println!("native key packages published; invite this agent to a new conversation");
             return Ok(());
         }
-        let host = ImageRuntimeHost::configured(Arc::new(authority), secrets, config.host()?)
+        let host_config = config.host()?;
+        let authority = authority
+            .qualify_managed_images_output(host_config.target.clone())
+            .await
+            .map_err(|e| e.to_string())?;
+        let host = ImageRuntimeHost::configured(Arc::new(authority), secrets, host_config)
             .map_err(|e| e.to_string())?;
         let progress = match command.ok_or("image command missing")? {
             Command::Stage {
