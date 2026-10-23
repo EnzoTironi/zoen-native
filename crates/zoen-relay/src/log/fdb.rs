@@ -83,6 +83,7 @@ use super::{
     InviteInfo, LogStore, Reject, Sequencing, StoreError,
 };
 
+mod commit_lanes;
 #[cfg(debug_assertions)]
 mod conflicts;
 mod invite_routing;
@@ -437,6 +438,20 @@ impl Batcher for Cell {
         batch: &[Pending],
         state: &mut Option<SpaceState>,
     ) -> Applied {
+        // Separate local clients retain separate databases/caches, but must not
+        // repeatedly race their bounded transactions against the same head.
+        // This is contention coordination only; every transaction still reads
+        // and validates the canonical persisted ownership fence and Space head.
+        let _lane = match commit_lanes::acquire(&self.space_key(space, "head")).await {
+            Ok(lane) => lane,
+            Err(error) => {
+                tracing::error!(error = %error, "append coordination unavailable");
+                return Applied {
+                    results: batch.iter().map(|_| Err(Reject::unavailable())).collect(),
+                    attempts: 0,
+                };
+            }
+        };
         // A retry reruns the closure, so the cache moves into the first attempt and comes
         // back only with a committed result. Later attempts reload from the head they read.
         let cached = Mutex::new(state.take());
