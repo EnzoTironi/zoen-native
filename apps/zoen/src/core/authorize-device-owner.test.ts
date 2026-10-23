@@ -433,3 +433,24 @@ test('an already queued edit cannot replace the code while its digits are being 
   assert.equal(f.calls.find((command) => command.op === 'link_device')?.code, 'fixture-code');
   f.close();
 });
+
+test('buttons and edits from a retired render cannot borrow the replacement focus lease', async () => {
+  for (const action of ['authorize', 'history']) {
+    const f = fixture();
+    if (action === 'history') await f.link();
+    else await f.check();
+    const stale = f.button(
+      action === 'history' ? 'access.sendHistory' : 'access.matchingDigitsAuthorize',
+    );
+    const field = nodes(f.render()).find((node) => node.type === 'Field');
+    const before = f.calls.length;
+    f.blur();
+    f.refocus();
+    stale.props.onPress();
+    field?.props.onChangeText('retired-code');
+    await settle();
+    assert.equal(f.calls.length, before, action);
+    assert.equal(nodes(f.render()).find((node) => node.type === 'Field')?.props.value, '');
+    f.close();
+  }
+});

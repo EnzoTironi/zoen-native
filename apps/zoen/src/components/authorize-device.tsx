@@ -87,9 +87,10 @@ export function AuthorizeDevice({ onLinked }: { onLinked: () => void }) {
       scanning.current = null;
     };
   }, [current]);
+  const renderedGeneration = lease.current.generation;
   async function run(action: (generation: number) => Promise<void>) {
-    if (busyRef.current || !current()) return;
-    const generation = lease.current.generation;
+    if (busyRef.current || !current(renderedGeneration)) return;
+    const generation = renderedGeneration;
     busyRef.current = true;
     setBusy(true);
     setError(null);
@@ -141,7 +142,7 @@ export function AuthorizeDevice({ onLinked }: { onLinked: () => void }) {
             label={t('access.connectAnotherDevice')}
             disabled={busy || !available}
             onPress={() => {
-              if (!current() || busyRef.current) return;
+              if (!current(renderedGeneration) || busyRef.current) return;
               setDevice(null);
               setCode('');
               setCheck(null);
@@ -176,7 +177,7 @@ export function AuthorizeDevice({ onLinked }: { onLinked: () => void }) {
             label={t('access.connectionCode')}
             value={code}
             onChangeText={(value) => {
-              if (!current() || busyRef.current) return;
+              if (!current(renderedGeneration) || busyRef.current) return;
               setCode(value);
               setCheck(null);
             }}
