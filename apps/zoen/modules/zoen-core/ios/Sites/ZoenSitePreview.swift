@@ -9,12 +9,11 @@ final class ZoenSitePreview: ExpoView, WKNavigationDelegate, WKUIDelegate {
   var active = false
   private var rendered: String?
   private var web: WKWebView?
-  private var initialNavigation: WKNavigation?
+  private var navigation = ZoenSitePreviewPolicy.Navigation()
 
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
     clipsToBounds = true
-    accessibilityLabel = "Site preview"
   }
 
   override func layoutSubviews() {
@@ -34,7 +33,7 @@ final class ZoenSitePreview: ExpoView, WKNavigationDelegate, WKUIDelegate {
     web?.removeFromSuperview()
     web = nil
     rendered = nil
-    initialNavigation = nil
+    navigation = .init()
   }
 
   func updatePreview() {
@@ -61,25 +60,33 @@ final class ZoenSitePreview: ExpoView, WKNavigationDelegate, WKUIDelegate {
     web = view
     rendered = key
     addSubview(view)
-    initialNavigation = view.loadHTMLString(ZoenSitePreviewPolicy.document(html), baseURL: nil)
+    navigation.begin()
+    view.loadHTMLString(ZoenSitePreviewPolicy.document(html), baseURL: nil)
   }
 
   func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
     decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
     // A nil target is a popup. All user links, forms, fragments, meta refreshes
     // and subsequent navigations are blocked, including about: and data:.
-    let initial = initialNavigation != nil && navigationAction.navigationType == .other
-      && navigationAction.targetFrame?.isMainFrame == true
-      && navigationAction.request.url?.absoluteString == "about:blank"
+    let initial = navigation.allow(url: navigationAction.request.url?.absoluteString,
+      main: navigationAction.targetFrame?.isMainFrame == true,
+      other: navigationAction.navigationType == .other)
     decisionHandler(initial ? .allow : .cancel)
   }
 
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-    initialNavigation = nil
+    self.navigation = .init()
   }
 
   func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
     for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? { nil }
+
+  // iOS otherwise enables file-upload panels by default, even with scripts off.
+  func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters,
+    initiatedByFrame frame: WKFrameInfo,
+    completionHandler: @escaping @MainActor @Sendable ([URL]?) -> Void) {
+    completionHandler(nil)
+  }
 }
 
 func zoenSitePreviewDefinition() -> ViewDefinition<ZoenSitePreview> {

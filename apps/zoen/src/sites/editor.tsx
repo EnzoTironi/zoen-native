@@ -44,8 +44,10 @@ export function SiteEditor({
   const dirty = saved.html !== null && html !== saved.html;
   // Current permissions can change without replacing the user's draft/base.
   const publishAllowed = saved.publish_allowed && initial.publish_allowed;
-  const editable = saved.editable && publishAllowed
-    && Math.max(initial.current_version, saved.current_version) === saved.source.version;
+  const editable =
+    saved.editable &&
+    publishAllowed &&
+    Math.max(initial.current_version, saved.current_version) === saved.source.version;
   useDirtyEditor(dirty, busy);
   useFocusEffect(
     useCallback(() => {
@@ -199,8 +201,22 @@ export function SiteEditor({
       )}
       <View style={{ paddingHorizontal: 16, paddingVertical: 8 }}>
         {Math.max(initial.current_version, saved.current_version) > saved.source.version ? (
-          <NativeButton secondary label={t('sites.openVersion', { version: Math.max(initial.current_version, saved.current_version) })}
-            disabled={busy} onPress={() => router.replace({ pathname: '/site/[id]', params: { id: saved.source.item_id, version: String(Math.max(initial.current_version, saved.current_version)) } })} />
+          <NativeButton
+            secondary
+            label={t('sites.openVersion', {
+              version: Math.max(initial.current_version, saved.current_version),
+            })}
+            disabled={busy}
+            onPress={() =>
+              router.replace({
+                pathname: '/site/[id]',
+                params: {
+                  id: saved.source.item_id,
+                  version: String(Math.max(initial.current_version, saved.current_version)),
+                },
+              })
+            }
+          />
         ) : null}
         {!dirty && publishAllowed ? (
           <SitePublicationAction
