@@ -102,6 +102,12 @@ impl<S: Signer> Client<S> {
                 downloads.extend(read.downloads.clone());
                 self.page_value(&item, &read, true)?
             }
+            Command::PageExportVersion {
+                space_id,
+                item_id,
+                version,
+                observed_hash,
+            } => self.page_export_version_value(&space_id, &item_id, version, &observed_hash)?,
             Command::PageCreate { space_id, title } => {
                 self.document_writer(&space_id)?;
                 let page = Page::from_markdown(&if title.trim().is_empty() {
