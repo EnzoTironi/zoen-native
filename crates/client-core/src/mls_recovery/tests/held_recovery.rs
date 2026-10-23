@@ -190,7 +190,7 @@ pub(super) fn legacy_stub_cannot_install_or_invalidate_authenticated_recovery_co
     use event_log::content::{Payload, SignedContent};
     use prost::Message;
     let fixture: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../event-log/testdata/legacy-sealed-v3.json"
+        "../../../../event-log/testdata/legacy-sealed-v3.json"
     ))
     .unwrap();
     let mut wire = protocol::wire::PbSequenced::decode(
