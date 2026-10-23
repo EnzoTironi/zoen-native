@@ -14,6 +14,7 @@ final class ZoenCallCoordinator: NSObject {
   private var rtc: ZoenCallRTC?
   private var call: ZoenCallRecord
   private var screen: ZoenCallViewController?
+  private var watchdog: Task<Void, Never>?
   private var deadline: Task<Void, Never>?
   private var retired = false
   private var installed = false
@@ -55,7 +56,28 @@ final class ZoenCallCoordinator: NSObject {
       guard let self, !self.retired, self.call.acceptedDevice == nil else { return }
       await self.stop(writeEnd: true, reason: .unanswered)
     }
+    watchCanonicalLease()
     try await refresh()
+  }
+
+  private func watchCanonicalLease() {
+    watchdog = Task { [weak self] in
+      var offlineSince: ContinuousClock.Instant?
+      while !Task.isCancelled {
+        do { try await Task.sleep(for: .seconds(1)) } catch { return }
+        guard let self, !self.retired else { return }
+        do { try await self.refresh() }
+        catch { await self.stop(writeEnd: false, reason: .failed); return }
+        if await self.port.relayReady() { offlineSince = nil }
+        else {
+          let now = ContinuousClock.now
+          if let offlineSince, offlineSince.duration(to: now) >= .seconds(30) {
+            await self.stop(writeEnd: true, reason: .failed); return
+          }
+          if offlineSince == nil { offlineSince = now }
+        }
+      }
+    }
   }
 
   func refresh() async throws {
@@ -117,7 +139,7 @@ final class ZoenCallCoordinator: NSObject {
     guard !retired else { return }
     guard installed else { retired = true; status("ended"); return }
     ZoenCallSystem.shared.retiring = true
-    retired = true; deadline?.cancel(); deadline = nil
+    retired = true; deadline?.cancel(); deadline = nil; watchdog?.cancel(); watchdog = nil
     await rtc?.stop(); rtc = nil
     // Stop all capture before an awaited write. Failure stays in the canonical
     // outbox/recovery path; no SDK callback may revive this resource lifetime.

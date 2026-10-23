@@ -63,7 +63,9 @@ extension ZoenSession {
   private func callPort(_ borrow: CallBorrow, space: String, call: ZoenCallRecord) -> ZoenCallPort {
     let scope = ZoenCallScope(identity: borrow.identity, device: borrow.device, space: space, call: call.callId, invitation: call.invitation)
     let audioFocus = callAudioFocus
-    return ZoenCallPort(scope: scope, locale: sessionLocale, current: { [weak self] in
+    return ZoenCallPort(scope: scope, locale: sessionLocale, relayReady: { [weak self] in
+      guard let self else { return false }; return await self.callRelayReady(borrow)
+    }, current: { [weak self] in
       guard let self else { throw SessionError.closed }; return try await self.currentCall(borrow, scope: scope)
     }, transport: { [weak self] in
       guard let self else { throw SessionError.closed }; return try await self.readCallTransport(borrow, scope: scope)
@@ -76,6 +78,12 @@ extension ZoenSession {
     }, action: { [weak self] action in
       guard let self else { throw SessionError.closed }; try await self.callAction(borrow, space: space, call: call, action: action)
     })
+  }
+
+  private func callRelayReady(_ borrow: CallBorrow) -> Bool {
+    guard callBorrowIsCurrent(borrow) else { return false }
+    let connection = borrow.engine.connection()
+    return connection.state == "online" && connection.synced
   }
 
   private func prepareCallAudio(_ borrow: CallBorrow) async throws {

@@ -60,6 +60,7 @@ struct ZoenCallPayload: Codable, Sendable {
 struct ZoenCallPort: Sendable {
   let scope: ZoenCallScope
   let locale: String
+  let relayReady: @Sendable () async -> Bool
   let current: @Sendable () async throws -> ZoenCallRecord
   let transport: @Sendable () async throws -> [ZoenCallSignalRecord]
   let send: @Sendable (ZoenCallPayload, UInt8) async throws -> Void

@@ -257,3 +257,5 @@ fn role_revocation_retires_media_and_refuses_future_call_admission() {
     };
     assert!(!f.valid(&f.event(&f.caller, 400, next)));
 }
+
+mod confirmation;
