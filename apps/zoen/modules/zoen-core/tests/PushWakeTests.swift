@@ -11,6 +11,10 @@ private actor Entered {
 
 private final class Session: Sendable { let id: Int; init(_ id: Int) { self.id = id } }
 private enum Failure: Error { case closed }
+private actor Effects {
+  private(set) var count = 0
+  func record() { count += 1 }
+}
 
 private actor Probe {
   private var current: Int?
@@ -127,6 +131,21 @@ private func quarantine() async throws {
   try await gate.close(session: foreground) { try await probe.close(2) }
 }
 
+private func staleCloseCannotReenterAnOlderSession() async throws {
+  let probe = Probe(), effects = Effects()
+  let gate = ZoenProcessSessionGate<Session> { try await probe.close($0.id) }
+  let first = Session(1), second = Session(2)
+  try await gate.open(session: first, lease: ZoenModuleSessionLease()) { await probe.open(1) }
+  try await gate.open(session: second, lease: ZoenModuleSessionLease()) { await probe.open(2) }
+  // Old OnDestroy/close callbacks can arrive after replacement. Their callback
+  // must not retire the new module's UI or reopen an erasure-recovery Client.
+  try await gate.close(session: first) { await effects.record() }
+  check(await effects.count == 0, "A stale module callback reentered an already retired session")
+  try await gate.close(session: second) { try await probe.close(2) }
+  let count = await probe.count()
+  check(count.0 == 2 && count.1 == 2 && count.2 == 2)
+}
+
 private func expiredWorkAndRetirement() async throws {
   let probe = Probe()
   let gate = ZoenProcessSessionGate<Session> { try await probe.close($0.id) }
@@ -192,6 +211,7 @@ private enum PushWakeTests {
     try payloads()
     try snapshotModels(URL(fileURLWithPath: CommandLine.arguments[1]))
     try await ownership()
+    try await staleCloseCannotReenterAnOlderSession()
     try await quarantine()
     try await expiredWorkAndRetirement()
     try await cancelledQueueCannotOpenAClient()
