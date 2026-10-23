@@ -65,6 +65,10 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
         .with_large_int("string")
         .with_out_dir(path);
     Command::export_all(&config)?;
+    crate::owner_policy::OwnerPolicyReview::export_all(&config)?;
+    crate::owner_policy::OwnerPolicyContext::export_all(&config)?;
+    crate::owner_policy::OwnerPolicyOptionsStatus::export_all(&config)?;
+    crate::owner_policy::OwnerPolicyStatus::export_all(&config)?;
     crate::agent_sites::SiteToolReview::export_all(&config)?;
     crate::sites::SiteSource::export_all(&config)?;
     crate::sites::SiteReview::export_all(&config)?;
