@@ -331,7 +331,7 @@ fn app_confirmation_cannot_override_invalid_trust_for_an_external_action() {
     assert_eq!(c.item(item.id).unwrap().version, before);
 }
 #[test]
-fn app_grant_cannot_replace_the_calling_agents_revoked_authority() {
+fn app_grant_cannot_replace_the_calling_agents_suggest_or_revoked_authority() {
     let c = seeded();
     let (agent, space) = context(&c);
     let item = c
@@ -341,8 +341,22 @@ fn app_grant_cannot_replace_the_calling_agents_revoked_authority() {
             r#"{"name":"Agent test"}"#.into(),
         )
         .unwrap();
-    let agent_grant = issue(&c, &agent, &space, Capability::Trust(TrustLevel::Act), None);
     let owner = c.me().unwrap().id;
+    issue(
+        &c,
+        &agent,
+        &space,
+        Capability::Trust(TrustLevel::Suggest),
+        None,
+    );
+    let before = c.item(item.id.clone()).unwrap().version;
+    let unapproved = c
+        .lock()
+        .app_call_as(&item.id, &agent, "pet_feed", "{}", false, Some(&owner))
+        .unwrap();
+    assert_eq!(unapproved.status, AppCallStatus::NeedsConfirmation);
+    assert_eq!(c.item(item.id.clone()).unwrap().version, before);
+    let agent_grant = issue(&c, &agent, &space, Capability::Trust(TrustLevel::Act), None);
     let first = c
         .lock()
         .app_call_as(&item.id, &agent, "pet_feed", "{}", false, Some(&owner))
