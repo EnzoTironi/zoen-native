@@ -206,8 +206,10 @@ function fixture(locale: 'en' | 'pt-BR' = 'en') {
         };
       if (path.includes('i18n/index'))
         return {
-          t: (key: string, params: any) =>
-            key.startsWith('reviewRenewal.') ? localization.t(key as never, params) : key,
+          t: (key: string) =>
+            key.startsWith('reviewRenewal.')
+              ? localization.t(key as `reviewRenewal.${keyof typeof reviewRenewal.en}`)
+              : key,
           formatLocale: 'en',
         };
       if (path.endsWith('/primitives'))
