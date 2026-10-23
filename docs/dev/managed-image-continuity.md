@@ -21,8 +21,9 @@ The pair and device are derived from existing private SQL/FDB/native authority.
 The private pairing witness is stored in the mode-0600 anchor and redacted from
 Debug. It must never be serialized into a network request.
 
-An interrupted genesis can be retried only with the exact original genesis and
-still-unused stores. An existing directory with missing/invalid state is never
+An interrupted genesis can be retried only with the exact original existing
+anchor and still-unused stores. A new directory is refused if either store
+already contains a checkpoint, including genesis. An existing directory with missing/invalid state is never
 recreated. `open_managed_image_continuity` reopens the retained anchor; it does
 not regenerate a missing anchor or reset an old checkpoint.
 

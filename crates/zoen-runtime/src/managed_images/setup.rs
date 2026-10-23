@@ -14,19 +14,7 @@ impl RuntimeAuthority {
         device: &str,
     ) -> Result<Self, RuntimeError> {
         let deployment = self.configured_image_deployment(agent, device).await?;
-        let mut sql = self.finance.begin().await?;
-        sqlx::query("LOCK TABLE runtime_attempts IN SHARE MODE")
-            .execute(&mut *sql)
-            .await?;
-        sqlx::query("LOCK TABLE runtime_image_checkpoint IN EXCLUSIVE MODE")
-            .execute(&mut *sql)
-            .await?;
-        let retained: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM runtime_attempts)")
-            .fetch_one(&mut *sql)
-            .await?;
-        if retained {
-            return Err(RuntimeError::RestoreUnreconciled);
-        }
+        let mut sql = self.finance.empty_image_checkpoint_transaction().await?;
         let fdb = self.execution.transaction().await?;
         let mut range = RangeOption::from(self.execution.root.range());
         range.limit = Some(4);
@@ -43,9 +31,18 @@ impl RuntimeAuthority {
         {
             return Err(RuntimeError::RestoreUnreconciled);
         }
+        let key = stores::key(&self.execution);
+        let old_fdb = fdb.get(&key, false).await?;
+        let old_sql: bool =
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM runtime_image_checkpoint)")
+                .fetch_one(&mut *sql)
+                .await?;
         let anchor = match std::fs::symlink_metadata(directory) {
             Ok(_) => AnchorWriter::open(directory, deployment.clone()),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                if old_sql || old_fdb.is_some() {
+                    return Err(RuntimeError::RestoreUnreconciled);
+                }
                 AnchorWriter::create(directory, deployment.clone())
             }
             Err(_) => return Err(RuntimeError::Unavailable),
@@ -55,8 +52,7 @@ impl RuntimeAuthority {
         if genesis.generation != 1 || genesis.sequence != 0 {
             return Err(RuntimeError::RestoreUnreconciled);
         }
-        let key = stores::key(&self.execution);
-        if let Some(bytes) = fdb.get(&key, false).await? {
+        if let Some(bytes) = old_fdb {
             let old: Checkpoint =
                 serde_json::from_slice(&bytes).map_err(|_| RuntimeError::InvalidBinding)?;
             if old != genesis {
