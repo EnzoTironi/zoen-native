@@ -60,7 +60,7 @@ async fn requires_negotiated_capability_and_exact_fresh_reply_before_effects() {
                         } else {
                             vec![CAPABILITY.into()]
                         },
-                        server_time_ms: 0,
+                        server_time_ms: Some(0),
                     }
                     .encode()
                     .into(),
