@@ -135,6 +135,14 @@ Excalidraw proofs and whole-app v85 baseline are unchanged.
 
 See the [complete section](mcp-apps-drawings.md#drawings-owned-by-a-zoen-chat).
 
+### Bounded canonical native proof (v89)
+
+See the [original proof and limits](mcp-apps-drawings.md#bounded-canonical-native-proof-v89).
+
+### Native image import and linked-device readback (v90)
+
+See the [original proof and limits](mcp-apps-drawings.md#native-image-import-and-linked-device-readback-v90).
+
 ## Current remote-session authority
 
 See the [complete section](mcp-apps-drawings.md#current-remote-session-authority).
