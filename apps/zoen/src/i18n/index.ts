@@ -10,6 +10,7 @@ import { chat } from './catalogs/chat.ts';
 import { common } from './catalogs/common.ts';
 import { composerKeyboard } from './catalogs/composer-keyboard.ts';
 import { documents } from './catalogs/documents.ts';
+import { workspace } from './catalogs/workspace.ts';
 import { decks } from './catalogs/decks.ts';
 import { drawing } from './catalogs/drawing.ts';
 import { home } from './catalogs/home.ts';
@@ -49,6 +50,7 @@ const catalogs = {
   common,
   composerKeyboard,
   documents,
+  workspace,
   drawing,
   decks,
   home,
