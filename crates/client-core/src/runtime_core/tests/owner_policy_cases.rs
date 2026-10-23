@@ -346,6 +346,16 @@ fn authenticated_options_prepare_exact_money_and_successor_of_expired_disabled_p
         .owner
         .request_owner_policy_options(&scope, &request, &hash)?;
     assert_eq!(query_status.state, "pending");
+    assert_eq!(
+        f.owner
+            .find_owner_policy_options(&scope, &request, &hash)?
+            .map(|status| status.source),
+        Some(query_status.source.clone())
+    );
+    assert!(f
+        .owner
+        .find_owner_policy_options(&scope, &request, &"cc".repeat(32))?
+        .is_none());
     assert!(f
         .owner
         .prepare_owner_policy(

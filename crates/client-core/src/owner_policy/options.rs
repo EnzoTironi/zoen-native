@@ -113,6 +113,51 @@ impl Engine {
         self.owner_policy_image_input(&signed.inquiry, crate::engine::now_ms())?;
         Ok(signed.clone())
     }
+    pub(crate) fn find_owner_policy_options(
+        &self,
+        scope: &OwnerPolicyScope,
+        request: &str,
+        expected_hash: &str,
+    ) -> R<Option<OwnerPolicyOptionsStatus>> {
+        self.owner_policy_conversation(scope)?;
+        let pending = self.store.outbox()?;
+        let mut original: Option<(i64, String)> = None;
+        for event in pending.iter().map(|entry| &entry.event).chain(
+            self.logs
+                .get(&scope.space_id)
+                .into_iter()
+                .flat_map(|log| log.events()),
+        ) {
+            let EventBody::OwnerPolicyOptionsRequested { agent, signed } = &event.body else {
+                continue;
+            };
+            if event.space != scope.space_id
+                || event.author != scope.expected_identity_id
+                || event.device.as_deref() != Some(scope.expected_device_id.as_str())
+                || agent != &scope.agent_id
+                || signed.inquiry.request != request
+                || signed.inquiry.content_hash != expected_hash
+            {
+                continue;
+            }
+            match self.owner_policy_query(scope, &event.client_id) {
+                Ok(_) => {}
+                Err(CoreError::Forbidden { .. }) => continue,
+                Err(error) => return Err(error),
+            }
+            let candidate = (signed.inquiry.at_ms, event.client_id.clone());
+            if original
+                .as_ref()
+                .is_none_or(|previous| &candidate > previous)
+            {
+                original = Some(candidate);
+            }
+        }
+        original
+            .map(|(_, source)| self.owner_policy_options(scope, &source))
+            .transpose()
+    }
+
     pub(crate) fn request_owner_policy_options(
         &mut self,
         scope: &OwnerPolicyScope,
@@ -261,6 +306,16 @@ impl Engine {
     }
 }
 impl Client {
+    /// Read-only recovery for a lost inquiry acknowledgement.
+    pub fn find_owner_policy_options(
+        &self,
+        scope: OwnerPolicyScope,
+        request_id: String,
+        expected_hash: String,
+    ) -> R<Option<OwnerPolicyOptionsStatus>> {
+        self.lock()
+            .find_owner_policy_options(&scope, &request_id, &expected_hash)
+    }
     pub fn request_owner_policy_options(
         &self,
         scope: OwnerPolicyScope,
