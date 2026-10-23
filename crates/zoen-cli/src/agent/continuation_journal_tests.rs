@@ -19,6 +19,7 @@ impl Drop for Directory {
 fn step(id: &str) -> ToolStep {
     ToolStep {
         call: ToolCall {
+            requires_review: false,
             id: id.into(),
             name: "synthetic-read".into(),
             arguments: json!({"artifactId":"synthetic-artifact"}),

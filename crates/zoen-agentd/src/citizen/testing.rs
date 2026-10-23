@@ -178,6 +178,7 @@ pub mod scripted {
                         .into_iter()
                         .enumerate()
                         .map(|(i, c)| ToolCall {
+                            requires_review: false,
                             id: format!("call_{i}"),
                             name: c["name"].as_str().unwrap_or_default().to_string(),
                             arguments: c["arguments"].clone(),

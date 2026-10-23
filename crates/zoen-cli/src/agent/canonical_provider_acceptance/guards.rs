@@ -291,6 +291,7 @@ fn verified_read(expected: &Expected) -> ToolStep {
 }
 fn native_write(expected: &Expected, slide: Value) -> ToolCall {
     ToolCall {
+        requires_review: false,
         id: "independent-write-proposal".into(),
         name: crate::deckcraft::model_name("deckcraft_slide_notes", &expected.item).unwrap(),
         arguments: json!({"artifactId":expected.item,"version":expected.version,"sha256":expected.head,"slideId":slide,"text":NOTES}),

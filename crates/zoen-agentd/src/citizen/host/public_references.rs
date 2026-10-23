@@ -100,6 +100,7 @@ mod tests {
             PublicArtifactReferences::page_head("it_page".into(), prefix.clone(), content.clone())
                 .unwrap();
         let mut call = ToolCall {
+            requires_review: false,
             id: "synthetic".into(),
             name: "replace_page_block_hash".into(),
             arguments: serde_json::json!({"artifactId":"it_page","prefixSha256":prefix,"contentSha256":content,"before":{"text":"before"},"after":{"text":"after"}}),

@@ -7,6 +7,7 @@ fn unoffered_binary_binding_cannot_replay_a_cached_success_without_authority() {
     let journal = dir.join("steps.json");
     let item = format!("it_deck_{}", "ab".repeat(32));
     let call = ToolCall {
+        requires_review: false,
         id: "retained".into(),
         name: crate::deckcraft::model_name("deckcraft_text_set", &item).unwrap(),
         arguments: json!({"artifactId":item,"version":1,"sha256":"00".repeat(32),"slideId":257,"id":258,"text":"retained"}),

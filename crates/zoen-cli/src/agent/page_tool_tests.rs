@@ -102,6 +102,7 @@ fn cx(client: &Arc<Client>, journal: &Path, item: &str, starts: Arc<AtomicUsize>
                         id: format!("fixture-{tool}"),
                         name: page::model_name(tool, &item).unwrap(),
                         arguments: args,
+                        requires_review: false,
                     }]))
                 }),
             }),
@@ -138,6 +139,7 @@ async fn canonical_page_read_approve_once_write_and_cold_resume_use_the_normal_h
         id: "direct".into(),
         name: page::model_name("read_page", &item).unwrap(),
         arguments: json!({"artifactId":item}),
+        requires_review: false,
     };
     let read: AgentPageSnapshot = serde_json::from_str(&tools.call(&read_call).unwrap()).unwrap();
     assert_eq!(read.version, 1);
