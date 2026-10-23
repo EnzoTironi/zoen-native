@@ -7,6 +7,9 @@ impl State {
         let Some(p) = &req.tool_proposal else {
             return false;
         };
+        if p.schema == 5 {
+            return crate::agent_sites::matches(self, req, space);
+        }
         if p.schema == 3 {
             return crate::agent_app_creation::matches(self, req, space);
         }
@@ -53,6 +56,9 @@ impl State {
     }
 
     pub(crate) fn tool_app_act(&self, p: &ToolProposal, at: i64) -> bool {
+        if p.schema == 5 {
+            return crate::agent_sites::access(self, p);
+        }
         if p.schema == 3 {
             return crate::agent_app_creation::access(self, p);
         }

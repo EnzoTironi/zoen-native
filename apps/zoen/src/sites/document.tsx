@@ -26,23 +26,31 @@ export function SiteDocument({ itemId, version }: { itemId: string; version?: nu
       <EmptyState title={t('sites.unavailable')} detail={read.error ?? undefined} />
     );
   return (
-    <PinnedSite key={`${authority}:${itemId}`} item={item} scope={scope} authority={authority} />
+    <PinnedSite
+      key={`${authority}:${itemId}`}
+      item={item}
+      expectedSha={item.file.sha256}
+      scope={scope}
+      authority={authority}
+    />
   );
 }
 
 function PinnedSite({
   item,
+  expectedSha,
   scope,
   authority,
 }: {
   item: ItemDetail;
+  expectedSha: string;
   scope: SiteScope;
   authority: string;
 }) {
   const [selected] = useState(() => ({
     item_id: item.id,
     version: item.version,
-    expected_sha256: item.file!.sha256,
+    expected_sha256: expectedSha,
   }));
   const read = useCoreQuery({ op: 'site_read', scope, ...selected });
   const { store } = useClient();

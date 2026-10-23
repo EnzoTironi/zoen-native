@@ -7,6 +7,9 @@ impl Engine {
         if action.is_none() {
             return Ok(false);
         }
+        if p.schema == 5 {
+            return self.site_tool_accepted(p);
+        }
         if p.schema == 3 {
             return self.creation_result(p).map(|result| result.is_some());
         }
@@ -51,7 +54,9 @@ impl Client {
         }
         // Existing authority is checked before even revealing acceptance metadata.
         e.tool_resolution(predecessor, &r.req.content_hash)?;
-        let (device, owner, space, source) = if old.schema == 3 {
+        let (device, owner, space, source) = if old.schema == 5 {
+            e.site_proposal_authority(old)?
+        } else if old.schema == 3 {
             e.creation_proposal_authority(old)?
         } else {
             e.agent_binary_authority(&old.artifact, &old.source, &old.serving, false)?

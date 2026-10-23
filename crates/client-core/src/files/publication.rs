@@ -2,6 +2,22 @@
 
 use super::*;
 
+/// Validated by the normal file-send boundary. A fixed ID is an optional Rust
+/// creation fence; it grants no authority and cannot replace an existing Item.
+pub(crate) struct FileSendInput<'a> {
+    pub space: &'a str,
+    pub name: &'a str,
+    pub mime: &'a str,
+    pub bytes: &'a [u8],
+    pub thumbnail: Option<&'a [u8]>,
+    pub reply_to: Option<&'a str>,
+    pub thread: bool,
+    pub mutation_id: &'a str,
+    pub caption: &'a str,
+    pub media: Option<types::MessageMedia>,
+    pub fixed_item: Option<&'a str>,
+}
+
 impl Engine {
     /// Stores an ordinary file and posts its attachment as one durable operation.
     /// A receipt binds retries to the original intent, including reply/thread scope.
@@ -72,6 +88,35 @@ impl Engine {
         caption: &str,
         media: Option<types::MessageMedia>,
     ) -> R<TimelineEntry> {
+        self.send_file_message_inner(FileSendInput {
+            space,
+            name,
+            mime,
+            bytes,
+            thumbnail,
+            reply_to,
+            thread,
+            mutation_id,
+            caption,
+            media,
+            fixed_item: None,
+        })
+    }
+
+    pub(crate) fn send_file_message_inner(&mut self, input: FileSendInput<'_>) -> R<TimelineEntry> {
+        let FileSendInput {
+            space,
+            name,
+            mime,
+            bytes,
+            thumbnail,
+            reply_to,
+            thread,
+            mutation_id,
+            caption,
+            media,
+            fixed_item,
+        } = input;
         let me = self.me_id()?;
         if !self.state.writer(space, &me) {
             return Err(CoreError::Forbidden {
@@ -146,10 +191,28 @@ impl Engine {
                 .iter()
                 .find(|entry| entry.id() == message)
                 .ok_or_else(invalid_file)?;
-            return Ok(self.entry_dto(entry));
+            let output = self.entry_dto(entry);
+            if fixed_item.is_some_and(|item| !matches!(&output.kind, crate::EntryKind::Message {card:Some(card),..} if card.item_id==item)) {
+                return Err(invalid_file());
+            }
+            return Ok(output);
         }
         self.atomic_agent_action(|engine| {
-            let item = engine.file_add(space, name, name, mime, bytes, thumbnail)?;
+            let item = if let Some(item) = fixed_item {
+                engine.file_add_at(
+                    FileAddInput {
+                        space,
+                        path: name,
+                        name,
+                        mime,
+                        bytes,
+                        thumbnail,
+                    },
+                    item,
+                )?
+            } else {
+                engine.file_add(space, name, name, mime, bytes, thumbnail)?
+            };
             let posted = engine.append(
                 space,
                 &me,

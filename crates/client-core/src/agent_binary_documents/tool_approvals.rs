@@ -63,6 +63,9 @@ pub(super) struct ApprovalBinding {
 }
 
 fn parsed(p: &ToolProposal) -> R<(Value, Option<Value>)> {
+    if p.schema == 5 {
+        return crate::agent_sites::parsed(p);
+    }
     if p.schema == 3 {
         return crate::agent_app_creation::parsed(p);
     }
@@ -165,6 +168,9 @@ pub(crate) fn command_intent(p: &ToolProposal, action: Option<&Value>) -> R<Stri
 pub(crate) fn operation(tool: &str) -> String {
     use crate::i18n::t;
     match tool {
+        "create_site" => t("Criar site", "Create Site"),
+        "read_site" => t("Ler site", "Read Site"),
+        "replace_site_source" => t("Atualizar site", "Update Site"),
         "read_page" => t("Ler página", "Read Page"),
         "create_deckcraft" => t("Criar apresentação", "Create presentation"),
         "replace_page_block" => t("Substituir bloco da página", "Replace Page block"),

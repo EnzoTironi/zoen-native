@@ -39,9 +39,11 @@ export function siteFilename(title: string): string {
   return `${base.replace(/\.html$/iu, '') || 'site'}.html`;
 }
 export function emptySite(title: string): string {
-  const escaped = title.replace(
-    /[&<>"']/gu,
-    (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!,
-  );
+  const escaped = title
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
   return `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width,initial-scale=1">\n<title>${escaped}</title>\n</head>\n<body>\n<h1>${escaped}</h1>\n</body>\n</html>\n`;
 }

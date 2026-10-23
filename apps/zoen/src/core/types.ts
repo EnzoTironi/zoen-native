@@ -6,6 +6,7 @@ import type { TimelinePage } from './generated/TimelinePage';
 import type { TimelineEntry } from './generated/TimelineEntry';
 import type { ItemDiscussionDto } from './generated/ItemDiscussionDto';
 import type { ItemDetail } from './generated/ItemDetail';
+import type { SiteToolReview } from './generated/SiteToolReview';
 import type { SiteSource } from './generated/SiteSource';
 import type { SiteReview } from './generated/SiteReview';
 import type { SitePrepared } from './generated/SitePrepared';
@@ -78,6 +79,7 @@ export type CoreEvent =
   | { kind: 'ephemeral'; spaceId: string; fromId: string; type: string; detail: string }
   | { kind: 'error'; message?: string };
 type Results = {
+  site_tool_review: SiteToolReview;
   site_read: SiteSource;
   site_create: SiteSource;
   site_save: SiteSource;
