@@ -10,11 +10,23 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use types::*;
 
+mod review;
+
 pub const REVISION: &str = "zoen-image-task/1";
 pub const SCHEMA: u8 = 4;
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+#[serde(deny_unknown_fields)]
+pub struct ImageTaskScope {
+    pub expected_identity_id: String,
+    pub expected_device_id: String,
+    pub space_id: String,
+}
+
 /// Exact host-configured obligation reviewed by the owner. No credentials.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 #[serde(deny_unknown_fields)]
 pub struct ImageTaskDefinition {
     pub version: String,
@@ -22,9 +34,12 @@ pub struct ImageTaskDefinition {
     pub size: String,
     pub quality: String,
     pub background: String,
+    // Input is validated to at most 12MiB, exactly representable by JavaScript.
+    #[cfg_attr(feature = "client-types", ts(type = "number"))]
     pub max_image_bytes: u64,
 }
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 #[serde(deny_unknown_fields)]
 pub struct ImageTaskInput {
     pub prompt: String,

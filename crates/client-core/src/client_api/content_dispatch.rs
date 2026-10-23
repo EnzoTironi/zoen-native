@@ -9,6 +9,17 @@ impl Client {
     ) -> Result<String, CoreError> {
         use Command::*;
         match command {
+            StageImageGeneration {
+                scope,
+                source_id,
+                serving_id,
+                input,
+            } => encode(&self.lock().stage_scoped_image_generation(
+                &scope,
+                &source_id,
+                &serving_id,
+                input,
+            )?),
             SiteRead {
                 scope,
                 item_id,

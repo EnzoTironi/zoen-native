@@ -1,6 +1,8 @@
 use super::*;
 use crate::image_tasks::{ImageTaskDefinition, ImageTaskInput};
 
+mod owner_review_cases;
+
 fn input() -> ImageTaskInput {
     ImageTaskInput {
         prompt: "A quiet blue sky".into(),

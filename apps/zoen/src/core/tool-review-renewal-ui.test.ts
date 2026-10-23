@@ -8,6 +8,8 @@ import { build } from 'esbuild';
 import * as flow from './tool-review-renewal.ts';
 import { createLocalization } from '../i18n/runtime.ts';
 import { reviewRenewal } from '../i18n/catalogs/review-renewal.ts';
+import { imageToolReviewValid } from './image-tool-review.ts';
+import { imageReview } from '../i18n/catalogs/image-review.ts';
 
 const files = {
   view: '../agents/tool-review-recovery.tsx',
@@ -82,7 +84,7 @@ async function settle() {
   for (let n = 0; n < 16; ++n) await Promise.resolve();
 }
 function fixture(locale: 'en' | 'pt-BR' = 'en') {
-  const localization = createLocalization({ reviewRenewal }, [locale]);
+  const localization = createLocalization({ reviewRenewal, imageReview }, [locale]);
   let now = Date.now();
   let nextTimer = 0;
   const timers = new Map<number, { at: number; fn: () => void }>();
@@ -209,7 +211,9 @@ function fixture(locale: 'en' | 'pt-BR' = 'en') {
           t: (key: string) =>
             key.startsWith('reviewRenewal.')
               ? localization.t(key as `reviewRenewal.${keyof typeof reviewRenewal.en}`)
-              : key,
+              : key.startsWith('imageReview.')
+                ? localization.t(key as `imageReview.${keyof typeof imageReview.en}`)
+                : key,
           formatLocale: 'en',
         };
       if (path.endsWith('/primitives'))
@@ -230,6 +234,7 @@ function fixture(locale: 'en' | 'pt-BR' = 'en') {
         };
       if (path.endsWith('/tool-review-recovery'))
         return { ToolReviewRecovery: 'ToolReviewRecovery' };
+      if (path.endsWith('/image-tool-review')) return { imageToolReviewValid };
       if (path.endsWith('/theme')) return { useTheme: () => ({ colors: { secondary: '#888' } }) };
       if (path.endsWith('/use-tool-review'))
         return {
@@ -452,4 +457,50 @@ test('compiled approved card distinguishes historical approval from expired/requ
     assert.ok(!text(tree).includes('Waiting for the reviewed action.'));
     assert.ok(nodes(tree).some((n) => n.type === 'ToolReviewRecovery'));
   }
+});
+
+test('compiled image card shows the signed prompt and specification without a premature open-item action', () => {
+  for (const language of ['en', 'pt-BR'] as const) {
+    const f = fixture(language);
+    const row = f.base()[0];
+    row.status = 'Pending';
+    row.detail = 'Unrelated request description';
+    row.tool_approval.canonical_tool = 'generate_image';
+    row.tool_approval.expires_ms = String(f.clock() + 60_000);
+    row.tool_approval.image = {
+      prompt: 'A quiet blue sky',
+      size: '1536x1024',
+      quality: 'high',
+      background: 'transparent',
+      definition_version: 'image/1',
+      price_digest: 'ab'.repeat(32),
+      max_image_bytes: '12582912',
+      source_id: 'source',
+      source_sha256: 'cd'.repeat(32),
+    };
+    const tree = f.card(row);
+    assert.ok(text(tree).includes('A quiet blue sky'));
+    assert.ok(!text(tree).includes('Unrelated request description'));
+    assert.ok(text(tree).includes('1536 × 1024'));
+    assert.ok(text(tree).includes(imageReview[language].high));
+    assert.ok(text(tree).includes(imageReview[language].transparent));
+    assert.ok(nodes(tree).every((n) => n.props.label !== 'agents.openItem'));
+    assert.equal(
+      nodes(tree).find((n) => n.props.label === 'agents.allowOnce')?.props.disabled,
+      false,
+    );
+  }
+});
+
+test('compiled incomplete image review disables approval while cancel and deny remain reachable', () => {
+  const f = fixture();
+  const row = f.base()[0];
+  row.status = 'Pending';
+  row.tool_approval.canonical_tool = 'generate_image';
+  row.tool_approval.expires_ms = String(f.clock() + 60_000);
+  const tree = f.card(row);
+  assert.ok(text(tree).includes(imageReview.en.unavailable));
+  assert.equal(nodes(tree).find((n) => n.props.label === 'agents.allowOnce')?.props.disabled, true);
+  for (const label of ['agents.cancelRequest', 'agents.doNotAllow'])
+    assert.equal(nodes(tree).find((n) => n.props.label === label)?.props.disabled, false);
 });

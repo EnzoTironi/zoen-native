@@ -15,6 +15,7 @@ import { Avatar, NativeButton, Surface } from '../components/primitives';
 import { useDialogs } from '../components/dialogs';
 import { ToolReviewRecovery } from './tool-review-recovery';
 import { useTheme } from '../theme';
+import { imageToolReviewValid } from '../core/image-tool-review';
 
 const statuses = {
   Pending: t('agents.waitingForYourDecision'),
@@ -42,9 +43,17 @@ export function RequestCard({
   const [result, setResult] = useState<string | null>(null);
   const deciding = useRef(false);
   const tool = request.tool_approval;
+  const imageRequest = tool?.canonical_tool === 'generate_image';
+  const image = imageRequest && imageToolReviewValid(tool.image) ? tool.image : null;
   const toolValid = tool == null || toolApprovalValid(tool);
   const toolExpired = tool != null && toolApprovalExpired(tool);
-  const itemId = tool == null ? request.item_id : toolValid ? tool.artifact_id : null;
+  const itemId = imageRequest
+    ? null
+    : tool == null
+      ? request.item_id
+      : toolValid
+        ? tool.artifact_id
+        : null;
   const historicalToolApproval = tool != null && toolValid && request.status === 'Approved';
   const pending = request.status === 'Pending' || request.status === 'Stale';
   const canDecide = pending && toolValid && request.agent.is_mine && !busy && !disabled;
@@ -128,9 +137,37 @@ export function RequestCard({
         numberOfLines={compact ? 4 : undefined}
         style={{ color: colors.secondary, fontSize: 16, lineHeight: 24 }}
       >
-        {request.detail}
+        {image?.prompt ?? request.detail}
       </Text>
-      {tool != null && toolValid ? (
+      {image ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {[
+            image.size.replace('x', ' × '),
+            image.quality === 'low'
+              ? t('imageReview.low')
+              : image.quality === 'medium'
+                ? t('imageReview.medium')
+                : t('imageReview.high'),
+            image.background === 'transparent'
+              ? t('imageReview.transparent')
+              : t('imageReview.opaque'),
+          ].map((value) => (
+            <Text
+              key={value}
+              selectable
+              style={{ color: colors.secondary, fontSize: 14, lineHeight: 21 }}
+            >
+              {value}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+      {imageRequest && !image ? (
+        <Text accessibilityRole="alert" style={{ color: colors.danger, lineHeight: 21 }}>
+          {t('imageReview.unavailable')}
+        </Text>
+      ) : null}
+      {tool != null && toolValid && !imageRequest ? (
         <View style={{ gap: 6 }}>
           <Text selectable style={{ color: colors.text, fontWeight: '600', lineHeight: 22 }}>
             {t('agents.toolArtifactVersion', {
@@ -268,7 +305,9 @@ export function RequestCard({
             />
             <NativeButton
               label={busy ? t('agents.saving') : t('agents.allowOnce')}
-              disabled={!canDecide || request.status === 'Stale' || toolExpired}
+              disabled={
+                !canDecide || request.status === 'Stale' || toolExpired || (imageRequest && !image)
+              }
               onPress={() => {
                 void decide(tool == null ? 'Approve' : 'ApproveOnce');
               }}
