@@ -88,6 +88,16 @@ pub trait LogStore: Send + Sync {
     ) -> Result<Sequencing, Reject> {
         Err(Reject::retry("managed publication unavailable"))
     }
+    /// The original independently consumed effect must be checked and recorded
+    /// in the actual append transaction, not only before queue admission.
+    async fn append_managed_publish(
+        &self,
+        _env: &Envelope,
+        _target_known: bool,
+        _permit: relay_admission::managed_images::ManagedPublishPermit,
+    ) -> Result<Sequencing, Reject> {
+        Err(Reject::retry("managed publication unavailable"))
+    }
     /// Events of `space` from `from` on, in order, at most `limit`.
     async fn read(
         &self,

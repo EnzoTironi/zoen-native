@@ -100,10 +100,23 @@ impl Cell {
             }
             let env = &p.env;
             let dedupe = dedupe_keys[i].as_slice();
+            let managed = match self.managed_publication(trx, p).await? {
+                Ok(value) => value,
+                Err(reason) => {
+                    results.push(Err(reason));
+                    continue;
+                }
+            };
             if let Some(&at) = fresh.get(dedupe) {
                 let Some(Ok(Sequencing::New { ev, .. })) = results.get(at) else {
                     return Err(custom("inconsistent fresh append index"));
                 };
+                if let Some(managed) = &managed {
+                    if let Err(reason) = managed.record(trx, ev, env) {
+                        results.push(Err(reason));
+                        continue;
+                    }
+                }
                 results.push(Ok(Sequencing::Duplicate {
                     ev: ev.clone(),
                     audience: Vec::new(),
@@ -117,11 +130,24 @@ impl Cell {
                     .entry(trx, space, seq as u64, true)
                     .await?
                     .ok_or_else(|| custom("dedupe points at a missing entry"))?;
+                if let Some(managed) = &managed {
+                    if let Err(reason) = managed.record(trx, &ev, env) {
+                        results.push(Err(reason));
+                        continue;
+                    }
+                }
                 results.push(Ok(Sequencing::Duplicate {
                     ev,
                     audience: Vec::new(),
                     joined: None,
                 }));
+                continue;
+            }
+
+            if managed.as_ref().is_some_and(|value| !value.allows_new()) {
+                results.push(Err(Reject::retry(
+                    "original managed publication is uncertain",
+                )));
                 continue;
             }
 
@@ -208,6 +234,12 @@ impl Cell {
                 hash: hash.clone(),
                 env: stored,
             };
+            if let Some(managed) = &managed {
+                if let Err(reason) = managed.record(trx, &ev, env) {
+                    results.push(Err(reason));
+                    continue;
+                }
+            }
             trx.set(&self.space_key(space, ("log", seq as i64)), &ev.encode());
             trx.set(dedupe, &pack(&(seq as i64)));
             state.advance(seq, &hash);

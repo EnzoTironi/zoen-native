@@ -88,6 +88,7 @@ mod commit_lanes;
 mod conflicts;
 mod invite_routing;
 mod managed;
+mod managed_publish;
 mod runtime;
 pub use runtime::{RuntimeHead, RuntimeSource, RuntimeSourceBatch};
 

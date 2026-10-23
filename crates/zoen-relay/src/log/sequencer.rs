@@ -45,6 +45,7 @@ pub struct Pending {
     pub env: Envelope,
     pub target_known: bool,
     pub fence: Fence,
+    pub managed: Option<Arc<relay_admission::managed_images::ManagedPublishPermit>>,
 }
 
 /// What a batch did: one result per envelope, in order, and how many attempts it took.
@@ -118,6 +119,29 @@ impl<B: Batcher> Sequencer<B> {
         fence: Fence,
         generation: Option<Arc<relay_admission::managed_images::GenerationGuard>>,
     ) -> Reply {
+        self.append_authorized(env, target_known, fence, generation, None)
+            .await
+    }
+
+    pub(crate) async fn append_managed_publish(
+        &self,
+        env: Envelope,
+        target_known: bool,
+        fence: Fence,
+        permit: relay_admission::managed_images::ManagedPublishPermit,
+    ) -> Reply {
+        self.append_authorized(env, target_known, fence, None, Some(Arc::new(permit)))
+            .await
+    }
+
+    async fn append_authorized(
+        &self,
+        env: Envelope,
+        target_known: bool,
+        fence: Fence,
+        generation: Option<Arc<relay_admission::managed_images::GenerationGuard>>,
+        managed: Option<Arc<relay_admission::managed_images::ManagedPublishPermit>>,
+    ) -> Reply {
         let busy = || {
             (
                 Err(Reject::retry("sequencer capacity reached")),
@@ -145,6 +169,7 @@ impl<B: Batcher> Sequencer<B> {
                 env,
                 target_known,
                 fence,
+                managed,
             },
             reply,
             _count: count,
