@@ -1,4 +1,5 @@
 //! Controlled native Image journey; never a production output capability.
+pub(crate) use super::output::testing::{bytes, remove_chunk, restore_chunk};
 use super::*;
 use crate::{image_tasks::ImageAttemptAdapter, FinancialState, VerifiedStep};
 use client_core::image_tasks::ImageTaskInput;
@@ -109,6 +110,14 @@ pub(crate) async fn output(
     run: &str,
     gateway: &ModelGateway,
 ) -> ImageOutputInspection {
+    try_output(runtime, run, gateway).await.unwrap()
+}
+
+pub(crate) async fn try_output(
+    runtime: &RuntimeAuthority,
+    run: &str,
+    gateway: &ModelGateway,
+) -> Result<ImageOutputInspection, RuntimeError> {
     runtime
         .native
         .as_ref()
@@ -120,5 +129,4 @@ pub(crate) async fn output(
             runtime.output_fixture.as_ref().unwrap(),
         )
         .await
-        .unwrap()
 }

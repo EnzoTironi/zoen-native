@@ -1,5 +1,6 @@
 use super::*;
 use crate::image_tasks::{ImageTaskDefinition, ImageTaskInput};
+use sha2::Digest;
 
 fn input() -> ImageTaskInput {
     ImageTaskInput {
@@ -258,4 +259,115 @@ fn image_task_tracks_downgrade_and_does_not_revive_expired_regrant() {
         );
         assert_eq!(f.core.image_task(&request, at).is_ok(), allowed, "{id}");
     }
+}
+
+#[test]
+fn referenced_image_exceeds_capsule_limit_without_inline_media_or_upload_ack() {
+    let (mut f, request, hash) = approved();
+    let mut bytes = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut bytes, 1024, 1024);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_compression(png::Compression::NoCompression);
+        let mut writer = encoder.write_header().unwrap();
+        writer
+            .write_image_data(&vec![122; 1024 * 1024 * 4])
+            .unwrap();
+    }
+    assert!(bytes.len() > store::MAX_MEMORY_IMAGE_BYTES);
+    let prepared = f
+        .core
+        .prepare_image_task_referenced(&request, &hash, &bytes, crate::engine::now_ms())
+        .unwrap();
+    assert!(prepared.image().as_bytes().len() < store::MAX_MEMORY_IMAGE_BYTES);
+    assert!(!prepared.blobs().is_empty());
+    assert_eq!(prepared.blobs().len(), prepared.file().chunks.len());
+    let mut actual = Vec::new();
+    for blob in prepared.blobs() {
+        let reference = blob.reference();
+        assert_eq!(
+            hex::encode(sha2::Sha256::digest(blob.bytes())),
+            reference.blob
+        );
+        let plain =
+            event_log::media::open(&hex::decode(&reference.key).unwrap(), blob.bytes()).unwrap();
+        assert_eq!(plain.len() as u64, reference.bytes);
+        assert_eq!(hex::encode(sha2::Sha256::digest(&plain)), reference.sha256);
+        actual.extend(plain);
+    }
+    assert_eq!(actual, bytes);
+    let mut cold = DeviceCore::restore(
+        NativeImage::decode_bounded(prepared.image().as_bytes().to_vec()).unwrap(),
+        f.credential(),
+    )
+    .unwrap();
+    let file = prepared.file();
+    for chunk in &file.chunks {
+        assert!(!cold.engine.store.has_media(&chunk.sha256).unwrap());
+        assert!(cold.engine.store.upload_pending(&chunk.blob).unwrap());
+    }
+    assert_eq!(
+        cold.engine.store.uploads_pending().unwrap(),
+        file.chunks.len() as u64
+    );
+    assert!(
+        cold.engine.store.pending_uploads(100).unwrap().is_empty(),
+        "no empty or invented upload payloads"
+    );
+    assert!(
+        cold.engine.outbox_envelopes().is_empty(),
+        "retention is not HTTP acknowledgement"
+    );
+    assert!(cold
+        .engine
+        .file_bytes(&prepared.facts().proposal().artifact, None)
+        .unwrap()
+        .is_none());
+    for chunk in &file.chunks {
+        cold.engine.upload_done(&chunk.blob);
+    }
+    assert_eq!(cold.engine.store.uploads_pending().unwrap(), 0);
+    assert_eq!(
+        cold.engine.outbox_envelopes(),
+        vec![prepared.envelope().clone()],
+        "only explicit fixture upload ACK releases original frame"
+    );
+}
+
+#[test]
+fn referenced_png_at_the_full_representable_response_boundary_stays_bounded() {
+    let (mut f, request, hash) = approved();
+    const MAXIMUM: usize = 12_533_760;
+    let base = png(1024, 1024);
+    let mut bytes = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut bytes, 1024, 1024);
+        encoder.set_color(png::ColorType::Rgb);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().unwrap();
+        writer
+            .write_image_data(&vec![122; 1024 * 1024 * 3])
+            .unwrap();
+        writer
+            .write_chunk(
+                png::chunk::ChunkType(*b"npAD"),
+                &vec![17; MAXIMUM - base.len() - 12],
+            )
+            .unwrap();
+    }
+    assert_eq!(bytes.len(), MAXIMUM);
+    let prepared = f
+        .core
+        .prepare_image_task_referenced(&request, &hash, &bytes, crate::engine::now_ms())
+        .unwrap();
+    assert_eq!(prepared.file().bytes, MAXIMUM as u64);
+    assert!(prepared.image().as_bytes().len() < store::MAX_MEMORY_IMAGE_BYTES);
+    assert_eq!(
+        prepared
+            .blobs()
+            .iter()
+            .map(|b| b.bytes().len() - 40)
+            .sum::<usize>(),
+        MAXIMUM
+    );
 }

@@ -1,4 +1,5 @@
 //! Explicitly reviewed Image tasks share native custody, fences and finance.
+mod blobs;
 mod output;
 mod storage;
 #[cfg(test)]

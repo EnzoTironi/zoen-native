@@ -15,7 +15,7 @@ fn gateway() -> GatewayConfig {
         api_key: "controlled-image-adapter-not-a-provider-secret".into(),
         limits: ModelLimits {
             max_request_bytes: p.max_request_bytes as usize,
-            max_response_bytes: p.max_response_bytes as usize,
+            max_response_bytes: 16 * 1024 * 1024,
             max_output_tokens: 8,
             timeout: Duration::from_secs(3),
             connect_timeout: Duration::from_secs(1),
@@ -26,10 +26,11 @@ fn png() -> Vec<u8> {
     let mut bytes = Vec::new();
     {
         let mut encoder = png::Encoder::new(&mut bytes, 1024, 1024);
-        encoder.set_color(png::ColorType::Rgb);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_compression(png::Compression::NoCompression);
         let mut writer = encoder.write_header().unwrap();
         writer
-            .write_image_data(&vec![122; 1024 * 1024 * 3])
+            .write_image_data(&vec![122; 1024 * 1024 * 4])
             .unwrap();
     }
     bytes
@@ -37,7 +38,9 @@ fn png() -> Vec<u8> {
 
 pub(super) async fn run() {
     let mut f = Fixture::with_output().await;
-    let price = crate::tests::image_tasks::profile();
+    let mut price = crate::tests::image_tasks::profile();
+    price.image.max_image_bytes = 8 * 1024 * 1024;
+    price.max_response_bytes = 16 * 1024 * 1024;
     let mut policy = f.world.signed.policy.clone();
     policy.version += 1;
     policy.previous_digest = Some(f.world.policy_digest.clone());
@@ -127,6 +130,8 @@ pub(super) async fn run() {
     );
     let task = proof::task(runtime, &run).await;
     let bytes = png();
+    assert!(bytes.len() > 4 * 1024 * 1024);
+    let original_bytes = bytes.clone();
     let sha256 = hash(&bytes);
     let mut result = crate::tests::image_tasks::result(&task, true);
     let mut body: serde_json::Value = serde_json::from_slice(&result.evidence.body).unwrap();
@@ -162,6 +167,22 @@ pub(super) async fn run() {
         RuntimeError::CoreAuthorityUnavailable
     );
     output::cold(&mut f).await;
+    assert_eq!(proof::output(&f.world.runtime, &run, &model).await, output);
+    assert_eq!(
+        proof::bytes(&f.world.runtime, &run).await.unwrap(),
+        original_bytes
+    );
+    let removed = proof::remove_chunk(&f.world.runtime, &run).await;
+    assert!(proof::bytes(&f.world.runtime, &run).await.is_err());
+    assert!(proof::try_output(&f.world.runtime, &run, &model)
+        .await
+        .is_err());
+    assert_eq!(adapter.sends.load(Ordering::SeqCst), 1);
+    proof::restore_chunk(&f.world.runtime, removed).await;
+    assert_eq!(
+        proof::bytes(&f.world.runtime, &run).await.unwrap(),
+        original_bytes
+    );
     assert_eq!(proof::output(&f.world.runtime, &run, &model).await, output);
     assert_eq!(adapter.sends.load(Ordering::SeqCst), 1);
     assert_eq!(

@@ -56,10 +56,23 @@ The full task-to-delivery journey is not accepted by separate Core and financial
 fixtures alone. Production continuity/output barriers, real-provider execution,
 blob upload/delivery receipts, app UI and physical-device memory remain pending.
 
-The complete native capsule has an existing4MiB ceiling. A PNG whose file/blob
-state cannot fit that capsule must fail without expanding that global bound;
-its incurred cost/evidence remain retained. Supporting the whole12MiB provider
-output domain requires storing encrypted file blobs through the existing file
-authority outside the capsule, while retaining authenticated `FileDoc`, pending
-upload and publication references inside it. This remains part of #325; no
-second document state, accounting store or editing authority is introduced.
+The native capsule keeps its existing 4 MiB ceiling. Image output uses the same
+FastCDC chunks, derived file encryption keys and `FileDoc` as normal files, but
+keeps plaintext/ciphertext outside SQLite. The capsule retains `media_keys`,
+canonical descriptors and explicit pending-upload references. Empty upload
+payloads are never synthesized. Both outbox readiness and pending counts include
+these references; retaining ciphertext does not acknowledge a relay upload.
+
+Canonical ciphertext is retained through the existing evidence chunk mechanism,
+including for small blobs. Only references enter the authenticated output
+Publication. That Publication and the exact capsule activate together under the
+existing directory/device/source/approval fences. Physical orphan chunks have
+no activation authority. Cold observation verifies root, count, length, ciphertext
+hash, decryption, per-chunk plaintext hash, order and whole-file hash. A missing
+or substituted physical chunk fails without a provider claim or financial change.
+The existing evidence retention currently has no orphan-collection proof; this
+increment does not claim one or a real HTTP upload receipt.
+
+#346 tracks this follow-up to #325. Directed and full automated qualification is
+pending for the new increment. Production continuity/output authority, provider
+HTTP, upload/delivery and device-memory qualification remain open.

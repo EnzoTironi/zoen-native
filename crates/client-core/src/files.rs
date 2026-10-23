@@ -135,25 +135,27 @@ fn chunk_secret(file_key: &[u8; 32], chunk_sha: &[u8]) -> ([u8; 32], [u8; 24]) {
 }
 
 /// `nonce ‖ ciphertext+tag`, the same layout `media::open` reads.
-fn seal_chunk(file_key: &[u8; 32], plain: &[u8]) -> (String, [u8; 32], Vec<u8>) {
+fn seal_chunk(file_key: &[u8; 32], plain: &[u8]) -> R<(String, [u8; 32], Vec<u8>)> {
     let sha = Sha256::digest(plain);
     let (key, nonce) = chunk_secret(file_key, &sha);
-    let cipher = XChaCha20Poly1305::new_from_slice(&key).expect("32-byte key");
+    let cipher = XChaCha20Poly1305::new_from_slice(&key).map_err(|_| invalid_file())?;
     let ct = cipher
         .encrypt(&XNonce::from(nonce), plain)
-        .expect("encrypt");
+        .map_err(|_| invalid_file())?;
     let mut out = Vec::with_capacity(24 + ct.len());
     out.extend_from_slice(&nonce);
     out.extend_from_slice(&ct);
-    (hex::encode(sha), key, out)
+    Ok((hex::encode(sha), key, out))
 }
 
-fn random_key() -> [u8; 32] {
+fn random_key() -> R<[u8; 32]> {
     let mut k = [0u8; 32];
-    getrandom::getrandom(&mut k).expect("system randomness");
-    k
+    getrandom::getrandom(&mut k).map_err(|_| invalid_file())?;
+    Ok(k)
 }
 
+mod native;
+pub use native::NativeFileBlob;
 mod demand;
 mod editing;
 mod publication;

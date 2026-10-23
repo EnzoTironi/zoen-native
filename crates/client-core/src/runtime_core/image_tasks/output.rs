@@ -7,6 +7,7 @@ pub struct PreparedImageTask {
     file: FileDoc,
     envelope: Envelope,
     image: NativeImage,
+    blobs: Vec<crate::files::NativeFileBlob>,
 }
 impl std::fmt::Debug for PreparedImageTask {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -14,6 +15,9 @@ impl std::fmt::Debug for PreparedImageTask {
     }
 }
 impl PreparedImageTask {
+    pub fn blobs(&self) -> &[crate::files::NativeFileBlob] {
+        &self.blobs
+    }
     pub fn facts(&self) -> &ImageTaskFacts {
         &self.facts
     }
@@ -71,6 +75,29 @@ impl DeviceCore {
         bytes: &[u8],
         at_ms: i64,
     ) -> Result<PreparedImageTask> {
+        self.prepare_image_task_storage(request, observed_hash, bytes, at_ms, false)
+    }
+
+    /// The capsule retains only canonical FileDoc/key/upload references. The
+    /// caller must retain every returned ciphertext before fenced activation.
+    pub fn prepare_image_task_referenced(
+        &mut self,
+        request: &str,
+        observed_hash: &str,
+        bytes: &[u8],
+        at_ms: i64,
+    ) -> Result<PreparedImageTask> {
+        self.prepare_image_task_storage(request, observed_hash, bytes, at_ms, true)
+    }
+
+    fn prepare_image_task_storage(
+        &mut self,
+        request: &str,
+        observed_hash: &str,
+        bytes: &[u8],
+        at_ms: i64,
+        external: bool,
+    ) -> Result<PreparedImageTask> {
         let result = (|| {
             let facts = self.image_task(request, at_ms)?;
             if facts.content_hash() != observed_hash
@@ -88,20 +115,27 @@ impl DeviceCore {
             let space = facts.space.clone();
             let actor = facts.agent.clone();
             let name = format!("{item}.png");
-            let (file, event) = self
+            let (file, event, blobs) = self
                 .engine
                 .atomic_agent_action(|engine| {
                     let key = engine.file_key(None)?;
-                    let file = engine.file_doc(
-                        &space,
-                        &key,
-                        &name,
-                        &name,
-                        "image/png",
-                        bytes,
-                        None,
-                        &std::collections::HashMap::new(),
-                    )?;
+                    let (file, blobs) = if external {
+                        engine.native_file_doc(&space, &key, &name, bytes)?
+                    } else {
+                        (
+                            engine.file_doc(
+                                &space,
+                                &key,
+                                &name,
+                                &name,
+                                "image/png",
+                                bytes,
+                                None,
+                                &std::collections::HashMap::new(),
+                            )?,
+                            Vec::new(),
+                        )
+                    };
                     engine
                         .store
                         .set_meta(&format!("file_key:{item}"), &hex::encode(key))?;
@@ -123,7 +157,7 @@ impl DeviceCore {
                             },
                         )?,
                     )?;
-                    Ok((file, event))
+                    Ok((file, event, blobs))
                 })
                 .map_err(|_| NativeError::Storage)?;
             self.engine
@@ -148,6 +182,7 @@ impl DeviceCore {
             self.retain_image_task_reference(request, &event, &envelope)?;
             Ok(PreparedImageTask {
                 facts,
+                blobs,
                 file,
                 envelope: envelope.clone(),
                 image: self.image()?,

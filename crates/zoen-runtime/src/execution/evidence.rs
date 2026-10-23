@@ -24,6 +24,21 @@ impl Execution {
         if sealed.len() <= crate::custody::MAX_SEALED {
             return Ok(sealed.to_vec());
         }
+        self.referenced_evidence_payload(attempt, digest, sealed)
+            .await
+    }
+
+    /// Always retain physical chunks, including small canonical blobs. The
+    /// returned manifest contains references only and grants no activation.
+    pub(crate) async fn referenced_evidence_payload(
+        &self,
+        attempt: &str,
+        digest: &str,
+        sealed: &[u8],
+    ) -> Result<Vec<u8>, RuntimeError> {
+        if sealed.is_empty() || sealed.len() > MAXIMUM {
+            return Err(RuntimeError::EvidenceTooLarge);
+        }
         let sha256 = crate::hash(sealed);
         let mut chunks = Vec::with_capacity(sealed.len().div_ceil(CHUNK));
         for (index, chunk) in sealed.chunks(CHUNK).enumerate() {
@@ -69,7 +84,7 @@ impl Execution {
         }
         let manifest: Manifest = serde_json::from_slice(&root[PREFIX.len()..])
             .map_err(|_| RuntimeError::InvalidBinding)?;
-        if !(crate::custody::MAX_SEALED + 1..=MAXIMUM).contains(&manifest.bytes)
+        if !(1..=MAXIMUM).contains(&manifest.bytes)
             || manifest.chunks.len() != manifest.bytes.div_ceil(CHUNK)
             || std::iter::once(&manifest.sha256)
                 .chain(manifest.chunks.iter())
@@ -99,7 +114,7 @@ impl Execution {
         }
         let manifest: Manifest = serde_json::from_slice(&root[PREFIX.len()..])
             .map_err(|_| RuntimeError::InvalidBinding)?;
-        if !(crate::custody::MAX_SEALED + 1..=MAXIMUM).contains(&manifest.bytes)
+        if !(1..=MAXIMUM).contains(&manifest.bytes)
             || manifest.chunks.len() != manifest.bytes.div_ceil(CHUNK)
             || manifest.chunks.len() > MAXIMUM / CHUNK
         {

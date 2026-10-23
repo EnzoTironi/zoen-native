@@ -18,6 +18,7 @@ pub(super) fn input() -> ImageRequest {
 pub(super) fn image_config(base: &str) -> GatewayConfig {
     let mut c = config(base);
     c.model = GPT_IMAGE_1_5.into();
+    c.limits.max_response_bytes = 262_144;
     c
 }
 pub(super) fn png(width: u32, height: u32) -> Vec<u8> {
@@ -364,4 +365,71 @@ async fn image_cancellation_or_incomplete_response_never_releases_the_attempt() 
         g.generate_image(input(), &a).await,
         Err(GatewayError::NotFresh)
     );
+}
+
+#[test]
+fn image_response_domain_has_exact_base64_padding_and_envelope_boundary() {
+    use crate::{image_response_budget, IMAGE_JSON_ENVELOPE_BYTES};
+    assert_eq!(image_response_budget(0), None);
+    assert_eq!(
+        image_response_budget(1),
+        Some(IMAGE_JSON_ENVELOPE_BYTES + 4)
+    );
+    assert_eq!(image_response_budget(2), image_response_budget(3));
+    assert_eq!(
+        image_response_budget(4),
+        Some(IMAGE_JSON_ENVELOPE_BYTES + 8)
+    );
+    let maximum = ((16 * 1024 * 1024 - IMAGE_JSON_ENVELOPE_BYTES) / 4) * 3;
+    assert_eq!(maximum, 12_533_760);
+    assert_eq!(image_response_budget(maximum), Some(16 * 1024 * 1024));
+    assert_eq!(
+        image_response_budget(maximum + 1),
+        Some(16 * 1024 * 1024 + 4)
+    );
+    assert!(image_response_budget(crate::MAX_IMAGE_BYTES).unwrap() > 16 * 1024 * 1024);
+    assert_eq!(image_response_budget(u64::MAX), None);
+    let mut config = image_config("http://127.0.0.1:1");
+    let mut request = input();
+    request.max_image_bytes = maximum;
+    config.limits.max_response_bytes = 16 * 1024 * 1024;
+    let gateway = ModelGateway::new(config).unwrap();
+    assert!(gateway.preflight_image(&request).is_ok());
+    request.max_image_bytes += 1;
+    assert_eq!(
+        gateway.preflight_image(&request),
+        Err(GatewayError::InvalidRequest)
+    );
+}
+
+#[tokio::test]
+async fn image_json_envelope_domain_is_enforced_without_losing_usage() {
+    for extra in [0, 1] {
+        let mut body = response(&png(1024, 1024));
+        body["metadata"] = json!("");
+        let encoded = body["data"][0]["b64_json"].as_str().unwrap().len();
+        let base = serde_json::to_vec(&body).unwrap().len() - encoded;
+        body["metadata"] =
+            json!("m".repeat(crate::IMAGE_JSON_ENVELOPE_BYTES as usize - base + extra));
+        assert_eq!(
+            serde_json::to_vec(&body).unwrap().len() - encoded,
+            crate::IMAGE_JSON_ENVELOPE_BYTES as usize + extra
+        );
+        let f = Fixture::json(body).await;
+        let gateway = ModelGateway::new(image_config(&f.base)).unwrap();
+        let result = gateway
+            .generate_image(input(), &TestAuthority::default())
+            .await
+            .unwrap();
+        if extra == 0 {
+            assert!(result.output.is_ok());
+        } else {
+            assert_eq!(result.output, Err(OutputFailure::ResponseTooLarge));
+        }
+        assert!(matches!(
+            result.image_usage,
+            ImageUsageEvidence::Reported(_)
+        ));
+        assert_eq!(f.connections.load(Ordering::SeqCst), 1);
+    }
 }

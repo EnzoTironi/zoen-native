@@ -16,6 +16,17 @@ pub(super) fn image(
     {
         return Err(OutputFailure::UnsupportedOutput);
     }
+    let encoded = data[0]
+        .get("b64_json")
+        .and_then(Value::as_str)
+        .ok_or(malformed)?;
+    let normalized_bytes = serde_json::to_vec(raw).map_err(|_| malformed)?.len();
+    if normalized_bytes
+        .checked_sub(encoded.len())
+        .is_none_or(|n| n as u64 > IMAGE_JSON_ENVELOPE_BYTES)
+    {
+        return Err(OutputFailure::ResponseTooLarge);
+    }
     for (key, expected) in [
         ("output_format", json!("png")),
         ("size", json!(request.size)),

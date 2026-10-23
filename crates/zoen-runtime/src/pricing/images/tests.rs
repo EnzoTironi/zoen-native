@@ -26,7 +26,7 @@ fn profile() -> ImagePriceProfile {
         output_image_units_per_million: 4_000_000,
         reservation_units: 10,
         max_request_bytes: 32768,
-        max_response_bytes: 65536,
+        max_response_bytes: 262144,
     }
 }
 fn dispatch(p: &ImagePriceProfile) -> DispatchRequest {
@@ -51,7 +51,7 @@ fn dispatch(p: &ImagePriceProfile) -> DispatchRequest {
             credential_ref: p.credential_ref.clone(),
             encoded_request_bytes: 200,
             max_request_bytes: 32768,
-            max_response_bytes: 65536,
+            max_response_bytes: 262144,
             requested_output_tokens: 0,
             image: Some(p.image.clone()),
         },
@@ -388,4 +388,22 @@ fn integer_rounding_boundaries_and_overflows_never_cap_or_wrap_incurred_cost() {
     reflect_usage(&mut r);
     assert_eq!(q.charge(&r), Err(RuntimeError::InvalidProfile));
     assert_eq!(q.reservation_units(), 10);
+}
+
+#[test]
+fn image_price_refuses_a_spec_that_its_response_budget_cannot_represent() {
+    let mut p = profile();
+    p.max_response_bytes = zoen_models::image_response_budget(p.image.max_image_bytes).unwrap();
+    assert!(p.validate().is_ok());
+    let d = dispatch(&p);
+    assert!(p.quote(&d).is_ok());
+    let digest = p.digest().unwrap();
+    let mut incompatible = d.clone();
+    incompatible.descriptor.max_response_bytes -= 1;
+    assert!(p.quote(&incompatible).is_err());
+    p.max_response_bytes -= 1;
+    assert!(p.validate().is_err());
+    assert!(p.digest().is_err());
+    p.max_response_bytes += 2;
+    assert_ne!(p.digest().unwrap(), digest);
 }

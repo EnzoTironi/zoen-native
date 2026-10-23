@@ -30,7 +30,7 @@ pub(super) fn profile() -> ImagePriceProfile {
         output_image_units_per_million: 4_000_000,
         reservation_units: 10,
         max_request_bytes: 32768,
-        max_response_bytes: 1_000_000,
+        max_response_bytes: 2_000_000,
     }
 }
 async fn world() -> World {

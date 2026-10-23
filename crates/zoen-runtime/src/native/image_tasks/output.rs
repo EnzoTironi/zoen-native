@@ -1,4 +1,6 @@
 use super::*;
+#[cfg(test)]
+pub(super) mod testing;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ImageOutputInspection {
@@ -15,6 +17,8 @@ struct Publication {
     sha256: String,
     wire: Vec<u8>,
     generation: u64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    blobs: Vec<super::blobs::BlobReference>,
 }
 
 impl NativeCustody {
@@ -67,6 +71,16 @@ impl NativeCustody {
             {
                 return Err(RuntimeError::InvalidBinding);
             }
+            if !publication.blobs.is_empty() {
+                super::blobs::read(
+                    runtime,
+                    run,
+                    &publication.blobs,
+                    &publication.sha256,
+                    record.task.request.max_image_bytes,
+                )
+                .await?;
+            }
             return Ok(ImageOutputInspection {
                 item: publication.item,
                 sha256: publication.sha256,
@@ -106,15 +120,27 @@ impl NativeCustody {
         );
         let now = runtime.finance.reply_clock().await?;
         let prepared = core
-            .prepare_image_task(&task.request_id, &task.approval_hash, &image.bytes, now)
+            .prepare_image_task_referenced(&task.request_id, &task.approval_hash, &image.bytes, now)
             .map_err(|_| RuntimeError::Denied)?;
         if prepared.facts().frontier() != step.facts.frontier()
             || prepared.file().sha256 != image.sha256
         {
             return Err(RuntimeError::InvalidBinding);
         }
+        // Physical retention is inert until its authenticated references and
+        // this exact native capsule are activated together below.
+        let blobs = super::blobs::retain(runtime, run, prepared.blobs(), prepared.file()).await?;
+        super::blobs::read(
+            runtime,
+            run,
+            &blobs,
+            &image.sha256,
+            task.request.max_image_bytes,
+        )
+        .await?;
         let next = self.seal_image(principal, Some(&step.current), prepared.image())?;
         let publication = Publication {
+            blobs,
             task: task.task_digest.clone(),
             evidence: digest,
             item: prepared.facts().proposal().artifact.clone(),
