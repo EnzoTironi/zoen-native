@@ -1,5 +1,5 @@
 import type { Snapshot } from '../core/types';
-import { localNotes, type LocalNote } from './local';
+import { localNotes, type LocalNote } from './local.ts';
 
 export type NativeNoteScope = { identityId: string; deviceId: string };
 type PresentationPorts = {

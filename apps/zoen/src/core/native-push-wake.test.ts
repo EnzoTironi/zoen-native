@@ -39,11 +39,14 @@ test(
         'ios/ZoenPushModel.swift',
         'tests/PushWakeTests.swift',
       ].map(nativeFile);
-      const env = Object.fromEntries(
-        ['PATH', 'HOME', 'USER', 'LOGNAME', 'TMPDIR'].flatMap((key) =>
-          process.env[key] === undefined ? [] : [[key, process.env[key]!]],
+      const env: NodeJS.ProcessEnv = {
+        NODE_ENV: 'test',
+        ...Object.fromEntries(
+          ['PATH', 'HOME', 'USER', 'LOGNAME', 'TMPDIR'].flatMap((key) =>
+            process.env[key] === undefined ? [] : [[key, process.env[key]!]],
+          ),
         ),
-      );
+      };
       const compiler = spawn(
         'xcrun',
         [
