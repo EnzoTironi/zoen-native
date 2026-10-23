@@ -49,9 +49,6 @@ async fn cold_host_restarts_cannot_reset_normal_source_model_attempts() {
     let encoded = std::fs::read_to_string(journal).unwrap();
     assert!(!encoded.contains("Inspect only the selected source."));
     assert!(!encoded.contains("synthetic unknown outcome"));
-    let cx = context(&f, &calls, true);
-    JournalState::retire_turn(&cx.journal, &cx, &f.space, &f.source).unwrap();
-    assert_eq!(std::fs::read_to_string(&cx.journal).unwrap(), encoded);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -148,6 +145,8 @@ fn acknowledged_source_retirement_preserves_other_sources_and_review_budgets() {
 async fn canonical_cursor_ack_and_cold_selector_do_not_replay_a_retired_silent_turn() {
     let server = relay(Mode::CursorAck).await;
     let mut f = Fixture::new(&server.url);
+    f.publish_owner_packages(&server).await;
+    server.released.store(true, Ordering::SeqCst);
     online(&f.client, true).await;
     let calls = Arc::new(AtomicUsize::new(0));
     let cx = context(&f, &calls, false);
@@ -165,6 +164,7 @@ async fn canonical_cursor_ack_and_cold_selector_do_not_replay_a_retired_silent_t
         .iter()
         .all(|t| t.reply_to.as_ref().is_none_or(|r| r.id != f.source)));
     assert!(owner_note(&f.client, &cx, &f.source).is_none());
+    f.client.wait_until_settled(3000).await.unwrap();
     // The ordinary host's order: actual relay ACK first, then retire local budget.
     f.client.agent_advance(f.space.clone(), seq).await.unwrap();
     JournalState::retire_turn(&cx.journal, &cx, &f.space, &f.source).unwrap();

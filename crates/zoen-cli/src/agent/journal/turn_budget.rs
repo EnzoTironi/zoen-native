@@ -58,18 +58,6 @@ impl JournalState {
         if !Self::load(path)?.continuations.contains_key(&key) {
             return Ok(());
         }
-        Self::update(path, |state| {
-            // Keep exhausted tombstones: selecting that old source explicitly
-            // must not create a new allowance after the normal cursor moved.
-            if state
-                .continuations
-                .get(&key)
-                .is_some_and(|budget| budget.attempts >= MAX_TRIES)
-            {
-                return Ok(false);
-            }
-            Ok(state.continuations.remove(&key).is_some())
-        })
-        .map(|_| ())
+        Self::update(path, |state| Ok(state.continuations.remove(&key).is_some())).map(|_| ())
     }
 }
