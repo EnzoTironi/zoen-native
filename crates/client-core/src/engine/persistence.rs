@@ -153,6 +153,7 @@ impl Engine {
                     self.broken_spaces.insert(
                         space.clone(),
                         SpaceState {
+                            calls: Vec::new(),
                             id: space.clone(),
                             title,
                             kind: SpaceKind::Group,
@@ -224,6 +225,14 @@ impl Engine {
             });
         }
         let signer = self.author_for(author)?;
+        if matches!(&body, EventBody::CallV1 { .. }) {
+            let probe = signer.sign_event(space, "call-admission", at_ms, None, body.clone());
+            if !self.state.call_event_valid(&probe, &self.identities) {
+                return Err(CoreError::Forbidden {
+                    reason: "Invalid or unauthorized call transition".into(),
+                });
+            }
+        }
         if self.net.synced.contains(space) {
             // Only this device's account publishes to the relay for now; local agents
             // join shared chats as real members with the agent runtime (milestone 3).
