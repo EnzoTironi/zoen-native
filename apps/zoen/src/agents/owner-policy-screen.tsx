@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
 import type { AgentRequestDto } from '../core/generated/AgentRequestDto';
+import type { PolicyTarget } from '../owner-policy/session';
 import { useOwnerPolicy } from '../owner-policy/use-owner-policy';
 import { EmptyState, Loading, NativeButton } from '../components/primitives';
 import { t } from '../i18n/index.ts';
@@ -9,13 +10,20 @@ import { OwnerPolicyForm } from './owner-policy-form';
 import { OwnerPolicyReview, type OwnerPolicyReviewPhase } from './owner-policy-review';
 
 export function OwnerPolicyScreen({ request }: { request: AgentRequestDto }) {
+  return (
+    <OwnerPolicyControllerScreen
+      target={{
+        spaceId: request.space_id,
+        agentId: request.agent.id,
+        requestId: request.id,
+        expectedHash: request.tool_approval?.content_hash ?? '',
+      }}
+    />
+  );
+}
+export function OwnerPolicyControllerScreen({ target }: { target: PolicyTarget }) {
   const { colors } = useTheme();
-  const { session, state, unavailableReason } = useOwnerPolicy({
-    spaceId: request.space_id,
-    agentId: request.agent.id,
-    requestId: request.id,
-    expectedHash: request.tool_approval?.content_hash ?? '',
-  });
+  const { session, state, unavailableReason } = useOwnerPolicy(target);
   if (state.phase === 'unavailable')
     return (
       <EmptyState

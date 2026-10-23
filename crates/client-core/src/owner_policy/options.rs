@@ -1,4 +1,5 @@
 //! Genuine Runtime options, correlated with one authenticated owner inquiry.
+mod account;
 mod control;
 mod prepare;
 use super::*;
@@ -52,7 +53,8 @@ pub(super) fn validate_options(
         || !options.valid_shape()
         || event_log::owner_policy_inquiry::digest(inquiry).as_deref()
             != Some(options.inquiry_digest.as_str())
-        || inquiry.price_digest != options.image_profile_digest
+        || (inquiry.purpose.is_none() && inquiry.price_digest != options.image_profile_digest)
+        || (inquiry.purpose.is_some() && options.image_spec.is_none())
         || options.observed_at_ms < inquiry.at_ms.saturating_sub(30_000)
         || options.observed_at_ms > at_ms.saturating_add(30_000)
         || at_ms.saturating_sub(options.observed_at_ms) > CONTEXT_TTL_MS
@@ -110,7 +112,7 @@ impl Engine {
         {
             return Err(denied());
         }
-        self.owner_policy_image_input(&signed.inquiry, crate::engine::now_ms())?;
+        self.owner_policy_context_input(&signed.inquiry, crate::engine::now_ms())?;
         Ok(signed.clone())
     }
     pub(crate) fn find_owner_policy_options(
@@ -135,6 +137,7 @@ impl Engine {
                 || event.author != scope.expected_identity_id
                 || event.device.as_deref() != Some(scope.expected_device_id.as_str())
                 || agent != &scope.agent_id
+                || signed.inquiry.purpose.is_some()
                 || signed.inquiry.request != request
                 || signed.inquiry.content_hash != expected_hash
             {
@@ -180,9 +183,29 @@ impl Engine {
             request: request.into(),
             content_hash: expected_hash.into(),
             price_digest: review.price_digest,
+            purpose: None,
             at_ms: crate::engine::now_ms(),
         };
         self.owner_policy_image_input(&inquiry, inquiry.at_ms)?;
+        self.queue_owner_policy_inquiry(scope, inquiry)
+    }
+    fn queue_owner_policy_inquiry(
+        &mut self,
+        scope: &OwnerPolicyScope,
+        inquiry: OwnerPolicyInquiry,
+    ) -> R<OwnerPolicyOptionsStatus> {
+        // Management may queue while this explicitly selected private DM is
+        // establishing MLS. The must-seal outbox never offers a clear fallback;
+        // actual consumption, review and submission still require ready MLS.
+        if inquiry.purpose.is_some() {
+            self.owner_policy_private_conversation(scope, false)?;
+            if !inquiry.fresh_at(crate::engine::now_ms()) {
+                return Err(denied());
+            }
+        } else {
+            self.owner_policy_conversation(scope)?;
+            self.owner_policy_context_input(&inquiry, inquiry.at_ms)?;
+        }
         let author = self
             .net
             .account_author(&scope.expected_identity_id)
@@ -246,7 +269,7 @@ impl Engine {
         source: &str,
     ) -> R<OwnerPolicyOptionsStatus> {
         let (inquiry, options) = self.owner_policy_options_record(scope, source)?;
-        let input = self.owner_policy_image_input(&inquiry.inquiry, crate::engine::now_ms())?;
+        let input = self.owner_policy_context_input(&inquiry.inquiry, crate::engine::now_ms())?;
         let digest =
             event_log::owner_policy_inquiry::digest(&inquiry.inquiry).ok_or_else(invalid)?;
         let context = options
@@ -273,8 +296,19 @@ impl Engine {
                     )
                     .map_err(|_| invalid())?,
                     image_profile_digest: options.image_profile_digest.clone(),
-                    image_size: input.definition.size.clone(),
-                    image_quality: input.definition.quality.clone(),
+                    image_size: match &input {
+                        Some(input) => input.definition.size.clone(),
+                        None => options.image_spec.as_ref().ok_or_else(denied)?.size.clone(),
+                    },
+                    image_quality: match &input {
+                        Some(input) => input.definition.quality.clone(),
+                        None => options
+                            .image_spec
+                            .as_ref()
+                            .ok_or_else(denied)?
+                            .quality
+                            .clone(),
+                    },
                     observed_at_ms: options.observed_at_ms.to_string(),
                 })
             })

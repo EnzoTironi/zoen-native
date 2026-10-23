@@ -7,6 +7,7 @@ use crate::{
 use std::result::Result as StdResult;
 use types::owner_budget::OwnerPeriodPolicy;
 type TestResult = StdResult<(), Box<dyn std::error::Error>>;
+mod account_management;
 mod publication_cases;
 
 fn setup() -> StdResult<(Fixture, OwnerPolicyScope, String), Box<dyn std::error::Error>> {
@@ -278,6 +279,7 @@ fn policy_quote_reads_only_confirmed_image_review_without_act_or_approval() -> T
         request: request.clone(),
         content_hash: hash,
         price_digest: image_task_cases::input().definition.price_digest,
+        purpose: None,
         at_ms: now,
     };
     let signed =
@@ -396,6 +398,7 @@ fn authenticated_options_prepare_exact_money_and_successor_of_expired_disabled_p
         month: u8::try_from(date.month())?,
         current_policy: None,
         current_policy_digest: None,
+        image_spec: None,
     };
     let mut wrong = options.clone();
     wrong.inquiry_digest = "bb".repeat(32);

@@ -1,4 +1,6 @@
 //! Actual normal citizen ToolHost -> private IPC -> production executable.
+#[path = "account_controls.rs"]
+mod account_controls;
 #[path = "owner_controls.rs"]
 mod owner_controls;
 use super::*;
@@ -383,6 +385,7 @@ pub(super) async fn run(
             .count(),
         1
     );
+    account_controls::run(w, path, &owner, config, space, provider).await;
     owner.stop_sync();
     println!("image product: actual ToolHost IPC review -> owner ApproveOnce -> cold restart -> one provider/charge/accepted FileDoc -> same output PASS");
 }

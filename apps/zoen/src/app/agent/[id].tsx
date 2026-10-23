@@ -5,16 +5,10 @@ import { Pressable, ScrollView, Share, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useClient } from '../../core/provider';
 import { useCoreQuery } from '../../core/query';
-import { money, parseMoneyInput } from '../../core/presentation';
+import { money } from '../../core/presentation';
 import type { TrustLevelDto } from '../../core/generated/TrustLevelDto';
-import {
-  Avatar,
-  EmptyState,
-  Field,
-  Loading,
-  NativeButton,
-  Surface,
-} from '../../components/primitives';
+import { Avatar, EmptyState, Loading, NativeButton, Surface } from '../../components/primitives';
+import { SettingsRows } from '../../components/settings-rows';
 import { useTheme } from '../../theme';
 import { useDialogs } from '../../components/dialogs';
 
@@ -52,7 +46,6 @@ export default function Agent() {
   const previews = useCoreQuery(
     selectedSpace ? { op: 'preview_decisions', agent_id: id, space_id: selectedSpace } : null,
   );
-  const [extra, setExtra] = useState('');
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -136,58 +129,22 @@ export default function Agent() {
           {message}
         </Text>
       ) : null}
-      {agent.budget_limit_cents !== null ? (
-        <Surface>
-          <Text style={{ color: colors.secondary }}>{t('agents.budget')}</Text>
-          <Text
-            selectable
-            style={{
-              color: colors.text,
-              fontSize: 24,
-              fontWeight: '600',
-              fontVariant: ['tabular-nums'],
-            }}
-          >
-            {agent.budget_spent_cents === null
-              ? t('agents.usageIsNotYetAvailable')
-              : t('agents.budgetUsage', {
-                  spent: money(agent.budget_spent_cents),
-                  limit: money(agent.budget_limit_cents),
-                })}
-          </Text>
-          {agent.near_limit ? (
-            <Text style={{ color: colors.danger }}>{t('agents.approachingTheBudgetLimit')}</Text>
-          ) : null}
-          {agent.persona.is_mine ? (
-            <>
-              <Field
-                label={t('agents.addBudgetBRL')}
-                value={extra}
-                onChangeText={setExtra}
-                keyboardType="decimal-pad"
-                placeholder={t('agents.budgetAmountPlaceholder')}
-                editable={!busy}
-              />
-              <NativeButton
-                secondary
-                disabled={busy || !extra.trim()}
-                label={t('agents.increaseLimit')}
-                onPress={() => {
-                  void act(async () => {
-                    const cents = parseMoneyInput(extra);
-                    if (BigInt(cents) === 0n)
-                      throw new Error(t('agents.enterAnAmountGreaterThanZero'));
-                    if (BigInt(cents) + BigInt(agent.budget_limit_cents!) > 9223372036854775807n)
-                      throw new Error(t('agents.theNewBudgetExceedsTheAllowedLimit'));
-                    await store.request({ op: 'raise_budget', agent_id: id, extra_cents: cents });
-                    setExtra('');
-                    setMessage(t('agents.budgetUpdated'));
-                  });
-                }}
-              />
-            </>
-          ) : null}
-        </Surface>
+      {mode === 'account' && agent.persona.is_mine ? (
+        <SettingsRows
+          testID="agent-account-budget"
+          rows={[
+            {
+              id: 'agent-account-budget-open',
+              title: t('ownerPolicy.title'),
+              icon: {
+                ios: 'creditcard',
+                android: 'account_balance_wallet',
+                web: 'account_balance_wallet',
+              },
+              onPress: () => router.push({ pathname: '/account-budget', params: { agent: id } }),
+            },
+          ]}
+        />
       ) : null}
       {agent.spaces.map((space) => (
         <Surface key={space.space_id}>

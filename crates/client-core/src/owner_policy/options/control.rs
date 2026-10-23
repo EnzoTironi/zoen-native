@@ -64,7 +64,7 @@ impl Engine {
         {
             return Err(denied());
         }
-        self.owner_policy_image_input(&signed.inquiry, crate::engine::now_ms())?;
+        self.owner_policy_context_input(&signed.inquiry, crate::engine::now_ms())?;
         Ok(OwnerPolicyInquiryControl {
             source: source.into(),
             sequence: event.seq,

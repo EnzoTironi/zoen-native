@@ -55,6 +55,7 @@ mod tests {
             request: "rq_image_1".into(),
             content_hash: "11".repeat(32),
             price_digest: "22".repeat(32),
+            purpose: None,
             at_ms: 100_000,
         };
         let signed = sign(&author, inquiry).ok_or("inquiry refused")?;
@@ -84,6 +85,58 @@ mod tests {
             .fresh_at(100_000 + types::owner_policy_context::CONTEXT_TTL_MS + 1));
         assert!(!signed.inquiry.fresh_at(69_999));
         assert!(sign(&Author::root(root), signed.inquiry).is_none());
+        Ok(())
+    }
+    #[test]
+    fn explicit_account_inquiry_rejects_mixed_targets_and_preserves_image_wire(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        use types::owner_policy_context::OwnerPolicyInquiryPurpose;
+        let root = crate::Signer::generate();
+        let author = Author::device(&root, crate::Signer::generate());
+        let image = OwnerPolicyInquiry {
+            id: "legacy_image_query".into(),
+            owner: root.id(),
+            agent: crate::Signer::generate().id(),
+            space: "private_dm".into(),
+            request: "image_request".into(),
+            content_hash: "11".repeat(32),
+            price_digest: "22".repeat(32),
+            purpose: None,
+            at_ms: 100_000,
+        };
+        let bytes = serde_json::to_string(&image)?;
+        assert!(!bytes.contains("purpose"));
+        let old = format!("{{\"id\":\"{}\",\"owner\":\"{}\",\"agent\":\"{}\",\"space\":\"{}\",\"request\":\"{}\",\"content_hash\":\"{}\",\"price_digest\":\"{}\",\"at_ms\":{}}}", image.id,image.owner,image.agent,image.space,image.request,image.content_hash,image.price_digest,image.at_ms);
+        assert_eq!(
+            bytes, old,
+            "existing signed image tuple bytes must remain exact"
+        );
+        let account = OwnerPolicyInquiry {
+            request: String::new(),
+            content_hash: String::new(),
+            price_digest: String::new(),
+            purpose: Some(OwnerPolicyInquiryPurpose::AccountBudget),
+            ..image
+        };
+        let signed = sign(&author, account.clone()).ok_or("management signing refused")?;
+        assert!(verify(&signed));
+        let mut implicit = account.clone();
+        implicit.purpose = None;
+        assert!(!implicit.valid_shape());
+        assert!(sign(&author, implicit).is_none());
+        for field in ["request", "content_hash", "price_digest"] {
+            let mut value = serde_json::to_value(&account)?;
+            value[field] = "mixed_target".into();
+            let mixed: OwnerPolicyInquiry = serde_json::from_value(value)?;
+            assert!(!mixed.valid_shape());
+            assert!(sign(&author, mixed).is_none());
+        }
+        let mut forged = signed.clone();
+        forged.inquiry.purpose = None;
+        assert!(!verify(&forged));
+        let mut unknown = serde_json::to_value(&account)?;
+        unknown["purpose"] = "unrecognized".into();
+        assert!(serde_json::from_value::<OwnerPolicyInquiry>(unknown).is_err());
         Ok(())
     }
 }

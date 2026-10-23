@@ -382,3 +382,47 @@ test('compiled owner budget route uses actual image validation before opening th
     );
   }
 });
+
+test('account management reuses the compiled native form and explicit disable confirmation without an image target', async () => {
+  const f = await fixture();
+  f.f.owner = {
+    identity: scope.identity,
+    device: scope.device,
+    relay: scope.relay,
+    epoch: scope.epoch,
+    purpose: 'account',
+    spaceId: scope.spaceId,
+    agentId: scope.agentId,
+  };
+  f.session.activate(f.f.owner);
+  await f.session.refresh();
+  await settle();
+  const render = screen(f, 'account');
+  fill(render);
+  const toggle = render().find((node) => node.type === 'Switch');
+  assert.ok(toggle);
+  toggle.props.onValueChange(false);
+  button(render(), 'ownerPolicy.review').props.onPress();
+  await settle();
+  assert.equal(f.f.prepares.length, 1);
+  assert.equal(f.session.getSnapshot().review?.enabled, false);
+  assert.equal(f.f.submissions.length, 0);
+  button(render(), 'ownerPolicy.disable').props.onPress();
+  await settle();
+  assert.equal(f.f.submissions.length, 1);
+  assert.equal(f.session.getSnapshot().phase, 'pending');
+  assert.equal(has(render(), 'ownerPolicy.installed'), false);
+});
+
+test('group image budget action selects a private account context without passing group facts', async () => {
+  const f = await fixture(),
+    render = screen(f);
+  const tree = render.route([request], [{ id: request.space_id, kind: 'Group' }]);
+  const selector = tree.find((node) => node.type === 'AccountBudgetScreen');
+  assert.ok(selector);
+  assert.deepEqual(JSON.parse(JSON.stringify(selector.props)), { agentId: request.agent.id });
+  assert.equal(
+    tree.some((node) => node.type === 'Field'),
+    false,
+  );
+});

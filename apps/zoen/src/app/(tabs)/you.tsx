@@ -78,6 +78,21 @@ function YouContent() {
         <SettingsRows
           testID="you-settings-rows"
           rows={[
+            ...(mode === 'account'
+              ? [
+                  {
+                    id: 'settings-account-budget',
+                    title: t('ownerPolicy.title'),
+                    iconColor: '#34AADC',
+                    icon: {
+                      ios: 'creditcard' as const,
+                      android: 'account_balance_wallet' as const,
+                      web: 'account_balance_wallet' as const,
+                    },
+                    onPress: () => router.push('/account-budget'),
+                  },
+                ]
+              : []),
             {
               id: 'settings-appearance',
               iconColor: '#5856D6',

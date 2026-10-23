@@ -40,7 +40,8 @@ impl NativeCustody {
         let credential = self.credential(&config.agent, &config.device)?;
         if signed.inquiry.owner != credential.owner.id
             || signed.inquiry.agent != config.agent
-            || signed.inquiry.price_digest != config.price.digest()?
+            || (signed.inquiry.purpose.is_none()
+                && signed.inquiry.price_digest != config.price.digest()?)
             || !event_log::owner_policy_inquiry::verify(signed)
         {
             return Err(RuntimeError::Denied);
@@ -71,11 +72,16 @@ impl NativeCustody {
                 .map_err(|_| RuntimeError::Denied)?,
             );
             let now = runtime.finance.reply_clock().await?;
-            let input = core
-                .owner_policy_image_context(signed, now)
-                .map_err(|_| RuntimeError::Denied)?;
-            if input.definition != *definition {
-                return Err(RuntimeError::InvalidBinding);
+            if signed.inquiry.purpose.is_some() {
+                core.owner_policy_account_context(signed, now)
+                    .map_err(|_| RuntimeError::Denied)?;
+            } else {
+                let input = core
+                    .owner_policy_image_context(signed, now)
+                    .map_err(|_| RuntimeError::Denied)?;
+                if input.definition != *definition {
+                    return Err(RuntimeError::InvalidBinding);
+                }
             }
             runtime
                 .finance

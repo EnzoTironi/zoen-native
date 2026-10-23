@@ -14,12 +14,12 @@ import type { OwnerPolicyReview } from '../core/generated/OwnerPolicyReview.ts';
 import type { OwnerPolicyStatus } from '../core/generated/OwnerPolicyStatus.ts';
 import type { OwnerPolicyOptionsStatus } from '../core/generated/OwnerPolicyOptionsStatus.ts';
 
-export type PolicyTarget = Readonly<{
-  spaceId: string;
-  agentId: string;
-  requestId: string;
-  expectedHash: string;
-}>;
+export type PolicyTarget = Readonly<
+  { spaceId: string; agentId: string } & (
+    | { purpose: 'account'; requestId?: never; expectedHash?: never }
+    | { purpose?: 'image'; requestId: string; expectedHash: string }
+  )
+>;
 export type PolicyScope = AccountScope & PolicyTarget;
 export const policyScopeKey = (scope: PolicyScope | null) =>
   scope
@@ -27,6 +27,7 @@ export const policyScopeKey = (scope: PolicyScope | null) =>
         accountScopeKey(scope),
         scope.spaceId,
         scope.agentId,
+        scope.purpose ?? 'image',
         scope.requestId,
         scope.expectedHash,
       ])
