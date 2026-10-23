@@ -1,12 +1,6 @@
 //! A registered managed device cannot downgrade through ordinary publication.
 use super::*;
-use relay_admission::managed_images::ConsumePublish;
-
-pub(super) enum Appended {
-    Sequenced(Sequencing),
-    /// Exact original evidence only; do not append, fan out or mint a permit.
-    Observed(protocol::Sequenced),
-}
+pub(super) use crate::log::ManagedPublication as Appended;
 
 impl Session {
     pub(super) async fn append_effect(
@@ -42,29 +36,9 @@ impl Session {
         let _generation = configured
             .upload_guard(&current)
             .map_err(crate::log::Reject::retry)?;
-        match configured
-            .anchor()
-            .consume_publish(&requested, env)
-            .map_err(|_| crate::log::Reject::retry("managed publication refused"))?
-        {
-            ConsumePublish::Fresh(permit) => self
-                .st
-                .log
-                .append_managed_publish(env, target_known, permit)
-                .await
-                .map(Appended::Sequenced),
-            ConsumePublish::Consumed(condition) => self
-                .st
-                .log
-                .managed_publication_observation(&condition, env)
-                .await
-                .map_err(|_| {
-                    crate::log::Reject::retry("original managed publication is uncertain")
-                })?
-                .map(Appended::Observed)
-                .ok_or_else(|| {
-                    crate::log::Reject::retry("original managed publication is uncertain")
-                }),
-        }
+        self.st
+            .log
+            .append_managed_effect(env, target_known, &requested)
+            .await
     }
 }

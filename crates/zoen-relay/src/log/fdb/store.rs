@@ -21,22 +21,13 @@ impl LogStore for FdbLog {
     ) -> Result<Option<relay_admission::managed_images::Checkpoint>, StoreError> {
         self.managed_store_checkpoint(deployment).await
     }
-    async fn append_managed_publish(
+    async fn append_managed_effect(
         &self,
         env: &Envelope,
         target_known: bool,
-        permit: relay_admission::managed_images::ManagedPublishPermit,
-    ) -> Result<Sequencing, Reject> {
-        self.append_consumed_local(env, target_known, permit).await
-    }
-
-    async fn append_managed(
-        &self,
-        env: &Envelope,
-        target_known: bool,
-        generation: relay_admission::managed_images::GenerationGuard,
-    ) -> Result<Sequencing, Reject> {
-        self.append_managed_local(env, target_known, generation)
+        checkpoint: &relay_admission::managed_images::Checkpoint,
+    ) -> Result<super::super::ManagedPublication, Reject> {
+        self.append_registered_local(env, target_known, checkpoint)
             .await
     }
 
