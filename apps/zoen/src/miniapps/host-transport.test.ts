@@ -6,7 +6,6 @@ import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { test } from 'node:test';
 import { build } from 'esbuild';
-import { annotateOwnedBrowserFailure } from '../../../../tools/miniapp-build/browser-startup.ts';
 import {
   nativeMiniappCommand,
   nativeMiniappHtml,
@@ -15,6 +14,8 @@ import {
 } from './host-transport.ts';
 import { sandboxHtml } from './sandbox.ts';
 import { findBrowserExecutable } from '../../../../tools/miniapp-build/browser-executable.ts';
+import { annotateOwnedBrowserFailure } from '../../../../tools/miniapp-build/browser-startup.ts';
+import { chromeEndpoint, type ChromeStartup } from './chrome-startup.fixtures.ts';
 
 const nonce = 'a24582bd-0377-4fee-bb76-73d465c927c3';
 const other = 'c34128af-3476-4ce2-ba34-37d459c934d6';
@@ -48,6 +49,10 @@ async function realBrowserResult(chrome: string, folder: string, path: string): 
   child.stdout.on('data', (data: Buffer) => {
     stdout = (stdout + data.toString()).slice(-16_384);
   });
+  const startup: ChromeStartup = { portFile: 'unobserved', checksStarted: 0, checksCompleted: 0 };
+  child.stderr.on('data', (data: Buffer) => {
+    stderr = (stderr + data.toString()).slice(-16_384);
+  });
   const failure = (message: string, cause?: Error) =>
     new Error(
       `${message}: ${JSON.stringify({
@@ -58,6 +63,7 @@ async function realBrowserResult(chrome: string, folder: string, path: string): 
         ...(cause ? { spawnError: cause.message } : {}),
         stderr,
         stdout,
+        startup,
       })}`,
     );
   let socket: WebSocket | undefined;
@@ -65,25 +71,7 @@ async function realBrowserResult(chrome: string, folder: string, path: string): 
   try {
     return await Promise.race([
       (async () => {
-        const endpoint = await new Promise<string>((resolve, reject) => {
-          const timer = setTimeout(() => reject(failure('Owned Chrome did not start')), 10_000);
-          child.once('error', (error) => {
-            clearTimeout(timer);
-            reject(failure('Owned Chrome could not spawn', error));
-          });
-          child.once('exit', () => {
-            clearTimeout(timer);
-            reject(failure('Owned Chrome exited before connection'));
-          });
-          child.stderr.on('data', (data: Buffer) => {
-            stderr = (stderr + data.toString()).slice(-16_384);
-            const match = stderr.match(/DevTools listening on (ws:\/\/127\.0\.0\.1:[^\s]+)/);
-            if (match) {
-              clearTimeout(timer);
-              resolve(match[1]!);
-            }
-          });
-        });
+        const endpoint = await chromeEndpoint(child, join(folder, 'profile'), startup, failure);
         socket = new WebSocket(endpoint);
         const connection = socket;
         await new Promise<void>((resolve, reject) => {
@@ -157,7 +145,6 @@ async function realBrowserResult(chrome: string, folder: string, path: string): 
       }),
     ]);
   } catch (error) {
-    // Observe before owned cleanup; post-kill /proc cannot explain a startup stall.
     await annotateOwnedBrowserFailure(error, child, join(folder, 'profile'));
     throw error;
   } finally {
@@ -191,6 +178,23 @@ test('owned browser startup failures retain executable, process and bounded stde
       assert.ok(detail.stderr.length <= 16_384);
       return true;
     });
+    if (process.platform !== 'win32') {
+      const noisy = join(folder, 'synthetic-chrome');
+      await writeFile(
+        noisy,
+        `#!${process.execPath}\nprocess.stdout.write('x'.repeat(20_000)+'OWNED_STDOUT_END');process.stderr.write('owned synthetic stderr');process.exit(7);\n`,
+        { mode: 0o700 },
+      );
+      await assert.rejects(realBrowserResult(noisy, folder, ''), (error: Error) => {
+        assert.match(error.message, /Owned Chrome exited before connection/);
+        const detail = JSON.parse(error.message.slice(error.message.indexOf(': ') + 2));
+        assert.equal(detail.exitCode, 7);
+        assert.equal(detail.stdout.length, 16_384);
+        assert.ok(detail.stdout.endsWith('OWNED_STDOUT_END'));
+        assert.equal(detail.stderr, 'owned synthetic stderr');
+        return true;
+      });
+    }
     const missing = join(folder, 'missing-chrome');
     await assert.rejects(realBrowserResult(missing, folder, ''), (error: Error) => {
       assert.match(error.message, /Owned Chrome could not spawn/);
