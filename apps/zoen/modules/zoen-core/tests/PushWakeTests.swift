@@ -83,8 +83,10 @@ private func ownership() async throws {
   }
   check(borrowed == .newData)
   firstLease.retire()
-  do { try await gate.open(session: first, lease: firstLease) { preconditionFailure("Retired module reopened") }; preconditionFailure() }
-  catch ZoenPushGateError.retired {}
+  var rejected = false
+  do { try await gate.open(session: first, lease: firstLease) { () -> Void in preconditionFailure("Retired module reopened") } }
+  catch ZoenPushGateError.retired { rejected = true }
+  check(rejected, "Retired module admission must fail")
   let second = Session(2)
   try await gate.open(session: second, lease: ZoenModuleSessionLease()) { await probe.open(2) }
   try await gate.close(session: second) { try await probe.close(2) }
