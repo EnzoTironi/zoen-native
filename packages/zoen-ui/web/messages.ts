@@ -122,8 +122,8 @@ export class Messages {
     return messageLifecycle.received.call(this.#operations, frame, raw);
   }
 
-  private async apply(json: string, generation: number): Promise<void> {
-    return messageLifecycle.apply.call(this.#operations, json, generation);
+  private async apply(json: string, generation: number, origin?: 'local'): Promise<void> {
+    return messageLifecycle.apply.call(this.#operations, json, generation, origin);
   }
 
   private scheduleMaintenance(delay: number | null, generation: number, onlyEarlier = false): void {

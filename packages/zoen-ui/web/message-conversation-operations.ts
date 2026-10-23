@@ -46,7 +46,7 @@ export function act(
       } catch (error) {
         throw Object.assign(new Error(plain(message(error))), { soft: true });
       }
-      await this.apply(update, generation);
+      await this.apply(update, generation, allowOffline ? 'local' : undefined);
     },
     () =>
       !allowOffline && (generation !== this.generation || this.connection.kind !== 'ready')

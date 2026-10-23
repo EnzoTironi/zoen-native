@@ -225,7 +225,11 @@ test('a write held beyond the absolute deadline retires before its late frame or
     old.sent.some((bytes) => bytes[0] === 8),
     false,
   );
-  assert.notEqual(title(f.current()), 'retained-write');
+  assert.equal(
+    title(f.current()),
+    'retained-write',
+    'durable local work stays visible in the same open owner',
+  );
   assert.equal(f.current()?.kind === 'active' && f.current()?.connection.kind, 'reconnecting');
   assert.equal(
     f.calls.some((op) => op.kind === 'reconcile'),

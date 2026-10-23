@@ -284,10 +284,15 @@ impl Runtime {
                 return Ok(TurnOutcome::ToolAsk { ask });
             }
         }
-        // Still calling tools with none left on offer: stop rather than loop.
-        Ok(TurnOutcome::Blocked {
-            reason: "tools:round-limit".into(),
-        })
+        // Never add another model/tool round. Recorded attempts still deserve a reply,
+        // including error-only attempts; neither raw results nor is_error prove completion.
+        // This is ordinary outbound speech, not an effect receipt or a renewed budget.
+        if steps.is_empty() {
+            return Ok(TurnOutcome::Blocked {
+                reason: "tools:round-limit".into(),
+            });
+        }
+        Ok(self.outbound("I couldn't finish your request in this run.".into()))
     }
 
     #[allow(clippy::too_many_arguments)]
