@@ -31,6 +31,7 @@ pub mod recent;
 pub mod session;
 pub mod telemetry;
 pub mod transfer;
+pub mod turn;
 
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
@@ -83,6 +84,7 @@ pub struct AndroidPackage {
 pub struct AppState {
     /// OIDC provider proofs and explicit signed account bindings.
     pub auth: auth::Service,
+    pub turn: turn::Service,
     pub pool: PgPool,
     /// Separate bounded lanes keep durable delivery checks independent of admission
     /// traffic. Ordinary requests release their admission fence before doing any work.
@@ -253,6 +255,7 @@ pub async fn build(cfg: &Config) -> anyhow::Result<(Router, Shared)> {
     let analytics = analytics::Analytics::load(&pool).await?;
     let state = Arc::new(AppState {
         auth: auth::Service::new(auth::Settings::from_env()?)?,
+        turn: turn::Service::from_env()?,
         pool,
         session_auth,
         delivery_auth,
