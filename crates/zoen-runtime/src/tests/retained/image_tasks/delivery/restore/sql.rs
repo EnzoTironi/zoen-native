@@ -1,5 +1,6 @@
 //! Private bounded SQL evidence. Failures expose names/counts/digests, never rows.
 use super::*;
+use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone)]
