@@ -11,7 +11,11 @@ const Preview =
 export function SitePreview(props: Props) {
   const { colors } = useTheme();
   return Preview ? (
-    <Preview {...props} style={{ flex: 1, backgroundColor: 'white' }} />
+    <Preview
+      {...props}
+      accessibilityLabel={t('sites.preview')}
+      style={{ flex: 1, backgroundColor: 'white' }}
+    />
   ) : (
     <Text style={{ color: colors.secondary, padding: 20 }}>{t('sites.previewUnavailable')}</Text>
   );

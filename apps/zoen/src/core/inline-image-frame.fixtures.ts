@@ -50,6 +50,7 @@ export const compiled = await build({
   platform: 'node',
   format: 'cjs',
   jsx: 'automatic',
+  define: { 'process.env.EXPO_OS': '"ios"' },
   write: false,
   plugins: [
     {
@@ -58,6 +59,7 @@ export const compiled = await build({
         builder.onResolve({ filter: /./ }, ({ path }) =>
           path === './inline-image-frame' ||
           path === './file-attachment-content' ||
+          path === '../sites/open-file' ||
           path.startsWith('@babel/runtime/helpers/')
             ? undefined
             : { path, external: true },
@@ -169,6 +171,7 @@ export function fixture(
   const legacyPreviews: LocalMediaFile[] = [];
   const galleryRequests: unknown[][] = [];
   const materialized: { itemId: string; version?: number }[] = [];
+  const navigationRequests: unknown[] = [];
   const slots: { value?: unknown; deps?: readonly unknown[]; cleanup?: () => void }[] = [];
   let cursor = 0;
   let compilerCursor = 0;
@@ -279,6 +282,7 @@ export function fixture(
     },
     'expo-image': { Image: 'Image' },
     'expo-sharing': {},
+    'expo-router': { router: { push: (route: unknown) => navigationRequests.push(route) } },
     '../i18n/index.ts': { t: (key: string) => key, formatLocale: 'en-US' },
     '../components/message-interaction': { MessagePressable: 'MessagePressable' },
     '../core/provider': {
@@ -400,6 +404,7 @@ export function fixture(
     legacyPreviews,
     galleryRequests,
     materialized,
+    navigationRequests,
     nativeIsOpen: () => nativeCompletion != null,
     rejectNative: (reason: Error) => {
       assert.ok(nativeCompletion);
