@@ -3,6 +3,7 @@
 import importlib.util
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import unittest
@@ -83,6 +84,23 @@ class DocumentationScopeTests(unittest.TestCase):
         self.assertFalse(SCOPE.classify("0" * 40, head, "pull_request")["documentation_only"])
         Path(DOC).chmod(0o755)
         self.assertFalse(self.classify()["documentation_only"])
+
+    def test_removing_executable_mode_does_not_disguise_a_metadata_change_as_prose(self):
+        Path(DOC).chmod(0o755)
+        self.base = self.commit()
+        Path(DOC).chmod(0o644)
+        self.write(DOC, "Prose plus executable-bit removal\n")
+        self.assertFalse(self.classify()["documentation_only"])
+
+    def test_workflow_preserves_full_jobs_after_scope_failure_and_does_not_run_after_cancel(self):
+        workflow = (SOURCE.parents[1] / ".github/workflows/ci.yml").read_text()
+        for job in ("rust", "web-e2e"):
+            body = re.search(r"(?ms)^  " + job + r":\n(.*?)(?=^  [a-z]|\Z)", workflow)[1]
+            condition = next(line.strip() for line in body.splitlines() if line.startswith("    if:"))
+            # A status function overrides GitHub's implicit success() predicate.
+            # Empty outputs after a failed selector must keep the full job selected.
+            self.assertIn("!cancelled()", condition)
+            self.assertIn("needs.change-scope.outputs.documentation_only != 'true'", condition)
 
     def test_delete_rename_and_symlink_never_skip(self):
         for operation in ("delete", "rename", "symlink"):

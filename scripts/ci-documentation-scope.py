@@ -48,7 +48,9 @@ def classify(base, head, event):
             path = os.fsdecode(entries[index + 1])
             if len(metadata) != 5 or metadata[4] not in (b"A", b"M"):
                 raise ValueError("Deleted, renamed or unusual changes require the full suite")
-            if metadata[1] != b"100644" or path not in DOCUMENTS:
+            if (metadata[1] != b"100644" or
+                    (metadata[4] == b"M" and metadata[0] != b":100644") or
+                    path not in DOCUMENTS):
                 raise ValueError("Changed path is outside the explicit prose allowlist: " + path)
             changes.append(path)
         result["paths"] = changes

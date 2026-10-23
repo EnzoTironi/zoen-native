@@ -91,7 +91,7 @@ jobs:
   rust:
     needs: change-scope
     # A skipped job means no compiler/integration test execution; prose has its own check.
-    if: needs.change-scope.outputs.documentation_only != 'true'
+    if: ${{ !cancelled() && needs.change-scope.outputs.documentation_only != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -213,7 +213,7 @@ jobs:
   web-e2e:
     needs: change-scope
     # A skipped job means no compiler/integration test execution; prose has its own check.
-    if: needs.change-scope.outputs.documentation_only != 'true'
+    if: ${{ !cancelled() && needs.change-scope.outputs.documentation_only != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
