@@ -17,9 +17,13 @@ export default function Devices() {
   const { confirm } = useDialogs();
   const { presentation: p } = useTheme();
   const [linkOwner, setLinkOwner] = useState<string | null>(null);
-  useEffect(() => {
-    if (state.phase === 'inactive') setLinkOwner(null);
-  }, [state.phase]);
+  useEffect(
+    () =>
+      session.subscribe(() => {
+        if (session.getSnapshot().phase === 'inactive') setLinkOwner(null);
+      }),
+    [session],
+  );
   const ticket = session.ticket();
   const selected = state.devices.find((device) => device.device_id === state.selected) ?? null;
   return (
