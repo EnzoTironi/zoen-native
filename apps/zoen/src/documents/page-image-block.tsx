@@ -19,6 +19,7 @@ export function PageImageBlock({
   retry,
   binding,
   isCurrent,
+  historical = false,
 }: {
   page?: PageDto;
   block: PageBlockDto;
@@ -29,10 +30,12 @@ export function PageImageBlock({
   retry(): void;
   binding: string;
   isCurrent(): boolean;
+  historical?: boolean;
 }) {
   const { colors } = useTheme();
   const label = block.alt || t('documents.image');
-  const file = active && page && items ? pageImageReference(page, block.url, items) : null;
+  const file =
+    !historical && active && page && items ? pageImageReference(page, block.url, items) : null;
   if (file)
     return (
       <FileAttachment
@@ -51,15 +54,17 @@ export function PageImageBlock({
         <Icon name={{ ios: 'photo', android: 'image', web: 'image' }} color={colors.tertiary} />
         <Text style={{ color: colors.text, flex: 1 }}>{label}</Text>
       </View>
-      {active ? (
+      {historical || active ? (
         <Text
-          accessibilityRole={error ? 'alert' : undefined}
-          style={{ color: error ? colors.danger : colors.secondary }}
+          accessibilityRole={!historical && error ? 'alert' : undefined}
+          style={{ color: !historical && error ? colors.danger : colors.secondary }}
         >
-          {error || (loading ? t('media.loading') : t('documents.pageImageUnavailable'))}
+          {historical
+            ? t('documents.pageImageHistoricalUnavailable')
+            : error || (loading ? t('media.loading') : t('documents.pageImageUnavailable'))}
         </Text>
       ) : null}
-      {!loading && block.url ? (
+      {(!loading || historical) && block.url ? (
         <RichText
           text={block.url}
           spans={
@@ -70,7 +75,7 @@ export function PageImageBlock({
           style={{ fontSize: 13 }}
         />
       ) : null}
-      {active && error ? (
+      {!historical && active && error ? (
         <NativeButton secondary label={t('documents.tryAgain')} onPress={retry} />
       ) : null}
     </View>

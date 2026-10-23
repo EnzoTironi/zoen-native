@@ -11,6 +11,7 @@ import { useTheme } from '../theme';
 export function PageBlocks({
   blocks,
   page,
+  historical = false,
   editable = false,
   busy = false,
   organizing = false,
@@ -21,6 +22,7 @@ export function PageBlocks({
 }: {
   blocks: readonly PageBlockDto[];
   page?: PageDto;
+  historical?: boolean;
   editable?: boolean;
   busy?: boolean;
   organizing?: boolean;
@@ -32,7 +34,7 @@ export function PageBlocks({
   const { colors } = useTheme();
   const images = usePageImageItems(
     page,
-    blocks.some((block) => block.kind === 'image'),
+    !historical && blocks.some((block) => block.kind === 'image'),
   );
   return (
     <View style={{ gap: 10 }}>
@@ -82,6 +84,7 @@ export function PageBlocks({
               <View style={{ flex: 1 }}>
                 <PageImageBlock
                   page={page}
+                  historical={historical}
                   block={block}
                   items={images.items}
                   active={images.active}

@@ -199,7 +199,7 @@ export default function Item() {
           ) : !oldReady ? (
             <Loading />
           ) : pastPage.data ? (
-            <PageBlocks page={pastPage.data} blocks={pastPage.data.blocks} />
+            <PageBlocks historical page={pastPage.data} blocks={pastPage.data.blocks} />
           ) : past.data?.plan ? (
             <PlanVersion plan={past.data.plan} />
           ) : past.data?.file?.mime === 'text/html' ? (

@@ -109,3 +109,47 @@ test('failed canonical reads expose retry instead of claiming the ALT is a rende
     true,
   );
 });
+
+test('historical Pages never materialize a current replacement File as their original image', () => {
+  for (const version of [1, 3, 5]) {
+    const elements = nodes(
+      render({
+        historical: true,
+        page: { item_id: 'old-page', version: 1, space_id: 'chat', path: 'page.md' },
+        items: [
+          {
+            id: 'signed-photo',
+            space_id: 'chat',
+            kind_id: 'file',
+            path: 'sky.png',
+            version,
+            file: { mime: 'image/png', sha256: 'cd'.repeat(32) },
+          },
+        ],
+      }),
+    );
+    assert.equal(
+      elements.some((element) => element.type === 'ExistingPrivateMedia'),
+      false,
+    );
+    assert.equal(
+      elements.some(
+        (element) =>
+          element.type === 'Text' &&
+          element.props.children === 'documents.pageImageHistoricalUnavailable',
+      ),
+      true,
+    );
+    assert.equal(
+      elements.some(
+        (element) =>
+          element.type === 'Text' && element.props.children === 'Blue sky over mountains',
+      ),
+      true,
+    );
+    assert.equal(
+      elements.some((element) => element.type === 'RichText' && element.props.text === 'sky.png'),
+      true,
+    );
+  }
+});
