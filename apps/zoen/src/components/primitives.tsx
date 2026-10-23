@@ -184,7 +184,7 @@ export function EmptyState({
   children,
 }: {
   title: string;
-  detail: string;
+  detail?: string;
   icon?: SymbolViewProps['name'];
   children?: ReactNode;
 }) {
@@ -211,9 +211,13 @@ export function EmptyState({
       >
         {title}
       </Text>
-      <Text style={{ fontSize: 16, lineHeight: 24, color: colors.secondary, textAlign: 'center' }}>
-        {detail}
-      </Text>
+      {detail ? (
+        <Text
+          style={{ fontSize: 16, lineHeight: 24, color: colors.secondary, textAlign: 'center' }}
+        >
+          {detail}
+        </Text>
+      ) : null}
       {children}
     </View>
   );
