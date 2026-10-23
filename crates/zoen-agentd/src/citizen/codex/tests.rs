@@ -35,6 +35,7 @@ for raw in sys.stdin:
  elif method=='turn/start':
   assert m['params']['environments']==[]
   with open(MARKER,'a')as f:f.write('turn\n')
+  with open(MARKER+'.schema','w')as f:json.dump(m['params']['outputSchema'],f)
   if MODE=='oversize':print('x'*(1024*1024+1),flush=True);time.sleep(10)
   if MODE=='hang':time.sleep(10)
   if MODE=='request':send({'id':99,'method':'item/commandExecution/requestApproval','params':{'command':'must-not-run'}});time.sleep(10)
@@ -42,6 +43,10 @@ for raw in sys.stdin:
   send({'id':i,'result':{'turn':{'id':'turn-fixture'}}})
   tool='unknown'if MODE=='unknown-tool'else'edit_deck'
   text=json.dumps({'kind':'review'if MODE=='review'else'call','text':'','calls':[{'id':'call1','name':tool,'arguments_json':json.dumps({'shapeId':42,'text':'Real proposal'})}]})
+  if MODE=='nested-contract':
+   context=json.loads(m['params']['input'][0]['text'])
+   offered=context['offered_tools']
+   text=json.dumps({'outcome':{'kind':'call','calls':[{'id':'nested1','name':offered[0]['name'],'arguments_json':'{}'}]}}if offered else{'outcome':{'kind':'quiet'}})
   if MODE=='after-tools':
    context=json.loads(m['params']['input'][0]['text'])
    assert context['completed_tool_steps']==EXPECTED['steps']
@@ -309,3 +314,6 @@ async fn actual_wasi_read_metadata_reaches_fake_codex_completed_tool_steps_exact
 
 #[path = "tests/explicit_review.rs"]
 mod explicit_review;
+
+#[path = "tests/output_contract.rs"]
+mod output_contract;
