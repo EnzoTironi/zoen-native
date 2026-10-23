@@ -69,6 +69,7 @@ export type PolicyState = Readonly<{
   limitInput: string;
   maxAttemptInput: string;
   enabled: boolean;
+  optionsState: 'pending' | 'ready' | 'refused' | 'delivery_failed' | null;
   optionsSource: string | null;
   inquiryDigest: string | null;
   effectiveness: 'unknown' | 'current' | 'superseded' | 'expired' | 'disabled';
@@ -92,6 +93,7 @@ const initial = (scope = ''): PolicyState => ({
   limitInput: '',
   maxAttemptInput: '',
   enabled: true,
+  optionsState: null,
   optionsSource: null,
   inquiryDigest: null,
   effectiveness: 'unknown',
@@ -161,8 +163,9 @@ export class OwnerPolicySession {
       phase: scope ? (this.submitted ? 'held' : 'loading') : 'unavailable',
       context: null,
       review: this.submitted,
-      optionsSource: null,
-      inquiryDigest: null,
+      optionsState: resume ? this.state.optionsState : null,
+      optionsSource: resume ? this.state.optionsSource : null,
+      inquiryDigest: resume ? this.state.inquiryDigest : null,
       effectiveness: 'unknown',
       refreshing: false,
       error: null,
@@ -205,6 +208,10 @@ export class OwnerPolicySession {
           : 'refused';
     if (replaced) this.revision++;
     this.publish({
+      optionsState:
+        value.state === 'pending' || value.state === 'ready' || value.state === 'refused'
+          ? value.state
+          : 'delivery_failed',
       optionsSource: value.source,
       inquiryDigest: value.inquiry_digest,
       context,
@@ -252,6 +259,12 @@ export class OwnerPolicySession {
   }
   async refresh(observed: PolicyState = this.state) {
     if (observed !== this.state || !this.current() || this.inquiring || this.submitting) return;
+    // A pending or unacknowledged inquiry already has an original. Reading it
+    // cannot accidentally queue a second inquiry when the screen refocuses.
+    if (this.inquiryUncertain || this.state.optionsState === 'pending') {
+      await this.reconcile(observed);
+      return;
+    }
     const scope = this.owner!,
       generation = this.generation;
     this.inquiring = true;
@@ -261,6 +274,7 @@ export class OwnerPolicySession {
     this.revision++;
     this.publish({
       refreshing: true,
+      optionsState: null,
       optionsSource: null,
       inquiryDigest: null,
       context: null,
@@ -284,6 +298,21 @@ export class OwnerPolicySession {
         void this.reconcile();
       }
     }
+  }
+  canRetryOptions(observed: PolicyState = this.state) {
+    return (
+      observed === this.state &&
+      this.current() &&
+      !this.inquiring &&
+      !this.submitting &&
+      !this.inquiryUncertain &&
+      !observed.refreshing &&
+      !!observed.optionsSource &&
+      (observed.optionsState === 'refused' || observed.optionsState === 'delivery_failed')
+    );
+  }
+  async retryOptions(observed: PolicyState = this.state) {
+    if (this.canRetryOptions(observed)) await this.refresh(observed);
   }
   invalidate() {
     if (!this.current()) return;

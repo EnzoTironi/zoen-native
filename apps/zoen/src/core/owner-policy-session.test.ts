@@ -384,3 +384,121 @@ test('explicit beginEdit uses actual latest context and cannot release pending o
   assert.equal(f.session.getSnapshot().receipt, null);
   assert.equal(f.f.submits, 1);
 });
+
+for (const outcome of ['refused', 'delivery_failed'] as const)
+  test(`conclusive inquiry ${outcome} permits one explicit retry without editing or submitting`, async () => {
+    const f = await fixture();
+    let inquiries = 0;
+    f.port.inquire = async () => ({
+      source: `terminal-query-${++inquiries}`,
+      inquiry_digest: 'e'.repeat(64),
+      state: 'pending',
+      context: null,
+    });
+    f.port.options = async (_scope, source) => ({
+      source,
+      inquiry_digest: 'e'.repeat(64),
+      state: outcome,
+      context: null,
+    });
+    await f.session.refresh();
+    await settle();
+    const terminal = f.session.getSnapshot();
+    assert.equal(terminal.optionsState, outcome);
+    assert.equal(terminal.context, null);
+    assert.equal(terminal.receipt, null);
+    assert.equal(f.session.canRetryOptions(terminal), true);
+    f.session.beginEdit(terminal);
+    assert.equal(f.session.getSnapshot(), terminal);
+    const gate = deferred<Awaited<ReturnType<PolicyPort['inquire']>>>();
+    f.port.inquire = async () => {
+      inquiries++;
+      return gate.promise;
+    };
+    const retry = f.session.retryOptions(terminal);
+    await f.session.retryOptions(terminal);
+    assert.equal(inquiries, 2, 'one new explicitly requested inquiry');
+    gate.resolve({
+      source: 'successful-retry',
+      inquiry_digest: 'e'.repeat(64),
+      state: 'ready',
+      context: context(),
+    });
+    f.port.options = async (_scope, source) => ({
+      source,
+      inquiry_digest: 'e'.repeat(64),
+      state: 'ready',
+      context: context(),
+    });
+    await retry;
+    await settle();
+    assert.equal(f.session.getSnapshot().phase, 'editing');
+    assert.equal(f.session.getSnapshot().optionsState, 'ready');
+    assert.equal(f.session.canRetryOptions(terminal), false, 'old action cannot retry new inquiry');
+    assert.equal(f.f.submits, 0);
+  });
+
+test('pending inquiry status and same-owner focus refresh only read the original', async () => {
+  const f = await fixture();
+  let inquiries = 0,
+    reads = 0;
+  const original = {
+    source: 'pending-query',
+    inquiry_digest: 'e'.repeat(64),
+    state: 'pending',
+    context: null,
+  };
+  f.port.inquire = async () => {
+    inquiries++;
+    return original;
+  };
+  f.port.options = async (_scope, source) => {
+    reads++;
+    assert.equal(source, original.source);
+    return original;
+  };
+  await f.session.refresh();
+  await settle();
+  assert.equal(f.session.getSnapshot().optionsState, 'pending');
+  assert.equal(f.session.canRetryOptions(), false);
+  await f.session.retryOptions();
+  await f.session.refresh();
+  await settle();
+  f.session.retire();
+  f.session.activate(f.f.scope);
+  await f.session.refresh();
+  await settle();
+  assert.equal(inquiries, 1);
+  assert.ok(reads >= 3);
+  assert.equal(f.session.getSnapshot().optionsSource, original.source);
+  assert.equal(f.session.getSnapshot().phase, 'loading');
+});
+
+test('unacknowledged inquiry cannot be redispatched by retry, refresh or focus resume', async () => {
+  const f = await fixture();
+  let inquiries = 0,
+    reads = 0;
+  f.port.inquire = async () => {
+    inquiries++;
+    throw Error('unknown inquiry delivery');
+  };
+  f.port.findOptions = async () => {
+    reads++;
+    return null;
+  };
+  await f.session.refresh();
+  await settle();
+  assert.equal(f.session.getSnapshot().phase, 'held');
+  assert.equal(f.session.canRetryOptions(), false);
+  await f.session.retryOptions();
+  await f.session.refresh();
+  f.session.retire();
+  f.session.activate(f.f.scope);
+  await f.session.refresh();
+  await settle();
+  assert.equal(inquiries, 1);
+  assert.ok(reads >= 3);
+  assert.equal(f.session.getSnapshot().optionsState, null);
+  assert.equal(f.session.getSnapshot().phase, 'held');
+  assert.equal(f.f.submits, 0);
+});
