@@ -1,6 +1,14 @@
 import type { ItemDetail } from '../core/types';
 
-export const workspaceKinds = ['all', 'pages', 'slides', 'sites', 'images', 'files', 'apps'] as const;
+export const workspaceKinds = [
+  'all',
+  'pages',
+  'slides',
+  'sites',
+  'images',
+  'files',
+  'apps',
+] as const;
 export type WorkspaceKind = (typeof workspaceKinds)[number];
 export type WorkspaceFilter = {
   spaces: ReadonlySet<string>;

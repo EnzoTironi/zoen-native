@@ -67,7 +67,14 @@ export function SiteEditor({
     setBusy(true);
     setError(null);
     try {
-      const next = await saveObservedSite(store, scope, authority, source, text, () => ticket.current() && current());
+      const next = await saveObservedSite(
+        store,
+        scope,
+        authority,
+        source,
+        text,
+        () => ticket.current() && current(),
+      );
       if (!next) return;
       setSaved(next);
       setHtml(next.html ?? '');
