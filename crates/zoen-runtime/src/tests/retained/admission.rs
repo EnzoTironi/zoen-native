@@ -90,7 +90,7 @@ async fn assert_one_release(fixture: &Fixture) {
     );
 }
 
-pub(super) async fn run() {
+pub(in crate::tests) async fn run() {
     Box::pin(progress::run()).await;
     Box::pin(cancellation::run()).await;
     Box::pin(deadlines::run()).await;
