@@ -73,6 +73,50 @@ private func snapshotModels(_ fixture: URL) throws {
   check(after.notes(since: after).isEmpty, "An identical projection cannot create another note")
 }
 
+private func fetchedEvents(_ fixture: URL) throws {
+  let root = try JSONSerialization.jsonObject(with: Data(contentsOf: fixture)) as! [String: Any]
+  let seed = root["after"] as! [String: Any]
+  func model(_ count: String, chat: [String: Any] = [:], account: [String: Any] = [:], synced: Bool = true) throws -> ZoenPushSnapshot {
+    var value = seed
+    var item = (seed["conversations"] as! [[String: Any]])[0]
+    item["event_count"] = count
+    for (key, field) in chat { item[key] = field }
+    var owner = seed["account"] as! [String: Any]
+    for (key, field) in account { owner[key] = field }
+    value["conversations"] = [item]
+    value["account"] = owner
+    value["connection"] = ["synced": synced]
+    let data = try JSONSerialization.data(withJSONObject: value)
+    return try ZoenPushSnapshot(json: String(decoding: data, as: UTF8.self))
+  }
+  let before = try model("1")
+  for (old, new, expected) in [("0", "1", true), ("1", "2", true), ("1", "1", false), ("2", "1", false),
+                              ("18446744073709551614", "18446744073709551615", true)] {
+    check(try model(new).hasFetchedEvents(since: model(old)) == expected)
+  }
+  check(try model("1", chat: ["id": "new"]).hasFetchedEvents(since: before))
+  check(try !model("0", chat: ["id": "new"]).hasFetchedEvents(since: before))
+  for invalid in ["", "00", "01", "-1", "1.0", "18446744073709551616"] {
+    check(try !model(invalid).hasFetchedEvents(since: before))
+    check(try !model("2").hasFetchedEvents(since: model(invalid)))
+  }
+  for key in ["muted", "archived"] {
+    let quiet = try model("2", chat: [key: true])
+    check(quiet.hasFetchedEvents(since: before) && quiet.notes(since: before).isEmpty)
+  }
+  let permissionIndependent = try model("2")
+  let unreadBaseline = try model("1", chat: ["unread": 0])
+  check(permissionIndependent.notes(since: unreadBaseline).count == 1)
+  check(permissionIndependent.hasFetchedEvents(since: unreadBaseline), "Fetch progress does not require presentation permission")
+  for key in ["identity_id", "device_id"] {
+    check(try !model("2", account: [key: "other-owner"]).hasFetchedEvents(since: before))
+  }
+  check(try !model("2", account: ["unlocked": false]).hasFetchedEvents(since: before))
+  check(try !model("2", account: ["setup_pending": true]).hasFetchedEvents(since: before))
+  check(try !model("2", synced: false).hasFetchedEvents(since: before))
+  check(try model("2").hasFetchedEvents(since: model("1", synced: false)))
+}
+
 private func payloads() throws {
   let info: [String: Any] = ["ZoenRemoteNotificationsEnabled": true, "ZoenPushEnvironment": "sandbox", "ZoenPushTopic": "xyz.tironi.zoen"]
   check(ZoenPushBuildAdmission.enabled(info, bundleIdentifier: "xyz.tironi.zoen"))
@@ -347,6 +391,7 @@ private enum PushWakeTests {
   static func main() async throws {
     try payloads()
     try snapshotModels(URL(fileURLWithPath: CommandLine.arguments[1]))
+    try fetchedEvents(URL(fileURLWithPath: CommandLine.arguments[1]))
     try await ownership()
     try await staleCloseCannotReenterAnOlderSession()
     try await forceAndErasureCanEscalateAGracefulSeal()

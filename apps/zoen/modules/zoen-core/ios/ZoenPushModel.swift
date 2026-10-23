@@ -50,7 +50,7 @@ struct ZoenPushNote: Equatable, Sendable {
   let sequence: String
 }
 
-/// Presentation-only projection of the same authenticated snapshot used by local.ts.
+/// Fetch progress and presentation derived from the same authenticated snapshot.
 /// No push payload, owner keys, provider tokens or transport cursor enters this model.
 struct ZoenPushSnapshot: Decodable, Sendable {
   struct Account: Decodable, Sendable {
@@ -79,6 +79,25 @@ struct ZoenPushSnapshot: Decodable, Sendable {
   let conversations: [Conversation]
 
   init(json: String) throws { self = try JSONDecoder().decode(Self.self, from: Data(json.utf8)) }
+
+  /// A conservative signal of fetched conversation events, independent of banners.
+  /// Counts come from the confirmed SpaceLog; they are not another transport cursor.
+  func hasFetchedEvents(since before: ZoenPushSnapshot) -> Bool {
+    guard let account, account.unlocked, !account.setup_pending, connection.synced,
+          before.account?.identity_id == account.identity_id,
+          before.account?.device_id == account.device_id else { return false }
+    let previous = Dictionary(before.conversations.map { ($0.id, $0.event_count) }, uniquingKeysWith: { _, new in new })
+    return conversations.contains { chat in
+      guard let count = Self.eventCount(chat.event_count) else { return false }
+      guard let prior = previous[chat.id] else { return count > 0 }
+      guard let oldCount = Self.eventCount(prior) else { return false }
+      return count > oldCount
+    }
+  }
+
+  private static func eventCount(_ value: String) -> UInt64? {
+    value == "0" ? 0 : ZoenPushWakePayload.exactSequence(value)
+  }
 
   func notes(since before: ZoenPushSnapshot) -> [ZoenPushNote] {
     guard let account, account.unlocked, !account.setup_pending, connection.synced,

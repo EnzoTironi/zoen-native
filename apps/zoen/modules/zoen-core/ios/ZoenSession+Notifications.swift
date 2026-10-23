@@ -69,7 +69,6 @@ extension ZoenSession {
     let permission = await center.notificationSettings().authorizationStatus
     try Task.checkCancellation()
     guard ContinuousClock.now < deadline, notificationIsCurrent(engine, expected, owner, lease) else { throw SessionError.closed }
-    var presented = false
     if [.authorized, .provisional, .ephemeral].contains(permission) {
       for note in after.notes(since: before) {
         try Task.checkCancellation()
@@ -102,12 +101,11 @@ extension ZoenSession {
           center.removeDeliveredNotifications(withIdentifiers: [note.identifier])
           throw error
         }
-        presented = true
       }
     }
     try Task.checkCancellation()
     guard ContinuousClock.now < deadline, notificationIsCurrent(engine, expected, owner, lease) else { throw SessionError.closed }
     notificationBaseline = afterJSON
-    return presented ? .newData : .noData
+    return after.hasFetchedEvents(since: before) ? .newData : .noData
   }
 }
