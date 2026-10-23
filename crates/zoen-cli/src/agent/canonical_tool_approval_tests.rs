@@ -114,7 +114,7 @@ pub(super) async fn handle(e: &Arc<Client>, cx: &Ctx, space: &str, source: &str)
         .iter()
         .position(|entry| entry.id == source)
         .unwrap();
-    assert!(
+    assert_eq!(
         turn(
             e,
             cx,
@@ -123,7 +123,8 @@ pub(super) async fn handle(e: &Arc<Client>, cx: &Ctx, space: &str, source: &str)
             &timeline[..index],
             &timeline[index]
         )
-        .await
+        .await,
+        turn::Outcome::Handled
     );
 }
 pub(super) fn reopen(path: &Path, vault: Arc<dyn client_core::SecretVault>) -> Arc<Client> {

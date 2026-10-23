@@ -26,6 +26,7 @@ impl SecretVault for Vault {
     }
 }
 pub(crate) struct Fixture {
+    pub(crate) owner_client: Arc<Client>,
     pub(crate) agent: Arc<Client>,
     pub(crate) agent_vault: Arc<Vault>,
     pub(crate) owner: String,
@@ -120,6 +121,7 @@ pub(crate) fn fixture() -> Fixture {
         .unwrap()
         .id;
     Fixture {
+        owner_client: owner,
         agent,
         agent_vault,
         owner: owner_id,
@@ -353,3 +355,5 @@ fn serving_writer_and_exact_native_receipts_remain_authoritative_after_compute()
     assert_eq!(counts(&f), before);
     assert_eq!(f.agent.item(f.base.item_id.clone()).unwrap().version, 2);
 }
+
+pub(crate) mod renewal_history;

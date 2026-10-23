@@ -139,3 +139,31 @@ async fn approved_review_resumes_exactly_and_flag_or_argument_changes_are_refuse
         "only the canonical admission executed"
     );
 }
+
+#[test]
+fn renewed_review_validation_is_inert_and_preserves_policy_context_and_block_guards() {
+    let mut selected = call("read_current");
+    selected.requires_review = true;
+    let (runtime, ask, tools) = held(selected);
+    let def = definition();
+    assert!(runtime
+        .validate_tool_review(context(&def), &inbound(), &tools, &ask)
+        .unwrap());
+    assert!(tools.executed.lock().unwrap().is_empty());
+    let mut wrong_policy = ask.clone();
+    wrong_policy.policy_sha256 = "00".repeat(32);
+    assert!(runtime
+        .validate_tool_review(context(&def), &inbound(), &tools, &wrong_policy)
+        .is_err());
+    let mut wrong_source = inbound();
+    wrong_source.text.push_str(" changed");
+    assert!(runtime
+        .validate_tool_review(context(&def), &wrong_source, &tools, &ask)
+        .is_err());
+    let mut blocked = ask.clone();
+    blocked.call.arguments = serde_json::json!({"text":"rm -rf synthetic-directory"});
+    assert!(!runtime
+        .validate_tool_review(context(&def), &inbound(), &tools, &blocked)
+        .unwrap());
+    assert!(tools.executed.lock().unwrap().is_empty());
+}

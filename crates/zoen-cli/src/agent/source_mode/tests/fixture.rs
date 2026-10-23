@@ -87,39 +87,50 @@ impl Fixture {
         let store = store::Store::open(db.to_str().unwrap()).unwrap();
         store.put_identity(&profile, None).unwrap(); // public only, no owner key import
         let space = types::new_id("source_space");
+        drop(store);
+        // Admit the signed canonical prefix through the normal ingestion path.
+        // Direct Store insertion omits the durable relay-ordered Space marker.
+        let mut engine = client_core::Engine::open(db.to_str().unwrap()).unwrap();
+        let mut admit = |event: &types::Event| {
+            assert_eq!(
+                engine.ingest(protocol::Sequenced {
+                    seq: event.seq,
+                    prev: event.prev.clone(),
+                    hash: event.hash.clone(),
+                    env: protocol::Envelope::plain(event),
+                }),
+                client_core::Ingest::Applied
+            );
+        };
         let mut log = SpaceLog::new(&space);
-        store
-            .append_event(log.append(
-                &agent,
-                1_792_510_809_000,
-                types::EventBody::SpaceCreated {
-                    title: "Source fixture".into(),
-                    kind: types::SpaceKind::Group,
-                    privacy: types::Privacy::Closed,
-                },
-            ))
-            .unwrap();
-        store
-            .append_event(log.append(
-                &agent,
-                1_792_510_809_001,
-                types::EventBody::MemberAdded {
-                    identity: owner.clone(),
-                    role: types::Role::Member,
-                },
-            ))
-            .unwrap();
+        admit(log.append(
+            &agent,
+            1_792_510_809_000,
+            types::EventBody::SpaceCreated {
+                title: "Source fixture".into(),
+                kind: types::SpaceKind::Group,
+                privacy: types::Privacy::Closed,
+            },
+        ));
+        admit(log.append(
+            &agent,
+            1_792_510_809_001,
+            types::EventBody::MemberAdded {
+                identity: owner.clone(),
+                role: types::Role::Member,
+            },
+        ));
         let mut post = |text: &str| {
             let event = log
                 .append(&signer, 1_792_510_809_002, message(text, None))
                 .clone();
-            store.append_event(&event).unwrap();
+            admit(&event);
             event.client_id
         };
         let other = post("Other source must never be executed by this run.");
         let source = post("Inspect only the selected source.");
         log.verify().unwrap();
-        drop(store);
+        drop(engine);
         let client = Client::open(db.to_str().unwrap().into(), "en".into()).unwrap();
         assert!(client.unlock(vault.clone()).unwrap());
         Self {
@@ -142,6 +153,31 @@ impl Fixture {
         .unwrap();
         assert!(client.unlock(self.vault.clone()).unwrap());
         self.client = client;
+    }
+    /// Sequence and ingest this synthetic agent's actual queued publication.
+    /// A registered Page cannot offer an unconfirmed optimistic import as a read base.
+    pub(super) fn confirm_publications(&mut self) {
+        self.close();
+        let path = self.path.join("agent.sqlite");
+        let db = store::Store::open(path.to_str().unwrap()).unwrap();
+        let pending = db.outbox().unwrap();
+        let mut log = SpaceLog::from_events(&self.space, db.events(&self.space).unwrap()).unwrap();
+        drop(db);
+        let mut engine = client_core::Engine::open(path.to_str().unwrap()).unwrap();
+        for row in pending.into_iter().filter(|r| r.event.space == self.space) {
+            let event = log.sequence(row.event).clone();
+            assert_eq!(
+                engine.ingest(protocol::Sequenced {
+                    seq: event.seq,
+                    prev: event.prev.clone(),
+                    hash: event.hash.clone(),
+                    env: protocol::Envelope::plain(&event),
+                }),
+                client_core::Ingest::Confirmed
+            );
+        }
+        drop(engine);
+        self.reopen();
     }
     pub(super) fn append(&mut self, body: types::EventBody, owner: bool) -> String {
         self.close();
@@ -166,6 +202,125 @@ impl Fixture {
         self.reopen();
         event.client_id
     }
+    /// Actual signed expired approval + inert owner intent, with no sleeps and
+    /// no live account access. The device/root are this synthetic fixture's keys.
+    pub(super) fn expired_review(
+        &mut self,
+        original: &types::AgentRequest,
+    ) -> (types::AgentRequest, String, Vec<protocol::Sequenced>) {
+        self.close();
+        flush(&self.path, "agent.sqlite", "agent.sqlite", &self.space);
+        let db = store::Store::open(self.path.join("agent.sqlite").to_str().unwrap()).unwrap();
+        let mut log = SpaceLog::from_events(&self.space, db.events(&self.space).unwrap()).unwrap();
+        let device: [u8; 32] = self
+            .vault
+            .load("zoen.device.v1".into())
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let agent = event_log::Author::device(
+            &Signer::from_secret(&[91; 32]),
+            Signer::from_secret(&device),
+        );
+        let owner: [u8; 32] = self
+            .owner_vault
+            .load("zoen.identity.v1".into())
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let owner = event_log::Author::root(Signer::from_secret(&owner));
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        let mut expired = original.clone();
+        expired.id = types::new_id("expired_review");
+        expired.tool_proposal.as_mut().unwrap().expires_at_ms = now - 1000;
+        expired.content_hash = expired.tool_proposal_hash(&self.space).unwrap();
+        for (author, at, body) in [
+            (
+                &agent,
+                now - 2000,
+                types::EventBody::RequestOpened {
+                    request: expired.clone(),
+                },
+            ),
+            (
+                &owner,
+                now - 1001,
+                types::EventBody::RequestResolved {
+                    request: expired.id.clone(),
+                    approved: true,
+                    content_hash: expired.content_hash.clone(),
+                    resolution: Some(types::RequestResolution {
+                        message: "Approved once".into(),
+                        created_item: None,
+                        ai_cost_cents: 0,
+                        standing_grant: None,
+                        tool_decision: Some(types::ToolDecision::ApproveOnce),
+                    }),
+                },
+            ),
+            (
+                &owner,
+                now,
+                types::EventBody::ToolReviewRequested {
+                    request: expired.id.clone(),
+                    content_hash: expired.content_hash.clone(),
+                },
+            ),
+        ] {
+            let event = author.sign_event(&self.space, &types::new_ulid(at), at, log.head(), body);
+            db.append_event(log.sequence(event)).unwrap();
+        }
+        log.verify().unwrap();
+        let intent = log.events().last().unwrap().client_id.clone();
+        let history = log
+            .events()
+            .iter()
+            .map(|event| protocol::Sequenced {
+                seq: event.seq,
+                prev: event.prev.clone(),
+                hash: event.hash.clone(),
+                env: protocol::Envelope::plain(event),
+            })
+            .collect();
+        drop(db);
+        self.reopen();
+        (expired, intent, history)
+    }
+
+    /// Supply genuine SDK-generated owner key packages to the owned loopback
+    /// relay. This uses only the fixture's distinct synthetic owner database.
+    pub(super) async fn publish_owner_packages(&self, server: &super::relay::Relay) {
+        let owner = Client::open(
+            self.path.join("owner.sqlite").to_str().unwrap().into(),
+            "en".into(),
+        )
+        .unwrap();
+        assert!(owner.unlock(self.owner_vault.clone()).unwrap());
+        // Admit the synthetic owner through its normal initial Sync first.
+        // Only the agent's subsequent SyncDone is held by the regression.
+        server.released.store(true, Ordering::SeqCst);
+        owner.start_sync(None).unwrap();
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while server
+                .packages
+                .lock()
+                .unwrap()
+                .get(&self.owner)
+                .is_none_or(Vec::is_empty)
+            {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        owner.wait_until_settled(3000).await.unwrap();
+        owner.stop_sync();
+        server.released.store(false, Ordering::SeqCst);
+    }
+
     pub(super) async fn approve(&mut self, request: &client_core::AgentRequestDto) {
         self.close();
         flush(&self.path, "agent.sqlite", "owner.sqlite", &self.space);

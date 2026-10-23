@@ -40,7 +40,12 @@ impl DecisionProvider for Allow {
         })
     }
 }
-fn cx(client: &Arc<Client>, journal: &Path, item: &str, starts: Arc<AtomicUsize>) -> Ctx {
+pub(super) fn cx(
+    client: &Arc<Client>,
+    journal: &Path,
+    item: &str,
+    starts: Arc<AtomicUsize>,
+) -> Ctx {
     let account = client.account().unwrap();
     let item = item.to_string();
     Ctx {
@@ -196,3 +201,5 @@ async fn canonical_page_read_approve_once_write_and_cold_resume_use_the_normal_h
     drop(client);
     std::fs::remove_dir_all(path).unwrap();
 }
+
+mod renewal;
