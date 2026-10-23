@@ -1,7 +1,7 @@
 //! Directory behind the unchanged native Client facade.
 
 use super::*;
-use crate::engine::Engine;
+use crate::{engine::Engine, net::RequestHandle};
 
 #[derive(Clone, PartialEq, Eq)]
 struct DirectoryOwner {
@@ -76,35 +76,53 @@ impl Client {
     }
 
     pub(super) async fn unlink_device_impl(&self, device_id: String) -> Result<(), CoreError> {
-        let (owner, reply) = self
+        let (owner, channel, reply) = self
             .device_directory_request(Op::Unlink {
                 device: device_id.clone(),
             })
             .await?;
         match reply {
-            Reply::Done => owner.unlinked(&mut self.lock(), &device_id),
+            Reply::Done => self.with_device_directory_completion(&owner, &channel, |engine| {
+                owner.unlinked(engine, &device_id)
+            }),
             _ => Err(invalid("the relay answered something else")),
         }
     }
 
     pub(super) async fn devices_impl(&self) -> Result<Vec<DeviceDto>, CoreError> {
-        let (owner, reply) = self.device_directory_request(Op::Devices).await?;
+        let (owner, channel, reply) = self.device_directory_request(Op::Devices).await?;
         let Reply::Devices(list) = reply else {
             return Err(invalid("the relay answered something else"));
         };
-        owner.list(&mut self.lock(), list)
+        self.with_device_directory_completion(&owner, &channel, |engine| owner.list(engine, list))
     }
 
-    async fn device_directory_request(&self, op: Op) -> Result<(DirectoryOwner, Reply), CoreError> {
+    fn with_device_directory_completion<T>(
+        &self,
+        owner: &DirectoryOwner,
+        channel: &RequestHandle,
+        apply: impl FnOnce(&mut Engine) -> Result<T, CoreError>,
+    ) -> Result<T, CoreError> {
+        // Hold Net until the checked Engine mutation finishes. A same-account
+        // stop/start must not apply an old channel's completed reply to new state.
+        let guard = self.net.lock().map_err(|_| directory_storage())?;
+        let current = guard.as_ref().ok_or_else(directory_stale)?;
+        if !channel.same_channel(&current.request_handle()) {
+            return Err(directory_stale());
+        }
+        let mut engine = self.lock();
+        owner.check(&engine)?;
+        apply(&mut engine)
+    }
+
+    async fn device_directory_request(
+        &self,
+        op: Op,
+    ) -> Result<(DirectoryOwner, RequestHandle, Reply), CoreError> {
         // Same Net -> Engine lock order as start_sync. Keep the captured channel:
         // reconnect/account replacement cannot redirect an old intent to a new Net.
         let (owner, handle) = {
-            let guard = self.net.lock().map_err(|_| CoreError::Storage {
-                message: t(
-                    "Não foi possível acessar os aparelhos.",
-                    "Could not access devices.",
-                ),
-            })?;
+            let guard = self.net.lock().map_err(|_| directory_storage())?;
             let net = guard.as_ref().ok_or_else(|| invalid("offline"))?;
             let owner = DirectoryOwner::capture(&self.lock())?;
             if net
@@ -120,10 +138,31 @@ impl Client {
             }
             (owner, net.request_handle())
         };
-        let reply = handle.send(op).await.map_err(invalid)?;
-        Ok((owner, reply))
+        let reply = handle.clone().send(op).await.map_err(invalid)?;
+        Ok((owner, handle, reply))
     }
 }
 
 #[cfg(test)]
 mod tests;
+
+fn directory_storage() -> CoreError {
+    CoreError::Storage {
+        message: t(
+            "Não foi possível acessar os aparelhos.",
+            "Could not access devices.",
+        ),
+    }
+}
+
+fn directory_stale() -> CoreError {
+    CoreError::Stale {
+        reason: t(
+            "A conexão deste aparelho mudou.",
+            "This device's connection changed.",
+        ),
+    }
+}
+
+#[cfg(test)]
+mod transport_tests;
