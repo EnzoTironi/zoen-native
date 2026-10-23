@@ -12,7 +12,8 @@ use std::{
 use protocol::ServerFrame;
 use tokio::sync::{mpsc, Notify};
 
-pub type Outbox = mpsc::Sender<ServerFrame>;
+pub(crate) mod outbox;
+pub use outbox::Outbox;
 
 /// A session's mailbox plus a kick: a device that can't keep up is disconnected, so it
 /// reconnects and catches up with Sync instead of silently missing an event.
@@ -85,6 +86,7 @@ impl Hub {
     pub fn send(&self, to: &[String], frame: &ServerFrame, skip: Option<u64>) -> usize {
         let map = self.sessions.read().expect("hub");
         let mut n = 0;
+        let mut encoded: Option<bytes::Bytes> = None;
         for who in to {
             if let Some(s) = map.get(who) {
                 for (id, tx) in s {
@@ -94,12 +96,12 @@ impl Hub {
                     if tx.revoked.load(Ordering::Acquire) {
                         continue;
                     }
-                    // Slow consumers must not force a deep frame clone just to discard it.
-                    match tx.tx.try_reserve() {
-                        Ok(permit) => {
-                            permit.send(frame.clone());
-                            n += 1;
-                        }
+                    // Count/zero-byte refusal happens before encoding. Admitted
+                    // recipients share immutable bytes, with credits per session.
+                    match tx.tx.try_send_encoded(|| {
+                        encoded.get_or_insert_with(|| frame.encode().into()).clone()
+                    }) {
+                        Ok(()) => n += 1,
                         Err(mpsc::error::TrySendError::Full(_)) => tx.kick.notify_one(),
                         Err(mpsc::error::TrySendError::Closed(_)) => {}
                     }
@@ -127,14 +129,14 @@ mod tests {
     #[tokio::test]
     async fn full_mailbox_kicks_without_blocking_other_sessions() {
         let hub = Hub::default();
-        let (slow, _slow_rx) = mpsc::channel(1);
-        let (fast, mut fast_rx) = mpsc::channel(1);
         let kick = Arc::new(Notify::new());
+        let (slow, _slow_rx) = outbox::channel_with_limits(1, 1024, kick.clone());
+        let (fast, mut fast_rx) = outbox::channel_with_limits(1, 1024, Arc::new(Notify::new()));
         let frame = ServerFrame::Presence {
             identity: "alice".into(),
             online: true,
         };
-        slow.try_send(frame.clone()).unwrap();
+        slow.send(frame.clone()).await.unwrap();
         for (tx, notify) in [(slow, kick.clone()), (fast, Arc::new(Notify::new()))] {
             hub.add(
                 "alice",
@@ -151,5 +153,55 @@ mod tests {
         tokio::time::timeout(std::time::Duration::from_millis(100), kick.notified())
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn byte_full_mailbox_kicks_while_fast_sessions_share_one_wire_encoding() {
+        let hub = Hub::default();
+        let frame = ServerFrame::DeviceMessage {
+            from: "sender".into(),
+            to: "alice".into(),
+            sealed: vec![42; 256 * 1024],
+        };
+        let wire = frame.encode();
+        let charged = wire.len() + std::mem::size_of::<outbox::Envelope>();
+        let kick = Arc::new(Notify::new());
+        let (slow, mut slow_rx) = outbox::channel_with_limits(1024, charged, kick.clone());
+        slow.send(frame.clone()).await.unwrap();
+        hub.add(
+            "alice",
+            Mailbox {
+                tx: slow,
+                kick: kick.clone(),
+                device: "device".into(),
+                revoked: Arc::new(AtomicBool::new(false)),
+            },
+        );
+        let mut fast_receivers = Vec::new();
+        for _ in 0..2 {
+            let notify = Arc::new(Notify::new());
+            let (tx, rx) = outbox::channel_with_limits(1024, charged, notify.clone());
+            fast_receivers.push(rx);
+            hub.add(
+                "alice",
+                Mailbox {
+                    tx,
+                    kick: notify,
+                    device: "device".into(),
+                    revoked: Arc::new(AtomicBool::new(false)),
+                },
+            );
+        }
+        assert_eq!(hub.send(&["alice".into()], &frame, None), 2);
+        tokio::time::timeout(std::time::Duration::from_millis(100), kick.notified())
+            .await
+            .unwrap();
+        let first = fast_receivers[0].try_recv().unwrap();
+        let second = fast_receivers[1].try_recv().unwrap();
+        assert_eq!(first.bytes.as_ref(), wire);
+        assert_eq!(second.bytes.as_ref(), wire);
+        assert_eq!(first.bytes.as_ptr(), second.bytes.as_ptr());
+        assert_eq!(slow_rx.try_recv().unwrap().bytes.as_ref(), wire);
+        assert!(slow_rx.try_recv().is_err());
     }
 }

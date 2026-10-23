@@ -17,7 +17,7 @@ pub(super) struct LoggedIn {
 )]
 pub(super) async fn handshake(
     st: &Shared,
-    tx: &mpsc::Sender<ServerFrame>,
+    tx: &Outbox,
     stream: &mut futures_util::stream::SplitStream<WebSocket>,
     ip: &str,
 ) -> Option<LoggedIn> {
