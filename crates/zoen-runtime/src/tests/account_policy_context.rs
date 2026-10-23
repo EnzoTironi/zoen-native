@@ -38,13 +38,13 @@ pub(super) async fn run(w: &World) {
         w.count("SELECT count(*) FROM runtime_policies").await,
         before
     );
-    for table in [
-        "runtime_attempts",
-        "runtime_claims",
-        "runtime_journals",
-        "runtime_postings",
+    for query in [
+        "SELECT count(*) FROM runtime_attempts",
+        "SELECT count(*) FROM runtime_claims",
+        "SELECT count(*) FROM runtime_journals",
+        "SELECT count(*) FROM runtime_postings",
     ] {
-        assert_eq!(w.count(&format!("SELECT count(*) FROM {table}")).await, 0);
+        assert_eq!(w.count(query).await, 0);
     }
     assert_eq!(w.http.sends.load(Ordering::SeqCst), 0);
     let mut stale = signed.inquiry.clone();
