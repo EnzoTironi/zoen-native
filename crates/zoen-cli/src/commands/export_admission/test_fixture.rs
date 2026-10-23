@@ -183,9 +183,11 @@ impl Fixture {
                 }
             }
         });
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        let mut budget = crate::commands::SyncBudget::new(5000);
         client.start_sync(None).unwrap();
-        let connection = client.wait_until_settled(5000).await.unwrap();
+        let connection = budget.wait_startup(&client).await;
+        let deadline = budget.deadline();
+        client.wait_until_settled(0).await.unwrap();
         assert_eq!(connection.state, "online");
         assert!(connection.synced);
         assert_eq!(connection.pending, 0);

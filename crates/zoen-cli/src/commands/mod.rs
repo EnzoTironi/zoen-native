@@ -6,12 +6,15 @@ mod conversations;
 mod documents;
 mod export_admission;
 mod operations;
+mod sync_budget;
+pub(crate) use sync_budget::SyncBudget;
 
 pub(crate) struct Context {
     pub e: Arc<Client>,
     pub vault: Arc<dyn SecretVault>,
     pub me: String,
     pub timeout: u64,
+    pub sync_budget: SyncBudget,
     pub offline: bool,
     pub for_secs: Option<u64>,
 }

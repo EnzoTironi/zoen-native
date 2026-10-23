@@ -12,15 +12,25 @@ pub(super) async fn export_all(
     dir: PathBuf,
     timeout: u64,
     offline: bool,
-    _deadline: tokio::time::Instant,
+    deadline: tokio::time::Instant,
 ) -> Result<String, client_core::CoreError> {
     if offline {
         eprintln!("offline cache export: remote catch-up was not checked");
     } else {
-        // Startup already spent the command's wait budget. Check
-        // its actual completion, without another wait or retry,
-        // before enumerating a projection that may omit items.
-        e.wait_until_settled(0).await?;
+        // Startup may have finished early. MLS can acquire new work before this
+        // observation; wait only within the original command's remaining window.
+        // This is a completion observation before enumeration, not an atomic
+        // snapshot: later events can still arrive while files are being written.
+        let remaining = super::sync_budget::remaining_ms(deadline);
+        if remaining == 0 {
+            return Err(deadline_error());
+        }
+        e.wait_until_settled(remaining).await?;
+        // The existing Core poll can resume after its deadline. Such a late ACK
+        // must not admit a new export after this command's original wait window.
+        if tokio::time::Instant::now() >= deadline {
+            return Err(deadline_error());
+        }
     }
     let (mut n, mut bytes, mut missing) = (0, 0, 0);
     for i in e
@@ -45,4 +55,10 @@ pub(super) async fn export_all(
     Ok(format!(
         "{n} pages, {bytes} bytes, {missing} still arriving"
     ))
+}
+
+fn deadline_error() -> client_core::CoreError {
+    client_core::CoreError::Invalid {
+        reason: "Sync did not finish before the original export deadline; queued work is saved for retry.".into(),
+    }
 }

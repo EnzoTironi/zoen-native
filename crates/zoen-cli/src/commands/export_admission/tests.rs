@@ -8,6 +8,7 @@ use std::{future::Future, task::Poll, time::Duration};
 async fn original_budget_waits_for_an_ack_after_initial_ready_before_exporting() {
     let fixture = Fixture::new().await;
     fixture.hold_top_up().await;
+    assert!(tokio::time::Instant::now() < fixture.deadline);
     let output = fixture.directory.join("export");
     let mut admission = Box::pin(export_all(
         &fixture.client,
@@ -47,19 +48,21 @@ async fn an_ack_after_the_original_deadline_cannot_write_or_restart_export() {
     fixture.hold_top_up().await;
     let output = fixture.directory.join("late");
     let deadline = tokio::time::Instant::now() + Duration::from_millis(120);
-    let result = export_all(
+    let export = export_all(
         &fixture.client,
         fixture.space.clone(),
         output.clone(),
         5000,
         false,
         deadline,
-    )
-    .await;
+    );
+    let late_ack = async {
+        tokio::time::sleep_until(deadline + Duration::from_millis(10)).await;
+        fixture.release_top_up().await;
+    };
+    let (result, ()) = tokio::join!(export, late_ack);
     assert!(result.is_err());
     assert!(!output.exists());
-    tokio::time::sleep_until(deadline).await;
-    fixture.release_top_up().await;
     fixture.client.wait_until_settled(1000).await.unwrap();
     assert!(
         !output.exists(),
@@ -73,18 +76,40 @@ async fn no_ack_keeps_mls_guard_and_writes_zero_files() {
     fixture.hold_top_up().await;
     let output = fixture.directory.join("missing-ack");
     let deadline = tokio::time::Instant::now() + Duration::from_millis(120);
-    assert!(export_all(
+    let result = tokio::time::timeout(
+        Duration::from_secs(1),
+        export_all(
+            &fixture.client,
+            fixture.space.clone(),
+            output.clone(),
+            5000,
+            false,
+            deadline,
+        ),
+    )
+    .await
+    .expect("the per-page timeout cannot replace the remaining startup budget");
+    assert!(result.is_err());
+    assert!(!output.exists());
+    assert!(fixture.client.wait_until_settled(0).await.is_err());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_expired_original_budget_cannot_admit_even_an_already_ready_client() {
+    let fixture = Fixture::new().await;
+    fixture.client.wait_until_settled(0).await.unwrap();
+    let output = fixture.directory.join("expired");
+    let result = export_all(
         &fixture.client,
         fixture.space.clone(),
         output.clone(),
         5000,
         false,
-        deadline
+        tokio::time::Instant::now(),
     )
-    .await
-    .is_err());
+    .await;
+    assert!(result.is_err());
     assert!(!output.exists());
-    assert!(fixture.client.wait_until_settled(0).await.is_err());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

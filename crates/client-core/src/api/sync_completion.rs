@@ -119,6 +119,27 @@ impl SyncCompletionObservation {
 }
 
 impl Client {
+    /// Return the actual observation that ended this wait. A strict caller must
+    /// not turn a later maintenance transition into a zero-budget second wait.
+    pub(super) async fn wait_sync_completion(
+        &self,
+        timeout_ms: u64,
+    ) -> (ConnectionDto, SyncCompletionObservation) {
+        let started = tokio::time::Instant::now();
+        let deadline = started + Duration::from_millis(timeout_ms);
+        loop {
+            let c = self.connection();
+            let observed = self.sync_completion_observation(&c);
+            if observed.satisfied() || tokio::time::Instant::now() >= deadline {
+                if !observed.satisfied() {
+                    observed.trace_deadline(timeout_ms, started.elapsed());
+                }
+                return (c, observed);
+            }
+            tokio::time::sleep(Duration::from_millis(40)).await;
+        }
+    }
+
     pub(super) fn sync_completion_observation(
         &self,
         connection: &ConnectionDto,
@@ -137,6 +158,7 @@ impl Client {
         })
     }
 
+    #[cfg(test)]
     pub(super) fn sync_idle(&self, connection: &ConnectionDto) -> bool {
         self.sync_completion_observation(connection).satisfied()
     }

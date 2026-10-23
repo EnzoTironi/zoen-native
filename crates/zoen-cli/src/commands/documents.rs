@@ -5,6 +5,7 @@ pub(super) async fn run(cmd: String, cli: &mut Cli, context: Context) {
     let Context {
         e,
         timeout,
+        sync_budget,
         offline,
         ..
     } = context;
@@ -111,7 +112,7 @@ pub(super) async fn run(cmd: String, cli: &mut Cli, context: Context) {
                             .unwrap_or_else(|| usage()),
                     );
                     let output = super::export_admission::export_all(
-                        &e, space, dir, timeout, offline, tokio::time::Instant::now(),
+                        &e, space, dir, timeout, offline, sync_budget.deadline(),
                     ).await.unwrap_or_else(|err| die(format!(
                         "export-all: {err}; no files were written. Use --offline to export only this device's cached pages."
                     )));
