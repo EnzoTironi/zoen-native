@@ -97,10 +97,17 @@ fn expired_approval_requests_only_preparation_and_successor_requires_independent
         ToolRequestDecision::ApproveOnce,
     )
     .unwrap();
-    assert!(
-        f.agent.approved_tool_turn(&next.id, WORKER).is_err(),
-        "optimistic approval is not renewed execution authority"
-    );
+    // owner_decide is an offline signed-log fixture, so its decision is already
+    // canonical. It does not simulate a remote owner's unconfirmed publication.
+    {
+        let e = f.agent.lock();
+        let r = &e.state.requests[&next.id];
+        assert!(e.logs[&f.space]
+            .events()
+            .iter()
+            .any(|event| Some(event_log::content_hash_of(event)) == r.resolved_content_hash));
+    }
+    assert!(f.agent.approved_tool_turn(&next.id, WORKER).is_ok());
     confirm_pending(&f);
     assert!(f.agent.approved_tool_turn(&next.id, WORKER).is_ok());
     assert!(f.agent.approved_tool_turn(&old.id, WORKER).is_err());

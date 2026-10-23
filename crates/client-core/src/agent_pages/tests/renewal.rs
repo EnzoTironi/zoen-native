@@ -8,7 +8,17 @@ fn page_renewal_preserves_exact_block_intent_and_requires_a_new_approval() {
     let t = turn(&f);
     let command = command(&t);
     let old = expired_approved(&f.actor, stage(&f, &t, &command));
-    assert!(f.actor.agent.approved_page_tool_turn(&old.id).is_err());
+    // The Page wrapper also supports historical receipt recovery. Constructing
+    // it is not fresh IO authority: the actual expired write must still refuse.
+    let expired_permit = f.actor.agent.approved_page_tool_turn(&old.id).unwrap();
+    let before = counts(&f);
+    assert!(f
+        .actor
+        .agent
+        .agent_page_replace(expired_permit.turn(), &command)
+        .is_err());
+    assert_eq!(counts(&f), before);
+    assert_eq!(page(&f).version, 1);
     decide(&f, &old, ToolRequestDecision::RequestReview).unwrap();
     let intent = f.actor.agent.tool_review_pending_intent(&old.id).unwrap();
     let next = f
