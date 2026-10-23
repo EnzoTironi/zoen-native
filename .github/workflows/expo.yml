@@ -14,6 +14,9 @@ on:
         'Cargo.toml',
         'Cargo.lock',
         'scripts/build-expo-*.mjs',
+        'scripts/expo-artifact-scope.py',
+        'scripts/expo_artifact_dependencies.py',
+        'scripts/tests/test_expo_artifact_scope.py',
         'scripts/build-android-core.sh',
         'scripts/expo-android-*.mjs',
         'scripts/expo-cargo-artifacts.mjs',
@@ -43,6 +46,9 @@ on:
         'Cargo.toml',
         'Cargo.lock',
         'scripts/build-expo-*.mjs',
+        'scripts/expo-artifact-scope.py',
+        'scripts/expo_artifact_dependencies.py',
+        'scripts/tests/test_expo_artifact_scope.py',
         'scripts/build-android-core.sh',
         'scripts/expo-android-*.mjs',
         'scripts/expo-cargo-artifacts.mjs',
@@ -67,7 +73,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  artifact-scope:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      run_android: ${{ steps.scope.outputs.run_android }}
+      run_client: ${{ steps.scope.outputs.run_client }}
+      run_release_web: ${{ steps.scope.outputs.run_release_web }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Cargo metadata toolchain (no compilation)
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal
+          rustup default 1.99.1
+      - name: Conservative artifact-scope regressions
+        run: python3 -m unittest discover -s scripts/tests -p test_expo_artifact_scope.py
+      - name: Select existing Expo jobs from immutable inputs
+        id: scope
+        env:
+          SCOPE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          SCOPE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          SCOPE_EVENT: ${{ github.event_name }}
+        run: python3 scripts/expo-artifact-scope.py --base "$SCOPE_BASE" --head "$SCOPE_HEAD" --event "$SCOPE_EVENT"
+
   android-build:
+    needs: artifact-scope
+    if: ${{ !cancelled() && (needs.artifact-scope.result != 'success' || needs.artifact-scope.outputs.run_android != 'false') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -198,6 +232,8 @@ jobs:
           done
 
   client:
+    needs: artifact-scope
+    if: ${{ !cancelled() && (needs.artifact-scope.result != 'success' || needs.artifact-scope.outputs.run_client != 'false') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
@@ -238,6 +274,8 @@ jobs:
 
   # Exercises the exported Expo Router application, not the separate legacy Web shell.
   release-web-e2e:
+    needs: artifact-scope
+    if: ${{ !cancelled() && (needs.artifact-scope.result != 'success' || needs.artifact-scope.outputs.run_release_web != 'false') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
