@@ -1,0 +1,36 @@
+import { defineFeature } from '../catalog.ts';
+
+export const ownerPolicy = defineFeature(
+  {
+    title: 'Account budget',
+    ownerScope: 'Shared by all your agents for the selected services.',
+    monthlyLimit: 'Monthly limit',
+    perAttempt: 'Maximum per attempt',
+    services: 'Services',
+    expires: 'Expires %{date} UTC',
+    confirm: 'Confirm account budget',
+    disable: 'Disable this budget',
+    pending: 'Waiting for confirmation',
+    installed: 'Budget confirmed',
+    refused: 'The budget was not accepted. Review the current policy before trying again.',
+    deliveryFailed: 'The request was not delivered. Your budget has not been confirmed.',
+    unavailable: 'The exact budget and services could not be verified.',
+    disabled: 'Spending disabled',
+  },
+  {
+    title: 'Orçamento da conta',
+    ownerScope: 'Compartilhado por todos os seus agentes para os serviços selecionados.',
+    monthlyLimit: 'Limite mensal',
+    perAttempt: 'Máximo por tentativa',
+    services: 'Serviços',
+    expires: 'Expira em %{date} UTC',
+    confirm: 'Confirmar orçamento da conta',
+    disable: 'Desativar este orçamento',
+    pending: 'Aguardando confirmação',
+    installed: 'Orçamento confirmado',
+    refused: 'O orçamento não foi aceito. Revise a política atual antes de tentar novamente.',
+    deliveryFailed: 'O pedido não foi entregue. Seu orçamento não foi confirmado.',
+    unavailable: 'Não foi possível verificar o orçamento exato e os serviços.',
+    disabled: 'Gastos desativados',
+  },
+);
