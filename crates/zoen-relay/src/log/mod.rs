@@ -98,6 +98,15 @@ pub trait LogStore: Send + Sync {
     ) -> Result<Sequencing, Reject> {
         Err(Reject::retry("managed publication unavailable"))
     }
+    /// Observe only the exact retained publication. Absence after independent
+    /// consumption is uncertainty, never a new append capability.
+    async fn managed_publication_observation(
+        &self,
+        _condition: &relay_admission::managed_images::PublishCondition,
+        _env: &Envelope,
+    ) -> Result<Option<Sequenced>, StoreError> {
+        Ok(None)
+    }
     /// Events of `space` from `from` on, in order, at most `limit`.
     async fn read(
         &self,

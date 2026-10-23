@@ -89,6 +89,7 @@ mod conflicts;
 mod invite_routing;
 mod managed;
 mod managed_publish;
+mod routing;
 mod runtime;
 pub use runtime::{RuntimeHead, RuntimeSource, RuntimeSourceBatch};
 
