@@ -12,6 +12,8 @@ use zoen_relay::log::{fdb::FdbLog, LogStore, Sequencing};
 
 #[path = "log_store/mls_contracts.rs"]
 mod mls_contracts;
+#[path = "log_store/turn_admission.rs"]
+mod turn_admission;
 
 fn now_ms() -> i64 {
     std::time::SystemTime::now()
@@ -195,6 +197,11 @@ fn main() {
         run(
             "co-members deduplicate across read batches",
             co_members_deduplicates_across_read_batches(),
+        )
+        .await;
+        run(
+            "TURN admission requires the exact encrypted DM pair",
+            turn_admission::turn_pair_requires_exact_current_encrypted_dm_writers(),
         )
         .await;
         run("invites are bounded by uses", invites_are_bounded_by_uses()).await;
