@@ -85,16 +85,6 @@ pub(crate) async fn run(
     result.unwrap()
 }
 
-pub(crate) async fn task(runtime: &RuntimeAuthority, run: &str) -> ImageTask {
-    runtime
-        .execution
-        .read_image_task(run, &runtime.custody)
-        .await
-        .unwrap()
-        .0
-        .task
-}
-
 pub(crate) async fn output(
     runtime: &RuntimeAuthority,
     run: &str,

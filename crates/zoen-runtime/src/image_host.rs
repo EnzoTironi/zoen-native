@@ -32,6 +32,9 @@ pub struct ImageRuntimeHost {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ImageHostProgress {
+    CatchingUp {
+        through: types::Seen,
+    },
     /// An original attempt exists but has no currently deliverable retained
     /// output. This cannot be interpreted as zero cost or permission to retry.
     AwaitingRecovery {
@@ -97,6 +100,23 @@ impl ImageRuntimeHost {
     ) -> Result<ImageHostProgress, RuntimeError> {
         self.runtime.continuity()?;
         self.runtime.production_output_scope()?;
+        let progress = self
+            .runtime
+            .native
+            .as_ref()
+            .ok_or(RuntimeError::CoreAuthorityUnavailable)?
+            .refresh_source(
+                &self.runtime,
+                &self.config.agent,
+                &self.config.device,
+                space,
+            )
+            .await?;
+        if !progress.caught_up {
+            return Ok(ImageHostProgress::CatchingUp {
+                through: progress.through,
+            });
+        }
         let run = self
             .runtime
             .image_host_run(

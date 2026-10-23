@@ -5,6 +5,7 @@ mod image_tasks;
 mod managed;
 mod packages;
 mod runs;
+mod source;
 pub(crate) use image_tasks::ImageStep;
 pub use image_tasks::{
     ImageDeliveryProgress, ImageDeliveryTarget, ImageOutputInspection, ImageReviewIntent,

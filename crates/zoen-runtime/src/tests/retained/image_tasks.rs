@@ -3,16 +3,20 @@ use super::*;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use client_core::image_tasks::{ImageTaskDefinition, ImageTaskInput};
 use native::testing::image_tasks as proof;
-use zoen_models::{GeneratedImage, ModelGateway};
+use zoen_models::ModelGateway;
 mod delivery;
+mod provider;
 
-fn gateway() -> GatewayConfig {
-    let p = crate::tests::image_tasks::profile();
+fn gateway(p: &ImagePriceProfile) -> GatewayConfig {
     GatewayConfig {
-        base_url: "https://api.openai.com/v1".into(),
-        endpoint_policy: EndpointPolicy::Https,
-        model: p.model,
-        credential_ref: p.credential_ref,
+        base_url: p
+            .endpoint
+            .strip_suffix("/images/generations")
+            .unwrap()
+            .into(),
+        endpoint_policy: p.endpoint_policy.gateway(),
+        model: p.model.clone(),
+        credential_ref: p.credential_ref.clone(),
         api_key: "controlled-image-adapter-not-a-provider-secret".into(),
         limits: ModelLimits {
             max_request_bytes: p.max_request_bytes as usize,
@@ -39,7 +43,12 @@ fn png() -> Vec<u8> {
 
 pub(in crate::tests) async fn run() {
     let mut f = Fixture::with_output().await;
+    let original_bytes = png();
+    assert!(original_bytes.len() > 4 * 1024 * 1024);
+    let provider = provider::Provider::start(&original_bytes).await;
     let mut price = crate::tests::image_tasks::profile();
+    price.endpoint = provider.endpoint.clone();
+    price.endpoint_policy = crate::ImageEndpointPolicy::LoopbackFixture;
     price.image.max_image_bytes = 8 * 1024 * 1024;
     price.max_response_bytes = 16 * 1024 * 1024;
     let mut policy = f.world.signed.policy.clone();
@@ -142,58 +151,67 @@ pub(in crate::tests) async fn run() {
         }),
     })
     .await;
-    f.sync(false).await.unwrap();
+    let before_runs = f.world.runtime.pending_reply_runs(64).await.unwrap();
+    let refreshed = f
+        .world
+        .runtime
+        .native
+        .as_ref()
+        .unwrap()
+        .refresh_source(&f.world.runtime, &actor.identity, device, &f.space)
+        .await
+        .unwrap();
+    assert!(refreshed.caught_up);
+    assert_eq!(Some(refreshed.through), f.head);
+    assert_eq!(
+        f.world.runtime.pending_reply_runs(64).await.unwrap(),
+        before_runs,
+        "applying the real owner review must not discover an unrelated chat run"
+    );
     let runtime = &f.world.runtime;
     let run = runtime
-        .prepare_image_task(&actor.identity, device, &request, price.clone(), gateway())
+        .prepare_image_task(
+            &actor.identity,
+            device,
+            &request,
+            price.clone(),
+            gateway(&price),
+        )
         .await
         .unwrap();
     assert_eq!(
         runtime
-            .prepare_image_task(&actor.identity, device, &request, price, gateway())
+            .prepare_image_task(
+                &actor.identity,
+                device,
+                &request,
+                price.clone(),
+                gateway(&price)
+            )
             .await
             .unwrap(),
         run
     );
     assert_eq!(
-        runtime.run_image_task(&run, gateway()).await.unwrap_err(),
+        runtime
+            .run_image_task(&run, gateway(&price))
+            .await
+            .unwrap_err(),
         RuntimeError::CoreAuthorityUnavailable
     );
-    let task = proof::task(runtime, &run).await;
-    let bytes = png();
-    assert!(bytes.len() > 4 * 1024 * 1024);
-    let original_bytes = bytes.clone();
-    let sha256 = hash(&bytes);
-    let mut result = crate::tests::image_tasks::result(&task, true);
-    let mut body: serde_json::Value = serde_json::from_slice(&result.evidence.body).unwrap();
-    body.as_object_mut().unwrap().remove("padding");
-    body["data"] = serde_json::json!([{"b64_json":STANDARD.encode(&bytes)}]);
-    result.evidence.body = serde_json::to_vec(&body).unwrap();
-    result.output = Ok(GeneratedImage {
-        bytes,
-        mime: "image/png",
-        width: 1024,
-        height: 1024,
-        sha256: sha256.clone(),
-    });
-    let adapter = crate::tests::image_tasks::Provider {
-        task,
-        result,
-        sends: Default::default(),
-        close: None,
-    };
-    let model = ModelGateway::new(gateway()).unwrap();
+    let sha256 = hash(&original_bytes);
+    let model = ModelGateway::new(gateway(&price)).unwrap();
     assert_eq!(
-        proof::run(runtime, &run, &model, &adapter).await,
+        proof::run(runtime, &run, &model, &model).await,
         FinancialState::Settled { units: 15 }
     );
-    assert_eq!(adapter.sends.load(Ordering::SeqCst), 1);
+    assert_eq!(provider.sends.load(Ordering::SeqCst), 1);
     let output = proof::output(runtime, &run, &model).await;
     assert_eq!(output.sha256, sha256);
     assert_eq!(proof::output(runtime, &run, &model).await, output);
     assert_eq!(
         runtime
-            .prepare_image_task_output(&run, gateway())
+            .prepare_image_task_output(&run, gateway(&price))
             .await
             .unwrap_err(),
         RuntimeError::CoreAuthorityUnavailable
@@ -209,14 +227,14 @@ pub(in crate::tests) async fn run() {
     assert!(proof::try_output(&f.world.runtime, &run, &model)
         .await
         .is_err());
-    assert_eq!(adapter.sends.load(Ordering::SeqCst), 1);
+    assert_eq!(provider.sends.load(Ordering::SeqCst), 1);
     proof::restore_chunk(&f.world.runtime, removed).await;
     assert_eq!(
         proof::bytes(&f.world.runtime, &run).await.unwrap(),
         original_bytes
     );
     assert_eq!(proof::output(&f.world.runtime, &run, &model).await, output);
-    assert_eq!(adapter.sends.load(Ordering::SeqCst), 1);
+    assert_eq!(provider.sends.load(Ordering::SeqCst), 1);
     assert_eq!(
         f.world.balance().await,
         PeriodBalance {
@@ -235,7 +253,7 @@ pub(in crate::tests) async fn run() {
         1
     );
     delivery::run(&mut f, &run, &output).await;
-    assert_eq!(adapter.sends.load(Ordering::SeqCst), 1);
+    assert_eq!(provider.sends.load(Ordering::SeqCst), 1);
     assert_eq!(
         f.world.balance().await,
         PeriodBalance {
@@ -253,6 +271,8 @@ pub(in crate::tests) async fn run() {
             .await,
         1
     );
+    drop(model);
+    drop(provider);
     f.finish().await;
-    println!("native image journey: signed review, real MLS task, shared bill, canonical blob PUT, original relay publication and lost ACK cold recovery PASS (controlled adapter; production output gate closed)");
+    println!("native image journey: signed review, real MLS task, shared bill, canonical blob PUT, original relay publication and lost ACK cold recovery PASS (actual unpaid loopback HTTP gateway; production output gate closed)");
 }
