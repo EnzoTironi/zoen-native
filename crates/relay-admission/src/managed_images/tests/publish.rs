@@ -55,6 +55,10 @@ fn original_publish_is_consumed_once_even_after_restart_and_new_checkpoint() -> 
     let mut restarted = AnchorWriter::open(&home.0, configured)?;
     let newer = commit(&mut restarted, &digest)?;
     assert_ne!(newer, checkpoint);
+    assert_eq!(
+        restarted.reader().retained_checkpoint(&checkpoint)?.next,
+        checkpoint
+    );
     let ConsumePublish::Consumed(observation) =
         restarted.reader().consume_publish(&newer, &envelope)?
     else {
