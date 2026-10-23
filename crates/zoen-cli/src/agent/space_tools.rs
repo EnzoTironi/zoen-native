@@ -42,6 +42,13 @@ impl<'a> SpaceTools<'a> {
         source: &'a str,
     ) -> Self {
         let mut names: Vec<(ToolDef, String, String)> = Vec::new();
+        if image_tools::configured() {
+            names.push((
+                image_tools::definition(),
+                space.into(),
+                image_tools::TOOL.into(),
+            ));
+        }
         if deckcraft.is_some() && e.can_create_agent_app(space, source, serving) {
             if let Some(definition) = client_core::agent_app_creation::definition(space) {
                 let definition: ToolDef =
@@ -463,8 +470,7 @@ impl<'a> SpaceTools<'a> {
                     .steps
                     .push((self.source.into(), progress.steps.clone())),
             }
-            let drop = state.steps.len().saturating_sub(JOURNAL_KEEP);
-            state.steps.drain(..drop);
+            image_tools::trim_completed(&mut state.steps);
             Ok(true)
         })
         .map(|_| ())
@@ -480,8 +486,7 @@ impl<'a> SpaceTools<'a> {
                 Some((_, steps)) => steps.push(step),
                 None => state.steps.push((self.source.to_string(), vec![step])),
             }
-            let drop = state.steps.len().saturating_sub(JOURNAL_KEEP);
-            state.steps.drain(..drop);
+            image_tools::trim_completed(&mut state.steps);
             Ok(true)
         });
         if result.is_err() {
