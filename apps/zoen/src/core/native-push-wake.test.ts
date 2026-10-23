@@ -36,8 +36,10 @@ test(
       }).trim();
       const files = [
         'ios/ZoenProcessSessionGate.swift',
+        'ios/ZoenModuleSessionOwner.swift',
         'ios/ZoenPushModel.swift',
         'tests/PushWakeTests.swift',
+        'tests/RetainedSessionTests.swift',
       ].map(nativeFile);
       const env: NodeJS.ProcessEnv = {
         NODE_ENV: 'test',

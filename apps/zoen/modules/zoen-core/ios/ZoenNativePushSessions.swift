@@ -9,8 +9,21 @@ enum ZoenNativePushSessions {
   }
 
   static func wake(deadline: ContinuousClock.Instant) async -> ZoenPushResult {
-    await gate.runWake(make: { ZoenSession() }) { session, cold, lease in
+    await gate.runWake(make: { ZoenSession() }, retain: { await $0.retainsNotificationCall() }) { session, cold, lease in
       try await session.notificationWake(cold: cold, deadline: deadline, lease: lease)
+    }
+  }
+
+  static func open(owner: ZoenModuleSessionOwner<ZoenSession>, mode: String, locale: String,
+    changed: @escaping @Sendable ([String: Any]) -> Void,
+    call: @escaping @Sendable (String) -> Void, audio: @escaping @Sendable (String) -> Void) async throws -> String {
+    try await gate.openAdoptingRetained(owner: owner, allowed: mode == "account") { session, lease, adopted in
+      if adopted {
+        return try await session.adoptNotificationCall(locale: locale, lease: lease, changed: changed, call: call, audio: audio)
+      }
+      let result = try await session.open(mode: mode, locale: locale, changed: changed)
+      await session.bindCalls(lease: lease, changed: call, audio: audio)
+      return result
     }
   }
 

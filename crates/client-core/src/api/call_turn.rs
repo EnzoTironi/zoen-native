@@ -37,6 +37,7 @@ fn scope(
             reason: "Call owner or device changed".into(),
         });
     }
+    e.assert_call_peer_allowed(peer)?;
     let state = e.space_state(space)?;
     if state.kind != SpaceKind::Direct
         || state.privacy != Privacy::EndToEnd

@@ -7,13 +7,13 @@ private actor HandoffEvents {
     if let waiting { self.waiting = nil; waiting.resume(returning: json) }
     else { values.append(json) }
   }
-  func nextAcquire() async -> String {
+  func nextTicket(action: String = "acquire") async -> String {
     while true {
       let value: String
       if !values.isEmpty { value = values.removeFirst() }
       else { value = await withCheckedContinuation { waiting = $0 } }
       let event = try! JSONSerialization.jsonObject(with: Data(value.utf8)) as! [String: String]
-      if event["action"] == "acquire" { return event["ticket"]! }
+      if event["action"] == action { return event["ticket"]! }
     }
   }
 }
@@ -82,8 +82,18 @@ struct CallAudioFocusTests {
     let focus = ZoenCallAudioFocus()
     let events = HandoffEvents()
     let emit: @Sendable (String) -> Void = { json in Task { await events.emit(json) } }
+    try await focus.acquireNative()
+    let adoption = Task { try await focus.adopt(emit: emit) }
+    let nativeTicket = await events.nextTicket(action: "adopt")
+    await focus.answer(ticket: UUID().uuidString, success: true)
+    await focus.answer(ticket: nativeTicket, success: true)
+    try await adoption.value
+    await focus.release()
+    let releasedTicket = await events.nextTicket(action: "release")
+    precondition(releasedTicket == nativeTicket)
+
     let first = Task { try await focus.acquire(emit: emit) }
-    let old = await events.nextAcquire()
+    let old = await events.nextTicket()
     await focus.answer(ticket: UUID().uuidString, success: true)
     do { try await focus.acquire(emit: emit); fatalError("Wrong ticket admitted another owner") }
     catch ZoenCallFailure.unavailable {}
@@ -92,7 +102,7 @@ struct CallAudioFocusTests {
     await focus.release()
 
     let second = Task { try await focus.acquire(emit: emit) }
-    let newer = await events.nextAcquire()
+    let newer = await events.nextTicket()
     precondition(newer != old)
     await focus.answer(ticket: old, success: true)
     await focus.release()
@@ -100,7 +110,7 @@ struct CallAudioFocusTests {
     catch ZoenCallFailure.retired {}
 
     let rejected = Task { try await focus.acquire(emit: emit) }
-    let ticket = await events.nextAcquire()
+    let ticket = await events.nextTicket()
     await focus.answer(ticket: ticket, success: false)
     do { try await rejected.value; fatalError("Failed handoff was admitted") }
     catch ZoenCallFailure.unavailable {}
@@ -108,8 +118,8 @@ struct CallAudioFocusTests {
     do { try await focus.acquire(emit: emit); fatalError("Missing JS acknowledgment never expired") }
     catch ZoenCallFailure.unavailable {}
     let recovered = Task { try await focus.acquire(emit: emit) }
-    _ = await events.nextAcquire() // the expired ticket
-    let final = await events.nextAcquire()
+    _ = await events.nextTicket() // the expired ticket
+    let final = await events.nextTicket()
     await focus.answer(ticket: final, success: true)
     try await recovered.value
     await focus.release()

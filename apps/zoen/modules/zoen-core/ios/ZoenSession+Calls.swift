@@ -12,7 +12,10 @@ extension ZoenSession {
 
   func bindCalls(lease: ZoenModuleSessionLease, changed: @escaping @Sendable (String) -> Void, audio: @escaping @Sendable (String) -> Void) async {
     guard lease.isLive, !closing, !erasing, mode == "account" else { return }
-    if let borrow = callsBorrow, borrow.lease === lease, callBorrowIsCurrent(borrow) { return }
+    if let borrow = callsBorrow, borrow.lease === lease, callBorrowIsCurrent(borrow) {
+      callsChanged = changed; callsAudioChanged = audio
+      return
+    }
     if callsBorrow != nil { await stopCallsForClose() }
     callsChanged = changed; callsAudioChanged = audio; callsModuleLease = lease
     guard let core, let account = core.account(), account.unlocked, !account.setupPending else { return }
@@ -49,10 +52,27 @@ extension ZoenSession {
   }
   private func currentCall(_ borrow: CallBorrow, scope: ZoenCallScope) throws -> ZoenCallRecord {
     guard let call = try callRecords(borrow, space: scope.space).first(where: { $0.callId == scope.call && $0.invitation == scope.invitation }) else { throw SessionError.closed }
+    let peer = call.caller == borrow.identity ? call.callee : call.caller
+    guard try !borrow.engine.blockedPeople().contains(peer) else { throw SessionError.closed }
     return call
+  }
+
+  func hasNotificationCallCandidate() -> Bool {
+    guard notificationOnly, !closing, !erasing, let core, let account = core.account(),
+          account.unlocked, let blocked = try? core.blockedPeople() else { return false }
+    let now = Int64(Date().timeIntervalSince1970 * 1000)
+    return core.spaces().contains { space in
+      guard let calls = try? zoenCallDecode([ZoenCallRecord].self,
+        core.callNativeState(identityId: account.identityId, deviceId: account.deviceId, spaceId: space.id)) else { return false }
+      return calls.contains { $0.callee == account.identityId && $0.invitationConfirmed && $0.ringing(at: now) && !blocked.contains($0.caller) }
+    }
   }
   private func callAction(_ borrow: CallBorrow, space: String, call: ZoenCallRecord, action: String) async throws {
     guard callBorrowIsCurrent(borrow) else { throw SessionError.closed }
+    if action == "accept" {
+      let peer = call.caller == borrow.identity ? call.callee : call.caller
+      guard try !borrow.engine.blockedPeople().contains(peer) else { throw SessionError.closed }
+    }
     let command: [String: Any] = ["op": "respond_call", "expected_identity_id": borrow.identity, "expected_device_id": borrow.device,
       "space_id": space, "call_id": call.callId, "invitation": call.invitation, "action": action]
     let json = String(decoding: try JSONSerialization.data(withJSONObject: command), as: UTF8.self)
@@ -89,7 +109,8 @@ extension ZoenSession {
 
   private func prepareCallAudio(_ borrow: CallBorrow) async throws {
     guard callBorrowIsCurrent(borrow), let emit = callsAudioChanged else { throw SessionError.closed }
-    try await callAudioFocus.acquire(emit: emit)
+    if notificationOnly { try await callAudioFocus.acquireNative() }
+    else { try await callAudioFocus.acquire(emit: emit) }
     guard callBorrowIsCurrent(borrow) else { await callAudioFocus.release(); throw SessionError.closed }
   }
   func callAudioReply(ticket: String, success: Bool) async { await callAudioFocus.answer(ticket: ticket, success: success) }
@@ -125,6 +146,7 @@ extension ZoenSession {
     try await retireAbandonedCalls(borrow, space: space)
     guard let chat = borrow.engine.spaces().first(where: { $0.id == space }),
           let peer = chat.members.first(where: { $0.id != borrow.identity }) else { throw SessionError.closed }
+    guard try !borrow.engine.blockedPeople().contains(peer.id) else { throw SessionError.closed }
     requests += 1; defer { retireRequest() }
     // Refuse absent/invalid TURN configuration before ringing another person.
     _ = try await borrow.engine.callTurn(expectedIdentityId: borrow.identity, expectedDeviceId: borrow.device, spaceId: space, peerIdentityId: peer.id)
@@ -147,8 +169,9 @@ extension ZoenSession {
 
   private func presentCall(_ borrow: CallBorrow, space: String, call: ZoenCallRecord, outgoing: Bool) async throws {
     guard callCoordinator == nil, !callPresenting, callBorrowIsCurrent(borrow) else { throw SessionError.closed }
-    callPresenting = true; defer { callPresenting = false }
     let peerID = call.caller == borrow.identity ? call.callee : call.caller
+    guard try !borrow.engine.blockedPeople().contains(peerID) else { throw SessionError.closed }
+    callPresenting = true; defer { callPresenting = false }
     let name = (try? borrow.engine.getProfile(identityId: peerID).name) ?? "Call"
     let port = callPort(borrow, space: space, call: call)
     let coordinator = await MainActor.run { ZoenCallCoordinator(port: port, record: call, name: name) { [weak self] state in
@@ -164,7 +187,12 @@ extension ZoenSession {
     guard callsScope == scope else { return }
     let value: [String: String] = ["space_id": scope.space, "call_id": scope.call, "state": state]
     if let data = try? JSONSerialization.data(withJSONObject: value) { callsChanged?(String(decoding: data, as: UTF8.self)) }
-    if state == "ended" { callCoordinator = nil; callsScope = nil }
+    if state == "ended" {
+      callCoordinator = nil; callsScope = nil
+      if notificationOnly, let lease = callsModuleLease {
+        Task { await ZoenNativePushSessions.gate.releaseRetained(session: self, lease: lease) }
+      }
+    }
   }
 
   func callCanonicalChanges(_ spaces: [String]) async {
@@ -178,10 +206,11 @@ extension ZoenSession {
       return
     }
     let now = Int64(Date().timeIntervalSince1970 * 1000)
+    guard let blocked = try? borrow.engine.blockedPeople() else { return }
     for space in spaces {
       if !callStarting && !callPresenting { try? await retireAbandonedCalls(borrow, space: space) }
       guard callBorrowIsCurrent(borrow), let calls = try? callRecords(borrow, space: space) else { continue }
-      if let incoming = calls.last(where: { $0.callee == borrow.identity && $0.invitationConfirmed && $0.ringing(at: now) }) {
+      if let incoming = calls.last(where: { $0.callee == borrow.identity && $0.invitationConfirmed && $0.ringing(at: now) && !blocked.contains($0.caller) }) {
         try? await presentCall(borrow, space: space, call: incoming, outgoing: false)
         return
       }

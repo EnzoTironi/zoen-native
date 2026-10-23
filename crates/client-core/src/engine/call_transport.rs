@@ -145,6 +145,11 @@ impl Engine {
             .iter()
             .find(|c| c.call_id == id)
             .ok_or_else(|| not_found("Call"))?;
+        self.assert_call_peer_allowed(if call.caller == identity {
+            &call.callee
+        } else {
+            &call.caller
+        })?;
         let caller = call.caller == identity && call.caller_device == device;
         let callee = call.callee == identity && call.accepted_device.as_deref() == Some(device);
         if call.terminal() || !(caller || callee) {
@@ -168,6 +173,17 @@ impl Engine {
         signal: CallTransportSignal,
     ) -> R<()> {
         self.assert_call_owner(identity, device)?;
+        let call = self
+            .space_state(space)?
+            .calls
+            .iter()
+            .find(|call| call.call_id == signal.call_id)
+            .ok_or_else(|| not_found("Call"))?;
+        self.assert_call_peer_allowed(if call.caller == identity {
+            &call.callee
+        } else {
+            &call.caller
+        })?;
         // The stable signal ID makes an ambiguous bridge retry idempotent, including
         // an intent restored from the existing durable outbox after process death.
         if let Some(record) = self
