@@ -307,6 +307,12 @@ pub(super) enum Command {
         item_id: String,
         note: String,
     },
+    PageExportVersion {
+        space_id: String,
+        item_id: String,
+        version: u32,
+        observed_hash: String,
+    },
     PageMarkdown {
         item_id: String,
     },

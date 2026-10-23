@@ -62,6 +62,17 @@ impl Client {
                 encode(&self.page_apply_from(item_id, mutation_id, edit_context, order, changed)?)
             }
             PageCommit { item_id, note } => encode(&self.page_commit(item_id, note)?),
+            PageExportVersion {
+                space_id,
+                item_id,
+                version,
+                observed_hash,
+            } => encode(&self.lock().page_export_version(
+                &space_id,
+                &item_id,
+                version,
+                &observed_hash,
+            )?),
             PageMarkdown { item_id } => encode(&self.page_markdown(item_id)?),
             TogglePlanLine {
                 item_id,
