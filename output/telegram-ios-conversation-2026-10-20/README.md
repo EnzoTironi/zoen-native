@@ -1,5 +1,24 @@
 # Telegram iOS conversation integration
 
+## Historical receipt archive
+
+The seven machine QA receipts described below are no longer tracked. Their exact
+bytes, along with the original README, were preserved before untracking under
+`/Users/enzotironi/.codex/builds/zoen-owned-license-qa-hygiene-v411/original-records/`.
+The sibling `archive-manifest.json` records every path, Git blob, size, mode and
+SHA-256; its SHA-256 is
+`b594873c578c1a05b8e2098cd48b0834a30a4be875d552a5b5df5da37d97465c`.
+The same original files remain recoverable from the
+[merged Git snapshot](https://github.com/EnzoTironi/zoen-native/tree/f7d716158c249ab2c8cb074cacdad073d95886ac/output/telegram-ios-conversation-2026-10-20).
+
+The descriptions and PASS/PENDING boundaries below are historical evidence from
+20 October 2026. Archiving does not rerun those checks or establish that the
+temporary logs, binaries and native outputs referenced inside each receipt remain
+available. This README and the separate Telegram feature-matrix catalog remain
+tracked references.
+
+## Recorded integration
+
 The reference is Telegram-iOS `f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838`.
 The [implementation map](../../docs/product/telegram-ios-conversation-implementation.md)
 distinguishes applied source contracts from native acceptance.
