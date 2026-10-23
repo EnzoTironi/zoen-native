@@ -237,3 +237,75 @@ fn revoked_baseline_survives_cold_replay_of_the_same_signed_logs() {
     drop(c);
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+fn app_grant(
+    c: &Client,
+    space: &str,
+    item: &str,
+    level: TrustLevel,
+    expiry: Option<i64>,
+) -> String {
+    let mut e = c.lock();
+    let owner = e.me_id().unwrap();
+    let id = types::new_id("app_trust_test");
+    e.append(
+        space,
+        &owner,
+        EventBody::GrantIssued {
+            grant: Grant {
+                id: id.clone(),
+                grantor: owner.clone(),
+                grantee: Some(format!("app:{item}")),
+                scope: GrantScope::Item(item.into()),
+                capability: Capability::Trust(level),
+                expires_at_ms: expiry,
+            },
+        },
+    )
+    .unwrap();
+    id
+}
+#[test]
+fn invalid_newest_app_baseline_blocks_mutation_until_explicit_regrant() {
+    for expired in [false, true] {
+        let c = seeded();
+        let (_, space) = context(&c);
+        let item = c
+            .install_app(
+                space.clone(),
+                "pet".into(),
+                r#"{"name":"Trust test"}"#.into(),
+            )
+            .unwrap();
+        assert_eq!(c.lock().app_trust(&item.id), TrustLevel::Act);
+        let lower = app_grant(
+            &c,
+            &space,
+            &item.id,
+            TrustLevel::Suggest,
+            expired.then(|| crate::engine::now_ms() - 1),
+        );
+        if !expired {
+            revoke(&c, &space, &lower);
+        }
+        let before = c.item(item.id.clone()).unwrap().version;
+        assert_eq!(c.lock().app_trust(&item.id), TrustLevel::Listen);
+        let denied = c
+            .app_call_tool(item.id.clone(), "pet_feed".into(), "{}".into(), true)
+            .unwrap();
+        assert_eq!(
+            denied.status,
+            AppCallStatus::Denied,
+            "confirmation cannot regrant an invalid baseline"
+        );
+        assert_eq!(c.item(item.id.clone()).unwrap().version, before);
+        app_grant(&c, &space, &item.id, TrustLevel::Act, None);
+        assert_eq!(
+            c.app_call_tool(item.id.clone(), "pet_feed".into(), "{}".into(), false)
+                .unwrap()
+                .status,
+            AppCallStatus::Done
+        );
+        assert!(c.item(item.id).unwrap().version > before);
+    }
+}

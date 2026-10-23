@@ -59,21 +59,11 @@ impl State {
         if p.schema == 2 {
             return crate::agent_pages::approvals::access(self, p);
         }
-        self.grants
-            .iter()
-            .rev()
-            .filter(|g| {
-                !g.revoked
-                    && g.grant.scope == GrantScope::Item(p.artifact.clone())
-                    && g.grant.grantee.as_deref() == Some(format!("app:{}", p.artifact).as_str())
-                    && g.grant.expires_at_ms.is_none_or(|expiry| expiry > at)
-            })
-            .find_map(|g| {
-                if let Capability::Trust(level) = g.grant.capability {
-                    Some(level)
-                } else {
-                    None
-                }
+        self.app_trust_baseline(&p.artifact)
+            .filter(|g| !g.revoked && g.grant.expires_at_ms.is_none_or(|expiry| expiry > at))
+            .and_then(|g| match g.grant.capability {
+                Capability::Trust(level) => Some(level),
+                _ => None,
             })
             .is_some_and(|level| level >= TrustLevel::Act)
     }
