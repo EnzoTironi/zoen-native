@@ -1,8 +1,14 @@
 use super::*;
-use zoen_models::{ImageBackground, ImageQuality, ImageRequest, ImageSize};
+use zoen_models::{image_response_budget, ImageBackground, ImageQuality, ImageRequest, ImageSize};
 
 #[tokio::test]
 async fn cheap_chat_quota_cannot_admit_images_or_a_chat_label_with_image_output() {
+    let max_image_bytes = 1000;
+    let max_response_bytes = usize::try_from(
+        image_response_budget(max_image_bytes)
+            .expect("bounded image fixture has a response budget"),
+    )
+    .expect("bounded image fixture response budget fits usize");
     let gateway = ModelGateway::new(GatewayConfig {
         base_url: "http://127.0.0.1:1/v1".into(),
         endpoint_policy: EndpointPolicy::LoopbackFixture,
@@ -11,7 +17,7 @@ async fn cheap_chat_quota_cannot_admit_images_or_a_chat_label_with_image_output(
         api_key: "fixture-only".into(),
         limits: ModelLimits {
             max_request_bytes: 32768,
-            max_response_bytes: 65536,
+            max_response_bytes,
             max_output_tokens: 100,
             timeout: Duration::from_secs(2),
             connect_timeout: Duration::from_secs(1),
@@ -36,7 +42,7 @@ async fn cheap_chat_quota_cannot_admit_images_or_a_chat_label_with_image_output(
             size: ImageSize::Square,
             quality: ImageQuality::Low,
             background: ImageBackground::Opaque,
-            max_image_bytes: 1000,
+            max_image_bytes,
         })
         .unwrap();
     let authority = CheapTierAuthority::new(1);
