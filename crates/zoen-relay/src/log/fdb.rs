@@ -83,6 +83,7 @@ use super::{
     InviteInfo, LogStore, Reject, Sequencing, StoreError,
 };
 
+mod invite_routing;
 mod runtime;
 pub use runtime::{RuntimeHead, RuntimeSource, RuntimeSourceBatch};
 

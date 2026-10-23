@@ -219,14 +219,16 @@ impl LogStore for FdbLog {
             .clone()
             .try_acquire_owned()
             .map_err(|_| "relay routing capacity reached".to_string())?;
-        tokio::time::timeout(std::time::Duration::from_secs(6), async {
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(6);
+        tokio::time::timeout_at(deadline, async {
             let code = random_code();
             for attempt in 0..2 {
-                let fence = self
-                    .owner
-                    .resolve(space, || self.forwarding_available())
-                    .await
-                    .map_err(|r| r.reason)?;
+                let fence = invite_routing::resolve(
+                    deadline,
+                    || self.owner.resolve(space, || self.forwarding_available()),
+                    || self.forwarding_available(),
+                )
+                .await?;
                 let result = if fence.owner == self.owner.node {
                     self.create_invite_fenced(who, space, role, max_uses, ttl_secs, &code, fence)
                         .await

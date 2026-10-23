@@ -66,6 +66,11 @@ the existing transaction and head check.
 Invite creation uses the same fence. A forwarded retry keeps the same random
 invite code and returns the existing expiry rather than minting a second
 capability. Membership checks still occur in its FoundationDB transaction.
+Retryable owner resolution before an invite effect waits with 25–250 ms backoff
+inside the original six-second routing deadline. It resolves a fresh fence and
+checks forwarding availability each time; permanent rejection stops immediately.
+This does not consume or expand the two effect attempts, mint another code,
+restart the deadline, or change lease placement and mutation authorization.
 
 ## Forwarding and bounds
 
