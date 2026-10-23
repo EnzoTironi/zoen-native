@@ -1,6 +1,8 @@
 //! Explicitly reviewed Image tasks share native custody, fences and finance.
 mod output;
 mod storage;
+#[cfg(test)]
+pub(crate) mod testing;
 use super::*;
 use crate::{image_tasks::ImageTask, pricing::BoundPrice, Binding, ImagePriceProfile};
 use client_core::runtime_core::ImageTaskFacts;

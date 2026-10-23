@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use serde_json::json;
 use zoen_models::*;
 
-fn profile() -> ImagePriceProfile {
+pub(super) fn profile() -> ImagePriceProfile {
     ImagePriceProfile {
         version: "image-fixture-price-v1".into(),
         endpoint: "https://api.openai.com/v1/images/generations".into(),
@@ -102,7 +102,7 @@ async fn image_task(w: &World) -> (VerifiedStep, ImageTask) {
     task.validate().unwrap();
     (step, task)
 }
-fn result(task: &ImageTask, known: bool) -> ImageAttemptResult {
+pub(super) fn result(task: &ImageTask, known: bool) -> ImageAttemptResult {
     let usage = if known {
         json!({"input_tokens":5,"output_tokens":2,"total_tokens":7,"input_tokens_details":{"text_tokens":2,"image_tokens":3},"output_tokens_details":{"text_tokens":1,"image_tokens":1}})
     } else {
@@ -146,11 +146,11 @@ fn result(task: &ImageTask, known: bool) -> ImageAttemptResult {
         },
     }
 }
-struct Provider {
-    task: ImageTask,
-    result: ImageAttemptResult,
-    sends: std::sync::atomic::AtomicUsize,
-    close: Option<PgPool>,
+pub(super) struct Provider {
+    pub(super) task: ImageTask,
+    pub(super) result: ImageAttemptResult,
+    pub(super) sends: std::sync::atomic::AtomicUsize,
+    pub(super) close: Option<PgPool>,
 }
 #[async_trait]
 impl ImageAttemptAdapter for Provider {

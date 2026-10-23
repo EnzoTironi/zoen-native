@@ -8077,6 +8077,7 @@ name = "zoen-runtime"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "chacha20poly1305 0.11.0",
  "chrono",
  "client-core",
@@ -8085,6 +8086,7 @@ dependencies = [
  "getrandom 0.2.17",
  "hex",
  "mls",
+ "png",
  "protocol",
  "serde",
  "serde_json",

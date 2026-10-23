@@ -49,7 +49,8 @@ fn approved() -> (Fixture, String, String) {
         .unwrap()
         .client_id
         .clone();
-    let (request, envelope, _) = f.core.stage_image_task(SPACE, &source, input()).unwrap();
+    let (review, envelope, _) = f.core.stage_image_task(SPACE, &source, input()).unwrap();
+    let request = review.id;
     assert!(matches!(
         f.core.image_task(&request, crate::engine::now_ms()),
         Err(NativeError::Permission)

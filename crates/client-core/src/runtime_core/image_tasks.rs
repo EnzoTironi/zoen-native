@@ -56,7 +56,7 @@ impl DeviceCore {
         space: &str,
         source: &str,
         input: ImageTaskInput,
-    ) -> Result<(String, protocol::Envelope, NativeImage)> {
+    ) -> Result<(crate::AgentRequestDto, protocol::Envelope, NativeImage)> {
         let result = (|| {
             if !self.usable
                 || self
@@ -90,7 +90,7 @@ impl DeviceCore {
                 return Err(NativeError::Bounds);
             }
             self.retain_image_task_reference(&request.id, &event, envelope)?;
-            Ok((request.id, envelope.clone(), self.image()?))
+            Ok((request, envelope.clone(), self.image()?))
         })();
         if result.is_err() {
             self.usable = false;

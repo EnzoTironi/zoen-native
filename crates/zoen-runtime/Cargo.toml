@@ -29,6 +29,8 @@ foundationdb = { version = "0.11", default-features = false, features = ["fdb-7_
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 
 [dev-dependencies]
+png = "0.18.1"
+base64 = "0.22.1"
 mls.workspace = true
 store.workspace = true
 tokio = { version = "1", features = ["net", "io-util"] }
