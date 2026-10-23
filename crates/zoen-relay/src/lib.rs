@@ -29,6 +29,7 @@ pub mod push;
 pub mod receipts;
 pub mod recent;
 pub mod session;
+pub mod sites;
 pub mod telemetry;
 pub mod transfer;
 pub mod turn;

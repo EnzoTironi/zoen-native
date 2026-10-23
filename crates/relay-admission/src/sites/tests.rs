@@ -209,8 +209,5 @@ fn unpublish_and_rollback_are_new_signed_compare_and_swap_actions() {
     rollback.mutation.request_id = format!("pub_{}", "f".repeat(32));
     sign(&device, &mut rollback);
     assert_eq!(authorize(&rollback, AUDIENCE, NOW), Ok(()));
-    assert_eq!(
-        verify_content(&rollback, Some(HTML)).unwrap().is_some(),
-        true
-    );
+    assert!(verify_content(&rollback, Some(HTML)).unwrap().is_some());
 }
