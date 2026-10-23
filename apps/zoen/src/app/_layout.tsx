@@ -85,6 +85,17 @@ function Navigation() {
                 <Stack.Screen name="(tabs)" options={{ title: '' }} />
                 <Stack.Screen name="chat/[id]" options={{ title: '' }} />
                 <Stack.Screen
+                  name="owner-budget/[id]"
+                  options={{
+                    presentation: process.env.EXPO_OS === 'web' ? 'modal' : 'formSheet',
+                    title: t('ownerPolicy.title'),
+                    headerTransparent: false,
+                    sheetAllowedDetents: [0.75, 1],
+                    sheetGrabberVisible: true,
+                    sheetExpandsWhenScrolledToEdge: true,
+                  }}
+                />
+                <Stack.Screen
                   name="chat-attachment/[id]"
                   options={{
                     // All attachment categories share this presentation from their

@@ -293,6 +293,16 @@ export function RequestCard({
         </Text>
       ) : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+        {!compact && image && pending && request.agent.is_mine ? (
+          <NativeButton
+            secondary
+            label={t('ownerPolicy.title')}
+            disabled={disabled || busy || toolExpired}
+            onPress={() =>
+              router.push({ pathname: '/owner-budget/[id]', params: { id: request.id } })
+            }
+          />
+        ) : null}
         {compact ? (
           <NativeButton
             secondary

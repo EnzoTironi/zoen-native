@@ -13,7 +13,11 @@ export type OwnerPolicyReviewPhase =
   | 'pending'
   | 'installed'
   | 'refused'
-  | 'delivery_failed';
+  | 'delivery_failed'
+  | 'historical'
+  | 'superseded'
+  | 'expired'
+  | 'disabled';
 
 /** A confirmed submission stays pending until the actual Runtime receipt arrives. */
 export function OwnerPolicyReview({
@@ -43,7 +47,15 @@ export function OwnerPolicyReview({
           ? t('ownerPolicy.refused')
           : phase === 'delivery_failed'
             ? t('ownerPolicy.deliveryFailed')
-            : null;
+            : phase === 'historical'
+              ? t('ownerPolicy.historical')
+              : phase === 'superseded'
+                ? t('ownerPolicy.superseded')
+                : phase === 'expired'
+                  ? t('ownerPolicy.expired')
+                  : phase === 'disabled'
+                    ? t('ownerPolicy.disabled')
+                    : null;
   return (
     <Surface>
       <Text
@@ -80,7 +92,7 @@ export function OwnerPolicyReview({
               </Text>
             </View>
           ))}
-          {!review.enabled ? (
+          {!review.enabled && phase !== 'disabled' ? (
             <Text selectable style={{ color: colors.danger }}>
               {t('ownerPolicy.disabled')}
             </Text>
