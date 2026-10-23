@@ -103,6 +103,7 @@ impl Execution {
             .await?;
         admission.check(&scope)?;
         let trx = self.transaction().await?;
+        runtime.image_output_scope()?.check_in(self, &trx).await?;
         Self::lease(
             &trx,
             &self.native_lease(&record.original.context.principal),

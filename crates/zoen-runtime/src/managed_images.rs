@@ -2,6 +2,8 @@
 //! permit: existing one-shot claims and native output authority remain required.
 mod publication;
 mod recovery;
+mod scope;
+pub(crate) use scope::ImageAnchor;
 mod setup;
 mod stores;
 use crate::{finance::FreshClaim, Binding, RuntimeAuthority, RuntimeError};
@@ -13,6 +15,17 @@ use tokio::sync::OwnedMutexGuard;
 pub(crate) struct ManagedImages {
     anchor: AnchorWriter,
     deployment: Deployment,
+}
+
+#[cfg(test)]
+impl ManagedImages {
+    pub(crate) fn activation_evidence(&self) -> (Deployment, Option<Prepared>, Checkpoint) {
+        (
+            self.deployment.clone(),
+            self.anchor.pending().unwrap(),
+            self.anchor.reader().checkpoint().unwrap(),
+        )
+    }
 }
 
 /// An annotation of an existing linear claim, not a financial capability.
@@ -69,7 +82,7 @@ pub(crate) struct Transition {
     checkpoint: DispatchCheckpoint,
 }
 
-fn error(error: AnchorError) -> RuntimeError {
+pub(crate) fn error(error: AnchorError) -> RuntimeError {
     match error {
         AnchorError::Invalid => RuntimeError::InvalidBinding,
         AnchorError::Unavailable | AnchorError::Busy => RuntimeError::Unavailable,

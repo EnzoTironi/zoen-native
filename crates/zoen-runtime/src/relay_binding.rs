@@ -62,7 +62,7 @@ impl RuntimeAuthority {
         .map(Some)
     }
 
-    async fn bound_output_expectation(
+    pub(crate) async fn bound_output_expectation(
         &self,
         relay: &str,
         identity: &str,
@@ -111,7 +111,7 @@ impl RuntimeAuthority {
         .ok_or(RuntimeError::InvalidBinding)
     }
 
-    async fn connect_output_expectation(
+    pub(crate) async fn connect_output_expectation(
         url: &str,
         relay: &str,
         actor: Author,

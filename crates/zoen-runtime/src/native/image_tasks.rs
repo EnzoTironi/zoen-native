@@ -102,6 +102,8 @@ impl NativeCustody {
         price: &ImagePriceProfile,
         gateway: &ModelGateway,
     ) -> Result<String, RuntimeError> {
+        runtime.image_continuity()?;
+        runtime.image_output_scope()?.check_device(agent, device)?;
         let credential = self.credential(agent, device)?;
         let principal = credential.principal();
         runtime
@@ -261,6 +263,9 @@ impl NativeCustody {
             .read_image_task(run, &runtime.custody)
             .await?;
         let ctx = &record.task.request.context;
+        runtime
+            .image_output_scope()?
+            .check_device(&ctx.agent, &ctx.device)?;
         let credential = self.credential(&ctx.agent, &ctx.device)?;
         let principal = credential.principal();
         if record.original.context.principal != principal {

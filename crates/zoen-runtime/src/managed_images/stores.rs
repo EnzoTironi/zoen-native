@@ -31,6 +31,29 @@ impl RuntimeAuthority {
 }
 
 impl PublishCheckpoint {
+    pub(crate) async fn recover_sql(
+        &self,
+        transaction: &mut Transaction<'_, Postgres>,
+    ) -> Result<(), RuntimeError> {
+        let row: Option<(i64, i64, String)> = sqlx::query_as("SELECT generation,sequence,digest FROM runtime_image_checkpoint WHERE singleton AND namespace=$1 AND witness=$2 AND agent=$3 AND device=$4 FOR UPDATE")
+            .bind(&self.deployment.namespace).bind(&self.deployment.witness)
+            .bind(&self.deployment.agent).bind(&self.deployment.device)
+            .fetch_optional(&mut **transaction).await?;
+        let (generation, sequence, digest) = row.ok_or(RuntimeError::RestoreUnreconciled)?;
+        let observed = Checkpoint {
+            generation: u64::try_from(generation).map_err(|_| RuntimeError::InvalidBinding)?,
+            sequence: u64::try_from(sequence).map_err(|_| RuntimeError::InvalidBinding)?,
+            digest,
+        };
+        if observed == self.prepared.previous {
+            return self.write_sql(transaction).await;
+        }
+        if observed != self.prepared.next {
+            return Err(RuntimeError::RestoreUnreconciled);
+        }
+        Ok(())
+    }
+
     pub(crate) async fn write_fdb(
         &self,
         execution: &crate::execution::Execution,

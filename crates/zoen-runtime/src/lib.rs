@@ -191,6 +191,7 @@ pub struct RuntimeAuthority {
     // No production setter: an incarnation UUID does not prove absence after restore.
     continuity: Arc<AtomicBool>,
     managed_images: Option<Arc<tokio::sync::Mutex<managed_images::ManagedImages>>>,
+    image_output: Option<native::ManagedImageOutput>,
     #[cfg(test)]
     fault: std::sync::atomic::AtomicU8,
     #[cfg(test)]
@@ -236,6 +237,7 @@ impl RuntimeAuthority {
             price: config.price,
             continuity: Arc::new(AtomicBool::new(false)),
             managed_images: None,
+            image_output: None,
             #[cfg(test)]
             fault: std::sync::atomic::AtomicU8::new(0),
             #[cfg(test)]

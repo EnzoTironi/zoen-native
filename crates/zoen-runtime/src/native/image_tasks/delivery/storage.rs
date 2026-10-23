@@ -4,7 +4,7 @@ use crate::execution::Execution;
 
 impl Delivery<'_> {
     pub(super) async fn snapshot(&self) -> Result<foundationdb::Transaction, RuntimeError> {
-        self.runtime.continuity()?;
+        self.runtime.image_continuity()?;
         let execution = &self.runtime.execution;
         let trx = execution.transaction().await?;
         self.capability.check_in(execution, &trx).await?;
@@ -118,7 +118,7 @@ impl Delivery<'_> {
             &bytes,
         );
         admission.consume(&scope)?;
-        self.runtime.continuity()?;
+        self.runtime.image_continuity()?;
         trx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
         self.current = root;
         self.publication_digest = hash(&bytes);

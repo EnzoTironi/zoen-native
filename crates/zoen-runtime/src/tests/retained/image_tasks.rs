@@ -258,7 +258,30 @@ pub(in crate::tests) async fn prepare(reviewed: ReviewedJourney) -> PreparedJour
     )
     .await;
     assert_eq!(provider.sends.load(Ordering::SeqCst), 1);
+    runtime.fault.store(67, Ordering::SeqCst);
+    assert_eq!(
+        proof::try_output(runtime, &run, &model).await.unwrap_err(),
+        RuntimeError::Unavailable
+    );
+    runtime.fault.store(0, Ordering::SeqCst);
+    let activation = runtime.pending_image_activation().await;
+    runtime.refuse_unproven_image_activation().await;
+    assert_eq!(provider.sends.load(Ordering::SeqCst), 1);
+    output::cold(&mut fixture).await;
+    fixture
+        .world
+        .runtime
+        .assert_image_activation_recovered(&activation)
+        .await;
+    assert_eq!(
+        proof::transport_original(&fixture.world.runtime, &run)
+            .await
+            .0,
+        activation.envelope
+    );
+    let runtime = &fixture.world.runtime;
     let output = proof::output(runtime, &run, &model).await;
+    println!("native image FileDoc activation: known SQL commit before FDB, cold exact capsule/record/wire recovery, one original provider/claim/settlement PASS");
     assert_eq!(output.sha256, sha256);
     assert_eq!(proof::output(runtime, &run, &model).await, output);
     assert_eq!(

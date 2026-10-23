@@ -4,7 +4,7 @@ use crate::execution::Execution;
 
 impl Staging<'_> {
     pub(super) async fn snapshot(&self) -> Result<foundationdb::Transaction, RuntimeError> {
-        self.runtime.continuity()?;
+        self.runtime.image_continuity()?;
         let execution = &self.runtime.execution;
         let trx = execution.transaction().await?;
         self.capability.check_in(execution, &trx).await?;
@@ -85,6 +85,33 @@ impl Staging<'_> {
                     .map_err(|_| RuntimeError::InvalidBinding)?,
             ),
         };
+        if let Some(transition) = &transition {
+            let transaction = self.snapshot().await?;
+            let bytes = bytes.as_ref().ok_or(RuntimeError::InvalidBinding)?;
+            let record = super::super::super::image_activation::ImageActivationRecord {
+                effect: super::super::super::image_activation::ImageActivationEffect::Review {
+                    key: self.key.clone(),
+                },
+                prior: self.prior.clone(),
+                bytes,
+                envelope: self.envelope.as_ref().ok_or(RuntimeError::InvalidBinding)?,
+                head: self.head.clone(),
+                expires: None,
+            };
+            self.runtime
+                .retain_image_activation(
+                    &transaction,
+                    transition.annotation(),
+                    &staged,
+                    self.fence,
+                    record,
+                )
+                .await?;
+            transaction
+                .commit()
+                .await
+                .map_err(|_| RuntimeError::Unavailable)?;
+        }
         let admission = self
             .runtime
             .finance
@@ -99,6 +126,13 @@ impl Staging<'_> {
             .await?
             .authorize(scope.clone())
             .await?;
+        #[cfg(test)]
+        if transition.is_some()
+            && self.runtime.fault.load(std::sync::atomic::Ordering::SeqCst) == 66
+        {
+            // Real known SQL commit; suppress the subsequent FDB activation.
+            return Err(RuntimeError::Unavailable);
+        }
         admission.check(&scope)?;
         let trx = self.snapshot().await?;
         if let Some(accepted) = self
@@ -129,9 +163,11 @@ impl Staging<'_> {
                 .annotation()
                 .write_fdb(&self.runtime.execution, &trx)
                 .await?;
+            self.runtime
+                .clear_image_activation(&trx, transition.annotation());
         }
         admission.consume(&scope)?;
-        self.runtime.continuity()?;
+        self.runtime.image_continuity()?;
         trx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
         if let Some(transition) = transition {
             transition.finish(self.runtime).await?;
