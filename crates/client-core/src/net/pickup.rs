@@ -1,4 +1,4 @@
-//! Cancelable one-time link mailbox transport under one deadline.
+//! Cancelable immutable pairing-mailbox transport under one deadline.
 
 use super::*;
 

@@ -1,4 +1,4 @@
-//! Bounded expiry maintenance must not affect live or one-time link boxes.
+//! Bounded expiry maintenance must not affect live immutable pairing boxes.
 use sqlx::{Connection, PgConnection, PgPool};
 use zoen_relay::db;
 
@@ -45,15 +45,19 @@ async fn publication_bounds_cleanup_and_reuses_expired_id_beyond_batch() {
         "only 128 old boxes and the requested expired id removed"
     );
     assert_eq!(
-        db::take_link_box(&pool, "reuse").await.unwrap(),
+        db::read_link_box(&pool, "reuse").await.unwrap(),
         Some(vec![3])
     );
-    assert_eq!(db::take_link_box(&pool, "reuse").await.unwrap(), None);
+    assert_eq!(
+        db::read_link_box(&pool, "reuse").await.unwrap(),
+        Some(vec![3]),
+        "fetching cannot consume the only retained box"
+    );
     let mut tx = pool.begin().await.unwrap();
     assert!(!db::put_link_box(&mut tx, "live", &[9]).await.unwrap());
     tx.commit().await.unwrap();
     assert_eq!(
-        db::take_link_box(&pool, "live").await.unwrap(),
+        db::read_link_box(&pool, "live").await.unwrap(),
         Some(vec![2])
     );
     pool.close().await;
