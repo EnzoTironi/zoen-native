@@ -2,7 +2,7 @@
 //! proves neither cross-store restore continuity nor permission for an effect.
 use client_core::relay_output_transport::RelayOutputTransport;
 use event_log::Author;
-use protocol::runtime_binding::{Expectation, Request};
+use protocol::runtime_binding::{Expectation, ManagedCheckpoint, Request};
 
 use crate::{RuntimeAuthority, RuntimeError};
 
@@ -13,6 +13,62 @@ impl RuntimeAuthority {
         relay: &str,
         actor: Author,
     ) -> Result<RelayOutputTransport, RuntimeError> {
+        let expected = self
+            .bound_output_expectation(relay, &actor.identity, &actor.key.id(), None)
+            .await?;
+        Self::connect_output_expectation(url, relay, actor, expected).await
+    }
+
+    pub(crate) async fn connect_bound_image_output(
+        &self,
+        url: &str,
+        relay: &str,
+        actor: Author,
+        envelope: &protocol::Envelope,
+        checkpoint: Option<&relay_admission::managed_images::Checkpoint>,
+    ) -> Result<RelayOutputTransport, RuntimeError> {
+        let Some(expected) = self
+            .image_publish_expectation(relay, envelope, checkpoint)
+            .await?
+        else {
+            return self.connect_bound_output(url, relay, actor).await;
+        };
+        Self::connect_output_expectation(url, relay, actor, expected).await
+    }
+
+    pub(crate) async fn image_publish_expectation(
+        &self,
+        relay: &str,
+        envelope: &protocol::Envelope,
+        checkpoint: Option<&relay_admission::managed_images::Checkpoint>,
+    ) -> Result<Option<Expectation>, RuntimeError> {
+        self.validate_image_publish_checkpoint(envelope, checkpoint)
+            .await?;
+        let Some(checkpoint) = checkpoint else {
+            return Ok(None);
+        };
+        let managed = ManagedCheckpoint {
+            generation: checkpoint.generation,
+            sequence: checkpoint.sequence,
+            digest: checkpoint.digest.clone(),
+        };
+        self.bound_output_expectation(
+            relay,
+            envelope.author(),
+            envelope.device().ok_or(RuntimeError::InvalidBinding)?,
+            Some(managed),
+        )
+        .await
+        .map(Some)
+    }
+
+    async fn bound_output_expectation(
+        &self,
+        relay: &str,
+        identity: &str,
+        device: &str,
+        managed: Option<ManagedCheckpoint>,
+    ) -> Result<Expectation, RuntimeError> {
         let source = self
             .execution
             .source
@@ -40,18 +96,33 @@ impl RuntimeAuthority {
         }
         let mut nonce = vec![0u8; 32];
         getrandom::getrandom(&mut nonce).map_err(|_| RuntimeError::Unavailable)?;
-        let expected = Expectation::new(
+        Expectation::new(
             &witness,
-            Request { namespace, nonce },
+            Request {
+                namespace,
+                nonce,
+                managed,
+            },
             source.cell(),
             relay,
-            &actor.identity,
-            &actor.key.id(),
+            identity,
+            device,
         )
-        .ok_or(RuntimeError::InvalidBinding)?;
+        .ok_or(RuntimeError::InvalidBinding)
+    }
+
+    async fn connect_output_expectation(
+        url: &str,
+        relay: &str,
+        actor: Author,
+        expected: Expectation,
+    ) -> Result<RelayOutputTransport, RuntimeError> {
         RelayOutputTransport::connect_bound(url, relay, actor, expected)
             .await
             .map_err(|error| match error {
+                client_core::relay_output_transport::RelayOutputError::Unknown => {
+                    RuntimeError::RestoreUnreconciled
+                }
                 client_core::relay_output_transport::RelayOutputError::Invalid => {
                     RuntimeError::InvalidBinding
                 }
