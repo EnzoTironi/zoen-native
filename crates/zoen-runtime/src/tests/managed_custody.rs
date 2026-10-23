@@ -127,24 +127,20 @@ pub(super) async fn run() {
         runtime.initialize_native_device(agent, device),
         contender.initialize_native_device(agent, device)
     );
-    let successful: Vec<_> = [&one, &two]
-        .into_iter()
-        .filter_map(|r| r.as_ref().ok())
-        .collect();
-    assert!(
-        !successful.is_empty(),
-        "neither initializer succeeded: {one:?}, {two:?}"
-    );
-    let first = successful[0].clone();
-    for result in [one, two] {
-        match result {
-            Ok(inspection) => assert_eq!(inspection, first),
-            Err(error) => assert!(matches!(
+    let first = match (one, two) {
+        (Ok(first), Ok(second)) => {
+            assert_eq!(first, second);
+            first
+        }
+        (Ok(first), Err(error)) | (Err(error), Ok(first)) => {
+            assert!(matches!(
                 error,
                 RuntimeError::Denied | RuntimeError::Unavailable
-            )),
+            ));
+            first
         }
-    }
+        (Err(one), Err(two)) => panic!("neither initializer succeeded: {one:?}, {two:?}"),
+    };
     contender.finance.pool.close().await;
     drop(contender);
     assert_eq!(first.generation, 1);
