@@ -163,7 +163,7 @@ fn image_profile_and_quote_digests_bind_price_request_scope_and_exact_specificat
     changed!(output_text_units_per_million, 23);
     changed!(output_image_units_per_million, 29);
     changed!(max_request_bytes, 32767);
-    changed!(max_response_bytes, 65535);
+    changed!(max_response_bytes, p.max_response_bytes - 1);
     for i in 0..5 {
         let mut x = p.clone();
         match i {
