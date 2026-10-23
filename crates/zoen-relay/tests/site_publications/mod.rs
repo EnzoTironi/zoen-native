@@ -21,19 +21,20 @@ pub async fn register(
     pool: &PgPool,
     root: &Signer,
     kind: IdentityKind,
-    owner: Option<String>,
+    owner: Option<&Author>,
 ) -> Author {
     let author = Author::device(root, Signer::generate());
     let identity = Identity {
         id: root.id(),
         kind,
-        owner,
+        owner: owner.map(|author| author.identity.clone()),
         name: "Site fixture".into(),
         handle: format!("site_{}", &root.id()[..12]),
         tint_hex: "#123456".into(),
         glyph: None,
         bio: String::new(),
-        owner_proof: None,
+        owner_proof: owner
+            .map(|author| Box::new(event_log::agent_owner::authorize(author, &root.id()).unwrap())),
     };
     let mut tx = pool.begin().await.unwrap();
     db::register(
@@ -235,7 +236,7 @@ pub async fn exercise(pool: &PgPool, directory: &Path) {
         pool,
         &Signer::generate(),
         IdentityKind::Agent,
-        Some(owner.id()),
+        Some(&author),
     )
     .await;
     let delegated = request(&agent, &types::new_secret_id("site"), None, FIRST, 1);
