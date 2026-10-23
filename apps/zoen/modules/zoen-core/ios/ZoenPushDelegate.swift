@@ -46,8 +46,8 @@ private final class ZoenPushSystemWork {
   }
 
   func start() {
-    Self.logger.notice("accepted")
     let deadline = ContinuousClock.now.advanced(by: .seconds(8))
+    Self.logger.notice("accepted")
     identifier = application.beginBackgroundTask(withName: "Zoen content-free sync") { [weak self] in
       Task { @MainActor in self?.finish(.failed) }
     }
