@@ -10,8 +10,69 @@ impl<'a> SpaceTools<'a> {
         serving: &'a str,
         source: &'a str,
     ) -> Self {
+        Self::discover(
+            e,
+            &cx.journal,
+            cx.deckcraft.as_ref(),
+            space,
+            serving,
+            source,
+        )
+    }
+
+    pub(super) fn fresh(&self) -> Self {
+        let mut current = Self::discover(
+            self.e,
+            self.journal,
+            self.deckcraft,
+            &self.space,
+            self.serving,
+            self.source,
+        );
+        current.selection = self.selection;
+        current
+    }
+
+    fn discover(
+        e: &'a Arc<Client>,
+        journal: &'a Path,
+        deckcraft: Option<&'a Arc<zoen_agentd::deckcraft::DeckcraftWorker>>,
+        space: &str,
+        serving: &'a str,
+        source: &'a str,
+    ) -> Self {
         let mut names: Vec<(ToolDef, String, String)> = Vec::new();
+        if deckcraft.is_some() && e.can_create_agent_app(space, source, serving) {
+            if let Some(definition) = client_core::agent_app_creation::definition(space) {
+                let definition: ToolDef =
+                    serde_json::from_value(definition).expect("native creation schema");
+                names.push((
+                    definition,
+                    space.into(),
+                    client_core::agent_app_creation::TOOL.into(),
+                ));
+            }
+        }
+        let binary_items: std::collections::BTreeSet<_> = e
+            .items()
+            .into_iter()
+            .filter(|item| {
+                item.space_id == space
+                    && item
+                        .app
+                        .as_ref()
+                        .is_some_and(|app| app.app_id == "deckcraft")
+            })
+            .map(|item| item.id)
+            .collect();
         for t in e.agent_tools(space) {
+            // Artifact transport is for its managed App UI, never a model tool.
+            if binary_items.contains(&t.item_id) {
+                continue;
+            }
+            if names.len() >= 64 {
+                break;
+            }
             // Two mini-apps with the same tool: the second is `name_2`, and so on.
             let mut name = t.name.clone();
             let mut n = 1;
@@ -27,7 +88,7 @@ impl<'a> SpaceTools<'a> {
             names.push((def, t.item_id, t.name));
         }
         let mut deckcraft_items = Vec::new();
-        if cx.deckcraft.is_some() {
+        if deckcraft.is_some() {
             for item in e.items().into_iter().filter(|item| {
                 item.space_id == space
                     && item
@@ -95,12 +156,12 @@ impl<'a> SpaceTools<'a> {
         }
         Self {
             e,
-            journal: &cx.journal,
+            journal,
             source,
             space: space.into(),
             serving,
             names,
-            deckcraft: cx.deckcraft.as_ref(),
+            deckcraft,
             deckcraft_items,
             selection: None,
             page_items,
@@ -118,8 +179,39 @@ impl<'a> SpaceTools<'a> {
         &self,
         ask: &ToolAsk,
     ) -> Result<client_core::AgentRequestDto, String> {
+        self.fresh().stage_current_approval(ask)
+    }
+    fn stage_current_approval(
+        &self,
+        ask: &ToolAsk,
+    ) -> Result<client_core::AgentRequestDto, String> {
         self.check_selection()?;
         let prior = self.e.tool_approval_requests(&self.space, self.source);
+        if client_core::agent_app_creation::model_name(&self.space).as_deref()
+            == Some(&ask.call.name)
+            && self.names.iter().any(|(definition, _, tool)| {
+                definition.name == ask.call.name && tool == client_core::agent_app_creation::TOOL
+            })
+        {
+            let dto = self
+                .e
+                .stage_app_creation_approval(
+                    &self.space,
+                    self.source,
+                    self.serving,
+                    client_core::AgentToolApprovalInput {
+                        canonical_tool: client_core::agent_app_creation::TOOL.into(),
+                        arguments: ask.call.arguments.clone(),
+                        worker_binding: client_core::agent_app_creation::executor_binding(),
+                        continuation_json: serde_json::to_string(ask)
+                            .map_err(|_| "Invalid held creation")?,
+                        gate_rule: ask.rule.clone(),
+                    },
+                )
+                .map_err(|error| error.to_string())?;
+            self.check_selection()?;
+            return self.register_staged(dto, &prior);
+        }
         let (_, item, tool) = self
             .names
             .iter()
@@ -258,6 +350,7 @@ impl<'a> SpaceTools<'a> {
             || !Self::same_calls(&original.steps, &prepared.steps)
             || prepared.steps[original.steps.len()].call != original.call
             || self
+                .fresh()
                 .names
                 .iter()
                 .find(|(definition, _, _)| definition.name == prepared.call.name)

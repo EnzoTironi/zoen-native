@@ -48,13 +48,17 @@ pub fn relay_bin() -> PathBuf {
         .join(format!("zoen-relay{}", std::env::consts::EXE_SUFFIX))
 }
 
-struct PortReservation {
+pub struct PortReservation {
     port: u16,
     _lock: File,
 }
 
 impl PortReservation {
-    fn acquire(mut preferred: Option<u16>) -> Self {
+    pub fn port(&self) -> u16 {
+        self.port
+    }
+
+    pub fn acquire(mut preferred: Option<u16>) -> Self {
         let dir = std::env::temp_dir().join("zoen-journey-port-locks-v1");
         std::fs::create_dir_all(&dir).expect("port lock directory");
         for _ in 0..1000 {

@@ -1,6 +1,5 @@
 import { Host, Picker } from '@expo/ui';
 import { FlashList } from '@shopify/flash-list';
-import { router } from 'expo-router';
 import { useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
 import { EmptyState, IconButton, Loading, NativeButton } from '../components/primitives';
@@ -11,6 +10,7 @@ import { t } from '../i18n/index.ts';
 import { useTheme } from '../theme';
 import { workspaceKinds, workspaceRows, type WorkspaceKind } from './workspace-index';
 import { WorkspaceItemRow } from './workspace-row';
+import { WorkspaceCreate } from './workspace-create';
 
 /** A view of canonical Items: folders and search never create a second document store. */
 export function WorkspaceBrowser() {
@@ -65,13 +65,7 @@ export function WorkspaceBrowser() {
             >
               {t('workspace.title')}
             </Text>
-            <IconButton
-              name={{ ios: 'doc.badge.plus', android: 'note_add', web: 'note_add' }}
-              label={t('workspace.newPage')}
-              onPress={() =>
-                router.push(space ? { pathname: '/new-page', params: { space } } : '/new-page')
-              }
-            />
+            <WorkspaceCreate space={space} />
           </View>
           <TextInput
             testID="workspace-search"
@@ -157,7 +151,6 @@ export function WorkspaceBrowser() {
         ) : (
           <EmptyState
             title={t(filtered ? 'workspace.noResults' : 'workspace.empty')}
-            detail={t(filtered ? 'workspace.noResultsDetail' : 'workspace.emptyDetail')}
             icon={{ ios: 'folder', android: 'folder', web: 'folder' }}
           >
             {filtered ? (

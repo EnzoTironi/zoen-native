@@ -29,6 +29,7 @@ import {
   type PendingVoiceTrim,
 } from './voice-trim-preview';
 
+import { nativeCaptureOwner, type CaptureLease } from './native-capture-owner.ts';
 import * as captureOperations from './media-composer-capture';
 import type { MediaComposerOptions } from './media-composer-contract';
 import * as lifecycle from './media-composer-lifecycle';
@@ -38,8 +39,6 @@ const subscribeNoDraft = () => () => {};
 const noDraft = () => null;
 // A departing route retains the audio session until its preparation/restore
 // drains. A newly mounted composer must not be interrupted by that old restore.
-type CaptureLease = { owner: object; recover: () => Promise<void> };
-let nativeCaptureLease: CaptureLease | null = null;
 export function useMediaComposerController({
   spaceId,
   replyTo = null,
@@ -75,14 +74,14 @@ export function useMediaComposerController({
   const [captureOwner] = useState(() => ({}));
   const webCaptureLease = useRef<CaptureLease | null>(null);
   const getCaptureLease = useCallback(
-    () => (Platform.OS === 'web' ? webCaptureLease.current : nativeCaptureLease),
+    () => (Platform.OS === 'web' ? webCaptureLease.current : nativeCaptureOwner.get()),
     [],
   );
   const setCaptureLease = useCallback((lease: CaptureLease | null) => {
     // Web has independent MediaRecorders and no shared native audio mode. A
     // failed Web preparation must not lock microphones in future route instances.
     if (Platform.OS === 'web') webCaptureLease.current = lease;
-    else nativeCaptureLease = lease;
+    else nativeCaptureOwner.set(lease);
   }, []);
   const [expanded, setExpanded] = useState(false);
   const [clip, setClip] = useState<Recording | null>(null);

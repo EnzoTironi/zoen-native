@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 zoen-models = { path = "../zoen-models" }
 zoen-relay = { path = "../zoen-relay" }
+relay-admission = { path = "../relay-admission" }
 types.workspace = true
 event-log.workspace = true
 protocol.workspace = true

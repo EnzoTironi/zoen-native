@@ -294,6 +294,12 @@ pub trait ApprovedToolAdmission: Send + Sync {
 /// is for, the mini-app's own rules); the model only picks the tool and the arguments.
 pub trait ToolHost: Send + Sync {
     fn tools(&self) -> Vec<ToolDef>;
+    /// A native host may refresh discovery after a completed effect creates an
+    /// artifact. Held/remaining calls retain their original offered definitions;
+    /// every newly proposed call still passes the normal Gate and native checks.
+    fn refreshed_tools(&self) -> Option<Vec<ToolDef>> {
+        None
+    }
     /// Diagnostics only, at the actual Brain boundary. Default has no side effects.
     fn observe_model_input(&self, _tools: &[ToolDef], _steps: &[ToolStep], _round: usize) {}
     /// A closed class, never a raw result or an execution/approval permit.

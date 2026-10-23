@@ -1,5 +1,5 @@
 //! Postgres finance and fenced native FDB execution. Production work remains
-//! closed until managed custody and external restore continuity are available.
+//! closed until external restore continuity and output admission are available.
 mod admission;
 #[cfg(test)]
 use admission::FixtureStep;
@@ -126,6 +126,14 @@ pub struct NativeInspection {
     pub image_bytes: u32,
 }
 
+/// Historical initial publication state, not current relay stock or permission.
+#[derive(Debug, PartialEq, Eq)]
+pub struct NativeKeyPackagePublication {
+    pub native: NativeInspection,
+    pub packages: u32,
+    pub published: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReplyRun {
     pub run: String,
@@ -166,8 +174,8 @@ pub struct RuntimeAuthority {
     finance: finance::Finance,
     execution: execution::Execution,
     custody: custody::Custody,
-    // No production key or credential constructor exists yet. Test provisioning
-    // exercises the storage protocol without claiming a deployed managed vault.
+    // Native managed construction resolves a certified device from SQL and the
+    // existing vault contract; it does not grant continuity or output authority.
     native: Option<native::NativeCustody>,
     gateway: ModelGateway,
     price: PriceProfile,

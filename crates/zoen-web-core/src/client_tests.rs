@@ -11,6 +11,8 @@ mod crypto_interop;
 mod cursor_repair;
 #[path = "client_tests/page_documents.rs"]
 mod page_documents;
+#[path = "client_tests/page_version_exports.rs"]
+mod page_version_exports;
 #[path = "client_tests/projection.rs"]
 mod projection;
 #[path = "client_tests/receipts.rs"]

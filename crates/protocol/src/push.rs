@@ -76,6 +76,7 @@ pub enum PushInputError {
     Token,
     Space,
     Sequence,
+    CallWake,
 }
 
 impl fmt::Display for PushInputError {
@@ -86,6 +87,7 @@ impl fmt::Display for PushInputError {
             Self::Token => "invalid APNs token",
             Self::Space => "invalid push Space id",
             Self::Sequence => "invalid push event sequence",
+            Self::CallWake => "invalid or expired VoIP wake",
         })
     }
 }
@@ -128,9 +130,84 @@ pub fn encode_sync_wake(space_id: &str, event_seq: u64) -> Result<Vec<u8>, PushI
     .into_bytes())
 }
 
+/// Opaque transport hint. It contains no caller, conversation, message, media
+/// consent or real call identifier. Possession is never authorization to call.
+#[derive(Clone)]
+pub struct CallWake {
+    nonce: String,
+    expires_at_ms: i64,
+}
+
+impl fmt::Debug for CallWake {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CallWake")
+            .field("expires_at_ms", &self.expires_at_ms)
+            .finish_non_exhaustive()
+    }
+}
+
+impl CallWake {
+    pub fn new(nonce: String, expires_at_ms: i64, now_ms: i64) -> Result<Self, PushInputError> {
+        let value = Self {
+            nonce,
+            expires_at_ms,
+        };
+        value.encode(now_ms)?;
+        Ok(value)
+    }
+
+    pub fn expires_at_ms(&self) -> i64 {
+        self.expires_at_ms
+    }
+
+    /// Revalidate at delivery, so a queued provider task cannot send an old wake.
+    pub fn encode(&self, now_ms: i64) -> Result<String, PushInputError> {
+        if now_ms <= 0
+            || self.expires_at_ms <= now_ms
+            || self.expires_at_ms > now_ms.saturating_add(60_000)
+            || self.nonce.len() != 32
+            || !self
+                .nonce
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        {
+            return Err(PushInputError::CallWake);
+        }
+        Ok(serde_json::json!({
+            "aps": { "content-available": 1 },
+            "zoen": { "v": 1, "call_wake": self.nonce, "expires_at_ms": self.expires_at_ms.to_string() }
+        }).to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn call_wake_is_opaque_bounded_and_revalidated_when_delivered() {
+        let nonce = "ab".repeat(16);
+        let wake = CallWake::new(nonce.clone(), 61_000, 1_000).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&wake.encode(1_000).unwrap()).unwrap(),
+            serde_json::json!({ "aps": { "content-available": 1 }, "zoen": {
+                "v": 1, "call_wake": nonce, "expires_at_ms": "61000"
+            }})
+        );
+        assert!(!format!("{wake:?}").contains(&nonce));
+        assert!(wake.encode(60_999).is_ok());
+        assert_eq!(wake.encode(61_000), Err(PushInputError::CallWake));
+        for (nonce, expiry, now) in [
+            ("ab".repeat(16), 61_001, 1_000),
+            ("ab".repeat(16), 1_000, 1_000),
+            ("ab".repeat(16), 1_000, 0),
+            ("AB".repeat(16), 2_000, 1_000),
+            ("ab".repeat(17), 2_000, 1_000),
+            ("call/person/private".into(), 2_000, 1_000),
+        ] {
+            assert!(CallWake::new(nonce, expiry, now).is_err());
+        }
+    }
 
     #[test]
     fn wake_has_only_versioned_sync_fields_and_an_exact_decimal_cursor() {

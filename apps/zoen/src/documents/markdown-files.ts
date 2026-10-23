@@ -26,13 +26,23 @@ async function pickMarkdownCopy(): Promise<{ path: string; markdown: string } | 
   }
 }
 
-export function exportMarkdown(title: string, markdown: string): Promise<void> {
-  return sensitiveCacheWork.run(() => shareMarkdownCopy(title, markdown));
+export function exportMarkdown(
+  title: string,
+  markdown: string,
+  isCurrent = () => true,
+): Promise<void> {
+  return sensitiveCacheWork.run(() => shareMarkdownCopy(title, markdown, isCurrent));
 }
 
-async function shareMarkdownCopy(title: string, markdown: string): Promise<void> {
-  if (!(await Sharing.isAvailableAsync()))
-    throw new Error(t('documents.thisDeviceDoesNotSupportFileSharing'));
+async function shareMarkdownCopy(
+  title: string,
+  markdown: string,
+  isCurrent: () => boolean,
+): Promise<void> {
+  if (!isCurrent()) return;
+  const available = await Sharing.isAvailableAsync();
+  if (!isCurrent()) return;
+  if (!available) throw new Error(t('documents.thisDeviceDoesNotSupportFileSharing'));
   const directory = new Directory(
     Paths.cache,
     'zoen-exports',
@@ -43,6 +53,7 @@ async function shareMarkdownCopy(title: string, markdown: string): Promise<void>
   try {
     file.create();
     await file.write(markdown);
+    if (!isCurrent()) return;
     await Sharing.shareAsync(file.uri, {
       mimeType: 'text/markdown',
       UTI: 'net.daringfireball.markdown',

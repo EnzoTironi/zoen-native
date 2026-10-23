@@ -41,6 +41,8 @@ pub enum NativeError {
 
 type Result<T> = std::result::Result<T, NativeError>;
 
+mod key_packages;
+pub use key_packages::InitialKeyPackages;
 mod publication;
 mod receipt;
 mod reference;
