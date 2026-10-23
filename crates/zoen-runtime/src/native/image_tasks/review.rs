@@ -245,29 +245,38 @@ impl NativeCustody {
                 event_log::Signer::from_secret(&credential.secret),
                 credential.certificate.clone(),
             );
+            let envelope = staging
+                .envelope
+                .as_ref()
+                .ok_or(RuntimeError::InvalidBinding)?;
+            let checkpoint = staging
+                .review
+                .as_ref()
+                .ok_or(RuntimeError::InvalidBinding)?
+                .checkpoint
+                .as_ref();
             let mut transport = runtime
-                .connect_bound_output(&target.url, &target.relay, actor)
+                .connect_bound_image_output(&target.url, &target.relay, actor, envelope, checkpoint)
                 .await?;
             staging.authorize().await?;
             let envelope = staging
                 .envelope
                 .as_ref()
                 .ok_or(RuntimeError::InvalidBinding)?;
-            runtime
-                .validate_image_publish_checkpoint(
-                    envelope,
-                    staging
-                        .review
-                        .as_ref()
-                        .ok_or(RuntimeError::InvalidBinding)?
-                        .checkpoint
-                        .as_ref(),
-                )
+            let checkpoint = staging
+                .review
+                .as_ref()
+                .ok_or(RuntimeError::InvalidBinding)?
+                .checkpoint
+                .as_ref();
+            let expected = runtime
+                .image_publish_expectation(&target.relay, envelope, checkpoint)
                 .await?;
-            let seq = transport
-                .publish(envelope)
-                .await
-                .map_err(super::delivery::transport_error)?;
+            let seq = match expected {
+                Some(expected) => transport.publish_managed(envelope, expected).await,
+                None => transport.publish(envelope).await,
+            }
+            .map_err(super::delivery::transport_error)?;
             let position = runtime
                 .execution
                 .reply_source()?

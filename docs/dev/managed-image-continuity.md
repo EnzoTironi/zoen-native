@@ -99,6 +99,44 @@ need qualification. A startup epoch alone proves none of these properties.
 
 ## Evidence boundaries
 
+Publication consumption is a separate source increment tracked by #394/#395,
+stacked after the still-unqualified recovery increment #391. A checkpoint before
+Publish is insufficient: restoring a snapshot taken after that checkpoint but
+before append can erase the original event, dedupe index and Runtime receipt.
+
+Anchor layout 2 therefore retains immutable `checkpoints/<sequence>.json`
+Prepared records and `effects/<original-publish-digest>.json` consumption outside
+the store restore unit. The effect digest identifies the exact canonical signed
+Publish wire and namespace, independent of retry checkpoints. `consume_publish`
+fsyncs a create-new record before returning a private non-clonable permit. Any
+existing record returns only Consumed observation; partial/corrupt records cannot
+be deleted to recreate Fresh. Readers refuse old layouts or missing directories.
+The pairing witness remains local and is absent from publication/network facts.
+
+Review and FileDoc Publication retain their original checkpoint alongside their
+original wire. SQL checkpoint CAS shares the existing native directory admission
+transaction; FDB historical Prepared and current checkpoint share the same
+capsule/Publication activation transaction. Append must compare conflict-tracked
+current FDB CP with the live external tip (committed or an exact prepared-next
+transition), verify the original historical record, and CAS original consumption
+in the same transaction as the original event/dedupe. Later unrelated progress
+does not invalidate the original historical permit. A matching old original CP
+cannot stand in for an advanced live tip. The queue must retain the permit and
+its generation lock through actual commit, even after caller cancellation.
+
+An already consumed effect can recover only by observing the exact original
+Accepted/event. Missing original evidence remains Unknown, never another send.
+The required real restore regression includes original source/dedupe and Runtime
+capsule/Publication, preserves the external consumed record, and must distinguish
+this refusal from ordinary lost Accepted recovery. Root owns complementary relay
+protocol/conditional-append wiring in #386/#387. Nothing in this source increment
+opens production continuity or output admission. Its new tests are not yet run.
+
+For native activation, SQL-next/FDB-before is also an ordinary crash cut because
+the existing directory authorization commits first. It remains closed pending
+original-evidence/operator recovery; the dispatch-only recovery above must not
+be applied to it or presented as complete activation recovery.
+
 Source includes filesystem crash-state and actual child-process lock tests;
 the existing unpaid native Images HTTP journey additionally exercises the
 dispatch checkpoint and cold file reopen. Its restore case rewinds matching
