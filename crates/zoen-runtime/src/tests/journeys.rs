@@ -1,6 +1,7 @@
 use super::*;
 pub(super) async fn run() {
     Box::pin(image_tasks::run()).await;
+    Box::pin(managed_image_recovery::run()).await;
     managed_custody::run().await;
     // Independent journeys are siblings: boxing their stored futures does not
     // remove debug-mode poll temporaries from a nested caller's stack frame.

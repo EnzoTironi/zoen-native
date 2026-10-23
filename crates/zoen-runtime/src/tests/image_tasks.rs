@@ -34,7 +34,7 @@ pub(crate) fn profile() -> ImagePriceProfile {
         max_response_bytes: 2_000_000,
     }
 }
-async fn world() -> World {
+pub(super) async fn world() -> World {
     let mut w = World::with_relay().await;
     let capability = native::testing::output::provision(&w.runtime).await;
     Arc::get_mut(&mut w.runtime).unwrap().output_fixture = Some(capability);
@@ -51,7 +51,7 @@ async fn world() -> World {
     w.policy_digest = w.runtime.install_policy(w.signed.clone()).await.unwrap();
     w
 }
-async fn image_task(w: &World) -> (VerifiedStep, ImageTask) {
+pub(super) async fn image_task(w: &World) -> (VerifiedStep, ImageTask) {
     let mut step = w.step(0).await;
     let VerifiedStep::Fixture(fixture) = &mut step else {
         panic!("controlled scope only")

@@ -96,13 +96,8 @@ impl RuntimeAuthority {
     ) -> Result<Self, RuntimeError> {
         let deployment = self.configured_image_deployment(agent, device).await?;
         let mut anchor = AnchorWriter::open(directory, deployment.clone()).map_err(error)?;
-        let (sql, fdb) = self.image_checkpoints(&deployment).await?;
-        match anchor.reconcile(&sql, &fdb).map_err(error)? {
-            Recovery::Clean | Recovery::BothBefore | Recovery::BothAfter => {}
-            Recovery::SqlBefore | Recovery::FdbBefore => {
-                return Err(RuntimeError::RestoreUnreconciled)
-            }
-        }
+        self.reconcile_image_anchor(&mut anchor, &deployment)
+            .await?;
         self.managed_images = Some(Arc::new(tokio::sync::Mutex::new(ManagedImages {
             anchor,
             deployment,

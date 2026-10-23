@@ -56,12 +56,25 @@ responsible for money even if the worker, directory or generation later changes.
 | COMMITTED | same committed checkpoint | Observe clean state |
 | PREPARED | both previous | Clear only PREPARED; no effect was permitted |
 | PREPARED | both exact next | Commit external observation; never return Fresh |
-| PREPARED | one previous, one next | Retain PREPARED; refuse new effects |
+| PREPARED | SQL previous, FDB next | Reconcile only from original admitted FDB/SQL claim evidence |
+| PREPARED | SQL next, FDB previous | Retain PREPARED; refuse new effects |
 | Any | other/divergent/missing pair | Refuse new effects |
 
-Partial state is not silently retried or refunded. An operator must recover the
-original store evidence from its retained/WAL recovery source until both exact
-observations are present; reopening then reconciles it. The anchor exposes no
+The normal FDB-next/SQL-before crash retains an exact dispatch reference in the
+same FDB transaction as its original admitted nonce and checkpoint. Recovery
+checks that reference against external PREPARED, the authenticated original
+prepared binding, the exact FDB nonce, and the original SQL claim/binding. It
+CAS-advances only the SQL detector checkpoint and reconciles COMMITTED. It does
+not insert an admission witness, return Fresh, resend the consumed original,
+release its hold or fabricate a bill. That obligation remains unknown; another
+distinct task can proceed with normal current authorization and budget checks.
+A missing, altered or unrelated reference fails closed. Older records without
+the retained reference cannot use this recovery path.
+
+SQL-next/FDB-before cannot result from this dispatch ordering's ordinary crash;
+it indicates missing/rolled-back execution evidence. An operator must recover
+the original store evidence from its retained/WAL recovery source until both
+exact observations are present; reopening then reconciles it. The anchor exposes no
 API that overwrites a database, fabricates an admission witness or mints a send
 permit. If the original evidence is unavailable, this deployment stays closed.
 
@@ -93,7 +106,9 @@ checkpoint rows in actual SQL and FDB and verifies refusal against the advanced
 independent file. It does not perform a full deployment backup/restore.
 Execution results must be recorded against the immutable tested commit.
 
-Qualified executable source: `1edd0e84`. Runtime full suite: 15 passed, 0 failed
+Qualified dispatch increment: `1edd0e84`. The subsequent forward-recovery
+implementation/tests described above are not yet executed. Runtime full suite
+on the qualified dispatch increment: 15 passed, 0 failed
 or ignored (211.56 seconds); all-target Clippy for `relay-admission` and
 `zoen-runtime`: passed with `-D warnings`. The unchanged filesystem suite passed
 8 tests on `e7caea33`; that first source's Runtime compile failure is preserved.
