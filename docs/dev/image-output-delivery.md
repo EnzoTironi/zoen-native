@@ -1,8 +1,8 @@
 # Retained Image output delivery
 
-Issue #355 follows #325 and #349. Implementation is under qualification; written
-tests are not evidence of execution. Production output and continuity gates stay
-closed. No configured route or successful model result opens them.
+Issue #355 follows #325 and #349. Local relay transport is qualified at executable
+source `b80e9db3`; production output and continuity gates stay closed. No configured
+route or successful model result opens them. Real host/user integration is #366.
 
 An operator supplies a relay URL, expected Challenge name and the already-bound
 relay source cell. The route is inert configuration. The native vault supplies
@@ -36,7 +36,7 @@ capsule. A lost ACK retries/observes that original, never signs a replacement.
 Historical receipt replay checks the actual retained source position and creates
 no new upload, publication, native generation or budget operation.
 
-Written integration coverage uses the actual relay HTTP/blob/WebSocket handlers,
+Executed integration coverage uses the actual relay HTTP/blob/WebSocket handlers,
 the same FdbLog instance, SQL directory and a local filesystem object store. A
 bounded proxy discards real CREATED and real Accepted responses after upstream
 commits, then cold runtime reopening must recover the same original. It also
@@ -44,3 +44,17 @@ checks source/Challenge mismatch, revoked trust before transfer, exact ciphertex
 storage, unchanged one claim/settlement and inert receipt replay after device
 revocation. This does not certify a public deployment, paid provider, iPhone UI,
 device memory, restore continuity, orphan collection or production readiness.
+
+The macOS qualification used owned real PostgreSQL/FDB services and a controlled
+model adapter, without a paid provider. Full Runtime passed 11/11, zero ignored
+(193.52 seconds), and Runtime all-target Clippy passed. Earlier targeted Core
+coverage passed signed blob transport 2/2, original/revoked Image delivery 2/2 and
+ordinary media upload/refusal/cold recovery 7/7; both Core and Runtime all-target
+Clippy passed at their recorded sources. Core sources did not change afterward.
+
+Original failures remain preserved: initial Runtime fixture compile errors and
+a real authority-journey stack overflow. The parent fix made independent test
+journeys siblings instead of nested async poll frames; no global stack override
+or production change was used. Receipts, source hashes, logs and cleanup outcomes
+are indexed under `~/.codex/builds/zoen-image-output-delivery-v450/`. The successful
+batch ended with its own FDB stopped, Postgres removed and empty cleanup errors.
