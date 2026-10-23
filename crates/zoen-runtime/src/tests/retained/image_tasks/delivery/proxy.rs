@@ -12,8 +12,6 @@ use tokio_tungstenite::tungstenite::Message;
 
 pub(super) struct Proxy {
     pub(super) address: std::net::SocketAddr,
-    pub(super) drop_blob: Arc<AtomicBool>,
-    pub(super) drop_publish: Arc<AtomicBool>,
     pub(super) blob_dropped: Arc<AtomicUsize>,
     pub(super) publish_dropped: Arc<AtomicUsize>,
     task: tokio::task::JoinHandle<()>,
@@ -49,8 +47,6 @@ impl Proxy {
         });
         Self {
             address,
-            drop_blob,
-            drop_publish,
             blob_dropped,
             publish_dropped,
             task,
