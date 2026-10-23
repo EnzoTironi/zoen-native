@@ -39,14 +39,17 @@ uma árvore inventada nem copiar IDs dos testes.
   vincula a janela exclusiva, conta/device e sessão/foco; muda quando algum desses
   donos é retirado, mesmo que a tela e os IDs pareçam iguais.
 - Cada nó contém `id`, `role`, `label`, `visible` e `enabled`, obtidos da observação
-  atual. Enviar apenas controles relevantes à decisão e uma descrição curta da
+  atual. `enabled: null` preserva estado desconhecido; não significa habilitado. Enviar apenas controles relevantes à decisão e uma descrição curta da
   tela; excluir relógio, timeline e mensagens sem relação com a escolha. Campos
   brutos extras não entram na consulta. O host deve remover dados privados e
   credenciais antes da chamada; preferir contas e conversas sintéticas.
 - `candidates`: lista autorizada pelo percurso com `id` local, `operation`
   (`tap` ou `long_press`) e `targetId` de um nó realmente observado. Não há execução
-  por coordenadas ou seletor retornado pelo modelo. Sem alvos atuais habilitados,
-  o guard abstém antes de gastar inferência.
+  por coordenadas ou seletor retornado pelo modelo. O padrão exige alvos atuais habilitados. Para uma tentativa de navegação
+  reversível já autorizada, o candidato local pode declarar `attemptNavigation: true`;
+  somente `tap` pode usar `enabled: null`, e o gate recebe essa política explícita
+  novamente antes de executar. Estado `false` nunca é substituído por uma tentativa.
+  Sem alvos admissíveis, o guard abstém antes de gastar inferência.
 - `decide(request)`: chama **uma vez** `ask_clef` por meio da ferramenta do host.
   O request segue o contrato `state` + `questions.next_action` de tipo `choice`,
   com `insufficient_evidence`. Aceita a resposta direta ou o `structuredContent`
@@ -96,7 +99,7 @@ ferramentas e os mesmos gates/asserções que já usa:
 await routeArgentAction({
   objective, expectedScreen, decide: callAskClefThroughHostToolBridge,
   candidates: [{
-    id: 'open_attachment', operation: 'tap',
+    id: 'open_attachment', operation: 'tap', attemptNavigation: true,
     selector: { identifier: observedStableId, role: observedRole },
   }],
   argent: {
@@ -161,12 +164,21 @@ passagens completas de QA.
 
 A projeção `xcuitest-runner` recebe `XCUIElementSnapshot.isEnabled` e grava o estado
 negativo como `disabled`, então a ausência dessa flag tem um significado comprovado
-nessa fonte. Os adaptadores atuais AX/native do simulador omitem esse estado. O
-adaptador específico retorna `unsupported_actionability_source` nessas fontes;
-não inventa `enabled: true`. Isso **não revoga a autorização para usar o simulador**:
-o guard genérico continua disponível quando o driver/host fornece evidência real
-de actionability pelo seu contrato. Esta entrega não implementa um fallback novo,
-nem inicia servidor para contornar a indisponibilidade observada do serviço local.
+nessa fonte. As fontes reais `ax-service` e `native-devtools` do simulador omitem
+esse estado: o parser preserva `enabled: null`, sem inventar `true`. Um alvo único,
+visível e estável pode receber **uma tentativa de navegação reversível** somente
+quando seu candidato autorizado pelo percurso declara `attemptNavigation: true`.
+Essa permissão pertence ao percurso/gate existentes, nunca ao modelo ou ao texto
+da UI. Aparece na consulta e na ação entregue ao gate; o efeito só pode passar
+pelas mesmas asserções determinísticas depois. Botão realmente desabilitado deve
+falhar no efeito, sem repetição do toque. Estado explicitamente `disabled` bloqueia
+mesmo essa tentativa. Ações sem essa política continuam abstendo quando enabled é
+desconhecido. Fontes futuras não reconhecidas são `unsupported_actionability_source`.
+
+O simulador já autorizado pode usar esse caminho com os contratos atuais de
+`describe` e `flow-add-step`, preservando a validação de seletor do próprio recorder.
+Isso não inicia outro servidor, driver ou framework e não transforma uma tentativa
+em prova de actionability ou sucesso.
 
 O timeout de inferência é limitado a 90 segundos (ou menos, por passo). Ele produz
 estado desconhecido, não retry; uma resposta tardia já cobrada não pode executar

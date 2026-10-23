@@ -32,17 +32,21 @@ function quoted(input) {
   throw new Error("invalid_describe_text");
 }
 
-/** Only the current XCUITest projection guarantees its disabled flag from isEnabled.
- * AX/native simulator adapters currently omit it. Absence there is not enabled=true.
+/** XCUITest preserves isEnabled; current simulator projections do not.
+ * Unknown is null, never enabled=true. A permitted navigation can still be tried.
  */
 export function argentControls(result) {
   const body = argentBody(result);
-  if (body.source !== "xcuitest-runner") throw new Error("unsupported_actionability_source");
+  if (!["xcuitest-runner", "ax-service", "native-devtools"].includes(body.source))
+    throw new Error("unsupported_actionability_source");
   if (body.should_restart || body.hint) throw new Error("degraded_argent_observation");
   if (typeof body.description !== "string" || body.description.length > 128 * 1024)
     throw new Error("invalid_describe_text");
   const lines = body.description.split("\n");
-  if (lines[0] !== "Source: xcuitest-runner" || !lines.includes("Mode: nested"))
+  if (
+    lines[0] !== `Source: ${body.source}` ||
+    !lines.includes(body.source === "xcuitest-runner" ? "Mode: nested" : "Mode: flat")
+  )
     throw new Error("invalid_describe_text");
   const root = lines.findIndex((line) => line.startsWith("ROOT  "));
   if (root < 0) throw new Error("invalid_describe_text");
@@ -74,7 +78,7 @@ export function argentControls(result) {
         label,
         identifier: attributes.id,
         frame: { x: frame[0], y: frame[1], width: frame[2], height: frame[3] },
-        enabled: !flags.has("disabled"),
+        enabled: flags.has("disabled") ? false : body.source === "xcuitest-runner" ? true : null,
         visible: frame[2] > 0 && frame[3] > 0,
         sensitive: flags.has("password"),
       };

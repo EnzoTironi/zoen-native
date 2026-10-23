@@ -93,7 +93,12 @@ export async function routeArgentAction({
           enabled: node.enabled,
         });
       targets.set(id, node);
-      actions.push({ id: action.id, operation: action.operation, targetId: id });
+      actions.push({
+        id: action.id,
+        operation: action.operation,
+        targetId: id,
+        ...(action.attemptNavigation === true ? { attemptNavigation: true } : {}),
+      });
     }
     const value = {
       ...after,
@@ -133,7 +138,8 @@ export async function routeArgentAction({
           (item) =>
             item.id === action.id &&
             item.operation === action.operation &&
-            item.targetId === action.targetId,
+            item.targetId === action.targetId &&
+            (item.attemptNavigation === true) === (action.attemptNavigation === true),
         )
       )
         throw new Error("unobserved_dispatch_target");
@@ -149,7 +155,8 @@ export async function routeArgentAction({
         !freshTarget ||
         hash(freshTarget) !== hash(node) ||
         !freshTarget.visible ||
-        !freshTarget.enabled
+        freshTarget.enabled === false ||
+        (freshTarget.enabled === null && action.attemptNavigation !== true)
       )
         throw new Error("stale_dispatch_target");
       if (
@@ -159,6 +166,7 @@ export async function routeArgentAction({
         throw new Error("retired_operator_scope");
       // Only the observed current frame reaches the existing recorder. The model
       // sees neither coordinates nor selectors and cannot provide tool arguments.
+      details.dispatched = true;
       const result = argentBody(
         await argent.callTool("flow-add-step", {
           ...recording,

@@ -15,7 +15,7 @@ const line = (options = {}) => {
 };
 const describe = (lines = [line()], source = "xcuitest-runner") => ({
   source,
-  description: `Source: ${source}\nMode: nested\nCoordinates are normalized [0,1]\n\nROOT  AXGroup (0.000, 0.000, 1.000, 1.000)\n\n${lines.join("\n")}\n`,
+  description: `Source: ${source}\nMode: ${source === "xcuitest-runner" ? "nested" : "flat"}\nCoordinates are normalized [0,1]\n\nROOT  AXGroup (0.000, 0.000, 1.000, 1.000)\n\n${lines.join("\n")}\n`,
 });
 const choice = (id = "attach") => ({
   structuredContent: {
@@ -203,10 +203,13 @@ test("artifact/device/lease replacement during a read or before dispatch cannot 
   assert.equal(harness.counts().dispatches, 0);
 });
 
-test("unsupported simulator actionability evidence is explicit; no enabled boolean is invented", async () => {
+test("unknown actionability abstains by default; unknown driver sources remain unsupported", async () => {
   for (const source of ["ax-service", "native-devtools", "unknown-future-source"]) {
     const harness = setup({ snapshots: [describe([line()], source)] });
-    assert.equal((await harness.run()).reason, "unsupported_actionability_source");
+    assert.equal(
+      (await harness.run()).reason,
+      source === "unknown-future-source" ? "unsupported_actionability_source" : "no_current_action",
+    );
     assert.equal(harness.counts().decisions, 0);
     assert.equal(harness.counts().dispatches, 0);
   }
@@ -353,4 +356,58 @@ test("wrong native destination and failed deterministic postconditions cannot be
     (await wrong.run({ expectedScreen: "different-destination" })).reason,
     "wrong_destination",
   );
+});
+
+test("authorized reversible simulator navigation can be attempted while enabled remains explicitly unknown", async () => {
+  for (const source of ["ax-service", "native-devtools"]) {
+    const harness = setup({
+      candidates: [{ ...candidate, attemptNavigation: true }],
+      snapshots: [
+        describe([line()], source),
+        describe([line()], source),
+        describe([line()], source),
+        describe([], source),
+      ],
+    });
+    const result = await harness.run();
+    assert.equal(result.status, "assertions_passed");
+    assert.equal(result.adapter.dispatched, true);
+    assert.equal(result.action.attemptNavigation, true);
+    const evidence = harness.request().state.candidates[0];
+    assert.equal(evidence.enabled, null);
+    assert.equal(evidence.attemptNavigation, true);
+    assert.equal(harness.counts().dispatches, 1);
+    assert.equal(argentControls(describe([line()], source))[0].enabled, null);
+  }
+});
+
+test("navigation-attempt policy cannot override explicit disabled state or failed effects", async () => {
+  const disabled = setup({
+    candidates: [{ ...candidate, attemptNavigation: true }],
+    snapshots: [describe([line({ flags: "disabled" })], "ax-service")],
+  });
+  assert.equal((await disabled.run()).reason, "no_current_action");
+  assert.equal(disabled.counts().dispatches, 0);
+  const failed = setup({
+    candidates: [{ ...candidate, attemptNavigation: true }],
+    snapshots: [
+      describe([line()], "ax-service"),
+      describe([line()], "ax-service"),
+      describe([line()], "ax-service"),
+      describe([], "ax-service"),
+    ],
+    verify: ({ after }) => [{ name: "sheet did not open", passed: false, observationId: after.id }],
+  });
+  assert.equal((await failed.run()).reason, "assertion_failed");
+  assert.equal(failed.counts().dispatches, 1);
+});
+
+test("the existing operator gate can refuse an unknown-state navigation attempt explicitly", async () => {
+  const harness = setup({
+    candidates: [{ ...candidate, attemptNavigation: true }],
+    snapshots: [describe([line()], "ax-service"), describe([line()], "ax-service")],
+    ready: (action) => action?.attemptNavigation !== true,
+  });
+  assert.equal((await harness.run()).reason, "not_authorized");
+  assert.equal(harness.counts().dispatches, 0);
 });
