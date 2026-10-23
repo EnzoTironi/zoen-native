@@ -99,6 +99,11 @@ impl Engine {
             let old = session.binary_at(version)?;
             let mut dto = self.page_dto(it, read)?;
             dto.version = version;
+            // binary_at decoded this exact frontier; newer unavailable media
+            // and private input do not make the historical preview unavailable.
+            dto.ready = true;
+            dto.input_pending = false;
+            dto.input_revision = "0".into();
             dto.unsaved = false;
             dto.can_edit = false;
             dto.content_hash = old.content_hash();

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { ClientState, ClientStore } from '../core/store';
 import type { PageDto } from '../core/generated/PageDto';
+import { DocumentExportActivity } from './export-activity.ts';
 import { exportObservedPage, pageExportBinding } from './page-version-export.ts';
 
 function fixture() {
@@ -146,4 +147,36 @@ test('response substitution fails closed without sharing or retrying the read', 
   assert.equal(pageExportBinding(f.store, { ...f.page, ready: false }), null);
   assert.equal(pageExportBinding(f.store, { ...f.page, version: 0 }), null);
   assert.equal(pageExportBinding(f.store, { ...f.page, space_id: 'foreign' }), null);
+});
+
+test('blur without unmount retires a held export and refocus cannot revive it or clear a newer operation', async () => {
+  const f = fixture();
+  const activity = new DocumentExportActivity();
+  assert.equal(activity.begin(), null);
+  const blur = activity.focus();
+  const first = activity.begin()!;
+  assert.equal(activity.begin(), null, 'double activation is fenced synchronously');
+  const running = exportObservedPage(
+    f.store,
+    pageExportBinding(f.store, f.page)!,
+    first.current,
+    async () => {
+      f.shares.push(['unexpected old share']);
+    },
+  );
+  blur();
+  const blurAgain = activity.focus();
+  const second = activity.begin()!;
+  assert.equal(first.current(), false);
+  assert.equal(first.finish(), false, 'old completion cannot finish the new activation');
+  assert.equal(second.current(), true);
+  f.resolve();
+  assert.equal(await running, false);
+  assert.equal(f.shares.length, 0);
+  assert.equal(second.finish(), true);
+  const third = activity.begin()!;
+  blur();
+  assert.equal(third.current(), true, 'obsolete focus cleanup cannot retire a newer focus');
+  blurAgain();
+  assert.equal(third.current(), false);
 });

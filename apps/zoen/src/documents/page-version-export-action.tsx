@@ -1,4 +1,6 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { DocumentExportActivity } from './export-activity';
 import { Text, View } from 'react-native';
 import { NativeButton } from '../components/primitives';
 import { useClient } from '../core/provider';
@@ -21,17 +23,20 @@ export function PageVersionExportAction({ page }: { page: PageDto }) {
 function ExportAction({ binding }: { binding: PageExportBinding }) {
   const { store } = useClient();
   const { colors } = useTheme();
-  const active = useRef(true);
-  const running = useRef(false);
+  const [activity] = useState(() => new DocumentExportActivity());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useLayoutEffect(() => {
-    active.current = true;
-    return () => {
+  useFocusEffect(useCallback(() => {
+    setBusy(false);
+    setError(null);
+    return activity.focus();
+  }, [activity]));
+  const current = () => currentPageExport(store, binding);
+  return () => {
       active.current = false;
     };
   }, []);
-  const current = () => active.current && currentPageExport(store, binding);
+  const current = activation.current && currentPageExport(store, binding);
   return (
     <View style={{ gap: 6 }}>
       <NativeButton
@@ -44,13 +49,14 @@ function ExportAction({ binding }: { binding: PageExportBinding }) {
             : t('documents.exportVersionNumber', { version: binding.version })
         }
         onPress={() => {
-          if (running.current || !current()) return;
-          running.current = true;
+          if (!current()) return;
+          const activation = activity.begin();
+          if (!activation) return;
           setBusy(true);
           setError(null);
-          void exportObservedPage(store, binding, () => active.current, exportMarkdown)
+          void exportObservedPage(store, binding, activation.current, exportMarkdown)
             .catch((reason: unknown) => {
-              if (current())
+              if (activation.current() && current())
                 setError(
                   reason instanceof Error
                     ? reason.message
@@ -58,8 +64,7 @@ function ExportAction({ binding }: { binding: PageExportBinding }) {
                 );
             })
             .finally(() => {
-              running.current = false;
-              if (current()) setBusy(false);
+              if (activation.finish() && current()) setBusy(false);
             });
         }}
       />

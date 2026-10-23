@@ -185,3 +185,56 @@ fn historical_export_never_substitutes_an_empty_document_for_missing_verified_me
         .unwrap();
     assert_eq!(exported.markdown, markdown);
 }
+
+#[test]
+fn historical_preview_and_export_stay_available_while_a_newer_version_downloads() {
+    let (client, first) = fixture();
+    let original = client.page_markdown(first.item_id.clone()).unwrap();
+    {
+        let mut engine = client.lock();
+        let document = Page::from_markdown("# Later version\n\nStill downloading\n").unwrap();
+        let blob = engine
+            .page_blob(&first.space_id, &document.snapshot())
+            .unwrap();
+        engine
+            .store
+            .conn()
+            .execute("DELETE FROM media WHERE sha256 = ?1", [&blob.sha256])
+            .unwrap();
+        let me = engine.me_id().unwrap();
+        engine
+            .append(
+                &first.space_id,
+                &me,
+                EventBody::ItemVersioned {
+                    item: first.item_id.clone(),
+                    content: ItemContent::Page(PageContent {
+                        title: "Later version".into(),
+                        path: "review.md".into(),
+                        loro: String::new(),
+                        blob: Some(blob),
+                        manifest: None,
+                    }),
+                    note: "Waiting for media".into(),
+                },
+            )
+            .unwrap();
+        engine.reload().unwrap();
+    }
+    assert!(!client.page(first.item_id.clone()).unwrap().ready);
+    let previous = client.page_at(first.item_id.clone(), 1).unwrap();
+    assert!(previous.ready);
+    assert!(!previous.input_pending && !previous.unsaved && !previous.can_edit);
+    assert_eq!(previous.blocks, first.blocks);
+    let engine = client.lock();
+    assert_eq!(
+        engine
+            .page_export_version(&first.space_id, &first.item_id, 1, &first.content_hash)
+            .unwrap()
+            .markdown,
+        original
+    );
+    assert!(engine
+        .page_export_version(&first.space_id, &first.item_id, 2, &first.content_hash)
+        .is_err());
+}
