@@ -1,0 +1,94 @@
+# Managed Images continuity
+
+Tracked by #380, under #366/#325. This increment checkpoints Images provider
+dispatch. Production continuity and output admission remain closed. It does not
+yet qualify a running host, mandatory relay generations, or output checkpoints.
+
+The deployment is initially one cooperating host on a local Unix filesystem.
+The owned anchor directory must be explicitly excluded from PostgreSQL/FDB
+backup and restore. Restoring all three together defeats this detector. NFS,
+distributed workers, privileged modification of the directory, and replacement
+of stable lock inodes are outside this contract. There is no operator Boolean
+that turns these assumptions into permission.
+
+## Construction
+
+`RuntimeAuthority::open_with_native_device` remains the certified device/vault
+boundary. `initialize_managed_image_continuity` then accepts only an unused
+paired execution namespace and zero financial attempts. Initialize it before
+`initialize_native_device`, key packages, invitations and source catch-up.
+The pair and device are derived from existing private SQL/FDB/native authority.
+The private pairing witness is stored in the mode-0600 anchor and redacted from
+Debug. It must never be serialized into a network request.
+
+An interrupted genesis can be retried only with the exact original existing
+anchor and still-unused stores. A new directory is refused if either store
+already contains a checkpoint, including genesis. An existing directory with missing/invalid state is never
+recreated. `open_managed_image_continuity` reopens the retained anchor; it does
+not regenerate a missing anchor or reset an old checkpoint.
+
+## Dispatch transition
+
+The existing claim remains the only financial one-shot admission. Checkpoint
+records contain no amount, period balance, refund, provider receipt or new bill.
+
+1. Before reservation, compare the actual SQL/FDB checkpoints with the external
+   anchor. Resolve only an exact known interrupted transition.
+2. Consume the existing original SQL claim. Persist/fsync external PREPARED for
+   the digest of that exact attempt, claim nonce and immutable binding.
+3. Write the next FDB checkpoint in the transaction that writes the original
+   admitted nonce. Carry this annotation through the existing linear
+   `FreshClaim` and `FreshAdmission` types.
+4. Write the next SQL checkpoint in `DirectoryGuard::finish`, in the same
+   transaction as `runtime_admission_witnesses` and its current authorization
+   checks. CAS against the exact previous checkpoint in both stores.
+5. Observe both exact next checkpoints, fsync external COMMITTED, acquire the
+   shared generation guard, and only then consume the original short-lived
+   dispatch permit. Keep the guard in the admitted binding through the actual
+   gateway response and incurred-cost retention.
+
+Checkpoint failure grants no dispatch capability. A later invocation cannot
+repeat a consumed claim. The existing incurred evidence/settlement path remains
+responsible for money even if the worker, directory or generation later changes.
+
+| External state | SQL / FDB | Recovery |
+| --- | --- | --- |
+| COMMITTED | same committed checkpoint | Observe clean state |
+| PREPARED | both previous | Clear only PREPARED; no effect was permitted |
+| PREPARED | both exact next | Commit external observation; never return Fresh |
+| PREPARED | one previous, one next | Retain PREPARED; refuse new effects |
+| Any | other/divergent/missing pair | Refuse new effects |
+
+Partial state is not silently retried or refunded. An operator must recover the
+original store evidence from its retained/WAL recovery source until both exact
+observations are present; reopening then reconciles it. The anchor exposes no
+API that overwrites a database, fabricates an admission witness or mints a send
+permit. If the original evidence is unavailable, this deployment stays closed.
+
+## Retirement and remaining delivery contract
+
+`writer.lock` admits one host for the anchor lifetime. Never unlink it after a
+crash. `generation.lock` is shared through each effect; retirement takes its
+exclusive OS lock before PREPARED and holds it until reconciliation. The next
+generation cannot take ownership while a previous bounded effect retains the
+lock. These are cooperative local locks, not proof that arbitrary old binaries
+or stolen provider credentials stopped working.
+
+Before opening production, the registered managed device must be required to
+bind every WS publish and HTTP upload to the independently observed generation
+and exact checkpoint. Relay must read the same independently retained anchor
+and hold its shared effect lock, rather than trust a restored SQL generation or
+an echoed caller value. The shared filesystem primitive is in `relay-admission`
+to avoid a Runtime/Relay dependency cycle. Upload/publish need corresponding
+capsule/publication checkpoints; dispatch alone does not protect these effects.
+Authorization/policy mutation recovery and provider credential isolation also
+need qualification. A startup epoch alone proves none of these properties.
+
+## Evidence boundaries
+
+Source includes filesystem crash-state and actual child-process lock tests;
+the existing unpaid native Images HTTP journey additionally exercises the
+dispatch checkpoint and cold file reopen. Its restore case rewinds matching
+checkpoint rows in actual SQL and FDB and verifies refusal against the advanced
+independent file. It does not perform a full deployment backup/restore.
+Execution results must be recorded against the immutable tested commit.

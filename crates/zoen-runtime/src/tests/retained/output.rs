@@ -1,6 +1,8 @@
 //! Private fresh-namespace output transactions, never production activation.
+mod cold;
 mod recovery;
 use super::*;
+pub(super) use cold::cold;
 use native::testing::output as proof;
 
 async fn original() -> (Fixture, ReplyRun) {
@@ -46,22 +48,6 @@ async fn assert_one_bill(fixture: &Fixture) {
             spent_units: 6
         }
     );
-}
-
-pub(super) async fn cold(fixture: &mut Fixture) {
-    let mut reopened = fixture.world.reopen().await;
-    let custody = fixture.restore_custody();
-    let capability = Arc::get_mut(&mut fixture.world.runtime)
-        .unwrap()
-        .output_fixture
-        .take()
-        .unwrap();
-    let runtime = Arc::get_mut(&mut reopened).unwrap();
-    runtime.native = Some(custody);
-    // Move the original fixture capability. No store read reconstructs it.
-    runtime.output_fixture = Some(capability);
-    fixture.world.runtime.finance.pool.close().await;
-    fixture.world.runtime = reopened;
 }
 
 async fn exact_output_and_missing_usage() {

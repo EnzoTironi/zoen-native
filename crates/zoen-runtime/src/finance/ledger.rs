@@ -297,6 +297,7 @@ impl Finance {
             attempt: b.context.attempt_id.clone(),
             nonce,
             binding: digest,
+            checkpoint: None,
         }))
     }
     pub async fn guard(
