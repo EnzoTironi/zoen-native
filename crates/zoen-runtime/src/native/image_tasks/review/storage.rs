@@ -35,6 +35,24 @@ impl Staging<'_> {
         Ok(trx)
     }
     pub(super) async fn activate(&mut self) -> Result<(), RuntimeError> {
+        let transition = if self
+            .review
+            .as_ref()
+            .is_some_and(|review| review.checkpoint.is_none() && review.accepted.is_none())
+        {
+            let envelope = self.envelope.as_ref().ok_or(RuntimeError::InvalidBinding)?;
+            self.runtime
+                .begin_image_publish_checkpoint(envelope)
+                .await?
+        } else {
+            None
+        };
+        if let Some(transition) = &transition {
+            self.review
+                .as_mut()
+                .ok_or(RuntimeError::InvalidBinding)?
+                .checkpoint = Some(transition.checkpoint());
+        }
         let principal = self.credential.principal();
         let image = self
             .core
@@ -77,6 +95,8 @@ impl Staging<'_> {
                 &self.credential.certificate,
             )
             .await?
+            .image_checkpoint(transition.as_ref().map(|value| value.annotation()))
+            .await?
             .authorize(scope.clone())
             .await?;
         admission.check(&scope)?;
@@ -104,9 +124,18 @@ impl Staging<'_> {
         if let Some(bytes) = &bytes {
             trx.set(&self.key, bytes);
         }
+        if let Some(transition) = &transition {
+            transition
+                .annotation()
+                .write_fdb(&self.runtime.execution, &trx)
+                .await?;
+        }
         admission.consume(&scope)?;
         self.runtime.continuity()?;
         trx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
+        if let Some(transition) = transition {
+            transition.finish(self.runtime).await?;
+        }
         self.root = root;
         self.prior = bytes.as_ref().map(|bytes| hash(bytes));
         Ok(())

@@ -41,6 +41,10 @@ fn original_publish_is_consumed_once_even_after_restart_and_new_checkpoint() -> 
         panic!("first original consumption must produce the single permit")
     };
     let original = permit.condition().clone();
+    assert_eq!(
+        writer.reader().inspect_publish(&checkpoint, &envelope)?,
+        original
+    );
     permit.check(&envelope)?;
     drop(permit);
     drop(writer);
@@ -102,6 +106,11 @@ fn unrelated_progress_preserves_pending_permit_but_retirement_drains_it() -> Tes
     };
     let later = commit(&mut writer, &effect())?;
     permit.check(&envelope)?;
+    assert_eq!(
+        permit.check_store_checkpoint(&checkpoint),
+        Err(AnchorError::Unreconciled)
+    );
+    permit.check_store_checkpoint(&later)?;
     assert_eq!(
         writer.prepare(&effect(), &later, &later, true),
         Err(AnchorError::Busy)

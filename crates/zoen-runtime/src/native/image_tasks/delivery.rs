@@ -272,6 +272,9 @@ impl Delivery<'_> {
                 self.runtime.finance.reply_clock().await?,
             )
             .map_err(|_| RuntimeError::Denied)?;
+        self.runtime
+            .validate_image_publish_checkpoint(&self.envelope, self.publication.checkpoint.as_ref())
+            .await?;
         let seq = transport
             .publish(&self.envelope)
             .await

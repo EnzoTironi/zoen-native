@@ -331,5 +331,6 @@ pub(crate) fn period(year: i32, month: u8) -> Result<(i64, i64), RuntimeError> {
 mod directory;
 mod image_checkpoint;
 mod image_checkpoint_recovery;
+mod image_publication;
 mod ledger;
 mod settlement;

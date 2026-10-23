@@ -21,6 +21,8 @@ pub(super) struct Publication {
     pub(super) blobs: Vec<super::blobs::BlobReference>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) accepted: Option<types::Seen>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) checkpoint: Option<relay_admission::managed_images::Checkpoint>,
 }
 
 impl NativeCustody {
@@ -141,7 +143,11 @@ impl NativeCustody {
         )
         .await?;
         let next = self.seal_image(principal, Some(&step.current), prepared.image())?;
+        let transition = runtime
+            .begin_image_publish_checkpoint(prepared.envelope())
+            .await?;
         let publication = Publication {
+            checkpoint: transition.as_ref().map(|value| value.checkpoint()),
             accepted: None,
             blobs,
             task: task.task_digest.clone(),
@@ -180,6 +186,8 @@ impl NativeCustody {
                 &credential.certificate,
             )
             .await?
+            .image_checkpoint(transition.as_ref().map(|value| value.annotation()))
+            .await?
             .authorize_before(scope.clone(), step.deadline())
             .await?;
         admission.check(&scope)?;
@@ -202,9 +210,18 @@ impl NativeCustody {
             &runtime.execution.run(run, "image-output/1"),
             &publication_bytes,
         );
+        if let Some(transition) = &transition {
+            transition
+                .annotation()
+                .write_fdb(&runtime.execution, &trx)
+                .await?;
+        }
         admission.consume(&scope)?;
         runtime.continuity()?;
         trx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
+        if let Some(transition) = transition {
+            transition.finish(runtime).await?;
+        }
         Ok(ImageOutputInspection {
             item: publication.item,
             sha256: publication.sha256,

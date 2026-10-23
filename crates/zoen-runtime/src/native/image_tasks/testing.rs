@@ -1,5 +1,7 @@
 //! Controlled native Image journey; never a production output capability.
-pub(crate) use super::output::testing::{bytes, remove_chunk, restore_chunk, transport_original};
+pub(crate) use super::output::testing::{
+    bytes, checkpoint as output_checkpoint, remove_chunk, restore_chunk, transport_original,
+};
 pub(crate) use super::review::testing as review;
 use super::*;
 use crate::{image_tasks::ImageAttemptAdapter, FinancialState, VerifiedStep};

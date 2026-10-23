@@ -95,6 +95,34 @@ impl Record {
 }
 
 impl AnchorReader {
+    /// Compare a conflict-tracked store read with independent live history.
+    /// A concurrent prepared transition may legitimately have committed its
+    /// store half before the final external rename. This is observation only;
+    /// callers still need the original effect's guard/permit through commit.
+    pub fn check_store_checkpoint(&self, observed: &Checkpoint) -> Result<(), AnchorError> {
+        let state = self.state()?;
+        if state.committed != *observed
+            && !state
+                .prepared
+                .as_ref()
+                .is_some_and(|prepared| prepared.next == *observed)
+        {
+            return Err(AnchorError::Unreconciled);
+        }
+        Ok(())
+    }
+
+    /// Read-only binding facts for a per-effect transport challenge. These
+    /// facts cannot enter append without consume_publish's private permit.
+    pub fn inspect_publish(
+        &self,
+        checkpoint: &Checkpoint,
+        envelope: &Envelope,
+    ) -> Result<PublishCondition, AnchorError> {
+        let _generation = self.effect_generation_guard(checkpoint)?;
+        self.publish_record(checkpoint, envelope)?.condition()
+    }
+
     fn publish_record(
         &self,
         checkpoint: &Checkpoint,
@@ -213,6 +241,18 @@ impl AnchorReader {
 impl ManagedPublishPermit {
     pub fn condition(&self) -> &PublishCondition {
         &self.condition
+    }
+
+    /// The append transaction reads current CP with a conflict range and calls
+    /// this before committing consumption and the exact original event. An old
+    /// matching original CP is insufficient when independent history advanced.
+    pub fn check_store_checkpoint(&self, observed: &Checkpoint) -> Result<(), AnchorError> {
+        if observed.generation != self.condition.checkpoint.generation
+            || observed.sequence < self.condition.checkpoint.sequence
+        {
+            return Err(AnchorError::Unreconciled);
+        }
+        self.reader.check_store_checkpoint(observed)
     }
 
     /// Independent live proof, kept under the original shared generation lock.

@@ -55,3 +55,26 @@ pub(crate) async fn original(
         .unwrap();
     (review.request, review.content_hash, envelope)
 }
+
+pub(crate) async fn checkpoint(
+    runtime: &RuntimeAuthority,
+    intent: &ImageReviewIntent,
+) -> Option<relay_admission::managed_images::Checkpoint> {
+    let key = runtime.execution.root.pack(&(
+        "native-image-review/1",
+        &intent.agent,
+        &intent.space,
+        &intent.source,
+    ));
+    let bytes = runtime
+        .execution
+        .transaction()
+        .await
+        .unwrap()
+        .get(&key, false)
+        .await
+        .unwrap()
+        .unwrap();
+    let review: Review = runtime.custody.open(&subject(&key), None, &bytes).unwrap();
+    review.checkpoint
+}
