@@ -57,10 +57,10 @@ async fn actual_signed_owner_review_freezes_the_flag_and_arguments_without_expos
         "The continuation attempt was not reserved"
     );
     assert!(!f.path.join("source-steps.json").exists());
-    JournalState::register_hold(&cx.journal, &request.id, &proposal.content_hash, &f.source)
+    JournalState::register_hold(&cx.journal, &request.id, &pending.content_hash, &f.source)
         .unwrap();
     assert!(tools
-        .begin_resume(&request.id, &proposal.content_hash)
+        .begin_resume(&request.id, &pending.content_hash)
         .unwrap());
     assert_eq!(
         admission.execute(&ask).unwrap_err(),
