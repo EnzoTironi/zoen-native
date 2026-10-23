@@ -139,7 +139,10 @@ export async function routeObservedAction({
     if ((await driver.ready()) !== true) return { ...receipt, reason: "not_authorized" };
     before = snapshot(await driver.observe());
     receipt.observations.push({ id: before.id, hash: before.hash });
-    const actions = actionsFor(before, structuredClone(candidates));
+    if (!before.idle) return { ...receipt, reason: "not_idle" };
+    const supplied =
+      typeof candidates === "function" ? candidates(structuredClone(before)) : candidates;
+    const actions = actionsFor(before, structuredClone(supplied));
     if (actions.length === 0)
       return { ...receipt, status: "abstained", reason: "no_current_action" };
     const criteria = Object.fromEntries(

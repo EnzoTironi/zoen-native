@@ -123,7 +123,7 @@ jobs:
           node-version: '24'
 
       - name: Observed UI action choice guard (no device or provider)
-        run: node --test scripts/tests/qa-observed-choice.test.mjs
+        run: node --test scripts/tests/qa-observed-choice.test.mjs scripts/tests/qa-argent-choice.test.mjs
 
       - name: Expo Core shared-target entrypoint contracts
         run: |
