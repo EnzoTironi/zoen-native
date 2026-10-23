@@ -120,10 +120,33 @@ pub(super) async fn run() {
             .unwrap_err(),
         RuntimeError::CoreAuthorityUnavailable
     );
-    let first = runtime
-        .initialize_native_device(agent, device)
-        .await
-        .unwrap();
+    // Distinct workers contend on the actual FDB device fence. A loser must
+    // not interpret a conflict/uncertain commit as an absent capsule.
+    let contender = open(&w, vault.clone(), &actor).await.unwrap();
+    let (one, two) = tokio::join!(
+        runtime.initialize_native_device(agent, device),
+        contender.initialize_native_device(agent, device)
+    );
+    let successful: Vec<_> = [&one, &two]
+        .into_iter()
+        .filter_map(|r| r.as_ref().ok())
+        .collect();
+    assert!(
+        !successful.is_empty(),
+        "neither initializer succeeded: {one:?}, {two:?}"
+    );
+    let first = successful[0].clone();
+    for result in [one, two] {
+        match result {
+            Ok(inspection) => assert_eq!(inspection, first),
+            Err(error) => assert!(matches!(
+                error,
+                RuntimeError::Denied | RuntimeError::Unavailable
+            )),
+        }
+    }
+    contender.finance.pool.close().await;
+    drop(contender);
     assert_eq!(first.generation, 1);
     assert!(first.image_bytes > 512);
     // Simulate an accepted result whose caller lost the acknowledgement.
