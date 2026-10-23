@@ -333,4 +333,5 @@ mod image_checkpoint;
 mod image_checkpoint_recovery;
 mod image_publication;
 mod ledger;
+mod owner_policy;
 mod settlement;

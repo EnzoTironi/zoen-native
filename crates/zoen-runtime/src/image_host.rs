@@ -23,6 +23,13 @@ pub struct ImageHostConfig {
     pub target: ImageDeliveryTarget,
 }
 
+/// A scoped installation observation, not active budget or a dispatch permit.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum OwnerPolicyInstallation {
+    Installed(String),
+    Refused(String),
+}
+
 pub struct ImageRuntimeHost {
     runtime: Arc<RuntimeAuthority>,
     vault: Arc<dyn SecretVault>,
@@ -61,6 +68,34 @@ impl ImageRuntimeHost {
             config,
             definition,
         })
+    }
+
+    /// Only the configured agent's actual owner can install a signed policy.
+    /// Native directory and policy installation share the same SQL transaction.
+    pub async fn import_owner_policy(
+        &self,
+        signed: types::owner_budget::SignedOwnerPolicy,
+    ) -> Result<OwnerPolicyInstallation, RuntimeError> {
+        self.runtime
+            .native
+            .as_ref()
+            .ok_or(RuntimeError::CoreAuthorityUnavailable)?
+            .install_owner_policy(&self.runtime, &self.config, signed)
+            .await
+    }
+
+    /// Read-only quote/version context for an exact confirmed image review.
+    /// This does not approve the request or admit a financial/provider effect.
+    pub async fn owner_policy_options(
+        &self,
+        signed: &types::owner_policy_context::SignedOwnerPolicyInquiry,
+    ) -> Result<types::owner_policy_context::OwnerPolicyOptions, RuntimeError> {
+        self.runtime
+            .native
+            .as_ref()
+            .ok_or(RuntimeError::CoreAuthorityUnavailable)?
+            .owner_policy_options(&self.runtime, &self.config, &self.definition, signed)
+            .await
     }
 
     /// The trusted profile determines every reviewed specification and tariff.

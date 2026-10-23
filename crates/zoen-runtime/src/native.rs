@@ -6,6 +6,7 @@ mod image_scope;
 mod image_tasks;
 pub(crate) use image_scope::{ImageOutputAuthority, ManagedImageOutput};
 mod managed;
+mod owner_policy;
 mod packages;
 mod runs;
 mod source;

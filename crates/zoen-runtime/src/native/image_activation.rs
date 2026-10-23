@@ -261,8 +261,25 @@ impl RuntimeAuthority {
             .await
             .map_err(|_| RuntimeError::Denied)?
             .ok_or(RuntimeError::Denied)?;
-        if head.seq() != intent.head.seq || head.hash() != intent.head.hash {
-            return Err(RuntimeError::Denied);
+        // Recovery activates an inert, authenticated historical capsule. A
+        // normal append does not invalidate it. The original canonical source
+        // position must still exist, and the actual head must not rewind.
+        // Full intervening-chain/live-grant replay remains the existing native
+        // catch_up's responsibility before any provider, Upload or Publish.
+        if head.seq() < intent.head.seq {
+            return Err(RuntimeError::RestoreUnreconciled);
+        }
+        let source = self.execution.reply_source()?;
+        let original = source
+            .position_in(&transaction, &intent.space, intent.head.seq)
+            .await
+            .map_err(|_| RuntimeError::RestoreUnreconciled)?;
+        let current = source
+            .position_in(&transaction, &intent.space, head.seq())
+            .await
+            .map_err(|_| RuntimeError::RestoreUnreconciled)?;
+        if original.hash != intent.head.hash || current.hash != head.hash() {
+            return Err(RuntimeError::RestoreUnreconciled);
         }
         let image = self
             .execution

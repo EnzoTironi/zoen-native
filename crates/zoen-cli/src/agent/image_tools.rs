@@ -1,10 +1,8 @@
 //! Trusted subprocess consumer of the managed image Runtime. The ordinary
 //! citizen keeps its own MLS device; only public locators/content cross this port.
 use super::*;
-use crate::image_protocol::{Command, Progress, Terminal, MAX_INPUT, MAX_OUTPUT};
+use crate::image_protocol::{Command, Progress, Terminal};
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, process::Stdio};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[cfg(test)]
 mod tests;
@@ -31,17 +29,8 @@ struct Review {
     request: String,
     content_hash: String,
 }
-fn paths() -> Result<(PathBuf, PathBuf), String> {
-    let binary = PathBuf::from(env("ZOEN_IMAGE_HOST_BIN").ok_or("image host unavailable")?);
-    let config =
-        PathBuf::from(env("ZOEN_IMAGE_HOST_CONFIG").ok_or("image configuration unavailable")?);
-    if !binary.is_absolute() || !config.is_absolute() {
-        return Err("image host paths must be absolute".into());
-    }
-    Ok((binary, config))
-}
 pub(super) fn configured() -> bool {
-    paths().is_ok()
+    super::image_ipc::configured()
 }
 pub(super) fn definition() -> ToolDef {
     ToolDef {
@@ -50,62 +39,32 @@ pub(super) fn definition() -> ToolDef {
         parameters: json!({"type":"object","properties":{"prompt":{"type":"string","minLength":1,"maxLength":8192}},"required":["prompt"],"additionalProperties":false}),
     }
 }
-async fn execute(command: Command) -> Result<Progress, String> {
-    command.validate()?;
-    let (binary, config) = paths()?;
-    let bytes = serde_json::to_vec(&command).map_err(|_| "invalid image command")?;
-    if bytes.len() > MAX_INPUT {
-        return Err("image command too large".into());
-    }
-    let mut process = tokio::process::Command::new(binary);
-    process
-        .arg("--config")
-        .arg(config)
-        .arg("execute")
-        .env_clear()
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .kill_on_drop(true);
-    // Local dylib lookup is infrastructure, not content or a provider credential.
-    for name in ["DYLD_LIBRARY_PATH", "LD_LIBRARY_PATH"] {
-        if let Some(path) = std::env::var_os(name) {
-            process.env(name, path);
-        }
-    }
-    let mut child = process.spawn().map_err(|_| "image host could not start")?;
-    let operation = async {
-        let mut input = child.stdin.take().ok_or("image host input unavailable")?;
-        input
-            .write_all(&bytes)
-            .await
-            .map_err(|_| "image host input failed")?;
-        drop(input);
-        let output = child.stdout.take().ok_or("image host output unavailable")?;
-        let mut bytes = Vec::new();
-        output
-            .take(MAX_OUTPUT as u64 + 1)
-            .read_to_end(&mut bytes)
-            .await
-            .map_err(|_| "image host output failed")?;
-        if bytes.len() > MAX_OUTPUT {
-            return Err("image host response too large".into());
-        }
-        let status = child
-            .wait()
-            .await
-            .map_err(|_| "image host status unavailable")?;
-        if !status.success() {
-            return Err(
-                "image execution unavailable; original review and financial attempt retained"
-                    .into(),
-            );
-        }
-        serde_json::from_slice(&bytes).map_err(|_| "invalid image host response".into())
+fn command_bytes(command: &Command) -> Result<Vec<u8>, String> {
+    super::image_ipc::command_bytes(command)
+}
+fn schedule_command(
+    path: &Path,
+    agent: &str,
+    space: &str,
+    source: &str,
+    call: &ToolCall,
+) -> Result<(Command, String), String> {
+    let input: Input =
+        serde_json::from_value(call.arguments.clone()).map_err(|_| "invalid image arguments")?;
+    let command = Command::Stage {
+        agent: agent.into(),
+        space: space.into(),
+        source: source.into(),
+        prompt: input.prompt,
     };
-    tokio::time::timeout(Duration::from_secs(150), operation)
-        .await
-        .map_err(|_| "image host response uncertain; recover the original review")?
+    // Invalid or unrepresentable content cannot consume pending capacity. The
+    // same exact encoding is bounded again before real subprocess I/O.
+    command_bytes(&command)?;
+    let previous = retained_or_schedule(path, space, source, call)?;
+    Ok((command, previous))
+}
+async fn execute(command: Command) -> Result<Progress, String> {
+    super::image_ipc::execute(command).await
 }
 impl SpaceTools<'_> {
     pub(super) fn image_stage(&self, call: &ToolCall) -> Result<String, String> {
@@ -118,9 +77,13 @@ impl SpaceTools<'_> {
         {
             return Err("image tool no longer offered".into());
         }
-        let input: Input = serde_json::from_value(call.arguments.clone())
-            .map_err(|_| "invalid image arguments")?;
-        let previous = retained_or_schedule(self.journal, &self.space, self.source, call)?;
+        let agent = self
+            .e
+            .account()
+            .ok_or("image agent unavailable")?
+            .identity_id;
+        let (command, previous) =
+            schedule_command(self.journal, &agent, &self.space, self.source, call)?;
         let mut retained: Pending =
             serde_json::from_str(&previous).map_err(|_| "invalid retained image scheduling")?;
         if retained.schema != "runtime-image/1"
@@ -132,18 +95,8 @@ impl SpaceTools<'_> {
         if !matches!(retained.progress, Progress::CatchingUp) {
             return Ok(previous);
         }
-        let agent = self
-            .e
-            .account()
-            .ok_or("image agent unavailable")?
-            .identity_id;
         let progress = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(execute(Command::Stage {
-                agent,
-                space: self.space.clone(),
-                source: self.source.into(),
-                prompt: input.prompt,
-            }))
+            tokio::runtime::Handle::current().block_on(execute(command))
         })?;
         self.check_selection()?;
         retained.observe(progress);

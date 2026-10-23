@@ -3,7 +3,7 @@ use super::*;
 #[cfg(test)]
 pub(in crate::native) async fn test_cuts(
     execution: &Execution,
-    custody: &super::NativeCustody,
+    custody: &crate::native::NativeCustody,
     principal: &Principal,
     image: &client_core::runtime_core::NativeImage,
 ) {

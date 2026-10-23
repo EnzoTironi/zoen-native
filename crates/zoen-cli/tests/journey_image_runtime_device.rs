@@ -123,9 +123,23 @@ fn dedicated_runtime_and_citizen_open_the_same_source_from_their_own_welcome() {
         w.stop_relay();
         w.configure_relay_env("ZOEN_MANAGED_DEVICE_CONFIG", Some(registry.to_str().unwrap()));
         w.start_relay();
+        // World intentionally gives a restarted relay a new Challenge name.
+        // Bind the operator route to that observed actual host, never weaken
+        // the Runtime's strict expected-relay check.
+        value["relay_key"] = w.relay_name().into();
+        std::fs::remove_file(&path).unwrap();
+        write_json(&path, &value);
         // Both leaves exist before the first conversation invitation. Claiming
         // stock through normal MLS creation must include both active devices.
         let space = w.zoen("owner", &["dm","@image_citizen","The shared source is a calm sea"]).trim().to_owned();
+        // The first CLI command may correctly return its locally queued space
+        // while the retired relay node's finite partition lease expires. Reuse
+        // the real owner's existing strict sync budget before asking the other
+        // device to read; no lease row, TTL or MLS state is changed by setup.
+        let owner_client = Client::open(w.dir.join("owner").join("zoen.sqlite").to_string_lossy().into_owned(), "en".into()).unwrap();
+        assert!(owner_client.unlock(Arc::new(file_vault::FileVault { dir: w.dir.join("owner").join("vault") })).unwrap());
+        owner_client.start_sync(None).unwrap();
+        owner_client.wait_until_settled(20_000).await.unwrap();
         assert!(w.zoen("citizen", &["read", "@owner"]).contains("The shared source is a calm sea"));
         let config = config::Config::read(&path).unwrap();
         let secrets: Arc<dyn SecretVault> = vault.clone();
@@ -136,10 +150,7 @@ fn dedicated_runtime_and_citizen_open_the_same_source_from_their_own_welcome() {
         // Publish the permission through the actual owner Client and encrypted
         // conversation. The independent Runtime leaf must open this grant and
         // a subsequent source; test setup never writes authority rows directly.
-        let owner_client = Client::open(w.dir.join("owner").join("zoen.sqlite").to_string_lossy().into_owned(), "en".into()).unwrap();
-        assert!(owner_client.unlock(Arc::new(file_vault::FileVault { dir: w.dir.join("owner").join("vault") })).unwrap());
-        owner_client.start_sync(None).unwrap();
-        owner_client.wait_until_settled(20_000).await.unwrap();
+        host_journey::install_policy(&w, &config, &runtime).await;
         owner_client.set_trust(agent.clone(), space.clone(), TrustLevelDto::Listen).unwrap();
         owner_client.send_message(space.clone(), "The authorized shared source is a calm sea".into()).unwrap();
         owner_client.wait_until_settled(20_000).await.unwrap();
