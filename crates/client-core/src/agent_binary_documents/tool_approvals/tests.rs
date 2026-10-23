@@ -148,7 +148,7 @@ fn changed_head_and_revoked_grants_or_device_refuse_before_execution() {
     admission::changed_head_and_revoked_grants_or_device_refuse_before_execution()
 }
 
-fn append_at(fixture: &Fixture, request: AgentRequest, at: i64) {
+pub(crate) fn append_at(fixture: &Fixture, request: AgentRequest, at: i64) {
     let mut engine = fixture.agent.lock();
     let mut log = event_log::SpaceLog::from_events(
         &fixture.space,

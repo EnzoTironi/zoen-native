@@ -46,6 +46,20 @@ impl Client {
         for (index, step) in list.iter_mut().enumerate() {
             let call = step["call"].clone();
             let name = call["name"].as_str().ok_or_else(malformed)?;
+            if index < prefix.len() && crate::agent_app_creation::is_model_name(name) {
+                if step["is_error"] != false {
+                    return Err(stale());
+                }
+                e.recover_creation_prefix(
+                    &r.req.agent,
+                    &r.space,
+                    &p.source,
+                    index,
+                    &call,
+                    &step["result"],
+                )?;
+                continue;
+            }
             let tool = agent_tools::tools()
                 .into_iter()
                 .find(|tool| {

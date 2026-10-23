@@ -27,7 +27,12 @@ impl Engine {
                 artifact_id: p.artifact.clone(),
                 artifact_title: self.state.items.get(&p.artifact)
                     .and_then(|i|i.versions.iter().find(|version|version.number==p.version))
-                    .map(|version|version.content.title()).unwrap_or_default(),
+                    .map(|version|version.content.title()).unwrap_or_else(|| {
+                        if p.schema == 3 {
+                            crate::agent_app_creation::parsed(p).ok().and_then(|(_, args)| args)
+                                .and_then(|args| args["title"].as_str().map(str::to_owned)).unwrap_or_default()
+                        } else { String::new() }
+                    }),
                 version: p.version,
                 operation: crate::agent_binary_documents::tool_approvals::operation(&p.canonical_tool),
                 expires_ms: p.expires_at_ms,

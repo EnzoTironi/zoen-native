@@ -52,7 +52,19 @@ impl Engine {
         write: bool,
     ) -> R<(String, String, String, String)> {
         let state = self.item_state(item)?;
-        let (me, device) = self.app_document_identity(&state.space)?;
+        self.agent_source_authority(&state.space, source, serving, write)
+    }
+
+    /// Same signed source authority before an artifact exists. Creation cannot
+    /// borrow permissions from a different item or a model-supplied actor.
+    pub(crate) fn agent_source_authority(
+        &self,
+        space: &str,
+        source: &str,
+        serving: &str,
+        write: bool,
+    ) -> R<(String, String, String, String)> {
+        let (me, device) = self.app_document_identity(space)?;
         // Local demo personas and an unsigned owner string cannot authorize this port.
         let account = self.account().ok_or_else(denied)?;
         if account.identity != me || account.device != device {
@@ -65,13 +77,11 @@ impl Engine {
         {
             return Err(denied());
         }
-        if !self.is_member(&state.space, serving)
-            || (write && !self.state.writer(&state.space, serving))
-        {
+        if !self.is_member(space, serving) || (write && !self.state.writer(space, serving)) {
             return Err(denied());
         }
         let entry = self
-            .space_state(&state.space)?
+            .space_state(space)?
             .entries
             .iter()
             .find(|entry| entry.id() == source)
@@ -94,7 +104,7 @@ impl Engine {
         Ok((
             device,
             owner,
-            state.space.clone(),
+            space.into(),
             hex::encode(Sha256::digest(source_bytes)),
         ))
     }

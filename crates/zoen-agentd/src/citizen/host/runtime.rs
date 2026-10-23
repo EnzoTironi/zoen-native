@@ -261,6 +261,18 @@ impl Runtime {
         first_round: usize,
     ) -> Result<TurnOutcome, HostError> {
         for round in first_round..=MAX_TOOL_ROUNDS {
+            let current_tools = host.refreshed_tools();
+            let tools = current_tools.as_deref().unwrap_or(tools);
+            if current_tools.is_some()
+                && (tools.len() > 64
+                    || tools.iter().enumerate().any(|(index, tool)| {
+                        tools[..index].iter().any(|prior| prior.name == tool.name)
+                    }))
+            {
+                return Err(HostError::ToolContinuation(
+                    "invalid refreshed tool discovery".into(),
+                ));
+            }
             let offer = if round < MAX_TOOL_ROUNDS && steps.len() < MAX_TOOL_STEPS {
                 tools
             } else {
