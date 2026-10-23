@@ -274,6 +274,7 @@ export function AttachmentRoute({
   return (
     <ScrollView
       testID={`attachment-${kind}-route`}
+      style={{ flex: 1 }}
       contentInsetAdjustmentBehavior="automatic"
       automaticallyAdjustKeyboardInsets
       keyboardShouldPersistTaps="handled"

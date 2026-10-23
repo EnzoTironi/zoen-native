@@ -24,6 +24,7 @@ use ring::{
 use serde_json::{json, Value};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
+mod voip;
 mod wake;
 pub(crate) use wake::wake_registered_devices;
 
@@ -32,10 +33,31 @@ const MAX_WAKE_TASKS: usize = 32;
 
 pub const APNS: &str = "apns";
 pub const APNS_SANDBOX: &str = "apns-sandbox";
+pub const APNS_VOIP: &str = "apns-voip";
+pub const APNS_VOIP_SANDBOX: &str = "apns-voip-sandbox";
 pub const FCM: &str = "fcm";
 
 pub fn valid_platform(p: &str) -> bool {
-    matches!(p, APNS | APNS_SANDBOX | FCM)
+    purpose(p).is_some()
+}
+
+/// Server-derived purpose: a client cannot relabel a notification registration.
+pub fn purpose(platform: &str) -> Option<&'static str> {
+    match platform {
+        APNS | APNS_SANDBOX | FCM => Some("notification"),
+        APNS_VOIP | APNS_VOIP_SANDBOX => Some("voip"),
+        _ => None,
+    }
+}
+
+pub fn valid_registration(platform: &str, token: &str) -> bool {
+    match platform {
+        APNS_VOIP | APNS_VOIP_SANDBOX => {
+            token.is_empty() || protocol::push::ApnsToken::parse(token).is_ok()
+        }
+        APNS | APNS_SANDBOX | FCM => valid_token(token),
+        _ => false,
+    }
 }
 
 /// Tokens go into provider URLs: only the characters APNs (hex) and FCM tokens use.
@@ -46,10 +68,18 @@ pub fn valid_token(t: &str) -> bool {
 }
 
 /// One device token to wake.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Target {
     pub platform: String,
     pub token: String,
+}
+
+impl std::fmt::Debug for Target {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Target")
+            .field("platform", &self.platform)
+            .finish_non_exhaustive()
+    }
 }
 
 /// What came of one push.

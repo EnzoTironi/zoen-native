@@ -4,6 +4,7 @@ import type { Command } from './generated/Command';
 import type { Snapshot } from './generated/Snapshot';
 import type { TimelinePage } from './generated/TimelinePage';
 import type { TimelineEntry } from './generated/TimelineEntry';
+import type { ItemDiscussionDto } from './generated/ItemDiscussionDto';
 import type { ItemDetail } from './generated/ItemDetail';
 import type { PageDto } from './generated/PageDto';
 import type { PlanPageDto } from './generated/PlanPageDto';
@@ -83,6 +84,7 @@ type Results = {
   thread: TimelineEntry[];
   items: ItemDetail[];
   item: ItemDetail;
+  item_discussion: ItemDiscussionDto;
   native_surface_items: NativeSurfaceItemDto[];
   item_at: ItemDetail;
   page: PageDto;

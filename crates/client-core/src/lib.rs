@@ -35,6 +35,7 @@ pub use app_binary_documents::AppBinaryDocumentDto;
 mod app_documents;
 pub use app_documents::AppDocumentDto;
 mod api;
+pub use api::call_turn::CallTurnDto;
 mod backup;
 mod backup_api;
 mod client_api;

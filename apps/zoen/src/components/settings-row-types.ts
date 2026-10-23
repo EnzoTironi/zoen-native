@@ -7,6 +7,7 @@ export type SettingsRow = {
   hint?: string;
   icon?: SymbolViewProps['name'];
   leading?: ReactNode;
+  iconColor?: string;
   supportingText?: string;
   onPress: () => void;
 };

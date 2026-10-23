@@ -121,6 +121,7 @@ impl Session {
                 Ok(Reply::Done)
             }
             Op::Agent(req) => self.agent(req).await,
+            Op::CallTurn { space, peer } => self.call_turn(&space, &peer).await,
             Op::Devices => Ok(Reply::Devices(
                 db::devices_of(pool, &self.identity)
                     .await
@@ -337,7 +338,7 @@ impl Session {
                 Ok(Reply::Done)
             }
             Op::RegisterPush { platform, token } => {
-                if !crate::push::valid_platform(&platform) || !crate::push::valid_token(&token) {
+                if !crate::push::valid_registration(&platform, &token) {
                     return Err("bad push registration".into());
                 }
                 db::set_push_token(

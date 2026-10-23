@@ -11,6 +11,7 @@ import {
   DEFAULT_THEME_CUSTOMIZATION as defaults,
   telegramPresentation,
 } from '../theme/telegram.ts';
+import { THEME_PROFILES, isDarkTheme } from '../theme/catalog.ts';
 import { resolveSkyTheme } from '../theme/sky.ts';
 
 const require = createRequire(import.meta.url);
@@ -223,6 +224,7 @@ function fixture() {
     '../i18n': { t: (key: string) => key },
     '../theme': { useTheme: () => currentTheme },
     '../theme/sky': { resolveSkyTheme },
+    '../theme/catalog': { THEME_PROFILES, isDarkTheme },
     '../theme/telegram': { DEFAULT_THEME_CUSTOMIZATION: defaults, telegramPresentation },
     './settings-screen': { SettingsScreen: 'SettingsScreen' },
     './sky-background': { SkyLayer: 'SkyLayer' },
@@ -280,17 +282,16 @@ test('late hydration cannot replace a user choice and coalesced writes persist t
   assert.equal(JSON.parse(f.saved.get('theme-customization-day')!).textSize, 26);
 });
 
-test('appearance readiness waits for all three reads including rejection without replacing a newer user choice', async () => {
+test('appearance readiness waits for every preset read, including rejection, without replacing a newer user choice', async () => {
   for (const rejected of [
     null,
     'appearance',
-    'theme-customization-day',
-    'theme-customization-night',
+    ...THEME_PROFILES.map((profile) => `theme-customization-${profile}`),
   ]) {
     const f = fixture();
     const initial = f.draw();
     assert.equal(initial.appearanceReady, false);
-    assert.equal(f.reads.size, 3);
+    assert.equal(f.reads.size, THEME_PROFILES.length + 1);
     initial.setPreference('day');
     initial.setCustomization('day', { ...defaults, textSize: 23 });
     const complete = (key: string, value: string | null) => {
@@ -310,7 +311,8 @@ test('appearance readiness waits for all three reads including rejection without
       false,
       'two settled reads still cannot release launch appearance',
     );
-    complete('theme-customization-night', JSON.stringify(defaults));
+    for (const profile of THEME_PROFILES.filter((value) => value !== 'day'))
+      complete(`theme-customization-${profile}`, JSON.stringify(defaults));
     const current = await f.settle();
     assert.equal(current.appearanceReady, true, String(rejected));
     assert.equal(current.preference, 'day');
@@ -350,5 +352,64 @@ test('same-render native font and color callbacks merge fields in actual Setting
     assert.equal(saved.textSize, 23);
     assert.equal(saved.accent, '#123456');
     assert.equal(current.preferenceError, null);
+  }
+});
+
+test('all preset controls switch the actual provider and retain independent customization through late hydration', async () => {
+  const f = fixture();
+  f.draw().setPreference('day');
+  await f.settle();
+  const expected = new Map<string, number>();
+  for (const [index, profile] of THEME_PROFILES.entries()) {
+    const tree = f.drawSettings();
+    const preset = nodes(tree).find((node) => node.props.profile === profile)!;
+    assert.ok(preset, profile);
+    preset.props.onPress();
+    let current = await f.settle();
+    assert.equal(current.preference, profile);
+    assert.equal(current.profile, profile);
+    assert.equal(current.presentation.profile, profile);
+    const font = nodes(f.drawSettings()).find((node) => node.props.testID === 'theme-text-size')!;
+    font.props.onValueChange(18 + index);
+    expected.set(profile, 18 + index);
+    // A stale disk response for this same theme cannot overwrite the native edit.
+    f.reads
+      .get(`theme-customization-${profile}`)!
+      .resolve(JSON.stringify({ ...defaults, textSize: 13 }));
+    current = await f.settle();
+    assert.equal(current.presentation.typography.message.fontSize, 18 + index);
+    for (const [other, size] of expected) {
+      assert.equal(
+        current.customizations[other as keyof typeof current.customizations].textSize,
+        size,
+      );
+      assert.equal(JSON.parse(f.saved.get(`theme-customization-${other}`)!).textSize, size);
+    }
+  }
+  f.reads.get('appearance')!.resolve('day');
+  const final = await f.settle();
+  assert.equal(final.preference, 'telegram-tinted');
+  assert.equal(final.appearanceReady, true);
+});
+
+test('cold provider restoration recovers each selected preset and its own saved colors without writing migration data', async () => {
+  for (const profile of THEME_PROFILES) {
+    const f = fixture();
+    f.draw();
+    f.reads.get('appearance')!.resolve(profile);
+    for (const other of THEME_PROFILES)
+      f.reads.get(`theme-customization-${other}`)!.resolve(
+        JSON.stringify({
+          ...defaults,
+          textSize: other === profile ? 23 : 17,
+          outgoing: other === profile ? '#123456' : null,
+        }),
+      );
+    const restored = await f.settle();
+    assert.equal(restored.appearanceReady, true);
+    assert.equal(restored.profile, profile);
+    assert.equal(restored.presentation.chat.outgoing.fill, '#123456');
+    assert.equal(restored.presentation.typography.message.fontSize, 23);
+    assert.equal(f.writes.length, 0, 'restoration must not mutate any existing preference');
   }
 });
