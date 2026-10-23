@@ -63,6 +63,38 @@ async fn signed_renewal_waits_for_actual_sync_without_reply_attempt_or_effect_th
     server.released.store(true, Ordering::SeqCst);
     server.release.notify_waiters();
     f.client.wait_until_settled(2000).await.unwrap();
+    let tools = SpaceTools::new(&f.client, &cx, &f.space, &f.owner, &f.source);
+    let ask: ToolAsk =
+        serde_json::from_str(&expired.tool_proposal.as_ref().unwrap().continuation_json).unwrap();
+    let timeline_after = f.client.timeline(f.space.clone()).unwrap();
+    let source_after = timeline_after.iter().find(|e| e.id == f.source).unwrap();
+    let inbound = Turn {
+        space: f.space.clone(),
+        from: f.owner.clone(),
+        text: text_of(source_after).unwrap().into(),
+    };
+    let tc = TurnContext {
+        agent: &cx.me,
+        device: &cx.device,
+        owner: &cx.owner,
+        definition: &def,
+    };
+    assert!(
+        JournalState::renewal_safe(&journal, &expired.id, &expired.content_hash, &f.source)
+            .unwrap()
+    );
+    let current = f.client.agent_page_turn(&item, &f.source, &f.owner);
+    assert!(
+        current.is_ok(),
+        "fixture authority after sync: {:?}",
+        current.err()
+    );
+    let check = cx.runtime.validate_tool_review(tc, &inbound, &tools, &ask);
+    assert!(
+        matches!(check, Ok(true)),
+        "fixture held context after sync: {check:?}"
+    );
+    drop(tools);
     assert!(!run.tick(&f.client, &cx, &def, end).await.unwrap());
     let requests = f.client.tool_approval_requests(&f.space, &f.source);
     assert_eq!(requests.len(), 3);
@@ -159,6 +191,38 @@ async fn normal_signed_renewal_reports_scheduling_deferred_without_consuming_a_t
     server.released.store(true, Ordering::SeqCst);
     server.release.notify_waiters();
     f.client.wait_until_settled(2000).await.unwrap();
+    let tools = SpaceTools::new(&f.client, &cx, &f.space, &f.owner, &f.source);
+    let ask: ToolAsk =
+        serde_json::from_str(&expired.tool_proposal.as_ref().unwrap().continuation_json).unwrap();
+    let timeline_after = f.client.timeline(f.space.clone()).unwrap();
+    let source_after = timeline_after.iter().find(|e| e.id == f.source).unwrap();
+    let inbound = Turn {
+        space: f.space.clone(),
+        from: f.owner.clone(),
+        text: text_of(source_after).unwrap().into(),
+    };
+    let tc = TurnContext {
+        agent: &cx.me,
+        device: &cx.device,
+        owner: &cx.owner,
+        definition: &def,
+    };
+    assert!(
+        JournalState::renewal_safe(&journal, &expired.id, &expired.content_hash, &f.source)
+            .unwrap()
+    );
+    let current = f.client.agent_page_turn(&item, &f.source, &f.owner);
+    assert!(
+        current.is_ok(),
+        "fixture authority after sync: {:?}",
+        current.err()
+    );
+    let check = cx.runtime.validate_tool_review(tc, &inbound, &tools, &ask);
+    assert!(
+        matches!(check, Ok(true)),
+        "fixture held context after sync: {check:?}"
+    );
+    drop(tools);
     assert_eq!(
         super::super::super::turn::turn(
             &f.client,
