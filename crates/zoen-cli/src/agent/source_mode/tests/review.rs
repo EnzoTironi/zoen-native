@@ -33,7 +33,7 @@ async fn actual_signed_owner_review_freezes_the_flag_and_arguments_without_expos
     );
     let calls = Arc::new(AtomicUsize::new(0));
     let cx = context(&f, &calls, false);
-    let run = Run::prepare(&f.client, source(&f.source)).unwrap();
+    let run = Run::prepare(&f.client, source(&f.source), &[]).unwrap();
     let mut tools = SpaceTools::new(&f.client, &cx, &f.space, &f.owner, &f.source);
     tools.selection = Some(&run.bound);
     let admission = CanonicalToolAdmission {

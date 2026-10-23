@@ -145,11 +145,75 @@ fn acknowledged_source_retirement_preserves_other_sources_and_review_budgets() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn canonical_cursor_ack_and_cold_selector_do_not_replay_a_retired_silent_turn() {
+    let server = relay(Mode::CursorAck).await;
+    let mut f = Fixture::new(&server.url);
+    online(&f.client, true).await;
+    let calls = Arc::new(AtomicUsize::new(0));
+    let cx = context(&f, &calls, false);
+    let cursors = super::super::admit(&f.client, 1000).await.unwrap();
+    let mut run = Run::prepare(&f.client, source(&f.source), &cursors).unwrap();
+    assert!(!run
+        .tick(&f.client, &cx, &definition(), deadline())
+        .await
+        .unwrap());
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    let timeline = f.client.timeline(f.space.clone()).unwrap();
+    let seq = timeline.iter().find(|t| t.id == f.source).unwrap().seq;
+    assert!(seq > 0);
+    assert!(timeline
+        .iter()
+        .all(|t| t.reply_to.as_ref().is_none_or(|r| r.id != f.source)));
+    assert!(owner_note(&f.client, &cx, &f.source).is_none());
+    // The ordinary host's order: actual relay ACK first, then retire local budget.
+    f.client.agent_advance(f.space.clone(), seq).await.unwrap();
+    JournalState::retire_turn(&cx.journal, &cx, &f.space, &f.source).unwrap();
+    assert!(JournalState::load(&cx.journal)
+        .unwrap()
+        .continuations
+        .is_empty());
+    drop(cx);
+    f.reopen();
+    online(&f.client, true).await;
+    let cursors = super::super::admit(&f.client, 1000).await.unwrap();
+    assert_eq!(cursors, vec![(f.space.clone(), seq)]);
+    let cx = context(&f, &calls, false);
+    let before = std::fs::read(&cx.journal).unwrap();
+    for _ in 0..MAX_TRIES + 1 {
+        let mut cold = Run::prepare(&f.client, source(&f.source), &cursors).unwrap();
+        // A missing later snapshot cannot undo completion already observed.
+        cold.observe_cursors(&[]);
+        assert_eq!(
+            cold.tick(&f.client, &cx, &definition(), deadline()).await,
+            Err("agent_host_source_already_handled".into())
+        );
+    }
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(std::fs::read(&cx.journal).unwrap(), before);
+    assert_eq!(
+        server
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|&&c| c == "agent_advance")
+            .count(),
+        1
+    );
+    assert!(!server
+        .calls
+        .lock()
+        .unwrap()
+        .contains(&"forbidden_agent_operation"));
+    assert!(!server.calls.lock().unwrap().contains(&"read_receipt"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn account_retirement_during_inference_prevents_result_delivery() {
     let server = relay(Mode::Normal).await;
     let f = Fixture::new(&server.url);
     online(&f.client, true).await;
-    let mut run = Run::prepare(&f.client, source(&f.source)).unwrap();
+    let mut run = Run::prepare(&f.client, source(&f.source), &[]).unwrap();
     let calls = Arc::new(AtomicUsize::new(0));
     let mut cx = context(&f, &calls, false);
     let client = f.client.clone();

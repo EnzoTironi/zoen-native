@@ -194,10 +194,8 @@ pub async fn host(
         })?;
     let (mut cursors, mut selected) = if let Some(source) = source {
         let cursors = source_mode::admit(e, 15000).await?;
-        (
-            cursors.into_iter().collect(),
-            Some(source_mode::Run::prepare(e, source)?),
-        )
+        let selected = source_mode::Run::prepare(e, source, &cursors)?;
+        (cursors.into_iter().collect(), Some(selected))
     } else {
         (startup::prepare(e, readiness, 15000).await?, None)
     };
@@ -328,6 +326,9 @@ pub async fn host(
                 continue;
             }
         };
+        if let Some(selected) = &mut selected {
+            selected.observe_cursors(&status.cursors);
+        }
         for (space, seq) in status.cursors {
             let c = cursors.entry(space).or_insert(seq);
             *c = (*c).max(seq);

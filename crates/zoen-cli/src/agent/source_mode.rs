@@ -242,13 +242,30 @@ impl Bound {
 pub(super) struct Run {
     bound: Bound,
     observed: Option<Head>,
+    completed_through: u64,
 }
 impl Run {
-    pub(super) fn prepare(e: &Client, source: Source) -> Result<Self, String> {
-        Ok(Self {
+    pub(super) fn prepare(
+        e: &Client,
+        source: Source,
+        cursors: &[(String, u64)],
+    ) -> Result<Self, String> {
+        let mut run = Self {
             bound: Bound::locate(e, source)?,
             observed: None,
-        })
+            completed_through: 0,
+        };
+        run.observe_cursors(cursors);
+        Ok(run)
+    }
+    /// The caller supplies the already-authenticated AgentState snapshot. Never
+    /// seed or mutate a cursor, and never undo a previously observed completion.
+    pub(super) fn observe_cursors(&mut self, cursors: &[(String, u64)]) {
+        for (space, seq) in cursors {
+            if space == &self.bound.space {
+                self.completed_through = self.completed_through.max(*seq);
+            }
+        }
     }
     pub(super) fn check(&self, e: &Client) -> Result<(), String> {
         self.bound.check(e)
@@ -308,6 +325,12 @@ impl Run {
             ));
         }
         let head = self.head(e)?;
+        if head.is_none() && timeline[index].seq <= self.completed_through {
+            // Canonical Requests intentionally survive cursor advancement. Without
+            // one, an explicit selector cannot turn handled silence/block into
+            // fresh inference after its operational reservation was retired.
+            return Err("agent_host_source_already_handled".into());
+        }
         if self.observed.as_ref() == Some(&head) {
             return Ok(false);
         }
