@@ -144,6 +144,7 @@ async function realBrowserResult(chrome: string, folder: string, path: string): 
       }),
     ]);
   } catch (error) {
+    // Observe before owned cleanup; post-kill /proc cannot explain a startup stall.
     await annotateOwnedBrowserFailure(error, child, join(folder, 'profile'));
     throw error;
   } finally {

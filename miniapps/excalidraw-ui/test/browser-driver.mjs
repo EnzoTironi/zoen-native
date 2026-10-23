@@ -3,6 +3,7 @@ import { observeOwnedChild, withCleanup } from "./browser-lifecycle.mjs";
 import { constants } from "node:fs";
 import { access, stat } from "node:fs/promises";
 import { join, posix, win32 } from "node:path";
+import { annotateOwnedBrowserFailure } from "../../../tools/miniapp-build/browser-startup.ts";
 async function isExecutableFile(path) {
   try {
     if (!(await stat(path)).isFile()) return false;
@@ -117,13 +118,17 @@ export async function ownedBrowserResult(chrome, folder, path) {
       `--user-data-dir=${join(folder, "profile")}`,
       "about:blank",
     ],
-    { stdio: ["ignore", "ignore", "pipe"], detached: process.platform !== "win32" },
+    { stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" },
   );
   const owned = observeOwnedChild(child, { processGroup: process.platform !== "win32" });
   const lifecycle = Object.assign(owned.state, { profile: join(folder, "profile") });
   let socket, closeBrowser;
   const deadline = createBrowserDeadline();
   let stderr = "";
+  let stdout = "";
+  child.stdout.on("data", (data) => {
+    stdout = (stdout + data).slice(-16384);
+  });
   const errors = [];
   return withCleanup(async () => {
     return await Promise.race([
@@ -220,7 +225,10 @@ export async function ownedBrowserResult(chrome, folder, path) {
         throw Error("Real canvas timeout " + JSON.stringify({ errors, info: info.result?.value }));
       })(),
       deadline.expired,
-    ]);
+    ]).catch(async (error) => {
+      await annotateOwnedBrowserFailure(error, child, join(folder, "profile"));
+      throw error;
+    });
   }, async () => {
     deadline.clear();
     try {
@@ -229,7 +237,7 @@ export async function ownedBrowserResult(chrome, folder, path) {
       socket?.close();
     }
   }).catch((error) => {
-    error.ownedBrowser = { ...lifecycle, stderr };
+    error.ownedBrowser = { ...lifecycle, stderr, stdout };
     throw error;
   });
 }
