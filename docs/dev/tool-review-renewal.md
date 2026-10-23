@@ -92,3 +92,12 @@ cold recovery. Qualification results belong to their immutable receipts. This
 change does not revive the earlier source71 attempt or claim that its exact
 refusal cause was observed. No real renewal or provider execution is implied by
 source/fixture checks. Refs #261, #175 and #174.
+
+Renewal follows the same canonical active step as normal host continuation discovery:
+step index, then review generation, then signed request order. The comparison is
+scoped to the agent, Space, source and task. A later pending step retires an older
+available/requested review; a renewed pending or approved request cannot acquire
+fresh authority after it stops being the active leaf. Legacy root execution retains
+its existing rules. Exact accepted Deck/Page command receipts are reconciled before
+this freshness check, so retiring a review never turns a completed effect into a
+retry. This ordering grants no permission and uses no wall-clock or ID heuristic.

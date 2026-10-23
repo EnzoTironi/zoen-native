@@ -46,11 +46,6 @@ impl Client {
         if intent.id != owner_intent || e.me_id()? != r.req.agent {
             return Err(denied());
         }
-        if let Some(successor) = &intent.successor {
-            return Ok(Some(
-                e.request_dto(e.state.requests.get(successor).ok_or_else(stale)?),
-            ));
-        }
         // Existing authority is checked before even revealing acceptance metadata.
         e.tool_resolution(predecessor, &r.req.content_hash)?;
         let (device, owner, space, source) =
@@ -69,7 +64,15 @@ impl Client {
         if e.tool_review_accepted(old)? {
             return Ok(None);
         }
+        if let Some(successor) = &intent.successor {
+            let next = e.state.requests.get(successor).ok_or_else(stale)?;
+            if !e.state.tool_review_active_leaf(next) {
+                return Err(stale());
+            }
+            return Ok(Some(e.request_dto(next)));
+        }
         if e.approval_replay_needed
+            || !e.state.tool_review_active_leaf(&r)
             || !e.state.tool_request_matches(&r.req, &r.space)
             || e.state.tool_review_source_replied(&r)
         {
@@ -111,6 +114,9 @@ impl Client {
         let e = self.lock();
         let r = e.state.requests.get(request)?;
         if e.me_id().ok().as_deref() != Some(r.req.agent.as_str()) {
+            return None;
+        }
+        if !e.state.tool_review_active_leaf(r) {
             return None;
         }
         r.review

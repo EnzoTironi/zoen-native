@@ -202,7 +202,9 @@ impl State {
                                 | (false, Some(ToolDecision::Deny | ToolDecision::Cancel))
                         )
                         && (!approved
-                            || (p.expires_at_ms > e.at_ms && self.tool_app_act(p, e.at_ms)));
+                            || (p.expires_at_ms > e.at_ms
+                                && self.tool_app_act(p, e.at_ms)
+                                && self.tool_review_current(r)));
                 }
                 if resolution
                     .as_ref()

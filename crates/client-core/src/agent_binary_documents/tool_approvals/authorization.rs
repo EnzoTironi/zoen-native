@@ -93,6 +93,7 @@ impl Engine {
             return Ok(());
         }
         if p.expires_at_ms <= crate::engine::now_ms()
+            || !self.state.tool_review_current(r)
             || !self.state.tool_request_matches(&r.req, &r.space)
         {
             return Err(stale());
@@ -143,6 +144,7 @@ impl Engine {
         let approved = decision == ToolDecision::ApproveOnce;
         if approved
             && (p.expires_at_ms <= crate::engine::now_ms()
+                || !self.state.tool_review_current(&r)
                 || !self.state.tool_request_matches(&r.req, &r.space)
                 || !self.state.tool_app_act(p, crate::engine::now_ms())
                 || !self.tool_non_blocked(&r.req))

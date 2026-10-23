@@ -88,6 +88,7 @@ impl Engine {
         if let Some(p) = &req.tool_proposal {
             return Ok(
                 if p.expires_at_ms > now_ms()
+                    && self.state.tool_review_current(request)
                     && self.state.tool_request_matches(req, &request.space)
                     && self.state.tool_app_act(p, now_ms())
                 {

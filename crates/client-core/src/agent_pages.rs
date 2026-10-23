@@ -143,6 +143,7 @@ impl Client {
             if p.canonical_tool != "read_page"
                 || p.sha256 != current.prefix_sha256
                 || p.expires_at_ms <= crate::engine::now_ms()
+                || !e.state.tool_review_current(r)
                 || !e.state.tool_request_matches(&r.req, &r.space)
             {
                 return Err(stale());

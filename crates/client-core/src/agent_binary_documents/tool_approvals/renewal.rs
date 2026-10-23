@@ -19,6 +19,47 @@ fn root(r: &RequestState) -> &str {
 }
 
 impl State {
+    /// Same canonical order used by normal host continuation discovery. No wall
+    /// clock, request ID or caller-supplied generation can create a newer leaf.
+    pub(crate) fn tool_approval_order(&self, request: &AgentRequest) -> (u32, u32, usize) {
+        let p = request.tool_proposal.as_ref();
+        (
+            p.map_or(0, |p| p.step),
+            p.and_then(|p| p.review.as_ref())
+                .map_or(0, |r| r.generation),
+            self.request_order
+                .iter()
+                .position(|id| id == &request.id)
+                .unwrap_or(0),
+        )
+    }
+
+    pub(crate) fn tool_review_active_leaf(&self, request: &RequestState) -> bool {
+        let Some(p) = request.req.tool_proposal.as_ref() else {
+            return false;
+        };
+        self.requests
+            .values()
+            .filter(|r| {
+                r.space == request.space
+                    && r.req.agent == request.req.agent
+                    && r.req.tool_proposal.as_ref().is_some_and(|other| {
+                        other.source == p.source && other.task_sha256 == p.task_sha256
+                    })
+            })
+            .max_by_key(|r| self.tool_approval_order(&r.req))
+            .is_some_and(|leaf| leaf.req.id == request.req.id)
+    }
+
+    /// Legacy roots retain their existing approval/execution semantics. A renewed
+    /// request can authorize fresh IO only while it is the same task's active leaf.
+    pub(crate) fn tool_review_current(&self, r: &RequestState) -> bool {
+        r.req
+            .tool_proposal
+            .as_ref()
+            .is_none_or(|p| p.review.is_none())
+            || self.tool_review_active_leaf(r)
+    }
     pub(crate) fn tool_review_source_replied(&self, r: &RequestState) -> bool {
         let Some(p) = r.req.tool_proposal.as_ref() else {
             return true;
@@ -51,6 +92,7 @@ impl State {
             && r.resolution.as_ref().and_then(|r| r.tool_decision)
                 == Some(ToolDecision::ApproveOnce)
             && r.review.is_none()
+            && self.tool_review_active_leaf(r)
             && p.expires_at_ms <= event.at_ms
             && event.author == p.owner
             && !event.client_id.is_empty()
@@ -97,7 +139,8 @@ impl State {
         else {
             return false;
         };
-        if prior.status != ReqStatus::Approved
+        if !self.tool_review_active_leaf(prior)
+            || prior.status != ReqStatus::Approved
             || intent.successor.is_some()
             || intent.id != lineage.intent
             || intent.at_ms > at
@@ -182,6 +225,9 @@ impl Engine {
                 .as_ref()
                 .and_then(|id| self.state.requests.get(id))
                 .unwrap_or(&r);
+            if !self.state.tool_review_active_leaf(current) {
+                return Err(stale());
+            }
             return Ok(DecideOutcome {
                 request: self.request_dto(current),
                 message: crate::i18n::t(
@@ -195,6 +241,7 @@ impl Engine {
         let at = crate::engine::now_ms();
         // Use the exact replay guard before append; it is checked again by projection.
         if self.approval_replay_needed
+            || !self.state.tool_review_active_leaf(&r)
             || r.status != ReqStatus::Approved
             || p.expires_at_ms > at
             || !self.state.tool_request_matches(&r.req, &r.space)
@@ -238,13 +285,16 @@ impl Engine {
         let state = if let Some(intent) = &r.review {
             if intent.successor.is_some() {
                 ToolReviewState::Superseded
-            } else if self.state.tool_review_source_replied(r) {
+            } else if !self.state.tool_review_active_leaf(r)
+                || self.state.tool_review_source_replied(r)
+            {
                 ToolReviewState::Reconcile
             } else {
                 ToolReviewState::Requested
             }
         } else if self.me_id().as_deref().is_ok_and(|me| me == p.owner)
             && r.status == ReqStatus::Approved
+            && self.state.tool_review_active_leaf(r)
             && p.expires_at_ms <= crate::engine::now_ms()
             && !self.approval_replay_needed
             && self.state.tool_request_matches(&r.req, &r.space)
