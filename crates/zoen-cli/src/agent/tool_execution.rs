@@ -111,6 +111,30 @@ impl SpaceTools<'_> {
         call: &ToolCall,
     ) -> Option<zoen_agentd::PublicArtifactReferences> {
         self.check_selection().ok()?;
+        if let Some((item, tool)) = self.site_binding(call) {
+            let command = client_core::agent_sites::parse(tool, &call.arguments).ok()?;
+            let (artifact, version, hash) = match command {
+                client_core::agent_sites::Command::Read(c) => (c.artifact_id, c.version, c.sha256),
+                client_core::agent_sites::Command::Replace(c) => {
+                    (c.artifact_id, c.version, c.sha256)
+                }
+                client_core::agent_sites::Command::Create(_) => return None,
+            };
+            if artifact != item {
+                return None;
+            }
+            self.e
+                .agent_site_read(item, version, &hash, self.source, self.serving)
+                .ok()?;
+            self.check_selection().ok()?;
+            // Only the native-verified locator/hash are public. Replacement HTML
+            // remains semantic Gate input and retains credential/content checks.
+            return zoen_agentd::PublicArtifactReferences::new(
+                tool.into(),
+                item.into(),
+                Some(hash),
+            );
+        }
         if let Some((item, tool)) = self.page_binding(call) {
             let references = (|| {
                 let parsed = client_core::agent_page_tools::parse(tool, &call.arguments).ok()?;
