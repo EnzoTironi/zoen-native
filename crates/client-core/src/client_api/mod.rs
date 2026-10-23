@@ -68,6 +68,7 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
     crate::sites::SiteSource::export_all(&config)?;
     crate::sites::SiteReview::export_all(&config)?;
     crate::sites::SitePrepared::export_all(&config)?;
+    crate::sites::SiteStatus::export_all(&config)?;
     protocol::sites::Receipt::export_all(&config)?;
     Snapshot::export_all(&config)?;
     crate::MessageDraftDto::export_all(&config)?;

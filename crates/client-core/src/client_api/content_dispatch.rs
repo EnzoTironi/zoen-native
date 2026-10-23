@@ -38,10 +38,11 @@ impl Client {
             SiteReview {
                 scope,
                 source,
-                site_id,
-                expected_head,
-            } => encode_site(&self.site_review(scope, source, site_id, expected_head)?),
-            SitePrepare { review } => encode_site(&self.site_prepare(review)?),
+                unpublish,
+            } => encode_site(&self.site_review(scope, source, unpublish).await?),
+            SiteStatus { scope, source } => encode_site(&self.site_status(scope, source).await?),
+            SitePrepare { review } => encode_site(&self.site_prepare(review).await?),
+            SitePublish { review } => encode_site(&self.site_publish(review).await?),
             Search { query } => encode(&self.search(query)),
             SearchMessages {
                 space_id,

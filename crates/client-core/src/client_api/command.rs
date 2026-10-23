@@ -25,10 +25,16 @@ pub(super) enum Command {
     SiteReview {
         scope: crate::sites::SiteScope,
         source: protocol::sites::SourceVersion,
-        site_id: Option<String>,
-        expected_head: Option<String>,
+        unpublish: bool,
+    },
+    SiteStatus {
+        scope: crate::sites::SiteScope,
+        source: protocol::sites::SourceVersion,
     },
     SitePrepare {
+        review: crate::sites::SiteReview,
+    },
+    SitePublish {
         review: crate::sites::SiteReview,
     },
     ProviderSignIn {

@@ -1,7 +1,7 @@
 use super::*;
 use types::{EventBody, Identity, Role};
 
-fn fixture() -> (std::sync::Arc<Client>, SiteScope, SiteSource) {
+pub(super) fn fixture() -> (std::sync::Arc<Client>, SiteScope, SiteSource) {
     let client = Client::open(":memory:".into(), "en".into()).unwrap();
     let mut e = client.lock();
     e.create_account("Owner", "site_owner", "https://relay.example.test")
@@ -41,14 +41,27 @@ fn fixture() -> (std::sync::Arc<Client>, SiteScope, SiteSource) {
     drop(e);
     (client, scope, source)
 }
-fn review(scope: &SiteScope, source: &SiteSource) -> SiteReview {
+pub(super) fn review(scope: &SiteScope, source: &SiteSource) -> SiteReview {
     SiteReview {
         scope: scope.clone(),
+        source: source.source.clone(),
         relay_url: "https://relay.example.test".into(),
-        audience: "relay.test".into(),
+        configuration: Configuration {
+            schema: SCHEMA,
+            audience: "relay.test".into(),
+            management_origin: "https://api.example.test".into(),
+            public_origin: "https://sites.example.test".into(),
+            max_html_bytes: MAX_HTML_BYTES,
+        },
         mutation: Mutation {
             schema: SCHEMA,
-            site_id: types::new_secret_id("site"),
+            public_origin: "https://sites.example.test".into(),
+            site_id: protocol::sites::site_id(
+                &scope.identity_id,
+                &scope.space_id,
+                &source.source.item_id,
+                "https://sites.example.test",
+            ),
             request_id: types::new_secret_id("pub"),
             expected_head: None,
             change: Change::Publish {
@@ -97,7 +110,7 @@ fn create_retry_reuses_file_and_message_then_checked_save_preserves_selected_old
         .site_prepare(
             &review(&scope, &first),
             "https://relay.example.test",
-            "relay.test",
+            &review(&scope, &first).configuration,
         )
         .unwrap();
     assert_eq!(signed.html, first.html);
@@ -109,7 +122,7 @@ fn preparation_signs_exact_shared_numeric_contract_and_refuses_changed_content_o
     let (c, scope, first) = fixture();
     let e = c.lock();
     let r = review(&scope, &first);
-    let prepared = e.site_prepare(&r, &r.relay_url, &r.audience).unwrap();
+    let prepared = e.site_prepare(&r, &r.relay_url, &r.configuration).unwrap();
     assert!(event_log::verify_sig(
         &scope.device_id,
         &prepared.signed.signing_bytes("relay.test"),
@@ -124,16 +137,25 @@ fn preparation_signs_exact_shared_numeric_contract_and_refuses_changed_content_o
     assert!(value["signed"]["at_ms"].is_i64());
     assert!(value["signed"]["mutation"]["change"]["source"]["byte_length"].is_u64());
     assert!(e
-        .site_prepare(&r, "https://changed.test", &r.audience)
+        .site_prepare(&r, "https://changed.test", &r.configuration)
         .is_err());
-    assert!(e.site_prepare(&r, &r.relay_url, "other").is_err());
+    assert!(e
+        .site_prepare(
+            &r,
+            &r.relay_url,
+            &Configuration {
+                audience: "other".into(),
+                ..r.configuration.clone()
+            }
+        )
+        .is_err());
     let mut changed = r;
     let Change::Publish { source } = &mut changed.mutation.change else {
         unreachable!()
     };
     source.byte_length += 1;
     assert!(e
-        .site_prepare(&changed, &changed.relay_url, &changed.audience)
+        .site_prepare(&changed, &changed.relay_url, &changed.configuration)
         .is_err());
 }
 
@@ -180,7 +202,7 @@ fn stale_device_wrong_space_reader_and_revoked_membership_do_not_read_edit_or_si
         .is_ok());
     assert!(e.site_save(&scope, &first.source, "<p>Bad</p>").is_err());
     let r = review(&scope, &first);
-    assert!(e.site_prepare(&r, &r.relay_url, &r.audience).is_err());
+    assert!(e.site_prepare(&r, &r.relay_url, &r.configuration).is_err());
     e.append(
         &scope.space_id,
         &scope.identity_id,
@@ -233,15 +255,43 @@ fn device_revocation_invalid_html_and_hash_mismatch_fail_before_signing_or_writi
         )
         .is_err());
     let r = review(&scope, &first);
-    assert!(e.site_prepare(&r, &r.relay_url, &r.audience).is_err());
+    assert!(e.site_prepare(&r, &r.relay_url, &r.configuration).is_err());
 }
 
-#[test]
-fn offline_client_does_not_trust_cached_relay_name_or_emit_a_signed_preparation() {
+#[tokio::test]
+async fn offline_client_does_not_trust_cached_relay_name_or_emit_a_signed_preparation() {
     let (c, scope, first) = fixture();
     c.lock().store.set_meta("relay_name", "relay.test").unwrap();
     assert!(c
-        .site_review(scope.clone(), first.source.clone(), None, None)
+        .site_review(scope.clone(), first.source.clone(), false)
+        .await
         .is_err());
-    assert!(c.site_prepare(review(&scope, &first)).is_err());
+    assert!(c.site_prepare(review(&scope, &first)).await.is_err());
+}
+
+#[tokio::test]
+async fn real_json_commands_keep_signed_lengths_numeric_and_allow_only_bounded_html_writes() {
+    let (c, scope, first) = fixture();
+    let read = c
+        .client_request(
+            serde_json::json!({ "op": "site_read", "scope": scope,
+        "item_id": first.source.item_id, "version": first.source.version,
+        "expected_sha256": first.source.sha256 })
+            .to_string(),
+        )
+        .await
+        .unwrap();
+    let value: serde_json::Value = serde_json::from_str(&read).unwrap();
+    assert!(value["source"]["byte_length"].is_u64());
+    assert_eq!(value["html"], first.html.unwrap());
+    let html = "é".repeat(600_000);
+    let request = serde_json::json!({ "op": "site_create", "scope": scope, "name": "large.html", "html": html, "mutation_id": "large_site" }).to_string();
+    assert!(request.len() > crate::client_api::MAX_REQUEST_BYTES);
+    let result = c.client_request(request).await.unwrap();
+    let result: serde_json::Value = serde_json::from_str(&result).unwrap();
+    assert_eq!(result["source"]["byte_length"], 1_200_000);
+    let unrelated =
+        serde_json::json!({ "op": "page_parse_markdown", "markdown": "x".repeat(1_200_000) })
+            .to_string();
+    assert!(c.client_request(unrelated).await.is_err());
 }

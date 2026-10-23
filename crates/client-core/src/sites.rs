@@ -4,7 +4,10 @@ use crate::{
     engine::{Engine, R},
     Client, CoreError, EntryKind,
 };
-use protocol::sites::{Change, Mutation, SignedMutation, SourceVersion, MAX_HTML_BYTES, SCHEMA};
+use protocol::sites::{
+    Change, Configuration, Inspection, Mutation, SignedMutation, SourceVersion, MAX_HTML_BYTES,
+    SCHEMA,
+};
 use serde::{Deserialize, Serialize};
 use types::{IdentityKind, ItemKind, Privacy};
 
@@ -33,8 +36,9 @@ pub(crate) struct SiteSource {
 #[serde(deny_unknown_fields)]
 pub(crate) struct SiteReview {
     pub scope: SiteScope,
+    pub source: SourceVersion,
     pub relay_url: String,
-    pub audience: String,
+    pub configuration: Configuration,
     pub mutation: Mutation,
 }
 
@@ -42,9 +46,17 @@ pub(crate) struct SiteReview {
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub(crate) struct SitePrepared {
     pub relay_url: String,
-    pub audience: String,
+    pub configuration: Configuration,
     pub signed: SignedMutation,
     pub html: Option<String>,
+}
+
+#[derive(Serialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+pub(crate) struct SiteStatus {
+    pub configuration: Configuration,
+    pub inspection: Inspection,
+    pub pending: Option<SiteReview>,
 }
 
 fn invalid() -> CoreError {
@@ -95,6 +107,7 @@ impl Engine {
         self.native_surface_owner(&scope.identity_id, &scope.device_id)?;
         let space = self.space_state(&scope.space_id)?;
         if self.me_id()? != scope.identity_id
+            || !self.account().is_some_and(|a| a.registered)
             || self.provider_setup_pending()
             || self
                 .identities
@@ -217,31 +230,44 @@ impl Engine {
         self.site_source(scope, &source.item_id, version, &file.sha256)
     }
 
-    fn site_prepare(&self, review: &SiteReview, relay: &str, audience: &str) -> R<SitePrepared> {
+    fn site_prepare(
+        &self,
+        review: &SiteReview,
+        relay: &str,
+        config: &Configuration,
+    ) -> R<SitePrepared> {
         self.site_scope(&review.scope, true)?;
         if review.relay_url != relay
-            || review.audience != audience
-            || audience.is_empty()
-            || audience.len() > 2048
+            || review.configuration != *config
+            || review.mutation.public_origin != config.public_origin
         {
             return Err(stale());
         }
         let mutation = &review.mutation;
         if mutation.schema != SCHEMA
-            || !secret_id(&mutation.site_id, "site_")
+            || mutation.site_id
+                != protocol::sites::site_id(
+                    &review.scope.identity_id,
+                    &review.scope.space_id,
+                    &review.source.item_id,
+                    &config.public_origin,
+                )
             || !secret_id(&mutation.request_id, "pub_")
             || mutation.expected_head.as_deref().is_some_and(|v| !hex64(v))
         {
             return Err(invalid());
         }
+        let selected = self.site_source(
+            &review.scope,
+            &review.source.item_id,
+            review.source.version,
+            &review.source.sha256,
+        )?;
+        if selected.source != review.source {
+            return Err(stale());
+        }
         let html = match &mutation.change {
             Change::Publish { source } => {
-                let selected = self.site_source(
-                    &review.scope,
-                    &source.item_id,
-                    source.version,
-                    &source.sha256,
-                )?;
                 if selected.source != *source {
                     return Err(stale());
                 }
@@ -267,10 +293,10 @@ impl Engine {
             mutation: mutation.clone(),
             signature: String::new(),
         };
-        signed.signature = author.key.sign(&signed.signing_bytes(audience));
+        signed.signature = author.key.sign(&signed.signing_bytes(&config.audience));
         Ok(SitePrepared {
             relay_url: relay.into(),
-            audience: audience.into(),
+            configuration: config.clone(),
             signed,
             html,
         })
@@ -300,51 +326,10 @@ impl Client {
             })?;
         Ok((relay, audience))
     }
-
-    pub(crate) fn site_review(
-        &self,
-        scope: SiteScope,
-        source: SourceVersion,
-        site_id: Option<String>,
-        expected_head: Option<String>,
-    ) -> R<SiteReview> {
-        let (relay_url, audience) = self.site_destination(&scope)?;
-        let e = self.lock();
-        e.site_scope(&scope, true)?;
-        let selected = e.site_source(&scope, &source.item_id, source.version, &source.sha256)?;
-        if selected.source != source
-            || selected.html.is_none()
-            || site_id.is_some() != expected_head.is_some()
-            || site_id.as_deref().is_some_and(|v| !secret_id(v, "site_"))
-            || expected_head.as_deref().is_some_and(|v| !hex64(v))
-        {
-            return Err(stale());
-        }
-        Ok(SiteReview {
-            scope,
-            relay_url,
-            audience,
-            mutation: Mutation {
-                schema: SCHEMA,
-                site_id: site_id.unwrap_or_else(|| types::new_secret_id("site")),
-                request_id: types::new_secret_id("pub"),
-                expected_head,
-                change: Change::Publish { source },
-            },
-        })
-    }
-
-    /// An explicit action, never called by preview, source load, or autosave.
-    pub(crate) fn site_prepare(&self, review: SiteReview) -> R<SitePrepared> {
-        let (relay, audience) = self.site_destination(&review.scope)?;
-        let result = self.lock().site_prepare(&review, &relay, &audience)?;
-        // The live authenticated socket may have changed while source bytes were checked.
-        if self.site_destination(&review.scope)? != (relay, audience) {
-            return Err(stale());
-        }
-        Ok(result)
-    }
 }
+
+mod journal;
+mod network;
 
 #[cfg(test)]
 mod tests;
