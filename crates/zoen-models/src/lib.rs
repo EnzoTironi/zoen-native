@@ -251,7 +251,12 @@ impl ModelGateway {
                 tracing::subscriber::NoSubscriber::default(),
             ))
             .await;
-        let captured = capture.lock().expect("capture lock");
+        let captured = match transport::snapshot(&capture) {
+            Ok(captured) => captured,
+            // This remains a typed Transport output failure with incomplete
+            // evidence/unknown usage, not another dispatch or a zero charge.
+            Err(incomplete) => incomplete.into_incomplete(),
+        };
         let (receipt, raw) = receipt::receipt(&captured);
         let output = match (response, raw.as_ref()) {
             (Ok(response), Some(raw)) => adapter::output(response, raw, &request),
@@ -263,7 +268,7 @@ impl ModelGateway {
             output,
             receipt,
             evidence: ProviderEvidence {
-                body: captured.body.clone(),
+                body: captured.body,
                 complete: captured.complete,
             },
         })
