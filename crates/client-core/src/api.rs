@@ -160,25 +160,24 @@ pub fn normalize_code(raw: &str) -> String {
         .to_uppercase()
 }
 
-impl Client {
-    pub(crate) fn account_dto_pub(&self) -> Option<AccountDto> {
-        self.account_dto()
-    }
+pub(crate) fn account_dto_from(e: &crate::engine::Engine) -> Option<AccountDto> {
+    let a = e.account()?;
+    let me = e.my_profile();
+    Some(AccountDto {
+        identity_id: a.identity.clone(),
+        device_id: a.device.clone(),
+        name: me.as_ref().map(|m| m.name.clone()).unwrap_or_default(),
+        handle: me.as_ref().map(|m| m.handle.clone()).unwrap_or_default(),
+        relay_url: a.relay_url.clone(),
+        registered: a.registered,
+        unlocked: e.is_unlocked(),
+        setup_pending: e.provider_setup_pending(),
+    })
+}
 
+impl Client {
     pub(crate) fn account_dto(&self) -> Option<AccountDto> {
-        let e = self.lock();
-        let a = e.account()?.clone();
-        let me = e.my_profile();
-        Some(AccountDto {
-            identity_id: a.identity.clone(),
-            device_id: a.device.clone(),
-            name: me.as_ref().map(|m| m.name.clone()).unwrap_or_default(),
-            handle: me.as_ref().map(|m| m.handle.clone()).unwrap_or_default(),
-            relay_url: a.relay_url.clone(),
-            registered: a.registered,
-            unlocked: e.is_unlocked(),
-            setup_pending: e.provider_setup_pending(),
-        })
+        account_dto_from(&self.lock())
     }
 
     pub(crate) fn with_net<T>(&self, f: impl FnOnce(&Net) -> T) -> Option<T> {

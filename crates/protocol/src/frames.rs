@@ -133,7 +133,8 @@ pub enum Op {
         sealed: Vec<u8>,
         device: Option<DeviceCertificate>,
     },
-    /// Takes the link box under `id`, if it is there yet. The one op a device being linked
+    /// Reads the original link box under `id` until its publication expires. Repeated
+    /// reads return the same sealed bytes without extending TTL. The one op a device being linked
     /// (signed in as itself, not registered) may use besides registering.
     FetchLink {
         id: String,

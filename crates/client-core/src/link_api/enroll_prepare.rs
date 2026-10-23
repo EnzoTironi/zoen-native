@@ -1,4 +1,5 @@
 //! Prepare one approved enrollment without replacing durable retry key material.
+use super::enroll_delivery::RetainedPeer;
 use super::*;
 use zeroize::{Zeroize, Zeroizing};
 
@@ -7,20 +8,20 @@ pub(super) struct PreparedEnrollment {
     pub(super) certificate: String,
 }
 
-fn peers(vault: &Arc<dyn SecretVault>) -> Result<Vec<Peer>, CoreError> {
+pub(super) fn peers(vault: &Arc<dyn SecretVault>) -> Result<Vec<RetainedPeer>, CoreError> {
     let Some(bytes) = vault.load(VAULT_PEERS.into()).map(Zeroizing::new) else {
         return Ok(Vec::new());
     };
-    let peers: Vec<Peer> = serde_json::from_slice(&bytes)
+    let peers: Vec<RetainedPeer> = serde_json::from_slice(&bytes)
         .map_err(|_| invalid("The retained linked-device keys are invalid."))?;
     let mut ids = BTreeSet::new();
-    if peers.iter().any(|peer| !ids.insert(&peer.device)) {
+    if peers.iter().any(|peer| !ids.insert(&peer.peer.device)) {
         return Err(invalid("The retained linked-device keys are ambiguous."));
     }
     Ok(peers)
 }
 
-fn sender_key(peer: &Peer) -> Result<Vec<u8>, CoreError> {
+pub(super) fn sender_key(peer: &Peer) -> Result<Vec<u8>, CoreError> {
     let secret = Zeroizing::new(
         secret32(hex::decode(&peer.my_hpke_secret).ok())
             .ok_or_else(|| invalid("The retained linked-device key is invalid."))?,
@@ -72,32 +73,6 @@ pub(super) fn prepare(
                 "The retained agreement key does not match this account session.",
             ));
         }
-        let mut peers = peers(vault)?;
-        let (peer, public, persist) = match peers.iter().find(|peer| peer.device == code.device) {
-            Some(peer) => {
-                if peer.their_hpke != hex::encode(&code.hpke)
-                    || peer.secret != hex::encode(code.secret)
-                {
-                    return Err(invalid(
-                        "That device already has another retained link request.",
-                    ));
-                }
-                (peer.clone(), sender_key(peer)?, false)
-            }
-            None => {
-                let (secret, public) = link::key_pair();
-                (
-                    Peer {
-                        device: code.device.clone(),
-                        their_hpke: hex::encode(&code.hpke),
-                        my_hpke_secret: hex::encode(&secret),
-                        secret: hex::encode(code.secret),
-                    },
-                    public,
-                    true,
-                )
-            }
-        };
         let me = engine.my_profile().ok_or_else(|| invalid("account"))?;
         let (profile_key, profile_key_version, profile_seen_version, profile_fields) =
             engine.profile_for_link()?;
@@ -108,6 +83,31 @@ pub(super) fn prepare(
                 "The account profile key is unavailable or invalid.",
             ));
         }
+        let mut peers = peers(vault)?;
+        if let Some(peer) = peers.iter().find(|value| value.peer.device == code.device) {
+            if peer.peer.their_hpke != hex::encode(&code.hpke)
+                || peer.peer.secret != hex::encode(code.secret)
+            {
+                return Err(invalid(
+                    "That device already has another retained link request.",
+                ));
+            }
+            // Verify the retained sender key as before; replay only the original
+            // authenticated ciphertext. A legacy peer without it stays ambiguous.
+            let prepared = enroll_delivery::replay(peer, account, code)?;
+            engine.add_peer(peer.peer.clone());
+            return Ok(prepared);
+        }
+        let (secret, public) = link::key_pair();
+        let mut peer = RetainedPeer {
+            peer: Peer {
+                device: code.device.clone(),
+                their_hpke: hex::encode(&code.hpke),
+                my_hpke_secret: hex::encode(&secret),
+                secret: hex::encode(code.secret),
+            },
+            enrollment: None,
+        };
         let mut boxed = IdentityBox {
             identity_secret: hex::encode(identity.secret()),
             agreement_secret: hex::encode(agreement.as_slice()),
@@ -129,24 +129,31 @@ pub(super) fn prepare(
         boxed.profile_key.zeroize();
         let sealed = link::seal(&code.hpke, &code.secret, "identity", &plain)
             .ok_or_else(|| invalid("sealing"))?;
-        if persist {
-            peers.push(peer.clone());
-            let encoded = Zeroizing::new(
-                serde_json::to_vec(&peers).map_err(|error| invalid(error.to_string()))?,
-            );
-            if !vault.save(VAULT_PEERS.into(), encoded.to_vec()) {
-                // A false/unknown vault result is not an enrollment receipt.
-                // Retained bytes, if any, remain usable by an explicit retry.
-                return Err(invalid(t(
-                    "Não deu para guardar a chave no Keychain.",
-                    "Couldn't store the key in the Keychain.",
-                )));
-            }
-        }
-        engine.add_peer(peer);
-        Ok(PreparedEnrollment {
+        let prepared = enroll_delivery::retain(
+            &mut peer,
+            account,
+            code,
+            boxed.cert,
             sealed,
-            certificate: boxed.cert,
-        })
+            &engine
+                .net
+                .author
+                .as_ref()
+                .ok_or_else(|| invalid("account"))?
+                .key,
+        )?;
+        peers.push(peer.clone());
+        let encoded =
+            Zeroizing::new(serde_json::to_vec(&peers).map_err(|error| invalid(error.to_string()))?);
+        if !vault.save(VAULT_PEERS.into(), encoded.to_vec()) {
+            // A false/unknown Vault result is not an enrollment receipt. The
+            // original ciphertext and key bytes, if accepted, remain retryable.
+            return Err(invalid(t(
+                "Não deu para guardar a chave no Keychain.",
+                "Couldn't store the key in the Keychain.",
+            )));
+        }
+        engine.add_peer(peer.peer);
+        Ok(prepared)
     })
 }

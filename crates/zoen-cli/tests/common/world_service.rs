@@ -12,6 +12,15 @@ impl World {
         World::new_with(name, None, env).await
     }
 
+    /// Prepares offline fixture homes and relay environment before the first spawn.
+    pub async fn with_prepared_env(
+        name: &str,
+        env: &[(&str, &str)],
+        prepare: impl FnOnce(&World) -> Vec<(String, String)>,
+    ) -> World {
+        Self::new_prepared(name, None, env, PortReservation::acquire(None), prepare).await
+    }
+
     /// A world whose relays fan out through NATS (`ZOEN_NATS_URL`, see scripts/nats.sh).
     pub async fn with_nats(name: &str) -> World {
         let url = std::env::var("ZOEN_NATS_URL")
@@ -33,6 +42,16 @@ impl World {
         nats: Option<String>,
         env: &[(&str, &str)],
         reservation: PortReservation,
+    ) -> World {
+        Self::new_prepared(name, nats, env, reservation, |_| Vec::new()).await
+    }
+
+    async fn new_prepared(
+        name: &str,
+        nats: Option<String>,
+        env: &[(&str, &str)],
+        reservation: PortReservation,
+        prepare: impl FnOnce(&World) -> Vec<(String, String)>,
     ) -> World {
         let admin = std::env::var("ZOEN_TEST_PG")
             .expect("set ZOEN_TEST_PG=postgres://user@host:port/postgres");
@@ -62,6 +81,8 @@ impl World {
             ports: vec![reservation],
             diagnostics: diagnostics::JourneyDiagnostics::from_env(name),
         };
+        let prepared_env = prepare(&w);
+        w.relay_env.extend(prepared_env);
         w.start_relay();
         w
     }
