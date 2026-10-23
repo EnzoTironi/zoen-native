@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { message as reason } from './boundary.ts';
-import type { Conversation, FileDoc, Message, Messages, VoiceMeta } from './messages.ts';
-import { FileView, kindOf, thumbnail, useRecorder } from './media.tsx';
+import type { Conversation, FileDoc, Message, Messages } from './messages.ts';
+import { kindOf } from './media.tsx';
 import { MessageEditor } from './message-editor.tsx';
 import { MessageSearchResults } from './message-search-view.tsx';
 import type { MessageHit } from './message-search.ts';
+import { Bubble } from './messenger-bubble.tsx';
+import { Composer } from './messenger-composer.tsx';
+import { Avatar, day, Icon } from './messenger-presentation.tsx';
+
 import { loadChatPreferences, saveChatPreferences, type ChatPreferences as Prefs } from './chat-preferences.ts';
+
+export { Bubble } from './messenger-bubble.tsx';
 
 /** How I keep a chat. Local to this account/browser until synced preferences reach the web core. */
 function loadPrefs(identity: string): Record<string, Prefs> {
@@ -13,176 +19,6 @@ function loadPrefs(identity: string): Record<string, Prefs> {
 }
 const FOLLOW = 'zoen.thread-follow';
 function loadFollow(): Record<string, boolean> { try { return JSON.parse(localStorage.getItem(FOLLOW) ?? '{}') as Record<string, boolean>; } catch { return {}; } }
-
-const QUICK = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
-const time = (ms: number) => new Date(ms).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-function day(ms: number) {
-  const d = new Date(ms); const today = new Date();
-  if (d.toDateString() === today.toDateString()) return time(ms);
-  const y = new Date(today); y.setDate(today.getDate() - 1);
-  if (d.toDateString() === y.toDateString()) return 'Ontem';
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-}
-const initials = (name: string) => name.replace(/^@/, '').trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('') || '?';
-function hue(seed: string) { let h = 0; for (const c of seed) h = (h * 31 + c.charCodeAt(0)) % 360; return h; }
-
-function Avatar({ name, size = 44 }: { name: string; size?: number }) {
-  return <span className="zm-avatar" aria-hidden="true" style={{ width: size, height: size, fontSize: size * 0.38, background: `oklch(0.93 0.04 ${hue(name)})`, color: `oklch(0.38 0.08 ${hue(name)})` }}>{initials(name)}</span>;
-}
-
-function Icon({ name }: { name: 'plus' | 'send' | 'mic' | 'reply' | 'thread' | 'smile' | 'more' | 'close' | 'pin' | 'mute' | 'archive' | 'back' | 'search' }) {
-  const p: Record<string, React.ReactNode> = {
-    send: <path d="M12 19V5m0 0-6 6m6-6 6 6" />,
-    plus: <path d="M12 5v14M5 12h14" />,
-    mic: <><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></>,
-    reply: <path d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 6 6v4" />,
-    thread: <path d="M21 12a8 8 0 0 1-11.8 7L4 20l1.1-4.6A8 8 0 1 1 21 12Z" />,
-    smile: <><circle cx="12" cy="12" r="9" /><path d="M8.5 14a4 4 0 0 0 7 0M9 9.5h.01M15 9.5h.01" /></>,
-    more: <path d="M5 12h.01M12 12h.01M19 12h.01" />,
-    close: <path d="M6 6l12 12M18 6 6 18" />,
-    pin: <path d="M12 17v5M8 3h8l-1 6 3 3v2H6v-2l3-3-1-6Z" />,
-    mute: <path d="M11 5 6 9H3v6h3l5 4V5ZM22 9l-6 6M16 9l6 6" />,
-    archive: <path d="M3 4h18v4H3zM5 8v12h14V8M10 12h4" />,
-    back: <path d="M15 18l-6-6 6-6" />,
-    search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></>,
-  };
-  return <svg className="zm-icon" viewBox="0 0 24 24" aria-hidden="true">{p[name]}</svg>;
-}
-
-function Ticks({ state }: { state: Message['ticks'] | 'sending' | 'failed' }) {
-  const label = { sending: 'Enviando', failed: 'Não enviada', sent: 'Enviada', delivered: 'Entregue', read: 'Lida' }[state ?? 'sent'];
-  if (state === 'sending') return <svg className="zm-ticks" viewBox="0 0 16 11" role="img" aria-label={label}><circle cx="8" cy="5.5" r="4" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M8 3.5v2l1.4 1" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>;
-  if (state === 'failed') return <span className="zm-failed" role="img" aria-label={label}>!</span>;
-  return <svg className={`zm-ticks zm-ticks-${state}`} viewBox="0 0 18 11" role="img" aria-label={label}>
-    <path d="M1 6l3 3 6-7" />{state !== 'sent' ? <path d="M7 9l1 0 6-7" /> : null}
-  </svg>;
-}
-
-export function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, onDelete, onForward, inThread, messages }: {
-  entry: Message; messages: Messages | null; own: boolean; first: boolean; inThread?: boolean;
-  onReact: (emoji: string | null) => void; onReply: () => void; onThread: () => void; onEdit: () => void; onDelete: () => void; onForward: () => void;
-}) {
-  const [picker, setPicker] = useState(false);
-  const [emojiDraft, setEmojiDraft] = useState('');
-  const [details, setDetails] = useState(false);
-  const [menu, setMenu] = useState(false);
-  const ordered = entry.entry !== null;
-  const mine = entry.reactions.find((r) => r.mine)?.emoji ?? null;
-  const state = entry.delivery === 'confirmed' ? entry.ticks : entry.delivery as 'sending' | 'failed';
-  return <article className={`zm-row${own ? ' zm-own' : ''}${first ? ' zm-first' : ''}`} data-testid="message" id={`message-${entry.id}`} tabIndex={-1} onMouseLeave={() => { setPicker(false); setMenu(false); }}>
-    {!own && first ? <span className="zm-author">{entry.name}</span> : null}
-    <div className="zm-bubble-wrap">
-      <div className={`zm-bubble${entry.deleted ? ' zm-deleted' : ''}${entry.file && !entry.deleted ? ` zm-media zm-media-${kindOf(entry.file.mime)}` : ''}`}>
-        {entry.forwarded && !entry.deleted ? <span className="zm-forwarded">Encaminhada</span> : null}
-        {entry.quote && !entry.deleted ? <span className="zm-quote"><b>{entry.quote.name || 'Mensagem'}</b>{entry.quote.text || 'Mensagem apagada'}</span> : null}
-        {entry.file && !entry.deleted ? <FileView file={entry.file} messages={messages} presentation={entry.media?.presentation} /> : null}
-        {entry.deleted || entry.text || !entry.file ? <span className="zm-text">{entry.deleted ? 'Mensagem apagada' : entry.text}</span> : null}
-        <span className="zm-meta">{entry.edited && !entry.deleted ? 'editada · ' : ''}<time dateTime={new Date(entry.at_ms).toISOString()}>{time(entry.at_ms)}</time>{own ? <Ticks state={state} /> : null}</span>
-      </div>
-      {ordered && !entry.deleted ? <div className="zm-actions" role="toolbar" aria-label="Ações da mensagem">
-        <button aria-label="Reagir" aria-expanded={picker} onClick={() => { setEmojiDraft(''); setPicker((v) => !v); }}><Icon name="smile" /></button>
-        {!inThread ? <><button aria-label="Responder" onClick={onReply}><Icon name="reply" /></button>
-          <button aria-label="Responder em thread" onClick={onThread}><Icon name="thread" /></button></> : null}
-        <button aria-label="Mais ações" aria-expanded={menu} onClick={() => setMenu((v) => !v)}><Icon name="more" /></button>
-      </div> : null}
-      {picker ? <div className="zm-scrim" onClick={() => setPicker(false)} onKeyDown={(e) => { if (e.key === 'Escape') setPicker(false); }}>
-        <div className="zm-sheet" role="dialog" aria-modal="true" aria-label="Escolher reação" onClick={(e) => e.stopPropagation()}>
-          <h2>Escolher reação</h2>
-          <div>{QUICK.map((emoji) => <button key={emoji} type="button" className="zm-pill" aria-pressed={emoji === mine} onClick={() => { setPicker(false); onReact(emoji === mine ? null : emoji); }}>{emoji}</button>)}</div>
-          <form onSubmit={(e) => { e.preventDefault(); const emoji = emojiDraft.trim(); if (emoji && new TextEncoder().encode(emoji).length <= 32) { setPicker(false); onReact(emoji === mine ? null : emoji); } }}>
-            <p><label>Outro emoji <input aria-label="Outro emoji" placeholder="Digite ou cole um emoji" value={emojiDraft} maxLength={64} autoFocus onChange={(e) => setEmojiDraft(e.target.value)} /></label></p>
-            <p>Use o teclado de emojis do seu aparelho para escolher qualquer emoji.</p>
-            {new TextEncoder().encode(emojiDraft.trim()).length > 32 ? <p role="alert">Escolha um emoji de até 32 bytes.</p> : null}
-            <button className="zm-pill" type="submit" disabled={!emojiDraft.trim() || new TextEncoder().encode(emojiDraft.trim()).length > 32}>Reagir</button>
-          </form>
-          {mine ? <button className="zm-pill" onClick={() => { setPicker(false); onReact(null); }}>Remover minha reação</button> : null}
-          <button className="zm-pill" onClick={() => setPicker(false)}>Fechar</button>
-        </div>
-      </div> : null}
-      {menu ? <div className="zm-menu" role="menu">
-        <button role="menuitem" onClick={() => { setMenu(false); onForward(); }}>Encaminhar</button>
-        {entry.file ? null : <button role="menuitem" onClick={() => { setMenu(false); void navigator.clipboard?.writeText(entry.text); }}>Copiar</button>}
-        {own && !entry.file ? <><button role="menuitem" onClick={() => { setMenu(false); onEdit(); }}>Editar</button>
-          </> : null}
-        {own ? <button role="menuitem" className="zm-danger" onClick={() => { setMenu(false); onDelete(); }}>Apagar para todos</button> : null}
-      </div> : null}
-    </div>
-    {entry.reactions.length ? <div className="zm-reactions">{entry.reactions.map((r) => <button key={r.emoji} className={r.mine ? 'zm-on' : ''} aria-label={`Ver quem reagiu com ${r.emoji}: ${r.count}`} onClick={() => setDetails(true)}>{r.emoji}{r.count > 1 ? <span>{r.count}</span> : null}</button>)}</div> : null}
-    {details ? <div className="zm-scrim" onClick={() => setDetails(false)} onKeyDown={(e) => { if (e.key === 'Escape') setDetails(false); }}>
-      <div className="zm-sheet" role="dialog" aria-modal="true" aria-label="Quem reagiu" onClick={(e) => e.stopPropagation()}>
-        <h2>Quem reagiu</h2>
-        {entry.reactions.map((r) => <section key={r.emoji} aria-label={`${r.emoji}: ${r.count} reações`}>
-          <h3>{r.emoji} {r.count}</h3>
-          {r.participants.length ? <ul>{r.participants.map((participant) => <li key={participant.identity}>{participant.name || 'Alguém'}</li>)}</ul> : <p>Os nomes de quem reagiu não estão disponíveis.</p>}
-          <button className="zm-pill" onClick={() => { setDetails(false); onReact(r.mine ? null : r.emoji); }}>{r.mine ? 'Remover minha reação' : `Reagir com ${r.emoji}`}</button>
-        </section>)}
-        {!entry.reactions.length ? <p>Nenhuma reação.</p> : null}
-        <button className="zm-pill" autoFocus onClick={() => setDetails(false)}>Fechar</button>
-      </div>
-    </div> : null}
-    {!inThread && entry.replies ? <button className="zm-thread-summary" onClick={onThread}>
-      <span className="zm-stack">{entry.repliers.map((n) => <Avatar key={n} name={n} size={20} />)}</span>
-      <b>{entry.replies === 1 ? '1 resposta' : `${entry.replies} respostas`}</b>{entry.last_reply_ms ? <span>{day(entry.last_reply_ms)}</span> : null}
-    </button> : null}
-  </article>;
-}
-
-type Outgoing = { name: string; mime: string; bytes: Uint8Array; thumb?: Uint8Array | null; voice?: VoiceMeta };
-function Composer({ placeholder, disabled, reply, cancelReply, submit, autoFocus, attach }: {
-  placeholder: string; disabled: boolean; reply?: Message | null; cancelReply?: () => void; autoFocus?: boolean;
-  submit: (text: string) => Promise<void>; attach?: (file: Outgoing) => Promise<void>;
-}) {
-  const [sending, setSending] = useState('');
-  const picker = useRef<HTMLInputElement>(null);
-  const share = (out: Outgoing, label: string) => { if (!attach) return Promise.resolve(); setSending(label); setError('');
-    return attach(out).catch((e: unknown) => setError(reason(e))).finally(() => setSending('')); };
-  const files = async (list: FileList | File[]) => {
-    for (const f of Array.from(list)) {
-      const bytes = new Uint8Array(await f.arrayBuffer());
-      await share({ name: f.name || 'arquivo', mime: f.type || 'application/octet-stream', bytes, thumb: await thumbnail(f) },
-        kindOf(f.type) === 'image' ? 'Enviando foto…' : kindOf(f.type) === 'video' ? 'Enviando vídeo…' : 'Enviando arquivo…');
-    }
-  };
-  const recorder = useRecorder((clip) => { if (clip.seconds < 0.6) return; void share({ name: `Mensagem de voz.${clip.mime.includes('mp4') ? 'm4a' : 'webm'}`, mime: clip.mime, bytes: clip.bytes,
-    voice: { ms: Math.round(clip.seconds * 1000), levels: clip.levels, transcript: '', reply: reply?.entry ? { to: reply.entry, thread: false } : null } }, 'Enviando mensagem de voz…'); },
-    (why) => setError(why));
-  const [draft, setDraft] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const field = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => { if (reply) field.current?.focus(); }, [reply?.id]);
-  useEffect(() => { const el = field.current; if (el) { el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 168)}px`; } }, [draft]);
-  const has = draft.trim().length > 0;
-  function go() {
-    if (!has || busy || disabled) return;
-    setBusy(true); setError('');
-    void submit(draft).then(() => setDraft('')).catch((e: unknown) => setError(reason(e))).finally(() => { setBusy(false); field.current?.focus(); });
-  }
-  return <div className="zm-composer-zone" onDragOver={(e) => { if (attach && e.dataTransfer.types.includes('Files')) e.preventDefault(); }}
-    onDrop={(e) => { if (!attach || !e.dataTransfer.files.length) return; e.preventDefault(); void files(e.dataTransfer.files); }}>
-    {reply ? <div className="zm-replying"><span><b>{`Respondendo a ${reply.name}`}</b>{reply.text}</span>
-      <button aria-label="Cancelar" onClick={() => { setDraft(''); cancelReply?.(); }}><Icon name="close" /></button></div> : null}
-    {error ? <p className="zm-error" role="alert">{error}</p> : null}
-    {sending ? <p className="zm-sending" role="status">{sending}</p> : null}
-    {recorder.recording ? <div className="zm-composer zm-recording" role="group" aria-label="Gravando mensagem de voz">
-      <button type="button" className="zm-round" aria-label="Descartar gravação" onClick={recorder.cancel}><Icon name="close" /></button>
-      <span className="zm-rec-dot" aria-hidden="true" /><span className="zm-voice-time">{recorder.clock(recorder.seconds)}</span>
-      <span className="zm-wave zm-live" aria-hidden="true">{Array.from({ length: 28 }, (_, i) => recorder.recording!.levels[i - 28 + recorder.recording!.levels.length] ?? 0.08).map((p, i) => <i key={i} style={{ height: `${Math.round(p * 100)}%` }} />)}</span>
-      <button type="button" className="zm-send glass zm-has" aria-label="Enviar mensagem de voz" onClick={recorder.send}><span className="zm-swap"><Icon name="send" /></span></button>
-    </div> : <form className="zm-composer" onSubmit={(e) => { e.preventDefault(); go(); }}>
-      {attach ? <><button type="button" className="zm-attach" aria-label="Anexar foto, vídeo ou arquivo" disabled={disabled} onClick={() => picker.current?.click()}><Icon name="plus" /></button>
-        <input ref={picker} type="file" multiple hidden onChange={(e) => { if (e.target.files) void files(e.target.files); e.target.value = ''; }} /></> : null}
-      <label className="zm-field"><span className="zw-sr-only">Mensagem</span>
-        <textarea ref={field} rows={1} value={draft} disabled={disabled} placeholder={placeholder} maxLength={32_768} autoFocus={autoFocus}
-          onChange={(e) => setDraft(e.target.value)}
-          onPaste={(e) => { if (attach && e.clipboardData.files.length) { e.preventDefault(); void files(e.clipboardData.files); } }}
-          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); go(); } if (e.key === 'Escape') cancelReply?.(); }} /></label>
-      <button type={has ? 'submit' : 'button'} key={has ? 'send' : 'mic'} className={`zm-send glass${has ? ' zm-has' : ''}`} disabled={disabled || busy || (!has && !attach)}
-        aria-label={has ? 'Enviar' : 'Gravar mensagem de voz'} onClick={has ? undefined : () => void recorder.start()}>
-        <span className="zm-swap"><Icon name={has ? 'send' : 'mic'} /></span></button>
-    </form>}
-  </div>;
-}
 
 const fileLabel = (f: FileDoc) => ({ image: 'Foto', video: 'Vídeo', audio: 'Mensagem de voz', file: f.name } as const)[kindOf(f.mime)];
 
