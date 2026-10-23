@@ -47,9 +47,10 @@ The native adapter uses the official Jitsi build used by React Native WebRTC:
   installed. The adapter owns one native peer and reuses the existing Core session.
 
 The real ZIP was downloaded and checked locally. The simulator framework was used
-to typecheck the actual RTC, CallKit, and native view sources against SDK iOS26
-with Swift6 strict concurrency and warnings as errors. This is not an application
-link/build, runtime media test or physical-device proof.
+to typecheck the actual RTC, CallKit, and native view sources with Swift6 strict
+concurrency and warnings as errors. The integrated Release simulator application
+subsequently linked the real framework. Neither result proves runtime media or
+physical-device behavior.
 
 ## Native ownership
 
@@ -85,7 +86,7 @@ the JavaScript call UI receives presentation status, not transport secrets.
 
 ## Current evidence and remaining acceptance
 
-The canonical signaling slice is Draft #278. Rust tests cover signed events and
+The canonical signaling slice merged in #278. Rust tests cover signed events and
 SQLite/cold replay, multi-device acceptance, accept/cancel order, expiry, future
 clock recovery, malformed references, closed encoding, invalid participants and
 stale-owner no-write behavior. The transport slice adds tests for confirmation
@@ -93,22 +94,30 @@ before media, selected-device scope, retry/replay, terminal refusal, negotiation
 bounds and normal signed retirement of a cold orphan. Report actual CI outcomes
 on the issue; written tests are not execution evidence.
 
-The first wiring cohort passed TypeScript and actual RTC/CallKit sources passed
-Swift6 strict-concurrency typecheck against the real upstream SDK. The audio mode,
-recording and playback regression group passed 74 tests; the real Swift ticket
-implementation also passed stale-ticket, rejection, retirement and real expiry
-cases. The first broad app run passed 1,796 of 1,801 tests; its five failures were
-new unregistered call ports in the chat-chrome fixture. The corrected actual
-component test passed all six chat-chrome cases, including voice/video menu and
-availability. Broader rerun and Core transport results belong on the issue.
+The RTC wiring cohort passed all 785 Core tests. A later targeted run passed all
+19 call tests, including real optimistic-append-to-Sequenced confirmation. The
+packaging/privacy cohort passed TypeScript, lint, formatting and all 1,828 app
+tests. The audio mode, recording and playback regression group passed 74 tests;
+actual Swift ticket/resource tests cover stale tickets, rejection, retirement,
+deactivation/reset races and real expiry. Tests of pure resource models do not
+execute camera or CallKit hardware. Exact source revisions and logs are recorded
+on #288; later tests are not attributed to an earlier build.
 
 The actual host Core was built and genuine UniFFI0.32.2 Swift bindings were
 emitted from it. All135 ZoenCore Swift sources plus those bindings typechecked
 against real existing Expo/dependency modules and the pinned WebRTC SDK. A linked
 host Swift-to-Rust probe exercised all four new native call methods and confirmed
-stale owners/malformed negotiation remain refused. This is ABI/typechecking evidence,
-not an iOS app link or a call. The final privacy/retirement tests exercise the actual
-transient Swift resource models; they do not execute real camera/CallKit hardware.
+stale owners/malformed negotiation remain refused. Genuine bindings were then
+generated directly from the exact iOS static library; all three emitted files
+matched the ABI-probed bindings byte for byte.
+
+The integrated Release arm64 simulator build passed on source
+`24db0777e0ac3ad229b433699b1d9fcd127d4853` in 445 seconds. It includes the final
+artifact-discussion cohort `d5309b83`, the real iOS Core, a fresh JavaScript bundle
+and the actual upstream WebRTC framework. Normal Xcode signing retained bundle
+identifier `xyz.tironi.zoen`; strict deep signature verification passed. No device
+was installed, launched or touched. This is app-link/packaging evidence, not an
+incoming push, successful call or physical-device acceptance.
 
 Own call and transport ACKs use the existing canonical replay gate. Real optimistic
 append-to-Sequenced tests cover both confirmation flags and canonical device choice
@@ -119,7 +128,7 @@ The owner-specific retirement fence is installed before cleanup awaits; deactiva
 and reset cannot be lost while stop or terminal publication is suspended.
 
 Still open: implement PushKit registration/report/cold handover with the same process gate;
-build the integrated app once; prove real two-client TURN
+prove real two-client TURN
 media, reconnection and revocation; then test the physical-device matrix in #266.
 No simulator camera or standalone typecheck can close that matrix. Manual broad QA
 is reserved for the user's next test session.
