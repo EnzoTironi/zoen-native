@@ -9,6 +9,17 @@ impl Client {
     ) -> Result<String, CoreError> {
         use Command::*;
         match command {
+            ReviewOwnerPolicy { scope, policy_json } => {
+                encode(&self.review_owner_policy(scope, policy_json)?)
+            }
+            SubmitOwnerPolicy {
+                scope,
+                policy_json,
+                confirmation_digest,
+            } => encode(&self.submit_owner_policy(scope, policy_json, confirmation_digest)?),
+            OwnerPolicyStatus { scope, source } => {
+                encode(&self.owner_policy_status(scope, source)?)
+            }
             ProviderSignIn {
                 relay_url,
                 proof_token,

@@ -97,6 +97,17 @@ pub enum EventBody {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         resolution: Option<RequestResolution>,
     },
+    /// Dedicated owner control, never detected from ordinary message text.
+    OwnerPolicySubmitted {
+        agent: IdentityId,
+        signed: crate::owner_budget::SignedOwnerPolicy,
+    },
+    /// Authenticated host result for the exact original policy, not a new budget.
+    OwnerPolicyReported {
+        source: String,
+        policy_digest: String,
+        outcome: OwnerPolicyOutcome,
+    },
     /// Uso de IA de um agente (debitado do orçamento do dono).
     UsageRecorded {
         agent: IdentityId,
@@ -146,6 +157,12 @@ pub enum EventBody {
     Unsupported {
         kind: String,
     },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub enum OwnerPolicyOutcome {
+    Installed,
+    Refused,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]

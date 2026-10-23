@@ -44,8 +44,8 @@ pub use authority::{
 };
 mod events;
 pub use events::{
-    BackgroundSpec, ChainLink, ChatPrefs, Event, EventBody, MediaRef, ProfileKeyShare, Seen,
-    EVENT_FORMAT, GENESIS_PREV,
+    BackgroundSpec, ChainLink, ChatPrefs, Event, EventBody, MediaRef, OwnerPolicyOutcome,
+    ProfileKeyShare, Seen, EVENT_FORMAT, GENESIS_PREV,
 };
 
 #[cfg(test)]
