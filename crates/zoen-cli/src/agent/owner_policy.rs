@@ -18,7 +18,10 @@ pub(super) fn start(e: &Arc<Client>, cx: &Ctx) -> Worker {
             {
                 return;
             }
-            if image_ipc::configured() && e.agent_state().await.is_ok_and(|s| s.status == "active")
+            if image_ipc::configured()
+                && e.agent_state()
+                    .await
+                    .is_ok_and(|s| matches!(s.status.as_str(), "active" | "paused"))
             {
                 for space in e.spaces() {
                     reconcile(&e, &agent, &space.id).await;

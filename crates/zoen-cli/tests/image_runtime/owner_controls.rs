@@ -4,6 +4,7 @@ use client_core::OwnerPolicyScope;
 
 pub(super) async fn run(
     w: &World,
+    path: &Path,
     owner: &Client,
     config: &config::Config,
     request: &AgentRequestDto,
@@ -17,6 +18,19 @@ pub(super) async fn run(
         space_id: request.space_id.clone(),
         agent_id: config.agent.clone(),
     };
+    // Start the actual ordinary host while already paused: its model loop
+    // must retain its cursor, while independently authenticated owner controls
+    // can still read/change the budget. No sleep or forged agent status.
+    host.child.kill().unwrap();
+    host.child.wait().unwrap();
+    owner
+        .agent_control(config.agent.clone(), "pause".into())
+        .await
+        .unwrap();
+    *host = Host::start(w, path).await;
+    let model_cursor = w
+        .scalar("SELECT coalesce(max(last_seq),0)::text FROM agent_space_cursors")
+        .await;
     let hash = request.tool_approval.as_ref().unwrap().content_hash.clone();
     assert!(owner
         .request_owner_policy_options(scope.clone(), request.id.clone(), "0".repeat(64))
@@ -115,5 +129,15 @@ pub(super) async fn run(
     assert_eq!(w.count("SELECT count(*) FROM runtime_policies").await, 2);
     assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 0);
     assert_eq!(provider.sends.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        w.scalar("SELECT coalesce(max(last_seq),0)::text FROM agent_space_cursors")
+            .await,
+        model_cursor,
+        "paused model cursor advanced while owner controls were reconciled"
+    );
+    owner
+        .agent_control(config.agent.clone(), "resume".into())
+        .await
+        .unwrap();
     println!("owner policy product: actual encrypted inquiry -> configured image quote/current signed version -> explicit digest confirm -> Runtime IPC install -> authenticated Installed receipt, zero attempts/provider sends PASS");
 }

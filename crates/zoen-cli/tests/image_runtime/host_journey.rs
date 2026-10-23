@@ -238,7 +238,7 @@ pub(super) async fn run(
         "provider reached before owner review"
     );
     assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 0);
-    owner_controls::run(w, &owner, config, &request, &mut host, provider).await;
+    owner_controls::run(w, path, &owner, config, &request, &mut host, provider).await;
     // Stop the actual ordinary host before the human's decision; the new host
     // must recover the same scheduling/review through its existing journal.
     drop(host);
