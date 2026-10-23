@@ -49,16 +49,13 @@ pub fn executor_binding() -> String {
     ))
     .expect("fixed creation binding"))
 }
+// There is exactly one creation operation per conversation host. Scope remains
+// in the signed envelope and future-item intent, not a credential-shaped alias.
 pub fn model_name(space: &str) -> Option<String> {
-    token(space).then(|| format!("{TOOL}__{}", &sha(space.as_bytes())[..40]))
+    token(space).then(|| TOOL.into())
 }
 pub fn is_model_name(name: &str) -> bool {
-    name.strip_prefix("create_deckcraft__").is_some_and(|hash| {
-        hash.len() == 40
-            && hash
-                .bytes()
-                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-    })
+    name == TOOL
 }
 pub fn definition(space: &str) -> Option<Value> {
     if !registration::available() {

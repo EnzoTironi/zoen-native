@@ -324,6 +324,12 @@ fn renewed_creation_keeps_the_future_item_but_requires_its_own_signed_decision()
         serde_json::from_str(&f.agent.execute_app_creation(&permit).unwrap()).unwrap();
     assert_eq!(created["itemId"], old_permit.proposal().artifact);
     assert_eq!(f.agent.items().len(), before + 1);
-    assert!(f.agent.approved_app_creation(&old.id).is_err());
+    // The fulfilled predecessor may read the same native receipt; it cannot
+    // produce another effect or substitute the successor's independent decision.
+    let replay: Value =
+        serde_json::from_str(&f.agent.execute_app_creation(&old_permit).unwrap()).unwrap();
+    assert_eq!(replay["replayed"], true);
+    assert_eq!(replay["itemId"], created["itemId"]);
+    assert_eq!(f.agent.items().len(), before + 1);
     assert!(f.agent.verify_all().iter().all(|result| result.valid));
 }

@@ -237,3 +237,22 @@ async fn offline_create_approve_lost_result_recover_edit_and_cold_reopen() {
     drop(cold);
     std::fs::remove_dir_all(path).unwrap();
 }
+
+#[test]
+fn canonical_creation_name_keeps_gate_sensitive_to_semantic_credentials() {
+    let name =
+        client_core::agent_app_creation::model_name(&format!("sp_{}", "ab".repeat(32))).unwrap();
+    let check = |title: &str| {
+        ::gate::Check::new(
+            ::gate::Point::ToolCall,
+            format!(
+                "mini-app tool {name} Create presentation {}",
+                json!({"title":title})
+            ),
+        )
+    };
+    assert!(::gate::hard_rules(&check("A new presentation")).is_none());
+    assert!(
+        matches!(::gate::hard_rules(&check(&format!("sk-test-{}", "a1".repeat(24)))), Some((::gate::Outcome::Block, reason)) if reason == "hard:credential")
+    );
+}

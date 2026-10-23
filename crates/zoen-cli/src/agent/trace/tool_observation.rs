@@ -34,14 +34,13 @@ fn public_kind(host: &SpaceTools<'_>, name: &str) -> Option<Value> {
         &fresh
     };
     let (_, item, kind) = current.names.iter().find(|(def, _, _)| def.name == name)?;
-    let (expected, separator) = if kind == client_core::agent_app_creation::TOOL
-        && item == &host.space
+    if kind == client_core::agent_app_creation::TOOL && item == &host.space {
+        return (client_core::agent_app_creation::model_name(&host.space).as_deref() == Some(name))
+            .then(|| json!({"kind":kind}));
+    }
+    let (expected, separator) = if current.deckcraft_items.contains(item)
+        && crate::deckcraft::recognizes(kind)
     {
-        (
-            client_core::agent_app_creation::model_name(&host.space)?,
-            "__",
-        )
-    } else if current.deckcraft_items.contains(item) && crate::deckcraft::recognizes(kind) {
         (crate::deckcraft::model_name(kind, item)?, "__")
     } else if current.page_items.contains(item) && client_core::agent_page_tools::recognizes(kind) {
         (client_core::agent_page_tools::model_name(kind, item)?, "_")
