@@ -31,6 +31,7 @@ impl Engine {
                 version: p.version,
                 operation: crate::agent_binary_documents::tool_approvals::operation(&p.canonical_tool),
                 expires_ms: p.expires_at_ms,
+                review: Some(self.tool_review_dto(r)),
             }),
             id: r.req.id.clone(),
             agent: self.persona(&r.req.agent),
@@ -87,6 +88,7 @@ impl Engine {
         if let Some(p) = &req.tool_proposal {
             return Ok(
                 if p.expires_at_ms > now_ms()
+                    && self.state.tool_review_current(request)
                     && self.state.tool_request_matches(req, &request.space)
                     && self.state.tool_app_act(p, now_ms())
                 {

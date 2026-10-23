@@ -119,13 +119,16 @@ impl<'a> SpaceTools<'a> {
         ask: &ToolAsk,
     ) -> Result<client_core::AgentRequestDto, String> {
         self.check_selection()?;
+        let prior = self.e.tool_approval_requests(&self.space, self.source);
         let (_, item, tool) = self
             .names
             .iter()
             .find(|(definition, _, _)| definition.name == ask.call.name)
             .ok_or("The held tool is no longer offered")?;
         if self.page_items.contains(item) && client_core::agent_page_tools::recognizes(tool) {
-            let result = self.stage_page(item, tool, ask);
+            let result = self
+                .stage_page(item, tool, ask)
+                .and_then(|dto| self.register_staged(dto, &prior));
             self.check_selection()?;
             return result;
         }
@@ -156,7 +159,7 @@ impl<'a> SpaceTools<'a> {
             )
             .map_err(|e| e.to_string());
         self.check_selection()?;
-        staged
+        staged.and_then(|dto| self.register_staged(dto, &prior))
     }
 
     pub(super) fn load(&self) -> Vec<(String, Vec<ToolStep>)> {
@@ -176,7 +179,8 @@ impl<'a> SpaceTools<'a> {
 
     pub(super) fn begin_resume(&self, request: &str, content_hash: &str) -> Result<bool, String> {
         self.check_selection()?;
-        JournalState::begin_resume(self.journal, request, content_hash, Some(self.source))
+        let (request, content_hash) = self.journal_binding(request, content_hash)?;
+        JournalState::begin_resume(self.journal, &request, &content_hash, Some(self.source))
     }
 
     pub(super) fn canonical_continuation(
@@ -199,11 +203,8 @@ impl<'a> SpaceTools<'a> {
         {
             return Err("The canonical tool source changed".into());
         }
-        Ok(Some((
-            request.id.clone(),
-            request.content_hash.clone(),
-            original,
-        )))
+        let (request, hash) = self.journal_binding(&request.id, &request.content_hash)?;
+        Ok(Some((request, hash, original)))
     }
 
     pub(super) fn recovery_checkpoint(
@@ -212,8 +213,9 @@ impl<'a> SpaceTools<'a> {
         hash: &str,
     ) -> Result<Option<(ToolProgress, Option<ToolAsk>)>, String> {
         self.check_selection()?;
+        let (request, hash) = self.journal_binding(request, hash)?;
         let state = JournalState::load(self.journal)?;
-        let Some(budget) = state.continuations.get(request) else {
+        let Some(budget) = state.continuations.get(&request) else {
             return Ok(None);
         };
         if budget.content_hash != hash || budget.source.as_deref() != Some(self.source) {
@@ -371,3 +373,5 @@ impl<'a> SpaceTools<'a> {
         }
     }
 }
+
+pub(super) mod renewal;

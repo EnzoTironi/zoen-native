@@ -47,7 +47,13 @@ impl JournalState {
                     budget.keys().all(|key| {
                         matches!(
                             key.as_str(),
-                            "content_hash" | "attempts" | "source" | "prepared" | "progress"
+                            "content_hash"
+                                | "attempts"
+                                | "source"
+                                | "prepared"
+                                | "progress"
+                                | "registered"
+                                | "outcome_unknown"
                         )
                     })
                 })
@@ -57,10 +63,19 @@ impl JournalState {
                 .and_then(serde_json::Value::as_str)
                 .filter(|hash| Self::valid_hash(hash))
                 .ok_or("The continuation budget is corrupt")?;
+            let flag = |name: &str| -> Result<bool, String> {
+                match budget.get(name) {
+                    None => Ok(false),
+                    Some(serde_json::Value::Bool(value)) => Ok(*value),
+                    _ => Err("The continuation witness is corrupt".into()),
+                }
+            };
+            let registered = flag("registered")?;
+            let outcome_unknown = flag("outcome_unknown")?;
             let attempts = budget
                 .get("attempts")
                 .and_then(serde_json::Value::as_u64)
-                .filter(|attempts| *attempts > 0 && *attempts <= MAX_TRIES as u64)
+                .filter(|attempts| (*attempts > 0 || registered) && *attempts <= MAX_TRIES as u64)
                 .ok_or("The continuation budget is corrupt")? as u32;
             if request.is_empty() || request.len() > 128 {
                 return Err("The continuation request is invalid".into());
@@ -124,6 +139,8 @@ impl JournalState {
                     source,
                     prepared,
                     progress,
+                    registered,
+                    outcome_unknown,
                 },
             );
         }
@@ -141,10 +158,12 @@ impl JournalState {
             .continuations
             .iter()
             .map(|(request, budget)| {
-                (
-                    request.clone(),
-                    json!({"content_hash":budget.content_hash,"attempts":budget.attempts,"source":budget.source,"prepared":budget.prepared,"progress":budget.progress}),
-                )
+                let mut value = json!({"content_hash":budget.content_hash,"attempts":budget.attempts,"source":budget.source,"prepared":budget.prepared,"progress":budget.progress});
+                // Omit new metadata for historical entries: their encoded bytes
+                // and conservative unknown-execution semantics remain unchanged.
+                if budget.registered { value["registered"] = true.into(); }
+                if budget.outcome_unknown { value["outcome_unknown"] = true.into(); }
+                (request.clone(), value)
             })
             .collect();
         serde_json::to_vec(&json!({"version":1,"steps":self.steps,"continuations":continuations}))
@@ -240,6 +259,8 @@ impl JournalState {
                         source: source.map(str::to_string),
                         prepared: None,
                         progress: None,
+                        registered: false,
+                        outcome_unknown: false,
                     },
                 );
             }
@@ -247,3 +268,5 @@ impl JournalState {
         })
     }
 }
+
+mod renewal;

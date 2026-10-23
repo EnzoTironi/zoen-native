@@ -62,8 +62,7 @@ class CurrentCoreContractTest(unittest.TestCase):
         self.output = self.root / "apps/zoen/modules/zoen-core/generated/android"
         self.addCleanup(patch.stopall)
         patch.object(core, "revision", return_value={"commit": "fixture-main", "branch": "main", "label": "working-tree-dirty"}).start()
-        for name in ["Cargo.toml", "Cargo.lock", core.KOTLIN_CONFIG, "scripts/build-android-core.sh",
-                     "scripts/fix-android-uniffi-callbacks.py", "scripts/android-core-contract.py"]:
+        for name in ["Cargo.toml", "Cargo.lock", core.KOTLIN_CONFIG, *core.BUILD_INPUTS]:
             path = self.root / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("fixture\n")
@@ -97,6 +96,30 @@ class CurrentCoreContractTest(unittest.TestCase):
         ui.write_text("new current-main UI\n")
         self.assertEqual(self.snapshot["input_sha256"], core.capture(self.root)["input_sha256"])
         self.assertEqual("matching-source-and-generated-ABI", core.verify(self.root, self.output, self.abis)["status"])
+
+    def test_shared_cargo_qualification_reference_must_remain_bound_to_source_and_bytes(self):
+        reference = self.root / "private-qualification.json"
+        reference.write_text(json.dumps({"schema": "zoen.android.cargo-qualification.v1",
+                                        "sourceSha256": self.snapshot["input_sha256"]}))
+        manifest_path = self.output / "core-contract.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["cargo_qualification"] = {"path": str(reference),
+                                            "sha256": core.digest(reference.read_bytes())}
+        manifest_path.write_text(json.dumps(manifest))
+        self.assertEqual("matching-source-and-generated-ABI",
+                         core.verify(self.root, self.output, self.abis)["status"])
+        reference.write_text(reference.read_text() + " ")
+        with self.assertRaisesRegex(ValueError, "qualification changed"):
+            core.verify(self.root, self.output, self.abis)
+        reference.write_text(json.dumps({"schema": "zoen.android.cargo-qualification.v1",
+                                        "sourceSha256": "0" * 64}))
+        manifest["cargo_qualification"]["sha256"] = core.digest(reference.read_bytes())
+        manifest_path.write_text(json.dumps(manifest))
+        with self.assertRaisesRegex(ValueError, "different inputs"):
+            core.verify(self.root, self.output, self.abis)
+        reference.unlink()
+        with self.assertRaises(FileNotFoundError):
+            core.verify(self.root, self.output, self.abis)
 
     def test_changed_signed_cents_type_requires_new_generation(self):
         self.source.write_text(SOURCE.replace("Option<i64>", "Option<i32>"))

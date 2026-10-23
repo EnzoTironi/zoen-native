@@ -54,11 +54,24 @@ async fn actual_signed_owner_review_freezes_the_flag_and_arguments_without_expos
     );
     assert_eq!(
         admission.execute(&ask).unwrap_err(),
+        "The continuation attempt was not reserved"
+    );
+    assert!(!f.path.join("source-steps.json").exists());
+    JournalState::register_hold(&cx.journal, &request.id, &pending.content_hash, &f.source)
+        .unwrap();
+    assert!(tools
+        .begin_resume(&request.id, &pending.content_hash)
+        .unwrap());
+    assert_eq!(
+        admission.execute(&ask).unwrap_err(),
         "The presentation executor is unavailable"
     );
+    let journal = JournalState::load(&cx.journal).unwrap();
+    assert_eq!(journal.continuations[&request.id].attempts, 1);
+    assert!(journal.continuations[&request.id].outcome_unknown);
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     assert!(server.cursors.lock().unwrap().is_empty());
-    assert!(!f.path.join("source-steps.json").exists());
+    assert!(f.path.join("source-steps.json").exists());
     assert_eq!(
         f.client
             .app_binary_read(base.item_id.clone(), None, None)

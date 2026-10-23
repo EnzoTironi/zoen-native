@@ -358,7 +358,7 @@ pub async fn host(
             continue;
         }
 
-        for s in e.spaces() {
+        'spaces: for s in e.spaces() {
             if known.insert(s.id.clone()) {
                 // Joined while running: everything we can read is after our join.
                 cursors.entry(s.id.clone()).or_insert(0);
@@ -371,7 +371,11 @@ pub async fn host(
             let continuations = e.approved_tool_sources(&s.id);
             for source in continuations {
                 if let Some(index) = tl.iter().position(|entry| entry.id == source) {
-                    let _ = turn(e, &cx, &def, &s.id, &tl[..index], &tl[index]).await;
+                    if turn(e, &cx, &def, &s.id, &tl[..index], &tl[index]).await
+                        == turn::Outcome::Deferred
+                    {
+                        continue 'spaces;
+                    }
                 }
             }
             let mut from = cursors.get(&s.id).copied().unwrap_or(0);
@@ -405,7 +409,11 @@ pub async fn host(
                 last_activity = Instant::now();
                 let handled = turn(e, &cx, &def, &s.id, &tl[..i], t).await;
                 let key = (s.id.clone(), t.seq);
-                if !handled {
+                if handled == turn::Outcome::Deferred {
+                    caught_up = false;
+                    break; // no attempt, advance or read watermark before admission
+                }
+                if handled == turn::Outcome::Retry {
                     let n = tries.entry(key).or_insert(0);
                     *n += 1;
                     if *n < MAX_TRIES {
@@ -457,6 +465,10 @@ struct ResumeAttempts {
     source: Option<String>,
     prepared: Option<ToolAsk>,
     progress: Option<ToolProgress>,
+    /// A held call was durably registered before it could enter its executor.
+    registered: bool,
+    /// Persisted before executor IO; absence of a result never clears this fence.
+    outcome_unknown: bool,
 }
 
 /// The mini-app tools of one chat, for one turn: calls run as the agent serving `serving`.

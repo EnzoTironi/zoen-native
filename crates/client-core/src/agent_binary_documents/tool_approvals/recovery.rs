@@ -173,7 +173,7 @@ impl Client {
             })
             .map(|r| r.req.clone())
             .collect();
-        requests.sort_by_key(|r| r.tool_proposal.as_ref().map_or(0, |p| p.step));
+        requests.sort_by_key(|r| e.state.tool_approval_order(r));
         requests
     }
 }

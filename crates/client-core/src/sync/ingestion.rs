@@ -64,7 +64,10 @@ impl Engine {
             self.space_order.push(space.to_string());
         }
         self.net.pending.insert(client_id, space.to_string());
-        if matches!(e.body, EventBody::RequestResolved { .. }) {
+        if matches!(
+            e.body,
+            EventBody::RequestResolved { .. } | EventBody::ToolReviewRequested { .. }
+        ) {
             self.net.optimistic_approvals.insert(space.to_string());
         }
         self.space_projections

@@ -4,6 +4,7 @@ use sha2::{Digest, Sha256};
 use std::io::{self, Write};
 use zoen_agentd::{HostError, ToolAsk, ToolProgress, ToolStep, TurnOutcome};
 
+pub(super) mod admission;
 mod failure;
 pub(super) mod tool_observation;
 

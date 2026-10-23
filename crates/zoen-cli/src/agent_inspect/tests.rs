@@ -207,6 +207,7 @@ fn request_projection_exports_only_closed_fields_and_keeps_unknown_source_null()
     let agent = citizen("http://127.0.0.1:1", true);
     let dto = AgentRequestDto {
         tool_approval: Some(ToolApprovalDto {
+            review: None,
             content_hash: PRIVATE.into(),
             artifact_id: "it_deck_owned".into(),
             artifact_title: PRIVATE.into(),
