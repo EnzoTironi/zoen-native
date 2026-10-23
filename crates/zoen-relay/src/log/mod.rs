@@ -62,6 +62,15 @@ pub struct VisiblePage {
 /// Every call names its Space or identity, so cells and regions route above the trait.
 #[async_trait::async_trait]
 pub trait LogStore: Send + Sync {
+    /// Read-only transport proof. An unsupported store cannot claim a runtime
+    /// deployment. The expected witness is read by the host from its own SQL.
+    async fn runtime_cell(
+        &self,
+        _namespace: &str,
+        _witness: &str,
+    ) -> Result<Option<String>, StoreError> {
+        Ok(None)
+    }
     /// Whether this node can renew its cell authority. Test stores default to ready.
     async fn ready(&self) -> bool {
         true

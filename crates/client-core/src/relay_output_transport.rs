@@ -3,6 +3,7 @@
 use crate::blob_transport::{BlobUploadError, BlobUploadReceipt};
 use event_log::Author;
 use futures_util::{SinkExt, StreamExt};
+use protocol::runtime_binding::{BlobBinding, Expectation, CAPABILITY};
 use protocol::{ClientFrame, Envelope, ServerFrame};
 use std::time::Duration;
 use tokio::net::TcpStream;
@@ -23,12 +24,17 @@ pub enum RelayOutputError {
     Blob(#[from] BlobUploadError),
 }
 
+#[cfg(test)]
+mod tests;
+
 pub struct RelayOutputTransport {
     socket: WebSocketStream<MaybeTlsStream<TcpStream>>,
     http: reqwest::Client,
     base: String,
     relay: String,
     actor: Author,
+    binding_capable: bool,
+    binding: Option<BlobBinding>,
 }
 
 impl RelayOutputTransport {
@@ -83,6 +89,8 @@ impl RelayOutputTransport {
             base,
             relay: String::new(),
             actor,
+            binding_capable: false,
+            binding: None,
         };
         tokio::time::timeout(
             Duration::from_secs(15),
@@ -91,6 +99,57 @@ impl RelayOutputTransport {
         .await
         .map_err(|_| RelayOutputError::Unavailable)??;
         Ok(transport)
+    }
+
+    /// The trusted Runtime derives the expectation from its private stores.
+    /// This same socket is retained for every later publication; it never reconnects.
+    pub async fn connect_bound(
+        url: &str,
+        expected_relay: &str,
+        actor: Author,
+        expected: Expectation,
+    ) -> Result<Self, RelayOutputError> {
+        let mut transport = Self::connect(url, expected_relay, actor).await?;
+        if !transport.binding_capable {
+            return Err(RelayOutputError::Refused);
+        }
+        transport
+            .send(ClientFrame::Req {
+                id: 1,
+                op: protocol::Op::RuntimeBinding(expected.request().clone()),
+            })
+            .await?;
+        tokio::time::timeout(Duration::from_secs(15), transport.bind(expected))
+            .await
+            .map_err(|_| RelayOutputError::Unavailable)??;
+        Ok(transport)
+    }
+
+    async fn bind(&mut self, expected: Expectation) -> Result<(), RelayOutputError> {
+        for _ in 0..128 {
+            match self.receive().await? {
+                ServerFrame::Res {
+                    id: 1,
+                    result: Ok(protocol::Reply::RuntimeBinding(proof)),
+                } => {
+                    if !expected.verify(&proof) {
+                        return Err(RelayOutputError::Refused);
+                    }
+                    self.binding = Some(BlobBinding {
+                        request: expected.request().clone(),
+                        proof,
+                        identity: self.actor.identity.clone(),
+                    });
+                    return Ok(());
+                }
+                ServerFrame::Presence { .. }
+                | ServerFrame::KeyPackagesLow { .. }
+                | ServerFrame::ProfileChanged { .. }
+                | ServerFrame::Ephemeral { .. } => {}
+                _ => return Err(RelayOutputError::Refused),
+            }
+        }
+        Err(RelayOutputError::Unavailable)
     }
 
     async fn authenticate(&mut self, expected_relay: &str) -> Result<(), RelayOutputError> {
@@ -106,6 +165,7 @@ impl RelayOutputTransport {
             nonce,
             relay,
             protocol,
+            capabilities,
             ..
         } = self.receive().await?
         else {
@@ -129,6 +189,7 @@ impl RelayOutputTransport {
                     registered: true,
                 } if identity == self.actor.identity => {
                     self.relay = relay;
+                    self.binding_capable = capabilities.iter().any(|c| c == CAPABILITY);
                     return Ok(());
                 }
                 ServerFrame::Presence { .. } => {}
@@ -144,6 +205,22 @@ impl RelayOutputTransport {
         bytes: Vec<u8>,
         at_ms: i64,
     ) -> Result<BlobUploadReceipt, RelayOutputError> {
+        if let Some(binding) = &self.binding {
+            return crate::blob_transport::put_bound(
+                &self.http,
+                crate::blob_transport::BoundUpload {
+                    base: &self.base,
+                    relay: &self.relay,
+                    key: &self.actor.key,
+                    binding,
+                },
+                sha,
+                bytes,
+                at_ms,
+            )
+            .await
+            .map_err(Into::into);
+        }
         crate::blob_transport::put(
             &self.http,
             &self.base,

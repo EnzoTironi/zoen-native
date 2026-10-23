@@ -4,7 +4,7 @@ mod storage;
 use super::output::Publication;
 use super::*;
 use crate::execution::Fence;
-use client_core::relay_output_transport::{RelayOutputError, RelayOutputTransport};
+use client_core::relay_output_transport::RelayOutputError;
 use protocol::{ClientFrame, Envelope};
 use types::Seen;
 
@@ -229,9 +229,10 @@ impl Delivery<'_> {
             event_log::Signer::from_secret(&self.credential.secret),
             self.credential.certificate.clone(),
         );
-        let mut transport = RelayOutputTransport::connect(&target.url, &target.relay, actor)
-            .await
-            .map_err(transport_error)?;
+        let mut transport = self
+            .runtime
+            .connect_bound_output(&target.url, &target.relay, actor)
+            .await?;
         for index in 0..self.publication.blobs.len() {
             let blob = self.publication.blobs[index].chunk.blob.clone();
             if !self

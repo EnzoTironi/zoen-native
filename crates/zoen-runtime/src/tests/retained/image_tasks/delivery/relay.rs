@@ -11,18 +11,25 @@ pub(super) struct Relay {
 }
 impl Relay {
     pub(super) async fn start(f: &Fixture) -> Self {
+        let pool = sqlx::PgPool::connect(&f.world.db_url).await.unwrap();
+        Self::start_with(f, pool, f.log.clone()).await
+    }
+    pub(super) async fn start_with(
+        f: &Fixture,
+        pool: sqlx::PgPool,
+        log: Arc<dyn zoen_relay::log::LogStore>,
+    ) -> Self {
         f.log.owner.maintain().await.unwrap();
         let blobs = std::env::temp_dir().join(new_id("zoen-image-355-blobs"));
         std::fs::create_dir(&blobs).unwrap();
         let store = object_store::local::LocalFileSystem::new_with_prefix(&blobs).unwrap();
-        let pool = sqlx::PgPool::connect(&f.world.db_url).await.unwrap();
         let state = Arc::new(AppState {
             auth: zoen_relay::auth::Service::disabled(),
             turn: zoen_relay::turn::Service::disabled(),
             pool: pool.clone(),
             session_auth: pool.clone(),
             delivery_auth: pool,
-            log: f.log.clone(),
+            log,
             fanout: zoen_relay::fanout::Fanout::local(f.log.owner.node.clone()),
             limits: zoen_relay::limits::Limits::from_spec("").unwrap(),
             client_ip_header: None,

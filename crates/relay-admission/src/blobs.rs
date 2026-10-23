@@ -55,6 +55,35 @@ pub fn put_policy(
     relay: &str,
     now_ms: i64,
 ) -> Result<PutAdmission, Failure> {
+    put_signed(sha, device, timestamp, signature, now_ms, |ts| {
+        Ok(protocol::blob_put_message(sha, ts, relay))
+    })
+}
+
+pub fn put_bound_policy(
+    sha: &str,
+    device: &str,
+    timestamp: &str,
+    signature: &str,
+    relay: &str,
+    now_ms: i64,
+    binding: &protocol::runtime_binding::BlobBinding,
+) -> Result<PutAdmission, Failure> {
+    put_signed(sha, device, timestamp, signature, now_ms, |ts| {
+        binding
+            .message(sha, ts, relay)
+            .ok_or_else(|| Failure::new(401, "invalid runtime binding"))
+    })
+}
+
+fn put_signed(
+    sha: &str,
+    device: &str,
+    timestamp: &str,
+    signature: &str,
+    now_ms: i64,
+    message: impl FnOnce(i64) -> Result<Vec<u8>, Failure>,
+) -> Result<PutAdmission, Failure> {
     let key = get_key(sha)?;
     let ts = timestamp
         .parse::<i64>()
@@ -63,11 +92,7 @@ pub fn put_policy(
     if now_ms.abs_diff(ts) > MAX_SKEW_MS {
         return Err(Failure::new(401, "stale signature"));
     }
-    if !event_log::verify_sig(
-        device,
-        &protocol::blob_put_message(sha, ts, relay),
-        signature,
-    ) {
+    if !event_log::verify_sig(device, &message(ts)?, signature) {
         return Err(Failure::new(401, "bad signature"));
     }
     Ok(PutAdmission {

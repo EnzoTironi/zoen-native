@@ -11,6 +11,7 @@ mod image_tasks;
 mod native;
 pub use native::{ImageDeliveryProgress, ImageDeliveryTarget, ImageOutputInspection};
 mod pricing;
+mod relay_binding;
 pub use pricing::{ImagePriceProfile, ImagePriceQuote, PriceProfile};
 pub use types::owner_budget::{OwnerPeriodPolicy, SignedOwnerPolicy};
 
