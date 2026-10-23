@@ -8,6 +8,7 @@ mod journeys;
 mod managed_custody;
 mod managed_image_recovery;
 mod managed_images;
+mod policy_replay;
 mod retained;
 mod stores;
 mod vault;

@@ -58,6 +58,8 @@ pub(super) async fn run() {
     );
     w.finish().await;
     println!("authority journey: real HTTP settlement and durable replay PASS");
+    policy_replay::exact_restart_and_historical_replay().await;
+    policy_replay::expired_exact_replay_does_not_reactivate().await;
     financial::policies_and_historical_owner().await;
     println!("authority journey: signed policy and historical owner sponsorship PASS");
     financial::configured_gateway_must_match_price_profile().await;
