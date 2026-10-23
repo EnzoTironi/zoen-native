@@ -254,6 +254,32 @@ impl Fixture {
         (expired, intent, history)
     }
 
+    /// Supply genuine SDK-generated owner key packages to the owned loopback
+    /// relay. This uses only the fixture's distinct synthetic owner database.
+    pub(super) async fn publish_owner_packages(&self, server: &super::relay::Relay) {
+        let owner = Client::open(
+            self.path.join("owner.sqlite").to_str().unwrap().into(),
+            "en".into(),
+        )
+        .unwrap();
+        assert!(owner.unlock(self.owner_vault.clone()).unwrap());
+        owner.start_sync(None).unwrap();
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while server
+                .packages
+                .lock()
+                .unwrap()
+                .get(&self.owner)
+                .is_none_or(Vec::is_empty)
+            {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        owner.stop_sync();
+    }
+
     pub(super) async fn approve(&mut self, request: &client_core::AgentRequestDto) {
         self.close();
         flush(&self.path, "agent.sqlite", "owner.sqlite", &self.space);

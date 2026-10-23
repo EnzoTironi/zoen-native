@@ -4,10 +4,21 @@ use client_core::SecretVault;
 use space_tools::renewal::Preparation;
 
 fn expired_history(
-    fixture: &crate::deckcraft::tests::Fixture,
+    fixture: &mut crate::deckcraft::tests::Fixture,
     space: &str,
     original: &types::AgentRequest,
 ) -> (types::AgentRequest, String) {
+    let client = std::mem::replace(
+        &mut fixture.client,
+        Client::open(":memory:".into(), "en".into()).unwrap(),
+    );
+    client.stop_sync();
+    assert_eq!(
+        Arc::strong_count(&client),
+        1,
+        "close the actual fixture Client before signed offline transfer"
+    );
+    drop(client);
     let db = store::Store::open(fixture.path.join("agent.sqlite").to_str().unwrap()).unwrap();
     let mut log = event_log::SpaceLog::from_events(space, db.events(space).unwrap()).unwrap();
     for row in db
@@ -96,7 +107,7 @@ fn expired_history(
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn actual_page_host_stages_one_new_pending_review_and_resumes_under_original_journal_budget()
 {
-    let fixture = crate::deckcraft::tests::fixture();
+    let mut fixture = crate::deckcraft::tests::fixture();
     let space = fixture
         .client
         .item(fixture.base.item_id.clone())
@@ -123,7 +134,7 @@ async fn actual_page_host_stages_one_new_pending_review_and_resumes_under_origin
         .tool_approval_requests(&space, &fixture.source)
         .pop()
         .unwrap();
-    let (expired, intent) = expired_history(&fixture, &space, &original);
+    let (expired, intent) = expired_history(&mut fixture, &space, &original);
     // Only this newly signed, never-executed fixture request is registered.
     // A missing/legacy production record cannot acquire this witness retroactively.
     JournalState::register_hold(
@@ -242,7 +253,7 @@ async fn actual_page_host_stages_one_new_pending_review_and_resumes_under_origin
 async fn absent_legacy_or_unknown_journal_cannot_restage_an_expired_page_action_or_call_the_model()
 {
     for witness in ["absent", "legacy", "unknown"] {
-        let fixture = crate::deckcraft::tests::fixture();
+        let mut fixture = crate::deckcraft::tests::fixture();
         let space = fixture
             .client
             .item(fixture.base.item_id.clone())
@@ -274,7 +285,7 @@ async fn absent_legacy_or_unknown_journal_cannot_restage_an_expired_page_action_
             .tool_approval_requests(&space, &fixture.source)
             .pop()
             .unwrap();
-        let (expired, intent) = expired_history(&fixture, &space, &original);
+        let (expired, intent) = expired_history(&mut fixture, &space, &original);
         if witness == "unknown" {
             JournalState::register_hold(
                 &journal,

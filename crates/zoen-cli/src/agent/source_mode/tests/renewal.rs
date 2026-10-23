@@ -37,6 +37,7 @@ async fn signed_renewal_waits_for_actual_sync_without_reply_attempt_or_effect_th
         .lock()
         .unwrap()
         .insert(f.space.clone(), history);
+    f.publish_owner_packages(&server).await;
     online(&f.client, false).await;
     let cx = super::super::super::page_tool_tests::cx(&f.client, &journal, &item, starts.clone());
     let def = super::super::super::canonical_tool_approval_tests::definition();
@@ -128,6 +129,7 @@ async fn normal_signed_renewal_reports_scheduling_deferred_without_consuming_a_t
         .lock()
         .unwrap()
         .insert(f.space.clone(), history);
+    f.publish_owner_packages(&server).await;
     online(&f.client, false).await;
     let cx = super::super::super::page_tool_tests::cx(&f.client, &journal, &item, starts.clone());
     let def = super::super::super::canonical_tool_approval_tests::definition();

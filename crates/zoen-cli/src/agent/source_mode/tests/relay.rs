@@ -39,6 +39,7 @@ pub(super) struct Relay {
     pub delivered: Arc<Mutex<Option<(String, String, u64)>>>,
     pub released: Arc<AtomicBool>,
     pub release: Arc<Notify>,
+    pub packages: Arc<Mutex<BTreeMap<String, Vec<protocol::KeyPackageRecord>>>>,
     pub histories: Arc<Mutex<BTreeMap<String, Vec<Sequenced>>>>,
     task: tokio::task::JoinHandle<()>,
 }
@@ -55,6 +56,15 @@ pub(super) async fn relay(mode: Mode) -> Relay {
     let delivered = Arc::new(Mutex::new(None::<(String, String, u64)>));
     let released = Arc::new(AtomicBool::new(!matches!(mode, Mode::Unsynced)));
     let release = Arc::new(Notify::new());
+    let packages = Arc::new(Mutex::new(BTreeMap::<
+        String,
+        Vec<protocol::KeyPackageRecord>,
+    >::new()));
+    let claims = Arc::new(Mutex::new(BTreeMap::<
+        (String, String),
+        Vec<protocol::KeyPackageRecord>,
+    >::new()));
+    let (published_packages, claim_receipts) = (packages.clone(), claims.clone());
     let histories = Arc::new(Mutex::new(BTreeMap::<String, Vec<Sequenced>>::new()));
     let (release_state, release_signal, history) =
         (released.clone(), release.clone(), histories.clone());
@@ -68,6 +78,8 @@ pub(super) async fn relay(mode: Mode) -> Relay {
                 release_signal.clone(),
                 history.clone(),
             );
+            let (published_packages, claim_receipts) =
+                (published_packages.clone(), claim_receipts.clone());
             tokio::spawn(async move {
                 let mut ws = tokio_tungstenite::accept_async(socket).await.unwrap();
                 let Some(Ok(Message::Binary(bytes))) = ws.next().await else {
@@ -92,8 +104,8 @@ pub(super) async fn relay(mode: Mode) -> Relay {
                         nonce: "source-fixture".into(),
                         relay: "source-fixture".into(),
                         protocol: protocol::PROTOCOL_VERSION,
-                        capabilities: vec![],
-                        server_time_ms: None,
+                        capabilities: vec![protocol::KEY_PACKAGE_CLAIM_CAPABILITY.into()],
+                        server_time_ms: Some(now_ms()),
                     }
                     .encode()
                     .into(),
@@ -113,7 +125,7 @@ pub(super) async fn relay(mode: Mode) -> Relay {
                 ));
                 ws.send(Message::Binary(
                     ServerFrame::Ready {
-                        identity,
+                        identity: identity.clone(),
                         registered: true,
                     }
                     .encode()
@@ -156,12 +168,54 @@ pub(super) async fn relay(mode: Mode) -> Relay {
                         }
                         ClientFrame::Req {
                             id,
-                            op: Op::PublishKeyPackages { .. },
+                            op:
+                                Op::PublishKeyPackages {
+                                    packages,
+                                    last_resort,
+                                },
                         } => {
                             seen.lock().unwrap().push("mls_publication");
+                            let records = packages
+                                .into_iter()
+                                .chain(last_resort)
+                                .map(|data| protocol::KeyPackageRecord {
+                                    identity: identity.clone(),
+                                    device: device.clone(),
+                                    data,
+                                })
+                                .collect();
+                            published_packages
+                                .lock()
+                                .unwrap()
+                                .insert(identity.clone(), records);
                             ServerFrame::Res {
                                 id,
                                 result: Ok(Reply::Done),
+                            }
+                        }
+                        ClientFrame::Req {
+                            id,
+                            op: Op::ClaimKeyPackages { ids, operation_id },
+                        } => {
+                            seen.lock().unwrap().push("mls_claim");
+                            let operation_id =
+                                operation_id.expect("new fixture claims must be durable");
+                            assert!(protocol::key_package_claim_time_ms(&operation_id).is_some());
+                            let key = (identity.clone(), operation_id);
+                            let records = claim_receipts
+                                .lock()
+                                .unwrap()
+                                .entry(key)
+                                .or_insert_with(|| {
+                                    let mut packages = published_packages.lock().unwrap();
+                                    ids.into_iter()
+                                        .filter_map(|id| packages.get_mut(&id).and_then(Vec::pop))
+                                        .collect()
+                                })
+                                .clone();
+                            ServerFrame::Res {
+                                id,
+                                result: Ok(Reply::KeyPackages(records)),
                             }
                         }
                         ClientFrame::Req {
@@ -261,6 +315,7 @@ pub(super) async fn relay(mode: Mode) -> Relay {
         calls,
         cursors,
         delivered,
+        packages,
         released,
         release,
         histories,
@@ -280,4 +335,11 @@ pub(super) async fn online(client: &Client, settle: bool) {
     if settle {
         client.wait_until_settled(3000).await.unwrap();
     }
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64
 }
