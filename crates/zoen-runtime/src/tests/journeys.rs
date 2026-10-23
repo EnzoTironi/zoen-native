@@ -1,5 +1,6 @@
 use super::*;
 pub(super) async fn run() {
+    Box::pin(image_tasks::run()).await;
     managed_custody::run().await;
     Box::pin(retained::run()).await;
     Box::pin(retained::output::run()).await;

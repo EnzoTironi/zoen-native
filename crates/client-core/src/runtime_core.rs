@@ -41,6 +41,9 @@ pub enum NativeError {
 
 type Result<T> = std::result::Result<T, NativeError>;
 
+mod image_tasks;
+pub use crate::files::NativeFileBlob;
+pub use image_tasks::{ImageTaskFacts, PreparedImageTask};
 mod key_packages;
 pub use key_packages::InitialKeyPackages;
 mod publication;

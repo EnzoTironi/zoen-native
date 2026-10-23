@@ -180,8 +180,15 @@ impl NativeDirectoryGuard {
     }
 
     pub(crate) async fn authorize(
+        self,
+        scope: crate::native::ActivationScope,
+    ) -> Result<NativeActivation, RuntimeError> {
+        self.authorize_before(scope, None).await
+    }
+    pub(crate) async fn authorize_before(
         mut self,
         scope: crate::native::ActivationScope,
+        expires_at_ms: Option<i64>,
     ) -> Result<NativeActivation, RuntimeError> {
         if !scope.matches_directory(
             &self.owner,
@@ -194,7 +201,15 @@ impl NativeDirectoryGuard {
         // Query and ACK latency consume the window. A dead/idle-terminated
         // connection fails before any FDB activation can start.
         let observed = std::time::Instant::now();
-        Finance::clock(&mut self.tx).await?;
+        let now = Finance::clock(&mut self.tx).await?;
+        let remaining = match expires_at_ms {
+            Some(expiry) => expiry
+                .checked_sub(now)
+                .filter(|remaining| *remaining > 0)
+                .ok_or(RuntimeError::Denied)?
+                .min(2000) as u64,
+            None => 2000,
+        };
         self.tx.commit().await?;
         // Explicit test cuts after a known real SQL commit. Neither cut claims
         // database wire-level commit-unknown behavior.
@@ -209,7 +224,7 @@ impl NativeDirectoryGuard {
         }
         let admission = NativeActivation {
             scope,
-            expires: observed + std::time::Duration::from_secs(2),
+            expires: observed + std::time::Duration::from_millis(remaining),
         };
         admission.check(&admission.scope)?;
         Ok(admission)

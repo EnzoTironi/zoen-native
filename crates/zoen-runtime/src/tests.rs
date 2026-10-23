@@ -3,6 +3,7 @@ mod deployment;
 mod failure_cuts;
 mod financial;
 mod http;
+mod image_tasks;
 mod journeys;
 mod managed_custody;
 mod retained;
@@ -197,7 +198,7 @@ impl World {
             request_digest: hash(b"explicit-finance-fixture"),
             requested_output_tokens: 3,
             hold_units: 13,
-            price: self.runtime.price.clone(),
+            price: self.runtime.price.clone().into(),
         }
     }
     async fn balance(&self) -> PeriodBalance {

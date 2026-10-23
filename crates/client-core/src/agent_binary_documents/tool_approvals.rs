@@ -66,6 +66,9 @@ fn parsed(p: &ToolProposal) -> R<(Value, Option<Value>)> {
     if p.schema == 5 {
         return crate::agent_sites::parsed(p);
     }
+    if p.schema == crate::image_tasks::SCHEMA {
+        return crate::image_tasks::parsed(p);
+    }
     if p.schema == 3 {
         return crate::agent_app_creation::parsed(p);
     }
@@ -171,6 +174,7 @@ pub(crate) fn operation(tool: &str) -> String {
         "create_site" => t("Criar site", "Create Site"),
         "read_site" => t("Ler site", "Read Site"),
         "replace_site_source" => t("Atualizar site", "Update Site"),
+        "generate_image" => t("Criar imagem", "Create image"),
         "read_page" => t("Ler página", "Read Page"),
         "create_deckcraft" => t("Criar apresentação", "Create presentation"),
         "replace_page_block" => t("Substituir bloco da página", "Replace Page block"),

@@ -89,6 +89,15 @@ impl Finance {
         owner: &str,
         price: &crate::PriceProfile,
     ) -> Result<(i64, String), RuntimeError> {
+        self.operation_budget(owner, &price.clone().into(), price.max_output_tokens)
+            .await
+    }
+    pub(crate) async fn operation_budget(
+        &self,
+        owner: &str,
+        price: &crate::pricing::BoundPrice,
+        output: u64,
+    ) -> Result<(i64, String), RuntimeError> {
         let mut tx = self.begin().await?;
         Self::person(&mut tx, owner).await?;
         let now = Self::clock(&mut tx).await?;
@@ -107,10 +116,10 @@ impl Finance {
             || now >= end
             || now >= policy.expires_at_ms
             || !policy.enabled
-            || policy.currency != price.currency
-            || policy.scale != price.scale
+            || policy.currency != price.currency()
+            || policy.scale != price.scale()
             || !policy.allowed_profiles.contains(&price.digest()?)
-            || price.reserve(price.max_output_tokens)? > policy.max_attempt_units
+            || price.reserve(output)? > policy.max_attempt_units
         {
             return Err(RuntimeError::Denied);
         }

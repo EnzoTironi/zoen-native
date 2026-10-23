@@ -35,6 +35,8 @@ impl ModelGateway {
             || request.prompt.chars().count() > 32_000
             || request.max_image_bytes == 0
             || request.max_image_bytes > MAX_IMAGE_BYTES
+            || image_response_budget(request.max_image_bytes)
+                .is_none_or(|n| n > limits.max_response_bytes as u64)
         {
             return Err(GatewayError::InvalidRequest);
         }

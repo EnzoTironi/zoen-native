@@ -3,6 +3,21 @@ use serde::{Deserialize, Serialize};
 
 pub const IMAGE_PROFILE: &str = "zoen-openai-images-png-v1/rig-0.44.0";
 pub const MAX_IMAGE_BYTES: u64 = 12 * 1024 * 1024;
+/// Budget for all normalized JSON fields except the canonical base64 string.
+/// This is a supported-response domain, not a provider cost/output guarantee.
+pub const IMAGE_JSON_ENVELOPE_BYTES: u64 = 64 * 1024;
+/// Exact canonical base64 size (including padding) plus the JSON envelope.
+/// Under a 16 MiB transport bound the largest supported PNG is 12,533,760 bytes.
+pub fn image_response_budget(png_bytes: u64) -> Option<u64> {
+    if !(1..=MAX_IMAGE_BYTES).contains(&png_bytes) {
+        return None;
+    }
+    png_bytes
+        .checked_add(2)?
+        .checked_div(3)?
+        .checked_mul(4)?
+        .checked_add(IMAGE_JSON_ENVELOPE_BYTES)
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ImageSize {
