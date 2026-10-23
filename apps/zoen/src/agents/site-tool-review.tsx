@@ -25,7 +25,10 @@ export function SiteToolReview({
 }) {
   const { store } = useClient();
   const { colors } = useTheme();
-  const [review, setReview] = useState<Review | null>(null);
+  const [review, setReview] = useState<{ value: Review; owner: string } | null>(null);
+  const scopeNow = siteScope(store, spaceId);
+  const ownerNow = scopeNow && siteAuthority(store, scopeNow);
+  const visible = review && review.owner === ownerNow ? review.value : null;
   const [before, setBefore] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const native = Platform.OS === 'ios' && NativeCore?.sitePreviewVersion === 1;
@@ -48,7 +51,7 @@ export function SiteToolReview({
       };
       const refresh = async () => {
         retire();
-        if (!current() || !scope) return;
+        if (!current() || !scope || !owner) return;
         const operation = generation;
         try {
           const next = await store.driver.request({
@@ -62,7 +65,7 @@ export function SiteToolReview({
           if (next.request_id !== requestId || next.content_hash !== contentHash)
             throw new Error(t('sites.changedConsent'));
           setBefore(false);
-          setReview(next);
+          setReview({ value: next, owner });
           setFailure(null);
           onReady(native);
         } catch (reason) {
@@ -94,9 +97,9 @@ export function SiteToolReview({
   );
   return (
     <View style={{ gap: 8 }}>
-      {review ? (
+      {visible ? (
         <>
-          {review.before_html !== null ? (
+          {visible.before_html !== null ? (
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <NativeButton
                 secondary={before}
@@ -112,8 +115,8 @@ export function SiteToolReview({
           ) : null}
           <View style={{ height: 280, overflow: 'hidden', borderRadius: 12 }}>
             <SitePreview
-              html={before ? (review.before_html ?? review.after_html) : review.after_html}
-              ownerKey={`${requestId}:${contentHash}:${before ? 'before' : 'after'}`}
+              html={before ? (visible.before_html ?? visible.after_html) : visible.after_html}
+              ownerKey={`${ownerNow}:${requestId}:${contentHash}:${before ? 'before' : 'after'}`}
               active
             />
           </View>
