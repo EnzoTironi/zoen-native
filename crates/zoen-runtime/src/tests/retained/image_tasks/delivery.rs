@@ -2,6 +2,7 @@
 mod binding;
 mod proxy;
 mod relay;
+mod restore;
 mod review;
 use super::*;
 use object_store::ObjectStoreExt;
