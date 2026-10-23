@@ -3,6 +3,10 @@ import { defineFeature } from '../catalog.ts';
 export const documents = defineFeature(
   {
     defaultMarkdownBasename: 'page',
+    discussion: 'Discuss in chat',
+    discussionCount: 'Discussion · %{count}',
+    loadingDiscussion: 'Loading discussion…',
+    retryDiscussion: 'Retry discussion',
     recoverEditorInput: 'Recover editor input',
     editorInputRetained: 'Input saved on this device. Apply to update your draft.',
     editorInputNotRetained: 'The latest input has not been saved. Keep this editor open and retry.',
@@ -177,6 +181,10 @@ export const documents = defineFeature(
     amountPlaceholder: '0.00',
   },
   {
+    discussion: 'Comentar na conversa',
+    discussionCount: 'Comentários · %{count}',
+    loadingDiscussion: 'Carregando comentários…',
+    retryDiscussion: 'Tentar carregar comentários novamente',
     defaultMarkdownBasename: 'pagina',
     recoverEditorInput: 'Recuperar texto do editor',
     editorInputRetained: 'Texto salvo neste aparelho. Aplique para atualizar seu rascunho.',

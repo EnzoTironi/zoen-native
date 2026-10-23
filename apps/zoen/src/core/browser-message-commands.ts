@@ -261,6 +261,7 @@ export async function browserMessageCommand(
     case 'page_block_markdown':
     case 'items':
     case 'item':
+    case 'item_discussion':
     case 'item_at':
     case 'page':
     case 'page_at':

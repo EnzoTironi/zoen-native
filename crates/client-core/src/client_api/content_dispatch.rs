@@ -39,6 +39,9 @@ impl Client {
                 item_ids,
             )?),
             Item { item_id } => encode(&self.item(item_id)?),
+            ItemDiscussion { space_id, item_id } => {
+                encode(&self.lock().item_discussion(&space_id, &item_id)?)
+            }
             ItemAt { item_id, version } => encode(&self.item_at(item_id, version)?),
             Page { item_id } => encode(&self.page(item_id)?),
             PlanPage { item_id } => encode(&self.plan_page(item_id)?),
