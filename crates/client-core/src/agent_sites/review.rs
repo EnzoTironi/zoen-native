@@ -115,11 +115,21 @@ pub(crate) fn matches(state: &State, req: &AgentRequest, space: &str) -> bool {
     let Ok(command) = parse(&p.canonical_tool, &args) else {
         return false;
     };
-    let current=match command{
-        Command::Create(_)=>!state.items.contains_key(&p.artifact),
-        Command::Read(_)|Command::Replace(_)=>state.items.get(&p.artifact).is_some_and(|it|{
-            it.kind==ItemKind::File && it.space==space && !state.is_recovery_item(&it.id)
-                && it.current().number==p.version && matches!(&it.current().content,ItemContent::File(f) if f.mime=="text/html"&&f.sha256==p.sha256&&f.bytes>0&&f.bytes<=HTML_LIMIT as u64)
+    let current = match command {
+        Command::Create(_) => {
+            intent(p).is_ok_and(|intent| !state.items.contains_key(&format!("it_site_{intent}")))
+        }
+        Command::Read(_) | Command::Replace(_) => state.items.get(&p.artifact).is_some_and(|it| {
+            let ItemContent::File(file) = &it.current().content else {
+                return false;
+            };
+            it.kind == ItemKind::File
+                && it.space == space
+                && !state.is_recovery_item(&it.id)
+                && it.current().number == p.version
+                && file.mime == "text/html"
+                && file.sha256 == p.sha256
+                && (1..=HTML_LIMIT as u64).contains(&file.bytes)
         }),
     };
     current
