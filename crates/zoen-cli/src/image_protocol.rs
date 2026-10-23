@@ -30,12 +30,25 @@ pub(crate) enum Progress {
     Recovery {
         run: String,
     },
+    Terminal {
+        request: String,
+        reason: Terminal,
+    },
     Delivered {
         run: String,
         item: String,
         sha256: String,
     },
 }
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum Terminal {
+    Denied,
+    Cancelled,
+    Stale,
+    Expired,
+}
+
 impl Command {
     pub(crate) fn validate(&self) -> Result<(), String> {
         fn locator(s: &str) -> bool {

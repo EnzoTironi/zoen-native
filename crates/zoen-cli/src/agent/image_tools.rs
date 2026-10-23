@@ -1,7 +1,7 @@
 //! Trusted subprocess consumer of the managed image Runtime. The ordinary
 //! citizen keeps its own MLS device; only public locators/content cross this port.
 use super::*;
-use crate::image_protocol::{Command, Progress, MAX_INPUT, MAX_OUTPUT};
+use crate::image_protocol::{Command, Progress, Terminal, MAX_INPUT, MAX_OUTPUT};
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, process::Stdio};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -22,6 +22,14 @@ struct Pending {
     space: String,
     source: String,
     progress: Progress,
+    #[serde(default)]
+    review: Option<Review>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Review {
+    request: String,
+    content_hash: String,
 }
 fn paths() -> Result<(PathBuf, PathBuf), String> {
     let binary = PathBuf::from(env("ZOEN_IMAGE_HOST_BIN").ok_or("image host unavailable")?);
@@ -111,7 +119,7 @@ impl SpaceTools<'_> {
         let input: Input = serde_json::from_value(call.arguments.clone())
             .map_err(|_| "invalid image arguments")?;
         let previous = retained_or_schedule(self.journal, &self.space, self.source, call)?;
-        let retained: Pending =
+        let mut retained: Pending =
             serde_json::from_str(&previous).map_err(|_| "invalid retained image scheduling")?;
         if retained.schema != "runtime-image/1"
             || retained.space != self.space
@@ -136,11 +144,8 @@ impl SpaceTools<'_> {
             }))
         })?;
         self.check_selection()?;
-        let result = serde_json::to_string(&Pending {
-            progress,
-            ..retained
-        })
-        .map_err(|_| "invalid image progress")?;
+        retained.observe(progress);
+        let result = serde_json::to_string(&retained).map_err(|_| "invalid image progress")?;
         replace_step(self.journal, self.source, call, &previous, &result)?;
         Ok(result)
     }
@@ -165,6 +170,7 @@ fn retained_or_schedule(
         space: space.into(),
         source: source.into(),
         progress: Progress::CatchingUp,
+        review: None,
     })
     .map_err(|_| "invalid image scheduling")?;
     // Retain scheduling before subprocess IO. Lost stage replies recover through
@@ -250,37 +256,53 @@ async fn advance_pending(e: &Arc<Client>, journal: &Path, agent: &str, device: &
             {
                 continue;
             }
-            let command = match &pending.progress {
-                Progress::Review {
-                    request,
-                    content_hash,
-                } => {
-                    if !e.requests().iter().any(|r| {
-                        r.id == *request
-                            && r.tool_approval.as_ref().is_some_and(|approval| approval.content_hash == *content_hash)
-                            && r.status == client_core::RequestStatus::Approved
-                    }) {
-                        continue;
-                    }
-                    Command::Advance {
-                        agent: agent.into(),
-                        space: space.into(),
-                        request: request.clone(),
-                    }
-                }
-                Progress::CatchingUp => {
-                    let Ok(input) = serde_json::from_value::<Input>(step.call.arguments.clone())
-                    else {
-                        continue;
+            if matches!(
+                pending.progress,
+                Progress::Delivered { .. } | Progress::Terminal { .. }
+            ) {
+                continue;
+            }
+            pending.recover_review();
+            let command = if let Some(review) = &pending.review {
+                let requests = e.requests();
+                let Some(request) = canonical_request(&pending, agent, &requests) else {
+                    continue;
+                };
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .ok()
+                    .and_then(|d| i64::try_from(d.as_millis()).ok());
+                if let Some(terminal) = canonical_terminal(request, now) {
+                    pending.progress = Progress::Terminal {
+                        request: review.request.clone(),
+                        reason: terminal,
                     };
-                    Command::Stage {
-                        agent: agent.into(),
-                        space: space.into(),
-                        source: source.clone(),
-                        prompt: input.prompt,
+                    if let Ok(result) = serde_json::to_string(&pending) {
+                        let _ = replace_step(journal, &source, &step.call, &step.result, &result);
                     }
+                    continue;
                 }
-                _ => continue,
+                if request.status != client_core::RequestStatus::Approved {
+                    continue;
+                }
+                // Recovery always reuses the retained original request. It is
+                // never restaged and Runtime refuses a second financial attempt.
+                let Some(command) = pending.advance_command(agent) else {
+                    continue;
+                };
+                command
+            } else if pending.progress == Progress::CatchingUp {
+                let Ok(input) = serde_json::from_value::<Input>(step.call.arguments.clone()) else {
+                    continue;
+                };
+                Command::Stage {
+                    agent: agent.into(),
+                    space: space.into(),
+                    source: source.clone(),
+                    prompt: input.prompt,
+                }
+            } else {
+                continue;
             };
             // Approval errors preserve the original locator; neither another
             // review nor a new provider attempt is inferred from a lost reply.
@@ -295,7 +317,7 @@ async fn advance_pending(e: &Arc<Client>, journal: &Path, agent: &str, device: &
             {
                 return;
             }
-            pending.progress = progress;
+            pending.observe(progress);
             let Ok(result) = serde_json::to_string(&pending) else {
                 continue;
             };
@@ -330,8 +352,12 @@ fn replace_step(
 fn unresolved(step: &ToolStep) -> bool {
     step.call.name == TOOL
         && !step.is_error
-        && serde_json::from_str::<Pending>(&step.result)
-            .map_or(true, |p| !matches!(p.progress, Progress::Delivered { .. }))
+        && serde_json::from_str::<Pending>(&step.result).map_or(true, |p| {
+            !matches!(
+                p.progress,
+                Progress::Delivered { .. } | Progress::Terminal { .. }
+            )
+        })
 }
 fn unresolved_count(steps: &[(String, Vec<ToolStep>)]) -> usize {
     steps
@@ -356,4 +382,76 @@ pub(super) fn trim_completed(steps: &mut Vec<(String, Vec<ToolStep>)>) {
             true
         }
     });
+}
+
+impl Pending {
+    fn advance_command(&self, agent: &str) -> Option<Command> {
+        if matches!(
+            self.progress,
+            Progress::Delivered { .. } | Progress::Terminal { .. }
+        ) {
+            return None;
+        }
+        let review = self.review.as_ref()?;
+        Some(Command::Advance {
+            agent: agent.into(),
+            space: self.space.clone(),
+            request: review.request.clone(),
+        })
+    }
+    fn recover_review(&mut self) {
+        if self.review.is_none() {
+            if let Progress::Review {
+                request,
+                content_hash,
+            } = &self.progress
+            {
+                self.review = Some(Review {
+                    request: request.clone(),
+                    content_hash: content_hash.clone(),
+                });
+            }
+        }
+    }
+    fn observe(&mut self, progress: Progress) {
+        self.progress = progress;
+        self.recover_review();
+    }
+}
+fn canonical_terminal(
+    request: &client_core::AgentRequestDto,
+    now: Option<i64>,
+) -> Option<Terminal> {
+    match request.status {
+        client_core::RequestStatus::Denied => Some(Terminal::Denied),
+        client_core::RequestStatus::Cancelled => Some(Terminal::Cancelled),
+        client_core::RequestStatus::Stale => Some(Terminal::Stale),
+        _ if request
+            .tool_approval
+            .as_ref()
+            .is_some_and(|a| now.is_some_and(|now| a.expires_ms <= now)) =>
+        {
+            Some(Terminal::Expired)
+        }
+        _ => None,
+    }
+}
+
+fn canonical_request<'a>(
+    pending: &Pending,
+    agent: &str,
+    requests: &'a [client_core::AgentRequestDto],
+) -> Option<&'a client_core::AgentRequestDto> {
+    let review = pending.review.as_ref()?;
+    requests.iter().find(|r| {
+        r.id == review.request
+            && r.space_id == pending.space
+            && r.agent.id == agent
+            && r.tool_approval.as_ref().is_some_and(|a| {
+                a.content_hash == review.content_hash
+                    && a.image
+                        .as_ref()
+                        .is_some_and(|i| i.source_id == pending.source)
+            })
+    })
 }
