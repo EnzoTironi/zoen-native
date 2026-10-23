@@ -102,6 +102,8 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           key: expo-android-release
+          # Registry downloads are reusable; this job qualifies a new owned target.
+          cache-targets: false
       - uses: gradle/actions/setup-gradle@0b6dd653ba04f4f93bf581ec31e66cbd7dcb644d # v4
       - name: Install pinned application and Android binding tools
         run: |
@@ -119,6 +121,13 @@ jobs:
         run: node --test --test-concurrency=1 scripts/tests/expo-android-proxy.test.mjs scripts/tests/expo-android-orchestration.test.mjs scripts/tests/expo-android-real.test.mjs
       - name: Build shared Rust core and generate Expo Android project
         run: |
+          cargo fetch --locked
+          # Exercise the guarded entrypoint for the actual Core and bindgen too,
+          # rather than testing only tiny fixtures beside an isolated Core build.
+          zoen_android_target="$(mktemp -d "$RUNNER_TEMP/zoen-android-target.XXXXXX")"
+          chmod 700 "$zoen_android_target"
+          export CARGO_TARGET_DIR="$zoen_android_target"
+          export CARGO_BUILD_BUILD_DIR="$zoen_android_target"
           node scripts/build-expo-core.mjs android --release
           cd apps/zoen
           node_modules/.bin/expo prebuild --platform android --no-install
