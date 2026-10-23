@@ -308,7 +308,7 @@ async fn an_existing_accepted_own_reply_completes_without_model_or_cursor_effect
         .into_iter()
         .find(|entry| entry.id == reply_id)
         .unwrap();
-    assert_eq!(reply.delivery, client_core::Delivery::Local);
+    assert_eq!(reply.delivery, client_core::Delivery::Sent);
     *server.delivered.lock().unwrap() = Some((f.space.clone(), f.owner.clone(), reply.seq));
     online(&f.client, true).await;
     assert_eq!(
