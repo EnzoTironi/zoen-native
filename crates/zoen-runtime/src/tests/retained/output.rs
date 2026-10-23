@@ -11,7 +11,7 @@ async fn original() -> (Fixture, ReplyRun) {
     (fixture, run)
 }
 
-async fn revoke_device(fixture: &Fixture) {
+pub(super) async fn revoke_device(fixture: &Fixture) {
     let mut tx = fixture.world.runtime.finance.pool.begin().await.unwrap();
     assert!(zoen_relay::db::revoke_device(
         &mut tx,

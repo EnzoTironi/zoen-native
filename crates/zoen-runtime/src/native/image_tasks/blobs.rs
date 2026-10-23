@@ -7,8 +7,46 @@ use sha2::{Digest, Sha256};
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct BlobReference {
-    chunk: types::ChunkRef,
+    pub(super) chunk: types::ChunkRef,
     payload: String,
+}
+
+pub(super) async fn ciphertext(
+    runtime: &RuntimeAuthority,
+    run: &str,
+    reference: &BlobReference,
+) -> Result<Vec<u8>, RuntimeError> {
+    let chunk = &reference.chunk;
+    if !digest(&chunk.blob)
+        || !digest(&chunk.key)
+        || !digest(&chunk.sha256)
+        || chunk.bytes == 0
+        || chunk.bytes > zoen_models::MAX_IMAGE_BYTES
+        || reference.payload.len() > 32 * 1024
+    {
+        return Err(RuntimeError::InvalidBinding);
+    }
+    let payload = STANDARD
+        .decode(&reference.payload)
+        .map_err(|_| RuntimeError::InvalidBinding)?;
+    if !payload.starts_with(b"ZOEN-EVIDENCE-CHUNKS/1\0") {
+        return Err(RuntimeError::InvalidBinding);
+    }
+    let encrypted = runtime
+        .execution
+        .read_evidence_payload(&subject(run), &chunk.blob, &payload)
+        .await?;
+    if chunk.bytes.checked_add(40) != u64::try_from(encrypted.len()).ok()
+        || hash(&encrypted) != chunk.blob
+    {
+        return Err(RuntimeError::InvalidBinding);
+    }
+    let key = hex::decode(&chunk.key).map_err(|_| RuntimeError::InvalidBinding)?;
+    let plain = event_log::media::open(&key, &encrypted).ok_or(RuntimeError::InvalidBinding)?;
+    if u64::try_from(plain.len()).ok() != Some(chunk.bytes) || hash(&plain) != chunk.sha256 {
+        return Err(RuntimeError::InvalidBinding);
+    }
+    Ok(encrypted)
 }
 fn subject(run: &str) -> String {
     format!("native-image-blob/1/{run}")

@@ -12,6 +12,25 @@ async fn publication(runtime: &RuntimeAuthority, run: &str) -> Publication {
         .open(&format!("native-image-output/1/{run}"), None, &bytes)
         .unwrap()
 }
+pub(crate) async fn transport_original(
+    runtime: &RuntimeAuthority,
+    run: &str,
+) -> (protocol::Envelope, Vec<types::ChunkRef>) {
+    let publication = publication(runtime, run).await;
+    let protocol::ClientFrame::Publish { env } =
+        protocol::ClientFrame::decode(&publication.wire).unwrap()
+    else {
+        panic!("retained Publish")
+    };
+    (
+        env,
+        publication
+            .blobs
+            .into_iter()
+            .map(|reference| reference.chunk)
+            .collect(),
+    )
+}
 pub(crate) async fn bytes(runtime: &RuntimeAuthority, run: &str) -> Result<Vec<u8>, RuntimeError> {
     let publication = publication(runtime, run).await;
     let task = runtime

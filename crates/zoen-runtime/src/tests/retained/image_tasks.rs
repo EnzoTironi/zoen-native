@@ -4,6 +4,7 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use client_core::image_tasks::{ImageTaskDefinition, ImageTaskInput};
 use native::testing::image_tasks as proof;
 use zoen_models::{GeneratedImage, ModelGateway};
+mod delivery;
 
 fn gateway() -> GatewayConfig {
     let p = crate::tests::image_tasks::profile();
@@ -203,6 +204,7 @@ pub(super) async fn run() {
             .await,
         1
     );
+    delivery::run(&mut f, &run, &output).await;
     f.finish().await;
     println!("native image journey: signed review, real MLS task, shared bill, FileDoc activation and cold recovery PASS (controlled adapter; no blob transport claim)");
 }

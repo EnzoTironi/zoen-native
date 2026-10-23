@@ -1,6 +1,7 @@
 //! Derive one explicitly approved task from the same authenticated native state.
 mod output;
 mod reference;
+mod delivery;
 use super::*;
 use crate::image_tasks::{self, ImageTaskInput};
 pub use output::PreparedImageTask;

@@ -16,7 +16,7 @@ use std::{
 
 use futures_util::{SinkExt, StreamExt};
 use protocol::{
-    auth_message, blob_put_message, ClientFrame, EphemeralKind, ErrorCode, KeyPackageClaimClock,
+    auth_message, ClientFrame, EphemeralKind, ErrorCode, KeyPackageClaimClock,
     Op, Reply, ServerFrame, CAPABILITIES, KEY_PACKAGE_CLAIM_TTL_MS, MIN_PROTOCOL_VERSION,
     PROTOCOL_VERSION,
 };

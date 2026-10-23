@@ -9,7 +9,7 @@ mod execution;
 mod finance;
 mod image_tasks;
 mod native;
-pub use native::ImageOutputInspection;
+pub use native::{ImageDeliveryProgress, ImageDeliveryTarget, ImageOutputInspection};
 mod pricing;
 pub use pricing::{ImagePriceProfile, ImagePriceQuote, PriceProfile};
 pub use types::owner_budget::{OwnerPeriodPolicy, SignedOwnerPolicy};

@@ -10,15 +10,17 @@ pub struct ImageOutputInspection {
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Publication {
-    task: String,
-    evidence: String,
-    item: String,
-    sha256: String,
-    wire: Vec<u8>,
-    generation: u64,
+pub(super) struct Publication {
+    pub(super) task: String,
+    pub(super) evidence: String,
+    pub(super) item: String,
+    pub(super) sha256: String,
+    pub(super) wire: Vec<u8>,
+    pub(super) generation: u64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    blobs: Vec<super::blobs::BlobReference>,
+    pub(super) blobs: Vec<super::blobs::BlobReference>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) accepted: Option<types::Seen>,
 }
 
 impl NativeCustody {
@@ -140,6 +142,7 @@ impl NativeCustody {
         .await?;
         let next = self.seal_image(principal, Some(&step.current), prepared.image())?;
         let publication = Publication {
+            accepted: None,
             blobs,
             task: task.task_digest.clone(),
             evidence: digest,

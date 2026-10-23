@@ -5,7 +5,7 @@ mod image_tasks;
 mod managed;
 mod packages;
 mod runs;
-pub use image_tasks::ImageOutputInspection;
+pub use image_tasks::{ImageDeliveryProgress, ImageDeliveryTarget, ImageOutputInspection};
 pub(crate) use image_tasks::ImageStep;
 mod storage;
 pub(crate) use runs::output::{associate_capture, FreshOutputNamespace, ReplyOutputScope};

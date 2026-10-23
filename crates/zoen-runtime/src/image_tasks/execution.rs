@@ -21,6 +21,24 @@ impl ImageAttemptAdapter for ModelGateway {
 }
 
 impl RuntimeAuthority {
+    /// Deliver an already-prepared original. The same production output and
+    /// continuity gates remain closed; routing configuration grants no permit.
+    pub async fn deliver_image_task_output(
+        &self,
+        run: &str,
+        target: crate::ImageDeliveryTarget,
+    ) -> Result<crate::ImageDeliveryProgress, RuntimeError> {
+        if !id(run) {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        self.continuity()?;
+        let scope = self.production_output_scope()?;
+        self.native
+            .as_ref()
+            .ok_or(RuntimeError::CoreAuthorityUnavailable)?
+            .deliver_image_output(self, run, &target, scope)
+            .await
+    }
     pub(crate) fn image_output_scope(&self) -> Result<&native::FreshOutputNamespace, RuntimeError> {
         #[cfg(test)]
         if let Some(scope) = self.output_fixture.as_ref() {
