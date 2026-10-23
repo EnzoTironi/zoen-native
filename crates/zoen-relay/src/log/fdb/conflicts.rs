@@ -53,6 +53,16 @@ impl Diagnostics {
             report_errors: self.report_errors.load(Ordering::Relaxed),
         }
     }
+    pub fn report(&self, attempts: u32, elapsed: std::time::Duration, failed: bool) {
+        let counts = self.counts();
+        if counts.commits > 0 || counts.closure_errors > 0 {
+            tracing::debug!(target: "zoen_relay::log::fdb::conflicts", attempts, elapsed_ms = elapsed.as_millis() as u64,
+                commit_errors = counts.commits, head_conflicts = counts.head, lease_conflicts = counts.lease,
+                other_conflicts = counts.other, unreported_conflicts = counts.unreported,
+                closure_errors = counts.closure_errors, report_errors = counts.report_errors,
+                failed, "append transaction conflict diagnosis");
+        }
+    }
     fn classify(&self, begin: &[u8], end: &[u8]) {
         let head = begin <= self.head.as_slice() && self.head.as_slice() < end;
         let lease = begin <= self.lease.as_slice() && self.lease.as_slice() < end;
@@ -132,9 +142,35 @@ mod tests {
                 report_errors: 0,
             }
         );
-        assert_eq!(
-            format!("{counts:?}"),
-            "Counts { commits: 0, head: 1, lease: 1, other: 2, unreported: 0, closure_errors: 0, report_errors: 0 }"
-        );
+        struct Output(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+        impl std::io::Write for Output {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let bytes = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = bytes.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .without_time()
+            .with_ansi(false)
+            .with_max_level(tracing::Level::DEBUG)
+            .with_writer(move || Output(sink.clone()))
+            .json()
+            .finish();
+        diagnostic.commits.store(2, Ordering::Relaxed);
+        tracing::subscriber::with_default(subscriber, || {
+            diagnostic.report(3, std::time::Duration::ZERO, true)
+        });
+        let text = String::from_utf8(bytes.lock().unwrap().clone()).unwrap();
+        assert!(!text.contains("CANARY") && !text.contains("PRIVATE-"));
+        let record: serde_json::Value = serde_json::from_str(text.trim()).unwrap();
+        assert_eq!(record["fields"]["head_conflicts"], 1);
+        assert_eq!(record["fields"]["lease_conflicts"], 1);
+        assert_eq!(record["fields"]["other_conflicts"], 2);
+        assert_eq!(record["fields"]["attempts"], 3);
     }
 }
