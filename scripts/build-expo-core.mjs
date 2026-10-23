@@ -5,6 +5,7 @@ import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promi
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { cargoTooling, ExpoCargoArtifacts } from './expo-cargo-artifacts.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const moduleRoot = join(root, 'apps/zoen/modules/zoen-core');
@@ -16,6 +17,7 @@ const iosArchitectures = process.argv.includes('--simulator')
   : ['aarch64-apple-ios', 'aarch64-apple-ios-sim'];
 const androidAbis = process.env.ZOEN_ANDROID_ABIS ?? 'arm64-v8a,x86_64';
 const folder = profile === 'dev' ? 'debug' : 'release';
+const sharedTarget = process.env.CARGO_TARGET_DIR !== undefined && platform !== 'android';
 const env = {
   ...process.env,
   PATH: `${process.env.HOME}/.cargo/bin:${process.env.PATH}`,
@@ -34,6 +36,16 @@ function run(command, args, cwd = root, extra = {}) {
     );
   });
 }
+
+const guarded = sharedTarget
+  ? new ExpoCargoArtifacts({
+      root,
+      target,
+      directory: join(moduleRoot, 'generated/cargo-source-guard'),
+      run,
+      python: process.env.ZOEN_CARGO_GUARD_PYTHON,
+    })
+  : null;
 
 async function inputs(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -138,7 +150,7 @@ async function sourceHash() {
     ...(await Promise.all([...directories].map(inputs))).flat(),
     join(root, 'Cargo.toml'),
     join(root, 'Cargo.lock'),
-    fileURLToPath(import.meta.url),
+    ...cargoTooling.map((name) => join(root, 'scripts', name)),
     ...(platform === 'android'
       ? [
           ...[
@@ -166,7 +178,7 @@ try {
   const previous = JSON.parse(await readFile(stamp, 'utf8'));
   // TypeScript is checked in and can drift independently from the Rust inputs.
   // Always rerun its inexpensive exporter; Cargo already caches the executable.
-  if (platform !== 'types' && previous.sha256 === hash) {
+  if (!guarded && platform !== 'types' && previous.sha256 === hash) {
     await Promise.all(previous.outputs.map((path) => stat(path)));
     await validateGeneratedInventory();
     process.exit(0);
@@ -179,18 +191,32 @@ await mkdir(join(moduleRoot, 'generated'), { recursive: true });
 let outputs;
 if (platform === 'types') {
   const out = join(root, 'apps/zoen/src/core/generated');
-  await run('cargo', [
-    'run',
-    '--locked',
-    '-p',
-    'client-core',
-    '--example',
-    'export-client-types',
-    '--features',
-    'client-types',
-    '--',
-    out,
-  ]);
+  if (guarded) {
+    const { exporter } = await guarded.build(
+      ['-p', 'client-core', '--example', 'export-client-types', '--features', 'client-types'],
+      [
+        {
+          key: 'exporter',
+          manifest: 'crates/client-core/Cargo.toml',
+          name: 'export-client-types',
+          executable: true,
+        },
+      ],
+    );
+    await run(exporter, [out]);
+  } else
+    await run('cargo', [
+      'run',
+      '--locked',
+      '-p',
+      'client-core',
+      '--example',
+      'export-client-types',
+      '--features',
+      'client-types',
+      '--',
+      out,
+    ]);
   outputs = [join(out, 'Command.ts'), join(out, 'Snapshot.ts')];
 } else if (platform === 'android') {
   const out = join(moduleRoot, 'generated/android');
@@ -208,11 +234,6 @@ if (platform === 'types') {
 } else {
   const out = join(moduleRoot, 'ios/generated');
   const binding = join(moduleRoot, 'generated/swift');
-  await rm(out, { recursive: true, force: true });
-  await rm(binding, { recursive: true, force: true });
-  await mkdir(binding, { recursive: true });
-  await mkdir(join(binding, 'headers'), { recursive: true });
-  await mkdir(out, { recursive: true });
   async function appleSdk(name) {
     const { stdout } = await promisify(execFile)('xcrun', ['--sdk', name, '--show-sdk-path'], {
       cwd: root,
@@ -225,31 +246,66 @@ if (platform === 'types') {
   // Xcode and shell sessions can export a different SDKROOT. The host binding
   // generator and each Apple target must link against their own SDK explicitly.
   const hostSdk = await appleSdk('macosx');
-  await run('cargo', ['build', '--locked', '-p', 'client-core', '--profile', profile], root, {
-    SDKROOT: hostSdk,
-  });
-  for (const architecture of iosArchitectures) {
-    await run(
-      'cargo',
-      ['build', '--locked', '-p', 'client-core', '--profile', profile, '--target', architecture],
-      root,
-      {
-        IPHONEOS_DEPLOYMENT_TARGET: '26.0',
-        SDKROOT: await appleSdk(architecture.endsWith('-sim') ? 'iphonesimulator' : 'iphoneos'),
-      },
+  let hostLibrary = join(target, folder, 'libclient_core.dylib');
+  const libraries = new Map();
+  if (guarded) {
+    const host = await guarded.build(
+      ['-p', 'client-core', '--profile', profile],
+      [{ key: 'host', manifest: 'crates/client-core/Cargo.toml', name: 'libclient_core.dylib' }],
+      { SDKROOT: hostSdk },
     );
+    hostLibrary = host.host;
+  } else
+    await run('cargo', ['build', '--locked', '-p', 'client-core', '--profile', profile], root, {
+      SDKROOT: hostSdk,
+    });
+  for (const architecture of iosArchitectures) {
+    const options = {
+      IPHONEOS_DEPLOYMENT_TARGET: '26.0',
+      SDKROOT: await appleSdk(architecture.endsWith('-sim') ? 'iphonesimulator' : 'iphoneos'),
+    };
+    if (guarded) {
+      const { library } = await guarded.build(
+        ['-p', 'client-core', '--profile', profile, '--target', architecture],
+        [{ key: 'library', manifest: 'crates/client-core/Cargo.toml', name: 'libclient_core.a' }],
+        options,
+      );
+      libraries.set(architecture, library);
+    } else
+      await run(
+        'cargo',
+        ['build', '--locked', '-p', 'client-core', '--profile', profile, '--target', architecture],
+        root,
+        options,
+      );
   }
+  let generator;
+  if (guarded)
+    ({ generator } = await guarded.build(
+      ['-p', 'uniffi-bindgen'],
+      [
+        {
+          key: 'generator',
+          manifest: 'crates/uniffi-bindgen/Cargo.toml',
+          name: 'uniffi-bindgen',
+          executable: true,
+        },
+      ],
+      { SDKROOT: hostSdk },
+    ));
+  // Admission/build failure must not erase a previous generated framework.
+  await rm(out, { recursive: true, force: true });
+  await rm(binding, { recursive: true, force: true });
+  await mkdir(binding, { recursive: true });
+  await mkdir(join(binding, 'headers'), { recursive: true });
+  await mkdir(out, { recursive: true });
   await run(
-    'cargo',
+    generator ?? 'cargo',
     [
-      'run',
-      '--locked',
-      '-p',
-      'uniffi-bindgen',
-      '--',
+      ...(generator ? [] : ['run', '--locked', '-p', 'uniffi-bindgen', '--']),
       'generate',
       '--library',
-      join(target, folder, 'libclient_core.dylib'),
+      hostLibrary,
       '--language',
       'swift',
       '--out-dir',
@@ -266,7 +322,7 @@ if (platform === 'types') {
     '-create-xcframework',
     ...iosArchitectures.flatMap((architecture) => [
       '-library',
-      join(target, architecture, folder, 'libclient_core.a'),
+      libraries.get(architecture) ?? join(target, architecture, folder, 'libclient_core.a'),
       '-headers',
       join(binding, 'headers'),
     ]),
@@ -277,7 +333,10 @@ if (platform === 'types') {
   outputs = [join(framework, 'Info.plist'), join(out, 'ClientFFI.generated.swift')];
 }
 await validateGeneratedInventory();
+if (guarded && (await sourceHash()) !== hash)
+  throw new Error('Build inputs changed; generated outputs remain unqualified');
+const cargoQualification = guarded ? await guarded.finish(hash) : undefined;
 await writeFile(
   stamp,
-  `${JSON.stringify({ sha256: hash, profile, platform, outputs }, null, 2)}\n`,
+  `${JSON.stringify({ sha256: hash, profile, platform, outputs, cargoQualification }, null, 2)}\n`,
 );
