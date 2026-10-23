@@ -7,7 +7,7 @@ use crate::{
 use miniapps::deckcraft::{self, agent_tools};
 use serde_json::{json, Value};
 use types::{
-    ActionClass, AgentRequest, Capability, EventBody, GrantScope, RequestResolution, ToolDecision,
+    ActionClass, AgentRequest, Capability, EventBody, RequestResolution, ToolDecision,
     ToolProposal, TrustLevel,
 };
 
