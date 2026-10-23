@@ -21,6 +21,11 @@ pub struct ToolApprovalDto {
     pub version: u32,
     pub operation: String,
     pub expires_ms: i64,
+    /// Native read-only preview kind; never an execution permit.
+    #[uniffi(default = None)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "client-types", ts(optional))]
+    pub preview_kind: Option<String>,
     /// Presentation of the signed review lineage, never a permit or effect receipt.
     #[uniffi(default = None)]
     #[serde(default, skip_serializing_if = "Option::is_none")]

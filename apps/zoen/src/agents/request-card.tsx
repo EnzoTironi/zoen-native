@@ -1,5 +1,5 @@
 import { t, formatLocale } from '../i18n/index.ts';
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { router } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 import type { AgentRequestDto } from '../core/generated/AgentRequestDto';
@@ -14,6 +14,7 @@ import { money } from '../core/presentation';
 import { Avatar, NativeButton, Surface } from '../components/primitives';
 import { useDialogs } from '../components/dialogs';
 import { ToolReviewRecovery } from './tool-review-recovery';
+import { SiteToolReview } from './site-tool-review';
 import { useTheme } from '../theme';
 
 const statuses = {
@@ -42,6 +43,14 @@ export function RequestCard({
   const [result, setResult] = useState<string | null>(null);
   const deciding = useRef(false);
   const tool = request.tool_approval;
+  const siteReviewKey = `${request.id}:${tool?.content_hash ?? ''}:${store.sessionEpoch}`;
+  const [reviewedSiteKey, setReviewedSiteKey] = useState<string | null>(null);
+  const siteReviewed = reviewedSiteKey === siteReviewKey;
+  const siteReady = useCallback(
+    (ready: boolean) => setReviewedSiteKey(ready ? siteReviewKey : null),
+    [siteReviewKey],
+  );
+  const siteNeedsReview = tool?.preview_kind === 'site';
   const toolValid = tool == null || toolApprovalValid(tool);
   const toolExpired = tool != null && toolApprovalExpired(tool);
   const itemId = tool == null ? request.item_id : toolValid ? tool.artifact_id : null;
@@ -49,7 +58,12 @@ export function RequestCard({
   const pending = request.status === 'Pending' || request.status === 'Stale';
   const canDecide = pending && toolValid && request.agent.is_mine && !busy && !disabled;
   async function decide(decision: RequestCardDecision) {
-    if (!canDecide || deciding.current) return;
+    if (
+      !canDecide ||
+      deciding.current ||
+      (decision === 'ApproveOnce' && siteNeedsReview && !siteReviewed)
+    )
+      return;
     const command = requestDecisionCommand(request, decision);
     if (!command) return;
     const always = decision === 'AlwaysApprove' || decision === 'AlwaysDeny';
@@ -150,6 +164,15 @@ export function RequestCard({
           ) : null}
         </View>
       ) : null}
+      {siteNeedsReview && !compact && pending && tool && toolValid ? (
+        <SiteToolReview
+          key={`${request.id}:${tool.content_hash}`}
+          requestId={request.id}
+          contentHash={tool.content_hash}
+          spaceId={request.space_id}
+          onReady={siteReady}
+        />
+      ) : null}
       {!compact ? (
         <View style={{ gap: 8 }}>
           <Text selectable style={{ color: colors.secondary }}>
@@ -238,7 +261,7 @@ export function RequestCard({
             onPress={() => router.push({ pathname: '/request/[id]', params: { id: request.id } })}
           />
         ) : null}
-        {itemId ? (
+        {itemId && !itemId.startsWith('future_site_') ? (
           <NativeButton
             secondary
             label={t('agents.openItem')}
@@ -268,7 +291,12 @@ export function RequestCard({
             />
             <NativeButton
               label={busy ? t('agents.saving') : t('agents.allowOnce')}
-              disabled={!canDecide || request.status === 'Stale' || toolExpired}
+              disabled={
+                !canDecide ||
+                request.status === 'Stale' ||
+                toolExpired ||
+                (siteNeedsReview && (!siteReviewed || compact))
+              }
               onPress={() => {
                 void decide(tool == null ? 'Approve' : 'ApproveOnce');
               }}

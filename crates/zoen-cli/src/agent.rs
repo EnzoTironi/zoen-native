@@ -45,6 +45,8 @@ mod journal;
 #[cfg(test)]
 mod page_tool_tests;
 mod page_tools;
+#[path = "agent/site_tools.rs"]
+mod site_tools;
 mod space_tools;
 #[cfg(test)]
 mod test_support;

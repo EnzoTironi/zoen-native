@@ -65,8 +65,11 @@ impl ToolHost for SpaceTools<'_> {
     fn requires_native_review(&self, call: &ToolCall) -> bool {
         let current = self.fresh();
         current
-            .page_binding(call)
-            .is_some_and(|(_, tool)| tool == "replace_page_block")
+            .site_binding(call)
+            .is_some_and(|(_, tool)| tool != "read_site")
+            || current
+                .page_binding(call)
+                .is_some_and(|(_, tool)| tool == "replace_page_block")
             || current.names.iter().any(|(definition, _, tool)| {
                 definition.name == call.name && tool == client_core::agent_app_creation::TOOL
             })
@@ -161,6 +164,9 @@ impl SpaceTools<'_> {
     }
     fn current_call(&self, call: &ToolCall) -> Result<String, String> {
         self.check_selection()?;
+        if client_core::agent_sites::is_model_name(&call.name) {
+            return self.site_call(call);
+        }
         if client_core::agent_app_creation::is_model_name(&call.name) {
             return Err("Presentation creation requires its exact native approval".into());
         }

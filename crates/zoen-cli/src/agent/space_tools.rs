@@ -53,6 +53,7 @@ impl<'a> SpaceTools<'a> {
                 ));
             }
         }
+        site_tools::discover(e, space, source, serving, &mut names);
         let binary_items: std::collections::BTreeSet<_> = e
             .items()
             .into_iter()
@@ -187,6 +188,26 @@ impl<'a> SpaceTools<'a> {
     ) -> Result<client_core::AgentRequestDto, String> {
         self.check_selection()?;
         let prior = self.e.tool_approval_requests(&self.space, self.source);
+        if let Some((_, tool)) = self.site_binding(&ask.call) {
+            let dto = self
+                .e
+                .stage_site_tool_approval(
+                    &self.space,
+                    self.source,
+                    self.serving,
+                    client_core::AgentToolApprovalInput {
+                        canonical_tool: tool.into(),
+                        arguments: ask.call.arguments.clone(),
+                        worker_binding: client_core::agent_sites::executor_binding(),
+                        continuation_json: serde_json::to_string(ask)
+                            .map_err(|_| "Invalid Site continuation")?,
+                        gate_rule: ask.rule.clone(),
+                    },
+                )
+                .map_err(|error| error.to_string())?;
+            self.check_selection()?;
+            return self.register_staged(dto, &prior);
+        }
         if client_core::agent_app_creation::model_name(&self.space).as_deref()
             == Some(&ask.call.name)
             && self.names.iter().any(|(definition, _, tool)| {
