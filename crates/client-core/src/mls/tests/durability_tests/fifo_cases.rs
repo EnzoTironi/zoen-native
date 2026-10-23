@@ -69,8 +69,9 @@ pub(super) fn cold_outbox_fifo_preserves_signed_intents_ciphertext_and_receiver_
             .unwrap();
         assert_eq!(actual.content, expected.content);
         assert_eq!(actual.sig, expected.sig);
-        if let EventBody::MessagePosted { message, .. } = expected.body {
-            assert_eq!(message_count(&peer, space, &message), 1);
+        if matches!(&expected.body, EventBody::MessagePosted { .. }) {
+            // Timeline IDs are stable client IDs, not the inner message field.
+            assert_eq!(message_count(&peer, space, &expected.client_id), 1);
         } else {
             panic!("expected real application message");
         }
@@ -83,7 +84,12 @@ pub(super) fn backward_clock_welcome_stays_behind_original_commit_and_other_spac
     let database = Database::new();
     let space = "fifo-handshake";
     let (mut owner, secret, peer, _) = encrypted_pair(&database, space);
-    let package = peer
+    // encrypted_pair already added peer's signature key. A different key package
+    // for that same leaf cannot add it again; stage a genuinely new member.
+    let (newcomer, newcomer_author, _) = member(&database.path("newcomer.sqlite"));
+    let author = owner.net.author.clone().unwrap();
+    add_member(&mut owner, &author, space, &newcomer_author);
+    let package = newcomer
         .device()
         .unwrap()
         .key_packages(1, false)
@@ -92,7 +98,6 @@ pub(super) fn backward_clock_welcome_stays_behind_original_commit_and_other_spac
     owner
         .commit_now(space, &[package], &Default::default())
         .unwrap();
-    let author = owner.net.author.clone().unwrap();
     let handshakes = owner.store.outbox().unwrap();
     let mut commit = None;
     let mut welcome = None;
