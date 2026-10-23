@@ -91,7 +91,9 @@ pub fn verify_content(
     match (&signed.mutation.change, html) {
         (Change::Unpublish, None) => Ok(None),
         (Change::Publish { source }, Some(bytes))
-            if bytes.len() as u64 == source.byte_length
+            if !bytes.is_empty()
+                && valid_site(&signed.mutation.site_id)
+                && bytes.len() as u64 == source.byte_length
                 && bytes.len() as u64 <= MAX_HTML_BYTES
                 && !bytes.contains(&0)
                 && std::str::from_utf8(bytes).is_ok()
