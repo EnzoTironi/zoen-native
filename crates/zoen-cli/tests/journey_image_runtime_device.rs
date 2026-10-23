@@ -61,7 +61,7 @@ fn dedicated_runtime_and_citizen_open_the_same_source_from_their_own_welcome() {
         .build()
         .unwrap();
     executor.block_on(async {
-        let w = World::new("image_dedicated_device").await;
+        let mut w = World::new("image_dedicated_device").await;
         w.init("owner", "Owner");
         let agent = w.zoen("citizen", &["agent-keys"]).trim().to_owned();
         let proof = w.zoen("owner", &["authorize-agent", &agent]).trim().to_owned();
@@ -108,6 +108,21 @@ fn dedicated_runtime_and_citizen_open_the_same_source_from_their_own_welcome() {
         assert!(output.status.success(), "initialize: {}", String::from_utf8_lossy(&output.stderr));
         let retry = initialize();
         assert!(retry.status.success(), "initialize retry: {}", String::from_utf8_lossy(&retry.stderr));
+        // This is trusted deployment configuration for the real relay process,
+        // independent of restored SQL/FDB. Only this synthetic World's witness
+        // is read; it never enters fixture logs or content requests.
+        let operator = w.dir.join("operator");
+        std::fs::create_dir(&operator).unwrap();
+        #[cfg(unix)] {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&operator, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let registry = operator.join("managed-devices.json");
+        let witness = w.scalar("SELECT witness FROM runtime_deployment_binding WHERE singleton").await;
+        write_json(&registry, &serde_json::json!({"devices":[{"deployment":{"namespace":installed.namespace,"witness":witness,"source":w.cell,"agent":agent,"device":pairing.device},"anchor_directory":installed.continuity}]}));
+        w.stop_relay();
+        w.configure_relay_env("ZOEN_MANAGED_DEVICE_CONFIG", Some(registry.to_str().unwrap()));
+        w.start_relay();
         // Both leaves exist before the first conversation invitation. Claiming
         // stock through normal MLS creation must include both active devices.
         let space = w.zoen("owner", &["dm","@image_citizen","The shared source is a calm sea"]).trim().to_owned();
