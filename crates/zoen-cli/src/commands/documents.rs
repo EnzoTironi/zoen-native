@@ -5,6 +5,7 @@ pub(super) async fn run(cmd: String, cli: &mut Cli, context: Context) {
     let Context {
         e,
         timeout,
+        sync_budget,
         offline,
         ..
     } = context;
@@ -110,39 +111,12 @@ pub(super) async fn run(cmd: String, cli: &mut Cli, context: Context) {
                             .map(String::as_str)
                             .unwrap_or_else(|| usage()),
                     );
-                    if offline {
-                        eprintln!("offline cache export: remote catch-up was not checked");
-                    } else {
-                        // Startup already spent the command's wait budget. Check
-                        // its actual completion, without another wait or retry,
-                        // before enumerating a projection that may omit items.
-                        e.wait_until_settled(0).await.unwrap_or_else(|err| {
-                            die(format!(
-                                "export-all: {err}; no files were written. Use --offline to export only this device's cached pages."
-                            ))
-                        });
-                    }
-                    let (mut n, mut bytes, mut missing) = (0, 0, 0);
-                    for i in e
-                        .items()
-                        .into_iter()
-                        .filter(|i| i.space_id == space && i.kind_id == "page")
-                    {
-                        if !ready(&e, &i.id, timeout).await {
-                            missing += 1;
-                            continue;
-                        }
-                        let md = e.page_markdown(i.id.clone()).unwrap_or_else(|err| die(err));
-                        let name = if i.path.is_empty() {
-                            format!("{}.md", i.id)
-                        } else {
-                            i.path.clone()
-                        };
-                        write_file(&dir.join(name), md.as_bytes());
-                        n += 1;
-                        bytes += md.len();
-                    }
-                    println!("{n} pages, {bytes} bytes, {missing} still arriving");
+                    let output = super::export_admission::export_all(
+                        &e, space, dir, timeout, offline, sync_budget.deadline(),
+                    ).await.unwrap_or_else(|err| die(format!(
+                        "export-all: {err}; no files were written. Use --offline to export only this device's cached pages."
+                    )));
+                    println!("{output}");
                 }
                 "show" => {
                     let it = item(

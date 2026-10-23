@@ -521,6 +521,7 @@ async fn main() {
     }
     let me = e.account().map(|a| a.identity_id).unwrap_or_default();
     let watching = cmd == "watch";
+    let mut sync_budget = commands::SyncBudget::new(timeout);
     if !offline {
         let listener: Option<Arc<dyn CoreListener>> = if watching {
             Some(Arc::new(Printer {
@@ -531,7 +532,7 @@ async fn main() {
             None
         };
         e.start_sync(listener).unwrap_or_else(|err| die(err));
-        let c = e.wait_until_idle(timeout).await;
+        let c = sync_budget.wait_startup(&e).await;
         if c.state != "online"
             && !matches!(
                 cmd.as_str(),
@@ -568,6 +569,7 @@ async fn main() {
                     vault: vault.clone(),
                     me,
                     timeout,
+                    sync_budget,
                     offline,
                     for_secs,
                 },

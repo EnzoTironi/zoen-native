@@ -163,8 +163,8 @@ impl Client {
     /// Rust CLI contract; no new exported ABI. A deadline is not completion, including
     /// a scheduled MLS retry with an empty event outbox.
     pub async fn wait_until_settled(&self, timeout_ms: u64) -> Result<ConnectionDto, CoreError> {
-        let connection = self.wait_until_idle(timeout_ms).await;
-        if self.sync_idle(&connection) {
+        let (connection, observed) = self.wait_sync_completion(timeout_ms).await;
+        if observed.satisfied() {
             Ok(connection)
         } else {
             Err(invalid(connection.error.unwrap_or_else(|| {
@@ -480,18 +480,6 @@ impl Client {
 
     /// Waits (up to `timeout_ms`) until online, caught up and with nothing left to send.
     pub async fn wait_until_idle(&self, timeout_ms: u64) -> ConnectionDto {
-        let started = tokio::time::Instant::now();
-        let deadline = started + Duration::from_millis(timeout_ms);
-        loop {
-            let c = self.connection();
-            let observed = self.sync_completion_observation(&c);
-            if observed.satisfied() || tokio::time::Instant::now() >= deadline {
-                if !observed.satisfied() {
-                    observed.trace_deadline(timeout_ms, started.elapsed());
-                }
-                return c;
-            }
-            tokio::time::sleep(Duration::from_millis(40)).await;
-        }
+        self.wait_sync_completion(timeout_ms).await.0
     }
 }
