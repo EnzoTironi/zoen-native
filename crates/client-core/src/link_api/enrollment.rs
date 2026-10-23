@@ -71,74 +71,26 @@ impl Client {
     ) -> Result<LinkedDto, CoreError> {
         let code = LinkCode::parse(&code)
             .ok_or_else(|| invalid(t("Código inválido.", "Invalid code.")))?;
-        let identity = vault.load(VAULT_IDENTITY.into()).ok_or_else(|| {
-            invalid(t(
-                "A chave da conta não está aqui.",
-                "The account key isn't here.",
-            ))
-        })?;
-        let identity =
-            Signer::from_secret(&secret32(Some(identity)).ok_or_else(|| invalid("identity"))?);
-        let agreement = vault.load(VAULT_AGREEMENT.into()).unwrap_or_default();
-        let (my_hpke_secret, my_hpke_public) = link::key_pair();
-        let b = {
-            let e = self.lock();
-            let a = e.account().ok_or_else(|| invalid("account"))?.clone();
-            if identity.id() != a.identity {
-                return Err(invalid("identity"));
-            }
-            let me = e.my_profile().ok_or_else(|| invalid("account"))?;
-            let (profile_key, profile_key_version, profile_seen_version, profile_fields) =
-                e.profile_for_link()?;
-            IdentityBox {
-                identity_secret: hex::encode(identity.secret()),
-                agreement_secret: hex::encode(&agreement),
-                cert: identity.sign(&event_log::device_cert_message(&code.device)),
-                name: me.name,
-                handle: me.handle,
-                relay: a.relay_url.clone(),
-                primary: a.device.clone(),
-                primary_hpke: hex::encode(&my_hpke_public),
-                profile_key,
-                profile_key_version,
-                profile_seen_version,
-                profile_fields,
-            }
-        };
-        let plain = serde_json::to_vec(&b).map_err(|e| invalid(e.to_string()))?;
-        let sealed = link::seal(&code.hpke, &code.secret, "identity", &plain)
-            .ok_or_else(|| invalid("sealing"))?;
-        let peer = Peer {
-            device: code.device.clone(),
-            their_hpke: hex::encode(&code.hpke),
-            my_hpke_secret: hex::encode(&my_hpke_secret),
-            secret: hex::encode(code.secret),
-        };
-        let mut peers = load_peers(&vault);
-        peers.retain(|p| p.device != peer.device);
-        peers.push(peer.clone());
-        if !save_peers(&vault, &peers) {
-            return Err(invalid(t(
-                "Não deu para guardar a chave no Keychain.",
-                "Couldn't store the key in the Keychain.",
-            )));
-        }
-        self.lock().add_peer(peer);
-        match self
-            .request(Op::DeliverLink {
-                id: link::box_id(&code.secret, "identity"),
-                sealed,
-                device: Some(DeviceCertificate {
-                    device: code.device.clone(),
-                    cert: b.cert,
-                }),
-            })
+        let owner = owner::LinkOwner::capture(self)?;
+        let prepared = enroll_prepare::prepare(self, &owner, &code, &vault)?;
+        match owner
+            .request(
+                self,
+                Op::DeliverLink {
+                    id: link::box_id(&code.secret, "identity"),
+                    sealed: prepared.sealed,
+                    device: Some(DeviceCertificate {
+                        device: code.device.clone(),
+                        cert: prepared.certificate,
+                    }),
+                },
+            )
             .await?
         {
             Reply::Done => {}
             _ => return Err(invalid("the relay answered something else")),
         }
-        self.lock().device_linked(&code.device)?;
+        owner.with(self, |engine| engine.device_linked(&code.device))?;
         Ok(LinkedDto {
             check: code.check_digits(),
             device_id: code.device,
