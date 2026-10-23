@@ -7,6 +7,9 @@ impl State {
         let Some(p) = &req.tool_proposal else {
             return false;
         };
+        if p.schema == 2 {
+            return crate::agent_pages::approvals::matches(self, req, space);
+        }
         let Ok((ask, _)) = parsed(p) else {
             return false;
         };
@@ -47,6 +50,9 @@ impl State {
     }
 
     pub(crate) fn tool_app_act(&self, p: &ToolProposal, at: i64) -> bool {
+        if p.schema == 2 {
+            return crate::agent_pages::approvals::access(self, p);
+        }
         self.grants
             .iter()
             .rev()

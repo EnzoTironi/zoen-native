@@ -5,21 +5,26 @@ use super::*;
 impl ApprovedToolAdmission for CanonicalToolAdmission<'_, '_> {
     fn execute(&self, ask: &ToolAsk) -> Result<ToolResult, String> {
         self.tools.check_selection()?;
-        let p = self.permit.proposal();
-        if serde_json::to_string(ask).map_err(|_| "Invalid held call")? != p.continuation_json {
+        let (tool, continuation) = self.permit.proposal();
+        if serde_json::to_string(ask).map_err(|_| "Invalid held call")? != continuation {
             return Err("The approved intent changed".into());
         }
-        let worker = self
-            .tools
-            .deckcraft
-            .ok_or("The presentation executor is unavailable")?;
         // Native authorization is rechecked even for a cached read result. Writes
         // always recover through their canonical binary receipt instead.
-        self.tools
-            .e
-            .agent_binary_finish_read(self.permit.turn())
-            .map_err(|e| e.to_string())?;
-        let result = if p.canonical_tool == "read_deckcraft" {
+        if let page_tools::CanonicalPermit::Deck(permit) = &self.permit {
+            self.tools
+                .e
+                .agent_binary_finish_read(permit.turn())
+                .map_err(|e| e.to_string())?;
+        } else if let page_tools::CanonicalPermit::Page(permit) = &self.permit {
+            if tool == "read_page" {
+                self.tools
+                    .e
+                    .agent_page_finish_read(permit.turn())
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        let result = if matches!(tool, "read_deckcraft" | "read_page") {
             self.tools
                 .done()
                 .into_iter()
@@ -30,13 +35,7 @@ impl ApprovedToolAdmission for CanonicalToolAdmission<'_, '_> {
         };
         let result = match result {
             Some(result) => result,
-            None => tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(crate::deckcraft::call_approved(
-                    self.tools.e,
-                    worker,
-                    &self.permit,
-                ))
-            })?,
+            None => self.permit.execute(self.tools)?,
         };
         self.tools.check_selection()?;
         if !self.tools.done().iter().any(|step| step.call == ask.call) {
@@ -56,6 +55,10 @@ impl ApprovedToolAdmission for CanonicalToolAdmission<'_, '_> {
 }
 
 impl ToolHost for SpaceTools<'_> {
+    fn requires_native_review(&self, call: &ToolCall) -> bool {
+        self.page_binding(call)
+            .is_some_and(|(_, tool)| tool == "replace_page_block")
+    }
     fn tools(&self) -> Vec<ToolDef> {
         self.names.iter().map(|(d, _, _)| d.clone()).collect()
     }
@@ -74,6 +77,39 @@ impl ToolHost for SpaceTools<'_> {
         call: &ToolCall,
     ) -> Option<zoen_agentd::PublicArtifactReferences> {
         self.check_selection().ok()?;
+        if let Some((item, tool)) = self.page_binding(call) {
+            let references = (|| {
+                let parsed = client_core::agent_page_tools::parse(tool, &call.arguments).ok()?;
+                if parsed.artifact() != item {
+                    return None;
+                }
+                let turn = self
+                    .e
+                    .agent_page_turn(item, self.source, self.serving)
+                    .ok()?;
+                let snapshot = self.e.agent_page_finish_read(&turn).ok()?;
+                if let client_core::agent_page_tools::Command::Replace(command) = parsed {
+                    if command.version != snapshot.version
+                        || command.prefix_sha256 != snapshot.prefix_sha256
+                        || command.content_sha256 != snapshot.content_sha256
+                        || snapshot.blocks.iter().find(|b| b.id == command.before.id)
+                            != Some(&command.before)
+                    {
+                        return None;
+                    }
+                    return zoen_agentd::PublicArtifactReferences::page_head(
+                        item.into(),
+                        command.prefix_sha256,
+                        command.content_sha256,
+                    );
+                }
+                // Only the native-validated public locator is classified. Reviewed
+                // text/formatting and every other argument still reach ordinary Gate.
+                zoen_agentd::PublicArtifactReferences::new(tool.into(), item.into(), None)
+            })();
+            self.check_selection().ok()?;
+            return references;
+        }
         let (_, item, tool) = self
             .names
             .iter()
@@ -94,6 +130,20 @@ impl ToolHost for SpaceTools<'_> {
     }
     fn call(&self, call: &ToolCall) -> Result<String, String> {
         self.check_selection()?;
+        if let Some((item, tool)) = self.page_binding(call) {
+            let result = self.page_call(item, tool, &call.arguments);
+            self.check_selection()?;
+            if let Ok(text) = &result {
+                if !self.done().iter().any(|step| step.call == *call) {
+                    self.record(ToolStep {
+                        call: call.clone(),
+                        result: text.clone(),
+                        is_error: false,
+                    });
+                }
+            }
+            return result;
+        }
         // Binary intents reconcile through the signed native store, never a journal
         // cache that could bypass current access or an ambiguous accepted result.
         if let Some((_, item, tool)) = self
@@ -135,7 +185,7 @@ impl ToolHost for SpaceTools<'_> {
         }
         // Missing/disabled binary bindings must not fall through to the generic
         // journal cache and report success without fresh native authority.
-        if crate::deckcraft::is_model_name(&call.name) {
+        if crate::deckcraft::is_model_name(&call.name) || page_tools::is_model_name(&call.name) {
             return Err("This presentation tool is no longer offered".into());
         }
         // The same call already ran for this message (before a restart): its result, again.

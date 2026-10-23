@@ -44,7 +44,7 @@ impl AgentBinaryTurn {
     }
 }
 impl Engine {
-    fn agent_binary_authority(
+    pub(crate) fn agent_binary_authority(
         &self,
         item: &str,
         source: &str,
@@ -234,4 +234,4 @@ impl Client {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

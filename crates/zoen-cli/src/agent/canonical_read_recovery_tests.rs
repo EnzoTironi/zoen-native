@@ -316,7 +316,7 @@ async fn offline_read_ask_accepted_write_and_cold_recovery_never_repeat_the_effe
         };
         let admission = CanonicalToolAdmission {
             tools: &tools,
-            permit,
+            permit: page_tools::CanonicalPermit::Deck(permit),
         };
         let interrupted = CrashAfterAcceptedWrite {
             tools: &tools,

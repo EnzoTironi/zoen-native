@@ -25,6 +25,7 @@ pub use citizen::{
     PublicArtifactReferences, Runtime, ToolAsk, ToolAskEnvelope, ToolCall, ToolDef, ToolHost,
     ToolProgress, ToolResult, ToolStep, Turn, TurnContext, TurnOutcome, AVATAR_STYLE,
     CHEAP_CHAT_PROFILE, CREATOR_HANDLE, CREATOR_NAME, MAX_TOOL_CONTINUATION_BYTES, MAX_TOOL_STEPS,
+    NATIVE_REVIEW_REQUIRED,
 };
 pub use manifest::{EgressRule, Needs, SecretBinding, SignedManifest, ToolManifest};
 pub use router::{Route, Router, Tier};

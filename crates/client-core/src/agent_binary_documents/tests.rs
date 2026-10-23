@@ -12,7 +12,7 @@ pub(super) const ORIGINAL: &[u8] =
 pub(super) const CHANGED: &[u8] =
     include_bytes!("../app_binary_documents/fixtures/changed.deckcraft");
 #[derive(Default)]
-pub(super) struct Vault(Mutex<HashMap<String, Vec<u8>>>);
+pub(crate) struct Vault(Mutex<HashMap<String, Vec<u8>>>);
 impl SecretVault for Vault {
     fn load(&self, key: String) -> Option<Vec<u8>> {
         self.0.lock().unwrap().get(&key).cloned()
@@ -25,15 +25,15 @@ impl SecretVault for Vault {
         self.0.lock().unwrap().remove(&key);
     }
 }
-pub(super) struct Fixture {
-    pub(super) agent: Arc<Client>,
-    pub(super) agent_vault: Arc<Vault>,
-    pub(super) owner: String,
-    pub(super) space: String,
-    pub(super) source: String,
-    pub(super) base: AppBinaryDocumentDto,
+pub(crate) struct Fixture {
+    pub(crate) agent: Arc<Client>,
+    pub(crate) agent_vault: Arc<Vault>,
+    pub(crate) owner: String,
+    pub(crate) space: String,
+    pub(crate) source: String,
+    pub(crate) base: AppBinaryDocumentDto,
 }
-pub(super) fn fixture() -> Fixture {
+pub(crate) fn fixture() -> Fixture {
     let owner = Client::open(":memory:".into(), "en".into()).unwrap();
     let vault = Arc::new(Vault::default());
     let owner_id = owner

@@ -42,6 +42,9 @@ use messages::{
     turn_note,
 };
 mod journal;
+#[cfg(test)]
+mod page_tool_tests;
+mod page_tools;
 mod space_tools;
 #[cfg(test)]
 mod test_support;
@@ -468,11 +471,12 @@ struct SpaceTools<'a> {
     deckcraft: Option<&'a Arc<zoen_agentd::deckcraft::DeckcraftWorker>>,
     deckcraft_items: Vec<String>,
     selection: Option<&'a source_mode::Bound>,
+    page_items: Vec<String>,
 }
 
 struct CanonicalToolAdmission<'a, 'b> {
     tools: &'a SpaceTools<'b>,
-    permit: client_core::ApprovedToolTurn,
+    permit: page_tools::CanonicalPermit,
 }
 
 #[cfg(test)]

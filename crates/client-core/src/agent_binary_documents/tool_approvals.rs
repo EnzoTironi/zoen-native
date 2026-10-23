@@ -11,7 +11,7 @@ use types::{
     ToolProposal, TrustLevel,
 };
 
-const CONTINUATION_LIMIT: usize = 128 * 1024;
+pub(crate) const CONTINUATION_LIMIT: usize = 128 * 1024;
 const REQUEST_LIFETIME_MS: i64 = 15 * 60 * 1000;
 fn sha(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
@@ -63,6 +63,9 @@ pub(super) struct ApprovalBinding {
 }
 
 fn parsed(p: &ToolProposal) -> R<(Value, Option<Value>)> {
+    if p.schema == 2 {
+        return crate::agent_pages::approvals::parsed(p);
+    }
     if p.schema != 1
         || p.engine_revision != deckcraft::ENGINE_REVISION
         || !digest(&p.worker_binding)
@@ -113,7 +116,7 @@ fn parsed(p: &ToolProposal) -> R<(Value, Option<Value>)> {
     }
     Ok((ask, command))
 }
-fn source_hash(
+pub(crate) fn source_hash(
     state: &State,
     space: &str,
     source: &str,
@@ -159,6 +162,8 @@ fn command_intent(p: &ToolProposal, action: Option<&Value>) -> R<String> {
 pub(crate) fn operation(tool: &str) -> String {
     use crate::i18n::t;
     match tool {
+        "read_page" => t("Ler página", "Read Page"),
+        "replace_page_block" => t("Substituir bloco da página", "Replace Page block"),
         "read_deckcraft" => t("Ler apresentação", "Read presentation"),
         "deckcraft_text_set" => t("Substituir texto", "Replace shape text"),
         "deckcraft_slide_notes" => t("Atualizar notas do slide", "Update slide notes"),
@@ -167,10 +172,19 @@ pub(crate) fn operation(tool: &str) -> String {
         _ => t("Ação incompatível", "Unsupported action"),
     }
 }
-fn review_detail(p: &ToolProposal, title: &str) -> String {
+pub(crate) fn review_detail(p: &ToolProposal, title: &str) -> String {
     let args: Value = serde_json::from_str(&p.arguments_json).unwrap_or(Value::Null);
     let heading = format!("{} · v{}", title, p.version);
     match p.canonical_tool.as_str() {
+        "read_page" => heading,
+        "replace_page_block" => format!(
+            "{}\n{}\n{}\n{}\n{}",
+            heading,
+            crate::i18n::t("Antes", "Before"),
+            args["before"]["text"].as_str().unwrap_or_default(),
+            crate::i18n::t("Depois", "After"),
+            args["after"]["text"].as_str().unwrap_or_default()
+        ),
         "read_deckcraft" => heading,
         "deckcraft_slide_new" => format!(
             "{}\n{}\n{}",
