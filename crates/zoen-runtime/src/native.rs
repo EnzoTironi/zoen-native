@@ -7,6 +7,7 @@ mod image_tasks;
 pub(crate) use image_scope::{ImageOutputAuthority, ManagedImageOutput};
 mod managed;
 mod packages;
+mod owner_policy;
 mod runs;
 mod source;
 pub(crate) use image_tasks::ImageStep;

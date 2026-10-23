@@ -4,6 +4,8 @@ mod agent_host_lock;
 mod config;
 mod file_vault;
 mod image_protocol;
+#[path = "image_host/policy.rs"]
+mod policy;
 #[path = "image_host/provision.rs"]
 mod provision;
 
@@ -60,7 +62,10 @@ fn run(path: &Path, action: &str) -> Result<(), String> {
             serde_json::from_slice(&bytes).map_err(|_| "invalid image command")?;
         command.validate()?;
         let agent = match &command {
-            Command::Stage { agent, .. } | Command::Advance { agent, .. } => agent,
+            Command::Stage { agent, .. }
+            | Command::Advance { agent, .. }
+            | Command::PolicyImport { agent, .. }
+            | Command::PolicyContext { agent, .. } => agent,
         };
         if agent != &config.agent {
             return Err("image tool agent differs from configured principal".into());
@@ -142,13 +147,25 @@ fn run(path: &Path, action: &str) -> Result<(), String> {
             return Ok(());
         }
         let host_config = config.host()?;
+        let command = command.ok_or("image command missing")?;
+        if matches!(
+            &command,
+            Command::PolicyImport { .. } | Command::PolicyContext { .. }
+        ) {
+            // Read/options and explicit owner-signed installation cannot mint an
+            // Images or general output capability. Native directory checks and
+            // the existing policy ledger still authorize the exact operation.
+            let host = ImageRuntimeHost::configured(Arc::new(authority), secrets, host_config)
+                .map_err(|e| e.to_string())?;
+            return emit(&policy::execute(&host, command).await?);
+        }
         let authority = authority
             .qualify_managed_images_output(host_config.target.clone())
             .await
             .map_err(|e| e.to_string())?;
         let host = ImageRuntimeHost::configured(Arc::new(authority), secrets, host_config)
             .map_err(|e| e.to_string())?;
-        let progress = match command.ok_or("image command missing")? {
+        let progress = match command {
             Command::Stage {
                 space,
                 source,
@@ -189,17 +206,23 @@ fn run(path: &Path, action: &str) -> Result<(), String> {
                     },
                 },
             },
+            Command::PolicyImport { .. } | Command::PolicyContext { .. } => {
+                return Err("owner control dispatch differs".into())
+            }
         };
-        let bytes = serde_json::to_vec(&progress).map_err(|_| "image progress unavailable")?;
-        if bytes.len() > MAX_OUTPUT {
-            return Err("image progress exceeded limit".into());
-        }
-        std::io::stdout()
-            .write_all(&bytes)
-            .map_err(|_| "image progress unavailable")?;
-        Ok(())
+        emit(&progress)
     });
     drop(executor);
     drop(network);
     result
+}
+
+fn emit(value: &impl serde::Serialize) -> Result<(), String> {
+    let bytes = serde_json::to_vec(value).map_err(|_| "host response unavailable")?;
+    if bytes.len() > MAX_OUTPUT {
+        return Err("host response exceeded limit".into());
+    }
+    std::io::stdout()
+        .write_all(&bytes)
+        .map_err(|_| "host response unavailable".into())
 }
