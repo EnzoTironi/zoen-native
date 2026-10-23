@@ -134,6 +134,10 @@ async fn pages_and_files_travel_byte_for_byte() {
             expected.push((rel, bytes));
         }
     }
+    assert!(
+        expected.iter().any(|(path, _)| path.starts_with("0/")),
+        "the real documentation corpus must remain nonempty"
+    );
     let total_bytes: usize = expected.iter().map(|(_, b)| b.len()).sum();
     let largest = expected.iter().map(|(_, b)| b.len()).max().unwrap();
     assert!(
