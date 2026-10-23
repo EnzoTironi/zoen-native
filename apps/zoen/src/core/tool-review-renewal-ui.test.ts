@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { fixture, nodes, text, settle } from './tool-review-ui.fixture.ts';
+import { imageReview } from '../i18n/catalogs/image-review.ts';
 
 test('compiled native review button directly requests one inert intent, never approval or action', async () => {
   for (const locale of ['en', 'pt-BR'] as const) {
