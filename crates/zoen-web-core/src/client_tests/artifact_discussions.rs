@@ -101,6 +101,27 @@ fn browser_discussion_rejects_foreign_space_removed_membership_and_failed_local_
     assert!(client
         .document_request(&request("foreign-space"), 11)
         .is_err());
+    let mut other_log = SpaceLog::new("sp_other_documents");
+    let other = clear(
+        &mut other_log,
+        &author,
+        EventBody::SpaceCreated {
+            title: "Another authorized conversation".into(),
+            kind: SpaceKind::Group,
+            privacy: Privacy::Closed,
+        },
+        11,
+    );
+    client.receive(&other, 12).unwrap();
+    assert!(client
+        .roster(other_log.space())
+        .contains_key(&client.account.identity));
+    assert!(
+        client
+            .document_request(&request(other_log.space()), 12)
+            .is_err(),
+        "membership in both spaces cannot substitute the artifact's actual space"
+    );
     client
         .saved
         .outbox
@@ -108,7 +129,13 @@ fn browser_discussion_rejects_foreign_space_removed_membership_and_failed_local_
         .for_each(|pending| pending.failure = Some("rejected".into()));
     assert!(client.document_request(&request(&space), 12).is_err());
     assert!(
-        client.conversations()[0].messages.is_empty(),
+        client
+            .conversations()
+            .iter()
+            .find(|view| view.id == space)
+            .unwrap()
+            .messages
+            .is_empty(),
         "failed creation is not a published card"
     );
     client
@@ -165,6 +192,17 @@ fn browser_discussion_does_not_publish_private_draft_or_choose_forwarded_inline_
     );
     client.receive(&duplicate, 17).unwrap();
     let duplicate_event = log.events().last().unwrap();
+    assert!(
+        !client
+            .conversations()
+            .iter()
+            .find(|view| view.id == space)
+            .unwrap()
+            .messages
+            .iter()
+            .any(|message| message.id == duplicate_event.client_id),
+        "rejected duplicate has no second card"
+    );
     let before = serde_json::to_string(&client.saved).unwrap();
     for alias in [&duplicate_event.client_id, &duplicate_event.hash] {
         assert!(client
