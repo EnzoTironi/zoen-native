@@ -10,6 +10,7 @@ import type { SiteScope } from '../core/generated/SiteScope';
 import type { SiteSource } from '../core/generated/SiteSource';
 import { DocumentExportActivity } from '../documents/export-activity';
 import { useDirtyEditor } from '../documents/use-dirty-editor';
+import { ArtifactDiscussion } from '../documents/artifact-discussion';
 import { t } from '../i18n/index.ts';
 import { useTheme } from '../theme';
 import { SitePreview } from './preview';
@@ -200,6 +201,9 @@ export function SiteEditor({
         />
       )}
       <View style={{ paddingHorizontal: 16, paddingVertical: 8 }}>
+        {!dirty ? (
+          <ArtifactDiscussion itemId={saved.source.item_id} spaceId={scope.space_id} />
+        ) : null}
         {Math.max(initial.current_version, saved.current_version) > saved.source.version ? (
           <NativeButton
             secondary
