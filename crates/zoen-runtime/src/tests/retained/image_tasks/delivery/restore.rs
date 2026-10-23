@@ -2,7 +2,7 @@
 //! consumed Publish. SQL is proven byte-equivalent over this read-only effect;
 //! this is not a pg_dump/full-cluster deployment restore claim.
 use super::*;
-use foundationdb::{options::StreamingMode, tuple::Subspace, RangeOption};
+use foundationdb::{options::StreamingMode, tuple::Subspace, KeySelector, RangeOption};
 
 pub(super) struct Snapshot {
     ranges: Vec<(Vec<u8>, Vec<u8>)>,
@@ -49,27 +49,58 @@ impl Snapshot {
         ];
         let transaction = f.world.runtime.execution.transaction().await.unwrap();
         let mut values = Vec::new();
+        let mut total_bytes = 0usize;
+        let mut pages = 0usize;
         for range in &ranges {
             let mut options = RangeOption::from(range.clone());
             options.mode = StreamingMode::WantAll;
-            options.limit = Some(4096);
-            let rows = transaction.get_range(&options, 1, false).await.unwrap();
+            // A soft response size deliberately exercises normal paging; WantAll
+            // does not promise the complete range in one response.
+            options.target_bytes = 16 * 1024;
+            let mut complete = false;
+            for iteration in 1..=4097 {
+                options.limit = Some(4097 - values.len());
+                let rows = transaction
+                    .get_range(&options, iteration, false)
+                    .await
+                    .unwrap();
+                pages += 1;
+                assert!(
+                    !rows.is_empty() || !rows.more(),
+                    "snapshot page must advance"
+                );
+                for row in rows.iter() {
+                    assert!(
+                        values.len() < 4096,
+                        "restore fixture exceeds total key bound"
+                    );
+                    total_bytes = total_bytes
+                        .checked_add(row.key().len())
+                        .and_then(|n| n.checked_add(row.value().len()))
+                        .unwrap();
+                    assert!(
+                        total_bytes < 5_000_000,
+                        "bounded fixture restore must fit a single actual FDB transaction"
+                    );
+                    values.push((row.key().to_vec(), row.value().to_vec()));
+                }
+                if !rows.more() {
+                    complete = true;
+                    break;
+                }
+                let last = rows.last().expect("nonterminal page must contain a key");
+                options.begin = KeySelector::first_greater_than(last.key().to_vec());
+            }
             assert!(
-                !rows.more(),
-                "restore fixture must capture every key, never a truncated page"
-            );
-            values.extend(
-                rows.iter()
-                    .map(|row| (row.key().to_vec(), row.value().to_vec())),
+                complete,
+                "restore fixture must capture every key, never a truncated range"
             );
         }
-        assert!(
-            values
-                .iter()
-                .map(|(key, value)| key.len() + value.len())
-                .sum::<usize>()
-                < 5_000_000,
-            "bounded fixture restore must fit a single actual FDB transaction"
+        println!(
+            "managed restore snapshot: {} keys / {} bytes / {} pages in one FDB transaction",
+            values.len(),
+            total_bytes,
+            pages
         );
         Self {
             ranges,
