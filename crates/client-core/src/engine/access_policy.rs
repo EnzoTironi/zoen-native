@@ -300,3 +300,24 @@ impl Engine {
             .collect()
     }
 }
+
+impl State {
+    pub(crate) fn latest_trust(
+        &self,
+        space: &str,
+        owner: &str,
+        agent: &str,
+    ) -> Option<&GrantState> {
+        // A revoked newest grant cannot revive an earlier, more permissive grant.
+        self.grants
+            .iter()
+            .rev()
+            .find(|g| {
+                g.grant.grantor == owner
+                    && g.grant.grantee.as_deref() == Some(agent)
+                    && g.grant.scope == GrantScope::Space(space.into())
+                    && matches!(g.grant.capability, Capability::Trust(_))
+            })
+            .filter(|g| !g.revoked)
+    }
+}

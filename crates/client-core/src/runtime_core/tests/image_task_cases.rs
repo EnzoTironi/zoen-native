@@ -227,3 +227,34 @@ fn image_task_uses_sql_observed_trust_expiry_and_never_revives_an_older_grant() 
         "revoked newest baseline cannot revive older Act"
     );
 }
+
+#[test]
+fn image_task_tracks_downgrade_and_does_not_revive_expired_regrant() {
+    let (mut f, request, _) = approved();
+    let at = crate::engine::now_ms();
+    for (id, level, expiry, allowed) in [
+        ("image-deny", TrustLevel::Listen, None, false),
+        ("image-regrant", TrustLevel::Act, Some(at + 5_000), true),
+        (
+            "image-expired-regrant",
+            TrustLevel::Act,
+            Some(at - 1),
+            false,
+        ),
+    ] {
+        f.encrypted(
+            EventBody::GrantIssued {
+                grant: Grant {
+                    id: id.into(),
+                    grantor: f.owner_profile.id.clone(),
+                    grantee: Some(f.agent_profile.id.clone()),
+                    scope: GrantScope::Space(SPACE.into()),
+                    capability: Capability::Trust(level),
+                    expires_at_ms: expiry,
+                },
+            },
+            at,
+        );
+        assert_eq!(f.core.image_task(&request, at).is_ok(), allowed, "{id}");
+    }
+}

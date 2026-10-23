@@ -169,19 +169,11 @@ impl Engine {
         space: &str,
         at_ms: i64,
     ) -> R<Option<i64>> {
-        // A revoked newest baseline must not fall back to a default or revive an
-        // earlier grant. This native paid task requires actual signed trust.
+        // Shared with native replies: the newest signed baseline cannot revive
+        // an earlier grant. A paid task never inherits a presentation default.
         let grant = self
             .state
-            .grants
-            .iter()
-            .rev()
-            .find(|g| {
-                g.grant.grantor == owner
-                    && g.grant.grantee.as_deref() == Some(agent)
-                    && g.grant.scope == GrantScope::Space(space.into())
-                    && matches!(g.grant.capability, Capability::Trust(_))
-            })
+            .latest_trust(space, owner, agent)
             .ok_or_else(denied)?;
         let Capability::Trust(level) = grant.grant.capability else {
             return Err(denied());

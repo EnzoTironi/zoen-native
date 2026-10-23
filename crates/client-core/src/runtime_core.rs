@@ -233,26 +233,6 @@ fn direct_writers(state: &State, space: &str, owner: &str, agent: &str) -> bool 
     })
 }
 
-fn latest_trust<'a>(
-    state: &'a State,
-    space: &str,
-    owner: &str,
-    agent: &str,
-) -> Option<&'a GrantState> {
-    // A revoked newest grant cannot revive an earlier, more permissive grant.
-    state
-        .grants
-        .iter()
-        .rev()
-        .find(|g| {
-            g.grant.grantor == owner
-                && g.grant.grantee.as_deref() == Some(agent)
-                && g.grant.scope == GrantScope::Space(space.into())
-                && matches!(g.grant.capability, Capability::Trust(_))
-        })
-        .filter(|g| !g.revoked)
-}
-
 fn limit_pages(store: &Store) -> Result<()> {
     let size: u64 = store
         .conn()
