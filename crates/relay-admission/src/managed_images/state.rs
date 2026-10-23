@@ -51,6 +51,7 @@ pub(super) struct State {
     pub schema: u8,
     pub deployment: Deployment,
     pub committed: Checkpoint,
+    pub committed_effect: Option<Prepared>,
     pub prepared: Option<Prepared>,
 }
 
@@ -76,20 +77,40 @@ impl State {
             digest: hash(&("managed-images/genesis/1", &deployment))?,
         };
         Some(Self {
-            schema: 1,
+            schema: 2,
             deployment,
             committed,
+            committed_effect: None,
             prepared: None,
         })
     }
 
     pub fn valid(&self) -> bool {
-        self.schema == 1
+        self.schema == 2
             && self.deployment.valid()
             && self.committed.generation > 0
             && self.committed.generation <= i64::MAX as u64
             && self.committed.sequence <= i64::MAX as u64
             && digest(&self.committed.digest)
+            && match &self.committed_effect {
+                None => {
+                    self.committed.sequence == 0
+                        && self.committed.generation == 1
+                        && hash(&("managed-images/genesis/1", &self.deployment)).as_ref()
+                            == Some(&self.committed.digest)
+                }
+                Some(last) => {
+                    last.next == self.committed
+                        && transition(
+                            &self.deployment,
+                            &last.previous,
+                            &last.effect_digest,
+                            last.retirement,
+                        )
+                        .as_ref()
+                            == Some(last)
+                }
+            }
             && self.prepared.as_ref().is_none_or(|prepared| {
                 self.prepare(&prepared.effect_digest, prepared.retirement)
                     .as_ref()
@@ -98,35 +119,7 @@ impl State {
     }
 
     pub fn prepare(&self, effect: &str, retirement: bool) -> Option<Prepared> {
-        if !digest(effect) {
-            return None;
-        }
-        let sequence = self.committed.sequence.checked_add(1)?;
-        let generation = if retirement {
-            self.committed.generation.checked_add(1)?
-        } else {
-            self.committed.generation
-        };
-        if sequence > i64::MAX as u64 || generation > i64::MAX as u64 {
-            return None;
-        }
-        Some(Prepared {
-            previous: self.committed.clone(),
-            next: Checkpoint {
-                generation,
-                sequence,
-                digest: hash(&(
-                    "managed-images/effect/1",
-                    &self.deployment,
-                    &self.committed,
-                    sequence,
-                    effect,
-                    retirement,
-                ))?,
-            },
-            effect_digest: effect.into(),
-            retirement,
-        })
+        transition(&self.deployment, &self.committed, effect, retirement)
     }
 
     pub fn recovery(&self, sql: &Checkpoint, fdb: &Checkpoint) -> Option<Recovery> {
@@ -139,6 +132,43 @@ impl State {
             _ => None,
         }
     }
+}
+
+pub(super) fn transition(
+    deployment: &Deployment,
+    previous: &Checkpoint,
+    effect: &str,
+    retirement: bool,
+) -> Option<Prepared> {
+    if !digest(effect) || !digest(&previous.digest) || previous.generation == 0 {
+        return None;
+    }
+    let sequence = previous.sequence.checked_add(1)?;
+    let generation = if retirement {
+        previous.generation.checked_add(1)?
+    } else {
+        previous.generation
+    };
+    if sequence > i64::MAX as u64 || generation > i64::MAX as u64 {
+        return None;
+    }
+    Some(Prepared {
+        previous: previous.clone(),
+        next: Checkpoint {
+            generation,
+            sequence,
+            digest: hash(&(
+                "managed-images/effect/1",
+                deployment,
+                previous,
+                sequence,
+                effect,
+                retirement,
+            ))?,
+        },
+        effect_digest: effect.into(),
+        retirement,
+    })
 }
 
 fn hash(value: &impl Serialize) -> Option<String> {
