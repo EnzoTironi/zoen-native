@@ -33,6 +33,10 @@ env -u SDKROOT DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
   node ../../scripts/build-expo-core.mjs ios --simulator
 ```
 
+Explicit shared `CARGO_TARGET_DIR` selections use the source guard for iOS/types;
+see [cache admission, Python and receipts](../expo-shared-cargo-target.md).
+Android retains its existing pipeline and is not covered by that guard integration.
+
 Build the generated workspace for the simulator UDID selected through Argent:
 
 ```sh

@@ -5,7 +5,7 @@ name: ci
 
 on:
   push:
-    branches: [main, "real/**"]
+    branches: [main, 'real/**']
   pull_request:
 
 concurrency:
@@ -17,9 +17,9 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  CARGO_INCREMENTAL: "0"
-  CARGO_PROFILE_DEV_DEBUG: "0"
-  RUST_TOOLCHAIN: "1.99.0"
+  CARGO_INCREMENTAL: '0'
+  CARGO_PROFILE_DEV_DEBUG: '0'
+  RUST_TOOLCHAIN: '1.99.0'
   ZOEN_TEST_PG: postgres://zoen@127.0.0.1:5432/postgres
 
 jobs:
@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     env:
-      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -69,7 +69,18 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Shared Cargo source qualification guard
-        run: python3 -m unittest discover -s scripts/tests -p test_cargo_source_guard.py -v
+        run: python3 -m unittest discover -s scripts/tests -p 'test_cargo*.py' -v
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+
+      - name: Expo Core shared-target entrypoint contracts
+        run: |
+          # Prepare locked registry metadata on cold runners; the tests use offline
+          # metadata and compile only their own tiny, dependency-free workspaces.
+          cargo metadata --locked --no-deps --format-version 1 > "$RUNNER_TEMP/expo-core-metadata.json"
+          node --test --test-concurrency=1 scripts/tests/build-expo-core.test.mjs scripts/tests/expo-ios-orchestration.test.mjs
 
       - name: Format
         run: cargo fmt --all --check

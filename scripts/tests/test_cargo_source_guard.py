@@ -10,6 +10,7 @@ import sys
 import tempfile
 import time
 import unittest
+from cargo_guard_process import retire_blocked_guard, wait_for_owned_cargo
 
 
 GUARD = pathlib.Path(__file__).resolve().parents[1] / "cargo-source-guard.py"
@@ -92,14 +93,12 @@ class Fixture:
         stream = (self.root / "blocked.log").open("wb")
         child = subprocess.Popen(argv, env=self.env({"PROBE_GATE": str(gate), "PROBE_MARKER": str(marker)}), stdout=stream, stderr=subprocess.STDOUT)
         deadline = time.monotonic() + 20
-        while not marker.exists() and child.poll() is None and time.monotonic() < deadline:
-            time.sleep(0.02)
-        if not marker.exists():
-            child.terminate()
-            child.wait(timeout=8)
-            stream.close()
-            raise AssertionError((self.root / "blocked.log").read_text())
-        return child, stream, receipt, gate
+        try:
+            cargo_pid = wait_for_owned_cargo(child, marker, self.root, self.target, deadline)
+        except BaseException:
+            retire_blocked_guard(child, stream, gate)
+            raise
+        return child, stream, receipt, gate, cargo_pid
 
 
 class CargoSourceGuardTests(unittest.TestCase):
@@ -168,7 +167,7 @@ class CargoSourceGuardTests(unittest.TestCase):
 
     def test_concurrent_guard_refuses_without_cleaning_and_signal_recovers(self):
         f = self.fixture()
-        child, stream, receipt, gate = f.blocker(f.a)
+        child, stream, receipt, gate, _ = f.blocker(f.a)
         try:
             second, value = f.guarded(f.b)
             self.assertNotEqual(second.returncode, 0)
@@ -190,9 +189,7 @@ class CargoSourceGuardTests(unittest.TestCase):
 
     def test_killed_guard_keeps_lease_until_its_actual_cargo_exits(self):
         f = self.fixture()
-        child, stream, _, gate = f.blocker(f.a)
-        state_path = next(f.root.glob(".cargo-source-guard-*/state.json"))
-        cargo_pid = json.loads(state_path.read_text())["cargoPid"]
+        child, stream, _, gate, cargo_pid = f.blocker(f.a)
         try:
             child.kill()
             child.wait(timeout=5)
