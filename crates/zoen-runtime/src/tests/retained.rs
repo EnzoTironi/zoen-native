@@ -1,6 +1,6 @@
 //! Actual certified directory, OpenMLS leaves and relay-owned FDB log. Fixture
 //! custody is explicit; this does not provision a production vault or WS host.
-mod admission;
+pub(super) mod admission;
 pub(super) mod image_tasks;
 mod managed;
 pub(super) mod output;
@@ -311,5 +311,4 @@ pub(super) async fn run() {
     assert_eq!(partial.world.http.sends.load(Ordering::SeqCst), 0);
     println!("retained reply journey: bounded partial source creates no run, authenticated discovery resumes once PASS");
     partial.finish().await;
-    Box::pin(admission::run()).await;
 }
