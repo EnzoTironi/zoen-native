@@ -41,6 +41,10 @@ fn original_publish_is_consumed_once_even_after_restart_and_new_checkpoint() -> 
         panic!("first original consumption must produce the single permit")
     };
     let original = permit.condition().clone();
+    assert_eq!(
+        writer.reader().inspect_publish(&checkpoint, &envelope)?,
+        original
+    );
     permit.check(&envelope)?;
     drop(permit);
     drop(writer);

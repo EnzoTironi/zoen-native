@@ -95,6 +95,17 @@ impl Record {
 }
 
 impl AnchorReader {
+    /// Read-only binding facts for a per-effect transport challenge. These
+    /// facts cannot enter append without consume_publish's private permit.
+    pub fn inspect_publish(
+        &self,
+        checkpoint: &Checkpoint,
+        envelope: &Envelope,
+    ) -> Result<PublishCondition, AnchorError> {
+        let _generation = self.effect_generation_guard(checkpoint)?;
+        self.publish_record(checkpoint, envelope)?.condition()
+    }
+
     fn publish_record(
         &self,
         checkpoint: &Checkpoint,

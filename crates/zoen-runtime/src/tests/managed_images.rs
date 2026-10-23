@@ -100,6 +100,49 @@ pub(super) async fn assert_dispatch_checkpoint(
     println!("managed image dispatch: actual SQL witness/FDB original admission and independent durable effect checkpoint agree; no extra claim PASS");
 }
 
+pub(super) async fn assert_publish_checkpoint(
+    runtime: &RuntimeAuthority,
+    directory: &Directory,
+    envelope: &protocol::Envelope,
+    checkpoint: &Checkpoint,
+) {
+    let deployment = runtime
+        .configured_image_deployment(envelope.author(), envelope.device().unwrap())
+        .await
+        .unwrap();
+    let reader = AnchorReader::open(&directory.0, deployment).unwrap();
+    let condition = reader.inspect_publish(checkpoint, envelope).unwrap();
+    let transaction = runtime.execution.transaction().await.unwrap();
+    let bytes = transaction
+        .get(
+            &runtime
+                .execution
+                .root
+                .pack(&("managed-images/effect/1", checkpoint.sequence)),
+            false,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    let prepared: relay_admission::managed_images::Prepared =
+        serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(prepared.next, *checkpoint);
+    assert_eq!(prepared.effect_digest, condition.effect_digest);
+    assert_eq!(hash(&bytes), condition.checkpoint_record_digest);
+    assert_eq!(
+        runtime
+            .image_checkpoints(
+                &runtime
+                    .configured_image_deployment(envelope.author(), envelope.device().unwrap())
+                    .await
+                    .unwrap()
+            )
+            .await
+            .unwrap(),
+        (checkpoint.clone(), checkpoint.clone())
+    );
+}
+
 pub(super) async fn matching_checkpoint_rollback(
     runtime: &RuntimeAuthority,
     directory: &Directory,
