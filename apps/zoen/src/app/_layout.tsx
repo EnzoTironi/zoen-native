@@ -13,6 +13,7 @@ import { KeyboardMotionProvider } from '../components/keyboard-motion';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
+import { NativeCallsProvider } from '../calls/provider';
 import { ClientProvider } from '../core/provider';
 import { ThemeProvider, useTheme } from '../theme';
 import { SessionGate } from '../components/session-gate';
@@ -137,15 +138,17 @@ export default function RootLayout() {
             <ThemeProvider>
               <DialogsProvider>
                 <ClientProvider>
-                  <HomeProvider>
-                    <ConversationCardsProvider>
-                      <NativeSurfacesProvider>
-                        <NotificationProvider>
-                          <Navigation />
-                        </NotificationProvider>
-                      </NativeSurfacesProvider>
-                    </ConversationCardsProvider>
-                  </HomeProvider>
+                  <NativeCallsProvider>
+                    <HomeProvider>
+                      <ConversationCardsProvider>
+                        <NativeSurfacesProvider>
+                          <NotificationProvider>
+                            <Navigation />
+                          </NotificationProvider>
+                        </NativeSurfacesProvider>
+                      </ConversationCardsProvider>
+                    </HomeProvider>
+                  </NativeCallsProvider>
                 </ClientProvider>
               </DialogsProvider>
             </ThemeProvider>

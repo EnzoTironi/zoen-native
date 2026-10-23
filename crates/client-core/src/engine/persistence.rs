@@ -154,6 +154,7 @@ impl Engine {
                         space.clone(),
                         SpaceState {
                             calls: Vec::new(),
+                            call_transport: Vec::new(),
                             id: space.clone(),
                             title,
                             kind: SpaceKind::Group,
@@ -225,9 +226,14 @@ impl Engine {
             });
         }
         let signer = self.author_for(author)?;
-        if matches!(&body, EventBody::CallV1 { .. }) {
+        if matches!(
+            &body,
+            EventBody::CallV1 { .. } | EventBody::CallTransportV1 { .. }
+        ) {
             let probe = signer.sign_event(space, "call-admission", at_ms, None, body.clone());
-            if !self.state.call_event_valid(&probe, &self.identities) {
+            if !self.state.call_event_valid(&probe, &self.identities)
+                || !self.state.call_transport_valid(&probe)
+            {
                 return Err(CoreError::Forbidden {
                     reason: "Invalid or unauthorized call transition".into(),
                 });

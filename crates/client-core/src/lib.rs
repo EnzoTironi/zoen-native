@@ -37,6 +37,7 @@ mod api;
 pub use api::call_turn::CallTurnDto;
 mod backup;
 mod backup_api;
+mod call_transport_api;
 mod client_api;
 pub use backup_api::BackupStatusDto;
 #[cfg(feature = "client-types")]

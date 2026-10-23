@@ -14,6 +14,7 @@ const compiled = await Promise.all(
     './telegram-chat-header-layout.ts',
     '../components/navigation-glass.tsx',
     '../components/chats-actions.ios.tsx',
+    '../calls/header-action.ios.tsx',
   ].map(async (name) => {
     const source = new URL(name, import.meta.url);
     const output = await build({
@@ -41,8 +42,28 @@ function nodes(tree: unknown): Element[] {
   const node = tree as Element;
   return [node, ...nodes(node.props.children)];
 }
-function fixture(platform: 'ios' | 'android' = 'ios', width = 402, fontScale = 1, glass = true) {
+function fixture(
+  platform: 'ios' | 'android' = 'ios',
+  width = 402,
+  fontScale = 1,
+  glass = true,
+  calling = false,
+) {
   const paths: unknown[] = [];
+  const callRequests: unknown[] = [];
+  const calls = {
+    available: calling,
+    start: async (space: string, video: boolean) => {
+      callRequests.push({ space, video });
+    },
+  };
+  const chat = {
+    id: 'space-one',
+    kind: 'Direct',
+    privacy: 'EndToEnd',
+    members: [{ id: 'me' }, { id: 'person' }],
+  };
+
   let searches = 0;
   let backs = 0;
   let measurement: unknown = null;
@@ -80,14 +101,18 @@ function fixture(platform: 'ios' | 'android' = 'ios', width = 402, fontScale = 1
     },
     'expo-glass-effect': { GlassView: 'GlassView', isLiquidGlassAvailable: () => glass },
     '@expo/ui': { Host: 'Host' },
-    '@expo/ui/swift-ui': { Button: 'Button', HStack: 'HStack' },
+    '@expo/ui/swift-ui': { Button: 'Button', HStack: 'HStack', Menu: 'Menu' },
     '@expo/ui/swift-ui/modifiers': Object.fromEntries(
-      ['buttonStyle', 'font', 'foregroundStyle', 'frame', 'labelStyle'].map((name) => [
+      ['buttonStyle', 'font', 'foregroundStyle', 'frame', 'labelStyle', 'tint'].map((name) => [
         name,
         (value: unknown) => ({ [name]: value }),
       ]),
     ),
-    '../i18n/index.ts': { t: (key: string) => key },
+    '../i18n/index.ts': { t: (key: string) => key, locale: 'en' },
+    '../calls/provider': { useNativeCalls: () => calls },
+    './provider': { useNativeCalls: () => calls },
+    '../core/provider': { useClient: () => ({ snapshot: { conversations: [chat] } }) },
+    '../components/dialogs': { useDialogs: () => ({ inform: async () => {} }) },
     '../profile/profile-avatar': { ProfileAvatar: 'ProfileAvatar' },
     '../theme': {
       useTheme: () => ({
@@ -118,6 +143,8 @@ function fixture(platform: 'ios' | 'android' = 'ios', width = 402, fontScale = 1
   ports['../core/telegram-chat-header-layout'] = geometry;
   const material = load(compiled[3]!);
   ports['./navigation-glass'] = material;
+  const action = load(compiled[5]!);
+  ports['../calls/header-action.ios'] = action;
   const header = load(compiled[0]!);
   const title = load(compiled[1]!);
   const chats = load(compiled[4]!);
@@ -125,12 +152,16 @@ function fixture(platform: 'ios' | 'android' = 'ios', width = 402, fontScale = 1
     id: 'space-one',
     scrollViewTag: 1234,
     title: 'A real conversation with a long name',
-    counterpart: { id: 'person', tint_hex: '#123' },
+    counterpart: { id: 'person', kind: 'Person', tint_hex: '#123' },
     activityLabel: 'typing',
     search: { active: false, onToggle: () => searches++ },
   };
   return {
     props,
+    calls,
+    chat,
+    callRequests,
+    action: () => action.CallHeaderAction!({ space: props.id }),
     header: () => header.ChatHeader!(props),
     title: () => title.ChatTitle!(props),
     inbox: () => chats.ChatsActions!({}),
@@ -304,4 +335,33 @@ test('source-derived containing geometry covers portrait, both notch edges and m
   assert.equal(centered.x, 114);
   assert.equal(centered.width, 174);
   assert.equal(centered.x + centered.width / 2, 201);
+});
+
+test('voice/video share one native call menu and unavailable or non-private conversations expose no call control', async () => {
+  const f = fixture('ios', 402, 1, true, true);
+  const bar = nodes(f.bar());
+  const call = bar.find(
+    (node) => typeof node.type === 'function' && node.props.space === f.props.id,
+  );
+  assert.ok(call);
+  const menu = nodes(f.action()).find((node) => node.type === 'Menu')!;
+  menu.props.onPrimaryAction();
+  const video = nodes(menu).find((node) => node.props.systemImage === 'video')!;
+  video.props.onPress();
+  await Promise.resolve();
+  assert.deepEqual(JSON.parse(JSON.stringify(f.callRequests)), [
+    { space: 'space-one', video: false },
+    { space: 'space-one', video: true },
+  ]);
+  f.chat.privacy = 'Public';
+  assert.equal(
+    nodes(f.bar()).some((node) => node.props.space === f.props.id),
+    false,
+  );
+  f.chat.privacy = 'EndToEnd';
+  f.calls.available = false;
+  assert.equal(
+    nodes(f.bar()).some((node) => node.props.space === f.props.id),
+    false,
+  );
 });
