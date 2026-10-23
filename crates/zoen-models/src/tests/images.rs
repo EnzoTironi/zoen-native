@@ -389,7 +389,7 @@ fn image_response_domain_has_exact_base64_padding_and_envelope_boundary() {
     );
     assert!(image_response_budget(crate::MAX_IMAGE_BYTES).unwrap() > 16 * 1024 * 1024);
     assert_eq!(image_response_budget(u64::MAX), None);
-    let mut config = image_config("http://127.0.0.1:1");
+    let mut config = image_config("http://127.0.0.1:1/v1");
     let mut request = input();
     request.max_image_bytes = maximum;
     config.limits.max_response_bytes = 16 * 1024 * 1024;
