@@ -26,6 +26,8 @@ impl Session {
             .managed_binding
             .as_ref()
             .ok_or_else(|| crate::log::Reject::retry("managed runtime binding required"))?;
+        let requested = crate::runtime_binding::effect_checkpoint(request)
+            .map_err(crate::log::Reject::retry)?;
         crate::runtime_binding::expectation(
             &self.st,
             &self.identity,
@@ -40,8 +42,6 @@ impl Session {
         let _generation = configured
             .upload_guard(&current)
             .map_err(crate::log::Reject::retry)?;
-        let requested =
-            crate::runtime_binding::checkpoint(request).map_err(crate::log::Reject::retry)?;
         match configured
             .anchor()
             .consume_publish(&requested, env)

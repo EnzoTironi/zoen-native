@@ -66,6 +66,9 @@ pub(crate) async fn verify_blob(
     device: &str,
     binding: &BlobBinding,
 ) -> Result<Option<relay_admission::managed_images::GenerationGuard>, &'static str> {
+    if st.log.managed_device(device).is_some() {
+        effect_checkpoint(&binding.request)?;
+    }
     let expected = expectation(st, &binding.identity, device, binding.request.clone()).await?;
     if !expected.verify(&binding.proof) {
         return Err("runtime binding refused");
@@ -100,6 +103,17 @@ pub(crate) fn checkpoint(
     })
 }
 
+/// A bootstrap binding is read-only; it cannot authorize a storage effect.
+pub(crate) fn effect_checkpoint(
+    request: &Request,
+) -> Result<relay_admission::managed_images::Checkpoint, &'static str> {
+    let checkpoint = checkpoint(request)?;
+    if checkpoint.sequence == 0 {
+        return Err("managed bootstrap binding is read-only");
+    }
+    Ok(checkpoint)
+}
+
 pub(crate) async fn current_managed(
     st: &crate::Shared,
     configured: &crate::managed_devices::ManagedDevice,
@@ -126,18 +140,40 @@ pub(crate) async fn current_managed(
         .await
         .map_err(|_| "managed stores unavailable")?
         .ok_or("managed checkpoint missing")?;
+    validate_managed_checkpoints(configured, &requested, &sql, &fdb)?;
+    Ok(sql)
+}
+
+fn validate_managed_checkpoints(
+    configured: &crate::managed_devices::ManagedDevice,
+    requested: &relay_admission::managed_images::Checkpoint,
+    sql: &relay_admission::managed_images::Checkpoint,
+    fdb: &relay_admission::managed_images::Checkpoint,
+) -> Result<(), &'static str> {
     if sql != fdb || requested.generation != sql.generation || requested.sequence > sql.sequence {
         return Err("managed stores require reconciliation");
     }
     configured
         .anchor()
-        .check_store_checkpoint(&sql)
+        .check_store_checkpoint(sql)
         .map_err(|_| "managed anchor refused")?;
+    // A genesis checkpoint has no Prepared history. Only the exact independently
+    // anchored current genesis may prove the read-only bootstrap binding.
+    if requested.sequence == 0 {
+        return if requested == sql && sql.generation == 1 {
+            Ok(())
+        } else {
+            Err("managed bootstrap checkpoint refused")
+        };
+    }
     // Proving the transport binding also proves this original historical CP.
     // Later unrelated checkpoints may advance; they cannot invent this record.
     configured
         .anchor()
-        .retained_checkpoint(&requested)
+        .retained_checkpoint(requested)
         .map_err(|_| "managed historical checkpoint refused")?;
-    Ok(sql)
+    Ok(())
 }
+
+#[cfg(test)]
+mod managed_tests;
