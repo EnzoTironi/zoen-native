@@ -8093,6 +8093,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "types",
+ "url",
  "zeroize",
  "zoen-models",
  "zoen-relay",

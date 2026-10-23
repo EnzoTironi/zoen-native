@@ -9,7 +9,7 @@ mod execution;
 mod finance;
 mod native;
 mod pricing;
-pub use pricing::PriceProfile;
+pub use pricing::{ImagePriceProfile, ImagePriceQuote, PriceProfile};
 pub use types::owner_budget::{OwnerPeriodPolicy, SignedOwnerPolicy};
 
 use foundationdb::{tuple::Subspace, Database};
