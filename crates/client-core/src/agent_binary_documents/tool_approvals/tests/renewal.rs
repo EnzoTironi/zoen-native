@@ -282,8 +282,9 @@ fn signed_non_owner_or_wrong_hash_intents_are_inert_and_later_revocation_prevent
                     .unwrap();
             }
             "app-grant" => {
-                let mut e = f.agent.lock();
-                let grant = e
+                let grant = f
+                    .agent
+                    .lock()
                     .state
                     .grants
                     .iter()
@@ -295,26 +296,24 @@ fn signed_non_owner_or_wrong_hash_intents_are_inert_and_later_revocation_prevent
                     .unwrap()
                     .grant
                     .clone();
-                e.append(
-                    &f.space,
+                signed(
+                    &f,
                     &grant.grantor,
-                    EventBody::GrantRevoked { grant: grant.id },
-                )
-                .unwrap();
+                    EventBody::GrantRevoked {
+                        grant: grant.id.clone(),
+                    },
+                    crate::engine::now_ms(),
+                );
             }
-            "served-writer" => {
-                f.agent
-                    .lock()
-                    .append(
-                        &f.space,
-                        &agent,
-                        EventBody::MemberAdded {
-                            identity: f.owner.clone(),
-                            role: Role::Reader,
-                        },
-                    )
-                    .unwrap();
-            }
+            "served-writer" => signed(
+                &f,
+                &agent,
+                EventBody::MemberAdded {
+                    identity: f.owner.clone(),
+                    role: Role::Reader,
+                },
+                crate::engine::now_ms(),
+            ),
             "block" => signed(
                 &f,
                 &f.owner,
@@ -357,8 +356,17 @@ fn signed_non_owner_or_wrong_hash_intents_are_inert_and_later_revocation_prevent
             .unwrap(),
             unchanged_content
         );
-        if failure != "device" && failure != "served-writer" {
-            assert_v1(&f);
+        assert_eq!(
+            f.agent.lock().state.items[&f.base.item_id].current().number,
+            1
+        );
+        if failure == "device" {
+            assert!(
+                f.agent
+                    .app_binary_read(f.base.item_id.clone(), None, None)
+                    .is_err(),
+                "revoked reads remain forbidden"
+            );
         }
     }
 }
