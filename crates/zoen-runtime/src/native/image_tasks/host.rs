@@ -1,6 +1,8 @@
 //! Recover an existing host run as an inert locator, never reconstruct a permit.
 use super::*;
+use crate::FinancialState;
 use client_core::image_tasks::ImageTaskDefinition;
+use zoen_models::GatewayConfig;
 
 pub(super) fn run_id(agent: &str, space: &str, request: &str) -> Result<String, RuntimeError> {
     if ![agent, space, request].into_iter().all(id) {
