@@ -233,7 +233,6 @@ pub async fn host(
     say(format_args!("agent @{} hosting", acct.handle));
 
     let deadline = for_secs.map(|s| Instant::now() + Duration::from_secs(s));
-    let mut tries: BTreeMap<(String, u64), u32> = BTreeMap::new();
     let mut backoff = Duration::from_secs(1);
     let mut offline_since: Option<Instant> = None;
     let mut last_activity = Instant::now();
@@ -408,19 +407,16 @@ pub async fn host(
                 }
                 last_activity = Instant::now();
                 let handled = turn(e, &cx, &def, &s.id, &tl[..i], t).await;
-                let key = (s.id.clone(), t.seq);
                 if handled == turn::Outcome::Deferred {
                     caught_up = false;
                     break; // no attempt, advance or read watermark before admission
                 }
                 if handled == turn::Outcome::Retry {
-                    let n = tries.entry(key).or_insert(0);
-                    *n += 1;
-                    if *n < MAX_TRIES {
-                        caught_up = false;
-                        break; // retry this message on the next wake, in order
-                    }
-                    say(format_args!("giving up on seq {}", t.seq));
+                    caught_up = false;
+                    // Reservation and exhaustion are durable inside turn(). A
+                    // corrupt/busy journal cannot become a skipped source merely
+                    // because this in-memory wake loop has run three times.
+                    break;
                 }
                 fault("before-advance");
                 if e.agent_advance(s.id.clone(), t.seq).await.is_err() {

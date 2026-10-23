@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use zoen_agentd::citizen::{testing::ControlledToolBrain, BrainOut};
 mod fixture;
 mod relay;
+mod turn_budget;
 use fixture::{message, Fixture};
 use relay::{online, relay, Mode};
 

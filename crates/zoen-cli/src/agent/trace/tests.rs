@@ -487,6 +487,8 @@ fn early_stops_and_request_status_mapping_are_closed_and_never_run_a_turn() {
         Stop::AttemptLimit,
         Stop::ReservationRefused,
         Stop::ApprovalRefused,
+        Stop::SourceAttemptLimit,
+        Stop::SourceReservationRefused,
     ] {
         let record = Record::stop(SPACE, SOURCE, stop, Some(CANARY));
         let (line, value) = encoded(&record);
