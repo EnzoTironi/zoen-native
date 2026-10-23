@@ -11,13 +11,13 @@ The server reads `ZOEN_TURN_URLS` and `ZOEN_TURN_REST_SECRET` together. Missing
 configuration explicitly disables allocation; partial/invalid configuration
 fails startup. URLs are one to four `turns:` TLS endpoints, separated by commas.
 Do not add STUN, plaintext TURN or direct fallback. Generate a random secret of
-at least32 characters, keep it in protected service configuration, and configure
+at least 32 characters, keep it in protected service configuration, and configure
 the same value as coturn's REST secret. Never return that secret to clients.
 
 The issuer uses the standard coturn REST password MAC. The opaque per-device
-username stays stable within a minute; credentials have at most120 seconds left.
-The node's additional issuance buckets are6/minute burst4 per device and12/minute
-burst8 per account. These limits do not replace coturn allocation/bandwidth quotas.
+username stays stable within a minute; credentials have at most 120 seconds left.
+The node's additional issuance buckets are 6/minute burst 4 per device and 12/minute
+burst 8 per account. These limits do not replace coturn allocation/bandwidth quotas.
 Debug formatting redacts credentials. No TURN password belongs in analytics,
 logs, canonical messages, user-visible errors or screenshot evidence.
 
