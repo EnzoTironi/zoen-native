@@ -1,5 +1,5 @@
 use super::*;
-use client_core::{AgentRequestDto, PrivacyDto, ToolApprovalDto};
+use client_core::{AgentRequestDto, ImageToolReview, PrivacyDto, ToolApprovalDto};
 use std::time::Duration;
 mod relay;
 use relay::{citizen, online, relay, Mode, PRIVATE};
@@ -208,6 +208,18 @@ fn request_projection_exports_only_closed_fields_and_keeps_unknown_source_null()
     let dto = AgentRequestDto {
         tool_approval: Some(ToolApprovalDto {
             review: None,
+            canonical_tool: Some(PRIVATE.into()),
+            image: Some(ImageToolReview {
+                prompt: PRIVATE.into(),
+                size: PRIVATE.into(),
+                quality: PRIVATE.into(),
+                background: PRIVATE.into(),
+                definition_version: PRIVATE.into(),
+                price_digest: PRIVATE.into(),
+                max_image_bytes: 4096,
+                source_id: PRIVATE.into(),
+                source_sha256: PRIVATE.into(),
+            }),
             content_hash: PRIVATE.into(),
             artifact_id: "it_deck_owned".into(),
             artifact_title: PRIVATE.into(),
