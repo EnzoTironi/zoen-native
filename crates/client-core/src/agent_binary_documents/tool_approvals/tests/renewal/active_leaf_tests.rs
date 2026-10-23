@@ -67,6 +67,7 @@ fn later_signed_pending_step_refuses_older_owner_intent_and_available_projection
         ToolReviewState::Unavailable
     );
     e.me = me;
+    drop(e);
     assert_eq!(
         f.agent
             .requests()
