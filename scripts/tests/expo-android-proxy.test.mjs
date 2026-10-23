@@ -48,7 +48,7 @@ async function tools(t) {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'ndk-environment-')));
   t.after(() => rm(root, { recursive: true, force: true }));
   const files = ['cargo', 'cargo-ndk', 'cargo-ndk-runner', 'proxy', 'ndk/source.properties',
-    'ndk/build/cmake/android.toolchain.cmake', 'ndk/bin/clang', 'ndk/bin/clang++', 'ndk/bin/llvm-ar'];
+    'ndk/build/cmake/android.toolchain.cmake', 'ndk/bin/clang', 'ndk/bin/clang++', 'ndk/bin/llvm-ar', 'ndk/bin/llvm-ranlib'];
   for (const name of files) {
     const path = join(root, name);
     await mkdir(join(path, '..'), { recursive: true });
@@ -70,6 +70,8 @@ async function tools(t) {
     CARGO_TARGET_AARCH64_LINUX_ANDROID_AR: join(root, 'ndk/bin/llvm-ar'),
     CC_aarch64_linux_android: join(root, 'ndk/bin/clang'),
     CXX: join(root, 'ndk/bin/clang++'),
+    TARGET_RANLIB: join(root, 'ndk/bin/llvm-ranlib'),
+    TARGET_CFLAGS: '--target=aarch64-linux-android28 -DTEST=1',
     BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android: '--sysroot=selected',
     CFLAGS_aarch64_linux_android: '--target=aarch64-linux-android28 -DTEST=1',
     PRIVATE_TEST_SECRET: 'never-a-declared-build-input',
@@ -85,7 +87,7 @@ test('NDK tool/API/sysroot selection and effective build environment are declare
     assert(inputs.environment.includes(name), name);
   assert(!inputs.environment.includes('PRIVATE_TEST_SECRET'));
   for (const path of [value.cargo, value.ndk, value.proxy, join(root, 'ndk/bin/clang++'),
-    join(root, 'ndk/source.properties'), env.CARGO_NDK_CMAKE_TOOLCHAIN_PATH])
+    join(root, 'ndk/source.properties'), env.CARGO_NDK_CMAKE_TOOLCHAIN_PATH, env.TARGET_RANLIB])
     assert(inputs.files.includes(path), path);
   assert(!JSON.stringify(inputs).includes('never-a-declared-build-input'));
   for (const alteration of [

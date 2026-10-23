@@ -76,7 +76,9 @@ current API remains 28 and supported ABIs remain arm64-v8a and x86_64. The unset
 `CARGO_TARGET_DIR` shell pipeline keeps its previous commands and behavior.
 
 Effective NDK compiler/linker/runner selections, target flags, API, sysroot paths
-and related environment are declared to the canonical guard. Receipts contain
+and related environment are declared to the canonical guard, including the
+`TARGET_CC/CXX/AR/RANLIB/CFLAGS/CXXFLAGS` selections used by the pinned
+cc_env precedence. Receipts contain
 environment hashes rather than an environment dump. Tool input hashes include
 real Cargo, cargo-ndk, the private proxy, Node, selected compiler/binutils and
 `source.properties`/CMake toolchain selection. The **pinned SDK/NDK installation

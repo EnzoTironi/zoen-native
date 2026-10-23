@@ -178,7 +178,11 @@ test('actual NDK A → B old-mtime, restored-mtime edit, env and ABI identities 
   assert(qc.receipt.cleanedPackages.length > 0);
   const flags = await finish(await invocation(b, target, bm, { CFLAGS: '-DPROBE_SELECTION=1' }));
   assert(flags.receipt.cleanedPackages.length > 0);
-  assert(flags.bytes.includes(Buffer.from('arm64-v8a|28|-DPROBE_SELECTION=1')));
+  // cc_env selects the supplied global key; build_env prefixes its clang target
+  // into that same key. Verify the complete effective value, not raw caller input.
+  assert(flags.bytes.includes(Buffer.from(
+    `C|${dirname(bm)}|arm64-v8a|28|--target=aarch64-linux-android28 -DPROBE_SELECTION=1`,
+  )));
   if (process.env.ZOEN_TEST_ANDROID_ABIS === 'both') {
     const x86 = await finish(await invocation(b, target, bm, {}, 'x86_64'));
     assert.equal(x86.bytes.readUInt16LE(18), 62);

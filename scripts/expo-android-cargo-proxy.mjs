@@ -27,6 +27,8 @@ const environmentNames = [
   '_CARGO_NDK_LINK_TARGET', '_CARGO_NDK_LINK_CLANG', '_CARGO_NDK_LDFLAGS',
   'CARGO_NDK_CMAKE_TOOLCHAIN_PATH', 'CLANG_PATH', 'LIBCLANG_PATH',
   'CC', 'CXX', 'AR', 'RANLIB', 'CFLAGS', 'CXXFLAGS', 'LDFLAGS', 'CPATH',
+  'TARGET_CC', 'TARGET_CXX', 'TARGET_AR', 'TARGET_RANLIB',
+  'TARGET_CFLAGS', 'TARGET_CXXFLAGS', 'TARGET_LDFLAGS',
 ];
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -73,7 +75,7 @@ export async function ndkInputs(context, env) {
   if (!(await stat(properties)).isFile()) throw new Error('NDK source.properties is missing');
   const files = [context.cargo, context.ndk, context.proxy, process.execPath, clang, cmake, properties];
   for (const [name, value] of Object.entries(env))
-    if (/^(?:CC|CXX|AR|RANLIB)(?:$|_|-)/.test(name) ||
+    if (/^(?:TARGET_)?(?:CC|CXX|AR|RANLIB)(?:$|_|-)/.test(name) ||
         /^CARGO_TARGET_.*_(?:AR|LINKER|RUNNER)$/.test(name)) {
       if (!isAbsolute(value) || !(await stat(value)).isFile())
         throw new Error('NDK tool selection must name an existing absolute executable');
