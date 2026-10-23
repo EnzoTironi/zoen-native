@@ -27,6 +27,7 @@ export function OwnerPolicyScreen({ request }: { request: AgentRequestDto }) {
       />
     );
   const busy = state.refreshing || state.phase === 'submitting' || state.phase === 'preparing';
+  const canRetryOptions = session.canRetryOptions(state);
   const context = state.context;
   const review = state.review;
   const reviewPhase: OwnerPolicyReviewPhase =
@@ -120,6 +121,11 @@ export function OwnerPolicyScreen({ request }: { request: AgentRequestDto }) {
           {t('ownerPolicy.uncertain')}
         </Text>
       ) : null}
+      {!review && ['refused', 'delivery_failed'].includes(state.optionsState ?? '') ? (
+        <Text accessibilityRole="alert" selectable style={{ color: colors.danger }}>
+          {t('ownerPolicy.quoteUnavailable')}
+        </Text>
+      ) : null}
       {state.phase === 'pending' && !review ? (
         <Text accessibilityLiveRegion="polite" style={{ color: colors.secondary }}>
           {t('ownerPolicy.waitingForQuote')}
@@ -145,7 +151,7 @@ export function OwnerPolicyScreen({ request }: { request: AgentRequestDto }) {
             }}
           />
         ) : null}
-        {['installed', 'refused'].includes(state.phase) ? (
+        {state.receipt && ['installed', 'refused'].includes(state.phase) ? (
           <NativeButton
             secondary
             label={t('ownerPolicy.edit')}
@@ -155,7 +161,17 @@ export function OwnerPolicyScreen({ request }: { request: AgentRequestDto }) {
             }}
           />
         ) : null}
-        {state.error && state.phase !== 'held' && state.phase !== 'pending' ? (
+        {canRetryOptions ? (
+          <NativeButton
+            secondary
+            label={t('agents.tryAgain')}
+            disabled={busy}
+            onPress={() => {
+              void session.retryOptions(state);
+            }}
+          />
+        ) : null}
+        {state.error && !canRetryOptions && state.phase !== 'held' && state.phase !== 'pending' ? (
           <NativeButton
             secondary
             label={t('agents.tryAgain')}

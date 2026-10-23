@@ -34,6 +34,7 @@ export const ownerPolicy = defineFeature(
     uncertain:
       'Confirmation is still unknown. Check the original request before making another change.',
     waitingForQuote: 'Waiting for the current budget and image reservation',
+    quoteUnavailable: 'The current budget could not be retrieved.',
     edit: 'Edit budget',
     checkStatus: 'Check status',
   },
@@ -69,6 +70,7 @@ export const ownerPolicy = defineFeature(
     uncertain:
       'A confirmação ainda é incerta. Consulte o pedido original antes de fazer outra alteração.',
     waitingForQuote: 'Aguardando o orçamento atual e a reserva da imagem',
+    quoteUnavailable: 'Não foi possível consultar o orçamento atual.',
     edit: 'Editar orçamento',
     checkStatus: 'Consultar estado',
   },
