@@ -13,7 +13,7 @@ export default function OwnerBudget() {
   if (!read.data)
     return read.error ? (
       <EmptyState title={t('ownerPolicy.unavailable')} detail={read.error}>
-        <NativeButton label={t('common.tryAgain')} onPress={read.retry} />
+        <NativeButton label={t('agents.tryAgain')} onPress={read.retry} />
       </EmptyState>
     ) : (
       <Loading />

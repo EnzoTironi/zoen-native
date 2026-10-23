@@ -59,7 +59,7 @@ export function OwnerPolicyScreen({ request }: { request: AgentRequestDto }) {
       }}
     >
       <Stack.Screen options={{ title: t('ownerPolicy.title') }} />
-      {state.phase === 'loading' ? <Loading /> : null}
+      {state.phase === 'loading' || state.phase === 'preparing' ? <Loading /> : null}
       {context && state.phase === 'editing' ? (
         <OwnerPolicyForm
           key={`${state.scope}:${context.options_digest}`}
@@ -134,7 +134,8 @@ export function OwnerPolicyScreen({ request }: { request: AgentRequestDto }) {
             onPress={() => session.edit(state, {})}
           />
         ) : null}
-        {['held', 'pending'].includes(state.phase) ? (
+        {['held', 'pending'].includes(state.phase) ||
+        (state.phase === 'loading' && state.optionsSource) ? (
           <NativeButton
             secondary
             label={t('ownerPolicy.checkStatus')}
@@ -157,7 +158,7 @@ export function OwnerPolicyScreen({ request }: { request: AgentRequestDto }) {
         {state.error && state.phase !== 'held' && state.phase !== 'pending' ? (
           <NativeButton
             secondary
-            label={t('common.tryAgain')}
+            label={t('agents.tryAgain')}
             disabled={busy}
             onPress={() => {
               void session.refresh(state);
