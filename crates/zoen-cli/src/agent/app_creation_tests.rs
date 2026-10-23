@@ -1,5 +1,6 @@
 //! One fresh signed fixture; no provider login, services or product home.
 use super::*;
+use serde_json::Value;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use zoen_agentd::citizen::{testing::ControlledToolBrain, BrainOut};
 
