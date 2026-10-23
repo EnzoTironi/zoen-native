@@ -13,6 +13,7 @@ use types::{ActionClass, AgentRequest, ItemContent, ItemKind, Privacy, ToolPropo
 mod contract;
 mod execution;
 mod preview;
+#[cfg(feature = "client-types")]
 pub(crate) use preview::SiteToolReview;
 mod review;
 pub(crate) use review::{access, matches, parsed};
