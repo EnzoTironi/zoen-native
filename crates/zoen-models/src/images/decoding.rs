@@ -114,8 +114,9 @@ pub(super) fn usage(raw: Option<&Value>) -> (UsageEvidence, ImageUsageEvidence) 
             {
                 return Err(());
             }
-            if let (Some(a), Some(b), Some(p)) = (a, b, parent) {
-                if a.checked_add(b) != Some(p) {
+            if let (Some(a), Some(b)) = (a, b) {
+                let sum = a.checked_add(b).ok_or(())?;
+                if parent.is_some_and(|p| sum != p) {
                     return Err(());
                 }
             }

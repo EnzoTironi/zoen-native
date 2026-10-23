@@ -287,6 +287,10 @@ async fn image_provider_failures_and_usage_missing_invalid_or_zero_remain_distin
         ),
         (json!({"input_tokens":-1}), 2),
         (json!({"input_tokens":u64::MAX,"output_tokens":1}), 2),
+        (
+            json!({"input_tokens_details":{"image_tokens":u64::MAX,"text_tokens":1}}),
+            2,
+        ),
     ] {
         let mut value = response(&bytes);
         value["usage"] = usage;
