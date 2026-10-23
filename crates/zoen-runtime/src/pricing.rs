@@ -53,6 +53,7 @@ impl PriceProfile {
         let d = &request.descriptor;
         if request.profile != CHAT_PROFILE
             || d.operation != Operation::ChatCompletion
+            || d.image.is_some()
             || request.context.price_version != self.version
             || d.endpoint != self.endpoint
             || d.model != self.model
@@ -119,3 +120,6 @@ impl PriceProfile {
         self.cost(input, output).map(Some)
     }
 }
+
+#[cfg(test)]
+mod image_tests;

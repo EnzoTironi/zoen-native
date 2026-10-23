@@ -93,9 +93,14 @@ impl Fixture {
                     }
                     tokio::time::sleep(delay).await;
                     let head = if chunked {
-                        format!("HTTP/1.1 {status} fixture\r\ncontent-type: application/json\r\ntransfer-encoding: chunked\r\nconnection: close\r\n{headers}\r\n")
+                        format!(
+                            "HTTP/1.1 {status} fixture\r\ncontent-type: application/json\r\ntransfer-encoding: chunked\r\nconnection: close\r\n{headers}\r\n"
+                        )
                     } else {
-                        format!("HTTP/1.1 {status} fixture\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n{headers}\r\n", body.len() + usize::from(lost) * 100)
+                        format!(
+                            "HTTP/1.1 {status} fixture\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n{headers}\r\n",
+                            body.len() + usize::from(lost) * 100
+                        )
                     };
                     if stream.write_all(head.as_bytes()).await.is_err() {
                         return;
@@ -223,6 +228,7 @@ fn reply() -> Value {
 }
 
 mod dispatch;
+mod images;
 mod privacy;
 mod provider;
 
