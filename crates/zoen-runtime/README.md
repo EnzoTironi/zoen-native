@@ -122,9 +122,11 @@ Lease release preserves monotonic tokens and cannot release a newer holder.
 No-op synchronization consumes no image generation. Runs protect their original
 capsule through real GC references; terminal reference release and wake ACKs
 await a verified run disposition protocol. Production paid entry remains
-closed by absent managed custody and external continuity. The joined SQL/OpenMLS/FdbLog fixture validates this unit separately from
-financial core-scope fixtures; it does not implement live WS provisioning,
-managed credentials, external nonrollback continuity or guarded agent output.
+closed until external continuity is established. Managed loading alone does
+not supply that authority. The joined SQL/OpenMLS/FdbLog fixture validates this
+unit separately from financial core-scope fixtures; it does not qualify live WS
+provisioning, a deployed managed vault, external nonrollback continuity or
+guarded agent output.
 
 ## Dispatch and finance
 
@@ -254,7 +256,7 @@ attempts, and an actual deferred SQL commit failure are exercised. That failure
 leaves the independently committed FDB marker orphaned and closed. It is a real
 commit rejection, not DB wire-level commit-unknown testing.
 
-The paid retained-step admission, managed custody, live relay provisioning,
+The paid retained-step admission, deployed managed vault, live relay provisioning,
 worker/JetStream
 recovery, typed tool approval/resume, signed output/usage, external continuity
 witness, live billing reconciliation and deployment drills remain open. These
@@ -276,6 +278,6 @@ these services independently. One local fixture bootstrap returned Unavailable;
 the identical binary passed on repetition, and the cause remains unproved.
 The implementation PR binds its exact source, binary and raw-log hashes and
 retains the unsuccessful attempts. Full integration CI on the refreshed stack,
-managed custody, external nonrollback continuity, guarded publication and
-automatic worker/wake cleanup remain open. This is not backend completion or
+managed vault deployment, external nonrollback continuity, guarded publication
+and automatic worker/wake cleanup remain open. This is not backend completion or
 full Mastra/TextQL parity.
