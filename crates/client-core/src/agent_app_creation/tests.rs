@@ -262,14 +262,9 @@ fn revoked_writer_and_expired_signed_request_cannot_create_or_reauthorize() {
     expired.content_hash = expired.tool_proposal_hash(&f.space).unwrap();
     let id = expired.id.clone();
     let observed = expired.content_hash.clone();
-    let agent = e.me_id().unwrap();
-    e.append(
-        &f.space,
-        &agent,
-        EventBody::RequestOpened { request: expired },
-    )
-    .unwrap();
+    let opened = expired.tool_proposal.as_ref().unwrap().expires_at_ms - 1000;
     drop(e);
+    shared::tests::append_at(&f, expired, opened);
     assert!(decide(&f, &id, &observed, ToolRequestDecision::ApproveOnce).is_err());
     assert!(f.agent.approved_app_creation(&id).is_err());
     assert_eq!(f.agent.items().len(), before);
