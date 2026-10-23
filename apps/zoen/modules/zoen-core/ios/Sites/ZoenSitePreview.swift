@@ -4,10 +4,12 @@ import WebKit
 /// Static, disposable preview only. No account bridge, shared cookies, scripts,
 /// local file access, external requests, popup, link, or authenticated session.
 final class ZoenSitePreview: ExpoView, WKNavigationDelegate, WKUIDelegate {
+  let onPreviewStatus = EventDispatcher()
   var html = ""
   var ownerKey = ""
   var active = false
   private var rendered: String?
+  private var renderedOwner: String?
   private var web: WKWebView?
   private var navigation = ZoenSitePreviewPolicy.Navigation()
 
@@ -27,12 +29,14 @@ final class ZoenSitePreview: ExpoView, WKNavigationDelegate, WKUIDelegate {
   }
 
   private func clear() {
+    if let owner = renderedOwner { onPreviewStatus(["ownerKey": owner, "ready": false]) }
     web?.stopLoading()
     web?.navigationDelegate = nil
     web?.uiDelegate = nil
     web?.removeFromSuperview()
     web = nil
     rendered = nil
+    renderedOwner = nil
     navigation = .init()
   }
 
@@ -59,6 +63,7 @@ final class ZoenSitePreview: ExpoView, WKNavigationDelegate, WKUIDelegate {
     view.isInspectable = false
     web = view
     rendered = key
+    renderedOwner = ownerKey
     addSubview(view)
     navigation.begin()
     view.loadHTMLString(ZoenSitePreviewPolicy.document(html), baseURL: nil)
@@ -75,7 +80,23 @@ final class ZoenSitePreview: ExpoView, WKNavigationDelegate, WKUIDelegate {
   }
 
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation?) {
+    guard webView === web, active, let owner = renderedOwner,
+      owner == ownerKey, rendered == ownerKey + "\0" + html else { return }
     self.navigation = .init()
+    onPreviewStatus(["ownerKey": owner, "ready": true])
+  }
+
+  func webView(_ webView: WKWebView, didFail navigation: WKNavigation?, withError error: Error) {
+    if webView === web { clear() }
+  }
+
+  func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation?,
+    withError error: Error) {
+    if webView === web { clear() }
+  }
+
+  func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+    if webView === web { clear() }
   }
 
   func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
@@ -92,6 +113,7 @@ final class ZoenSitePreview: ExpoView, WKNavigationDelegate, WKUIDelegate {
 func zoenSitePreviewDefinition() -> ViewDefinition<ZoenSitePreview> {
   View(ZoenSitePreview.self) {
     ViewName("SitePreview")
+    Events("onPreviewStatus")
     Prop("html") { (view: ZoenSitePreview, value: String) in view.html = value }
     Prop("ownerKey") { (view: ZoenSitePreview, value: String) in view.ownerKey = value }
     Prop("active") { (view: ZoenSitePreview, value: Bool) in view.active = value }

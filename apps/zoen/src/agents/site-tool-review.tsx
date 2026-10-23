@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { AppState, Platform, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import NativeCore from '../../modules/zoen-core/src/ZoenCoreModule';
@@ -25,13 +25,18 @@ export function SiteToolReview({
 }) {
   const { store } = useClient();
   const { colors } = useTheme();
-  const [review, setReview] = useState<{ value: Review; owner: string } | null>(null);
+  const lease = useRef<{ sequence: number; key: string | null }>({ sequence: 0, key: null });
+  const [review, setReview] = useState<{
+    value: Review;
+    owner: string;
+    key: string;
+    before: boolean;
+  } | null>(null);
   const scopeNow = siteScope(store, spaceId);
   const ownerNow = scopeNow && siteAuthority(store, scopeNow);
-  const visible = review && review.owner === ownerNow ? review.value : null;
-  const [before, setBefore] = useState(false);
+  const visible = review && review.owner === ownerNow ? review : null;
   const [failure, setFailure] = useState<string | null>(null);
-  const native = Platform.OS === 'ios' && NativeCore?.sitePreviewVersion === 1;
+  const native = Platform.OS === 'ios' && (NativeCore?.sitePreviewVersion ?? 0) >= 2;
   useFocusEffect(
     useCallback(() => {
       let live = true;
@@ -46,6 +51,7 @@ export function SiteToolReview({
         siteAuthority(store, scope) === owner;
       const retire = () => {
         generation++;
+        lease.current.key = null;
         setReview(null);
         onReady(false);
       };
@@ -64,10 +70,10 @@ export function SiteToolReview({
           if (!current() || generation !== operation) return;
           if (next.request_id !== requestId || next.content_hash !== contentHash)
             throw new Error(t('sites.changedConsent'));
-          setBefore(false);
-          setReview({ value: next, owner });
+          const key = `${owner}:${requestId}:${contentHash}:${++lease.current.sequence}`;
+          lease.current.key = key;
+          setReview({ value: next, owner, key, before: false });
           setFailure(null);
-          onReady(native);
         } catch (reason) {
           if (current() && generation === operation)
             setFailure(reason instanceof Error ? reason.message : t('sites.unavailable'));
@@ -93,31 +99,54 @@ export function SiteToolReview({
         preflight();
         app.remove();
       };
-    }, [store, requestId, contentHash, spaceId, native, onReady]),
+    }, [store, requestId, contentHash, spaceId, onReady]),
   );
+  const show = (before: boolean) => {
+    if (!visible || lease.current.key !== visible.key) return;
+    const key = `${visible.owner}:${requestId}:${contentHash}:${++lease.current.sequence}`;
+    lease.current.key = key;
+    onReady(false);
+    setReview({ ...visible, key, before });
+  };
   return (
     <View style={{ gap: 8 }}>
       {visible ? (
         <>
-          {visible.before_html !== null ? (
+          {visible.value.before_html !== null ? (
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <NativeButton
-                secondary={before}
+                secondary={visible.before}
                 label={t('sites.reviewAfter')}
-                onPress={() => setBefore(false)}
+                onPress={() => show(false)}
               />
               <NativeButton
-                secondary={!before}
+                secondary={!visible.before}
                 label={t('sites.reviewBefore')}
-                onPress={() => setBefore(true)}
+                onPress={() => show(true)}
               />
             </View>
           ) : null}
           <View style={{ height: 280, overflow: 'hidden', borderRadius: 12 }}>
             <SitePreview
-              html={before ? (visible.before_html ?? visible.after_html) : visible.after_html}
-              ownerKey={`${ownerNow}:${requestId}:${contentHash}:${before ? 'before' : 'after'}`}
+              html={
+                visible.before
+                  ? (visible.value.before_html ?? visible.value.after_html)
+                  : visible.value.after_html
+              }
+              ownerKey={visible.key}
               active
+              onPreviewStatus={({ nativeEvent }) => {
+                const scope = siteScope(store, spaceId);
+                if (
+                  lease.current.key !== visible.key ||
+                  nativeEvent.ownerKey !== visible.key ||
+                  !scope ||
+                  siteAuthority(store, scope) !== visible.owner ||
+                  AppState.currentState !== 'active'
+                )
+                  return;
+                onReady(native && nativeEvent.ready && !visible.before);
+              }}
             />
           </View>
         </>

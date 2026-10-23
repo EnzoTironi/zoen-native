@@ -26,7 +26,10 @@ the previous FileDoc version and cannot overwrite a changed base.
 The human review is the existing request card with the disposable static Site
 preview. Replacements offer Before and Proposed views. No HTML source is required
 from the person. Approval stays unavailable until the exact signed proposal has
-been read under the current human/device and the native preview is available.
+been read under the current human/device and that proposed version finishes loading
+in the native preview. Module availability alone is insufficient. Each view has a
+retirable lease; switching Before/Proposed, failure, process termination or a late
+callback cannot approve an old view. Old native modules cannot unlock approval.
 Losing focus, foreground, account, permissions or the canonical request retires
 the preview. Reading it does not sign an approval or publication.
 
