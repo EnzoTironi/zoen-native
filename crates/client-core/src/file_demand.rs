@@ -273,7 +273,7 @@ mod tests {
         leases.pop();
         assert_eq!(demands.waiter_count(), 31);
         assert_eq!(demands.active().unwrap().len(), 16);
-        let released = leases.remove(1).unwrap();
+        let released = leases.remove(1);
         drop(released);
         assert_eq!(demands.active().unwrap().len(), 15);
         assert!(demands.acquire(key(16), 1024, deadline).unwrap().is_some());
