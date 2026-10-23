@@ -1,6 +1,6 @@
 //! Sender recovery uses one exact retained delivery, not a fresh HPKE seal.
 use super::*;
-use enrollment_owner_tests::{code, enroll, opened};
+use enrollment_owner_tests::{code, enroll, opened, wire};
 use serde_json::{json, Value};
 use test_transport::{next_call, Fixture};
 
@@ -12,7 +12,7 @@ async fn cold_retry_after_profile_edit_replays_original_signed_ciphertext() {
     let first = enroll(&f, &code);
     let accepted = next_call(&mut f.relay.calls).await;
     let original = opened(&accepted, &code, &recipient);
-    let wire = serde_json::to_vec(&accepted.op).unwrap();
+    let original_wire = wire(&accepted);
     let retained = f.vault.load(VAULT_PEERS.into()).unwrap();
     drop(accepted.result);
     assert!(first.await.unwrap().is_err());
@@ -36,7 +36,7 @@ async fn cold_retry_after_profile_edit_replays_original_signed_ciphertext() {
     }
     let second = enroll(&f, &code);
     let replay = next_call(&mut f.relay.calls).await;
-    assert_eq!(serde_json::to_vec(&replay.op).unwrap(), wire);
+    assert_eq!(wire(&replay), original_wire);
     let retried = opened(&replay, &code, &recipient);
     assert_eq!(retried.profile_fields, original.profile_fields);
     replay.result.send(Ok(Reply::Done)).unwrap();
