@@ -280,3 +280,17 @@ test("an ambiguous driver exception is observed but never retried or erased by p
   assert.equal(harness.counters.writes, 1);
   assert.equal(harness.counters.reads, 3);
 });
+
+test("a trusted candidate projection receives an isolated observation and cannot rewrite the retained tree", async () => {
+  const harness = setup();
+  const result = await harness.run({
+    candidates: (observed) => {
+      assert.equal(observed.nodes[0].id, candidate.targetId);
+      observed.nodes[0].id = "invented";
+      observed.lease = "rewritten-owner";
+      return [candidate];
+    },
+  });
+  assert.equal(result.status, "assertions_passed");
+  assert.equal(harness.counters.writes, 1);
+});

@@ -39,14 +39,17 @@ uma árvore inventada nem copiar IDs dos testes.
   vincula a janela exclusiva, conta/device e sessão/foco; muda quando algum desses
   donos é retirado, mesmo que a tela e os IDs pareçam iguais.
 - Cada nó contém `id`, `role`, `label`, `visible` e `enabled`, obtidos da observação
-  atual. Enviar apenas controles relevantes à decisão e uma descrição curta da
+  atual. `enabled: null` preserva estado desconhecido; não significa habilitado. Enviar apenas controles relevantes à decisão e uma descrição curta da
   tela; excluir relógio, timeline e mensagens sem relação com a escolha. Campos
   brutos extras não entram na consulta. O host deve remover dados privados e
   credenciais antes da chamada; preferir contas e conversas sintéticas.
 - `candidates`: lista autorizada pelo percurso com `id` local, `operation`
   (`tap` ou `long_press`) e `targetId` de um nó realmente observado. Não há execução
-  por coordenadas ou seletor retornado pelo modelo. Sem alvos atuais habilitados,
-  o guard abstém antes de gastar inferência.
+  por coordenadas ou seletor retornado pelo modelo. O padrão exige alvos atuais habilitados. Para uma tentativa de navegação
+  reversível já autorizada, o candidato local pode declarar `attemptNavigation: true`;
+  somente `tap` pode usar `enabled: null`, e o gate recebe essa política explícita
+  novamente antes de executar. Estado `false` nunca é substituído por uma tentativa.
+  Sem alvos admissíveis, o guard abstém antes de gastar inferência.
 - `decide(request)`: chama **uma vez** `ask_clef` por meio da ferramenta do host.
   O request segue o contrato `state` + `questions.next_action` de tipo `choice`,
   com `insufficient_evidence`. Aceita a resposta direta ou o `structuredContent`
@@ -84,3 +87,111 @@ Sem Cargo, rede, modelo ou dispositivo. Os casos cobrem membership, escopo/foco,
 leitura repetida, alvo alterado/oculto/desabilitado, abstinência, falha do provider,
 confiança alta com efeito errado e resposta perdida depois de execução. O mesmo
 comando está ligado ao CI. A integração real segue pendente do lote elegível.
+
+## Adaptador concreto do contrato Argent — #392
+
+`routeArgentAction` em `scripts/qa-argent-choice.mjs` compõe o guard acima. Ele não
+abre conexão, inicia servidor, instala, lança app ou inicia/reinicia uma gravação.
+O host importa a função dentro da janela de QA já autorizada e injeta a ponte de
+ferramentas e os mesmos gates/asserções que já usa:
+
+```js
+await routeArgentAction({
+  objective, expectedScreen, decide: callAskClefThroughHostToolBridge,
+  candidates: [{
+    id: 'open_attachment', operation: 'tap', attemptNavigation: true,
+    selector: { identifier: observedStableId, role: observedRole },
+  }],
+  argent: {
+    callTool: existingArgentToolBridge,
+    ready: checkExistingArtifactAndOperatorGate,
+    readScope: readCurrentArtifactDeviceAndRetirementLease,
+    identifyScreen: identifyActualNativeDestination,
+    redactLabel: sanitizeRelevantControlLabel,
+    recording: existingActiveRecording,
+  },
+  verify: assertCurrentNativeEffect,
+});
+```
+
+Os callbacks pertencem ao host; não são novas funções de autorização disponíveis no
+repositório. `readScope()` retorna `{artifact, device, lease}` do manifesto e dono
+atuais. `identifyScreen({description, source})` usa os marcos/asserts nativos do
+cenário para retornar `{screen, summary}`; não pode identificar uma tela pela sua
+posição no loop ou pela opinião do modelo. `summary` deve ser curto, sanitizado e
+restrito ao estado relevante. `recording` tem os campos reais `{name, project_root}`
+de uma gravação **já ativa**; o projeto é absoluto. O adaptador não inicia nem
+recomeça essa gravação, evitando truncar o YAML existente.
+
+O formato foi conferido no pacote local **Argent 0.29.0**, no contrato
+`describe/format-tree.ts`, projeção `ios-device/describe`, contrato gerado de
+`flow-add-step` e `flow-step-definitions.ts` (fontes incorporadas ao pacote). O
+`describe` público retorna `{description, source}`, com linhas de texto, atributos
+opcionais `id`/`value`, flags e frames normalizados. Não retorna a árvore JSON
+inventada nos primeiros exemplos do guard. O parser local aceita esse formato e
+separa somente os controles permitidos; valores, timeline e relógio não são
+projetados para o Clef. `redactLabel` é obrigatório e não recebe o documento inteiro.
+Respostas MCP usam `structuredContent` ou um único bloco JSON textual; erro,
+resultado ambíguo ou formato desconhecido não viram controles.
+
+Cada candidato deve ter uma operação `tap` e um `identifier` exato ou `label` exato
+com `role`. Seletor somente por role não entra. Zero correspondências, flags
+`disabled`/`password` e frame sem área não geram opção; duplicação não é resolvida
+por ordem. O `targetId` é um fingerprint **local da observação**, não um ID nativo
+inventado ou seletor persistente. Ele inclui os campos brutos do controle e seu
+frame, então trocar label/identidade/estado/posição invalida a escolha. Esses campos
+brutos e coordenadas não entram na pergunta ao modelo.
+
+A observação usa `await-screen-idle` e `describe` reais, conferindo o escopo antes e
+depois. Após a escolha há a releitura exigida pelo guard e outra releitura no
+próprio despacho. O adaptador confere novamente o gate e a lease antes de chamar
+**uma vez** `flow-add-step`, com `command: gesture-tap` e `args` JSON contendo apenas
+o device autorizado e o centro do frame atual. O modelo não fornece argumentos de
+ferramenta. Conferir o recibo real `toolResult`, `recorded` e `savedTo`: somente um
+`tap` gravado com o mesmo `id` ou texto exato é aceito. Retarget, seletor só por role,
+ponto cru, warning ou falha de escrita preservam a falha, mesmo que o efeito tenha
+chegado. Não repetir o toque para tentar obter outro recibo.
+
+A superfície não garante atomicidade entre processos nem prova oclusão por uma
+árvore que não a expõe. `visible` significa área positiva no frame reportado. O
+host continua responsável pelo gate da janela exclusiva, overlays, prontidão e
+asserts visuais/estruturais previstos no cenário. O recorder deriva e grava o
+seletor pelo seu próprio mecanismo; o adaptador não escreve outro YAML nem
+reescreve o fluxo estável. O resultado de um passo continua sem substituir as duas
+passagens completas de QA.
+
+### Limite de actionability observado no driver
+
+A projeção `xcuitest-runner` recebe `XCUIElementSnapshot.isEnabled` e grava o estado
+negativo como `disabled`, então a ausência dessa flag tem um significado comprovado
+nessa fonte. As fontes reais `ax-service` e `native-devtools` do simulador omitem
+esse estado: o parser preserva `enabled: null`, sem inventar `true`. Um alvo único,
+visível e estável pode receber **uma tentativa de navegação reversível** somente
+quando seu candidato autorizado pelo percurso declara `attemptNavigation: true`.
+Essa permissão pertence ao percurso/gate existentes, nunca ao modelo ou ao texto
+da UI. Aparece na consulta e na ação entregue ao gate; o efeito só pode passar
+pelas mesmas asserções determinísticas depois. Botão realmente desabilitado deve
+falhar no efeito, sem repetição do toque. Estado explicitamente `disabled` bloqueia
+mesmo essa tentativa. Ações sem essa política continuam abstendo quando enabled é
+desconhecido. Fontes futuras não reconhecidas são `unsupported_actionability_source`.
+
+O simulador já autorizado pode usar esse caminho com os contratos atuais de
+`describe` e `flow-add-step`, preservando a validação de seletor do próprio recorder.
+Isso não inicia outro servidor, driver ou framework e não transforma uma tentativa
+em prova de actionability ou sucesso.
+
+O timeout de inferência é limitado a 90 segundos (ou menos, por passo). Ele produz
+estado desconhecido, não retry; uma resposta tardia já cobrada não pode executar
+nada. O timer local não afirma cancelar a chamada remota. `isError`,
+`insufficient_evidence` e probabilidades continuam sob o contrato do guard.
+
+Verificação sem provider, Cargo, build ou dispositivo:
+
+```sh
+node --test scripts/tests/qa-observed-choice.test.mjs scripts/tests/qa-argent-choice.test.mjs
+```
+
+Os testes usam texto sintético no formato do driver, não capturas nativas. O host
+real ainda precisa importar o adaptador e fornecer gates, identidade, redator,
+ponte de ferramentas e asserts reais depois do handoff elegível. Nenhuma execução
+nativa, inferência, latência/custo ou ganho de QA está comprovado por esses testes.
