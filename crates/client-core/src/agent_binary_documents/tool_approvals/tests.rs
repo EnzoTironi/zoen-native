@@ -1,6 +1,6 @@
 use super::*;
 use crate::agent_binary_documents::tests::{counts, fixture, turn, Fixture, CHANGED, ORIGINAL};
-use types::{Annotation, Grant, IdentityKind, Role};
+use types::{Annotation, Grant, GrantScope, IdentityKind, Role};
 
 #[path = "projection_tests.rs"]
 mod projection;
@@ -223,3 +223,5 @@ mod decisions;
 mod recovery;
 
 mod renewal;
+
+mod trust_revocation;

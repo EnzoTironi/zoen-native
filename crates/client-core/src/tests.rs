@@ -10,6 +10,7 @@ mod file_messages;
 mod message_search;
 mod peer_receipts;
 mod profile_photos;
+mod trust_baseline;
 mod voice_notes;
 
 #[test]
