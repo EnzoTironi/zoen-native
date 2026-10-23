@@ -28,15 +28,23 @@ impl Engine {
                 artifact_title: self.state.items.get(&p.artifact)
                     .and_then(|i|i.versions.iter().find(|version|version.number==p.version))
                     .map(|version|version.content.title()).unwrap_or_else(|| {
-                        if p.schema == 3 {
+                        if p.schema == 5 {
+                            crate::agent_sites::parsed(p).ok().and_then(|(_, args)| args)
+                                .and_then(|args| args["title"].as_str().map(str::to_owned)).unwrap_or_default()
+                        } else if p.schema == 3 {
                             crate::agent_app_creation::parsed(p).ok().and_then(|(_, args)| args)
                                 .and_then(|args| args["title"].as_str().map(str::to_owned)).unwrap_or_default()
+                        } else if self.image_generation_review(p).is_some() {
+                            t("Imagem", "Image")
                         } else { String::new() }
                     }),
                 version: p.version,
                 operation: crate::agent_binary_documents::tool_approvals::operation(&p.canonical_tool),
                 expires_ms: p.expires_at_ms,
+                preview_kind: (p.schema==5).then(||"site".into()),
                 review: Some(self.tool_review_dto(r)),
+                canonical_tool: Some(p.canonical_tool.clone()),
+                image: self.image_generation_review(p),
             }),
             id: r.req.id.clone(),
             agent: self.persona(&r.req.agent),

@@ -161,3 +161,6 @@ mod editing;
 mod publication;
 mod reading;
 mod storage;
+
+pub(crate) use publication::FileSendInput;
+pub(crate) use storage::FileAddInput;

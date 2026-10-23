@@ -1,5 +1,11 @@
 import { Column, Host, ListItem, Text } from '@expo/ui';
-import { accessibilityHint, accessibilityLabel, frame, padding } from '@expo/ui/swift-ui/modifiers';
+import {
+  accessibilityHint,
+  accessibilityLabel,
+  disabled,
+  frame,
+  padding,
+} from '@expo/ui/swift-ui/modifiers';
 import { View } from 'react-native';
 import { useTheme } from '../theme';
 import { Icon } from './primitives';
@@ -33,7 +39,7 @@ export function SettingsRows({ rows, testID }: { rows: readonly SettingsRow[]; t
             <ListItem
               key={row.id}
               testID={row.id}
-              onPress={row.onPress}
+              onPress={row.disabled ? undefined : row.onPress}
               colors={{ containerColor: 'transparent', contentColor: p.list.text }}
               leading={
                 <View
@@ -83,6 +89,7 @@ export function SettingsRows({ rows, testID }: { rows: readonly SettingsRow[]; t
                         alignment: 'leading',
                       }),
                       padding({ horizontal: 16 }),
+                      disabled(row.disabled ?? false),
                       accessibilityLabel(
                         row.supportingText ? `${row.title}, ${row.supportingText}` : row.title,
                       ),

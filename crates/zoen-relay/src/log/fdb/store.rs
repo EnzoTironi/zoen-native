@@ -2,6 +2,13 @@ use super::*;
 
 #[async_trait]
 impl LogStore for FdbLog {
+    async fn runtime_cell(
+        &self,
+        namespace: &str,
+        witness: &str,
+    ) -> Result<Option<String>, StoreError> {
+        self.bound_runtime_cell(namespace, witness).await
+    }
     async fn ready(&self) -> bool {
         self.owner.ready().await && self.forwarding.get().is_none_or(|f| f.connected())
     }

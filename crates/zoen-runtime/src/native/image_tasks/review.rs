@@ -4,7 +4,7 @@ mod storage;
 pub(crate) mod testing;
 use super::*;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use client_core::{image_tasks::ImageTaskInput, relay_output_transport::RelayOutputTransport};
+use client_core::image_tasks::ImageTaskInput;
 use protocol::{ClientFrame, Envelope};
 use types::Seen;
 
@@ -242,9 +242,9 @@ impl NativeCustody {
                 event_log::Signer::from_secret(&credential.secret),
                 credential.certificate.clone(),
             );
-            let mut transport = RelayOutputTransport::connect(&target.url, &target.relay, actor)
-                .await
-                .map_err(super::delivery::transport_error)?;
+            let mut transport = runtime
+                .connect_bound_output(&target.url, &target.relay, actor)
+                .await?;
             staging.authorize().await?;
             let envelope = staging
                 .envelope

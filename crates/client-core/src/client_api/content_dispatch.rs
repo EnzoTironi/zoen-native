@@ -9,6 +9,28 @@ impl Client {
     ) -> Result<String, CoreError> {
         use Command::*;
         match command {
+            SiteToolReview {
+                expected_identity_id,
+                expected_device_id,
+                request_id,
+                expected_hash,
+            } => encode(&self.lock().site_tool_review(
+                &expected_identity_id,
+                &expected_device_id,
+                &request_id,
+                &expected_hash,
+            )?),
+            StageImageGeneration {
+                scope,
+                source_id,
+                serving_id,
+                input,
+            } => encode(&self.lock().stage_scoped_image_generation(
+                &scope,
+                &source_id,
+                &serving_id,
+                input,
+            )?),
             SiteRead {
                 scope,
                 item_id,

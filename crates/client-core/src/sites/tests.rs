@@ -61,7 +61,8 @@ pub(super) fn review(scope: &SiteScope, source: &SiteSource) -> SiteReview {
                 &scope.space_id,
                 &source.source.item_id,
                 "https://sites.example.test",
-            ),
+            )
+            .unwrap(),
             request_id: types::new_secret_id("pub"),
             expected_head: None,
             change: Change::Publish {
@@ -125,12 +126,12 @@ fn preparation_signs_exact_shared_numeric_contract_and_refuses_changed_content_o
     let prepared = e.site_prepare(&r, &r.relay_url, &r.configuration).unwrap();
     assert!(event_log::verify_sig(
         &scope.device_id,
-        &prepared.signed.signing_bytes("relay.test"),
+        &prepared.signed.signing_bytes("relay.test").unwrap(),
         &prepared.signed.signature
     ));
     assert!(!event_log::verify_sig(
         &scope.device_id,
-        &prepared.signed.signing_bytes("other"),
+        &prepared.signed.signing_bytes("other").unwrap(),
         &prepared.signed.signature
     ));
     let value = serde_json::to_value(&prepared).unwrap();
@@ -328,14 +329,17 @@ fn unpublish_requires_an_observed_head_and_signs_no_html_payload() {
     assert!(result.html.is_none());
     assert!(event_log::verify_sig(
         &scope.device_id,
-        &result.signed.signing_bytes(&r.configuration.audience),
+        &result
+            .signed
+            .signing_bytes(&r.configuration.audience)
+            .unwrap(),
         &result.signed.signature
     ));
     let mut tampered = result.signed.clone();
     tampered.mutation.expected_head = Some("b".repeat(64));
     assert!(!event_log::verify_sig(
         &scope.device_id,
-        &tampered.signing_bytes(&r.configuration.audience),
+        &tampered.signing_bytes(&r.configuration.audience).unwrap(),
         &tampered.signature
     ));
 }

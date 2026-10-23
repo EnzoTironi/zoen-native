@@ -16,6 +16,7 @@ pub use native::{
     ImageReviewProgress,
 };
 mod pricing;
+mod relay_binding;
 pub use pricing::{ImageEndpointPolicy, ImagePriceProfile, ImagePriceQuote, PriceProfile};
 pub use types::owner_budget::{OwnerPeriodPolicy, SignedOwnerPolicy};
 

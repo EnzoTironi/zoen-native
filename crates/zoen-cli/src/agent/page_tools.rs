@@ -7,6 +7,7 @@ pub(super) enum CanonicalPermit {
     Deck(client_core::ApprovedToolTurn),
     Page(client_core::ApprovedPageTurn),
     Create(client_core::agent_app_creation::ApprovedAppCreation),
+    Site(client_core::agent_sites::ApprovedSiteTool),
 }
 impl CanonicalPermit {
     pub(super) fn new(tools: &SpaceTools<'_>, request: &str, schema: u8) -> Result<Self, Refusal> {
@@ -35,6 +36,11 @@ impl CanonicalPermit {
                 .approved_app_creation(request)
                 .map(Self::Create)
                 .map_err(|error| Refusal::core(Phase::DeckPermit, error)),
+            5 => tools
+                .e
+                .approved_site_tool(request)
+                .map(Self::Site)
+                .map_err(|error| Refusal::core(Phase::PagePermit, error)),
             _ => return Err(Refusal::family()),
         };
         tools
@@ -47,11 +53,16 @@ impl CanonicalPermit {
             Self::Deck(p) => p.proposal(),
             Self::Page(p) => p.proposal(),
             Self::Create(p) => p.proposal(),
+            Self::Site(p) => p.proposal(),
         };
         (&p.canonical_tool, &p.continuation_json)
     }
     pub(super) fn execute(&self, tools: &SpaceTools<'_>) -> Result<String, String> {
         match self {
+            Self::Site(permit) => tools
+                .e
+                .execute_site_tool(permit)
+                .map_err(|error| error.to_string()),
             Self::Create(permit) => tools
                 .e
                 .execute_app_creation(permit)
@@ -180,6 +191,7 @@ impl SpaceTools<'_> {
             ),
             2 => self.e.recover_page_tool_results(request, steps),
             3 => self.e.recover_app_creation_results(request, steps),
+            5 => self.e.recover_site_tool_results(request, steps),
             _ => return Err("Unsupported canonical tool family".into()),
         }
         .map_err(|e| e.to_string());

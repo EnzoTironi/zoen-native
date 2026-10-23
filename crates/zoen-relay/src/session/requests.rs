@@ -121,6 +121,12 @@ impl Session {
                 Ok(Reply::Done)
             }
             Op::Agent(req) => self.agent(req).await,
+            Op::RuntimeBinding(request) => {
+                crate::runtime_binding::prove(&self.st, &self.identity, &self.device, request)
+                    .await
+                    .map(Reply::RuntimeBinding)
+                    .map_err(str::to_owned)
+            }
             Op::CallTurn { space, peer } => self.call_turn(&space, &peer).await,
             Op::Devices => Ok(Reply::Devices(
                 db::devices_of(pool, &self.identity)

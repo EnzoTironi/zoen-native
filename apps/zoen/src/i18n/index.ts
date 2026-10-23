@@ -1,4 +1,5 @@
 import { attachmentTabs } from './catalogs/attachment-tabs.ts';
+import { imageReview } from './catalogs/image-review.ts';
 import { sites } from './catalogs/sites.ts';
 import { access } from './catalogs/access.ts';
 import { activity } from './catalogs/activity.ts';
@@ -30,6 +31,7 @@ import { presentation } from './catalogs/presentation.ts';
 import { profile } from './catalogs/profile.ts';
 import { peerInfo } from './catalogs/peer-info.ts';
 import { settings } from './catalogs/settings.ts';
+import { deviceDirectory } from './catalogs/device-directory.ts';
 import { createLocalization } from './runtime.ts';
 import {
   formatLocale as resolveFormatLocale,
@@ -40,6 +42,7 @@ import {
 
 // Feature owners only add their catalog import and assembly entry here.
 const catalogs = {
+  imageReview,
   sites,
   attachmentTabs,
   access,
@@ -72,6 +75,7 @@ const catalogs = {
   profile,
   peerInfo,
   settings,
+  deviceDirectory,
 };
 function createAppLocalization(locale: AppLocale) {
   return createLocalization(catalogs, [locale]);

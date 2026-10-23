@@ -2,6 +2,8 @@ use super::*;
 use crate::image_tasks::{ImageTaskDefinition, ImageTaskInput};
 use sha2::Digest;
 
+mod owner_review_cases;
+
 pub(super) fn input() -> ImageTaskInput {
     ImageTaskInput {
         prompt: "A quiet blue sky".into(),

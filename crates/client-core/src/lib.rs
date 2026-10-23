@@ -14,6 +14,7 @@ pub use agent_pages::approvals::ApprovedPageTurn;
 pub use agent_pages::{AgentPageDelivery, AgentPageResult, AgentPageSnapshot, AgentPageTurn};
 pub mod agent_app_creation;
 mod agent_definition;
+pub mod agent_sites;
 pub use agent_definition::{
     AgentDefinitionDto, AgentDefinitionPreviewDto, AgentDefinitionUpdateDto,
     AgentDefinitionUpdateOutcome,

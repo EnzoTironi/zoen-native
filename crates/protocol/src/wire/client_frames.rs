@@ -95,6 +95,10 @@ impl ClientFrame {
                         space: space.clone(),
                         peer: peer.clone(),
                     }),
+                    Op::RuntimeBinding(r) => pb_req::Op::RuntimeBinding(PbRuntimeBindingRequest {
+                        namespace: r.namespace.clone(),
+                        nonce: r.nonce.clone(),
+                    }),
                 }),
             }),
             ClientFrame::Publish { env } => F::Publish(envelope_to(env)),
@@ -188,6 +192,16 @@ impl ClientFrame {
                         space: r.space,
                         peer: r.peer,
                     },
+                    pb_req::Op::RuntimeBinding(r) => {
+                        let request = crate::runtime_binding::Request {
+                            namespace: r.namespace,
+                            nonce: r.nonce,
+                        };
+                        if !request.valid() {
+                            return Err(bad("runtime binding request"));
+                        }
+                        Op::RuntimeBinding(request)
+                    }
                 },
             },
             // Only the relay prunes: a device can't hand it a stub.

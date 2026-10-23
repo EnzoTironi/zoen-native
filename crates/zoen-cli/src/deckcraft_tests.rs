@@ -35,7 +35,7 @@ pub(crate) fn fixture() -> Fixture {
 }
 #[path = "deckcraft/fixture.rs"]
 mod fixture_construction;
-pub(crate) use fixture_construction::fixture_at;
+pub(crate) use fixture_construction::{fixture_at, fixture_with_privacy_at};
 
 pub(crate) fn worker() -> Arc<DeckcraftWorker> {
     if [

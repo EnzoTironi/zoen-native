@@ -6,7 +6,10 @@ use std::io::{self, Write};
 use zoen_agentd::{ToolCall, ToolDef, ToolObservation, ToolStep};
 
 const EVENT: &str = "zoen.agent.tools.v1";
-const KINDS: [&str; 8] = [
+const KINDS: [&str; 11] = [
+    "create_site",
+    "read_site",
+    "replace_site_source",
     "create_deckcraft",
     "read_deckcraft",
     "deckcraft_text_set",
@@ -38,9 +41,22 @@ fn public_kind(host: &SpaceTools<'_>, name: &str) -> Option<Value> {
         return (client_core::agent_app_creation::model_name(&host.space).as_deref() == Some(name))
             .then(|| json!({"kind":kind}));
     }
-    let (expected, separator) = if current.deckcraft_items.contains(item)
-        && crate::deckcraft::recognizes(kind)
-    {
+    if kind == "create_site" && item == &host.space {
+        return (client_core::agent_sites::model_name(kind, item).as_deref() == Some(name))
+            .then(|| json!({"kind":kind}));
+    }
+    let (expected, separator) = if current
+        .e
+        .agent_site_sources(&current.space, current.source, current.serving)
+        .iter()
+        .any(|(id, _, _)| id == item)
+        && current.names.iter().any(|(definition, locator, tool)| {
+            definition.name == name
+                && locator == item
+                && client_core::agent_sites::model_name(tool, item).as_deref() == Some(name)
+        }) {
+        (client_core::agent_sites::model_name(kind, item)?, "_")
+    } else if current.deckcraft_items.contains(item) && crate::deckcraft::recognizes(kind) {
         (crate::deckcraft::model_name(kind, item)?, "__")
     } else if current.page_items.contains(item) && client_core::agent_page_tools::recognizes(kind) {
         (client_core::agent_page_tools::model_name(kind, item)?, "_")

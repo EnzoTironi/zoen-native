@@ -377,6 +377,15 @@ mod pin_tests;
 mod initial_history_tests;
 
 mod directory;
+mod enroll_prepare;
 mod enrollment;
+#[cfg(test)]
+mod enrollment_owner_tests;
+mod history_commit;
+#[cfg(test)]
+mod history_owner_tests;
 mod history_state;
+mod owner;
+#[cfg(test)]
+mod test_transport;
 mod transfer;

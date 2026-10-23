@@ -28,6 +28,7 @@ pub mod pseudonym;
 pub mod push;
 pub mod receipts;
 pub mod recent;
+mod runtime_binding;
 pub mod session;
 pub mod sites;
 pub mod telemetry;

@@ -4595,6 +4595,7 @@ version = "0.1.0"
 dependencies = [
  "event-log",
  "hex",
+ "hmac 0.12.1",
  "prost",
  "serde",
  "serde_json",

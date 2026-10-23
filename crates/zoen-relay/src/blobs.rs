@@ -77,10 +77,37 @@ pub async fn put(
             .to_string()
     };
     let (device, ts, sig) = (h("x-zoen-device"), h("x-zoen-ts"), h("x-zoen-sig"));
-    let admitted = match policy::put_policy(&sha, &device, &ts, &sig, &st.relay_name, now_ms()) {
+    let binding = match headers.get(protocol::runtime_binding::BLOB_HEADER) {
+        None => None,
+        Some(value) => {
+            if value.as_bytes().len() > 2048 {
+                return err(StatusCode::UNAUTHORIZED, "invalid runtime binding");
+            }
+            match serde_json::from_slice::<protocol::runtime_binding::BlobBinding>(value.as_bytes())
+            {
+                Ok(binding) => Some(binding),
+                Err(_) => return err(StatusCode::UNAUTHORIZED, "invalid runtime binding"),
+            }
+        }
+    };
+    let policy = match &binding {
+        Some(binding) => {
+            policy::put_bound_policy(&sha, &device, &ts, &sig, &st.relay_name, now_ms(), binding)
+        }
+        None => policy::put_policy(&sha, &device, &ts, &sig, &st.relay_name, now_ms()),
+    };
+    let admitted = match policy {
         Ok(admitted) => admitted,
         Err(error) => return policy_error(error),
     };
+    if let Some(binding) = &binding {
+        if crate::runtime_binding::verify_blob(&st, &device, binding)
+            .await
+            .is_err()
+        {
+            return err(StatusCode::FORBIDDEN, "runtime binding refused");
+        }
+    }
     match crate::db::device_active(&st.pool, &device).await {
         Ok(true) => {}
         Ok(false) => return err(StatusCode::FORBIDDEN, "unlinked device"),
@@ -140,6 +167,7 @@ pub fn cors() -> tower_http::cors::CorsLayer {
             HeaderName::from_static("x-zoen-device"),
             HeaderName::from_static("x-zoen-ts"),
             HeaderName::from_static("x-zoen-sig"),
+            HeaderName::from_static(protocol::runtime_binding::BLOB_HEADER),
         ])
         .max_age(std::time::Duration::from_secs(86_400))
 }

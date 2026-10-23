@@ -5,6 +5,18 @@ use super::*;
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub(super) enum Command {
+    SiteToolReview {
+        expected_identity_id: String,
+        expected_device_id: String,
+        request_id: String,
+        expected_hash: String,
+    },
+    StageImageGeneration {
+        scope: crate::image_tasks::ImageTaskScope,
+        source_id: String,
+        serving_id: String,
+        input: crate::image_tasks::ImageTaskInput,
+    },
     SiteRead {
         scope: crate::sites::SiteScope,
         item_id: String,
