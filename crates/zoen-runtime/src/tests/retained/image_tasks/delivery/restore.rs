@@ -113,7 +113,7 @@ impl Snapshot {
         }
     }
 
-    pub(super) async fn restore(&self, f: &Fixture, current_sql: &sql::Snapshot) {
+    async fn restore(&self, f: &Fixture, current_sql: &sql::Snapshot) {
         current_sql.assert_exact(&sql::Snapshot::capture(f).await);
         let transaction = f.world.runtime.execution.transaction().await.unwrap();
         // Compare current full ownership bytes in the same actual transaction;
