@@ -187,23 +187,41 @@ impl Engine {
         })
     }
 
+    pub(crate) fn app_trust_available(&self, item: &str) -> bool {
+        self.state
+            .items
+            .get(item)
+            .is_some_and(|it| self.active_app_trust(&it.space, item).is_some())
+    }
     pub(super) fn app_trust_in_space(&self, space: &str, item: &str) -> TrustLevel {
-        let grantee = format!("app:{item}");
-        self.space_projections
-            .get(space)
-            .into_iter()
-            .flat_map(|scoped| scoped.grants.iter())
-            .rev()
-            .filter(|g| {
-                !g.revoked
-                    && g.grant.grantee.as_deref() == Some(grantee.as_str())
-                    && g.grant.scope == GrantScope::Item(item.to_string())
-                    && g.grant.expires_at_ms.is_none_or(|at| at > now_ms())
-            })
-            .find_map(|g| match g.grant.capability {
-                Capability::Trust(l) => Some(l),
-                _ => None,
-            })
+        self.active_app_trust(space, item)
             .unwrap_or(TrustLevel::Listen)
+    }
+    fn active_app_trust(&self, space: &str, item: &str) -> Option<TrustLevel> {
+        match self
+            .space_projections
+            .get(space)
+            .and_then(|scoped| scoped.app_trust_baseline(item))
+        {
+            Some(g) if g.revoked || g.grant.expires_at_ms.is_some_and(|at| at <= now_ms()) => None,
+            Some(g) => match g.grant.capability {
+                Capability::Trust(level) => Some(level),
+                _ => None,
+            },
+            None => Some(TrustLevel::Listen),
+        }
+    }
+}
+
+impl State {
+    /// Select before testing validity: revocation/expiry cannot revive old Act.
+    /// Engine callers pass the existing per-Space projection, preserving scope.
+    pub(crate) fn app_trust_baseline(&self, item: &str) -> Option<&GrantState> {
+        let grantee = format!("app:{item}");
+        self.grants.iter().rev().find(|g| {
+            g.grant.grantee.as_deref() == Some(grantee.as_str())
+                && g.grant.scope == GrantScope::Item(item.into())
+                && matches!(g.grant.capability, Capability::Trust(_))
+        })
     }
 }

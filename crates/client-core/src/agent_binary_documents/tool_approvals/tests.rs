@@ -223,3 +223,5 @@ mod decisions;
 mod recovery;
 
 mod renewal;
+
+mod trust_revocation;
