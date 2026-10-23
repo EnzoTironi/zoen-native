@@ -379,7 +379,7 @@ pub async fn device_revoked(pool: &PgPool, device: &str) -> Result<bool, sqlx::E
     .is_some())
 }
 
-/// Leaves a box; a second one under the same id is refused (they are one-time).
+/// Publishes one immutable pairing box; a live id cannot be overwritten.
 pub async fn put_link_box(
     tx: &mut Transaction<'_, Postgres>,
     id: &str,
@@ -413,11 +413,12 @@ pub async fn put_link_box(
     Ok(r.rows_affected() == 1)
 }
 
-/// Takes the box under `id` (deleting it), if there is a fresh one.
-pub async fn take_link_box(pool: &PgPool, id: &str) -> Result<Option<Vec<u8>>, sqlx::Error> {
+/// Reads the original sealed bytes until expiry. A lost response must not consume
+/// the recipient's only copy. Reads never extend TTL or admit another publication.
+pub async fn read_link_box(pool: &PgPool, id: &str) -> Result<Option<Vec<u8>>, sqlx::Error> {
     sqlx::query_scalar(
-        "DELETE FROM link_boxes WHERE id = $1 AND created_at > now() - interval '15 minutes'
-         RETURNING sealed",
+        "SELECT sealed FROM link_boxes WHERE id = $1
+         AND created_at > now() - interval '15 minutes'",
     )
     .bind(id)
     .fetch_optional(pool)

@@ -135,3 +135,9 @@ fn spawning_on_an_actual_closed_runtime_cannot_deadlock_completion_under_the_gat
 async fn agent_purpose_uses_distinct_mailbox_and_same_revocable_install_lease() {
     socket_cases::agent_purpose_uses_distinct_mailbox_and_same_revocable_install_lease().await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn lost_transport_response_retries_the_original_pending_and_installs_only_once() {
+    socket_cases::lost_transport_response_retries_the_original_pending_and_installs_only_once()
+        .await;
+}

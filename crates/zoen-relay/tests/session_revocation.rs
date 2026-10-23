@@ -432,6 +432,8 @@ mod admission;
 mod concurrent_revocation;
 #[path = "session_revocation/enrollment.rs"]
 mod enrollment;
+#[path = "session_revocation/mailbox.rs"]
+mod mailbox;
 #[path = "session_revocation/presence.rs"]
 mod presence;
 #[path = "session_revocation/profiles.rs"]
