@@ -117,14 +117,8 @@ impl Store {
         {
             return Err(StoreError::InvalidImage);
         }
-        if self
-            .media_key(plain)?
-            .is_some_and(|v| v != (blob.into(), key.into()))
-        {
-            return Err(StoreError::InvalidImage);
-        }
         let name = format!("native.blob.pending/1/{blob}");
-        let value = serde_json::to_string(&(plain, bytes))?;
+        let value = serde_json::to_string(&(plain, key, bytes))?;
         if self.meta(&name)?.is_some_and(|old| old != value) {
             return Err(StoreError::InvalidImage);
         }
@@ -156,12 +150,24 @@ mod tests {
         assert!(s.pending_uploads(10).unwrap().is_empty());
         assert!(s.queue_external_media(&plain, &blob, &key, 106).is_err());
         assert!(s
-            .queue_external_media(&plain, &"d".repeat(64), &key, 105)
+            .queue_external_media(&plain, &blob, &"e".repeat(64), 105)
             .is_err());
+        let second = "d".repeat(64);
+        s.queue_external_media(&plain, &second, &"e".repeat(64), 105)
+            .unwrap();
+        assert_eq!(
+            s.media_key(&plain).unwrap(),
+            Some((blob.clone(), key.clone())),
+            "first plaintext cache is not a global FileDoc authority"
+        );
+        assert_eq!(s.uploads_pending().unwrap(), 2);
         let cold = Store::from_memory_image(&s.memory_image().unwrap()).unwrap();
         assert!(cold.upload_pending(&blob).unwrap());
         cold.upload_done(&blob).unwrap();
         assert!(!cold.upload_pending(&blob).unwrap());
+        assert_eq!(cold.uploads_pending().unwrap(), 1);
+        assert!(cold.upload_pending(&second).unwrap());
+        cold.upload_done(&second).unwrap();
         assert_eq!(cold.uploads_pending().unwrap(), 0);
         s.wipe_sync().unwrap();
         assert_eq!(s.uploads_pending().unwrap(), 0);

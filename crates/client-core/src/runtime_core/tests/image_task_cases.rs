@@ -371,3 +371,91 @@ fn referenced_png_at_the_full_representable_response_boundary_stays_bounded() {
         MAXIMUM
     );
 }
+
+#[test]
+fn identical_png_in_distinct_approved_tasks_keeps_independent_blob_keys_after_cold_restore() {
+    let (mut f, first_request, first_hash) = approved();
+    let bytes = png(1024, 1024);
+    let first = f
+        .core
+        .prepare_image_task_referenced(&first_request, &first_hash, &bytes, crate::engine::now_ms())
+        .unwrap();
+    let first_chunk = first.file().chunks[0].clone();
+    for blob in first.blobs() {
+        f.core.engine.upload_done(&blob.reference().blob);
+    }
+    let frame = ordered(&f.owner, first.envelope().clone());
+    assert_eq!(f.owner.ingest(frame.clone()), Ingest::Applied);
+    f.core.ingest(vec![frame]).unwrap();
+    let image = f.core.image().unwrap();
+    f.core = DeviceCore::restore(image, f.credential()).unwrap();
+    f.message("Create the same image as a separate artifact.");
+    let source = f.core.engine.logs[SPACE]
+        .events()
+        .last()
+        .unwrap()
+        .client_id
+        .clone();
+    let (review, envelope, _) = f.core.stage_image_task(SPACE, &source, input()).unwrap();
+    let second_request = review.id;
+    let second_hash = review.tool_approval.unwrap().content_hash;
+    assert_ne!(first_request, second_request);
+    let frame = ordered(&f.owner, envelope);
+    assert_eq!(f.owner.ingest(frame.clone()), Ingest::Applied);
+    f.core.ingest(vec![frame]).unwrap();
+    f.encrypted(
+        EventBody::RequestResolved {
+            request: second_request.clone(),
+            approved: true,
+            content_hash: second_hash.clone(),
+            resolution: Some(RequestResolution {
+                message: String::new(),
+                created_item: None,
+                ai_cost_cents: 0,
+                standing_grant: None,
+                tool_decision: Some(ToolDecision::ApproveOnce),
+            }),
+        },
+        crate::engine::now_ms(),
+    );
+    let second = f
+        .core
+        .prepare_image_task_referenced(
+            &second_request,
+            &second_hash,
+            &bytes,
+            crate::engine::now_ms(),
+        )
+        .unwrap();
+    let second_chunk = &second.file().chunks[0];
+    assert_eq!(first_chunk.sha256, second_chunk.sha256);
+    assert_ne!(first_chunk.blob, second_chunk.blob);
+    assert_ne!(first_chunk.key, second_chunk.key);
+    let cold = DeviceCore::restore(
+        NativeImage::decode_bounded(second.image().as_bytes().to_vec()).unwrap(),
+        f.credential(),
+    )
+    .unwrap();
+    assert_eq!(
+        cold.engine.store.media_key(&first_chunk.sha256).unwrap(),
+        Some((first_chunk.blob.clone(), first_chunk.key.clone()))
+    );
+    assert!(!cold.engine.store.upload_pending(&first_chunk.blob).unwrap());
+    assert!(cold
+        .engine
+        .store
+        .upload_pending(&second_chunk.blob)
+        .unwrap());
+    assert!(cold.engine.outbox_envelopes().is_empty());
+    for prepared in [&first, &second] {
+        let actual: Vec<u8> = prepared
+            .blobs()
+            .iter()
+            .flat_map(|blob| {
+                event_log::media::open(&hex::decode(&blob.reference().key).unwrap(), blob.bytes())
+                    .unwrap()
+            })
+            .collect();
+        assert_eq!(actual, bytes);
+    }
+}
