@@ -80,7 +80,7 @@ use crate::ownership::{self, Fence, NodeOwner};
 use super::{
     admission::{self, admit, Effect, Facts},
     sequencer::{Applied, Batcher, Pending, Sequencer},
-    InviteInfo, LogStore, Reject, Sequencing, StoreError,
+    InviteInfo, LogStore, Reject, Sequencing, StoreError, VisiblePage,
 };
 
 mod invite_routing;
