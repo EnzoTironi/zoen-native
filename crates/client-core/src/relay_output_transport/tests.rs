@@ -9,6 +9,7 @@ fn expected(actor: &Author, nonce: u8) -> Expectation {
         Request {
             namespace: "runtime-a".into(),
             nonce: vec![nonce; 32],
+            managed: None,
         },
         "cell-a",
         "relay-a",

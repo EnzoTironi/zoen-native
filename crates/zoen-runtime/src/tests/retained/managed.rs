@@ -74,6 +74,7 @@ async fn fixture() -> (Fixture, Arc<Vault>) {
             owner,
             space: new_id("managed-ingress"),
             head: None,
+            managed_directory: None,
         },
         vault,
     )

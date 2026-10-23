@@ -61,6 +61,8 @@ struct Review {
     content_hash: String,
     wire: String,
     accepted: Option<Seen>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    checkpoint: Option<relay_admission::managed_images::Checkpoint>,
 }
 impl Review {
     fn envelope(
@@ -232,6 +234,7 @@ impl NativeCustody {
                         .content_hash,
                     wire,
                     accepted: None,
+                    checkpoint: None,
                 });
                 staging.envelope = Some(envelope);
                 staging.activate().await?;
@@ -242,18 +245,38 @@ impl NativeCustody {
                 event_log::Signer::from_secret(&credential.secret),
                 credential.certificate.clone(),
             );
+            let envelope = staging
+                .envelope
+                .as_ref()
+                .ok_or(RuntimeError::InvalidBinding)?;
+            let checkpoint = staging
+                .review
+                .as_ref()
+                .ok_or(RuntimeError::InvalidBinding)?
+                .checkpoint
+                .as_ref();
             let mut transport = runtime
-                .connect_bound_output(&target.url, &target.relay, actor)
+                .connect_bound_image_output(&target.url, &target.relay, actor, envelope, checkpoint)
                 .await?;
             staging.authorize().await?;
             let envelope = staging
                 .envelope
                 .as_ref()
                 .ok_or(RuntimeError::InvalidBinding)?;
-            let seq = transport
-                .publish(envelope)
-                .await
-                .map_err(super::delivery::transport_error)?;
+            let checkpoint = staging
+                .review
+                .as_ref()
+                .ok_or(RuntimeError::InvalidBinding)?
+                .checkpoint
+                .as_ref();
+            let expected = runtime
+                .image_publish_expectation(&target.relay, envelope, checkpoint)
+                .await?;
+            let seq = match expected {
+                Some(expected) => transport.publish_managed(envelope, expected).await,
+                None => transport.publish(envelope).await,
+            }
+            .map_err(super::delivery::transport_error)?;
             let position = runtime
                 .execution
                 .reply_source()?

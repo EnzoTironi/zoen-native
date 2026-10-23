@@ -12,10 +12,40 @@ pub(crate) struct FreshClaim {
     attempt: String,
     nonce: String,
     binding: String,
+    checkpoint: Option<crate::managed_images::DispatchCheckpoint>,
 }
 impl FreshClaim {
-    pub fn consume(self) -> (String, String, String) {
-        (self.attempt, self.nonce, self.binding)
+    pub(crate) fn effect_digest(&self) -> Result<String, RuntimeError> {
+        self.checkpoint_reference().digest()
+    }
+    pub(crate) fn checkpoint_reference(&self) -> crate::managed_images::DispatchReference {
+        crate::managed_images::DispatchReference {
+            attempt: self.attempt.clone(),
+            nonce: self.nonce.clone(),
+            binding_digest: self.binding.clone(),
+        }
+    }
+    pub(crate) fn with_checkpoint(
+        mut self,
+        checkpoint: Option<crate::managed_images::DispatchCheckpoint>,
+    ) -> Result<Self, RuntimeError> {
+        if checkpoint.as_ref().is_some_and(|checkpoint| {
+            Some(&checkpoint.prepared.effect_digest) != self.effect_digest().ok().as_ref()
+        }) {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        self.checkpoint = checkpoint;
+        Ok(self)
+    }
+    pub fn consume(
+        self,
+    ) -> (
+        String,
+        String,
+        String,
+        Option<crate::managed_images::DispatchCheckpoint>,
+    ) {
+        (self.attempt, self.nonce, self.binding, self.checkpoint)
     }
 }
 pub(crate) struct DirectoryGuard {
@@ -247,12 +277,15 @@ impl DirectoryGuard {
         mut self,
         admission: crate::execution::FreshAdmission,
     ) -> Result<DispatchPermit, RuntimeError> {
-        let (attempt, nonce) = admission.consume();
+        let (attempt, nonce, checkpoint) = admission.consume();
         sqlx::query("INSERT INTO runtime_admission_witnesses (attempt,nonce) VALUES ($1,$2)")
             .bind(attempt)
             .bind(nonce)
             .execute(&mut *self.tx)
             .await?;
+        if let Some(checkpoint) = checkpoint {
+            checkpoint.write_sql(&mut self.tx).await?;
+        }
         // Anchor the monotonic deadline before the SQL clock request, so query
         // and commit latency consume the window rather than extend permission.
         let observed = std::time::Instant::now();
@@ -296,5 +329,8 @@ pub(crate) fn period(year: i32, month: u8) -> Result<(i64, i64), RuntimeError> {
     Ok((start.timestamp_millis(), end.timestamp_millis()))
 }
 mod directory;
+mod image_checkpoint;
+mod image_checkpoint_recovery;
+mod image_publication;
 mod ledger;
 mod settlement;

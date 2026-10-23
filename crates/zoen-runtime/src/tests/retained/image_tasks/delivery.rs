@@ -2,6 +2,7 @@
 mod binding;
 mod proxy;
 mod relay;
+mod restore;
 mod review;
 use super::*;
 use object_store::ObjectStoreExt;
@@ -33,6 +34,16 @@ pub(super) async fn run(f: &mut Fixture, run: &str, output: &crate::ImageOutputI
         RuntimeError::CoreAuthorityUnavailable
     );
     let (envelope, chunks) = proof::transport_original(&f.world.runtime, run).await;
+    let checkpoint = proof::output_checkpoint(&f.world.runtime, run)
+        .await
+        .unwrap();
+    crate::tests::managed_images::assert_publish_checkpoint(
+        &f.world.runtime,
+        f.managed_directory.as_ref().unwrap(),
+        &envelope,
+        &checkpoint,
+    )
+    .await;
     let pending = proof::uploads_pending(&f.world.runtime, run).await;
     assert_eq!(pending, chunks.len() as u64);
     assert!(pending > 0);

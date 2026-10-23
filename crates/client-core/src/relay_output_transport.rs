@@ -3,7 +3,7 @@
 use crate::blob_transport::{BlobUploadError, BlobUploadReceipt};
 use event_log::Author;
 use futures_util::{SinkExt, StreamExt};
-use protocol::runtime_binding::{BlobBinding, Expectation, CAPABILITY};
+use protocol::runtime_binding::{BlobBinding, Expectation, CAPABILITY, MANAGED_CAPABILITY};
 use protocol::{ClientFrame, Envelope, ServerFrame};
 use std::time::Duration;
 use tokio::net::TcpStream;
@@ -20,6 +20,8 @@ pub enum RelayOutputError {
     Unavailable,
     #[error("relay output refused")]
     Refused,
+    #[error("original managed relay output is uncertain")]
+    Unknown,
     #[error(transparent)]
     Blob(#[from] BlobUploadError),
 }
@@ -34,6 +36,7 @@ pub struct RelayOutputTransport {
     relay: String,
     actor: Author,
     binding_capable: bool,
+    managed_capable: bool,
     binding: Option<BlobBinding>,
 }
 
@@ -90,6 +93,7 @@ impl RelayOutputTransport {
             relay: String::new(),
             actor,
             binding_capable: false,
+            managed_capable: false,
             binding: None,
         };
         tokio::time::timeout(
@@ -110,19 +114,24 @@ impl RelayOutputTransport {
         expected: Expectation,
     ) -> Result<Self, RelayOutputError> {
         let mut transport = Self::connect(url, expected_relay, actor).await?;
-        if !transport.binding_capable {
+        transport.rebind_expected(expected).await?;
+        Ok(transport)
+    }
+
+    async fn rebind_expected(&mut self, expected: Expectation) -> Result<(), RelayOutputError> {
+        if !self.binding_capable || expected.request().managed.is_some() && !self.managed_capable {
             return Err(RelayOutputError::Refused);
         }
-        transport
-            .send(ClientFrame::Req {
-                id: 1,
-                op: protocol::Op::RuntimeBinding(expected.request().clone()),
-            })
-            .await?;
-        tokio::time::timeout(Duration::from_secs(15), transport.bind(expected))
+        self.binding = None;
+        self.send(ClientFrame::Req {
+            id: 1,
+            op: protocol::Op::RuntimeBinding(expected.request().clone()),
+        })
+        .await?;
+        tokio::time::timeout(Duration::from_secs(15), self.bind(expected))
             .await
             .map_err(|_| RelayOutputError::Unavailable)??;
-        Ok(transport)
+        Ok(())
     }
 
     async fn bind(&mut self, expected: Expectation) -> Result<(), RelayOutputError> {
@@ -190,6 +199,7 @@ impl RelayOutputTransport {
                 } if identity == self.actor.identity => {
                     self.relay = relay;
                     self.binding_capable = capabilities.iter().any(|c| c == CAPABILITY);
+                    self.managed_capable = capabilities.iter().any(|c| c == MANAGED_CAPABILITY);
                     return Ok(());
                 }
                 ServerFrame::Presence { .. } => {}
@@ -237,6 +247,36 @@ impl RelayOutputTransport {
     /// An Accepted frame only identifies a position. The owner must read that
     /// position from the configured relay source and ingest its actual envelope.
     pub async fn publish(&mut self, env: &Envelope) -> Result<u64, RelayOutputError> {
+        if self
+            .binding
+            .as_ref()
+            .is_some_and(|binding| binding.request.managed.is_some())
+        {
+            return Err(RelayOutputError::Refused);
+        }
+        self.publish_checked(env, false).await
+    }
+
+    /// Every managed effect supplies a fresh expectation derived by its trusted
+    /// owner from the retained checkpoint. Rebind on the original socket; never
+    /// reconnect or silently fall back to an ordinary Publish.
+    pub async fn publish_managed(
+        &mut self,
+        env: &Envelope,
+        expected: Expectation,
+    ) -> Result<u64, RelayOutputError> {
+        if expected.request().managed.is_none() {
+            return Err(RelayOutputError::Invalid);
+        }
+        self.rebind_expected(expected).await?;
+        self.publish_checked(env, true).await
+    }
+
+    async fn publish_checked(
+        &mut self,
+        env: &Envelope,
+        managed: bool,
+    ) -> Result<u64, RelayOutputError> {
         if env.verify().is_err()
             || env.author() != self.actor.identity
             || env.device() != self.actor.device.as_deref()
@@ -248,12 +288,12 @@ impl RelayOutputTransport {
             return Err(RelayOutputError::Invalid);
         }
         self.send(ClientFrame::Publish { env: env.clone() }).await?;
-        tokio::time::timeout(Duration::from_secs(15), self.acceptance(env))
+        tokio::time::timeout(Duration::from_secs(15), self.acceptance(env, managed))
             .await
             .map_err(|_| RelayOutputError::Unavailable)?
     }
 
-    async fn acceptance(&mut self, env: &Envelope) -> Result<u64, RelayOutputError> {
+    async fn acceptance(&mut self, env: &Envelope, managed: bool) -> Result<u64, RelayOutputError> {
         for _ in 0..128 {
             match self.receive().await? {
                 ServerFrame::Accepted {
@@ -262,9 +302,15 @@ impl RelayOutputTransport {
                     seq,
                 } if space == env.space() && client_id == env.client_id() => return Ok(seq),
                 ServerFrame::Rejected {
-                    space, client_id, ..
+                    space,
+                    client_id,
+                    permanent,
+                    ..
                 } if space == env.space() && client_id == env.client_id() => {
-                    return Err(RelayOutputError::Refused)
+                    if managed && !permanent {
+                        return Err(RelayOutputError::Unknown);
+                    }
+                    return Err(RelayOutputError::Refused);
                 }
                 ServerFrame::Error { .. } => return Err(RelayOutputError::Refused),
                 ServerFrame::Event { .. }

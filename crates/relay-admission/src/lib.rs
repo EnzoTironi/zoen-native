@@ -5,6 +5,7 @@ pub mod blobs;
 pub mod directory;
 pub mod gcra;
 pub mod invite;
+pub mod managed_images;
 pub mod mls_projection;
 pub mod portable;
 pub mod receipts;

@@ -38,6 +38,47 @@ fn secret(vault: &dyn SecretVault, key: String) -> Result<Zeroizing<[u8; 32]>, R
 }
 
 impl RuntimeAuthority {
+    pub(crate) async fn configured_image_deployment(
+        &self,
+        agent: &str,
+        device: &str,
+    ) -> Result<relay_admission::managed_images::Deployment, RuntimeError> {
+        let credential = self
+            .native
+            .as_ref()
+            .ok_or(RuntimeError::CoreAuthorityUnavailable)?
+            .credential(agent, device)?;
+        self.finance
+            .native_directory(
+                &credential.agent,
+                &credential.owner,
+                device,
+                &credential.certificate,
+            )
+            .await?
+            .commit()
+            .await?;
+        let (namespace, witness): (String, String) = sqlx::query_as(
+            "SELECT namespace,witness FROM runtime_deployment_binding WHERE singleton",
+        )
+        .fetch_one(&self.finance.pool)
+        .await?;
+        if witness != self.execution.deployment
+            || self.execution.root.bytes()
+                != foundationdb::tuple::pack(&("zoen-runtime-v1", namespace.as_str()))
+        {
+            return Err(RuntimeError::DeploymentMismatch);
+        }
+        self.execution.transaction().await?;
+        Ok(relay_admission::managed_images::Deployment {
+            namespace,
+            witness,
+            source: self.execution.reply_source()?.cell().into(),
+            agent: agent.into(),
+            device: device.into(),
+        })
+    }
+
     /// Opaque vault locators, not credentials or enrollment permissions. The
     /// service never generates a replacement for a missing/invalid retained key.
     pub fn native_capsule_vault_key(namespace: &str, version: u32) -> Result<String, RuntimeError> {

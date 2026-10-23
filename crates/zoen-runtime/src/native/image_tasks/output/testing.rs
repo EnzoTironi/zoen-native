@@ -12,6 +12,12 @@ async fn publication(runtime: &RuntimeAuthority, run: &str) -> Publication {
         .open(&format!("native-image-output/1/{run}"), None, &bytes)
         .unwrap()
 }
+pub(crate) async fn checkpoint(
+    runtime: &RuntimeAuthority,
+    run: &str,
+) -> Option<relay_admission::managed_images::Checkpoint> {
+    publication(runtime, run).await.checkpoint
+}
 pub(crate) async fn transport_original(
     runtime: &RuntimeAuthority,
     run: &str,

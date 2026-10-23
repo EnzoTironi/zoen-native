@@ -87,6 +87,9 @@ mod commit_lanes;
 #[cfg(debug_assertions)]
 mod conflicts;
 mod invite_routing;
+mod managed;
+mod managed_publish;
+mod routing;
 mod runtime;
 pub use runtime::{RuntimeHead, RuntimeSource, RuntimeSourceBatch};
 
@@ -287,6 +290,17 @@ impl FdbLog {
         target_known: bool,
         fence: Fence,
     ) -> Result<Sequencing, Reject> {
+        self.append_fenced_guarded(env, target_known, fence, None)
+            .await
+    }
+
+    async fn append_fenced_guarded(
+        &self,
+        env: &Envelope,
+        target_known: bool,
+        fence: Fence,
+        generation: Option<Arc<relay_admission::managed_images::GenerationGuard>>,
+    ) -> Result<Sequencing, Reject> {
         if !env.valid_invite() {
             return Err(Reject::no("invalid invite code"));
         }
@@ -296,7 +310,7 @@ impl FdbLog {
         }
         let (result, stats) = self
             .sequencer
-            .append(env.clone(), target_known, fence)
+            .append_guarded(env.clone(), target_known, fence, generation)
             .await;
         let span = tracing::Span::current();
         span.record("batch", stats.size);

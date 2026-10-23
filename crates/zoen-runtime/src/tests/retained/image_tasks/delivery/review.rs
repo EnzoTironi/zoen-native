@@ -22,6 +22,17 @@ pub(in crate::tests::retained::image_tasks) async fn run(
         RuntimeError::Unavailable
     );
     let original = proof::review::original(&f.world.runtime, &intent).await;
+    let checkpoint = proof::review::checkpoint(&f.world.runtime, &intent)
+        .await
+        .unwrap();
+    crate::tests::managed_images::assert_publish_checkpoint(
+        &f.world.runtime,
+        f.managed_directory.as_ref().unwrap(),
+        &original.2,
+        &checkpoint,
+    )
+    .await;
+    let before_publish = restore::Snapshot::capture(f).await;
     assert_eq!(head(f).await, before);
     output::cold(f).await;
     assert_eq!(
@@ -86,6 +97,13 @@ pub(in crate::tests::retained::image_tasks) async fn run(
         0
     );
     assert_eq!(f.world.http.sends.load(Ordering::SeqCst), 0);
+    let direct = relay.target(f, relay.address);
+    restore::refuses_consumed_original(f, &intent, &direct, &before_publish, &original).await;
+    assert_eq!(head(f).await, after);
+    assert_eq!(
+        relay.state.metrics.events_sequenced.load(Ordering::SeqCst),
+        1
+    );
     f.head = Some(after);
     relay.stop().await;
     println!("native image review: durable original before send, real lost WS Accepted, cold exact-wire recovery and one review/no paid attempt PASS (production gate closed)");

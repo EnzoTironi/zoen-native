@@ -35,14 +35,21 @@ struct CoreCapsule {
 pub(crate) struct FreshAdmission {
     attempt: String,
     nonce: String,
+    checkpoint: Option<crate::managed_images::DispatchCheckpoint>,
 }
 impl FreshAdmission {
     pub(crate) fn nonce(&self) -> &str {
         &self.nonce
     }
 
-    pub fn consume(self) -> (String, String) {
-        (self.attempt, self.nonce)
+    pub fn consume(
+        self,
+    ) -> (
+        String,
+        String,
+        Option<crate::managed_images::DispatchCheckpoint>,
+    ) {
+        (self.attempt, self.nonce, self.checkpoint)
     }
 }
 pub(crate) struct PreDispatchClosure {
@@ -292,7 +299,7 @@ impl Execution {
         if binding.context != step.request().context {
             return Err(RuntimeError::InvalidBinding);
         }
-        let (attempt, nonce, digest) = claim.consume();
+        let (attempt, nonce, digest, checkpoint) = claim.consume();
         if attempt != binding.context.attempt_id || digest != binding.digest()? {
             return Err(RuntimeError::InvalidBinding);
         }
@@ -319,6 +326,9 @@ impl Execution {
         }
         // The unique SQL nonce is evidence of the consumed claim, never a read API.
         trx.set(&self.attempt(&attempt, "admitted"), nonce.as_bytes());
+        if let Some(checkpoint) = &checkpoint {
+            checkpoint.write_fdb(self, &trx).await?;
+        }
         #[cfg(test)]
         if runtime.fault.load(std::sync::atomic::Ordering::SeqCst) == 22 {
             runtime.native_cut_entered.notify_one();
@@ -327,7 +337,11 @@ impl Execution {
         runtime.continuity()?;
         trx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
         runtime.continuity()?;
-        Ok(FreshAdmission { attempt, nonce })
+        Ok(FreshAdmission {
+            attempt,
+            nonce,
+            checkpoint,
+        })
     }
     #[cfg(test)]
     pub async fn close_before_dispatch(
