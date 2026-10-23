@@ -47,7 +47,7 @@ function fixture() {
   const listeners = new Set<() => void>(),
     preflights = new Set<() => void>();
   const foreground = new Set<(value: string) => void>();
-  const calls: { op: string; owner: string; epoch: number }[] = [];
+  const calls: { op: string; owner: string; epoch: number; code?: string }[] = [];
   let linked = 0,
     launched = 0,
     dismissed = 0;
@@ -71,6 +71,7 @@ function fixture() {
           op: command.op,
           owner: state.snapshot.account.identity_id,
           epoch: store.sessionEpoch,
+          code: command.code,
         });
         return rpc(command);
       },
@@ -408,5 +409,27 @@ test('old rejected work cannot clear a replacement focus busy lease or show its 
   fresh.resolve('654321');
   await settle();
   assert.equal(f.button('access.matchingDigitsAuthorize').props.disabled, false);
+  f.close();
+});
+
+test('an already queued edit cannot replace the code while its digits are being checked', async () => {
+  const f = fixture(),
+    checked = deferred<string>();
+  f.enter();
+  const field = nodes(f.render()).find((node) => node.type === 'Field')!;
+  f.rpc(async (command) =>
+    command.op === 'link_code_check' ? checked.promise : { device_id: 'peer' },
+  );
+  f.button('access.checkCode').props.onPress();
+  field.props.onChangeText('different-unreviewed-code');
+  checked.resolve('123456');
+  await settle();
+  assert.equal(
+    nodes(f.render()).find((node) => node.type === 'Field')?.props.value,
+    'fixture-code',
+  );
+  f.button('access.matchingDigitsAuthorize').props.onPress();
+  await settle();
+  assert.equal(f.calls.find((command) => command.op === 'link_device')?.code, 'fixture-code');
   f.close();
 });

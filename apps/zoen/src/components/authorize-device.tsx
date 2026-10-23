@@ -141,7 +141,7 @@ export function AuthorizeDevice({ onLinked }: { onLinked: () => void }) {
             label={t('access.connectAnotherDevice')}
             disabled={busy || !available}
             onPress={() => {
-              if (!current()) return;
+              if (!current() || busyRef.current) return;
               setDevice(null);
               setCode('');
               setCheck(null);
@@ -176,7 +176,7 @@ export function AuthorizeDevice({ onLinked }: { onLinked: () => void }) {
             label={t('access.connectionCode')}
             value={code}
             onChangeText={(value) => {
-              if (!current()) return;
+              if (!current() || busyRef.current) return;
               setCode(value);
               setCheck(null);
             }}
