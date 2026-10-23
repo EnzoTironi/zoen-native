@@ -9,19 +9,19 @@ fn database(_: sqlx::Error) -> Error {
 }
 
 impl Service {
-    async fn human_fence(
+    pub(super) async fn human_fence(
         &self,
-        signed: &SignedMutation,
+        owner: &str,
+        device: &str,
     ) -> Result<Transaction<'static, Postgres>, Error> {
-        let mut tx =
-            crate::db::authorize_device(&self.pool, &signed.owner_id, &signed.device_id, true)
-                .await
-                .map_err(database)?
-                .ok_or(Error::Unauthorized)?;
+        let mut tx = crate::db::authorize_device(&self.pool, owner, device, true)
+            .await
+            .map_err(database)?
+            .ok_or(Error::Unauthorized)?;
         let human = sqlx::query_scalar::<_, bool>(
             "SELECT kind = 'Person' AND owner IS NULL FROM identities WHERE id = $1 FOR SHARE",
         )
-        .bind(&signed.owner_id)
+        .bind(owner)
         .fetch_optional(&mut *tx)
         .await
         .map_err(database)?;
@@ -37,7 +37,9 @@ impl Service {
         object_key: Option<&str>,
         html: Option<&[u8]>,
     ) -> Result<Receipt, Error> {
-        let mut tx = self.human_fence(signed).await?;
+        let mut tx = self
+            .human_fence(&signed.owner_id, &signed.device_id)
+            .await?;
         // Serializes the first insert too. A hash collision only serializes
         // unrelated sites; all authorization/CAS comparisons use exact IDs.
         sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
@@ -58,7 +60,7 @@ impl Service {
         {
             return Err(Error::Unauthorized);
         }
-        let intent = signed.intent_digest(&self.audience);
+        let intent = signed.intent_digest(&self.configuration.audience);
         let existing = sqlx::query_as::<_, (String, serde_json::Value)>(
             "SELECT intent_sha256, receipt FROM site_publication_receipts
              WHERE site_id = $1 AND request_id = $2",
@@ -73,6 +75,9 @@ impl Service {
                 return Err(Error::Conflict);
             }
             let receipt = serde_json::from_value(receipt).map_err(|_| Error::Unavailable)?;
+            if receipt != Receipt::for_mutation(signed, &self.configuration.audience) {
+                return Err(Error::Unavailable);
+            }
             tx.commit().await.map_err(database)?;
             return Ok(receipt);
         }
@@ -105,7 +110,7 @@ impl Service {
                 _ => return Err(Error::Unavailable),
             }
         }
-        let receipt = Receipt::for_mutation(signed, &self.audience);
+        let receipt = Receipt::for_mutation(signed, &self.configuration.audience);
         let source = match &signed.mutation.change {
             Change::Publish { source } => Some(source),
             Change::Unpublish => None,

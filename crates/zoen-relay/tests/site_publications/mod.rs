@@ -1,4 +1,5 @@
 mod fences;
+mod inspection;
 
 use std::{path::Path, sync::Arc};
 
@@ -14,6 +15,7 @@ use zoen_relay::{
 
 const NOW: i64 = 1_800_000_000_000;
 const AUDIENCE: &str = "sites-test.example";
+const PUBLIC_ORIGIN: &str = "https://published.example.test";
 const FIRST: &[u8] = b"<!doctype html><title>Selected v1</title><p>First</p>";
 const SECOND: &[u8] = b"<!doctype html><title>Selected v2</title><p>Second</p>";
 
@@ -64,6 +66,7 @@ pub fn request(
         at_ms: NOW,
         mutation: Mutation {
             schema: SCHEMA,
+            public_origin: PUBLIC_ORIGIN.into(),
             site_id: site.into(),
             request_id: types::new_secret_id("pub"),
             expected_head: previous,
@@ -99,7 +102,9 @@ pub async fn exercise(pool: &PgPool, directory: &Path) {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let store: Arc<dyn ObjectStore> =
         Arc::new(object_store::local::LocalFileSystem::new_with_prefix(directory).unwrap());
-    let service = Service::new(pool.clone(), store.clone(), AUDIENCE.into()).unwrap();
+    let config =
+        zoen_relay::sites::configure("https://api.example.test", PUBLIC_ORIGIN, AUDIENCE).unwrap();
+    let service = Service::new(pool.clone(), store.clone(), config.clone()).unwrap();
     let owner = Signer::generate();
     let author = register(pool, &owner, IdentityKind::Person, None).await;
     let site = types::new_secret_id("site");
@@ -260,7 +265,7 @@ pub async fn exercise(pool: &PgPool, directory: &Path) {
     let rollback = request(&author, &site, Some(unpublished.head), FIRST, 1);
     let restored = service.apply(&rollback, Some(FIRST), NOW).await.unwrap();
     // Fresh service object, same directory and database: no in-memory head state.
-    let reopened = Service::new(pool.clone(), store.clone(), AUDIENCE.into()).unwrap();
+    let reopened = Service::new(pool.clone(), store.clone(), config).unwrap();
     assert_eq!(
         reopened.apply(&rollback, Some(FIRST), NOW).await.unwrap(),
         restored
@@ -308,6 +313,7 @@ pub async fn exercise(pool: &PgPool, directory: &Path) {
             .await
             .unwrap();
     assert!(!exists);
+    inspection::exercise(&service, &author, &outsider, &site, &restored).await;
     fences::exercise(pool, &service, &author).await;
     assert_eq!(
         service.apply(&rollback, Some(FIRST), NOW).await,

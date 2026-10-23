@@ -5,7 +5,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use protocol::sites::{SignedMutation, MAX_HTML_BYTES};
+use protocol::sites::{SignedInspection, SignedMutation, MAX_HTML_BYTES};
 use serde::Deserialize;
 use std::{sync::Arc, time::Duration};
 
@@ -24,6 +24,10 @@ struct Request {
 pub fn management_router(service: Service) -> Router {
     Router::new()
         .route("/v1/sites/publications", post(publish))
+        .route(
+            "/v1/sites/inspect",
+            post(inspect).layer(DefaultBodyLimit::max(16 * 1024)),
+        )
         .layer(DefaultBodyLimit::max(MAX_REQUEST_BYTES))
         .layer(axum::middleware::from_fn_with_state(
             HttpGate::new(),
@@ -141,19 +145,32 @@ fn error(error: Error) -> Response {
 }
 
 async fn publish(State(service): State<Service>, Json(request): Json<Request>) -> Response {
-    let now_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_millis().min(i64::MAX as u128) as i64)
-        .unwrap_or(0);
     match service
         .apply(
             &request.signed,
             request.html.as_deref().map(str::as_bytes),
-            now_ms,
+            now_ms(),
         )
         .await
     {
         Ok(receipt) => ([(header::CACHE_CONTROL, "no-store")], Json(receipt)).into_response(),
+        Err(reason) => error(reason),
+    }
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis().min(i64::MAX as u128) as i64)
+        .unwrap_or(0)
+}
+
+async fn inspect(
+    State(service): State<Service>,
+    Json(request): Json<SignedInspection>,
+) -> Response {
+    match service.inspect(&request, now_ms()).await {
+        Ok(inspection) => ([(header::CACHE_CONTROL, "no-store")], Json(inspection)).into_response(),
         Err(reason) => error(reason),
     }
 }

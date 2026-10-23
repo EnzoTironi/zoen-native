@@ -6,7 +6,7 @@ uma pessoa autoriza a cópia pública. Editar ou abrir uma prévia não publica 
 O contrato está em `protocol::sites`; a preparação do cliente e a experiência iOS
 são acompanhadas em #319. Este incremento de backend não encerra essa jornada.
 
-`SignedMutation` fixa audiência, pessoa, dispositivo, destino, request ID, head
+`SignedMutation` fixa audiência, pessoa, dispositivo, origem pública, destino, request ID, head
 público esperado e versão/hash/tamanho da origem. A assinatura vale por cinco
 minutos. A renovação pode mudar dispositivo e instante, mantendo o mesmo intent;
 o backend ainda exige um dispositivo atual da mesma pessoa antes de devolver um
@@ -40,8 +40,18 @@ As origens precisam de hostnames diferentes e listeners distintos. O proxy deve
 encaminhar cada origem somente ao listener correspondente, com TLS na implantação
 pública. Gestão expõe apenas `POST /v1/sites/publications`, corpo
 `{ "signed": SignedMutation, "html": string | null }`, resposta `Receipt`. O
-listener público expõe somente `GET /s/{site_id}`. Nenhum endpoint de gestão ou
+listener público expõe somente `GET /s/{site_id}`. Gestão também oferece
+`POST /v1/sites/inspect` com `SignedInspection`: head atual e histórico de até
+100 receipts, com cursor assinado para continuar a cadeia. Mesmo a leitura exige
+o dispositivo humano atual do dono. Nenhum endpoint de gestão ou
 autenticação existe nele. Nenhum HTML público é servido no router do relay.
+
+Configure as duas origens também no processo relay: `GET /v1/sites/config`
+anuncia o contrato compartilhado `Configuration` (404 se desativado, 503 se
+configuração incompleta/inválida). O cliente consulta apenas seu relay já
+conhecido, verifica a audiência e fixa a origem pública na assinatura do
+consentimento. O servidor de publicação recusa uma origem diferente da sua
+configuração imutável. HTTP é aceito somente em loopback no desenvolvimento.
 
 O primeiro formato suporta um snapshot HTML UTF-8 autocontido de até 2 MiB, sem
 NUL. Os bytes não são reescritos. A CSP executa scripts inline em sandbox de origem
