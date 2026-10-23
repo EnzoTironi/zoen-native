@@ -76,7 +76,9 @@ pub fn authorize(signed: &SignedMutation, audience: &str, now_ms: i64) -> Result
     }
     if !event_log::verify_sig(
         &signed.device_id,
-        &signed.signing_bytes(audience),
+        &signed
+            .signing_bytes(audience)
+            .map_err(|_| Failure::Invalid)?,
         &signed.signature,
     ) {
         return Err(Failure::Signature);
@@ -105,7 +107,9 @@ pub fn authorize_inspection(
     }
     if !event_log::verify_sig(
         &signed.device_id,
-        &signed.signing_bytes(audience),
+        &signed
+            .signing_bytes(audience)
+            .map_err(|_| Failure::Invalid)?,
         &signed.signature,
     ) {
         return Err(Failure::Signature);

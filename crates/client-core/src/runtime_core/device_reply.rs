@@ -167,7 +167,7 @@ impl DeviceCore {
                 readable = false;
             }
             // Select by ordered issuance, never a wall-clock event timestamp.
-            let active = latest_trust(&ordered, space, &self.owner, &self.agent);
+            let active = ordered.latest_trust(space, &self.owner, &self.agent);
             selected = active.and_then(|grant| {
                 grant_events
                     .get(grant.grant.id.as_str())

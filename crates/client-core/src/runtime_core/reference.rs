@@ -7,8 +7,7 @@ use types::*;
 
 use super::publication::MAX_PUBLISH_BYTES;
 use super::{
-    direct_writers, latest_trust, DeviceCore, NativeError, ReplyIntent, Result, State,
-    MAX_EVENT_BYTES, PROFILE,
+    direct_writers, DeviceCore, NativeError, ReplyIntent, Result, State, MAX_EVENT_BYTES, PROFILE,
 };
 
 pub(super) const MAX_REFERENCE_BYTES: usize = 135_168;
@@ -226,7 +225,8 @@ impl DeviceCore {
                 grant_event = Some(event);
             }
             if event.hash == original.trigger {
-                let grant = latest_trust(&ordered, &original.space, &self.owner, &self.agent)
+                let grant = ordered
+                    .latest_trust(&original.space, &self.owner, &self.agent)
                     .ok_or(NativeError::History)?;
                 let issued = grant_event.ok_or(NativeError::History)?;
                 if !accepted

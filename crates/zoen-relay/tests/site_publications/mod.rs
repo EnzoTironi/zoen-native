@@ -87,7 +87,7 @@ pub fn request(
 }
 
 pub fn sign(author: &Author, signed: &mut SignedMutation) {
-    signed.signature = author.key.sign(&signed.signing_bytes(AUDIENCE));
+    signed.signature = author.key.sign(&signed.signing_bytes(AUDIENCE).unwrap());
 }
 
 async fn head(pool: &PgPool, site: &str) -> (String, bool) {
@@ -167,7 +167,10 @@ pub async fn exercise(pool: &PgPool, directory: &Path) {
         .unwrap();
     assert_eq!(response.status(), 200);
     let http_receipt: Receipt = serde_json::from_slice(&response.bytes().await.unwrap()).unwrap();
-    assert_eq!(http_receipt, Receipt::for_mutation(&http_request, AUDIENCE));
+    assert_eq!(
+        http_receipt,
+        Receipt::for_mutation(&http_request, AUDIENCE).unwrap()
+    );
     assert_eq!(
         client
             .get(format!("{public_url}/s/{http_site}"))

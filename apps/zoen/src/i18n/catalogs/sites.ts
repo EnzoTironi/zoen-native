@@ -3,6 +3,8 @@ import { defineFeature } from '../catalog.ts';
 export const sites = defineFeature(
   {
     title: 'Sites',
+    reviewBefore: 'Before',
+    reviewAfter: 'Proposed',
     newSite: 'New site',
     name: 'Name',
     untitled: 'Untitled site',
@@ -41,6 +43,8 @@ export const sites = defineFeature(
   },
   {
     title: 'Sites',
+    reviewBefore: 'Antes',
+    reviewAfter: 'Proposta',
     newSite: 'Novo site',
     name: 'Nome',
     untitled: 'Site sem título',
