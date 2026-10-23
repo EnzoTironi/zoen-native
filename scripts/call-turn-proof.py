@@ -148,7 +148,7 @@ class Proof:
             time.sleep(0.25)
         raise RuntimeError("TLS readiness/certificate/hostname verification failed: " + log[-1500:])
 
-    def client(self, name, username, credential):
+    def client(self, name, username, credential, peer=None):
         self.redactions.extend([username, credential])
         (self.private / (name + ".credentials")).write_text(username + "\n" + credential + "\n")
         # No -W: the upstream client must use our production-issued credential,
@@ -157,7 +157,7 @@ class Proof:
                  "-E /proof/tls.crt -p 5349 "
                  f'-u "$(sed -n 1p /proof/{name}.credentials)" '
                  f'-w "$(sed -n 2p /proof/{name}.credentials)" '
-                 f"-e {self.peer_ip} -r 3480 {HOST}")
+                 f"-e {peer or self.peer_ip} -r 3480 {HOST}")
         result = self.run(name, ["/bin/sh", "-c", shell], check=False)
         log = self.redact(result.stdout + result.stderr)
         (self.evidence / (name + ".log")).write_text(log)
@@ -166,14 +166,13 @@ class Proof:
     def cases(self):
         valid = self.data["valid"]
         code, log = self.client("valid", **valid)
-        sent = re.search(r"tot_send_msgs=(\d+)", log)
-        received = re.search(r"tot_recv_msgs=(\d+)", log)
-        loss = re.search(r"total lost packets (\d+)", log)
-        ok = code == 0 and sent and received and int(sent[1]) >= 5 and sent[1] == received[1]
+        counts = re.findall(r"tot_send_msgs=(\d+), tot_recv_msgs=(\d+)", log)
+        sent, received = (int(value) for value in counts[-1]) if counts else (None, None)
+        loss = re.search(r"total lost packets (\d+)", log, re.I)
+        ok = code == 0 and sent is not None and sent >= 5 and sent == received
         ok = bool(ok and loss and int(loss[1]) == 0)
         self.report["cases"]["valid"] = {"pass": ok, "exit": code,
-                                           "sent": int(sent[1]) if sent else None,
-                                           "received": int(received[1]) if received else None}
+                                           "sent": sent, "received": received}
         if not ok:
             raise RuntimeError("valid production credentials did not prove a complete UDP echo relay")
         wrong = ("A" if valid["credential"][0] != "A" else "B") + valid["credential"][1:]
@@ -182,12 +181,18 @@ class Proof:
             code, log = self.client(name, **credential)
             # A timeout, TLS failure, empty output or unrelated failure is NOT an
             # authentication rejection proof. Require the actual TURN error.
-            refused = bool(re.search(r"401.*Unauthorized|Unauthorized.*401", log, re.I))
+            refused = code != 0 and bool(re.search(r"\berror\s+401\b", log, re.I))
             relayed = re.search(r"tot_recv_msgs=([1-9]\d*)", log)
             self.report["cases"][name] = {"pass": refused and not relayed, "exit": code,
                                           "unauthorized401": refused}
             if not refused or relayed:
                 raise RuntimeError(name + " was not proven refused by TURN authentication")
+        code, log = self.client("private-peer", **valid, peer="10.0.0.1")
+        refused = code != 0 and bool(re.search(r"channel bind: error 403\b", log, re.I))
+        self.report["cases"]["private-peer"] = {"pass": refused, "exit": code,
+                                                 "forbidden403": refused}
+        if not refused:
+            raise RuntimeError("private-peer ChannelBind was not proven forbidden")
 
     def cleanup(self):
         failures = []
