@@ -35,7 +35,11 @@ The host keeps the existing journal and resolves each successor to the original
 request/hash key. Attempts, prepared calls, completed progress and original
 limits survive every generation. No new journal, approval queue or cursor is
 introduced. Selected-source hosting observes the owner-intent revision without
-advancing any whole-Space cursor.
+advancing any whole-Space cursor. If synchronization is temporarily unsettled
+before admission, both host modes defer that intent under the original host
+deadline. They publish no final reply, reserve no attempt and advance no cursor
+for that source. Only this known pre-IO deferral clears an in-memory scheduling
+observation; unknown model/executor outcomes retain their refusal policy.
 
 A genuinely new staged hold gets a durable `registered` witness at attempt zero.
 Before entering a canonical executor, the host durably marks `outcome_unknown`.
@@ -58,7 +62,12 @@ independent approval. No extra confirmation dialog or model call is needed to
 submit that owner intent. The UI rereads the exact predecessor before the
 command and retires late preflight reads on account, device, relay, session,
 focus or canonical revision changes. A failed command only triggers read-only
-reconciliation; it is never automatically resent.
+reconciliation; it is never automatically resent. The previous approval is
+labeled as a historical decision, not confirmation that an action ran. A single
+focus/foreground-scoped expiry timer refreshes metadata read-only; it never
+requests a review or approves anything. Render-time actions depend on the
+current immutable session snapshot so the native React compiler cannot retain
+an initial null action after the asynchronous read completes.
 
 `Requested` waits for the agent. `Superseded` opens the exact new pending request.
 `Reconcile` explains that an unknown result must be checked rather than repeated.

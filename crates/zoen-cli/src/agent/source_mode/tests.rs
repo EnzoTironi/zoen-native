@@ -222,7 +222,7 @@ async fn selected_turn_refuses_another_valid_signed_message_before_runtime() {
     let entry = timeline.iter().find(|entry| entry.id == f.other).unwrap();
     let calls = Arc::new(AtomicUsize::new(0));
     assert!(
-        !super::super::turn::selected(
+        super::super::turn::selected(
             &f.client,
             &context(&f, &calls, false),
             &definition(),
@@ -232,7 +232,8 @@ async fn selected_turn_refuses_another_valid_signed_message_before_runtime() {
             &run.bound
         )
         .await
-        .handled
+        .outcome
+            == super::super::turn::Outcome::Retry
     );
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     assert!(!f.path.join("source-steps.json").exists());

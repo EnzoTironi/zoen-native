@@ -159,8 +159,8 @@ async fn actual_page_host_stages_one_new_pending_review_and_resumes_under_origin
         tools
             .prepare_review(&context, tc, &inbound, &expired, &ask)
             .await
-            .is_err(),
-        "the production entrypoint refuses the offline/unsettled fixture"
+            .is_ok_and(|p| matches!(p, Preparation::Deferred)),
+        "the production entrypoint defers the offline/unsettled fixture before IO"
     );
     assert_eq!(
         client.tool_approval_requests(&space, &fixture.source).len(),

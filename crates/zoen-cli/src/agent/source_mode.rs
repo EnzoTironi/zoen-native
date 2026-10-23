@@ -5,7 +5,7 @@ use sha2::{Digest, Sha256};
 
 pub(super) type Head = Option<(String, RequestStatus, Option<String>)>;
 pub(super) struct Attempt {
-    pub handled: bool,
+    pub outcome: super::turn::Outcome,
     /// Canonical head actually read inside turn, not a snapshot taken after its await.
     pub observed: Option<Head>,
 }
@@ -333,8 +333,10 @@ impl Run {
         if let Some(observed) = attempt.observed {
             self.observed = Some(observed);
         }
-        if !attempt.handled {
-            return Err("agent_host_source_outcome_unknown".into());
+        match attempt.outcome {
+            super::turn::Outcome::Deferred => self.observed = None,
+            super::turn::Outcome::Retry => return Err("agent_host_source_outcome_unknown".into()),
+            super::turn::Outcome::Handled => {}
         }
         Ok(false)
     }

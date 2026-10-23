@@ -140,6 +140,7 @@ async fn drive(client: &Arc<Client>, cx: &Ctx, space: &str, source: &str) -> boo
         &timeline[index],
     )
     .await
+        == turn::Outcome::Handled
 }
 
 /// Only a relay simulation for signed test events. Never copies secret material,

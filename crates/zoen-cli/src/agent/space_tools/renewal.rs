@@ -3,6 +3,7 @@ use super::*;
 
 pub(in crate::agent) enum Preparation {
     Unrequested,
+    Deferred,
     Pending,
     Recovered,
     Reconcile,
@@ -97,10 +98,12 @@ impl SpaceTools<'_> {
         let Some(intent) = self.e.tool_review_pending_intent(&request.id) else {
             return Ok(Preparation::Unrequested);
         };
-        self.e
-            .wait_until_settled(0)
-            .await
-            .map_err(|_| "Review synchronization is unsettled")?;
+        if self.e.wait_until_settled(0).await.is_err() {
+            // Readiness is observed before any reservation, provider or native IO.
+            // Keep the signed intent pending under the existing outer host deadline.
+            self.check_selection()?;
+            return Ok(Preparation::Deferred);
+        }
         self.check_selection()?;
         self.prepare_settled_review(cx, context, inbound, request, ask, &intent)
     }
