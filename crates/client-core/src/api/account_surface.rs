@@ -135,7 +135,9 @@ impl Client {
             engine.net.poke = None;
             // Historical opens may be awaiting a connection that never started.
             // Stop invalidates them even when there is no Net object to drop.
-            engine.net.file_demands.clear();
+            if engine.net.file_demands.clear().is_err() {
+                crate::net::tracing_like("media: historical demand state unavailable at stop");
+            }
         }
         if let Some(n) = net {
             drop(n);
