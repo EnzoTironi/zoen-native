@@ -12,8 +12,9 @@ pub enum Lang {
 }
 
 impl Lang {
-    /// BCP-47 tag from the device ("pt-BR", "pt_PT", "en-US", …). Anything that isn't
+    /// BCP-47 tag from the device (`pt-BR`, `pt_PT`, `en-US`, …). Anything that isn't
     /// Portuguese falls back to English, the development language.
+    #[must_use]
     pub fn from_tag(tag: &str) -> Lang {
         if tag
             .trim()
@@ -26,6 +27,7 @@ impl Lang {
             Lang::En
         }
     }
+    #[must_use]
     pub fn tag(self) -> &'static str {
         match self {
             Lang::En => "en",
@@ -49,6 +51,7 @@ pub struct LanguageGuard {
     _thread: PhantomData<*mut ()>,
 }
 
+#[must_use]
 pub fn enter(language: Lang) -> LanguageGuard {
     let previous = lang();
     set(language);
@@ -76,15 +79,18 @@ pub async fn scope<F: Future>(language: Lang, future: F) -> F::Output {
     std::future::poll_fn(|cx| with_lang(language, || future.as_mut().poll(cx))).await
 }
 
+#[must_use]
 pub fn lang() -> Lang {
-    LANG.with(|l| l.get())
+    LANG.with(Cell::get)
 }
 
+#[must_use]
 pub fn is_en() -> bool {
     lang() == Lang::En
 }
 
 /// Pick the string for the current language.
+#[must_use]
 pub fn t(pt: &str, en: &str) -> String {
     if is_en() {
         en.to_string()
@@ -106,10 +112,12 @@ macro_rules! tr {
 
 /// Formats the existing plan/grant domain's BRL cents. Language only selects separators;
 /// it never changes the currency, amount or financial policy.
+#[must_use]
 pub fn money(cents: i64) -> String {
     money_in(lang(), cents)
 }
 
+#[must_use]
 pub fn money_in(lang: Lang, cents: i64) -> String {
     let neg = cents < 0;
     let c = cents.unsigned_abs();
@@ -134,8 +142,9 @@ pub fn money_in(lang: Lang, cents: i64) -> String {
 }
 
 /// Thousands separator for plain numbers (scores): "4,893" / "4.893".
+#[must_use]
 pub fn thousands(n: i64) -> String {
-    let s = n.abs().to_string();
+    let s = n.unsigned_abs().to_string();
     let sep = if is_en() { ',' } else { '.' };
     let mut out = String::new();
     for (i, ch) in s.chars().enumerate() {
@@ -152,6 +161,7 @@ pub fn thousands(n: i64) -> String {
 }
 
 /// Like `t`, for `&'static str` labels.
+#[must_use]
 pub fn ts(pt: &'static str, en: &'static str) -> &'static str {
     if is_en() {
         en
@@ -257,6 +267,18 @@ mod scope_tests {
 #[cfg(test)]
 mod money_currency_tests {
     use super::{money_in, Lang};
+
+    #[test]
+    fn signed_score_boundaries_preserve_the_full_magnitude() {
+        super::with_lang(Lang::En, || {
+            assert_eq!(super::thousands(i64::MIN), "-9,223,372,036,854,775,808");
+            assert_eq!(super::thousands(i64::MAX), "9,223,372,036,854,775,807");
+            assert_eq!(super::thousands(0), "0");
+        });
+        super::with_lang(Lang::Pt, || {
+            assert_eq!(super::thousands(i64::MIN), "-9.223.372.036.854.775.808");
+        });
+    }
 
     #[test]
     fn known_brl_domain_never_changes_currency_with_language() {
