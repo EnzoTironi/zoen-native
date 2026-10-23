@@ -1454,14 +1454,8 @@ async fn media_worker(
                 continue;
             }
             let url = format!("{base}/v1/blobs/{}", w.blob);
-            let got = if let Some(limit) = w.maximum_sealed_bytes {
-                bounded_blob(&http, &url, usize::try_from(limit).unwrap_or(0)).await
-            } else {
-                match http.get(url).send().await {
-                    Ok(r) if r.status().is_success() => r.bytes().await.ok().map(|b| b.to_vec()),
-                    _ => None,
-                }
-            };
+            let got =
+                bounded_blob(&http, &url, usize::try_from(w.sealed_limit()).unwrap_or(0)).await;
             let ok =
                 match got {
                     Some(bytes) => engine!(|engine| engine.wanted_media().contains(&w)
@@ -1660,6 +1654,7 @@ mod tests {
     mod incoming_pipeline;
     mod initial_catchup;
     mod media_dependencies;
+    mod media_limits;
     mod media_uploads;
 
     #[tokio::test]
