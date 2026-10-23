@@ -1,4 +1,5 @@
-import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
+import { useAudioPlayer } from 'expo-audio';
+import { setMediaAudioMode } from './audio-mode.ts';
 import { useLayoutEffect, useMemo } from 'react';
 import { AudioClipController, type AudioClipPlayback } from './audio-clip-controller.ts';
 import { mediaPlayback } from './playback-owner.ts';
@@ -34,7 +35,7 @@ export function useAudioClipPlayback({
         if (uri) player.replace({ uri });
       },
       preparePlayback: () =>
-        setAudioModeAsync({
+        setMediaAudioMode({
           playsInSilentMode: true,
           allowsRecording: false,
           shouldPlayInBackground: false,

@@ -1,9 +1,9 @@
 # Zoen runtime authority
 
 This library implements the Postgres financial ledger and fenced FoundationDB
-dispatch protocol. Public `run_model` and `cancel_model` remain closed with
-`CoreAuthorityUnavailable` until they load a genuine retained certified MLS/core
-step. Verified steps have no public constructor, deserializer or injected verifier.
+dispatch protocol. Public `run_model` and `cancel_model` remain closed until
+external restore continuity and a genuine retained certified MLS/core step are
+available. Verified steps have no public constructor, deserializer or injected verifier.
 The host owns the process-wide FoundationDB network. Apply the relay migrations,
 including `0025_model_financial_authority.sql` and
 `0026_runtime_deployment_binding.sql`, before opening the library.
@@ -59,11 +59,29 @@ referenced; at most 16 retired generations may coexist. A full retention budget
 refuses activation instead of evicting potentially needed evidence. These FDB
 version windows are operational bounds, not a trusted wall clock or restore witness.
 
-Managed custody construction remains absent: `RuntimeAuthority::open` installs
-no native credential/key owner. Test-only provisioning exercises this protocol
-with genuine certified profiles and retained OpenMLS packages. A fixture key/map
-is not a production vault. Paid execution and guarded output still require
-their separate integration gates.
+`RuntimeAuthority::open` retains its closed native default.
+`open_with_native_device` loads existing vault entries, resolves the signed
+profiles/certificate from SQL and verifies possession of the enrolled device
+key. `initialize_native_device` creates only an empty sealed capsule through
+these same maintenance primitives; retry observes the existing capsule without
+resetting it. Missing/changed keys and revoked devices refuse access. See
+[managed custody](../../docs/dev/managed-native-custody.md) for provisioning
+boundaries and vault locators. This entry does not establish continuity, relay
+currentness, paid execution or guarded output, and it publishes no key packages.
+A fresh file-backed fixture vault exercises the public constructor in the real
+SQL/FDB journey; it is not evidence of a deployed KMS or process-crash recovery.
+
+## Managed initial MLS publication
+
+`prepare_native_key_packages` retains the exact initial32 single-use public
+packages and their private OpenMLS material in the authenticated device image
+before delivery. `publish_native_key_packages` uses the existing SQL directory
+transaction and publication hash receipts, then retains the known ACK in that
+same device image. Cold retry reuses the batch and cannot reinsert a package
+already consumed by a claim. Welcome/Commit/Application hydration uses the
+existing configured RuntimeSource, not a caller-provided image or frontier.
+See [managed MLS ingress](../../docs/dev/managed-mls-ingress.md) for failure
+ordering and limits. This does not enable continuity, paid dispatch or output.
 
 ## Retained reply discovery and loading
 
@@ -116,9 +134,11 @@ Lease release preserves monotonic tokens and cannot release a newer holder.
 No-op synchronization consumes no image generation. Runs protect their original
 capsule through real GC references; terminal reference release and wake ACKs
 await a verified run disposition protocol. Production paid entry remains
-closed by absent managed custody and external continuity. The joined SQL/OpenMLS/FdbLog fixture validates this unit separately from
-financial core-scope fixtures; it does not implement live WS provisioning,
-managed credentials, external nonrollback continuity or guarded agent output.
+closed until external continuity is established. Managed loading alone does
+not supply that authority. The joined SQL/OpenMLS/FdbLog fixture validates this
+unit separately from financial core-scope fixtures; it does not qualify live WS
+provisioning, a deployed managed vault, external nonrollback continuity or
+guarded agent output.
 
 ## Dispatch and finance
 
@@ -248,7 +268,7 @@ attempts, and an actual deferred SQL commit failure are exercised. That failure
 leaves the independently committed FDB marker orphaned and closed. It is a real
 commit rejection, not DB wire-level commit-unknown testing.
 
-The paid retained-step admission, managed custody, live relay provisioning,
+The paid retained-step admission, deployed managed vault, live relay provisioning,
 worker/JetStream
 recovery, typed tool approval/resume, signed output/usage, external continuity
 witness, live billing reconciliation and deployment drills remain open. These
@@ -270,6 +290,6 @@ these services independently. One local fixture bootstrap returned Unavailable;
 the identical binary passed on repetition, and the cause remains unproved.
 The implementation PR binds its exact source, binary and raw-log hashes and
 retains the unsuccessful attempts. Full integration CI on the refreshed stack,
-managed custody, external nonrollback continuity, guarded publication and
-automatic worker/wake cleanup remain open. This is not backend completion or
+managed vault deployment, external nonrollback continuity, guarded publication
+and automatic worker/wake cleanup remain open. This is not backend completion or
 full Mastra/TextQL parity.

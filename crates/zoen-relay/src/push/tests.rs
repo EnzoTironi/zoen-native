@@ -4,9 +4,9 @@ use super::*;
 type Call = (String, Vec<(String, String)>, String);
 
 #[derive(Default)]
-struct Mock {
-    calls: Mutex<Vec<Call>>,
-    replies: Mutex<Vec<(u16, String)>>,
+pub(super) struct Mock {
+    pub(super) calls: Mutex<Vec<Call>>,
+    pub(super) replies: Mutex<Vec<(u16, String)>>,
 }
 
 #[async_trait::async_trait]
@@ -41,7 +41,7 @@ fn p256_pem() -> String {
     format!("-----BEGIN PRIVATE KEY-----\n{b}\n-----END PRIVATE KEY-----\n")
 }
 
-fn apns_cfg() -> ApnsConfig {
+pub(super) fn apns_cfg() -> ApnsConfig {
     ApnsConfig {
         key_p8: p256_pem(),
         key_id: "KEY1234567".into(),

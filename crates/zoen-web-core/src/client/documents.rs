@@ -13,6 +13,7 @@ use types::{ChunkRef, ItemContent, ItemKind, PageContent, PlanDoc};
 mod apps;
 mod discussion;
 mod dispatch;
+mod exports;
 mod pages;
 mod storage;
 mod views;
@@ -241,6 +242,12 @@ enum Command {
     PageCommit {
         item_id: String,
         note: String,
+    },
+    PageExportVersion {
+        space_id: String,
+        item_id: String,
+        version: u32,
+        observed_hash: String,
     },
     PageMarkdown {
         item_id: String,

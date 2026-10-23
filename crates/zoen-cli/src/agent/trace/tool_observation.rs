@@ -6,7 +6,8 @@ use std::io::{self, Write};
 use zoen_agentd::{ToolCall, ToolDef, ToolObservation, ToolStep};
 
 const EVENT: &str = "zoen.agent.tools.v1";
-const KINDS: [&str; 7] = [
+const KINDS: [&str; 8] = [
+    "create_deckcraft",
     "read_deckcraft",
     "deckcraft_text_set",
     "deckcraft_slide_notes",
@@ -26,12 +27,22 @@ fn opt_in() -> bool {
 fn public_kind(host: &SpaceTools<'_>, name: &str) -> Option<Value> {
     // A model/user-controlled name is never evidence of a native artifact.
     // Discovery records native item membership separately from generic App tools.
-    let (_, item, kind) = host.names.iter().find(|(def, _, _)| def.name == name)?;
-    let (expected, separator) = if host.deckcraft_items.contains(item)
+    let fresh = host.fresh();
+    let current = if host.names.iter().any(|(def, _, _)| def.name == name) {
+        host
+    } else {
+        &fresh
+    };
+    let (_, item, kind) = current.names.iter().find(|(def, _, _)| def.name == name)?;
+    if kind == client_core::agent_app_creation::TOOL && item == &host.space {
+        return (client_core::agent_app_creation::model_name(&host.space).as_deref() == Some(name))
+            .then(|| json!({"kind":kind}));
+    }
+    let (expected, separator) = if current.deckcraft_items.contains(item)
         && crate::deckcraft::recognizes(kind)
     {
         (crate::deckcraft::model_name(kind, item)?, "__")
-    } else if host.page_items.contains(item) && client_core::agent_page_tools::recognizes(kind) {
+    } else if current.page_items.contains(item) && client_core::agent_page_tools::recognizes(kind) {
         (client_core::agent_page_tools::model_name(kind, item)?, "_")
     } else {
         return None;

@@ -12,6 +12,7 @@ Pod::Spec.new do |s|
   s.static_framework = true
 
   s.dependency 'ExpoModulesCore'
+  s.dependency 'ZoenWebRTC', '= 155.0.1'
   s.dependency 'ReactNativeEnrichedMarkdown'
   s.dependency 'GoogleSignIn', '~> 10.0'
   # Official renderer for the pinned Telegram attachment category animations.

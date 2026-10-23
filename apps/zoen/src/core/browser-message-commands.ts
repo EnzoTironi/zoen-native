@@ -284,6 +284,7 @@ export async function browserMessageCommand(
     case 'page_apply':
     case 'page_commit':
     case 'page_markdown':
+    case 'page_export_version':
     case 'toggle_plan_line':
     case 'edit_plan_line':
     case 'add_plan_line':

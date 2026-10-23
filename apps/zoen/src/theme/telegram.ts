@@ -6,7 +6,8 @@
 // The selected GPLv3 option and attribution are in THIRD_PARTY_NOTICES.md.
 
 export const TELEGRAM_UI_REVISION = 'f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838';
-export type ThemeProfile = 'day' | 'night';
+import { isDarkTheme, multiplyHSB, tintedPalette, type ThemeProfile } from './catalog.ts';
+export type { ThemeProfile } from './catalog.ts';
 export type ThemeCustomization = Readonly<{
   accent: string | null;
   outgoing: string | null;
@@ -169,37 +170,51 @@ function classicBubble(accent: string): string {
     .join('')}`.toUpperCase();
 }
 
-/** Two shipped Zoen themes, using Telegram's Classic and Night presentation families. */
+/** Shared presentation for the two skies and all four Telegram built-in families. */
 export function telegramPresentation(
   profile: ThemeProfile,
   settings = DEFAULT_THEME_CUSTOMIZATION,
   skyAccent?: string,
 ) {
-  const dark = profile === 'night';
+  const dark = isDarkTheme(profile);
+  const tinted = profile === 'telegram-tinted' ? tintedPalette(settings.accent ?? undefined) : null;
+  const coloredDay = profile === 'telegram-day';
   // PresentationData's default auto-Night selects the blue accent (#3E88F7).
   // Keep the action fill/glyph coherent with a colored outgoing-bubble theme.
-  const selectedAccent = settings.accent ?? (dark ? '#3E88F7' : '#0088FF');
+  const selectedAccent =
+    settings.accent ??
+    (tinted ? '#2EA6FF' : profile === 'telegram-night' ? '#FFFFFF' : dark ? '#3E88F7' : '#0088FF');
   const accent = settings.accent
     ? (skyAccent ?? customForegroundAccent(selectedAccent, dark))
     : selectedAccent;
   const text = dark ? '#FFFFFF' : '#000000';
-  const secondary = dark ? '#98989E' : '#8E8E93';
-  const separator = dark ? '#5454588C' : '#C8C7CC';
+  const secondary = tinted?.secondary ?? (dark ? '#98989E' : '#8E8E93');
+  const separator = tinted?.separator ?? (dark ? '#5454588C' : '#C8C7CC');
   const destructive = dark ? '#EB5545' : '#FF3B30';
   const outgoing = settings.outgoing
     ? [settings.outgoing]
-    : dark
-      ? ['#61BCF9', '#0088FF']
-      : [settings.accent ? classicBubble(settings.accent) : '#E1FFC7'];
+    : tinted
+      ? tinted.outgoing
+      : coloredDay
+        ? [multiplyHSB(selectedAccent, 0.966, 0.61, 0.98), selectedAccent]
+        : dark
+          ? ['#61BCF9', '#0088FF']
+          : [settings.accent ? classicBubble(settings.accent) : '#E1FFC7'];
   const outgoingText = settings.outgoing
     ? contrastingInk(settings.outgoing)
-    : dark
+    : dark || coloredDay
       ? '#FFFFFF'
       : '#000000';
-  const actionText = settings.accent ? contrastingInk(selectedAccent) : '#FFFFFF';
+  const actionText =
+    settings.accent || profile === 'telegram-night' ? contrastingInk(selectedAccent) : '#FFFFFF';
   const customOutgoing = !!settings.outgoing;
-  const outgoingSecondary = customOutgoing ? `${outgoingText}99` : dark ? '#FFFFFF80' : '#008C09CC';
-  const incomingFill = dark ? '#1D1D1DE6' : '#FFFFFF';
+  const coloredOutgoing = dark || coloredDay;
+  const outgoingSecondary = customOutgoing
+    ? `${outgoingText}99`
+    : coloredOutgoing
+      ? '#FFFFFF80'
+      : '#008C09CC';
+  const incomingFill = tinted ? `${tinted.block}E6` : dark ? '#1D1D1DE6' : '#FFFFFF';
   return {
     profile,
     dark,
@@ -214,7 +229,7 @@ export function telegramPresentation(
     metrics: telegramMetrics,
     motion: telegramMotion,
     navigation: {
-      background: dark ? '#1D1D1DE6' : '#F2F2F2E6',
+      background: tinted ? `${tinted.block}E6` : dark ? '#1D1D1DE6' : '#F2F2F2E6',
       text,
       secondary: dark ? '#FFFFFF80' : '#787878',
       control: accent,
@@ -224,10 +239,10 @@ export function telegramPresentation(
       badgeText: dark ? '#000000' : '#FFFFFF',
     },
     list: {
-      background: dark ? '#000000' : '#EFEFF4',
-      plain: dark ? '#000000' : '#FFFFFF',
-      block: dark ? '#1C1C1D' : '#FFFFFF',
-      modal: dark ? '#2C2C2E' : '#FFFFFF',
+      background: tinted?.background ?? (dark ? '#000000' : '#EFEFF4'),
+      plain: tinted?.background ?? (dark ? '#000000' : '#FFFFFF'),
+      block: tinted?.block ?? (dark ? '#1C1C1D' : '#FFFFFF'),
+      modal: tinted?.block ?? (dark ? '#2C2C2E' : '#FFFFFF'),
       highlighted: dark ? '#313135' : '#E5E5EA',
       text,
       secondary,
@@ -238,7 +253,7 @@ export function telegramPresentation(
       destructive,
     },
     chatList: {
-      background: dark ? '#000000' : '#FFFFFF',
+      background: tinted?.background ?? (dark ? '#000000' : '#FFFFFF'),
       pinned: dark ? '#1C1C1D' : '#F7F7F7',
       highlighted: dark ? '#121212' : '#E5E5EA',
       title: text,
@@ -272,13 +287,13 @@ export function telegramPresentation(
         fillColors: outgoing,
         text: outgoingText,
         secondary: outgoingSecondary,
-        accent: customOutgoing ? outgoingText : dark ? '#FFFFFF' : '#00A700',
-        link: customOutgoing ? outgoingText : dark ? '#FFFFFF' : '#004BAD',
+        accent: customOutgoing ? outgoingText : coloredOutgoing ? '#FFFFFF' : '#00A700',
+        link: customOutgoing ? outgoingText : coloredOutgoing ? '#FFFFFF' : '#004BAD',
         reaction: customOutgoing ? `${outgoingText}1A` : dark ? '#FFFFFF1A' : '#3FC33B1F',
       },
       service: { background: dark ? '#1F1F1F' : '#FFFFFFCC', text: dark ? '#FFFFFF' : '#6D6D72' },
       input: {
-        fill: dark ? '#242424F2' : '#FFFFFFCC',
+        fill: tinted ? `${tinted.input}F2` : dark ? '#242424F2' : '#FFFFFFCC',
         stroke: dark ? '#FFFFFF1A' : '#0000001A',
         text,
         placeholder: dark ? '#FFFFFF7A' : '#00000066',

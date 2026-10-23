@@ -7,7 +7,9 @@
       "ZoenPresentationOrientationDelegate",
       "ZoenPushDelegate"
     ],
-    "reactDelegateHandlers": ["ZoenPresentationRootDelegate"]
+    "reactDelegateHandlers": ["ZoenPresentationRootDelegate"],
+    "podspecPath": "ios/ZoenCore.podspec",
+    "swiftModuleName": ["ZoenCore"]
   },
   "android": {
     "modules": ["xyz.tironi.zoen.core.ZoenCoreModule"]

@@ -1,6 +1,6 @@
 {
   "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
-  "evidence": "Pinned source inspection; not native runtime or pixel qualification. Dark Tinted is study material, not a shipped preset.",
+  "evidence": "Pinned source inspection and translated six-theme presentation; not native runtime or pixel qualification. Cloud themes and downloadable wallpaper patterns are not imported.",
   "files": [
     {
       "path": "submodules/TelegramPresentationData/Sources/DefaultDayPresentationTheme.swift",
@@ -97,6 +97,18 @@
       "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
       "sha256": "c72d288ec729dcf56b29970cb388e17ae3694c1a8b63861d66021f312b8d8d28",
       "size": 103660
+    },
+    {
+      "path": "submodules/ItemListUI/Sources/Items/ItemListDisclosureItem.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/ItemListUI/Sources/Items/ItemListDisclosureItem.swift",
+      "sha256": "3071b30c86584981d5bea64c346c90831163480846c55b474a7a6a596f18f1ea",
+      "bytes": 50348
+    },
+    {
+      "path": "submodules/TelegramUIPreferences/Sources/PresentationThemeSettings.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUIPreferences/Sources/PresentationThemeSettings.swift",
+      "sha256": "17f7baef5dd5fd22b9bb64cb06eade4dffae97ddef6e04876c4241e62f7342b0",
+      "bytes": 38520
     }
   ]
 }

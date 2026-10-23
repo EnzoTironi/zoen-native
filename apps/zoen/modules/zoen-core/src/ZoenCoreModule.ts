@@ -11,8 +11,15 @@ export type ComposerMeasurement = {
 
 declare class ZoenCoreModule extends NativeModule<{
   onChange: (event: CoreEvent) => void;
+  onCallState: (event: { json: string }) => void;
+  onCallAudio: (event: { json: string }) => void;
   onPageInputStatus: (event: { json: string }) => void;
 }> {
+  readonly sitePreviewVersion?: number;
+  startCall?(spaceId: string, video: boolean): Promise<void>;
+  callAudioReply?(ticket: string, success: boolean): Promise<void>;
+  callPresentation?(): Promise<string>;
+  showCurrentCall?(identityId: string, deviceId: string, callId: string): Promise<void>;
   readonly failedMediaRecoveryVersion?: number;
   readonly nativePushPresentationVersion?: number;
   notificationWake?(identityId: string, deviceId: string): Promise<void>;
