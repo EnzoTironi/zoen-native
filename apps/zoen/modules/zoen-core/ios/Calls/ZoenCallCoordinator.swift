@@ -16,6 +16,7 @@ final class ZoenCallCoordinator: NSObject {
   private var call: ZoenCallRecord
   private var screen: ZoenCallViewController?
   private weak var localVideoTrack: RTCVideoTrack?
+  private var localVideoFront = true
   private var watchdog: Task<Void, Never>?
   private var deadline: Task<Void, Never>?
   private var retired = false
@@ -106,7 +107,7 @@ final class ZoenCallCoordinator: NSObject {
           failed: { [weak self] in Task { await self?.stop(writeEnd: true, reason: .failed) } },
           remoteVideo: { [weak self] track in self?.screen?.showVideo(track) },
           localVideo: { [weak self] track, front in
-            self?.localVideoTrack = track; self?.screen?.showLocalVideo(track, front: front)
+            self?.localVideoTrack = track; self?.localVideoFront = front; self?.screen?.showLocalVideo(track, front: front)
           })
         self.rtc = rtc
         rtc.start()
@@ -133,7 +134,7 @@ final class ZoenCallCoordinator: NSObject {
     view.minimize = { [weak self] in self?.minimize() }
     screen = view
     view.setIntent(mediaIntent)
-    view.showLocalVideo(localVideoTrack, front: mediaIntent.frontCamera)
+    view.showLocalVideo(localVideoTrack, front: localVideoFront)
     view.setPhase(currentPhase)
     let accepted = view.presentIfNeeded { [weak self] in
       guard let self, !self.retired, self.presentation.shown(ticket) else { return }

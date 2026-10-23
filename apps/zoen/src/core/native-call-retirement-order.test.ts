@@ -109,6 +109,9 @@ test('camera selection serializes capture and hides preview during switching, of
   before(capture, 'capturingFront = device.position == .front', 'camera.startCapture');
   before(capture, '_ = try await current()', 'publishLocalPreview()');
   before(capture, 'guard selection == cameraSwitch', 'cameraTrack?.isEnabled = intent.cameraLive');
+  const coordinator = source('Calls/ZoenCallCoordinator.swift');
+  assert.match(coordinator, /self\?\.localVideoFront = front/);
+  assert.match(coordinator, /view\.showLocalVideo\(localVideoTrack, front: localVideoFront\)/);
   const screen = source('Calls/ZoenCallViewController.swift');
   assert.match(
     screen,
