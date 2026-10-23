@@ -22,13 +22,38 @@ const profiles = [{ digest, label: 'Image generation' }];
 test('budget amounts preserve signed micro-units beyond floating-point integer precision', () => {
   assert.equal(
     presentation.policyAmount(review.limit_units, 'USD', 6, 'en-US'),
-    'USD 9,223,372,036,854.775807',
+    '$9,223,372,036,854.775807',
   );
-  assert.equal(presentation.policyAmount('11', 'USD', 6, 'en-US'), 'USD 0.000011');
-  assert.equal(presentation.policyAmount('1000001', 'USD', 6, 'pt-BR'), 'USD 1,000001');
-  assert.equal(presentation.policyAmount('0', 'USD', 6, 'en-US'), 'USD 0.00');
+  assert.equal(presentation.policyAmount('11', 'USD', 6, 'en-US'), '$0.000011');
+  assert.equal(presentation.policyAmount('1000001', 'USD', 6, 'pt-BR'), 'US$ 1,000001');
+  assert.equal(presentation.policyAmount('0', 'USD', 6, 'en-US'), '$0.00');
   for (const units of ['-1', '1e6', '1.2', '01', '9223372036854775808'])
     assert.equal(presentation.policyAmount(units, 'USD', 6, 'en-US'), null);
+});
+
+test('native presentation does not require formatToParts or Intl BigInt support', (context) => {
+  context.mock.method(Intl.NumberFormat.prototype, 'formatToParts', () => {
+    throw new Error('formatToParts unavailable on native');
+  });
+  const NativeFormat = Intl.NumberFormat;
+  context.mock.method(
+    Intl,
+    'NumberFormat',
+    function (...args: ConstructorParameters<typeof Intl.NumberFormat>) {
+      const formatter = new NativeFormat(...args);
+      return {
+        format(value: number | bigint) {
+          assert.equal(typeof value, 'number');
+          return formatter.format(value);
+        },
+      } as Intl.NumberFormat;
+    },
+  );
+  assert.equal(
+    presentation.policyAmount(review.limit_units, 'USD', 6, 'en-US'),
+    '$9,223,372,036,854.775807',
+  );
+  assert.equal(presentation.policyAmount('11', 'USD', 6, 'pt-BR'), 'US$ 0,000011');
 });
 
 test('every allowed profile must have one unambiguous display name before confirmation', () => {

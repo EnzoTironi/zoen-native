@@ -1,4 +1,6 @@
-/** Render canonical monetary strings without rounding through JavaScript numbers. */
+import { formatMoney } from '../i18n/money.ts';
+
+/** Reuse native-safe money rendering; never pass a financial value to Number. */
 export function policyAmount(
   units: string,
   currency: string,
@@ -11,19 +13,15 @@ export function policyAmount(
     !/^[A-Z]{3}$/.test(currency) ||
     !Number.isInteger(scale) ||
     scale < 0 ||
-    scale > 9
+    scale > 8 ||
+    (locale !== 'en-US' && locale !== 'pt-BR')
   )
     return null;
-  const padded = units.padStart(scale + 1, '0');
-  const whole = scale ? padded.slice(0, -scale) : padded;
-  const fraction = scale
-    ? padded.slice(-scale).replace(/0+$/, '').padEnd(Math.min(scale, 2), '0')
-    : '';
-  const integer = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(BigInt(whole));
-  const decimal = new Intl.NumberFormat(locale)
-    .formatToParts(1.1)
-    .find((part) => part.type === 'decimal')?.value;
-  return `${currency} ${integer}${fraction ? `${decimal ?? '.'}${fraction}` : ''}`;
+  return formatMoney(units, {
+    locale: locale === 'en-US' ? 'en' : 'pt-BR',
+    currency,
+    minorUnitDigits: scale,
+  }).replace(/([.,]\d{2,}?)0+(?=\D*$)/, '$1');
 }
 
 /** Narrow presentation input; the Core review and confirmation digest own authority. */

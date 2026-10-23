@@ -58,7 +58,7 @@ export function OwnerPolicyReview({
       {value ? (
         <>
           <Text selectable style={{ color: colors.text, fontSize: 17 }}>
-            {value.period}
+            {value.period} · {review.currency}
           </Text>
           {[
             [t('ownerPolicy.monthlyLimit'), value.limit],

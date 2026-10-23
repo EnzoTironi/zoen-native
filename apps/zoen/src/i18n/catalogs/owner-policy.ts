@@ -16,6 +16,14 @@ export const ownerPolicy = defineFeature(
     deliveryFailed: 'The request was not delivered. Your budget has not been confirmed.',
     unavailable: 'The exact budget and services could not be verified.',
     disabled: 'Spending disabled',
+    spendingEnabled: 'Allow AI spending',
+    amountField: '%{field} (%{currency})',
+    reservation:
+      'Reservation per image: %{amount} (%{currency}). Actual usage determines the charge.',
+    review: 'Review budget',
+    invalidAmount: 'Enter an exact, nonnegative amount.',
+    attemptExceedsLimit: 'The per-attempt maximum cannot exceed the monthly limit.',
+    belowReservation: 'Both limits must cover the image reservation.',
   },
   {
     title: 'Orçamento da conta',
@@ -32,5 +40,12 @@ export const ownerPolicy = defineFeature(
     deliveryFailed: 'O pedido não foi entregue. Seu orçamento não foi confirmado.',
     unavailable: 'Não foi possível verificar o orçamento exato e os serviços.',
     disabled: 'Gastos desativados',
+    spendingEnabled: 'Permitir gastos com IA',
+    amountField: '%{field} (%{currency})',
+    reservation: 'Reserva por imagem: %{amount} (%{currency}). A cobrança depende do uso real.',
+    review: 'Revisar orçamento',
+    invalidAmount: 'Digite um valor exato e não negativo.',
+    attemptExceedsLimit: 'O máximo por tentativa não pode ultrapassar o limite mensal.',
+    belowReservation: 'Os dois limites precisam cobrir a reserva da imagem.',
   },
 );
