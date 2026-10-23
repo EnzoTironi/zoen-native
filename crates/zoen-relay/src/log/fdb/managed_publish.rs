@@ -103,7 +103,12 @@ impl ManagedAppend {
             && event.env.device() == original.device()
             && event.env.space() == original.space()
             && event.env.client_id() == original.client_id();
+        let exact_wire = protocol::ClientFrame::Publish {
+            env: event.env.clone(),
+        }
+        .encode();
         if !same_envelope
+            || event_log::sha256_hex(&exact_wire) != self.condition.wire_digest
             || self.committed.as_ref().is_some_and(|old| {
                 old.space != event.env.space()
                     || old.client_id != event.env.client_id()
