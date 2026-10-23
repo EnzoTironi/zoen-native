@@ -133,5 +133,11 @@ pub(crate) async fn current_managed(
         .anchor()
         .check_store_checkpoint(&sql)
         .map_err(|_| "managed anchor refused")?;
+    // Proving the transport binding also proves this original historical CP.
+    // Later unrelated checkpoints may advance; they cannot invent this record.
+    configured
+        .anchor()
+        .retained_checkpoint(&requested)
+        .map_err(|_| "managed historical checkpoint refused")?;
     Ok(sql)
 }
