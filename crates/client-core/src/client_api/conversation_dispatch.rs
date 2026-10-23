@@ -9,6 +9,11 @@ impl Client {
     ) -> Result<String, CoreError> {
         use Command::*;
         match command {
+            FindOwnerPolicyOptions {
+                scope,
+                request_id,
+                expected_hash,
+            } => encode(&self.find_owner_policy_options(scope, request_id, expected_hash)?),
             RequestOwnerPolicyOptions {
                 scope,
                 request_id,

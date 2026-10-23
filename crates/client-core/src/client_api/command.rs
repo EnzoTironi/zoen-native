@@ -5,6 +5,11 @@ use super::*;
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub(super) enum Command {
+    FindOwnerPolicyOptions {
+        scope: crate::owner_policy::OwnerPolicyScope,
+        request_id: String,
+        expected_hash: String,
+    },
     RequestOwnerPolicyOptions {
         scope: crate::owner_policy::OwnerPolicyScope,
         request_id: String,
