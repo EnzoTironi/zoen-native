@@ -44,8 +44,9 @@ jobs:
       - name: Changed authored file size limit
         env:
           ZOEN_CI_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-          ZOEN_CI_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: python3 scripts/check-changed-file-sizes.py --base "$ZOEN_CI_BASE" --head "$ZOEN_CI_HEAD"
+          ZOEN_CI_HEAD: ${{ github.sha }}
+          ZOEN_CI_EVENT: ${{ github.event_name }}
+        run: python3 scripts/check-changed-file-sizes.py --base "$ZOEN_CI_BASE" --head "$ZOEN_CI_HEAD" --event "$ZOEN_CI_EVENT"
 
   documentation-integrity:
     needs: change-scope

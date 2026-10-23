@@ -16,10 +16,10 @@ class ChangedFileSizeTests(GitFixture, unittest.TestCase):
         self.git("commit", "--quiet", "-m", "proposed change")
         return self.git("rev-parse", "HEAD").stdout.decode().strip()
 
-    def check(self, base, head="HEAD"):
+    def check(self, base, head="HEAD", event="push"):
         return self.run_command(
             [sys.executable, "scripts/check-changed-file-sizes.py",
-             "--base", base, "--head", head], check=False,
+             "--base", base, "--head", head, "--event", event], check=False,
         )
 
     def test_unchanged_history_and_unproposed_index_are_ignored(self):
@@ -71,6 +71,35 @@ class ChangedFileSizeTests(GitFixture, unittest.TestCase):
         self.write("large.rs", b"x" * 20_001)
         self.commit()
         self.assertNotEqual(self.check("0" * 40).returncode, 0)
+
+    def test_pr_excludes_target_only_changes_after_branch_divergence(self):
+        self.write("historical.rs", b"x" * 20_001)
+        ancestor = self.commit()
+        self.git("checkout", "--quiet", "-b", "target")
+        self.write("historical.rs", b"y" * 20_001)
+        target = self.commit()
+        self.git("checkout", "--quiet", "-b", "proposal", ancestor)
+        self.write("small.rs", b"small")
+        proposal = self.commit()
+        self.assertEqual(self.check(target, proposal, "pull_request").returncode, 0)
+        self.assertNotEqual(self.check(target, proposal, "push").returncode, 0)
+
+    def test_ci_merge_snapshot_catches_combined_oversized_file(self):
+        common = b"common\n" * 600
+        self.write("combined.rs", common)
+        ancestor = self.commit()
+        self.git("checkout", "--quiet", "-b", "target")
+        self.write("combined.rs", b"main\n" * 1700 + common)
+        target = self.commit()
+        self.git("checkout", "--quiet", "-b", "proposal", ancestor)
+        self.write("combined.rs", common + b"proposal\n" * 945)
+        proposal = self.commit()
+        self.assertEqual(self.check(target, proposal, "pull_request").returncode, 0)
+        self.git("checkout", "--quiet", "target")
+        self.git("merge", "--quiet", "--no-edit", proposal)
+        result = self.check(target, "HEAD", "pull_request")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b"combined.rs", result.stderr)
 
 
 if __name__ == "__main__":
