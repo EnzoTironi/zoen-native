@@ -156,7 +156,9 @@ impl Client {
                         mime: "text/html",
                         bytes: c.html.as_bytes(),
                         thumbnail: None,
-                        reply_to: Some(&p.source),
+                        // This is an intermediate artifact, not the agent's
+                        // final reply. The signed proposal retains its source.
+                        reply_to: None,
                         thread: false,
                         mutation_id: &mutation_id,
                         caption: "",

@@ -128,6 +128,16 @@ async fn site_journey(reversed: bool) {
     let v1 = result["sha256"].as_str().unwrap().to_owned();
     assert_eq!(client.items().len(), before + 1);
     assert!(
+        client.timeline(space.clone()).unwrap().iter().all(|entry| {
+            entry.author.id != cx.me
+                || entry
+                    .reply_to
+                    .as_ref()
+                    .is_none_or(|reply| reply.id != source)
+        }),
+        "creating an intermediate Site must not claim the final answer"
+    );
+    assert!(
         JournalState::load(&journal).unwrap().steps.is_empty(),
         "simulate lost post-effect journal ACK"
     );
@@ -163,6 +173,28 @@ async fn site_journey(reversed: bool) {
     let info = client.file_info_at(item.clone(), Some(2)).unwrap();
     assert_eq!(client.items().len(), before + 1);
     assert_eq!(JournalState::load(&journal).unwrap().steps[0].1.len(), 3);
+    canonical_tool_approval_tests::handle(&client, &cx, &space, &source).await;
+    assert_eq!(starts.load(Ordering::SeqCst), 1);
+    assert_eq!(client.items().len(), before + 1);
+    let replies: Vec<_> = client
+        .timeline(space.clone())
+        .unwrap()
+        .into_iter()
+        .filter(|entry| {
+            entry.author.id == cx.me
+                && entry
+                    .reply_to
+                    .as_ref()
+                    .is_some_and(|reply| reply.id == source)
+        })
+        .collect();
+    assert_eq!(
+        replies.len(),
+        1,
+        "the completed turn must answer exactly once"
+    );
+    assert!(matches!(&replies[0].kind, EntryKind::Message { text, .. }
+        if text == "The private Site is updated."));
     drop(cx);
     drop(client);
     let cold = canonical_tool_approval_tests::reopen(&path, vault);
