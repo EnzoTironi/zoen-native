@@ -9,6 +9,8 @@ def wait_for_owned_cargo(child, marker, root, target, deadline, *, clock=time.mo
     # The build script can run before Popen returns to the guard and its launched
     # callback publishes cargoPid. A marker alone is not the complete barrier.
     while child.poll() is None:
+        if clock() >= deadline:
+            break
         paths = list(root.glob(".cargo-source-guard-*/state.json"))
         if marker.exists() and len(paths) == 1:
             try:
@@ -21,9 +23,9 @@ def wait_for_owned_cargo(child, marker, root, target, deadline, *, clock=time.mo
                         and type(state.get("pid")) is int and state["pid"] == child.pid
                         and state.get("target") == str(target.resolve())
                         and type(pid) is int and pid > 0):
+                    if clock() >= deadline:
+                        break
                     return pid
-        if clock() >= deadline:
-            break
         pause(0.02)
     raise AssertionError("Guard startup did not publish a live owner's Cargo PID before its deadline")
 

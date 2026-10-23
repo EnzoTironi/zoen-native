@@ -84,6 +84,17 @@ class CargoGuardReadinessTests(unittest.TestCase):
         with self.assertRaises(AssertionError):
             wait_for_owned_cargo(child, marker, root, target, 20)
 
+    def test_published_pid_cannot_be_admitted_at_or_after_deadline(self):
+        root, marker, path, target, state = self.fixture()
+        path.write_text(json.dumps({**state, "cargoPid": 83}))
+        for samples in ([20], [19.99, 20]):
+            with self.subTest(clock=samples):
+                clock = iter(samples)
+                with self.assertRaisesRegex(AssertionError, "deadline"):
+                    wait_for_owned_cargo(Guard(), marker, root, target, 20,
+                                         clock=lambda: next(clock),
+                                         pause=lambda _: self.fail("no grace after the deadline"))
+
     def test_readiness_failure_cleanup_releases_gate_closes_stream_and_reaps_owned_child(self):
         root, _, _, _, _ = self.fixture()
         gate = root / "gate"
