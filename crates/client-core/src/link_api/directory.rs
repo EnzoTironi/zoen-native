@@ -4,14 +4,14 @@ use super::*;
 use crate::{engine::Engine, net::RequestHandle};
 
 #[derive(Clone, PartialEq, Eq)]
-struct DirectoryOwner {
+pub(super) struct DirectoryOwner {
     identity: String,
     device: String,
     relay: String,
     certificate: String,
 }
 impl DirectoryOwner {
-    fn capture(engine: &Engine) -> Result<Self, CoreError> {
+    pub(super) fn capture(engine: &Engine) -> Result<Self, CoreError> {
         let account = engine.account().ok_or_else(|| invalid("account"))?;
         engine.native_surface_owner(&account.identity, &account.device)?;
         Ok(Self {
@@ -21,7 +21,7 @@ impl DirectoryOwner {
             certificate: account.cert.clone(),
         })
     }
-    fn check(&self, engine: &Engine) -> Result<(), CoreError> {
+    pub(super) fn check(&self, engine: &Engine) -> Result<(), CoreError> {
         if &Self::capture(engine)? != self {
             return Err(CoreError::Stale {
                 reason: t(
@@ -97,7 +97,7 @@ impl Client {
         self.with_device_directory_completion(&owner, &channel, |engine| owner.list(engine, list))
     }
 
-    fn with_device_directory_completion<T>(
+    pub(super) fn with_device_directory_completion<T>(
         &self,
         owner: &DirectoryOwner,
         channel: &RequestHandle,
@@ -115,29 +115,33 @@ impl Client {
         apply(&mut engine)
     }
 
+    pub(super) fn device_directory_owner(
+        &self,
+    ) -> Result<(DirectoryOwner, RequestHandle), CoreError> {
+        let guard = self.net.lock().map_err(|_| directory_storage())?;
+        let net = guard.as_ref().ok_or_else(|| invalid("offline"))?;
+        let owner = DirectoryOwner::capture(&self.lock())?;
+        if net
+            .authenticated_relay_name(&owner.relay, &owner.identity, &owner.device)
+            .is_none()
+        {
+            return Err(CoreError::Stale {
+                reason: t(
+                    "A conexão deste aparelho mudou.",
+                    "This device's connection changed.",
+                ),
+            });
+        }
+        Ok((owner, net.request_handle()))
+    }
+
     async fn device_directory_request(
         &self,
         op: Op,
     ) -> Result<(DirectoryOwner, RequestHandle, Reply), CoreError> {
         // Same Net -> Engine lock order as start_sync. Keep the captured channel:
         // reconnect/account replacement cannot redirect an old intent to a new Net.
-        let (owner, handle) = {
-            let guard = self.net.lock().map_err(|_| directory_storage())?;
-            let net = guard.as_ref().ok_or_else(|| invalid("offline"))?;
-            let owner = DirectoryOwner::capture(&self.lock())?;
-            if net
-                .authenticated_relay_name(&owner.relay, &owner.identity, &owner.device)
-                .is_none()
-            {
-                return Err(CoreError::Stale {
-                    reason: t(
-                        "A conexão deste aparelho mudou.",
-                        "This device's connection changed.",
-                    ),
-                });
-            }
-            (owner, net.request_handle())
-        };
+        let (owner, handle) = self.device_directory_owner()?;
         let reply = handle.clone().send(op).await.map_err(invalid)?;
         Ok((owner, handle, reply))
     }
