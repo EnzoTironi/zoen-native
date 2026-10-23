@@ -256,6 +256,20 @@ export async function browserMessageCommand(
       result = invite.space;
       break;
     }
+    case 'item_discussion': {
+      const discussion = object(await messages.documentRequest(command));
+      if (discussion.space_id !== command.space_id || discussion.item_id !== command.item_id)
+        throw new Error('A discussão pertence a outro arquivo ou conversa.');
+      const rootId = discussion.root_id === null ? null : string(discussion.root_id);
+      const root =
+        rootId === null
+          ? null
+          : context.entries(command.space_id).find((entry) => entry.id === rootId);
+      if (rootId !== null && (!root || root.in_thread !== null))
+        throw new Error('A mensagem original não está disponível neste aparelho.');
+      result = { item_id: command.item_id, space_id: command.space_id, root };
+      break;
+    }
     case 'new_mutation_id':
     case 'page_parse_markdown':
     case 'page_block_markdown':
