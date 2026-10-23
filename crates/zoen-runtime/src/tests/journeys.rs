@@ -5,7 +5,8 @@ pub(super) async fn run() {
     managed_custody::run().await;
     // Independent journeys are siblings: boxing their stored futures does not
     // remove debug-mode poll temporaries from a nested caller's stack frame.
-    let prepared_image = Box::pin(retained::image_tasks::prepare()).await;
+    let reviewed_image = Box::pin(retained::image_tasks::review()).await;
+    let prepared_image = Box::pin(retained::image_tasks::prepare(reviewed_image)).await;
     Box::pin(retained::image_tasks::deliver(prepared_image)).await;
     Box::pin(retained::run()).await;
     Box::pin(retained::output::run()).await;
