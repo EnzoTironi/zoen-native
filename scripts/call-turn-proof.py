@@ -89,7 +89,7 @@ class Proof:
         ids = self.docker("network", "ls", "-q").stdout.split()
         existing = json.loads(self.docker("network", "inspect", *ids).stdout) if ids else []
         ranges = [ipaddress.ip_network(config["Subnet"])
-                  for network in existing for config in network.get("IPAM", {}).get("Config", [])
+                  for network in existing for config in (network.get("IPAM", {}).get("Config") or [])
                   if config.get("Subnet")]
         # Documentation-only addresses let the actual production private-peer
         # deny rules stay enabled. --internal prevents egress; no ports publish.

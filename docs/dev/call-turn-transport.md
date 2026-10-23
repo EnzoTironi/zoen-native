@@ -63,7 +63,7 @@ executable and `ZOEN_TURN_PROOF_DIR` to a new, empty absolute evidence directory
 Use the normal Cargo source guard, qualifying those three input variables, to run:
 
 ```sh
-cargo test -p zoen-relay --lib production_credentials_relay_over_real_tls_coturn_and_invalid_auth_is_refused -- --ignored --exact turn::tests::docker::production_credentials_relay_over_real_tls_coturn_and_invalid_auth_is_refused --nocapture
+cargo test -p zoen-relay --lib turn::tests::docker::production_credentials_relay_over_real_tls_coturn_and_invalid_auth_is_refused -- --ignored --exact --nocapture
 ```
 
 The proof requires verified TLS/hostname, echoed packets through an actual
