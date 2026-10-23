@@ -177,6 +177,31 @@ impl Engine {
             confirm_detail: None,
             item: None,
         };
+        if !self.app_trust_available(item) {
+            return Ok(denied(t(
+                "A confiança foi revogada ou expirou.",
+                "Trust was revoked or expired.",
+            )));
+        }
+        // An App grant cannot substitute for the caller agent's own current
+        // authority. Human interaction keeps the existing single-action review.
+        let decision = if self
+            .identities
+            .get(&me)
+            .is_some_and(|i| i.kind == IdentityKind::Agent)
+        {
+            match (decision, self.decide(&me, &it.space, &tool.action, 0)) {
+                (Decision::Block(reason), _) | (_, Decision::Block(reason)) => {
+                    Decision::Block(reason)
+                }
+                (Decision::Request(reason), _) | (_, Decision::Request(reason)) => {
+                    Decision::Request(reason)
+                }
+                (app, _) => app,
+            }
+        } else {
+            decision
+        };
         match decision {
             Decision::Block(reason) => return Ok(denied(reason_label(&reason, &self.policy))),
             Decision::Request(reason) if !confirmed => {

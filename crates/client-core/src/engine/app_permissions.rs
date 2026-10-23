@@ -187,16 +187,29 @@ impl Engine {
         })
     }
 
+    pub(crate) fn app_trust_available(&self, item: &str) -> bool {
+        self.state
+            .items
+            .get(item)
+            .is_some_and(|it| self.active_app_trust(&it.space, item).is_some())
+    }
     pub(super) fn app_trust_in_space(&self, space: &str, item: &str) -> TrustLevel {
-        self.space_projections
+        self.active_app_trust(space, item)
+            .unwrap_or(TrustLevel::Listen)
+    }
+    fn active_app_trust(&self, space: &str, item: &str) -> Option<TrustLevel> {
+        match self
+            .space_projections
             .get(space)
             .and_then(|scoped| scoped.app_trust_baseline(item))
-            .filter(|g| !g.revoked && g.grant.expires_at_ms.is_none_or(|at| at > now_ms()))
-            .and_then(|g| match g.grant.capability {
+        {
+            Some(g) if g.revoked || g.grant.expires_at_ms.is_some_and(|at| at <= now_ms()) => None,
+            Some(g) => match g.grant.capability {
                 Capability::Trust(level) => Some(level),
                 _ => None,
-            })
-            .unwrap_or(TrustLevel::Listen)
+            },
+            None => Some(TrustLevel::Listen),
+        }
     }
 }
 

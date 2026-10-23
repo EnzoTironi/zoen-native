@@ -309,3 +309,51 @@ fn invalid_newest_app_baseline_blocks_mutation_until_explicit_regrant() {
         assert!(c.item(item.id).unwrap().version > before);
     }
 }
+
+#[test]
+fn app_confirmation_cannot_override_invalid_trust_for_an_external_action() {
+    let c = seeded();
+    let (_, space) = context(&c);
+    let item = c
+        .install_app(
+            space.clone(),
+            "pet".into(),
+            r#"{"name":"Confirm test"}"#.into(),
+        )
+        .unwrap();
+    let lower = app_grant(&c, &space, &item.id, TrustLevel::Suggest, None);
+    revoke(&c, &space, &lower);
+    let before = c.item(item.id.clone()).unwrap().version;
+    let refused = c
+        .app_call_tool(item.id.clone(), "pet_release".into(), "{}".into(), true)
+        .unwrap();
+    assert_eq!(refused.status, AppCallStatus::Denied);
+    assert_eq!(c.item(item.id).unwrap().version, before);
+}
+#[test]
+fn app_grant_cannot_replace_the_calling_agents_revoked_authority() {
+    let c = seeded();
+    let (agent, space) = context(&c);
+    let item = c
+        .install_app(
+            space.clone(),
+            "pet".into(),
+            r#"{"name":"Agent test"}"#.into(),
+        )
+        .unwrap();
+    let agent_grant = issue(&c, &agent, &space, Capability::Trust(TrustLevel::Act), None);
+    let owner = c.me().unwrap().id;
+    let first = c
+        .lock()
+        .app_call_as(&item.id, &agent, "pet_feed", "{}", false, Some(&owner))
+        .unwrap();
+    assert_eq!(first.status, AppCallStatus::Done);
+    revoke(&c, &space, &agent_grant);
+    let before = c.item(item.id.clone()).unwrap().version;
+    let refused = c
+        .lock()
+        .app_call_as(&item.id, &agent, "pet_feed", "{}", false, Some(&owner))
+        .unwrap();
+    assert_eq!(refused.status, AppCallStatus::Denied);
+    assert_eq!(c.item(item.id).unwrap().version, before);
+}
