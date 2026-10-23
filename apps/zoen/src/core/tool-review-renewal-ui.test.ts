@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import * as flow from './tool-review-renewal.ts';
+import * as siteSource from '../sites/source.ts';
 import { createLocalization } from '../i18n/runtime.ts';
 import { reviewRenewal } from '../i18n/catalogs/review-renewal.ts';
 
@@ -13,6 +14,7 @@ const files = {
   view: '../agents/tool-review-recovery.tsx',
   hook: '../agents/use-tool-review.ts',
   card: '../agents/request-card.tsx',
+  site: '../agents/site-tool-review.tsx',
 };
 const require = createRequire(import.meta.url);
 const { transformSync } = require('@babel/core');
@@ -95,6 +97,7 @@ function fixture(locale: 'en' | 'pt-BR' = 'en') {
     mode: 'account',
     erasePending: false,
     snapshot: {
+      conversations: [{ id: 'site-space', members: [{ id: 'owner' }] }],
       account: {
         registered: true,
         unlocked: true,
@@ -188,6 +191,7 @@ function fixture(locale: 'en' | 'pt-BR' = 'en') {
         };
       if (path === 'react-native')
         return {
+          Platform: { OS: 'ios' },
           Text: 'Text',
           View: 'View',
           Pressable: 'Pressable',
@@ -228,6 +232,11 @@ function fixture(locale: 'en' | 'pt-BR' = 'en') {
           toolApprovalExpired: (tool: any) => Number(tool.expires_ms) <= now,
           toolApprovalValid: () => true,
         };
+      if (path.endsWith('/ZoenCoreModule')) return { sitePreviewVersion: 1 };
+      if (path.endsWith('/sites/source')) return siteSource;
+      if (path.endsWith('/sites/preview')) return { SitePreview: 'SitePreview' };
+      if (path.endsWith('/site-tool-review'))
+        return { SiteToolReview: load('site').SiteToolReview };
       if (path.endsWith('/tool-review-recovery'))
         return { ToolReviewRecovery: 'ToolReviewRecovery' };
       if (path.endsWith('/theme')) return { useTheme: () => ({ colors: { secondary: '#888' } }) };
@@ -280,6 +289,15 @@ function fixture(locale: 'en' | 'pt-BR' = 'en') {
     view: () => {
       cacheCursor = 0;
       return load('view').ToolReviewRecovery({ requestId: 'old-request' });
+    },
+    site: (ready: (value: boolean) => void) => {
+      stateCursor = 0;
+      return load('site').SiteToolReview({
+        requestId: 'site-request',
+        contentHash: 'ab'.repeat(32),
+        spaceId: 'site-space',
+        onReady: ready,
+      });
     },
     card: (request: any, result: string | null = null) => {
       stateCursor = 0;
@@ -452,4 +470,71 @@ test('compiled approved card distinguishes historical approval from expired/requ
     assert.ok(!text(tree).includes('Waiting for the reviewed action.'));
     assert.ok(nodes(tree).some((n) => n.type === 'ToolReviewRecovery'));
   }
+});
+
+test('actual Site review retires an in-flight signed proposal on account change and ignores late HTML', async () => {
+  const f = fixture();
+  const ready: boolean[] = [];
+  let finish!: (value: any) => void;
+  f.reads(
+    () =>
+      new Promise<any>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  f.site((value) => ready.push(value));
+  await settle();
+  f.state.snapshot.account.identity_id = 'foreign-owner';
+  for (const fn of f.listeners) fn();
+  finish({
+    request_id: 'site-request',
+    content_hash: 'ab'.repeat(32),
+    title: 'Private Site',
+    version: 1,
+    before_html: null,
+    after_html: '<h1>Private</h1>',
+  });
+  await settle();
+  assert.ok(!ready.includes(true));
+  f.close();
+  assert.equal(f.preflight.size, 0);
+  assert.equal(f.canonical.size, 0);
+});
+
+test('actual Site review admits exact proposal bytes then revokes readiness synchronously on preflight', async () => {
+  const f = fixture();
+  const ready: boolean[] = [];
+  f.reads(
+    async () =>
+      ({
+        request_id: 'site-request',
+        content_hash: 'ab'.repeat(32),
+        title: 'Private Site',
+        version: 1,
+        before_html: null,
+        after_html: '<h1>Private</h1>',
+      }) as any,
+  );
+  f.site((value) => ready.push(value));
+  await settle();
+  assert.equal(ready.at(-1), true);
+  for (const fn of f.preflight) fn();
+  assert.equal(ready.at(-1), false);
+  f.close();
+});
+
+test('request card cannot approve a Site before its isolated exact proposal preview is ready', () => {
+  const f = fixture();
+  const request = f.base()[0];
+  request.status = 'Pending';
+  request.tool_approval.expires_ms = String(Date.now() + 60_000);
+  request.tool_approval.preview_kind = 'site';
+  request.space_id = 'site-space';
+  request.agent.name = 'Agent';
+  request.opened_ms = '1';
+  const card = f.card(request);
+  const buttons = nodes(card).filter((n) => n.type === 'NativeButton');
+  assert.equal(buttons.find((n) => n.props.label === 'agents.allowOnce')?.props.disabled, true);
+  assert.equal(buttons.find((n) => n.props.label === 'agents.doNotAllow')?.props.disabled, false);
+  f.close();
 });
