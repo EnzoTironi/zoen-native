@@ -3,6 +3,8 @@
 //! durable SQL/FDB authority, MLS worker, billing or tool execution.
 
 mod adapter;
+mod images;
+pub use images::*;
 mod contract;
 mod receipt;
 mod transport;
@@ -137,6 +139,7 @@ impl ModelGateway {
 
     pub fn supports(&self, operation: Operation) -> bool {
         operation == Operation::ChatCompletion
+            || (operation == Operation::ImageGeneration && self.supports_images())
     }
 
     /// Validates and describes the exact wire request without admitting or
@@ -207,6 +210,7 @@ impl ModelGateway {
                 max_request_bytes: limits.max_request_bytes as u64,
                 max_response_bytes: limits.max_response_bytes as u64,
                 requested_output_tokens: request.max_output_tokens,
+                image: None,
             },
         };
         Ok((prepared, admission))
@@ -247,7 +251,12 @@ impl ModelGateway {
                 tracing::subscriber::NoSubscriber::default(),
             ))
             .await;
-        let captured = capture.lock().expect("capture lock");
+        let captured = match transport::snapshot(&capture) {
+            Ok(captured) => captured,
+            // This remains a typed Transport output failure with incomplete
+            // evidence/unknown usage, not another dispatch or a zero charge.
+            Err(incomplete) => incomplete.into_incomplete(),
+        };
         let (receipt, raw) = receipt::receipt(&captured);
         let output = match (response, raw.as_ref()) {
             (Ok(response), Some(raw)) => adapter::output(response, raw, &request),
@@ -259,7 +268,7 @@ impl ModelGateway {
             output,
             receipt,
             evidence: ProviderEvidence {
-                body: captured.body.clone(),
+                body: captured.body,
                 complete: captured.complete,
             },
         })

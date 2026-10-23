@@ -93,7 +93,7 @@ fn canonicalize(value: Value) -> Value {
 }
 
 pub(crate) fn digest(
-    request: &ModelRequest,
+    request: &impl serde::Serialize,
     profile: &Value,
     limit: usize,
 ) -> Result<String, GatewayError> {
@@ -114,16 +114,8 @@ pub(crate) fn wire_digest(bytes: &[u8], limit: usize) -> Result<String, GatewayE
     Ok(hex::encode(Sha256::digest(canonical)))
 }
 
-pub(crate) fn prepare(
-    request: &ModelRequest,
-    max_tokens: u64,
-    byte_limit: usize,
-) -> Result<CompletionRequest, GatewayError> {
-    if request.operation != Operation::ChatCompletion {
-        return Err(GatewayError::UnsupportedOperation);
-    }
-    let context = &request.context;
-    if [
+pub(crate) fn valid_context(context: &crate::AttemptContext) -> bool {
+    [
         &context.attempt_id,
         &context.run_id,
         &context.owner,
@@ -135,8 +127,19 @@ pub(crate) fn prepare(
         &context.price_version,
     ]
     .iter()
-    .any(|value| !identifier(value))
-        || context.owner == context.agent
+    .all(|value| identifier(value))
+        && context.owner != context.agent
+}
+
+pub(crate) fn prepare(
+    request: &ModelRequest,
+    max_tokens: u64,
+    byte_limit: usize,
+) -> Result<CompletionRequest, GatewayError> {
+    if request.operation != Operation::ChatCompletion {
+        return Err(GatewayError::UnsupportedOperation);
+    }
+    if !valid_context(&request.context)
         || request.messages.is_empty()
         || request.messages.len() > 256
         || request.tools.len() > 64

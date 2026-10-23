@@ -59,6 +59,24 @@ async fn actual_trace_and_debug_never_contain_provider_or_content_canaries() {
             assert!(!debug.contains(canary), "redacted DTO Debug");
         }
     }
+    for (status, body) in [
+        (
+            200,
+            super::images::response(&super::images::png(1024, 1024)).to_string(),
+        ),
+        (500, format!("private image error {KEY} {PROMPT} {BODY}")),
+    ] {
+        let fixture = Fixture::serve(status, body, "", false, Duration::ZERO, false).await;
+        let gateway = ModelGateway::new(super::images::image_config(&fixture.base)).unwrap();
+        let result = gateway
+            .generate_image(super::images::input(), &TestAuthority::default())
+            .await
+            .unwrap();
+        let debug = format!("{result:?} {:?}", super::images::input());
+        for canary in [KEY, PROMPT, BODY] {
+            assert!(!debug.contains(canary));
+        }
+    }
     tracing::trace!("zoen-after-trace-marker");
     let logs = String::from_utf8(logs.lock().unwrap().clone()).unwrap();
     assert!(logs.contains("zoen-outside-trace-marker"));
