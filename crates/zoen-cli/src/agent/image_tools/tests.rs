@@ -14,6 +14,8 @@ impl Drop for Journal {
 }
 fn call(prompt: &str) -> ToolCall {
     ToolCall {
+        id: "image-call".into(),
+        requires_review: false,
         name: TOOL.into(),
         arguments: json!({"prompt":prompt}),
     }
@@ -74,6 +76,8 @@ fn ordinary_history_pruning_keeps_unresolved_review_and_recovery_boundedly() {
     };
     let ordinary = ToolStep {
         call: ToolCall {
+            id: "read-call".into(),
+            requires_review: false,
             name: "read_page".into(),
             arguments: json!({}),
         },
