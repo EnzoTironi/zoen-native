@@ -1,0 +1,59 @@
+/* Layer-1 messenger. Wabi lists and easing, Hark bubbles/composer, Ando threads (see ui-refs/SUMMARY.md). */
+:root {
+  --zm-canvas: #fff; --zm-card: #fafafa; --zm-ink: #191919; --zm-grey: #737373;
+  --zm-line: rgba(25,25,25,.12); --zm-line-soft: rgba(25,25,25,.07);
+  --zm-other: #f1f1f1; --zm-own: #191919; --zm-read: #3b9cff;
+  --ease-wabi: cubic-bezier(.25,1,.5,1); --ease-expo: cubic-bezier(.22,1,.36,1);
+}
+body { background: var(--zm-canvas); color: var(--zm-ink); }
+.zm-app { height: 100dvh; display: grid; grid-template-columns: 340px 1fr 0; transition: grid-template-columns 320ms var(--ease-wabi); overflow: hidden; }
+.zm-app.zm-with-thread { grid-template-columns: 340px 1fr 380px; }
+.zm-icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.zm-avatar { flex: none; display: grid; place-items: center; border-radius: 50%; font-weight: 600; letter-spacing: -.2px; }
+
+/* Wabi glass: the reverse-engineered button (ui-refs/wabi-glass/wabi-page-css.css). */
+.glass { border: 0; background: linear-gradient(-75deg, rgba(255,255,255,.05), rgba(255,255,255,.2), rgba(255,255,255,.05)), rgba(255,255,255,.55);
+  box-shadow: inset 0 .125em .125em rgba(0,0,0,.035), inset 0 -.125em .125em rgba(255,255,255,.5), 0 .25em .125em -.125em rgba(0,0,0,.1), 0 0 .1em .25em inset rgba(255,255,255,.2), 0 0 0 1px rgba(25,25,25,.06);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); color: var(--zm-ink);
+  transition: transform 150ms ease-out, box-shadow 400ms var(--ease-wabi), background-color 150ms var(--ease-wabi); }
+.glass:not(:disabled):active { transform: scale(.96); }
+@media (hover: hover) { .glass:not(:disabled):hover { box-shadow: inset 0 .125em .125em rgba(0,0,0,.035), inset 0 -.125em .125em rgba(255,255,255,.5), 0 .075em .025em -.1em rgba(0,0,0,.25), 0 0 .05em .1em inset rgba(255,255,255,.5), 0 0 0 1px rgba(25,25,25,.08); } }
+.glass-pill { background: rgba(255,255,255,.72); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: 0 0 0 1px var(--zm-line-soft), 0 6px 20px rgba(0,0,0,.04); }
+.zm-round { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; padding: 0; }
+.zm-pill { border: 0; border-radius: 999px; padding: 10px 18px; background: rgba(25,25,25,.92); color: #fff; font-weight: 500; }
+
+/* Sidebar: Wabi list rows; Ando read / unread / mention states. */
+.zm-sidebar { display: flex; flex-direction: column; min-height: 0; background: var(--zm-card); box-shadow: 1px 0 0 var(--zm-line-soft); }
+.zm-side-head { display: flex; align-items: center; gap: 10px; padding: 22px 20px 10px; }
+.zm-side-head h1 { margin: 0; font-size: 26px; letter-spacing: -.6px; font-weight: 650; }
+.zm-search { margin: 4px 16px 10px; display: flex; align-items: center; gap: 8px; padding: 0 14px; height: 40px; border-radius: 999px; background: rgba(25,25,25,.05); color: var(--zm-grey); }
+.zm-search input { flex: 1; border: 0; background: none; outline: none; color: var(--zm-ink); }
+.zm-archived-row, .zm-threads-row { display: flex; align-items: center; gap: 12px; margin: 0 8px; padding: 10px 14px; border: 0; background: none; color: var(--zm-ink); font-weight: 500; border-radius: 14px; text-align: left; }
+.zm-archived-row span, .zm-threads-row .zm-badge { margin-left: auto; color: var(--zm-grey); font-size: 13px; }
+.zm-archived-row:hover { background: rgba(25,25,25,.04); }
+.zm-chats { list-style: none; margin: 0; padding: 0 8px 8px; overflow: auto; flex: 1; }
+.zm-chat { position: relative; border-radius: 16px; transition: background-color 150ms var(--ease-wabi); }
+.zm-chat:hover { background: rgba(25,25,25,.035); }
+.zm-chat.zm-active { background: rgba(25,25,25,.07); }
+.zm-chat-open { width: 100%; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 0; background: none; color: inherit; text-align: left; }
+.zm-chat-body { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.zm-chat-top, .zm-chat-bottom { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.zm-chat-top b { flex: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zm-chat-top time { font-size: 12px; color: var(--zm-grey); font-variant-numeric: tabular-nums; }
+.zm-preview { flex: 1; font-size: 14px; color: var(--zm-grey); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zm-unread .zm-chat-top b { font-weight: 650; }
+.zm-unread .zm-preview { color: var(--zm-ink); }
+.zm-unread .zm-chat-top time { color: var(--zm-ink); font-weight: 600; }
+.zm-flag { color: var(--zm-grey); display: grid; } .zm-flag .zm-icon { width: 15px; height: 15px; }
+.zm-badge { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; display: inline-grid; place-items: center; background: var(--zm-ink); color: #fff; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.zm-badge.zm-muted { background: #bdbdbd; }
+.zm-badge.zm-mention { background: var(--zm-read); }
+.zm-chat-more { position: absolute; right: 8px; top: 50%; translate: 0 -50%; opacity: 0; border: 0; background: var(--zm-card); border-radius: 50%; width: 28px; height: 28px; display: grid; place-items: center; color: var(--zm-grey); transition: opacity 150ms var(--ease-wabi); }
+.zm-chat:hover .zm-chat-more, .zm-chat-more:focus-visible { opacity: 1; }
+.zm-chat-menu { right: 8px; top: 52px; }
+.zm-empty { color: var(--zm-grey); padding: 24px; text-align: center; font-size: 14px; }
+.zm-side-foot { display: flex; align-items: center; gap: 10px; padding: 12px 16px; box-shadow: 0 -1px 0 var(--zm-line-soft); font-size: 13px; }
+.zm-side-foot > span:not(.zm-avatar) { flex: 1; display: grid; }
+.zm-online { color: #2f9e5b; } .zm-offline { color: var(--zm-grey); }
+.zm-side-foot .zw-secondary { padding: 6px 10px; font-size: 12px; border-radius: 999px; }
+
