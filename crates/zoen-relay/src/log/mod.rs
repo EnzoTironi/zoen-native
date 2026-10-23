@@ -29,6 +29,12 @@ pub enum Sequencing {
     },
 }
 
+pub enum ManagedPublication {
+    Sequenced(Sequencing),
+    /// Exact original evidence; this result does not append or fan out again.
+    Observed(Sequenced),
+}
+
 /// A redeemable invite, as the preview shows it.
 pub struct InviteInfo {
     pub space: String,
@@ -92,24 +98,14 @@ pub trait LogStore: Send + Sync {
     /// Admits and sequences one envelope in a single transaction. `target_known` says
     /// whether the identity a `MemberAdded` names is in the directory.
     async fn append(&self, env: &Envelope, target_known: bool) -> Result<Sequencing, Reject>;
-    /// A managed generation must survive the actual queued commit. Unsupported
-    /// stores refuse rather than dropping the guard and calling ordinary append.
-    async fn append_managed(
+    /// Reserve ownership and capacity BEFORE independent consumption. The queue
+    /// retains the resulting linear permit through the actual append commit.
+    async fn append_managed_effect(
         &self,
         _env: &Envelope,
         _target_known: bool,
-        _generation: relay_admission::managed_images::GenerationGuard,
-    ) -> Result<Sequencing, Reject> {
-        Err(Reject::retry("managed publication unavailable"))
-    }
-    /// The original independently consumed effect must be checked and recorded
-    /// in the actual append transaction, not only before queue admission.
-    async fn append_managed_publish(
-        &self,
-        _env: &Envelope,
-        _target_known: bool,
-        _permit: relay_admission::managed_images::ManagedPublishPermit,
-    ) -> Result<Sequencing, Reject> {
+        _checkpoint: &relay_admission::managed_images::Checkpoint,
+    ) -> Result<ManagedPublication, Reject> {
         Err(Reject::retry("managed publication unavailable"))
     }
     /// Observe only the exact retained publication. Absence after independent
