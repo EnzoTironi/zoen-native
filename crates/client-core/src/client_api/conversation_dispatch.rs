@@ -32,6 +32,10 @@ impl Client {
                 max_attempt_units,
                 enabled,
             )?),
+            FindOwnerPolicySubmission {
+                scope,
+                policy_digest,
+            } => encode(&self.find_owner_policy_submission(scope, policy_digest)?),
             ReviewOwnerPolicy { scope, policy_json } => {
                 encode(&self.review_owner_policy(scope, policy_json)?)
             }

@@ -84,6 +84,15 @@ fn owner_policy_stays_pending_until_exact_confirmed_host_receipt_and_replays_one
     assert_eq!(pending.state, "pending");
     assert_eq!(submit(&mut f, &scope, &json)?, pending);
     assert_eq!(f.owner.outbox_len(), 1);
+    assert_eq!(
+        f.owner
+            .find_owner_policy_submission(&scope, &pending.policy_digest)?,
+        Some(pending.clone())
+    );
+    assert!(f
+        .owner
+        .find_owner_policy_submission(&scope, &"cc".repeat(32))?
+        .is_none());
     assert!(f
         .core
         .engine

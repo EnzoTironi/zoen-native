@@ -22,6 +22,10 @@ pub(super) enum Command {
         max_attempt_units: String,
         enabled: bool,
     },
+    FindOwnerPolicySubmission {
+        scope: crate::owner_policy::OwnerPolicyScope,
+        policy_digest: String,
+    },
     ReviewOwnerPolicy {
         scope: crate::owner_policy::OwnerPolicyScope,
         policy_json: String,
