@@ -11,6 +11,12 @@ pub(super) enum Command {
         request_id: String,
         expected_hash: String,
     },
+    StageImageGeneration {
+        scope: crate::image_tasks::ImageTaskScope,
+        source_id: String,
+        serving_id: String,
+        input: crate::image_tasks::ImageTaskInput,
+    },
     SiteRead {
         scope: crate::sites::SiteScope,
         item_id: String,
