@@ -27,6 +27,12 @@ KOTLIN_CONFIG = "apps/zoen/modules/zoen-core/android/uniffi.toml"
 ABI_MACHINES = {"arm64-v8a": 183, "x86_64": 62}
 META_PREFIX = "UNIFFI_META_CLIENT_CORE_"
 CHECKSUM_PREFIX = "uniffi_client_core_checksum_"
+BUILD_INPUTS = [
+    "scripts/build-android-core.sh", "scripts/fix-android-uniffi-callbacks.py",
+    "scripts/android-core-contract.py", "scripts/expo-android-guarded.mjs",
+    "scripts/expo-android-cargo-proxy.mjs", "scripts/expo-cargo-artifacts.mjs",
+    "scripts/cargo-source-guard.py", "scripts/cargo_guard_configuration.py",
+]
 
 
 def digest(value):
@@ -49,9 +55,7 @@ def revision(root):
 
 
 def input_hashes(root):
-    fixed = ["Cargo.toml", "Cargo.lock", KOTLIN_CONFIG,
-             "scripts/build-android-core.sh", "scripts/fix-android-uniffi-callbacks.py",
-             "scripts/android-core-contract.py"]
+    fixed = ["Cargo.toml", "Cargo.lock", KOTLIN_CONFIG, *BUILD_INPUTS]
     paths = {root / name for name in fixed}
     for directory in [root / "crates", root / "tools/uniffi-bindgen"]:
         paths.update(path for path in directory.rglob("*") if path.is_file()
@@ -289,6 +293,12 @@ def verify(root, output, abis, profile=None):
         raise ValueError("Generated Android core belongs to different source inputs; rebuild Kotlin and JNI together")
     if not set(abis).issubset(manifest["abis"]) or profile and manifest["profile"] != profile:
         raise ValueError("Generated Android core does not contain the requested ABIs/profile")
+    if "cargo_qualification" in manifest:
+        reference = manifest["cargo_qualification"]
+        raw = Path(reference["path"]).read_bytes()
+        qualification = json.loads(raw)
+        if digest(raw) != reference["sha256"] or qualification.get("schema") != "zoen.android.cargo-qualification.v1" or qualification.get("sourceSha256") != current["input_sha256"]:
+            raise ValueError("Android Cargo qualification changed or belongs to different inputs")
     actual = artifacts(output, manifest["abis"], current["contract"], manifest["artifacts"]["metadata"])
     if actual != manifest["artifacts"]:
         raise ValueError("Generated Kotlin or JNI changed after the source snapshot was recorded")
@@ -304,6 +314,7 @@ def main():
     parser.add_argument("--root", type=Path, default=ROOT)
     parser.add_argument("--output", type=Path, default=OUTPUT)
     parser.add_argument("--host-library", type=Path)
+    parser.add_argument("--cargo-qualification", type=Path)
     parser.add_argument("--abis", default="arm64-v8a,x86_64")
     parser.add_argument("--profile", choices=["dev", "release"])
     args = parser.parse_args()
@@ -320,6 +331,12 @@ def main():
                 parser.error("finish requires --host-library and --profile")
             source = json.loads((args.output / "core-inputs.json").read_text())
             manifest = finish(args.root, args.output, source, args.host_library, abis, args.profile)
+            if args.cargo_qualification is not None:
+                raw = args.cargo_qualification.read_bytes()
+                qualification = json.loads(raw)
+                if qualification.get("schema") != "zoen.android.cargo-qualification.v1" or qualification.get("sourceSha256") != source["input_sha256"]:
+                    raise ValueError("Android Cargo qualification belongs to different source inputs")
+                manifest["cargo_qualification"] = {"path": str(args.cargo_qualification.resolve()), "sha256": digest(raw)}
             (args.output / "core-contract.json").write_text(json.dumps(manifest, indent=2) + "\n")
         else:
             print(json.dumps(verify(args.root, args.output, abis, args.profile), indent=2))

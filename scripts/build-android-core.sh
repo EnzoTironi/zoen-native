@@ -22,6 +22,12 @@ SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
 if [[ -z "$SDK" && "$(uname -s)" == Darwin ]]; then SDK="$HOME/Library/Android/sdk"; fi
 [[ -d "$SDK/ndk" ]] || { echo "Set ANDROID_HOME to an SDK with NDK 27 or newer installed." >&2; exit 1; }
 export ANDROID_HOME="$SDK"
+# Explicit shared caches must qualify actual Cargo outputs inside cargo-ndk.
+# The default isolated build below retains its existing command contract.
+if [[ "${CARGO_TARGET_DIR+x}" == x ]]; then
+  command -v node >/dev/null || { echo "Install Node.js to qualify a shared Android Cargo target." >&2; exit 1; }
+  exec node scripts/expo-android-guarded.mjs "$@"
+fi
 mkdir -p "$OUT/kotlin" "$OUT/jniLibs"
 python3 scripts/android-core-contract.py capture --output "$OUT" --abis "$ABIS" --profile "$PROFILE"
 find "$OUT/kotlin" -name '*.kt' -type f -delete

@@ -10,7 +10,7 @@ export const cargoTooling = [
   'cargo_guard_configuration.py',
 ];
 
-const inputEnvironment = [
+const defaultInputEnvironment = [
   'SDKROOT',
   'DEVELOPER_DIR',
   'LIBRARY_PATH',
@@ -28,12 +28,15 @@ async function sha256(path) {
 // reject a concurrent replacement or mixed copy instead of trusting a later path.
 // Consumers use these private copies, never a later read of a shared target path.
 export class ExpoCargoArtifacts {
-  constructor({ root, target, directory, run, python }) {
+  constructor({ root, target, directory, run, python, cargo, inputEnvironment = [], inputFiles = [] }) {
     this.root = root;
     this.target = resolve(root, target);
     this.directory = directory;
     this.run = run;
     this.python = python ?? 'python3';
+    this.cargo = cargo;
+    this.inputEnvironment = [...new Set([...defaultInputEnvironment, ...inputEnvironment])];
+    this.inputFiles = inputFiles;
     this.receipts = [];
   }
 
@@ -55,8 +58,10 @@ export class ExpoCargoArtifacts {
           this.target,
           '--receipt',
           receipt,
-          ...inputEnvironment.flatMap((name) => ['--input-env', name]),
-          ...cargoTooling.flatMap((name) => ['--input-file', join(this.root, 'scripts', name)]),
+          ...(this.cargo ? ['--cargo', this.cargo] : []),
+          ...this.inputEnvironment.flatMap((name) => ['--input-env', name]),
+          ...[...cargoTooling.map((name) => join(this.root, 'scripts', name)), ...this.inputFiles]
+            .flatMap((path) => ['--input-file', path]),
           '--',
           'build',
           ...args,
