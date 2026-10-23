@@ -14,6 +14,8 @@ import type { PushWake } from './wake';
 import { t } from '../i18n';
 import { clearDeviceNotificationState } from './clear';
 import type { LocalNote } from './local';
+import type { NativeNoteScope } from './presentation';
+import NativeCore from '../../modules/zoen-core/src/ZoenCoreModule';
 
 function isPushTrigger(
   trigger: Notifications.Notification['request']['trigger'],
@@ -25,6 +27,24 @@ function isPushTrigger(
 
 export function nativePushConfiguration() {
   return nativePushConfigurationFor(Platform.OS, Constants.expoConfig?.extra?.zoenPush);
+}
+
+export function nativeNotificationPresentation(): boolean {
+  const configuration = nativePushConfiguration();
+  return Boolean(
+    Platform.OS === 'ios' &&
+    configuration &&
+    configuration.platform !== 'fcm' &&
+    NativeCore?.nativePushPresentationVersion === 1 &&
+    typeof NativeCore.notificationWake === 'function',
+  );
+}
+
+export async function requestNativeNotes(scope: NativeNoteScope) {
+  if (!nativeNotificationPresentation()) return;
+  // The native actor validates these expected public IDs against its own module,
+  // engine and generation. They select no account, route, title or message body.
+  await NativeCore!.notificationWake!(scope.identityId, scope.deviceId);
 }
 
 async function messageChannel() {
