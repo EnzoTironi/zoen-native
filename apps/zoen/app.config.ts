@@ -6,14 +6,23 @@ import { androidFcmBuildConfiguration } from './src/notifications/build-config.t
 import { ANDROID_MESSAGE_CHANNEL } from './src/notifications/configuration.ts';
 import {
   iosPushBuildConfiguration,
+  iosPushBuildEnvironment,
   notificationPluginOptions,
 } from './src/notifications/ios-build-config.ts';
 
 /** Public provider identifiers only. Provider secrets belong to the relay. */
 export default ({ config, projectRoot }: ConfigContext): ExpoConfig => {
+  const environmentIosPush = iosPushBuildEnvironment({
+    enabled: process.env.ZOEN_IOS_PUSH_ENABLED,
+    environment: process.env.ZOEN_IOS_PUSH_ENVIRONMENT,
+    topic: process.env.ZOEN_IOS_PUSH_TOPIC,
+  });
+  const pushInput = environmentIosPush
+    ? { ...config.extra?.zoenPush, ...environmentIosPush }
+    : config.extra?.zoenPush;
   const iosPush = iosPushBuildConfiguration(
-    config.extra?.zoenPush?.enabled === true,
-    config.extra?.zoenPush,
+    pushInput?.enabled === true,
+    pushInput,
     config.ios?.bundleIdentifier,
     config.ios?.entitlements?.['aps-environment'],
   );
@@ -99,7 +108,8 @@ export default ({ config, projectRoot }: ConfigContext): ExpoConfig => {
     ...(androidPush ? { android: { ...config.android, googleServicesFile } } : {}),
     extra: {
       ...config.extra,
-      ...(androidPush ? { zoenPush: { ...config.extra?.zoenPush, android: androidPush } } : {}),
+      ...(environmentIosPush ? { zoenPush: pushInput } : {}),
+      ...(androidPush ? { zoenPush: { ...pushInput, android: androidPush } } : {}),
       zoenRelayUrl: process.env.EXPO_PUBLIC_ZOEN_RELAY_URL?.trim() || providers.relayUrl,
       zoenAuth: {
         googleIosClientId,

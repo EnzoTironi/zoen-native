@@ -5,11 +5,37 @@ import vm from 'node:vm';
 import { build } from 'esbuild';
 import {
   iosPushBuildConfiguration,
+  iosPushBuildEnvironment,
   notificationPluginOptions,
 } from '../notifications/ios-build-config.ts';
 
 const topic = 'xyz.tironi.zoen';
 const apns = { enabled: true, environment: 'sandbox', topic } as const;
+
+test('public iOS build environment requires a complete exact opt-in and preserves default configuration', () => {
+  const absent = { enabled: undefined, environment: undefined, topic: undefined };
+  assert.equal(iosPushBuildEnvironment(absent), null);
+  assert.deepEqual(iosPushBuildEnvironment({ ...absent, enabled: 'false' }), { enabled: false });
+  for (const environment of ['sandbox', 'production'])
+    assert.deepEqual(iosPushBuildEnvironment({ enabled: 'true', environment, topic }), {
+      enabled: true,
+      environment,
+      topic,
+    });
+  for (const input of [
+    { ...absent, environment: 'sandbox' },
+    { ...absent, topic },
+    { ...absent, enabled: '' },
+    { ...absent, enabled: 'TRUE' },
+    { ...absent, enabled: 'true' },
+    { enabled: 'true', environment: 'sandbox', topic: undefined },
+    { enabled: 'true', environment: 'development', topic },
+    { enabled: 'true', environment: 'sandbox ', topic },
+    { enabled: 'true', environment: 'sandbox', topic: ` ${topic}` },
+    { enabled: 'false', environment: 'sandbox', topic },
+  ])
+    assert.throws(() => iosPushBuildEnvironment(input));
+});
 
 test('iOS build opt-in is explicit, scoped to this bundle and compatible with its signed environment', () => {
   assert.equal(
@@ -63,6 +89,7 @@ test('actual CNG config enables iOS without Android and retires stale native wak
     plugins: (string | [string, Record<string, unknown>])[];
   };
   const module = { exports: {} as { default?: (context: unknown) => NativeConfig } };
+  const environment: Record<string, string> = {};
   vm.runInNewContext(compiled.outputFiles[0]!.text, {
     module,
     exports: module.exports,
@@ -76,7 +103,7 @@ test('actual CNG config enables iOS without Android and retires stale native wak
       if (name === 'node:path') return { resolve: (...parts: string[]) => parts.join('/') };
       throw new Error('unexpected external build import');
     },
-    process: { env: {} },
+    process: { env: environment },
   });
   const configure = module.exports.default!;
   const base = { name: 'Synthetic', slug: 'synthetic', ios: { bundleIdentifier: topic } };
@@ -102,4 +129,34 @@ test('actual CNG config enables iOS without Android and retires stale native wak
       projectRoot: '/synthetic',
     }),
   );
+
+  Object.assign(environment, {
+    ZOEN_IOS_PUSH_ENABLED: 'true',
+    ZOEN_IOS_PUSH_ENVIRONMENT: 'sandbox',
+    ZOEN_IOS_PUSH_TOPIC: topic,
+  });
+  const fromEnvironment = configure({ config: base, projectRoot: '/synthetic' });
+  assert.equal(fromEnvironment.ios.entitlements['aps-environment'], 'development');
+  assert.equal(fromEnvironment.ios.infoPlist.ZoenRemoteNotificationsEnabled, true);
+  assert.equal(fromEnvironment.ios.infoPlist.ZoenPushTopic, topic);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(fromEnvironment)),
+    JSON.parse(JSON.stringify(enabled)),
+  );
+  environment.ZOEN_IOS_PUSH_TOPIC = 'different.bundle';
+  assert.throws(() => configure({ config: base, projectRoot: '/synthetic' }));
+  environment.ZOEN_IOS_PUSH_TOPIC = topic;
+  environment.ZOEN_IOS_PUSH_ENVIRONMENT = 'production';
+  assert.throws(() =>
+    configure({ config: { ...base, ios: enabled.ios }, projectRoot: '/synthetic' }),
+  );
+  delete environment.ZOEN_IOS_PUSH_ENVIRONMENT;
+  delete environment.ZOEN_IOS_PUSH_TOPIC;
+  environment.ZOEN_IOS_PUSH_ENABLED = 'false';
+  const fromDisabledEnvironment = configure({
+    config: { ...base, extra: { zoenPush: apns }, ios: enabled.ios },
+    projectRoot: '/synthetic',
+  });
+  assert.equal(fromDisabledEnvironment.ios.infoPlist.ZoenRemoteNotificationsEnabled, false);
+  assert.equal(fromDisabledEnvironment.ios.infoPlist.ZoenPushTopic, '');
 });

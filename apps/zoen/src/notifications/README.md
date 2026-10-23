@@ -34,6 +34,29 @@ A conflicting existing entitlement is refused. iOS configuration does not depend
 on Android FCM configuration. Public Info.plist flags independently gate the
 native subscriber; disabling the opt-in clears those flags on the next CNG build.
 
+The dynamic app config also accepts this complete public build-time tuple:
+
+```text
+ZOEN_IOS_PUSH_ENABLED=true
+ZOEN_IOS_PUSH_ENVIRONMENT=sandbox
+ZOEN_IOS_PUSH_TOPIC=xyz.tironi.zoen
+```
+
+Use `production` for the production environment. An explicit tuple overrides the
+iOS fields in `extra.zoenPush`; the topic must still match the bundle and any
+existing signed-environment pin must agree. Partial tuples, whitespace/coerced
+values and invalid environments are refused. With all three variables absent,
+the existing app configuration is unchanged. `ZOEN_IOS_PUSH_ENABLED=false` alone
+explicitly disables it; supplying an environment/topic alongside `false` is an
+error. These inputs contain no token, key or provisioning material and do not
+themselves register with APNs. CNG and a new native binary are required.
+
+An enabled running JavaScript client with already-granted notification permission
+can call the SDK's device-token API on foreground, which invokes native APNs
+registration even on Simulator. A simulator wake injected locally is separate
+from that registration and from provider delivery. Do not assume that enabling
+the native configuration makes a foreground QA launch network-free.
+
 `ZoenPushDelegate` receives the content-free OS callback without starting a
 TaskManager/headless JavaScript runtime. A process transition gate borrows the
 existing module's `ZoenSession`, or opens one temporary session only after the
