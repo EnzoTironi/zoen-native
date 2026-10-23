@@ -155,6 +155,7 @@ pub(super) async fn refuses_consumed_original(
         .assert_only_authenticated_ws_touch(&after.sql, &f.world.agents[0]);
     before.restore(f, &after.sql).await;
     output::cold(f).await;
+    after.sql.assert_exact(&sql::Snapshot::capture(f).await);
     let restored_head = head(f).await;
     assert_eq!(
         proof::review::original(&f.world.runtime, intent).await,
@@ -180,10 +181,18 @@ pub(super) async fn refuses_consumed_original(
         0
     );
     assert_eq!(f.world.http.sends.load(Ordering::SeqCst), 0);
-    after.sql.assert_exact(&sql::Snapshot::capture(f).await);
+    // This negative attempt also authenticates a real registered WS before the
+    // relay observes the independently consumed original with a rolled-back log.
+    // Its refusal may advance only the same exact actor's last_seen; it cannot
+    // alter authority, financial rows or the original custody checkpoint.
+    let after_refusal = sql::Snapshot::capture(f).await;
+    after
+        .sql
+        .assert_only_authenticated_ws_touch(&after_refusal, &f.world.agents[0]);
     // Restore exact known post-Accepted bytes to continue this same fixture;
     // neither restore touches or recreates the independently consumed record.
-    after.restore(f, &after.sql).await;
+    after.restore(f, &after_refusal).await;
     output::cold(f).await;
+    after_refusal.assert_exact(&sql::Snapshot::capture(f).await);
     println!("managed image publication restore: actual source/log/dedupe and original Runtime capsule/Review restored after CP/before append; current complete SQL preserved including authoritative checkpoint and monotonic authenticated reconnect timestamp; consumed original refused without new append/provider/claim PASS (not full deployment backup/restore)");
 }
