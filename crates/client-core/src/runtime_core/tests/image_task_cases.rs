@@ -15,7 +15,7 @@ fn input() -> ImageTaskInput {
         },
     }
 }
-fn png(width: u32, height: u32) -> Vec<u8> {
+pub(super) fn png(width: u32, height: u32) -> Vec<u8> {
     let mut bytes = Vec::new();
     {
         let mut encoder = png::Encoder::new(&mut bytes, width, height);
@@ -28,7 +28,7 @@ fn png(width: u32, height: u32) -> Vec<u8> {
     }
     bytes
 }
-fn approved() -> (Fixture, String, String) {
+pub(super) fn approved() -> (Fixture, String, String) {
     let mut f = Fixture::new();
     f.encrypted(
         EventBody::GrantIssued {
