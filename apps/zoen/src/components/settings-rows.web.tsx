@@ -18,6 +18,8 @@ export function SettingsRows({ rows, testID }: { rows: readonly SettingsRow[]; t
           key={row.id}
           testID={row.id}
           accessibilityRole="button"
+          disabled={row.disabled}
+          accessibilityState={{ disabled: row.disabled }}
           accessibilityLabel={
             row.supportingText ? `${row.title}, ${row.supportingText}` : row.title
           }
