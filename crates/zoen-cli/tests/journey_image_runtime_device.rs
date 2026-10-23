@@ -85,6 +85,12 @@ fn dedicated_runtime_and_citizen_open_the_same_source_from_their_own_welcome() {
         // unchanged native link code. No IdentityBox is installed at the host.
         w.zoen("citizen", &["link", &pairing.encode()]);
         value["device"] = pairing.device.clone().into();
+        let installed: config::Config = serde_json::from_value(value.clone()).unwrap();
+        provision::validate_installed(&installed, &vault).unwrap();
+        let mut foreign_value = value.clone();
+        foreign_value["device"] = citizen_device.clone().into();
+        let foreign: config::Config = serde_json::from_value(foreign_value).unwrap();
+        assert!(provision::validate_installed(&foreign, &vault).is_err());
         let path = w.dir.join("image-host.json"); write_json(&path, &value);
         assert!(vault.save("pg".into(), w.db_url.as_bytes().to_vec()));
         assert!(vault.save("evidence".into(), vec![73;32]));

@@ -248,3 +248,13 @@ fn matching_canonical_terminal_releases_capacity_without_claiming_delivery_or_er
         JOURNAL_KEEP
     );
 }
+
+#[test]
+fn a_second_prompt_for_the_same_source_cannot_create_orphan_scheduling() {
+    let journal = Journal::new();
+    retained_or_schedule(&journal.0, "space", "source", &call("original")).unwrap();
+    let before = std::fs::read(&journal.0).unwrap();
+    assert!(retained_or_schedule(&journal.0, "space", "source", &call("different")).is_err());
+    assert_eq!(std::fs::read(&journal.0).unwrap(), before);
+    retained_or_schedule(&journal.0, "space", "new-source", &call("different")).unwrap();
+}

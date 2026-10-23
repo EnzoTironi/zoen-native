@@ -165,6 +165,14 @@ fn retained_or_schedule(
     {
         return Ok(step.result.clone());
     }
+    if state
+        .steps
+        .iter()
+        .find(|(s, _)| s == source)
+        .is_some_and(|(_, steps)| steps.iter().any(|s| s.call.name == TOOL))
+    {
+        return Err("this source already has its original image intent; use a new message for another image".into());
+    }
     let initial = serde_json::to_string(&Pending {
         schema: "runtime-image/1".into(),
         space: space.into(),
