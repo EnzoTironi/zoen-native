@@ -177,6 +177,23 @@ mod tests {
     }
 
     #[test]
+    fn poisoned_registry_refuses_existing_leases_and_new_foreground_authority() {
+        let demands = FileDemands::default();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let lease = demands.acquire(key(0), 1024, deadline).unwrap();
+        let poisoned = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _held = demands.0.lock().unwrap();
+            panic!("fixture: interrupted demand mutation");
+        }));
+        assert!(poisoned.is_err());
+        assert!(demands.0.is_poisoned());
+        assert!(!lease.active(), "poisoned demand must not authorize a download");
+        assert!(demands.acquire(key(1), 1024, deadline).is_none());
+        assert!(demands.foreground_attempts().is_empty());
+        assert!(!demands.consume_foreground_attempt(&key(0)));
+    }
+
+    #[test]
     fn file_demand_capacity_expiry_and_waiter_drop_preserve_other_requests() {
         let demands = FileDemands::default();
         let deadline = Instant::now() + Duration::from_secs(1);
