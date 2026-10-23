@@ -81,10 +81,10 @@ function fixture() {
   };
 }
 
-test('renewal dispatches only the exact predecessor and observed hash after explicit confirmation', async () => {
+test('renewal dispatches only the exact predecessor and observed hash from one explicit button intent', async () => {
   const f = fixture();
   await f.session.refresh();
-  assert.equal(await f.session.renew(f.session.ticket(), async () => true), true);
+  assert.equal(await f.session.renew(f.session.ticket()), true);
   assert.deepEqual(f.writes, [['old-request', 'ab'.repeat(32)]]);
   assert.equal(f.session.getSnapshot().request?.tool_approval?.review?.state, 'Requested');
   assert.equal(f.session.ticket(), null);
@@ -92,7 +92,7 @@ test('renewal dispatches only the exact predecessor and observed hash after expl
   assert.equal(f.writes.length, 1);
 });
 
-test('late confirmations retire on owner/device/relay/epoch/focus or canonical revision changes', async () => {
+test('preflight reads retire on owner/device/relay/epoch/focus or canonical revision changes', async () => {
   for (const retire of [
     (f: ReturnType<typeof fixture>) =>
       f.scope({ identity: 'other', device: 'phone', relay: 'https://relay.test', epoch: 1 }),
@@ -107,16 +107,19 @@ test('late confirmations retire on owner/device/relay/epoch/focus or canonical r
   ]) {
     const f = fixture();
     await f.session.refresh();
-    const dialog = deferred<boolean>();
-    const attempt = f.session.renew(f.session.ticket(), () => dialog.promise);
-    await retire(f);
-    dialog.resolve(true);
+    const preflight = deferred<AgentRequestDto[]>();
+    const ticket = f.session.ticket();
+    f.reads(() => preflight.promise);
+    const attempt = f.session.renew(ticket);
+    const retirement = retire(f);
+    preflight.resolve([request()]);
+    await retirement;
     assert.equal(await attempt, false);
     assert.deepEqual(f.writes, []);
   }
 });
 
-test('the post-dialog read refuses changed hashes, status, owner, malformed or missing projections', async () => {
+test('the current-state preflight read refuses changed hashes, status, owner, malformed or missing projections', async () => {
   for (const mutate of [
     (r: AgentRequestDto) => {
       r.tool_approval!.content_hash = 'cd'.repeat(32);
@@ -139,14 +142,14 @@ test('the post-dialog read refuses changed hashes, status, owner, malformed or m
     const changed = request();
     mutate(changed);
     f.rows([changed]);
-    assert.equal(await f.session.renew(f.session.ticket(), async () => true), false);
+    assert.equal(await f.session.renew(f.session.ticket()), false);
     assert.equal(f.writes.length, 0);
   }
   for (const rows of [[], [request(), request()]]) {
     const f = fixture();
     await f.session.refresh();
     f.rows(rows);
-    assert.equal(await f.session.renew(f.session.ticket(), async () => true), false);
+    assert.equal(await f.session.renew(f.session.ticket()), false);
     assert.equal(f.writes.length, 0);
   }
 });
@@ -164,7 +167,7 @@ test('failed reads close admission and an unknown mutation only reconciles witho
   f.effect(async () => {
     throw new Error('unknown bridge outcome');
   });
-  assert.equal(await f.session.renew(f.session.ticket(), async () => true), false);
+  assert.equal(await f.session.renew(f.session.ticket()), false);
   assert.equal(f.session.getSnapshot().unknown, true);
   assert.equal(f.session.ticket(), null);
   await f.session.refresh();
@@ -184,13 +187,13 @@ test('an in-flight request stays latched across read refreshes and cannot dispat
   const pending = deferred<unknown>();
   f.effect(() => pending.promise);
   const ticket = f.session.ticket();
-  const first = f.session.renew(ticket, async () => true);
+  const first = f.session.renew(ticket);
   for (let n = 0; n < 8; ++n) await Promise.resolve();
   assert.equal(f.writes.length, 1);
   await f.session.refresh();
   assert.equal(f.session.getSnapshot().busy, true);
   assert.equal(f.session.ticket(), null);
-  await f.session.renew(ticket, async () => true);
+  await f.session.renew(ticket);
   assert.equal(f.writes.length, 1);
   pending.resolve({});
   await first;
@@ -284,7 +287,7 @@ test('failure before dispatch remains a failed read, not an unknown action or an
   f.reads(async () => {
     throw new Error('second read failed');
   });
-  assert.equal(await f.session.renew(ticket, async () => true), false);
+  assert.equal(await f.session.renew(ticket), false);
   assert.equal(f.session.getSnapshot().phase, 'failed');
   assert.equal(f.session.getSnapshot().unknown, false);
   assert.equal(f.writes.length, 0);

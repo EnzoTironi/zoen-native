@@ -93,19 +93,18 @@ function fixture(locale: 'en' | 'pt-BR' = 'en') {
     },
   ];
   const writes: any[] = [],
-    routes: any[] = [],
-    confirmations: any[] = [];
+    routes: any[] = [];
   const listeners = new Set<() => void>(),
     canonical = new Set<() => void>(),
     preflight = new Set<() => void>();
   const foreground = new Set<(next: string) => void>(),
     cleanups: (() => void)[] = [];
-  let confirm: () => Promise<boolean> = async () => false;
+  let read = async () => structuredClone(rows);
   const store = {
     getSnapshot: () => state,
     sessionEpoch: 1,
     isSessionRetiring: false,
-    driver: { request: async () => structuredClone(rows) },
+    driver: { request: () => read() },
     request: async (command: any) => {
       writes.push(command);
       rows[0].tool_approval.review.state = 'Requested';
@@ -162,15 +161,6 @@ function fixture(locale: 'en' | 'pt-BR' = 'en') {
         };
       if (path.includes('i18n/index')) return { t: localization.t };
       if (path.endsWith('/primitives')) return { NativeButton: 'NativeButton' };
-      if (path.endsWith('/dialogs'))
-        return {
-          useDialogs: () => ({
-            confirm: (options: unknown) => {
-              confirmations.push(options);
-              return confirm();
-            },
-          }),
-        };
       if (path.endsWith('/theme')) return { useTheme: () => ({ colors: { secondary: '#888' } }) };
       if (path.endsWith('/use-tool-review'))
         return { useToolReview: () => ({ session, state: session.getSnapshot() }) };
@@ -187,7 +177,6 @@ function fixture(locale: 'en' | 'pt-BR' = 'en') {
     session,
     writes,
     routes,
-    confirmations,
     foreground,
     listeners,
     canonical,
@@ -196,8 +185,8 @@ function fixture(locale: 'en' | 'pt-BR' = 'en') {
       rows = next;
     },
     base: () => structuredClone(rows),
-    confirm: (fn: () => Promise<boolean>) => {
-      confirm = fn;
+    reads: (fn: typeof read) => {
+      read = fn;
     },
     view: () => load('view').ToolReviewRecovery({ requestId: 'old-request' }),
     hook: () => load('hook').useToolReview('old-request'),
@@ -205,7 +194,7 @@ function fixture(locale: 'en' | 'pt-BR' = 'en') {
   };
 }
 
-test('compiled native review explains renewal and emits no approval or action until confirmed', async () => {
+test('compiled native review button directly requests one inert intent, never approval or action', async () => {
   for (const locale of ['en', 'pt-BR'] as const) {
     const f = fixture(locale);
     await f.session.refresh();
@@ -221,18 +210,6 @@ test('compiled native review explains renewal and emits no approval or action un
       ),
     );
     button.props.onPress();
-    await settle();
-    assert.equal(f.confirmations.length, 1);
-    assert.equal(f.writes.length, 0);
-    assert.ok(
-      f.confirmations[0].message.includes(
-        locale === 'en' ? 'does not approve or repeat' : 'não aprova nem repete',
-      ),
-    );
-    f.confirm(async () => true);
-    nodes(f.view())
-      .find((node) => node.type === 'NativeButton')!
-      .props.onPress();
     await settle();
     assert.deepEqual(f.writes, [
       {
@@ -264,23 +241,24 @@ test('compiled successor button rechecks current scope before opening the exact 
   assert.equal(f.routes.length, 1);
 });
 
-test('actual compiled hook retires dialogs on background/account and reloads only on focus/foreground', async () => {
+test('actual compiled hook retires preflight reads on background/account and reloads only on focus/foreground', async () => {
   const f = fixture();
   const hook = f.hook();
   await settle();
   assert.ok(hook.session.ticket());
-  let confirm!: (value: boolean) => void;
-  const attempt = hook.session.renew(
-    hook.session.ticket(),
+  let finish!: (value: any[]) => void;
+  f.reads(
     () =>
-      new Promise<boolean>((yes) => {
-        confirm = yes;
+      new Promise<any[]>((yes) => {
+        finish = yes;
       }),
   );
+  const attempt = hook.session.renew(hook.session.ticket());
   for (const fn of f.foreground) fn('background');
-  confirm(true);
+  finish(f.base());
   assert.equal(await attempt, false);
   assert.equal(f.writes.length, 0);
+  f.reads(async () => f.base());
   for (const fn of f.foreground) fn('active');
   await settle();
   assert.ok(hook.session.ticket());

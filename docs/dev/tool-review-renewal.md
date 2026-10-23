@@ -52,9 +52,11 @@ model response as approval, or bypass current grants/device/version checks.
 ## Owner UI and lifecycle
 
 The ordinary request review shows an expired approval and offers **Request a new
-review** when Core exposes eligibility. A confirmation explains that another
-review is preparation only. The UI rereads the exact predecessor before the
-command and retires late confirmations on account, device, relay, session,
+review** when Core exposes eligibility. The button itself explicitly requests
+preparation only; the visible explanation states that a new request still needs
+independent approval. No extra confirmation dialog or model call is needed to
+submit that owner intent. The UI rereads the exact predecessor before the
+command and retires late preflight reads on account, device, relay, session,
 focus or canonical revision changes. A failed command only triggers read-only
 reconciliation; it is never automatically resent.
 

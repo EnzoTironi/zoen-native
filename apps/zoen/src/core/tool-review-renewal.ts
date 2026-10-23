@@ -193,15 +193,14 @@ export class ToolReviewSession {
       reviewAvailable(this.state.request),
     );
   }
-  async renew(ticket: ReviewTicket | null, confirm: () => Promise<boolean>) {
+  async renew(ticket: ReviewTicket | null) {
     if (!this.accepts(ticket) || this.flight || this.state.busy) return false;
     this.flight = ticket;
     let dispatched = false;
     this.publish({ busy: true });
     try {
-      if (!(await confirm()) || !this.accepts(ticket)) return false;
-      // A dialog is not an authority snapshot. Read current Core state and
-      // compare the exact predecessor before dispatching the inert owner intent.
+      // The button requests preparation only. Read current Core state and
+      // compare the exact predecessor before dispatching that inert owner intent.
       const requests = await this.port.requests();
       if (!this.accepts(ticket)) return false;
       const matching = requests.filter((request) => request.id === ticket.id);

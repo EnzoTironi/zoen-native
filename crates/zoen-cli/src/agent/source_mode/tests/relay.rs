@@ -3,7 +3,9 @@ use client_core::{Client, SecretVault};
 use futures_util::{SinkExt, StreamExt};
 use protocol::{AgentRequest, AgentStateRecord, ClientFrame, Op, Reply, Sequenced, ServerFrame};
 use std::collections::{BTreeMap, HashMap};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use tokio::sync::Notify;
 use tokio_tungstenite::tungstenite::Message;
 
 #[derive(Default)]
@@ -35,6 +37,9 @@ pub(super) struct Relay {
     pub calls: Arc<Mutex<Vec<&'static str>>>,
     pub cursors: Arc<Mutex<Vec<(String, u64)>>>,
     pub delivered: Arc<Mutex<Option<(String, String, u64)>>>,
+    pub released: Arc<AtomicBool>,
+    pub release: Arc<Notify>,
+    pub histories: Arc<Mutex<BTreeMap<String, Vec<Sequenced>>>>,
     task: tokio::task::JoinHandle<()>,
 }
 impl Drop for Relay {
@@ -48,11 +53,21 @@ pub(super) async fn relay(mode: Mode) -> Relay {
     let calls = Arc::new(Mutex::new(Vec::new()));
     let cursors = Arc::new(Mutex::new(Vec::<(String, u64)>::new()));
     let delivered = Arc::new(Mutex::new(None::<(String, String, u64)>));
+    let released = Arc::new(AtomicBool::new(!matches!(mode, Mode::Unsynced)));
+    let release = Arc::new(Notify::new());
+    let histories = Arc::new(Mutex::new(BTreeMap::<String, Vec<Sequenced>>::new()));
+    let (release_state, release_signal, history) =
+        (released.clone(), release.clone(), histories.clone());
     let (seen, positions, receipts) = (calls.clone(), cursors.clone(), delivered.clone());
     let task = tokio::spawn(async move {
         loop {
             let (socket, _) = listener.accept().await.unwrap();
             let (seen, positions, receipts) = (seen.clone(), positions.clone(), receipts.clone());
+            let (release_state, release_signal, history) = (
+                release_state.clone(),
+                release_signal.clone(),
+                history.clone(),
+            );
             tokio::spawn(async move {
                 let mut ws = tokio_tungstenite::accept_async(socket).await.unwrap();
                 let Some(Ok(Message::Binary(bytes))) = ws.next().await else {
@@ -106,12 +121,21 @@ pub(super) async fn relay(mode: Mode) -> Relay {
                 ))
                 .await
                 .unwrap();
-                let mut logs: BTreeMap<String, Vec<Sequenced>> = BTreeMap::new();
-                while let Some(Ok(Message::Binary(bytes))) = ws.next().await {
+                loop {
+                    let message = tokio::select! {
+                        message = ws.next() => message,
+                        _ = release_signal.notified() => {
+                            ws.send(Message::Binary(ServerFrame::SyncDone.encode().into())).await.unwrap();
+                            continue;
+                        }
+                    };
+                    let Some(Ok(Message::Binary(bytes))) = message else {
+                        break;
+                    };
                     let response = match ClientFrame::decode(&bytes).unwrap() {
                         ClientFrame::Sync { .. } => {
                             seen.lock().unwrap().push("sync");
-                            if matches!(mode, Mode::Unsynced) {
+                            if !release_state.load(Ordering::SeqCst) {
                                 continue;
                             }
                             let delivered = receipts.lock().unwrap().take();
@@ -174,29 +198,33 @@ pub(super) async fn relay(mode: Mode) -> Relay {
                         ClientFrame::Publish { env } => {
                             seen.lock().unwrap().push("event_publish");
                             env.verify().unwrap();
-                            let log = logs.entry(env.space().into()).or_default();
-                            let seq = log.len() as u64;
-                            let prev = log
-                                .last()
-                                .map(|ev| ev.hash.clone())
-                                .unwrap_or_else(|| types::GENESIS_PREV.into());
-                            let ev = Sequenced {
-                                seq,
-                                hash: event_log::chain_hash(
-                                    env.space(),
+                            let (ev, accepted) = {
+                                let mut logs = history.lock().unwrap();
+                                let log = logs.entry(env.space().into()).or_default();
+                                let seq = log.len() as u64;
+                                let prev = log
+                                    .last()
+                                    .map(|ev| ev.hash.clone())
+                                    .unwrap_or_else(|| types::GENESIS_PREV.into());
+                                let ev = Sequenced {
                                     seq,
-                                    &prev,
-                                    &env.wire_hash(),
-                                ),
-                                prev,
-                                env,
+                                    hash: event_log::chain_hash(
+                                        env.space(),
+                                        seq,
+                                        &prev,
+                                        &env.wire_hash(),
+                                    ),
+                                    prev,
+                                    env,
+                                };
+                                let accepted = ServerFrame::Accepted {
+                                    space: ev.env.space().into(),
+                                    client_id: ev.env.client_id().into(),
+                                    seq,
+                                };
+                                log.push(ev.clone());
+                                (ev, accepted)
                             };
-                            let accepted = ServerFrame::Accepted {
-                                space: ev.env.space().into(),
-                                client_id: ev.env.client_id().into(),
-                                seq,
-                            };
-                            log.push(ev.clone());
                             ws.send(Message::Binary(ServerFrame::Event { ev }.encode().into()))
                                 .await
                                 .unwrap();
@@ -233,6 +261,9 @@ pub(super) async fn relay(mode: Mode) -> Relay {
         calls,
         cursors,
         delivered,
+        released,
+        release,
+        histories,
         task,
     }
 }

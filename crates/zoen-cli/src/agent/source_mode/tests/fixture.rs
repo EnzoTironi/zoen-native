@@ -166,6 +166,94 @@ impl Fixture {
         self.reopen();
         event.client_id
     }
+    /// Actual signed expired approval + inert owner intent, with no sleeps and
+    /// no live account access. The device/root are this synthetic fixture's keys.
+    pub(super) fn expired_review(
+        &mut self,
+        original: &types::AgentRequest,
+    ) -> (types::AgentRequest, String, Vec<protocol::Sequenced>) {
+        self.close();
+        flush(&self.path, "agent.sqlite", "agent.sqlite", &self.space);
+        let db = store::Store::open(self.path.join("agent.sqlite").to_str().unwrap()).unwrap();
+        let mut log = SpaceLog::from_events(&self.space, db.events(&self.space).unwrap()).unwrap();
+        let device: [u8; 32] = self
+            .vault
+            .load("zoen.device.v1".into())
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let agent = event_log::Author::device(
+            &Signer::from_secret(&[91; 32]),
+            Signer::from_secret(&device),
+        );
+        let owner: [u8; 32] = self
+            .owner_vault
+            .load("zoen.identity.v1".into())
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let owner = event_log::Author::root(Signer::from_secret(&owner));
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        let mut expired = original.clone();
+        expired.id = types::new_id("expired_review");
+        expired.tool_proposal.as_mut().unwrap().expires_at_ms = now - 1000;
+        expired.content_hash = expired.tool_proposal_hash(&self.space).unwrap();
+        for (author, at, body) in [
+            (
+                &agent,
+                now - 2000,
+                types::EventBody::RequestOpened {
+                    request: expired.clone(),
+                },
+            ),
+            (
+                &owner,
+                now - 1001,
+                types::EventBody::RequestResolved {
+                    request: expired.id.clone(),
+                    approved: true,
+                    content_hash: expired.content_hash.clone(),
+                    resolution: Some(types::RequestResolution {
+                        message: "Approved once".into(),
+                        created_item: None,
+                        ai_cost_cents: 0,
+                        standing_grant: None,
+                        tool_decision: Some(types::ToolDecision::ApproveOnce),
+                    }),
+                },
+            ),
+            (
+                &owner,
+                now,
+                types::EventBody::ToolReviewRequested {
+                    request: expired.id.clone(),
+                    content_hash: expired.content_hash.clone(),
+                },
+            ),
+        ] {
+            let event = author.sign_event(&self.space, &types::new_ulid(at), at, log.head(), body);
+            db.append_event(log.sequence(event)).unwrap();
+        }
+        log.verify().unwrap();
+        let intent = log.events().last().unwrap().client_id.clone();
+        let history = log
+            .events()
+            .iter()
+            .map(|event| protocol::Sequenced {
+                seq: event.seq,
+                prev: event.prev.clone(),
+                hash: event.hash.clone(),
+                env: protocol::Envelope::plain(event),
+            })
+            .collect();
+        drop(db);
+        self.reopen();
+        (expired, intent, history)
+    }
+
     pub(super) async fn approve(&mut self, request: &client_core::AgentRequestDto) {
         self.close();
         flush(&self.path, "agent.sqlite", "owner.sqlite", &self.space);

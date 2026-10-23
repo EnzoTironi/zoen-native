@@ -122,4 +122,3 @@ pub struct AppCallOutcome {
     pub confirm_detail: Option<String>,
     pub item: Option<ItemDetail>,
 }
-

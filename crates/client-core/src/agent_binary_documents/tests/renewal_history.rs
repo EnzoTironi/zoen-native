@@ -82,7 +82,7 @@ pub(crate) fn confirm_pending(f: &Fixture) {
                 hash: event.hash.clone(),
                 env: protocol::Envelope::plain(&event),
             }),
-            crate::sync::Ingest::Applied
+            crate::sync::Ingest::Confirmed
         );
     }
 }

@@ -97,6 +97,11 @@ fn expired_approval_requests_only_preparation_and_successor_requires_independent
         ToolRequestDecision::ApproveOnce,
     )
     .unwrap();
+    assert!(
+        f.agent.approved_tool_turn(&next.id, WORKER).is_err(),
+        "optimistic approval is not renewed execution authority"
+    );
+    confirm_pending(&f);
     assert!(f.agent.approved_tool_turn(&next.id, WORKER).is_ok());
     assert!(f.agent.approved_tool_turn(&old.id, WORKER).is_err());
     assert_v1(&f);
@@ -202,7 +207,21 @@ fn renewal_refuses_changed_head_and_signed_block_without_creating_an_intent() {
         signed_trust(&f, TrustLevel::Suggest);
         let (old, live) = expired_approved(&f, "deckcraft_slide_notes");
         if block {
-            signed_trust(&f, TrustLevel::Listen);
+            signed(
+                &f,
+                &f.owner,
+                EventBody::GrantIssued {
+                    grant: Grant {
+                        id: types::new_id("synthetic_block"),
+                        grantor: f.owner.clone(),
+                        grantee: Some(f.agent.account().unwrap().identity_id),
+                        scope: GrantScope::Space(f.space.clone()),
+                        capability: Capability::Trust(TrustLevel::Listen),
+                        expires_at_ms: None,
+                    },
+                },
+                crate::engine::now_ms(),
+            );
         } else {
             owner_decide(
                 &f,
@@ -296,10 +315,30 @@ fn signed_non_owner_or_wrong_hash_intents_are_inert_and_later_revocation_prevent
                     )
                     .unwrap();
             }
-            "block" => signed_trust(&f, TrustLevel::Listen),
+            "block" => signed(
+                &f,
+                &f.owner,
+                EventBody::GrantIssued {
+                    grant: Grant {
+                        id: types::new_id("synthetic_block"),
+                        grantor: f.owner.clone(),
+                        grantee: Some(agent.clone()),
+                        scope: GrantScope::Space(f.space.clone()),
+                        capability: Capability::Trust(TrustLevel::Listen),
+                        expires_at_ms: None,
+                    },
+                },
+                crate::engine::now_ms(),
+            ),
             _ => unreachable!(),
         }
         let before = counts(&f);
+        let unchanged_content = serde_json::to_value(
+            &f.agent.lock().state.items[&f.base.item_id]
+                .current()
+                .content,
+        )
+        .unwrap();
         assert!(
             f.agent
                 .stage_tool_review_successor(&old.id, &intent)
@@ -307,6 +346,19 @@ fn signed_non_owner_or_wrong_hash_intents_are_inert_and_later_revocation_prevent
             "{failure}"
         );
         assert_eq!(counts(&f), before, "{failure}");
-        assert_v1(&f);
+        // The refused operation must leave all storage/effects untouched even
+        // when current access intentionally forbids a public document read.
+        assert_eq!(
+            serde_json::to_value(
+                &f.agent.lock().state.items[&f.base.item_id]
+                    .current()
+                    .content
+            )
+            .unwrap(),
+            unchanged_content
+        );
+        if failure != "device" && failure != "served-writer" {
+            assert_v1(&f);
+        }
     }
 }

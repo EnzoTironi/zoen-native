@@ -2,7 +2,6 @@ import { Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { t } from '../i18n/index.ts';
 import { NativeButton } from '../components/primitives';
-import { useDialogs } from '../components/dialogs';
 import { useTheme } from '../theme';
 import { useToolReview } from './use-tool-review';
 
@@ -17,7 +16,6 @@ export function ToolReviewRecovery({
 }) {
   const { state, session } = useToolReview(requestId);
   const { colors } = useTheme();
-  const dialogs = useDialogs();
   const review = state.request?.tool_approval?.review;
   const ticket = disabled ? null : session.ticket();
   const successor = disabled ? null : session.successor();
@@ -48,17 +46,9 @@ export function ToolReviewRecovery({
           disabled={state.busy || disabled}
           onPress={() => {
             if (disabled) return;
-            void session
-              .renew(ticket, () =>
-                dialogs.confirm({
-                  title: t('reviewRenewal.confirmationTitle'),
-                  message: t('reviewRenewal.confirmation'),
-                  confirmLabel: t('reviewRenewal.renew'),
-                }),
-              )
-              .then((changed) => {
-                if (changed) onResolved?.();
-              });
+            void session.renew(ticket).then((changed) => {
+              if (changed) onResolved?.();
+            });
           }}
         />
       ) : null}

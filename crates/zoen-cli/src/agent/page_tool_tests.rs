@@ -40,7 +40,12 @@ impl DecisionProvider for Allow {
         })
     }
 }
-fn cx(client: &Arc<Client>, journal: &Path, item: &str, starts: Arc<AtomicUsize>) -> Ctx {
+pub(super) fn cx(
+    client: &Arc<Client>,
+    journal: &Path,
+    item: &str,
+    starts: Arc<AtomicUsize>,
+) -> Ctx {
     let account = client.account().unwrap();
     let item = item.to_string();
     Ctx {
