@@ -286,6 +286,7 @@ impl Engine {
                     &review.source.item_id,
                     &config.public_origin,
                 )
+                .map_err(|_| invalid())?
             || !secret_id(&mutation.request_id, "pub_")
             || mutation.expected_head.as_deref().is_some_and(|v| !hex64(v))
         {
@@ -327,7 +328,10 @@ impl Engine {
             mutation: mutation.clone(),
             signature: String::new(),
         };
-        signed.signature = author.key.sign(&signed.signing_bytes(&config.audience));
+        let signing_bytes = signed
+            .signing_bytes(&config.audience)
+            .map_err(|_| invalid())?;
+        signed.signature = author.key.sign(&signing_bytes);
         Ok(SitePrepared {
             relay_url: relay.into(),
             configuration: config.clone(),

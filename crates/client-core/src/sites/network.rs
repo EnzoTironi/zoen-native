@@ -131,18 +131,22 @@ impl Client {
                     &scope.space_id,
                     &source.item_id,
                     &config.public_origin,
-                ),
+                )
+                .map_err(|_| invalid())?,
                 public_origin: config.public_origin.clone(),
                 before: None,
                 signature: String::new(),
             };
+            let signing_bytes = signed
+                .signing_bytes(&config.audience)
+                .map_err(|_| invalid())?;
             signed.signature = e
                 .net
                 .author
                 .as_ref()
                 .ok_or_else(forbidden)?
                 .key
-                .sign(&signed.signing_bytes(&config.audience));
+                .sign(&signing_bytes);
             signed
         };
         let response = http()?
