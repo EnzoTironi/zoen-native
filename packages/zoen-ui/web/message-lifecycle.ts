@@ -91,6 +91,7 @@ export async function apply(
   this: MessageLifecyclePort,
   json: string,
   generation: number,
+  origin?: 'local',
 ): Promise<void> {
   const update = parseUpdate(json);
   await persistBeforeOutgoing({
@@ -104,12 +105,17 @@ export async function apply(
       this.transport.sendRetained(frame);
     },
   });
-  if (this.closed || generation !== this.generation) return;
-  this.cursorRepair.update(update.cursorRepair, generation);
-  if (this.closed || generation !== this.generation) return;
+  // Messages owns one immutable Core/session for its lifetime. Reconnecting its
+  // transport cannot hide an accepted local write after the vault saved it.
+  // Network ingestion retains its generation fence; stop() retires both origins.
+  if (this.closed || (generation !== this.generation && origin !== 'local')) return;
+  if (generation === this.generation) this.cursorRepair.update(update.cursorRepair, generation);
+  if (this.closed || (generation !== this.generation && origin !== 'local')) return;
   this.conversations = update.conversations;
-  this.scheduleMaintenance(update.maintenance, generation);
-  if (update.historyReady) this.scheduleHistory();
+  if (generation === this.generation) {
+    this.scheduleMaintenance(update.maintenance, generation);
+    if (update.historyReady) this.scheduleHistory();
+  }
   this.publish();
 }
 

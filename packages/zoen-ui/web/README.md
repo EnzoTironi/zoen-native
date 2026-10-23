@@ -28,6 +28,11 @@ Every production MLS update is encrypted and durably saved before any resulting 
 is sent. Storage failure stops transport and worker and requires a reload from the last
 saved state. Reconnect restarts sync from saved cursors and replays saved pending work;
 stale socket generations cannot complete authentication or emit queued frames.
+An offline-enabled local send remains visible after its snapshot is saved even if
+the transport reconnects during that operation. The same `Messages` instance owns
+one immutable Core/session; closing it still prevents late projection into either
+owner. Only local projection crosses a transport-generation change: frames, repair
+metadata, maintenance and received network updates retain their generation fences.
 The phone supplies the browser's MLS Welcome for each existing encrypted conversation.
 Messages use the native signed inner event inside real MLS ciphertext. Conversations
 without a usable group are held with a visible waiting state; plaintext messaging is
