@@ -87,39 +87,50 @@ impl Fixture {
         let store = store::Store::open(db.to_str().unwrap()).unwrap();
         store.put_identity(&profile, None).unwrap(); // public only, no owner key import
         let space = types::new_id("source_space");
+        drop(store);
+        // Admit the signed canonical prefix through the normal ingestion path.
+        // Direct Store insertion omits the durable relay-ordered Space marker.
+        let mut engine = client_core::Engine::open(db.to_str().unwrap()).unwrap();
+        let mut admit = |event: &types::Event| {
+            assert_eq!(
+                engine.ingest(protocol::Sequenced {
+                    seq: event.seq,
+                    prev: event.prev.clone(),
+                    hash: event.hash.clone(),
+                    env: protocol::Envelope::plain(event),
+                }),
+                client_core::Ingest::Applied
+            );
+        };
         let mut log = SpaceLog::new(&space);
-        store
-            .append_event(log.append(
-                &agent,
-                1_792_510_809_000,
-                types::EventBody::SpaceCreated {
-                    title: "Source fixture".into(),
-                    kind: types::SpaceKind::Group,
-                    privacy: types::Privacy::Closed,
-                },
-            ))
-            .unwrap();
-        store
-            .append_event(log.append(
-                &agent,
-                1_792_510_809_001,
-                types::EventBody::MemberAdded {
-                    identity: owner.clone(),
-                    role: types::Role::Member,
-                },
-            ))
-            .unwrap();
+        admit(log.append(
+            &agent,
+            1_792_510_809_000,
+            types::EventBody::SpaceCreated {
+                title: "Source fixture".into(),
+                kind: types::SpaceKind::Group,
+                privacy: types::Privacy::Closed,
+            },
+        ));
+        admit(log.append(
+            &agent,
+            1_792_510_809_001,
+            types::EventBody::MemberAdded {
+                identity: owner.clone(),
+                role: types::Role::Member,
+            },
+        ));
         let mut post = |text: &str| {
             let event = log
                 .append(&signer, 1_792_510_809_002, message(text, None))
                 .clone();
-            store.append_event(&event).unwrap();
+            admit(&event);
             event.client_id
         };
         let other = post("Other source must never be executed by this run.");
         let source = post("Inspect only the selected source.");
         log.verify().unwrap();
-        drop(store);
+        drop(engine);
         let client = Client::open(db.to_str().unwrap().into(), "en".into()).unwrap();
         assert!(client.unlock(vault.clone()).unwrap());
         Self {
