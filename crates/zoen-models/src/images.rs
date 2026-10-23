@@ -52,9 +52,11 @@ impl ModelGateway {
         let bytes = tracing::subscriber::with_default(
             tracing::subscriber::NoSubscriber::default(),
             || {
-                let wire = OpenAIConfig::new(self.config.api_key.clone())
-                    .with_base_url(&self.config.base_url)
-                    .image_generation(&self.config.model);
+                let wire = rig_core::providers::openai::wire::Images::new(
+                    OpenAIConfig::new(self.config.api_key.clone())
+                        .with_base_url(&self.config.base_url),
+                    &self.config.model,
+                );
                 let prepared =
                     <rig_core::operation::ImageGeneration as rig_core::wire::Operation>::prepare(
                         make(),
