@@ -130,6 +130,35 @@ impl Engine {
         bytes: &[u8],
         thumbnail: Option<&[u8]>,
     ) -> R<String> {
+        self.file_add_at(space, path, name, mime, bytes, thumbnail, &new_id("it"))
+    }
+
+    /// A caller-bound canonical Item ID makes an unknown/missing receipt fail
+    /// closed instead of creating a second file. Existing IDs are never reused.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn file_add_at(
+        &mut self,
+        space: &str,
+        path: &str,
+        name: &str,
+        mime: &str,
+        bytes: &[u8],
+        thumbnail: Option<&[u8]>,
+        item: &str,
+    ) -> R<String> {
+        if item.is_empty()
+            || item.len() > 128
+            || !item
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+            || self.state.items.contains_key(item)
+        {
+            return Err(invalid(
+                "identificador de arquivo já utilizado",
+                "file identifier already used",
+            ));
+        }
+        let item = item.to_owned();
         let me = self.me_id()?;
         if !self.is_member(space, &me) {
             return Err(CoreError::Forbidden {
@@ -150,7 +179,6 @@ impl Engine {
             thumbnail,
             &HashMap::new(),
         )?;
-        let item = new_id("it");
         self.store
             .set_meta(&format!("file_key:{item}"), &hex::encode(key))?;
         self.append(

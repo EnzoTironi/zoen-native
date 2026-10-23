@@ -72,6 +72,64 @@ impl Engine {
         caption: &str,
         media: Option<types::MessageMedia>,
     ) -> R<TimelineEntry> {
+        self.send_file_message_inner(
+            space,
+            name,
+            mime,
+            bytes,
+            thumbnail,
+            reply_to,
+            thread,
+            mutation_id,
+            caption,
+            media,
+            None,
+        )
+    }
+
+    /// Rust-only deterministic creation seam; the normal FileDoc/send transaction
+    /// and receipt remain responsible for storage, attachment and exact retry.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn send_file_message_for_item(
+        &mut self,
+        space: &str,
+        item: &str,
+        name: &str,
+        mime: &str,
+        bytes: &[u8],
+        reply_to: Option<&str>,
+        mutation_id: &str,
+    ) -> R<TimelineEntry> {
+        self.send_file_message_inner(
+            space,
+            name,
+            mime,
+            bytes,
+            None,
+            reply_to,
+            false,
+            mutation_id,
+            "",
+            None,
+            Some(item),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn send_file_message_inner(
+        &mut self,
+        space: &str,
+        name: &str,
+        mime: &str,
+        bytes: &[u8],
+        thumbnail: Option<&[u8]>,
+        reply_to: Option<&str>,
+        thread: bool,
+        mutation_id: &str,
+        caption: &str,
+        media: Option<types::MessageMedia>,
+        fixed_item: Option<&str>,
+    ) -> R<TimelineEntry> {
         let me = self.me_id()?;
         if !self.state.writer(space, &me) {
             return Err(CoreError::Forbidden {
@@ -146,10 +204,18 @@ impl Engine {
                 .iter()
                 .find(|entry| entry.id() == message)
                 .ok_or_else(invalid_file)?;
-            return Ok(self.entry_dto(entry));
+            let output = self.entry_dto(entry);
+            if fixed_item.is_some_and(|item| !matches!(&output.kind, crate::EntryKind::Message {card:Some(card),..} if card.item_id==item)) {
+                return Err(invalid_file());
+            }
+            return Ok(output);
         }
         self.atomic_agent_action(|engine| {
-            let item = engine.file_add(space, name, name, mime, bytes, thumbnail)?;
+            let item = if let Some(item) = fixed_item {
+                engine.file_add_at(space, name, name, mime, bytes, thumbnail, item)?
+            } else {
+                engine.file_add(space, name, name, mime, bytes, thumbnail)?
+            };
             let posted = engine.append(
                 space,
                 &me,

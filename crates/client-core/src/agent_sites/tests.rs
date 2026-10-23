@@ -290,3 +290,31 @@ fn human_preview_is_read_only_and_requires_exact_owner_device_and_request_hash()
     assert_eq!(f.agent.items().len(), before);
     assert!(f.agent.approved_site_tool(&r.id).is_err());
 }
+
+#[test]
+fn lost_receipt_metadata_cannot_duplicate_an_existing_canonical_file() {
+    let f = setup();
+    let request = stage(&f, "create_site", create_args(), json!([]));
+    let created = execute(&f, &request);
+    let permit = f.agent.approved_site_tool(&request.id).unwrap();
+    let before = f.agent.items().len();
+    f.agent
+        .lock()
+        .store
+        .conn()
+        .execute_batch("DELETE FROM meta WHERE key LIKE 'site_tool:%' OR key LIKE 'file_send:%'")
+        .unwrap();
+    f.agent.lock().reload().unwrap();
+    assert!(f.agent.execute_site_tool(&permit).is_err());
+    assert_eq!(f.agent.items().len(), before);
+    assert!(f
+        .agent
+        .agent_site_read(
+            created["itemId"].as_str().unwrap(),
+            1,
+            created["sha256"].as_str().unwrap(),
+            &f.source,
+            &f.owner
+        )
+        .is_ok());
+}

@@ -70,7 +70,9 @@ impl Engine {
         let (ask, _) = review::parsed(p)?;
         let args = serde_json::from_str(&p.arguments_json).map_err(|_| invalid())?;
         let (expected_version, expected_sha) = match parse(&p.canonical_tool, &args)? {
-            Command::Create(c) => (1, sha(c.html.as_bytes())),
+            Command::Create(c) if effect.item_id == format!("it_site_{intent}") => {
+                (1, sha(c.html.as_bytes()))
+            }
             Command::Replace(c) if effect.item_id == c.artifact_id => (
                 c.version.checked_add(1).ok_or_else(invalid)?,
                 sha(c.html.as_bytes()),
@@ -146,14 +148,13 @@ impl Client {
             let (item_id, version) = match command {
                 Command::Create(c) => {
                     let name = format!("{}.html", c.title);
-                    let entry = e.send_file_message(
+                    let entry = e.send_file_message_for_item(
                         &space,
+                        &format!("it_site_{intent}"),
                         &name,
                         "text/html",
                         c.html.as_bytes(),
-                        None,
                         Some(&p.source),
-                        false,
                         &format!("site_{intent}"),
                     )?;
                     let crate::EntryKind::Message {
