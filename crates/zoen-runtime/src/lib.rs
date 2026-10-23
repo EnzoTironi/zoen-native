@@ -248,6 +248,10 @@ impl RuntimeAuthority {
             output_fixture: None,
         })
     }
+    /// Install or observe the exact signed owner/period/version digest. An
+    /// existing older digest is historical observation, not proof of the latest
+    /// active budget. Current directory/signature/expiry checks still apply;
+    /// financial admission independently selects the latest policy.
     pub async fn install_policy(&self, signed: SignedOwnerPolicy) -> Result<String, RuntimeError> {
         self.finance.install_policy(signed).await
     }
