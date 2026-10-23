@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
@@ -14,6 +14,7 @@ import {
   nativeMiniappNavigation,
 } from './host-transport.ts';
 import { sandboxHtml } from './sandbox.ts';
+import { findBrowserExecutable } from '../../../../tools/miniapp-build/browser-executable.ts';
 
 const nonce = 'a24582bd-0377-4fee-bb76-73d465c927c3';
 const other = 'c34128af-3476-4ce2-ba34-37d459c934d6';
@@ -268,20 +269,7 @@ test(
   'official App uses a real parent/source through the native shell and retires after disposal',
   { timeout: 30_000 },
   async (t) => {
-    const candidates =
-      process.platform === 'darwin'
-        ? ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome']
-        : ['/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser'];
-    let chrome: string | undefined;
-    for (const candidate of candidates) {
-      try {
-        await access(candidate);
-        chrome = candidate;
-        break;
-      } catch {
-        /* Optional real browser oracle. */
-      }
-    }
+    const chrome = await findBrowserExecutable();
     if (!chrome) {
       t.skip('Real Chrome is unavailable; codec tests do not claim browser source semantics.');
       return;
