@@ -82,6 +82,20 @@ function Navigation() {
               <Stack.Screen name="(tabs)" options={{ title: '' }} />
               <Stack.Screen name="chat/[id]" options={{ title: '' }} />
               <Stack.Screen
+                name="chat-attachment/[id]"
+                options={{
+                  // All attachment categories share this presentation from their
+                  // first frame; the child retains its capture/dismissal guard.
+                  presentation: process.env.EXPO_OS === 'web' ? 'modal' : 'formSheet',
+                  title: t('media.attachmentAdd'),
+                  headerTransparent: false,
+                  sheetAllowedDetents: [0.65, 1],
+                  sheetGrabberVisible: true,
+                  sheetExpandsWhenScrolledToEdge: true,
+                  gestureEnabled: true,
+                }}
+              />
+              <Stack.Screen
                 name="miniapps"
                 options={{
                   presentation: process.env.EXPO_OS === 'ios' ? 'fullScreenModal' : 'card',
