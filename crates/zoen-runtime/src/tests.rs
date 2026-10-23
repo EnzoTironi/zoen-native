@@ -7,6 +7,7 @@ mod journeys;
 mod managed_custody;
 mod retained;
 mod stores;
+mod vault;
 use super::*;
 use event_log::{Author, Signer};
 use sqlx::{Connection, PgConnection, PgPool};

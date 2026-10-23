@@ -221,3 +221,33 @@ impl Finance {
         })
     }
 }
+
+impl NativeDirectoryGuard {
+    /// Publication uses the same current profile/certificate/device locks as
+    /// maintenance, and the existing relay receipts in this very transaction.
+    pub(crate) async fn publish_key_packages(
+        mut self,
+        packages: &[Vec<u8>],
+    ) -> Result<(), RuntimeError> {
+        let validated = relay_admission::directory::key_packages::validate_publications(
+            &self.agent,
+            &self.device,
+            packages,
+            None,
+        )
+        .map_err(|_| RuntimeError::Denied)?;
+        if !zoen_relay::db::put_key_packages_in(
+            &mut self.tx,
+            &self.agent,
+            &self.device,
+            &validated,
+            None,
+        )
+        .await?
+        {
+            return Err(RuntimeError::Denied);
+        }
+        self.tx.commit().await?;
+        Ok(())
+    }
+}
