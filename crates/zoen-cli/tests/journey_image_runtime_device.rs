@@ -72,6 +72,12 @@ fn dedicated_runtime_and_citizen_open_the_same_source_from_their_own_welcome() {
         let original_config: config::Config = serde_json::from_value(value.clone()).unwrap();
         std::fs::create_dir(&original_config.home).unwrap();
         let vault = Arc::new(file_vault::FileVault { dir: original_config.home.join("vault") });
+        assert_eq!(original_config.host().unwrap().agent, agent);
+        use std::io::IsTerminal;
+        if !std::io::stdout().is_terminal() {
+            assert!(provision::run(&original_config, &vault).is_err());
+            assert!(!vault.dir.exists(), "non-interactive pairing wrote secrets");
+        }
         let pairing = provision::prepare(&original_config, &vault).unwrap();
         assert_ne!(pairing.device, citizen_device);
         assert_eq!(provision::prepare(&original_config, &vault).unwrap(), pairing);

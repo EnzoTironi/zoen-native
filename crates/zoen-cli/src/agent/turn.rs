@@ -364,10 +364,7 @@ async fn checked(
         }
         TurnOutcome::Say { text } => selected_reply(e, space, &text, &t.id, selection),
         TurnOutcome::ToolAsk { ask } if ask.call.name == image_tools::TOOL => {
-            match tools.image_stage(&ask.call) {
-                Ok(_) => true,
-                Err(_) => false,
-            }
+            tools.image_stage(&ask.call).is_ok()
         }
         TurnOutcome::ToolAsk { ask } => match tools.stage_approval(&ask) {
             Ok(dto) => {
