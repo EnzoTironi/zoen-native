@@ -9,6 +9,18 @@ pub const MAX_HTML_BYTES: u64 = 2 * 1024 * 1024;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 #[serde(deny_unknown_fields)]
+pub struct Configuration {
+    pub schema: u8,
+    pub audience: String,
+    pub management_origin: String,
+    pub public_origin: String,
+    #[cfg_attr(feature = "client-types", ts(type = "number"))]
+    pub max_html_bytes: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+#[serde(deny_unknown_fields)]
 pub struct SourceVersion {
     pub space_id: String,
     pub item_id: String,
@@ -31,12 +43,57 @@ pub enum Change {
 #[serde(deny_unknown_fields)]
 pub struct Mutation {
     pub schema: u8,
+    /// The public destination shown during explicit consent, not just a Site ID.
+    pub public_origin: String,
     pub site_id: String,
     pub request_id: String,
     /// None only creates a new site. Every subsequent action compares the head,
     /// including rollback (a new Publish) and unpublish.
     pub expected_head: Option<String>,
     pub change: Change,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+#[serde(deny_unknown_fields)]
+pub struct SignedInspection {
+    pub owner_id: String,
+    pub device_id: String,
+    #[cfg_attr(feature = "client-types", ts(type = "number"))]
+    pub at_ms: i64,
+    pub site_id: String,
+    pub public_origin: String,
+    /// Continue a receipt chain from this head; None starts at the current head.
+    pub before: Option<String>,
+    pub signature: String,
+}
+
+impl SignedInspection {
+    pub fn signing_bytes(&self, audience: &str) -> Vec<u8> {
+        serde_json::to_vec(&(
+            "zoen-site-inspection.v1",
+            audience,
+            &self.owner_id,
+            &self.device_id,
+            self.at_ms,
+            &self.site_id,
+            &self.public_origin,
+            &self.before,
+        ))
+        .expect("site inspection serialization")
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+#[serde(deny_unknown_fields)]
+pub struct Inspection {
+    pub site_id: String,
+    pub head: Option<String>,
+    pub active: bool,
+    /// Newest first, at most 100; historical order follows previous_head links.
+    pub receipts: Vec<Receipt>,
+    pub next_before: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

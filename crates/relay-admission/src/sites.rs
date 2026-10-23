@@ -2,7 +2,7 @@
 //! owner's device fence through the receipt/head transaction. Source Item
 //! permission and selected-version verification belong to the encrypted client.
 
-use protocol::sites::{Change, SignedMutation, MAX_HTML_BYTES, SCHEMA};
+use protocol::sites::{Change, SignedInspection, SignedMutation, MAX_HTML_BYTES, SCHEMA};
 
 const MAX_SKEW_MS: u64 = 5 * 60 * 1000;
 
@@ -47,6 +47,8 @@ pub fn authorize(signed: &SignedMutation, audience: &str, now_ms: i64) -> Result
     if audience.is_empty()
         || audience.len() > 2048
         || mutation.schema != SCHEMA
+        || mutation.public_origin.is_empty()
+        || mutation.public_origin.len() > 2048
         || !valid_site(&mutation.site_id)
         || !secret_id(&mutation.request_id, "pub_")
         || !valid_sha(&signed.owner_id)
@@ -68,6 +70,35 @@ pub fn authorize(signed: &SignedMutation, audience: &str, now_ms: i64) -> Result
         {
             return Err(Failure::Invalid);
         }
+    }
+    if signed.at_ms <= 0 || now_ms <= 0 || now_ms.abs_diff(signed.at_ms) > MAX_SKEW_MS {
+        return Err(Failure::Stale);
+    }
+    if !event_log::verify_sig(
+        &signed.device_id,
+        &signed.signing_bytes(audience),
+        &signed.signature,
+    ) {
+        return Err(Failure::Signature);
+    }
+    Ok(())
+}
+
+pub fn authorize_inspection(
+    signed: &SignedInspection,
+    audience: &str,
+    now_ms: i64,
+) -> Result<(), Failure> {
+    if audience.is_empty()
+        || audience.len() > 2048
+        || !valid_sha(&signed.owner_id)
+        || !valid_sha(&signed.device_id)
+        || !valid_site(&signed.site_id)
+        || signed.public_origin.is_empty()
+        || signed.public_origin.len() > 2048
+        || signed.before.as_deref().is_some_and(|v| !valid_sha(v))
+    {
+        return Err(Failure::Invalid);
     }
     if signed.at_ms <= 0 || now_ms <= 0 || now_ms.abs_diff(signed.at_ms) > MAX_SKEW_MS {
         return Err(Failure::Stale);

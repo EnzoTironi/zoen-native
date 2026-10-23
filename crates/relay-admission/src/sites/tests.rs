@@ -14,6 +14,7 @@ fn fixture() -> (Signer, SignedMutation) {
         at_ms: NOW,
         mutation: Mutation {
             schema: SCHEMA,
+            public_origin: "https://sites.example.test".into(),
             site_id: format!("site_{}", "a".repeat(32)),
             request_id: format!("pub_{}", "b".repeat(32)),
             expected_head: None,
@@ -67,7 +68,7 @@ fn signature_binds_audience_owner_device_destination_version_and_cas() {
         authorize(&signed, "another-relay", NOW),
         Err(Failure::Signature)
     );
-    for field in 0..8 {
+    for field in 0..9 {
         let mut altered = signed.clone();
         match field {
             0 => altered.owner_id = "c".repeat(64),
@@ -82,7 +83,8 @@ fn signature_binds_audience_owner_device_destination_version_and_cas() {
                 };
                 source.version += 1;
             }
-            _ => altered.mutation.change = Change::Unpublish,
+            7 => altered.mutation.change = Change::Unpublish,
+            _ => altered.mutation.public_origin = "https://another.example.test".into(),
         }
         assert!(authorize(&altered, AUDIENCE, NOW).is_err(), "field {field}");
     }
@@ -210,4 +212,37 @@ fn unpublish_and_rollback_are_new_signed_compare_and_swap_actions() {
     sign(&device, &mut rollback);
     assert_eq!(authorize(&rollback, AUDIENCE, NOW), Ok(()));
     assert!(verify_content(&rollback, Some(HTML)).unwrap().is_some());
+}
+
+#[test]
+fn inspection_is_signed_in_its_own_domain_with_destination_and_cursor() {
+    let (device, signed) = fixture();
+    let mut read = protocol::sites::SignedInspection {
+        owner_id: signed.owner_id.clone(),
+        device_id: signed.device_id.clone(),
+        at_ms: NOW,
+        site_id: signed.mutation.site_id.clone(),
+        public_origin: signed.mutation.public_origin.clone(),
+        before: None,
+        signature: String::new(),
+    };
+    read.signature = device.sign(&read.signing_bytes(AUDIENCE));
+    assert_eq!(authorize_inspection(&read, AUDIENCE, NOW), Ok(()));
+    for field in 0..4 {
+        let mut altered = read.clone();
+        match field {
+            0 => altered.before = Some("a".repeat(64)),
+            1 => altered.public_origin = "https://other.example.test".into(),
+            2 => altered.signature = signed.signature.clone(),
+            _ => altered.site_id = format!("site_{}", "d".repeat(32)),
+        }
+        assert_eq!(
+            authorize_inspection(&altered, AUDIENCE, NOW),
+            Err(Failure::Signature)
+        );
+    }
+    assert_eq!(
+        authorize_inspection(&read, AUDIENCE, NOW + 300_001),
+        Err(Failure::Stale)
+    );
 }
