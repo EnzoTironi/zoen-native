@@ -99,7 +99,7 @@ async fn immutable_fixture_executes_with_open_case_data_and_keeps_concurrent_cas
 #[cfg(target_os = "linux")]
 #[tokio::test]
 async fn linux_write_open_executable_control_is_busy_until_its_writer_is_closed() {
-    async fn isolated_control(directory: &Path) -> Value {
+    async fn isolated_control(directory: &std::path::Path) -> Value {
         // The test pool never owns an executable writer: unrelated parallel
         // process spawns cannot inherit one between fork and exec.
         let mut child = tokio::process::Command::new("python3");
