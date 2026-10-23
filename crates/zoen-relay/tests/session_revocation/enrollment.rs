@@ -72,7 +72,7 @@ async fn enrollment_and_link_box_delivery_commit_or_rollback_together() {
         .is_err());
     assert_device_absent(&test, &third).await;
     assert_eq!(
-        zoen_relay::db::take_link_box(&test.state.pool, &occupied_id)
+        zoen_relay::db::read_link_box(&test.state.pool, &occupied_id)
             .await
             .unwrap(),
         Some(vec![1])
@@ -82,7 +82,7 @@ async fn enrollment_and_link_box_delivery_commit_or_rollback_together() {
     assert!(request(&mut controller, 5, link_op(&bad_cert, &invalid_id))
         .await
         .is_err());
-    assert!(zoen_relay::db::take_link_box(&test.state.pool, &invalid_id)
+    assert!(zoen_relay::db::read_link_box(&test.state.pool, &invalid_id)
         .await
         .unwrap()
         .is_none());
@@ -101,7 +101,7 @@ async fn enrollment_and_link_box_delivery_commit_or_rollback_together() {
     .await
     .unwrap();
     assert_eq!(
-        zoen_relay::db::take_link_box(&test.state.pool, &history_id)
+        zoen_relay::db::read_link_box(&test.state.pool, &history_id)
             .await
             .unwrap(),
         Some(vec![2])

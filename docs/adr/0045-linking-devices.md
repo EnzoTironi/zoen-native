@@ -54,9 +54,14 @@ plaintext, and pruning (ADR 0026) must not take away history a new device still 
   `psk` = link secret, `psk_id` = `zoen-link-v1`, `info` = `zoen-link-v1:<context>`. Only a
   holder of both the new device's HPKE secret and the QR's secret opens anything, so a relay
   that swaps keys learns nothing, and a box made for another code doesn't open.
-- Boxes on the relay (`link_boxes`, ≤64 KB, single fetch, 15-minute TTL) are addressed by
+- Boxes on the relay (`link_boxes`, ≤64 KB, immutable publication, 15-minute TTL) are addressed by
   `SHA-256("zoen-link-box-v1\0" ‖ secret ‖ label)`: unguessable, and the relay never sees
-  the secret.
+  the secret. Fetches return the same sealed bytes until the original publication expiry;
+  they neither delete the box nor refresh its TTL. A response lost before durable local
+  retention can be retried with the same pending pairing material. A live box cannot be
+  overwritten, and this transport retry is not another enrollment authorization. The
+  original destructive single-fetch contract was replaced after #365/#372 identified
+  that cancellation or an interrupted local install could otherwise consume the only copy.
 - Afterwards the two devices keep the link secret and each other's HPKE key as a **peer**
   (in the vault) for device-to-device messages (`SendDevice` → `DeviceMessage`, fanned out to
   the identity's online sessions only), each sealed with the same HPKE setup.

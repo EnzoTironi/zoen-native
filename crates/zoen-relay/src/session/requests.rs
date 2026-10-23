@@ -91,7 +91,7 @@ impl Session {
                     return Err("bad link id".into());
                 }
                 Ok(Reply::Link(
-                    db::take_link_box(pool, &id)
+                    db::read_link_box(pool, &id)
                         .await
                         .map_err(|e| e.to_string())?,
                 ))

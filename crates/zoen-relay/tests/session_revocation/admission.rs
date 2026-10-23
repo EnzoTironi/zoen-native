@@ -107,7 +107,7 @@ async fn an_unlinked_root_holder_cannot_return_with_a_fresh_certificate() {
             .await
             .unwrap()
     );
-    assert!(zoen_relay::db::take_link_box(&test.state.pool, &box_id)
+    assert!(zoen_relay::db::read_link_box(&test.state.pool, &box_id)
         .await
         .unwrap()
         .is_none());
