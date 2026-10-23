@@ -37,11 +37,12 @@ pub(crate) fn parsed(p: &ToolProposal) -> R<(Value, Option<Value>)> {
         return Err(invalid_review("noncanonical arguments"));
     }
     let command = parse(&p.canonical_tool, &args)?;
-    let ask: Value = serde_json::from_str(&p.continuation_json).map_err(|_| invalid())?;
+    let ask: Value = serde_json::from_str(&p.continuation_json)
+        .map_err(|_| invalid_review("continuation encoding"))?;
     let space = ask["envelope"]["space"]
         .as_str()
         .filter(|s| token(s))
-        .ok_or_else(invalid)?;
+        .ok_or_else(|| invalid_review("missing conversation"))?;
     match &command {
         Command::Create(c)
             if p.version == 1
@@ -162,14 +163,14 @@ impl Client {
         input: AgentToolApprovalInput,
     ) -> R<AgentRequestDto> {
         if input.continuation_json.len() > shared::CONTINUATION_LIMIT {
-            return Err(invalid());
+            return Err(invalid_review("continuation capacity"));
         }
         let mut e = self.lock();
         let command = parse(&input.canonical_tool, &input.arguments)?;
         let (device, owner, _, source_sha256) =
             e.agent_site_authority(space, source, serving, command.is_write())?;
         if input.worker_binding != executor_binding() {
-            return Err(invalid());
+            return Err(invalid_review("executor mismatch"));
         }
         let actor = e.me_id()?;
         let (artifact, version, hash) = match &command {
@@ -267,7 +268,9 @@ impl Client {
             proposal: None,
             tool_proposal: Some(Box::new(p)),
         };
-        request.content_hash = request.tool_proposal_hash(space).ok_or_else(invalid)?;
+        request.content_hash = request
+            .tool_proposal_hash(space)
+            .ok_or_else(|| invalid_review("request encoding"))?;
         if !matches(&e.state, &request, space) || !e.tool_non_blocked(&request) {
             return Err(stale());
         }

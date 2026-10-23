@@ -63,13 +63,23 @@ pub fn is_model_name(name: &str) -> bool {
                 .is_some_and(|s| s.len() == 16 && s.bytes().all(|b| b.is_ascii_hexdigit()))
         })
 }
+fn malformed(reason: &str) -> CoreError {
+    CoreError::Invalid {
+        reason: format!("Invalid private Site arguments: {reason}."),
+    }
+}
 pub fn parse(tool: &str, args: &Value) -> R<Command> {
-    if serde_json::to_vec(args).map_err(|_| invalid())?.len() > ARGUMENT_LIMIT {
-        return Err(invalid());
+    if serde_json::to_vec(args)
+        .map_err(|_| malformed("encoding"))?
+        .len()
+        > ARGUMENT_LIMIT
+    {
+        return Err(malformed("capacity"));
     }
     let command = match tool {
         "create_site" => {
-            let c: Create = serde_json::from_value(args.clone()).map_err(|_| invalid())?;
+            let c: Create =
+                serde_json::from_value(args.clone()).map_err(|_| malformed("create schema"))?;
             if c.title.trim() != c.title
                 || c.title.is_empty()
                 || c.title.chars().count() > 160
@@ -78,7 +88,7 @@ pub fn parse(tool: &str, args: &Value) -> R<Command> {
                 || c.title.contains(['/', '\\'])
                 || !html_valid(&c.html)
             {
-                return Err(invalid());
+                return Err(malformed("title or HTML"));
             }
             Command::Create(c)
         }
