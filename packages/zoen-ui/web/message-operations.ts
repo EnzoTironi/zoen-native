@@ -52,7 +52,7 @@ export interface MessageOperations {
     refusal?: () => string | null,
     fatal?: boolean,
   ): Promise<void>;
-  apply(json: string, generation: number): Promise<void>;
+  apply(json: string, generation: number, origin?: 'local'): Promise<void>;
   sendAttachmentRequest<T>(
     kind: 'queue_attachment' | 'queue_attachment_batch',
     request: string,
