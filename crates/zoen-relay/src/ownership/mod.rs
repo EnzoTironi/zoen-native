@@ -1,5 +1,6 @@
 //! Persisted cell ownership, checked inside the log transaction (ADR 0018).
 
+mod config;
 pub mod forward;
 pub mod registry;
 
@@ -26,28 +27,37 @@ pub const PARTITION_COUNT: u32 = 4096;
 /// Spaces by bit; a non-power change remaps freely (rendezvous is reserved
 /// for the much smaller live-node set below).
 pub fn partition_of(space: &str) -> u32 {
-    partition_of_n(space, PARTITION_COUNT)
+    partition_hash(space) % PARTITION_COUNT
 }
 
-pub fn partition_of_n(space: &str, n: u32) -> u32 {
-    assert!(n > 0);
+pub fn partition_of_n(space: &str, n: u32) -> Option<u32> {
+    partition_hash(space).checked_rem(n)
+}
+
+fn partition_hash(space: &str) -> u32 {
     let dig = Sha256::digest(space.as_bytes());
-    let v = u32::from_be_bytes([dig[0], dig[1], dig[2], dig[3]]);
-    v % n
+    u32::from_be_bytes([dig[0], dig[1], dig[2], dig[3]])
 }
 
 /// Which partitions this node owns given the live set of node ids. Every
 /// partition is assigned to exactly one live node by the same rendezvous
 /// score over `(node, partition)`.
-pub fn owned_partitions(node: &str, live: &[String]) -> Vec<u32> {
-    assert!(!live.is_empty());
-    assert!(live.iter().any(|n| n == node));
-    (0..PARTITION_COUNT)
-        .filter(|&p| owner_of_partition(p, live) == node)
-        .collect()
+pub fn owned_partitions(node: &str, live: &[String]) -> anyhow::Result<Vec<u32>> {
+    anyhow::ensure!(!live.is_empty(), "ownership needs a live node");
+    anyhow::ensure!(live.iter().all(|n| !n.is_empty()), "empty ownership node");
+    anyhow::ensure!(live.iter().any(|n| n == node), "ownership node is not live");
+    let mut partitions = Vec::new();
+    for partition in 0..PARTITION_COUNT {
+        let owner = owner_of_partition(partition, live)
+            .ok_or_else(|| anyhow::anyhow!("ownership needs a live node"))?;
+        if owner == node {
+            partitions.push(partition);
+        }
+    }
+    Ok(partitions)
 }
 
-fn owner_of_partition(partition: u32, live: &[String]) -> &str {
+fn owner_of_partition(partition: u32, live: &[String]) -> Option<&str> {
     let mut best: Option<(&str, [u8; 32])> = None;
     for n in live {
         let mut h = Sha256::new();
@@ -59,7 +69,7 @@ fn owner_of_partition(partition: u32, live: &[String]) -> &str {
             best = Some((n.as_str(), dig));
         }
     }
-    best.expect("live non-empty").0
+    best.map(|(node, _)| node)
 }
 
 /// A generation changes on takeover or reacquisition after expiry, not on renewal.
@@ -173,17 +183,21 @@ pub struct NodeOwner {
 }
 
 impl NodeOwner {
-    pub fn new(db: Arc<Database>, root: Subspace, node: String, ttl: Duration) -> Self {
-        assert!(!node.is_empty());
-        assert!(ttl >= Duration::from_millis(100));
-        Self {
+    pub fn new(
+        db: Arc<Database>,
+        root: Subspace,
+        node: String,
+        ttl: Duration,
+    ) -> anyhow::Result<Self> {
+        let timing = config::Timing::new(&node, ttl)?;
+        Ok(Self {
             node,
             db,
             root,
-            ttl_versions: i64::try_from(ttl.as_millis()).expect("lease duration") * VERSIONS_PER_MS,
-            interval: ttl / 3,
+            ttl_versions: timing.ttl_versions,
+            interval: timing.interval,
             maintained: Mutex::new(None),
-        }
+        })
     }
 
     pub fn ttl_from_env() -> anyhow::Result<Duration> {
@@ -223,7 +237,8 @@ impl NodeOwner {
                     else {
                         return Ok(None);
                     };
-                    let partitions = owned_partitions(&self.node, &live);
+                    let partitions = owned_partitions(&self.node, &live)
+                        .map_err(|error| corrupt(error.to_string()))?;
                     let leases =
                         try_join_all(partitions.iter().map(|&p| lease_in(&trx, &self.root, p)))
                             .await?;
@@ -403,7 +418,7 @@ mod tests {
         assert_ne!(partition_of("sp_a"), partition_of("sp_b"));
         let mut counts = [0u32; 16];
         for i in 0..16_000u32 {
-            counts[partition_of_n(&format!("sp_{i}"), 16) as usize] += 1;
+            counts[partition_of_n(&format!("sp_{i}"), 16).unwrap() as usize] += 1;
         }
         let avg = 16_000f64 / 16.0;
         for c in counts {
@@ -418,10 +433,10 @@ mod tests {
     fn adding_a_node_moves_about_one_nth() {
         let a = vec!["alpha".into()];
         let ab = vec!["alpha".into(), "beta".into()];
-        let before = owned_partitions("alpha", &a);
+        let before = owned_partitions("alpha", &a).unwrap();
         assert_eq!(before.len(), PARTITION_COUNT as usize);
-        let after_a = owned_partitions("alpha", &ab);
-        let after_b = owned_partitions("beta", &ab);
+        let after_a = owned_partitions("alpha", &ab).unwrap();
+        let after_b = owned_partitions("beta", &ab).unwrap();
         assert_eq!(after_a.len() + after_b.len(), PARTITION_COUNT as usize);
         let moved = before.iter().filter(|p| !after_a.contains(p)).count();
         let expected = PARTITION_COUNT as f64 / 2.0;

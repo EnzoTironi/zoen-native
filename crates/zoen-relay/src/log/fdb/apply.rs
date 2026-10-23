@@ -101,8 +101,8 @@ impl Cell {
             let env = &p.env;
             let dedupe = dedupe_keys[i].as_slice();
             if let Some(&at) = fresh.get(dedupe) {
-                let Ok(Sequencing::New { ev, .. }) = &results[at] else {
-                    unreachable!("fresh points at a new entry")
+                let Some(Ok(Sequencing::New { ev, .. })) = results.get(at) else {
+                    return Err(custom("inconsistent fresh append index"));
                 };
                 results.push(Ok(Sequencing::Duplicate {
                     ev: ev.clone(),

@@ -60,29 +60,33 @@ impl Engine {
         }
     }
 
-    pub(crate) fn trust(&self, agent: &str, space: &str) -> TrustLevel {
-        let owner = self.identities.get(agent).and_then(|a| a.owner.clone());
-        self.state
-            .grants
-            .iter()
-            .rev()
-            .filter(|g| {
-                !g.revoked
-                    && g.grant.expires_at_ms.is_none_or(|at| at > now_ms())
-                    && g.grant.grantee.as_deref() == Some(agent)
-            })
-            .filter(|g| Some(g.grant.grantor.as_str()) == owner.as_deref())
-            .filter(|g| g.grant.scope == GrantScope::Space(space.to_string()))
-            .find_map(|g| match g.grant.capability {
-                Capability::Trust(l) => Some(l),
+    // Presentation keeps the existing levels, but an invalid explicit baseline
+    // has no action authority. Never revive an older grant or an implicit default.
+    fn active_trust(&self, agent: &str, space: &str) -> Option<TrustLevel> {
+        let owner = self.identities.get(agent).and_then(|a| a.owner.as_deref());
+        let baseline = owner.and_then(|owner| self.state.trust_baseline(space, owner, agent));
+        match baseline {
+            Some(g) if g.revoked || g.grant.expires_at_ms.is_some_and(|at| at <= now_ms()) => None,
+            Some(g) => match g.grant.capability {
+                Capability::Trust(level) => Some(level),
+                // An inconsistent selector must never manufacture authority.
                 _ => None,
-            })
-            // Padrões do documento: seus agentes nos seus Espaços → Agir; os outros → Sugerir.
-            .unwrap_or(if owner.as_deref() == self.me.as_deref() {
+            },
+            // Preserve established local defaults only when no explicit baseline
+            // ever existed. Paid/native dispatch still requires its own admission.
+            None => Some(if owner.is_some() && owner == self.me.as_deref() {
                 TrustLevel::Act
             } else {
                 TrustLevel::Suggest
-            })
+            }),
+        }
+    }
+    pub(crate) fn trust(&self, agent: &str, space: &str) -> TrustLevel {
+        self.active_trust(agent, space)
+            .unwrap_or(TrustLevel::Listen)
+    }
+    pub(crate) fn trust_available(&self, agent: &str, space: &str) -> bool {
+        self.active_trust(agent, space).is_some()
     }
 
     /// Orçamento do mês. `None` quando o orçamento não vive neste aparelho
@@ -120,18 +124,17 @@ impl Engine {
         action: &ActionClass,
         ai_cost: i64,
     ) -> Decision {
+        let Some(trust) = self.active_trust(agent, space) else {
+            return Decision::Block(Reason::TrustTooLow {
+                needed: TrustLevel::Suggest,
+            });
+        };
         // Agente de outra pessoa sem orçamento local: o dono dele decide o orçamento.
         let budget = self.budget(agent).unwrap_or(Budget {
             limit_cents: i64::MAX / 4,
             spent_cents: 0,
         });
-        let decision = evaluate(
-            self.trust(agent, space),
-            action,
-            ai_cost,
-            &budget,
-            &self.policy,
-        );
+        let decision = evaluate(trust, action, ai_cost, &budget, &self.policy);
         // A standing decision from the owner settles what would otherwise be a request:
         // "always deny" blocks it, "always approve" lets it run (never past a red line).
         let Decision::Request(reason) = decision else {
@@ -146,7 +149,7 @@ impl Engine {
         }
     }
 
-    /// The newest unrevoked standing decision for this agent, kind of action and Space.
+    /// The newest standing baseline, only while unrevoked and unexpired for this agent, kind of action and Space.
     pub(crate) fn standing(
         &self,
         agent: &str,
@@ -156,16 +159,14 @@ impl Engine {
         let key = standing_key(action);
         let owner = self.identities.get(agent)?.owner.as_deref()?;
         let now = now_ms();
-        self.state
-            .grants
-            .iter()
-            .rev()
-            .filter(|g| !g.revoked && g.grant.grantee.as_deref() == Some(agent))
-            .filter(|g| g.grant.expires_at_ms.is_none_or(|at| at > now))
-            .filter(|g| g.grant.grantor == owner)
-            .filter(|g| g.grant.scope == GrantScope::Space(space.to_string()))
-            .find_map(|g| match &g.grant.capability {
-                Capability::Standing { action, allow } if action == key => Some((g, *allow)),
+        self.state.grants.iter().rev()
+            .find(|g| g.grant.grantee.as_deref() == Some(agent)
+                && g.grant.grantor == owner
+                && g.grant.scope == GrantScope::Space(space.to_string())
+                && matches!(&g.grant.capability, Capability::Standing { action, .. } if action == key))
+            .filter(|g| !g.revoked && g.grant.expires_at_ms.is_none_or(|at| at > now))
+            .and_then(|g| match &g.grant.capability {
+                Capability::Standing { allow, .. } => Some((g, *allow)),
                 _ => None,
             })
     }
@@ -302,22 +303,22 @@ impl Engine {
 }
 
 impl State {
+    fn trust_baseline(&self, space: &str, owner: &str, agent: &str) -> Option<&GrantState> {
+        self.grants.iter().rev().find(|g| {
+            g.grant.grantor == owner
+                && g.grant.grantee.as_deref() == Some(agent)
+                && g.grant.scope == GrantScope::Space(space.into())
+                && matches!(g.grant.capability, Capability::Trust(_))
+        })
+    }
+    // Native consumers apply expiry using their own observed admission clock.
     pub(crate) fn latest_trust(
         &self,
         space: &str,
         owner: &str,
         agent: &str,
     ) -> Option<&GrantState> {
-        // A revoked newest grant cannot revive an earlier, more permissive grant.
-        self.grants
-            .iter()
-            .rev()
-            .find(|g| {
-                g.grant.grantor == owner
-                    && g.grant.grantee.as_deref() == Some(agent)
-                    && g.grant.scope == GrantScope::Space(space.into())
-                    && matches!(g.grant.capability, Capability::Trust(_))
-            })
+        self.trust_baseline(space, owner, agent)
             .filter(|g| !g.revoked)
     }
 }

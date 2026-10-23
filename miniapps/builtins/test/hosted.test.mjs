@@ -28,7 +28,15 @@ test('Pet uses actual official SDK/UI: canonical ACK, single-flight, asleep/peer
     await f.wait(() => f.text().includes('94'));
     const sleeping = { ...fed, asleep: true };
     f.sync(sleeping);
-    await f.wait(() => f.button('Feed a carrot').disabled);
+    // Disabled alone can still be the preceding ACK's busy state, before the
+    // canonical peer update renders. Wait for that update and its idle controls.
+    await f.wait(
+      () =>
+        f.text().includes('Sleeping donkey') &&
+        f.dom.window.document.querySelector('main')?.getAttribute('aria-busy') === 'false',
+      'canonical asleep state after the previous ACK',
+    );
+    assert.equal(f.button('Feed a carrot').disabled, true);
     assert.equal(f.button('Give affection').disabled, true);
     assert.equal(f.button('Wake up').disabled, false);
     f.expect('pet_rename', { name: 'Still mine' }, sleeping, { error: 'QA rename denied' });
