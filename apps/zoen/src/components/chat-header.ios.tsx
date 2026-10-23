@@ -1,6 +1,9 @@
 import { Stack, router } from 'expo-router';
-import { Pressable, View } from 'react-native';
+import { Pressable, View, useWindowDimensions } from 'react-native';
 import { t } from '../i18n/index.ts';
+import { useNativeCalls } from '../calls/provider';
+import { useClient } from '../core/provider';
+import { CallHeaderAction } from '../calls/header-action.ios';
 import { ProfileAvatar } from '../profile/profile-avatar';
 import { useTheme } from '../theme';
 import { ChatTitle, type ChatHeaderProps } from './chat-title';
@@ -10,6 +13,16 @@ import { navigationGlassAppearance } from './navigation-appearance';
 import { NavigationContainer } from './navigation-container';
 
 export function ChatHeader(props: ChatHeaderProps) {
+  const { width } = useWindowDimensions();
+  const calls = useNativeCalls();
+  const { snapshot } = useClient();
+  const chat = snapshot?.conversations.find((chat) => chat.id === props.id);
+  const canCall =
+    calls.available &&
+    chat?.kind === 'Direct' &&
+    chat.privacy === 'EndToEnd' &&
+    chat.members.length === 2 &&
+    props.counterpart?.kind === 'Person';
   return (
     <Stack.Screen
       options={{
@@ -20,14 +33,14 @@ export function ChatHeader(props: ChatHeaderProps) {
         headerBackground: undefined,
         headerTitle: () => (
           <NavigationContainer scrollViewTag={props.scrollViewTag ?? 0}>
-            <ChatTitle {...props} />
+            <ChatTitle {...props} availableWidth={Math.max(88, width - (canCall ? 264 : 176))} />
           </NavigationContainer>
         ),
         unstable_headerRightItems: () => [
           {
             type: 'custom',
             hidesSharedBackground: true,
-            element: <ChatHeaderActions {...props} />,
+            element: <ChatHeaderActions {...props} canCall={canCall} />,
           },
         ],
       }}
@@ -35,12 +48,16 @@ export function ChatHeader(props: ChatHeaderProps) {
   );
 }
 
-function ChatHeaderActions(props: ChatHeaderProps) {
+function ChatHeaderActions(props: ChatHeaderProps & { canCall: boolean }) {
   const { presentation: p } = useTheme();
   const search = props.search;
+  const canCall = props.canCall;
   return (
     <NavigationGlass>
-      <View style={{ flexDirection: 'row', width: search ? 88 : 44, height: 44 }}>
+      <View
+        style={{ flexDirection: 'row', width: (search ? 88 : 44) + (canCall ? 44 : 0), height: 44 }}
+      >
+        {canCall ? <CallHeaderAction space={props.id} /> : null}
         {search ? (
           <Pressable
             testID="chat-search"

@@ -60,10 +60,14 @@ impl State {
             }
             EventBody::MemberAdded { identity, role } => {
                 if let Some(s) = self.spaces.get_mut(&e.space) {
-                    let adding = !s.members.iter().any(|(id, _)| id == identity);
+                    let changing = !s
+                        .members
+                        .iter()
+                        .any(|(id, existing)| id == identity && existing == role);
                     s.members.retain(|(id, _)| id != identity);
                     s.members.push((identity.clone(), *role));
-                    if adding {
+                    if changing {
+                        s.call_transport.clear();
                         for call in &mut s.calls {
                             call.invalidated = true;
                         }
@@ -73,6 +77,7 @@ impl State {
             EventBody::MemberRemoved { identity } => {
                 if let Some(s) = self.spaces.get_mut(&e.space) {
                     s.members.retain(|(id, _)| id != identity);
+                    s.call_transport.clear();
                     for call in &mut s.calls {
                         call.invalidated = true;
                     }

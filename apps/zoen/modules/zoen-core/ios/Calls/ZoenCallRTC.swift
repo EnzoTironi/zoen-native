@@ -16,6 +16,7 @@ final class ZoenCallRTC: NSObject {
   private var camera: RTCCameraVideoCapturer?
   private var cameraTrack: RTCVideoTrack?
   private var tail: Task<Void, Never>?
+  private var recoveryDeadline: Task<Void, Never>?
   private var received: Set<String> = []
   private var pendingICE: [RTCIceCandidate] = []
   private var generation: UInt8 = 0
@@ -86,7 +87,7 @@ final class ZoenCallRTC: NSObject {
       _ = peer.add(track, streamIds: ["call"])
     }
     didStart = true
-    changed("connecting")
+    changed("connecting"); boundRecovery()
     // Creating tracks alone never acquires microphone/camera. CallKit activation
     // plus explicit OS permission and the current Core lease must all succeed.
     microphoneAllowed = await AVAudioApplication.requestRecordPermission()
@@ -199,8 +200,20 @@ final class ZoenCallRTC: NSObject {
     microphone?.isEnabled = enabled && !muted
     RTCAudioSession.sharedInstance().isAudioEnabled = enabled
   }
+  func setCameraEnabled(_ value: Bool) { cameraTrack?.isEnabled = live && cameraAllowed && value }
   func setMuted(_ value: Bool) { muted = value; updateAudio() }
   func setSpeaker(_ value: Bool) throws { try AVAudioSession.sharedInstance().overrideOutputAudioPort(value ? .speaker : .none) }
+
+  private func boundRecovery() {
+    guard recoveryDeadline == nil else { return }
+    // A hung remote process or TURN outage must not hold the canonical call open
+    // forever. This monotonic resource timer never resets on repeated callbacks.
+    recoveryDeadline = Task { [weak self] in
+      do { try await Task.sleep(for: .seconds(30)) } catch { return }
+      guard let self, self.live else { return }
+      self.failed()
+    }
+  }
 
   private func startCamera() async throws {
     guard let camera, let device = RTCCameraVideoCapturer.captureDevices().first(where: { $0.position == .front }) ?? RTCCameraVideoCapturer.captureDevices().first,
@@ -216,7 +229,7 @@ final class ZoenCallRTC: NSObject {
 
   func stop() async {
     guard live else { return }
-    live = false; tail?.cancel()
+    live = false; tail?.cancel(); recoveryDeadline?.cancel(); recoveryDeadline = nil
     microphone?.isEnabled = false; cameraTrack?.isEnabled = false
     RTCAudioSession.sharedInstance().isAudioEnabled = false
     peer?.delegate = nil; peer?.close(); peer = nil
@@ -243,9 +256,12 @@ extension ZoenCallRTC {
     enqueue { rtc in
       let call = try await rtc.current()
       switch state {
-      case .connected: rtc.changed("connected")
-      case .connecting, .disconnected: rtc.changed("reconnecting")
+      case .connected:
+        rtc.recoveryDeadline?.cancel(); rtc.recoveryDeadline = nil
+        rtc.changed("connected")
+      case .connecting, .disconnected: rtc.boundRecovery(); rtc.changed("reconnecting")
       case .failed:
+        rtc.boundRecovery()
         guard call.callerDevice == rtc.port.scope.device else { rtc.changed("reconnecting"); return }
         guard rtc.generation < 7 else { throw ZoenCallFailure.exhausted }
         let turn = try await rtc.port.turn()

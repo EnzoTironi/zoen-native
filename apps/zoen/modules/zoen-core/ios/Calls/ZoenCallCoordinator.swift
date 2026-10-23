@@ -16,6 +16,7 @@ final class ZoenCallCoordinator: NSObject {
   private var screen: ZoenCallViewController?
   private var deadline: Task<Void, Never>?
   private var retired = false
+  private var installed = false
   private var audio: AVAudioSession?
   private let name: String
   private let status: @MainActor (String) -> Void
@@ -28,7 +29,9 @@ final class ZoenCallCoordinator: NSObject {
 
   func begin(outgoing: Bool) async throws {
     guard !retired, !call.terminal, ZoenCallSystem.shared.install(self) else { throw ZoenCallFailure.retired }
+    installed = true
     if outgoing {
+      try await port.prepareAudio()
       let action = CXStartCallAction(call: id, handle: CXHandle(type: .generic, value: name))
       action.isVideo = call.video
       try await controller.request(CXTransaction(action: action))
@@ -81,9 +84,10 @@ final class ZoenCallCoordinator: NSObject {
   func show() {
     guard !retired else { return }
     if let screen { screen.presentIfNeeded(); return }
-    let view = ZoenCallViewController(name: name, video: call.video)
+    let view = ZoenCallViewController(name: name, video: call.video, locale: port.locale)
     view.end = { [weak self] in Task { await self?.requestEnd() } }
-    view.mute = { [weak self] value in self?.rtc?.setMuted(value) }
+    view.camera = { [weak self] value in self?.rtc?.setCameraEnabled(value) }
+    view.mute = { [weak self] value in Task { await self?.requestMute(value) } }
     view.speaker = { [weak self] value in try? self?.rtc?.setSpeaker(value) }
     screen = view
     view.presentIfNeeded()
@@ -97,6 +101,12 @@ final class ZoenCallCoordinator: NSObject {
     }
   }
 
+  private func requestMute(_ value: Bool) async {
+    guard !retired else { return }
+    do { try await controller.request(CXTransaction(action: CXSetMutedCallAction(call: id, muted: value))) }
+    catch { screen?.setMuted(false) }
+  }
+
   func requestEnd() async {
     guard !retired else { return }
     do { try await controller.request(CXTransaction(action: CXEndCallAction(call: id))) }
@@ -105,6 +115,8 @@ final class ZoenCallCoordinator: NSObject {
 
   func stop(writeEnd: Bool, reason: CXCallEndedReason = .remoteEnded) async {
     guard !retired else { return }
+    guard installed else { retired = true; status("ended"); return }
+    ZoenCallSystem.shared.retiring = true
     retired = true; deadline?.cancel(); deadline = nil
     await rtc?.stop(); rtc = nil
     // Stop all capture before an awaited write. Failure stays in the canonical
@@ -116,6 +128,11 @@ final class ZoenCallCoordinator: NSObject {
     provider.reportCall(with: id, endedAt: Date(), reason: reason)
     ZoenCallSystem.shared.remove(self)
     screen?.dismiss(animated: true); screen = nil
+    let release: @MainActor () -> Void = { [port] in
+      Task { await port.releaseAudio(); ZoenCallSystem.shared.retiring = false }
+    }
+    if audio == nil { await port.releaseAudio(); ZoenCallSystem.shared.retiring = false }
+    else { ZoenCallSystem.shared.afterDeactivation = release }
     audio = nil; status("ended")
   }
 
@@ -132,6 +149,7 @@ final class ZoenCallCoordinator: NSObject {
   func answerAction(_ action: CXAnswerCallAction) async {
     guard !retired, action.callUUID == id else { action.fail(); return }
     do {
+      try await port.prepareAudio()
       try await port.action("accept")
       guard !retired else { action.fail(); return }
       action.fulfill(); show()
@@ -158,6 +176,6 @@ final class ZoenCallCoordinator: NSObject {
   }
   func muteAction(_ action: CXSetMutedCallAction) {
     guard !retired, action.callUUID == id else { action.fail(); return }
-    rtc?.setMuted(action.isMuted); action.fulfill()
+    rtc?.setMuted(action.isMuted); screen?.setMuted(action.isMuted); action.fulfill()
   }
 }

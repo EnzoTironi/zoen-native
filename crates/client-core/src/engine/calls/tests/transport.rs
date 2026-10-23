@@ -116,6 +116,11 @@ fn accepted_device_transport_replays_once_and_terminal_calls_refuse_old_signals(
     );
     let end = f.end(&call, CallEndReason::HungUp);
     f.push(f.callee.clone(), 350, EventBody::CallV1 { signal: end });
+    assert!(f.engine.state.spaces["sp_calls"].call_transport.is_empty());
+    let image = f.engine.store.memory_image().unwrap();
+    let reopened =
+        Engine::from_store(Store::from_memory_image(&image).unwrap(), ":memory:").unwrap();
+    assert!(reopened.state.spaces["sp_calls"].call_transport.is_empty());
     assert!(!f
         .engine
         .state
@@ -211,4 +216,44 @@ fn cold_orphan_is_retired_by_normal_signed_hangup_before_a_new_invite() {
     };
     assert!(f.valid(&f.event(&f.caller, 600, next)));
     assert!(f.record().terminal());
+}
+
+#[test]
+fn role_revocation_retires_media_and_refuses_future_call_admission() {
+    let (mut f, call) = accepted();
+    let offer = signal(
+        &f,
+        &call,
+        P::Offer {
+            sdp: "offer".into(),
+        },
+    );
+    f.push(
+        f.caller.clone(),
+        300,
+        EventBody::CallTransportV1 {
+            signal: offer.clone(),
+        },
+    );
+    f.push(
+        f.caller.clone(),
+        350,
+        EventBody::MemberAdded {
+            identity: f.callee.identity.clone(),
+            role: Role::Reader,
+        },
+    );
+    assert!(f.record().terminal());
+    assert!(f.engine.state.spaces["sp_calls"].call_transport.is_empty());
+    assert!(!f
+        .engine
+        .state
+        .call_transport_valid(&event(&f, &f.caller, offer)));
+    let next = CallSignal::Invite {
+        call_id: new_secret_id("call"),
+        callee: f.callee.identity.clone(),
+        media: CallMedia::Audio,
+        expires_at_ms: 1500,
+    };
+    assert!(!f.valid(&f.event(&f.caller, 400, next)));
 }

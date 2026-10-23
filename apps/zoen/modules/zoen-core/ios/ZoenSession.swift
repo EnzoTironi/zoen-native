@@ -17,6 +17,15 @@ actor ZoenSession {
   var sessionLocale = "en"
   var notificationBaseline: String?
   var notificationActive = true
+  var callPresenting = false
+  var callStarting = false
+  var callsBorrow: CallBorrow?
+  var callsModuleLease: ZoenModuleSessionLease?
+  var callCoordinator: ZoenCallCoordinator?
+  var callsScope: ZoenCallScope?
+  var callsChanged: (@Sendable (String) -> Void)?
+  var callsAudioChanged: (@Sendable (String) -> Void)?
+  let callAudioFocus = ZoenCallAudioFocus()
   private let vault = ZoenVault()
   var listener: ZoenListener?
   var syncStarted = false
@@ -139,7 +148,7 @@ actor ZoenSession {
     let engine = try Client.open(path: root.appending(path: "client.sqlite").path, locale: sessionLocale)
     let bridge = ZoenListener(changed, sourceChanged: { [weak self] spaces in
       guard !forNotification else { return }
-      Task { await self?.validateConversationGalleryChanges(spaces) }
+      Task { await self?.validateConversationGalleryChanges(spaces); await self?.callCanonicalChanges(spaces) }
     }) { [weak self] in
       guard !forNotification else { return }
       Task { await self?.resumePendingHistory() }
@@ -280,6 +289,7 @@ actor ZoenSession {
       await ZoenAttachmentGalleryHost.retireAll()
       await pageDrain.value
       try await filePreview.clear(before: clearingGeneration)
+      await stopCallsForClose()
       await closeAssistants()
       await engine.drainLinkPickup()
       if requests > 0 { await withCheckedContinuation { requestDrain.append($0) } }
@@ -347,6 +357,7 @@ actor ZoenSession {
           try await self.filePreview.clear(before: self.generation)
         }
         if let erasureTask = self.erasureTask { try await erasureTask.value }
+        await self.stopCallsForClose()
         await self.closeAssistants()
         // Keep the exact engine/account live for already admitted edited copies.
         // New bridge operations are fenced by `closing`; a save failure stays

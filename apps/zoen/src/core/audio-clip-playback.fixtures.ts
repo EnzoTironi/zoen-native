@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
+import { callAudioFocus } from '../media/call-audio-focus.ts';
 import { AudioClipController } from '../media/audio-clip-controller.ts';
 import { PlaybackCoordinator } from '../media/playback-owner.ts';
 import * as voiceEdit from '../media/voice-edit.ts';
@@ -14,11 +15,16 @@ export const require = createRequire(import.meta.url);
 export const { transformSync } = require('@babel/core') as {
   transformSync(source: string, options: Record<string, unknown>): { code: string };
 };
-export const paths = ['audio-clip-playback', 'AudioClip', 'voice-preview-playback'] as const;
+export const paths = [
+  'audio-mode',
+  'audio-clip-playback',
+  'AudioClip',
+  'voice-preview-playback',
+] as const;
 export const compiled = Object.fromEntries(
   paths.map((name) => {
     const path = new URL(
-      `../media/${name}.${name === 'audio-clip-playback' ? 'ts' : 'tsx'}`,
+      `../media/${name}.${name === 'audio-clip-playback' || name === 'audio-mode' ? 'ts' : 'tsx'}`,
       import.meta.url,
     );
     const source = readFileSync(
@@ -277,6 +283,7 @@ export function fixture() {
     },
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' },
     'expo-audio': {
+      setIsAudioActiveAsync: async (_active: boolean) => {},
       useAudioPlayer(source: { uri: string } | null, options: unknown) {
         assert.equal(
           JSON.stringify(options),
@@ -346,6 +353,8 @@ export function fixture() {
     });
     return module.exports;
   };
+  modules['./call-audio-focus.ts'] = { callAudioFocus };
+  modules['./audio-mode.ts'] = evaluate('audio-mode');
   const hook = evaluate('audio-clip-playback');
   modules['./audio-clip-playback'] = modules['./audio-clip-playback.ts'] = hook;
   const controls = evaluate('AudioClip');

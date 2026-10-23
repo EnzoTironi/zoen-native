@@ -61,9 +61,24 @@ ICE/DTLS connected callback does. End stops capture and the peer before awaiting
 canonical terminal write. Retired callbacks cannot alter a replacement call.
 
 The media implementation includes relay-only ICE, authenticated SDP exchange,
-remote video, mute/speaker controls, camera permission/capture, bounded caller ICE
-restarts, and native CallKit actions. Session/FFI/TURN binding and audio handoff must
-be complete before exposing this as available. SDP/ICE credentials remain native;
+remote video, mute/speaker/camera controls, bounded caller ICE restarts, and native
+CallKit actions. A continuous 30-second failed/connecting resource interval ends
+through the normal signed terminal path, including on the callee device. Only
+actual connection cancels that deadline. Session ports use the Core TURN API with
+account/device checks before and after its await. A fresh binding or next outgoing
+attempt retires this device's abandoned accepted call with a signed hangup, or its
+abandoned outgoing invitation with cancellation; it never revives media after crash.
+Ending/membership changes discard derived SDP/ICE payloads while retaining durable
+canonical history. Reader-role changes retire media as well.
+
+The conversation exposes a native Expo menu: tap for voice, hold for voice/video.
+A bounded native ticket hands audio ownership over from existing Expo playback and
+recording. Captured voice drafts are recovered before acknowledging the handoff;
+old audio mode changes drain, later ones are fenced, and Expo audio is deactivated
+before CallKit acquires it. End stops capture, waits for system deactivation and
+releases the exact ticket. Existing players remain paused; a new explicit playback
+or capture action reactivates Expo audio. A missing JS acknowledgment times out in
+five seconds and does not admit microphone capture. SDP/ICE credentials remain native;
 the JavaScript call UI receives presentation status, not transport secrets.
 
 ## Current evidence and remaining acceptance
@@ -76,10 +91,18 @@ before media, selected-device scope, retry/replay, terminal refusal, negotiation
 bounds and normal signed retirement of a cold orphan. Report actual CI outcomes
 on the issue; written tests are not execution evidence.
 
-Still open: finish Session/FFI/TURN and audio arbitration; preserve captured voice
-drafts; retire orphaned calls on cold launch without automatically activating mic;
-wire the conversation UI; implement PushKit registration/report/cold handover with
-the same process gate; build the integrated app once; prove real two-client TURN
+The first wiring cohort passed TypeScript and actual RTC/CallKit sources passed
+Swift6 strict-concurrency typecheck against the real upstream SDK. The audio mode,
+recording and playback regression group passed 74 tests; the real Swift ticket
+implementation also passed stale-ticket, rejection, retirement and real expiry
+cases. The first broad app run passed 1,796 of 1,801 tests; its five failures were
+new unregistered call ports in the chat-chrome fixture. The corrected actual
+component test passed all six chat-chrome cases, including voice/video menu and
+availability. Broader rerun and Core transport results belong on the issue.
+
+Still open: build/typecheck the integrated generated Core/FFI and Session cohort;
+implement PushKit registration/report/cold handover with the same process gate;
+build the integrated app once; prove real two-client TURN
 media, reconnection and revocation; then test the physical-device matrix in #266.
 No simulator camera or standalone typecheck can close that matrix. Manual broad QA
 is reserved for the user's next test session.

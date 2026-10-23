@@ -7,6 +7,8 @@ import CallKit
 final class ZoenCallSystem: NSObject, CXProviderDelegate {
   static let shared = ZoenCallSystem()
   let provider: CXProvider
+  var retiring = false
+  var afterDeactivation: (@MainActor () -> Void)?
   private var current: ZoenCallCoordinator?
   private override init() {
     let configuration = CXProviderConfiguration()
@@ -20,12 +22,12 @@ final class ZoenCallSystem: NSObject, CXProviderDelegate {
     provider.setDelegate(self, queue: .main)
   }
   func install(_ call: ZoenCallCoordinator) -> Bool {
-    guard current == nil || current === call else { return false }
+    guard !retiring, afterDeactivation == nil, current == nil || current === call else { return false }
     current = call; return true
   }
   func remove(_ call: ZoenCallCoordinator) { if current === call { current = nil } }
   nonisolated func providerDidReset(_ provider: CXProvider) {
-    MainActor.assumeIsolated { current?.reset() }
+    MainActor.assumeIsolated { current?.reset(); let release = afterDeactivation; afterDeactivation = nil; release?() }
   }
   nonisolated func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
     MainActor.assumeIsolated {
@@ -52,7 +54,7 @@ final class ZoenCallSystem: NSObject, CXProviderDelegate {
     MainActor.assumeIsolated { current?.activate(audioSession) }
   }
   nonisolated func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
-    MainActor.assumeIsolated { current?.deactivate(audioSession) }
+    MainActor.assumeIsolated { current?.deactivate(audioSession); let release = afterDeactivation; afterDeactivation = nil; release?() }
   }
   nonisolated func provider(_ provider: CXProvider, timedOutPerforming action: CXAction) {
     MainActor.assumeIsolated { current?.reset(); action.fail() }

@@ -59,9 +59,12 @@ struct ZoenCallPayload: Codable, Sendable {
 
 struct ZoenCallPort: Sendable {
   let scope: ZoenCallScope
+  let locale: String
   let current: @Sendable () async throws -> ZoenCallRecord
   let transport: @Sendable () async throws -> [ZoenCallSignalRecord]
   let send: @Sendable (ZoenCallPayload, UInt8) async throws -> Void
+  let prepareAudio: @Sendable () async throws -> Void
+  let releaseAudio: @Sendable () async -> Void
   let turn: @Sendable () async throws -> ZoenCallTurn
   let action: @Sendable (String) async throws -> Void
 }

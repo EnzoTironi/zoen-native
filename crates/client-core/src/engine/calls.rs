@@ -22,7 +22,10 @@ impl State {
             || space.members.len() != 2
             || !public_key(device)
             || !space.members.iter().any(|(id, _)| id == &event.author)
-            || !space.members.iter().all(|(id, _)| {
+            || !space.members.iter().all(|(id, role)| {
+                if *role == Role::Reader {
+                    return false;
+                }
                 identities
                     .get(id)
                     .is_some_and(|p| p.kind == IdentityKind::Person)
@@ -126,6 +129,12 @@ impl State {
                         old.invalidated = true;
                     }
                 }
+                space.call_transport.retain(|record| {
+                    space
+                        .calls
+                        .iter()
+                        .any(|call| call.call_id == record.signal.call_id && !call.terminal())
+                });
                 space.calls.push(CallRecord {
                     call_id: call_id.clone(),
                     invitation: event_log::content_hash_of(event),
@@ -168,6 +177,9 @@ impl State {
                     call.ended_at_ms = Some(event.at_ms);
                     call.end_reason = Some(*reason);
                 }
+                space
+                    .call_transport
+                    .retain(|record| record.signal.call_id != *call_id);
             }
         }
     }
