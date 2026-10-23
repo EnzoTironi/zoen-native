@@ -35,7 +35,7 @@ fn png() -> Vec<u8> {
     bytes
 }
 
-pub(super) async fn run() {
+pub(in crate::tests) async fn run() {
     let mut f = Fixture::with_output().await;
     let price = crate::tests::image_tasks::profile();
     let mut policy = f.world.signed.policy.clone();
