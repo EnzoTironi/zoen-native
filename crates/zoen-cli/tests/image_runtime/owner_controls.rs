@@ -1,6 +1,6 @@
 //! Real encrypted owner inquiry -> Runtime quote -> explicit signed install.
 use super::*;
-use client_core::OwnerPolicyScope;
+use client_core::owner_policy::OwnerPolicyScope;
 
 pub(super) async fn run(
     w: &World,

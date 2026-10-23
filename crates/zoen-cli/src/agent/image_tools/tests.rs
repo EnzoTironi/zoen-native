@@ -1,4 +1,5 @@
 use super::*;
+use std::path::PathBuf;
 struct Journal(PathBuf);
 impl Journal {
     fn new() -> Self {
@@ -163,7 +164,7 @@ fn cold_financial_recovery_rechecks_the_same_request_and_cannot_restage() {
             assert_eq!(request, "original-request");
             assert_eq!(space, "space");
         }
-        Command::Stage { .. } => {
+        Command::Stage { .. } | Command::PolicyImport { .. } | Command::PolicyContext { .. } => {
             panic!("financial recovery must never create another review/provider attempt")
         }
     }

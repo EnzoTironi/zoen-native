@@ -41,10 +41,10 @@ use messages::{
     owner_note, selected_owner_note, selected_proposal, selected_reply, tell_owner, text_of,
     turn_note,
 };
-mod image_tools;
 mod image_ipc;
-mod owner_policy;
+mod image_tools;
 mod journal;
+mod owner_policy;
 #[cfg(test)]
 mod page_tool_tests;
 mod page_tools;
