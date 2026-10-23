@@ -50,13 +50,38 @@ pub(super) fn definition() -> ToolDef {
         parameters: json!({"type":"object","properties":{"prompt":{"type":"string","minLength":1,"maxLength":8192}},"required":["prompt"],"additionalProperties":false}),
     }
 }
-async fn execute(command: Command) -> Result<Progress, String> {
+fn command_bytes(command: &Command) -> Result<Vec<u8>, String> {
     command.validate()?;
-    let (binary, config) = paths()?;
-    let bytes = serde_json::to_vec(&command).map_err(|_| "invalid image command")?;
+    let bytes = serde_json::to_vec(command).map_err(|_| "invalid image command")?;
     if bytes.len() > MAX_INPUT {
         return Err("image command too large".into());
     }
+    Ok(bytes)
+}
+fn schedule_command(
+    path: &Path,
+    agent: &str,
+    space: &str,
+    source: &str,
+    call: &ToolCall,
+) -> Result<(Command, String), String> {
+    let input: Input =
+        serde_json::from_value(call.arguments.clone()).map_err(|_| "invalid image arguments")?;
+    let command = Command::Stage {
+        agent: agent.into(),
+        space: space.into(),
+        source: source.into(),
+        prompt: input.prompt,
+    };
+    // Invalid or unrepresentable content cannot consume pending capacity. The
+    // same exact encoding is bounded again before real subprocess I/O.
+    command_bytes(&command)?;
+    let previous = retained_or_schedule(path, space, source, call)?;
+    Ok((command, previous))
+}
+async fn execute(command: Command) -> Result<Progress, String> {
+    let bytes = command_bytes(&command)?;
+    let (binary, config) = paths()?;
     let mut process = tokio::process::Command::new(binary);
     process
         .arg("--config")
@@ -118,9 +143,13 @@ impl SpaceTools<'_> {
         {
             return Err("image tool no longer offered".into());
         }
-        let input: Input = serde_json::from_value(call.arguments.clone())
-            .map_err(|_| "invalid image arguments")?;
-        let previous = retained_or_schedule(self.journal, &self.space, self.source, call)?;
+        let agent = self
+            .e
+            .account()
+            .ok_or("image agent unavailable")?
+            .identity_id;
+        let (command, previous) =
+            schedule_command(self.journal, &agent, &self.space, self.source, call)?;
         let mut retained: Pending =
             serde_json::from_str(&previous).map_err(|_| "invalid retained image scheduling")?;
         if retained.schema != "runtime-image/1"
@@ -132,18 +161,8 @@ impl SpaceTools<'_> {
         if !matches!(retained.progress, Progress::CatchingUp) {
             return Ok(previous);
         }
-        let agent = self
-            .e
-            .account()
-            .ok_or("image agent unavailable")?
-            .identity_id;
         let progress = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(execute(Command::Stage {
-                agent,
-                space: self.space.clone(),
-                source: self.source.into(),
-                prompt: input.prompt,
-            }))
+            tokio::runtime::Handle::current().block_on(execute(command))
         })?;
         self.check_selection()?;
         retained.observe(progress);

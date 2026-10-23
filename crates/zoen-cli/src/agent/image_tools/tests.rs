@@ -262,3 +262,36 @@ fn a_second_prompt_for_the_same_source_cannot_create_orphan_scheduling() {
     assert_eq!(std::fs::read(&journal.0).unwrap(), before);
     retained_or_schedule(&journal.0, "space", "new-source", &call("different")).unwrap();
 }
+
+#[test]
+fn unrepresentable_content_cannot_create_or_change_pending_scheduling() {
+    let journal = Journal::new();
+    for prompt in [
+        String::new(),
+        " ".repeat(8),
+        "x".repeat(8193),
+        "\0".repeat(8192),
+    ] {
+        assert!(schedule_command(&journal.0, "agent", "space", "invalid", &call(&prompt)).is_err());
+        assert!(
+            !journal.0.exists(),
+            "invalid content created pending scheduling"
+        );
+    }
+    let valid = call("A calm sea");
+    schedule_command(&journal.0, "agent", "space", "valid", &valid).unwrap();
+    let before = std::fs::read(&journal.0).unwrap();
+    assert!(schedule_command(
+        &journal.0,
+        "agent",
+        "space",
+        "escaped",
+        &call(&"\0".repeat(8192))
+    )
+    .is_err());
+    assert_eq!(std::fs::read(&journal.0).unwrap(), before);
+    assert_eq!(
+        unresolved_count(&JournalState::load(&journal.0).unwrap().steps),
+        1
+    );
+}
