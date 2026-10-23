@@ -66,13 +66,12 @@ fn only_the_original_current_pending_review_can_be_offered_after_cold_reopen() {
     let frame = ordered(&fixture.owner, envelope.clone());
     assert_eq!(fixture.owner.ingest(frame.clone()), Ingest::Applied);
     fixture.core.ingest(vec![frame]).unwrap();
-    assert_eq!(
+    assert!(matches!(
         fixture
             .core
-            .image_review_ready(&request, &content_hash, &envelope, now)
-            .unwrap_err(),
-        NativeError::NotReady
-    );
+            .image_review_ready(&request, &content_hash, &envelope, now),
+        Err(NativeError::NotReady)
+    ));
 }
 
 #[test]
