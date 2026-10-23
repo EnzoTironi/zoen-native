@@ -176,7 +176,7 @@ impl RuntimeAuthority {
             self.image_checkpoints(&deployment).await.unwrap(),
             (proof.checkpoint.clone(), proof.checkpoint.clone())
         );
-        assert_eq!(checkpoint, proof.checkpoint);
+        assert_eq!(checkpoint.unwrap(), proof.checkpoint);
         assert!(pending.is_none());
     }
 }
