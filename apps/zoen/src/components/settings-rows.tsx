@@ -1,5 +1,5 @@
 import { Column, Host, ListItem, Text } from '@expo/ui';
-import { accessibilityHint, accessibilityLabel, frame } from '@expo/ui/swift-ui/modifiers';
+import { accessibilityHint, accessibilityLabel, frame, padding } from '@expo/ui/swift-ui/modifiers';
 import { View } from 'react-native';
 import { useTheme } from '../theme';
 import { Icon } from './primitives';
@@ -40,14 +40,22 @@ export function SettingsRows({ rows, testID }: { rows: readonly SettingsRow[]; t
                   accessible={false}
                   accessibilityElementsHidden
                   style={{
-                    minWidth: 28,
-                    minHeight: 44,
+                    width: 29,
+                    height: 29,
+                    borderRadius: 7,
+                    backgroundColor: row.iconColor ?? 'transparent',
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
                 >
                   {row.leading ??
-                    (row.icon ? <Icon name={row.icon} size={22} color={p.list.accent} /> : null)}
+                    (row.icon ? (
+                      <Icon
+                        name={row.icon}
+                        size={20}
+                        color={row.iconColor ? '#FFFFFF' : p.list.accent}
+                      />
+                    ) : null)}
                 </View>
               }
               trailing={
@@ -74,6 +82,7 @@ export function SettingsRows({ rows, testID }: { rows: readonly SettingsRow[]; t
                         maxWidth: Infinity,
                         alignment: 'leading',
                       }),
+                      padding({ horizontal: 16 }),
                       accessibilityLabel(
                         row.supportingText ? `${row.title}, ${row.supportingText}` : row.title,
                       ),

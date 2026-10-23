@@ -7,10 +7,13 @@ export type { SettingsRow } from './settings-row-types';
 
 /** Keep browser settings outside the SwiftUI module boundary. */
 export function SettingsRows({ rows, testID }: { rows: readonly SettingsRow[]; testID: string }) {
-  const { colors } = useTheme();
+  const { colors, presentation: p } = useTheme();
   return (
-    <View testID={testID} style={{ width: '100%' }}>
-      {rows.map((row) => (
+    <View
+      testID={testID}
+      style={{ width: '100%', backgroundColor: p.list.block, borderRadius: 10, overflow: 'hidden' }}
+    >
+      {rows.map((row, index) => (
         <Pressable
           key={row.id}
           testID={row.id}
@@ -22,11 +25,14 @@ export function SettingsRows({ rows, testID }: { rows: readonly SettingsRow[]; t
           onPress={row.onPress}
           style={({ pressed }) => ({
             width: '100%',
-            minHeight: 56,
+            minHeight: row.supportingText ? 58 : 44,
+            paddingHorizontal: 16,
+            borderTopWidth: index ? 0.5 : 0,
+            borderTopColor: p.list.separator,
             paddingVertical: 6,
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 16,
+            gap: 12,
             backgroundColor: 'transparent',
             opacity: pressed ? 0.5 : 1,
           })}
@@ -35,14 +41,19 @@ export function SettingsRows({ rows, testID }: { rows: readonly SettingsRow[]; t
             accessible={false}
             aria-hidden
             style={{
-              minWidth: 28,
-              minHeight: 44,
+              width: 29,
+              height: 29,
+              borderRadius: 7,
+              backgroundColor: row.iconColor ?? 'transparent',
               flexShrink: 0,
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            {row.leading ?? (row.icon ? <Icon name={row.icon} size={22} /> : null)}
+            {row.leading ??
+              (row.icon ? (
+                <Icon name={row.icon} size={20} color={row.iconColor ? '#FFFFFF' : p.list.accent} />
+              ) : null)}
           </View>
           <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
             <Text style={{ color: colors.text, fontSize: 17 }}>{row.title}</Text>

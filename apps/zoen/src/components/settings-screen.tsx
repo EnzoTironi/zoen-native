@@ -18,6 +18,7 @@ export function SettingsScreen({
   return (
     <ScrollView
       testID={testID}
+      style={{ flex: 1, backgroundColor: p.list.background }}
       contentInsetAdjustmentBehavior="automatic"
       keyboardShouldPersistTaps={keyboardShouldPersistTaps}
       automaticallyAdjustKeyboardInsets={automaticallyAdjustKeyboardInsets}
