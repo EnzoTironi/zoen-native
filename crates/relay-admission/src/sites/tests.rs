@@ -35,7 +35,7 @@ fn fixture() -> (Signer, SignedMutation) {
 }
 
 fn sign(device: &Signer, signed: &mut SignedMutation) {
-    signed.signature = device.sign(&signed.signing_bytes(AUDIENCE));
+    signed.signature = device.sign(&signed.signing_bytes(AUDIENCE).unwrap());
 }
 
 #[test]
@@ -51,10 +51,10 @@ fn selected_exact_bytes_and_receipt_are_deterministic() {
             event_log::sha256_hex(HTML)
         )
     );
-    let receipt = Receipt::for_mutation(&signed, AUDIENCE);
+    let receipt = Receipt::for_mutation(&signed, AUDIENCE).unwrap();
     assert!(receipt.active);
     assert_eq!(receipt.source.as_ref().unwrap().version, 3);
-    assert_eq!(receipt.head, signed.intent_digest(AUDIENCE));
+    assert_eq!(receipt.head, signed.intent_digest(AUDIENCE).unwrap());
     assert_eq!(
         serde_json::from_slice::<Receipt>(&serde_json::to_vec(&receipt).unwrap()).unwrap(),
         receipt
@@ -98,21 +98,21 @@ fn renewal_and_linked_device_recover_same_intent_but_new_action_changes_head() {
     sign(&device, &mut renewed);
     assert_eq!(authorize(&renewed, AUDIENCE, renewed.at_ms), Ok(()));
     assert_eq!(
-        renewed.intent_digest(AUDIENCE),
-        signed.intent_digest(AUDIENCE)
+        renewed.intent_digest(AUDIENCE).unwrap(),
+        signed.intent_digest(AUDIENCE).unwrap()
     );
     let linked = Signer::from_secret(&[25; 32]);
     renewed.device_id = linked.id();
     sign(&linked, &mut renewed);
     assert_eq!(authorize(&renewed, AUDIENCE, renewed.at_ms), Ok(()));
     assert_eq!(
-        renewed.intent_digest(AUDIENCE),
-        signed.intent_digest(AUDIENCE)
+        renewed.intent_digest(AUDIENCE).unwrap(),
+        signed.intent_digest(AUDIENCE).unwrap()
     );
     renewed.mutation.request_id = format!("pub_{}", "d".repeat(32));
     assert_ne!(
-        renewed.intent_digest(AUDIENCE),
-        signed.intent_digest(AUDIENCE)
+        renewed.intent_digest(AUDIENCE).unwrap(),
+        signed.intent_digest(AUDIENCE).unwrap()
     );
 }
 
@@ -199,15 +199,15 @@ fn unpublish_and_rollback_are_new_signed_compare_and_swap_actions() {
     removal.mutation.change = Change::Unpublish;
     sign(&device, &mut removal);
     assert_eq!(authorize(&removal, AUDIENCE, NOW), Err(Failure::Invalid));
-    removal.mutation.expected_head = Some(initial.intent_digest(AUDIENCE));
+    removal.mutation.expected_head = Some(initial.intent_digest(AUDIENCE).unwrap());
     removal.mutation.request_id = format!("pub_{}", "e".repeat(32));
     sign(&device, &mut removal);
     assert_eq!(authorize(&removal, AUDIENCE, NOW), Ok(()));
     assert_eq!(verify_content(&removal, None), Ok(None));
     assert_eq!(verify_content(&removal, Some(HTML)), Err(Failure::Content));
-    assert!(!Receipt::for_mutation(&removal, AUDIENCE).active);
+    assert!(!Receipt::for_mutation(&removal, AUDIENCE).unwrap().active);
     let mut rollback = initial;
-    rollback.mutation.expected_head = Some(removal.intent_digest(AUDIENCE));
+    rollback.mutation.expected_head = Some(removal.intent_digest(AUDIENCE).unwrap());
     rollback.mutation.request_id = format!("pub_{}", "f".repeat(32));
     sign(&device, &mut rollback);
     assert_eq!(authorize(&rollback, AUDIENCE, NOW), Ok(()));
@@ -226,7 +226,7 @@ fn inspection_is_signed_in_its_own_domain_with_destination_and_cursor() {
         before: None,
         signature: String::new(),
     };
-    read.signature = device.sign(&read.signing_bytes(AUDIENCE));
+    read.signature = device.sign(&read.signing_bytes(AUDIENCE).unwrap());
     assert_eq!(authorize_inspection(&read, AUDIENCE, NOW), Ok(()));
     for field in 0..4 {
         let mut altered = read.clone();

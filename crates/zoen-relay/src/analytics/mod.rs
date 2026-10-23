@@ -412,4 +412,7 @@ mod tests {
     }
 }
 
+#[cfg(test)]
+mod peer_tests;
+
 mod persistence;
