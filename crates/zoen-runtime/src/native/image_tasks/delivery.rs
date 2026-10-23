@@ -5,7 +5,7 @@ use super::output::Publication;
 use super::*;
 use crate::execution::Fence;
 use client_core::relay_output_transport::{RelayOutputError, RelayOutputTransport};
-use protocol::{ClientFrame, Envelope, Sequenced};
+use protocol::{ClientFrame, Envelope};
 use types::Seen;
 
 /// Operator routing, not a permission. The source cell and authenticated

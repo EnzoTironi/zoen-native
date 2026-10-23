@@ -205,6 +205,21 @@ pub(super) async fn run() {
         1
     );
     delivery::run(&mut f, &run, &output).await;
+    assert_eq!(adapter.sends.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        f.world.balance().await,
+        PeriodBalance {
+            held_units: 0,
+            spent_units: 15
+        }
+    );
+    assert_eq!(f.world.count("SELECT count(*) FROM runtime_claims").await, 1);
+    assert_eq!(
+        f.world
+            .count("SELECT count(*) FROM runtime_dispositions WHERE kind='settle'")
+            .await,
+        1
+    );
     f.finish().await;
-    println!("native image journey: signed review, real MLS task, shared bill, FileDoc activation and cold recovery PASS (controlled adapter; no blob transport claim)");
+    println!("native image journey: signed review, real MLS task, shared bill, canonical blob PUT, original relay publication and lost ACK cold recovery PASS (controlled adapter; production output gate closed)");
 }
