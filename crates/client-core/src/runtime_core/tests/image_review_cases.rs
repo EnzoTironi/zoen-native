@@ -26,7 +26,12 @@ fn pending() -> (Fixture, String, String, Envelope) {
         .core
         .stage_image_task(SPACE, &source, image_task_cases::input())
         .unwrap();
-    (fixture, review.id, review.content_hash, envelope)
+    (
+        fixture,
+        review.id,
+        review.tool_approval.unwrap().content_hash,
+        envelope,
+    )
 }
 
 #[test]

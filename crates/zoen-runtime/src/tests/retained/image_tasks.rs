@@ -111,13 +111,12 @@ pub(in crate::tests) async fn run() {
             .unwrap_err(),
         RuntimeError::CoreAuthorityUnavailable,
     );
-    let (request, approval_hash, envelope) = proof::stage(
-        &f.world.runtime,
-        &actor.identity,
-        device,
-        &f.space,
-        &source,
-        ImageTaskInput {
+    let review_intent = crate::ImageReviewIntent {
+        agent: actor.identity.clone(),
+        device: device.into(),
+        space: f.space.clone(),
+        source,
+        input: ImageTaskInput {
             prompt: "A quiet blue sky".into(),
             definition: ImageTaskDefinition {
                 version: "native-image-fixture-v1".into(),
@@ -128,9 +127,8 @@ pub(in crate::tests) async fn run() {
                 max_image_bytes: price.image.max_image_bytes,
             },
         },
-    )
-    .await;
-    f.append(envelope).await;
+    };
+    let (request, approval_hash, _) = delivery::review(&mut f, review_intent).await;
     f.encrypted(EventBody::RequestResolved {
         request: request.clone(),
         approved: true,

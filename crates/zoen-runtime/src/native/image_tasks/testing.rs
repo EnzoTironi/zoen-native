@@ -1,8 +1,8 @@
 //! Controlled native Image journey; never a production output capability.
 pub(crate) use super::output::testing::{bytes, remove_chunk, restore_chunk, transport_original};
+pub(crate) use super::review::testing as review;
 use super::*;
 use crate::{image_tasks::ImageAttemptAdapter, FinancialState, VerifiedStep};
-use client_core::image_tasks::ImageTaskInput;
 
 pub(crate) async fn deliver(
     runtime: &RuntimeAuthority,
@@ -60,74 +60,6 @@ pub(crate) async fn uploads_pending(runtime: &RuntimeAuthority, run: &str) -> u6
                 .unwrap()
         })
         .count() as u64
-}
-
-pub(crate) async fn stage(
-    runtime: &RuntimeAuthority,
-    agent: &str,
-    device: &str,
-    space: &str,
-    source: &str,
-    input: ImageTaskInput,
-) -> (String, String, protocol::Envelope) {
-    let custody = runtime.native.as_ref().unwrap();
-    let credential = custody.credential(agent, device).unwrap();
-    let principal = credential.principal();
-    let fence = runtime
-        .execution
-        .acquire_native_device(&principal)
-        .await
-        .unwrap();
-    let capsule = runtime
-        .execution
-        .read_native(&principal, Some(&fence))
-        .await
-        .unwrap();
-    let previous = capsule.root.clone();
-    let mut core = Box::new(
-        DeviceCore::restore(
-            custody.open_image(&principal, capsule).unwrap(),
-            credential.unlocked().unwrap(),
-        )
-        .unwrap(),
-    );
-    let (request, envelope, image) = core.stage_image_task(space, source, input).unwrap();
-    let candidate = custody
-        .seal_image(&principal, Some(&previous), &image)
-        .unwrap();
-    let staged = runtime
-        .execution
-        .stage_native(&principal, Some(previous), &fence, candidate)
-        .await
-        .unwrap();
-    let admission = runtime
-        .finance
-        .native_directory(
-            &credential.agent,
-            &credential.owner,
-            device,
-            &credential.certificate,
-        )
-        .await
-        .unwrap()
-        .authorize(staged.scope(&runtime.execution, &fence))
-        .await
-        .unwrap();
-    runtime
-        .execution
-        .activate_native(staged, &fence, admission)
-        .await
-        .unwrap();
-    runtime
-        .execution
-        .release_native_device(&principal, &fence)
-        .await
-        .unwrap();
-    (
-        request.id,
-        request.tool_approval.unwrap().content_hash,
-        envelope,
-    )
 }
 
 pub(crate) async fn run(

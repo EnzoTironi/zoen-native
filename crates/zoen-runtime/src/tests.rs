@@ -3,7 +3,7 @@ mod deployment;
 mod failure_cuts;
 mod financial;
 mod http;
-mod image_tasks;
+pub(crate) mod image_tasks;
 mod journeys;
 mod managed_custody;
 mod retained;

@@ -1,6 +1,7 @@
 //! Explicitly reviewed Image tasks share native custody, fences and finance.
 mod blobs;
 mod delivery;
+mod host;
 mod output;
 mod review;
 mod storage;
@@ -142,7 +143,7 @@ impl NativeCustody {
                 &serde_json::to_vec(&("native-image-run/1", agent, facts.space(), request))
                     .map_err(|_| RuntimeError::InvalidBinding)?,
             );
-            let run = format!("image_run_{seed}");
+            let run = host::run_id(agent, facts.space(), request)?;
             let request = ImageRequest {
                 context: AttemptContext {
                     run_id: run.clone(),

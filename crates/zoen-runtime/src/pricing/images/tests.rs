@@ -8,6 +8,7 @@ fn profile() -> ImagePriceProfile {
     ImagePriceProfile {
         version: "image-v1".into(),
         endpoint: "https://api.openai.com/v1/images/generations".into(),
+        endpoint_policy: ImageEndpointPolicy::Https,
         model: "gpt-image-fixture".into(),
         credential_ref: "host-image-fixture".into(),
         currency: "USD".into(),
@@ -407,4 +408,39 @@ fn image_price_refuses_a_spec_that_its_response_budget_cannot_represent() {
     assert!(p.digest().is_err());
     p.max_response_bytes += 2;
     assert_ne!(p.digest().unwrap(), digest);
+}
+
+#[test]
+fn fixture_endpoint_domain_is_explicit_and_dns_never_becomes_loopback_permission() {
+    let mut p = profile();
+    let original = p.digest().unwrap();
+    let legacy = serde_json::to_value(&p).unwrap();
+    assert!(legacy.get("endpoint_policy").is_none());
+    assert_eq!(
+        serde_json::from_value::<ImagePriceProfile>(legacy)
+            .unwrap()
+            .digest()
+            .unwrap(),
+        original
+    );
+    p.endpoint_policy = ImageEndpointPolicy::LoopbackFixture;
+    for endpoint in [
+        "http://127.0.0.1:3000/v1/images/generations",
+        "http://[::1]:3000/v1/images/generations",
+    ] {
+        p.endpoint = endpoint.into();
+        p.quote(&dispatch(&p)).unwrap();
+        assert_ne!(p.digest().unwrap(), original);
+    }
+    for endpoint in [
+        "http://localhost:3000/v1/images/generations",
+        "http://127.0.0.1.evil/v1/images/generations",
+        "http://10.0.0.1/v1/images/generations",
+        "https://api.openai.com/v1/images/generations",
+        "http://127.0.0.1/v1/images/generations?forward=1",
+        "http://secret@127.0.0.1/v1/images/generations",
+    ] {
+        p.endpoint = endpoint.into();
+        assert_eq!(p.digest(), Err(RuntimeError::InvalidProfile), "{endpoint}");
+    }
 }

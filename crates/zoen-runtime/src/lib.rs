@@ -7,14 +7,16 @@ use admission::{Binding, Capture, Session, VerifiedStep};
 mod custody;
 mod execution;
 mod finance;
+mod image_host;
 mod image_tasks;
+pub use image_host::{ImageHostConfig, ImageHostProgress, ImageRuntimeHost};
 mod native;
 pub use native::{
     ImageDeliveryProgress, ImageDeliveryTarget, ImageOutputInspection, ImageReviewIntent,
     ImageReviewProgress,
 };
 mod pricing;
-pub use pricing::{ImagePriceProfile, ImagePriceQuote, PriceProfile};
+pub use pricing::{ImageEndpointPolicy, ImagePriceProfile, ImagePriceQuote, PriceProfile};
 pub use types::owner_budget::{OwnerPeriodPolicy, SignedOwnerPolicy};
 
 use foundationdb::{tuple::Subspace, Database};

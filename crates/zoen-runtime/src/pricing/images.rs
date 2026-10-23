@@ -1,5 +1,7 @@
 //! Inert image pricing only. This grants no task, SQL hold or dispatch authority.
+mod endpoint;
 mod evidence;
+pub use endpoint::ImageEndpointPolicy;
 #[cfg(test)]
 mod tests;
 use crate::{hash, RuntimeError};
@@ -16,6 +18,9 @@ use zoen_models::{
 pub struct ImagePriceProfile {
     pub version: String,
     pub endpoint: String,
+    /// Omitted for existing HTTPS profiles so their signed digests stay stable.
+    #[serde(default, skip_serializing_if = "ImageEndpointPolicy::is_https")]
+    pub endpoint_policy: ImageEndpointPolicy,
     pub model: String,
     pub credential_ref: String,
     pub currency: String,
@@ -60,7 +65,7 @@ impl ImagePriceProfile {
             || !self.model.starts_with("gpt-image-")
             || !crate::id(&self.credential_ref)
             || self.endpoint.len() > 2048
-            || endpoint.scheme() != "https"
+            || !self.endpoint_policy.permits(&endpoint)
             || !endpoint.username().is_empty()
             || endpoint.password().is_some()
             || endpoint.host().is_none()

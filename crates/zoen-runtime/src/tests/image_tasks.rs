@@ -8,10 +8,11 @@ use async_trait::async_trait;
 use serde_json::json;
 use zoen_models::*;
 
-pub(super) fn profile() -> ImagePriceProfile {
+pub(crate) fn profile() -> ImagePriceProfile {
     ImagePriceProfile {
         version: "image-fixture-price-v1".into(),
         endpoint: "https://api.openai.com/v1/images/generations".into(),
+        endpoint_policy: crate::ImageEndpointPolicy::Https,
         model: "gpt-image-fixture".into(),
         credential_ref: "image-fixture".into(),
         currency: "USD".into(),

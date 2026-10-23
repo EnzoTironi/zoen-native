@@ -1,7 +1,7 @@
 mod arithmetic;
 mod images;
 mod obligation;
-pub use images::{ImagePriceProfile, ImagePriceQuote};
+pub use images::{ImageEndpointPolicy, ImagePriceProfile, ImagePriceQuote};
 pub(crate) use obligation::BoundPrice;
 
 use crate::{hash, RuntimeError};

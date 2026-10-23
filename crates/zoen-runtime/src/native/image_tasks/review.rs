@@ -1,5 +1,7 @@
 //! One original review, staged and published by the runtime-owned native device.
 mod storage;
+#[cfg(test)]
+pub(super) mod testing;
 use super::*;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use client_core::{image_tasks::ImageTaskInput, relay_output_transport::RelayOutputTransport};
@@ -224,7 +226,10 @@ impl NativeCustody {
                     source: target.source.clone(),
                     input: input_digest,
                     request: request.id,
-                    content_hash: request.content_hash,
+                    content_hash: request
+                        .tool_approval
+                        .ok_or(RuntimeError::InvalidBinding)?
+                        .content_hash,
                     wire,
                     accepted: None,
                 });

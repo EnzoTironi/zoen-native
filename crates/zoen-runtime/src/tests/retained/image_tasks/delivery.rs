@@ -1,8 +1,10 @@
 //! Real relay HTTP/WS ACK loss, cold native recovery and original output dedupe.
 mod proxy;
 mod relay;
+mod review;
 use super::*;
 use object_store::ObjectStoreExt;
+pub(super) use review::run as review;
 
 async fn head(f: &Fixture) -> Seen {
     // Independent observation through the actual relay log used by the router.
