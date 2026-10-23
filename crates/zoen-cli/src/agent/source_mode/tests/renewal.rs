@@ -14,6 +14,7 @@ async fn signed_renewal_waits_for_actual_sync_without_reply_attempt_or_effect_th
         )
         .unwrap()
         .id;
+    f.confirm_publications();
     let journal = f.path.join("renewal-steps.json");
     let starts = Arc::new(AtomicUsize::new(0));
     {
@@ -139,6 +140,7 @@ async fn normal_signed_renewal_reports_scheduling_deferred_without_consuming_a_t
         )
         .unwrap()
         .id;
+    f.confirm_publications();
     let journal = f.path.join("normal-renewal-steps.json");
     let starts = Arc::new(AtomicUsize::new(0));
     {

@@ -154,6 +154,31 @@ impl Fixture {
         assert!(client.unlock(self.vault.clone()).unwrap());
         self.client = client;
     }
+    /// Sequence and ingest this synthetic agent's actual queued publication.
+    /// A registered Page cannot offer an unconfirmed optimistic import as a read base.
+    pub(super) fn confirm_publications(&mut self) {
+        self.close();
+        let path = self.path.join("agent.sqlite");
+        let db = store::Store::open(path.to_str().unwrap()).unwrap();
+        let pending = db.outbox().unwrap();
+        let mut log = SpaceLog::from_events(&self.space, db.events(&self.space).unwrap()).unwrap();
+        drop(db);
+        let mut engine = client_core::Engine::open(path.to_str().unwrap()).unwrap();
+        for row in pending.into_iter().filter(|r| r.event.space == self.space) {
+            let event = log.sequence(row.event).clone();
+            assert_eq!(
+                engine.ingest(protocol::Sequenced {
+                    seq: event.seq,
+                    prev: event.prev.clone(),
+                    hash: event.hash.clone(),
+                    env: protocol::Envelope::plain(&event),
+                }),
+                client_core::Ingest::Confirmed
+            );
+        }
+        drop(engine);
+        self.reopen();
+    }
     pub(super) fn append(&mut self, body: types::EventBody, owner: bool) -> String {
         self.close();
         flush(&self.path, "agent.sqlite", "agent.sqlite", &self.space);
