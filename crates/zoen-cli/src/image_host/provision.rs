@@ -70,12 +70,44 @@ pub(super) fn run(config: &Config, vault: &FileVault) -> Result<(), String> {
     );
     Ok(())
 }
-fn prepare(config: &Config, vault: &FileVault) -> Result<device_link::LinkCode, String> {
-    RuntimeAuthority::native_capsule_vault_key(&config.namespace, config.key_version)
-        .map_err(|_| "invalid provisioning scope")?;
-    // Original material is retained before any derived key or code is exposed.
-    // A retry, including an ambiguous file acknowledgement, never reseeds it.
-    let slot = format!(
+pub(super) fn validate_installed(config: &Config, vault: &FileVault) -> Result<(), String> {
+    let slot = slot(config)?;
+    let bytes = read(vault, &slot)?.ok_or("dedicated runtime enrollment was not provisioned")?;
+    let record: Enrollment =
+        serde_json::from_slice(&bytes).map_err(|_| "invalid retained runtime enrollment")?;
+    if record.namespace != config.namespace
+        || record.agent != config.agent
+        || record.key_version != config.key_version
+        || Signer::from_secret(&record.device).id() != config.device
+    {
+        return Err(
+            "configured runtime device is not this host's original dedicated enrollment".into(),
+        );
+    }
+    for (key, expected) in [
+        (
+            RuntimeAuthority::native_capsule_vault_key(&config.namespace, config.key_version)
+                .map_err(|_| "invalid capsule locator")?,
+            &record.capsule,
+        ),
+        (
+            RuntimeAuthority::native_device_vault_key(
+                &config.namespace,
+                &config.agent,
+                &config.device,
+            )
+            .map_err(|_| "invalid device locator")?,
+            &record.device,
+        ),
+    ] {
+        if read(vault, &key)?.as_deref().map(Vec::as_slice) != Some(expected.as_slice()) {
+            return Err("managed runtime keys differ from original dedicated enrollment".into());
+        }
+    }
+    Ok(())
+}
+fn slot(config: &Config) -> Result<String, String> {
+    Ok(format!(
         "runtime_enroll_{}",
         hex::encode(Sha256::digest(
             serde_json::to_vec(&(
@@ -85,7 +117,14 @@ fn prepare(config: &Config, vault: &FileVault) -> Result<device_link::LinkCode, 
             ))
             .map_err(|_| "invalid enrollment scope")?
         ))
-    );
+    ))
+}
+pub(super) fn prepare(config: &Config, vault: &FileVault) -> Result<device_link::LinkCode, String> {
+    RuntimeAuthority::native_capsule_vault_key(&config.namespace, config.key_version)
+        .map_err(|_| "invalid provisioning scope")?;
+    // Original material is retained before any derived key or code is exposed.
+    // A retry, including an ambiguous file acknowledgement, never reseeds it.
+    let slot = slot(config)?;
     let original = match read(vault, &slot)? {
         Some(bytes) => bytes,
         None => {

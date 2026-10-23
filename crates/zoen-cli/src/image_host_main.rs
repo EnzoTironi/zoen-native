@@ -46,6 +46,7 @@ fn run(path: &Path, action: &str) -> Result<(), String> {
     if action == "provision" {
         return provision::run(&config, &vault);
     }
+    provision::validate_installed(&config, &vault)?;
     let command = if action == "execute" {
         let mut bytes = Vec::new();
         std::io::stdin()
@@ -91,13 +92,30 @@ fn run(path: &Path, action: &str) -> Result<(), String> {
         // The managed continuity constructor independently checks actual SQL,
         // FDB and retained local anchor; no Boolean can turn admission on.
         let authority = if action == "initialize" {
-            authority
-                .initialize_managed_image_continuity(
-                    &config.continuity,
-                    &config.agent,
-                    &config.device,
-                )
+            match authority
+                .inspect_native_device(&config.agent, &config.device)
                 .await
+            {
+                Ok(_) => {
+                    authority
+                        .open_managed_image_continuity(
+                            &config.continuity,
+                            &config.agent,
+                            &config.device,
+                        )
+                        .await
+                }
+                Err(zoen_runtime::RuntimeError::CoreAuthorityUnavailable) => {
+                    authority
+                        .initialize_managed_image_continuity(
+                            &config.continuity,
+                            &config.agent,
+                            &config.device,
+                        )
+                        .await
+                }
+                Err(error) => return Err(error.to_string()),
+            }
         } else {
             authority
                 .open_managed_image_continuity(&config.continuity, &config.agent, &config.device)
