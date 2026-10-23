@@ -332,7 +332,7 @@ impl Client {
                 if info.ready {
                     return Ok(info);
                 }
-                let lease = e.net.file_demands.acquire(key.clone(), max_bytes, deadline)
+                let lease = e.net.file_demands.acquire(key.clone(), max_bytes, deadline)?
                     .ok_or_else(|| CoreError::Invalid {
                         reason: crate::i18n::t(
                             "Espere os outros downloads terminarem.",
@@ -350,7 +350,7 @@ impl Client {
                         return Ok(info);
                     }
                 }
-                if !lease.active() || std::time::Instant::now() >= deadline {
+                if !lease.active()? || std::time::Instant::now() >= deadline {
                     return Err(CoreError::Invalid {
                         reason: crate::i18n::t(
                             "Não foi possível baixar esta versão. Tente novamente quando estiver conectado.",
