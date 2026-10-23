@@ -15,8 +15,8 @@ pub struct AnchorWriter {
 
 #[derive(Clone)]
 pub struct AnchorReader {
-    directory: PathBuf,
-    deployment: Deployment,
+    pub(super) directory: PathBuf,
+    pub(super) deployment: Deployment,
 }
 
 /// Relay/gateway effects retain this shared OS lock through the actual effect.
@@ -25,7 +25,7 @@ pub struct GenerationGuard {
     _lock: File,
 }
 
-fn unavailable(_: std::io::Error) -> AnchorError {
+pub(super) fn unavailable(_: std::io::Error) -> AnchorError {
     AnchorError::Unavailable
 }
 fn lock_error(error: std::fs::TryLockError) -> AnchorError {
@@ -34,7 +34,7 @@ fn lock_error(error: std::fs::TryLockError) -> AnchorError {
         std::fs::TryLockError::Error(_) => AnchorError::Unavailable,
     }
 }
-fn regular(path: &Path) -> Result<(), AnchorError> {
+pub(super) fn regular(path: &Path) -> Result<(), AnchorError> {
     let metadata = fs::symlink_metadata(path).map_err(unavailable)?;
     if !metadata.is_file() {
         return Err(AnchorError::Invalid);
@@ -57,7 +57,7 @@ fn lock_file(directory: &Path, name: &str) -> Result<File, AnchorError> {
         .open(path)
         .map_err(unavailable)
 }
-fn options() -> OpenOptions {
+pub(super) fn options() -> OpenOptions {
     let mut options = OpenOptions::new();
     options.write(true).read(true).create_new(true);
     #[cfg(unix)]
@@ -67,7 +67,7 @@ fn options() -> OpenOptions {
     }
     options
 }
-fn sync_directory(path: &Path) -> Result<(), AnchorError> {
+pub(super) fn sync_directory(path: &Path) -> Result<(), AnchorError> {
     // Do not claim crash durability on platforms lacking directory fsync.
     #[cfg(unix)]
     {
@@ -112,7 +112,9 @@ impl AnchorReader {
         Ok(reader)
     }
 
-    fn state(&self) -> Result<State, AnchorError> {
+    pub(super) fn state(&self) -> Result<State, AnchorError> {
+        self.effect_directory()?;
+        self.private_directory("checkpoints")?;
         let path = self.directory.join("checkpoint.json");
         regular(&path)?;
         let mut bytes = Vec::new();
@@ -128,7 +130,32 @@ impl AnchorReader {
         if !state.valid() || state.deployment != self.deployment {
             return Err(AnchorError::Invalid);
         }
+        if let Some(committed) = &state.committed_effect {
+            if self.checkpoint_effect(&state.committed)?.as_ref() != Some(committed) {
+                return Err(AnchorError::Unreconciled);
+            }
+        }
         Ok(state)
+    }
+
+    pub(super) fn effect_directory(&self) -> Result<PathBuf, AnchorError> {
+        self.private_directory("effects")
+    }
+
+    pub(super) fn private_directory(&self, name: &str) -> Result<PathBuf, AnchorError> {
+        let directory = self.directory.join(name);
+        let metadata = fs::symlink_metadata(&directory).map_err(unavailable)?;
+        if !metadata.is_dir() {
+            return Err(AnchorError::Invalid);
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if metadata.permissions().mode() & 0o077 != 0 {
+                return Err(AnchorError::Invalid);
+            }
+        }
+        Ok(directory)
     }
 
     pub fn checkpoint(&self) -> Result<Checkpoint, AnchorError> {
@@ -144,6 +171,22 @@ impl AnchorReader {
         lock.try_lock_shared().map_err(lock_error)?;
         let state = self.state()?;
         if state.prepared.is_some() || state.committed != *expected {
+            return Err(AnchorError::Unreconciled);
+        }
+        Ok(GenerationGuard { _lock: lock })
+    }
+
+    pub(super) fn effect_generation_guard(
+        &self,
+        expected: &Checkpoint,
+    ) -> Result<GenerationGuard, AnchorError> {
+        let lock = lock_file(&self.directory, "generation.lock")?;
+        lock.try_lock_shared().map_err(lock_error)?;
+        let state = self.state()?;
+        if state.committed.generation != expected.generation
+            || state.committed.sequence < expected.sequence
+            || self.checkpoint_effect(expected)?.is_none()
+        {
             return Err(AnchorError::Unreconciled);
         }
         Ok(GenerationGuard { _lock: lock })
@@ -165,6 +208,14 @@ impl AnchorWriter {
         }
         builder.create(directory).map_err(unavailable)?;
         sync_directory(parent)?;
+        builder
+            .create(directory.join("effects"))
+            .map_err(unavailable)?;
+        sync_directory(&directory.join("effects"))?;
+        builder
+            .create(directory.join("checkpoints"))
+            .map_err(unavailable)?;
+        sync_directory(&directory.join("checkpoints"))?;
         for name in ["writer.lock", "generation.lock"] {
             options()
                 .open(directory.join(name))
@@ -244,8 +295,15 @@ impl AnchorWriter {
         }
         if matches!(result, Recovery::BothBefore | Recovery::BothAfter) {
             let prepared = state.prepared.take().ok_or(AnchorError::Invalid)?;
+            if result == Recovery::BothBefore
+                && self.reader.checkpoint_effect(&prepared.next)?.is_some()
+            {
+                return Err(AnchorError::Unreconciled);
+            }
             if result == Recovery::BothAfter {
-                state.committed = prepared.next;
+                self.reader.retain_checkpoint(&prepared)?;
+                state.committed = prepared.next.clone();
+                state.committed_effect = Some(prepared);
             }
             write(&self.reader.directory, &state)?;
             self.retirement = None;

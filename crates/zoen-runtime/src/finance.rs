@@ -16,15 +16,14 @@ pub(crate) struct FreshClaim {
 }
 impl FreshClaim {
     pub(crate) fn effect_digest(&self) -> Result<String, RuntimeError> {
-        Ok(crate::hash(
-            &serde_json::to_vec(&(
-                "managed-image-dispatch/1",
-                &self.attempt,
-                &self.nonce,
-                &self.binding,
-            ))
-            .map_err(|_| RuntimeError::InvalidBinding)?,
-        ))
+        self.checkpoint_reference().digest()
+    }
+    pub(crate) fn checkpoint_reference(&self) -> crate::managed_images::DispatchReference {
+        crate::managed_images::DispatchReference {
+            attempt: self.attempt.clone(),
+            nonce: self.nonce.clone(),
+            binding_digest: self.binding.clone(),
+        }
     }
     pub(crate) fn with_checkpoint(
         mut self,
@@ -331,5 +330,6 @@ pub(crate) fn period(year: i32, month: u8) -> Result<(i64, i64), RuntimeError> {
 }
 mod directory;
 mod image_checkpoint;
+mod image_checkpoint_recovery;
 mod ledger;
 mod settlement;

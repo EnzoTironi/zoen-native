@@ -2,8 +2,11 @@
 //! be excluded from SQL/FDB snapshots and restore. This is not a financial
 //! ledger, a network filesystem protocol, or authority to invoke a provider.
 mod file;
+mod history;
+mod publish;
 mod state;
 pub use file::{AnchorReader, AnchorWriter, GenerationGuard};
+pub use publish::{publish_digest, ConsumePublish, ManagedPublishPermit, PublishCondition};
 pub use state::{Checkpoint, Deployment, Prepared, Recovery};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

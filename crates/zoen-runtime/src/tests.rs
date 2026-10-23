@@ -6,6 +6,7 @@ mod http;
 pub(crate) mod image_tasks;
 mod journeys;
 mod managed_custody;
+mod managed_image_recovery;
 mod managed_images;
 mod retained;
 mod stores;
