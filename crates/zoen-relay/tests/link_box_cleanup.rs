@@ -31,7 +31,16 @@ async fn publication_bounds_cleanup_and_reuses_expired_id_beyond_batch() {
     .await
     .unwrap();
     let mut tx = pool.begin().await.unwrap();
-    assert!(db::put_link_box(&mut tx, "reuse", &[3]).await.unwrap());
+    assert!(db::put_link_box(
+        &mut tx,
+        "reuse",
+        &[3],
+        "fixture-owner",
+        "fixture-device",
+        None
+    )
+    .await
+    .unwrap());
     tx.commit().await.unwrap();
     let remaining: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM link_boxes
@@ -54,7 +63,16 @@ async fn publication_bounds_cleanup_and_reuses_expired_id_beyond_batch() {
         "fetching cannot consume the only retained box"
     );
     let mut tx = pool.begin().await.unwrap();
-    assert!(!db::put_link_box(&mut tx, "live", &[9]).await.unwrap());
+    assert!(!db::put_link_box(
+        &mut tx,
+        "live",
+        &[9],
+        "fixture-owner",
+        "fixture-device",
+        None
+    )
+    .await
+    .unwrap());
     tx.commit().await.unwrap();
     assert_eq!(
         db::read_link_box(&pool, "live").await.unwrap(),

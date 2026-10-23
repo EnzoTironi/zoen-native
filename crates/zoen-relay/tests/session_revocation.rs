@@ -463,6 +463,9 @@ mod presence;
 mod profiles;
 #[path = "session_revocation/receipts.rs"]
 mod receipts;
-
+#[path = "session_revocation/reconciliation.rs"]
+mod reconciliation;
+#[path = "session_revocation/response_loss.rs"]
+mod response_loss;
 #[path = "session_revocation/sync_membership.rs"]
 mod sync_membership;

@@ -1,38 +1,6 @@
 //! Original sealed data survives response loss; a fetch is not a new publication.
 use super::*;
 
-/// Relay the actual handshake and request, then drop the first successful box
-/// response before the downstream socket receives it. No relay state is mocked.
-async fn lose_response(
-    listener: tokio::net::TcpListener,
-    url: String,
-    dropped: oneshot::Sender<Vec<u8>>,
-) {
-    let (stream, _) = listener.accept().await.unwrap();
-    let mut downstream = tokio_tungstenite::accept_async(stream).await.unwrap();
-    let (mut upstream, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
-    loop {
-        tokio::select! {
-            incoming = downstream.next() => {
-                let message = incoming.expect("downstream ended before fetch").unwrap();
-                upstream.send(message).await.unwrap();
-            }
-            outgoing = upstream.next() => {
-                let message = outgoing.expect("relay ended before fetch").unwrap();
-                if let Message::Binary(bytes) = &message {
-                    if let ServerFrame::Res { result: Ok(Reply::Link(Some(sealed))), .. } =
-                        ServerFrame::decode(bytes).unwrap()
-                    {
-                        dropped.send(sealed).unwrap();
-                        return;
-                    }
-                }
-                downstream.send(message).await.unwrap();
-            }
-        }
-    }
-}
-
 #[tokio::test]
 async fn lost_fetch_response_can_retry_the_same_enrolled_pairing_on_another_connection() {
     let test = TestRelay::new().await;
@@ -63,7 +31,20 @@ async fn lost_fetch_response_can_retry_the_same_enrolled_pairing_on_another_conn
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let proxy_url = format!("ws://{}", listener.local_addr().unwrap());
     let (dropped, received) = oneshot::channel();
-    let proxy = tokio::spawn(lose_response(listener, test.ws_url.clone(), dropped));
+    let proxy = tokio::spawn(response_loss::drop_matching(
+        listener,
+        test.ws_url.clone(),
+        |frame| {
+            matches!(
+                frame,
+                ServerFrame::Res {
+                    result: Ok(Reply::Link(Some(_))),
+                    ..
+                }
+            )
+        },
+        dropped,
+    ));
     let mut waiting = connect(&proxy_url, &pending).await;
     send(
         &mut waiting,
@@ -73,13 +54,10 @@ async fn lost_fetch_response_can_retry_the_same_enrolled_pairing_on_another_conn
         },
     )
     .await;
-    assert_eq!(
-        tokio::time::timeout(Duration::from_secs(3), received)
-            .await
-            .unwrap()
-            .unwrap(),
-        vec![1]
-    );
+    assert!(matches!(
+        tokio::time::timeout(Duration::from_secs(3), received).await.unwrap().unwrap(),
+        ServerFrame::Res { result: Ok(Reply::Link(Some(sealed))), .. } if sealed == vec![1]
+    ));
     assert!(
         recv(&mut waiting).await.is_none(),
         "lost response reached recipient"
