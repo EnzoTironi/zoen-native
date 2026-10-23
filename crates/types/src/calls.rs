@@ -70,7 +70,7 @@ pub struct CallRecord {
     pub acceptance_confirmed: bool,
     pub ended_at_ms: Option<i64>,
     pub end_reason: Option<CallEndReason>,
-    /// A membership change retires media; it is not a forged participant hangup.
+    /// Membership loss or a superseded, unanswered invitation retires this record.
     pub invalidated: bool,
 }
 

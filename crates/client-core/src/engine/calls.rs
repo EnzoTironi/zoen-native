@@ -54,7 +54,7 @@ impl State {
                     && !space.calls.iter().any(|c| {
                         c.call_id == call_id
                             || (!c.terminal()
-                                && (c.accepted_device.is_some() || event.at_ms < c.expires_at_ms))
+                                && (c.accepted_device.is_some() || c.ringing_at(event.at_ms)))
                     })
             }
             CallSignal::Accept { invitation, .. } => space
@@ -79,7 +79,7 @@ impl State {
                 .iter()
                 .find(|c| c.call_id == call_id)
                 .is_some_and(|call| {
-                    if call.invitation != *invitation || event.at_ms < call.invited_at_ms {
+                    if call.invitation != *invitation || event.at_ms < 0 {
                         return false;
                     }
                     let caller = call.caller == event.author && call.caller_device == device;
@@ -114,23 +114,36 @@ impl State {
                 callee,
                 media,
                 expires_at_ms,
-            } => space.calls.push(CallRecord {
-                call_id: call_id.clone(),
-                invitation: event_log::content_hash_of(event),
-                caller: event.author.clone(),
-                caller_device: event.device.clone().expect("validated call device"),
-                callee: callee.clone(),
-                media: *media,
-                invited_at_ms: event.at_ms,
-                expires_at_ms: *expires_at_ms,
-                invitation_confirmed: event.seq > 0,
-                accepted_device: None,
-                accepted_at_ms: None,
-                acceptance_confirmed: false,
-                ended_at_ms: None,
-                end_reason: None,
-                invalidated: false,
-            }),
+            } => {
+                // An expired or future-dated, unanswered invitation cannot lock the DM.
+                // This comparison uses signed event time and canonical order, so replay
+                // is deterministic. It never retires an already accepted call.
+                for old in &mut space.calls {
+                    if !old.terminal()
+                        && old.accepted_device.is_none()
+                        && !old.ringing_at(event.at_ms)
+                    {
+                        old.invalidated = true;
+                    }
+                }
+                space.calls.push(CallRecord {
+                    call_id: call_id.clone(),
+                    invitation: event_log::content_hash_of(event),
+                    caller: event.author.clone(),
+                    caller_device: event.device.clone().expect("validated call device"),
+                    callee: callee.clone(),
+                    media: *media,
+                    invited_at_ms: event.at_ms,
+                    expires_at_ms: *expires_at_ms,
+                    invitation_confirmed: event.seq > 0,
+                    accepted_device: None,
+                    accepted_at_ms: None,
+                    acceptance_confirmed: false,
+                    ended_at_ms: None,
+                    end_reason: None,
+                    invalidated: false,
+                });
+            }
             CallSignal::Accept { call_id, .. } => {
                 let call = space
                     .calls

@@ -314,3 +314,32 @@ fn terminal_call_never_rings_on_cold_replay_or_duplicate_end() {
     assert_eq!(before, f.record());
     assert_eq!(f.engine.state.spaces["sp_calls"].calls.len(), 1);
 }
+
+#[test]
+fn future_dated_invite_can_be_declined_or_superseded_without_poisoning_the_dm() {
+    let mut f = Fixture::new();
+    let future = CallSignal::Invite {
+        call_id: format!("call_{}", "c".repeat(32)),
+        callee: f.callee.identity.clone(),
+        media: CallMedia::Audio,
+        expires_at_ms: i64::MAX,
+    };
+    f.push(
+        f.caller.clone(),
+        i64::MAX - 1000,
+        EventBody::CallV1 { signal: future },
+    );
+    let call = f.record();
+    assert!(f.valid(&f.event(&f.callee, 200, f.end(&call, CallEndReason::Declined))));
+    let next = CallSignal::Invite {
+        call_id: format!("call_{}", "d".repeat(32)),
+        callee: f.caller.identity.clone(),
+        media: CallMedia::Audio,
+        expires_at_ms: 1300,
+    };
+    assert!(f.valid(&f.event(&f.callee, 300, next.clone())));
+    f.push(f.callee.clone(), 300, EventBody::CallV1 { signal: next });
+    let calls = &f.engine.state.spaces["sp_calls"].calls;
+    assert!(calls[0].invalidated);
+    assert!(calls[1].ringing_at(301));
+}
