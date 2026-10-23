@@ -132,6 +132,30 @@ impl Engine {
         })
     }
 
+    pub(crate) fn find_owner_policy_submission(
+        &self,
+        scope: &OwnerPolicyScope,
+        policy_digest: &str,
+    ) -> R<Option<OwnerPolicyStatus>> {
+        self.owner_policy_conversation(scope)?;
+        if !types::owner_budget::digest_id(policy_digest) {
+            return Err(invalid());
+        }
+        let pending = self.store.outbox()?;
+        let original = pending.iter().map(|entry| &entry.event)
+            .chain(self.logs.get(&scope.space_id).into_iter().flat_map(|log| log.events()))
+            .find(|event| event.space == scope.space_id && event.author == scope.expected_identity_id
+                && matches!(&event.body, EventBody::OwnerPolicySubmitted { agent, signed }
+                    if agent == &scope.agent_id && signed.policy.owner == scope.expected_identity_id
+                    && event.device.as_deref() == Some(signed.device.as_str())
+                    && event.cert.as_deref() == Some(signed.cert.as_str())
+                    && event_log::owner_budget::verify(signed) && event_log::verify_author(event).is_ok()
+                    && event_log::owner_budget::digest(&signed.policy).as_deref() == Some(policy_digest)));
+        original
+            .map(|event| self.owner_policy_status(scope, &event.client_id))
+            .transpose()
+    }
+
     pub(crate) fn submit_owner_policy(
         &mut self,
         scope: &OwnerPolicyScope,
@@ -180,6 +204,15 @@ impl Engine {
 }
 
 impl Client {
+    /// Read-only reconciliation after a lost submission acknowledgement.
+    pub fn find_owner_policy_submission(
+        &self,
+        scope: OwnerPolicyScope,
+        policy_digest: String,
+    ) -> R<Option<OwnerPolicyStatus>> {
+        self.lock()
+            .find_owner_policy_submission(&scope, &policy_digest)
+    }
     pub fn review_owner_policy(
         &self,
         scope: OwnerPolicyScope,
