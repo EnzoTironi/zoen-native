@@ -193,7 +193,11 @@ impl Client {
                 continue;
             }
             match engine.owner_policy_submission(space, &event.client_id) {
-                Ok(control) => controls.push(control),
+                Ok(control) => {
+                    if !engine.owner_policy_report_exists(&control, None)? {
+                        controls.push(control);
+                    }
+                }
                 Err(CoreError::Forbidden { .. }) => continue,
                 Err(error) => return Err(error),
             }
@@ -220,6 +224,23 @@ impl Client {
 }
 
 impl Engine {
+    fn owner_policy_report_exists(
+        &self,
+        submission: &OwnerPolicySubmission,
+        outcome: Option<&OwnerPolicyOutcome>,
+    ) -> R<bool> {
+        let pending = self.store.outbox()?;
+        Ok(pending.iter().map(|entry| &entry.event)
+            .chain(self.logs.get(submission.space()).into_iter().flat_map(|log| log.events()))
+            .any(|event| {
+                matches!(&event.body, EventBody::OwnerPolicyReported { source, policy_digest, outcome: previous }
+                    if event.space == submission.space() && event.author == submission.agent()
+                    && source == submission.source() && policy_digest == submission.digest()
+                    && outcome.is_none_or(|expected| previous == expected || previous == &OwnerPolicyOutcome::Installed)
+                    && event.device.is_some() && event.cert.is_some()
+                    && event_log::verify_author(event).is_ok())
+            }))
+    }
     pub(crate) fn report_owner_policy(
         &mut self,
         submission: &OwnerPolicySubmission,
@@ -237,17 +258,7 @@ impl Engine {
         } else {
             OwnerPolicyOutcome::Refused
         };
-        let pending = self.store.outbox()?;
-        let prior = pending.iter().map(|entry| &entry.event)
-            .chain(self.logs.get(current.space()).into_iter().flat_map(|log| log.events()))
-            .any(|event| {
-                matches!(&event.body, EventBody::OwnerPolicyReported { source, policy_digest, outcome: previous }
-                    if event.space == current.space() && event.author == current.agent()
-                    && source == current.source() && policy_digest == current.digest()
-                    && (previous == &outcome || previous == &OwnerPolicyOutcome::Installed)
-                    && event_log::verify_author(event).is_ok())
-            });
-        if prior {
+        if self.owner_policy_report_exists(&current, Some(&outcome))? {
             return Ok(());
         }
         let author = self
