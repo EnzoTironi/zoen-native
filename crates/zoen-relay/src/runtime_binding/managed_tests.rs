@@ -76,3 +76,60 @@ fn bootstrap_binding_cannot_authorize_http_or_ws_effects() -> Result<(), Box<dyn
     drop(writer);
     Ok(())
 }
+
+#[test]
+fn original_upload_survives_unrelated_progress_but_not_rollback_or_retirement(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (home, deployment, mut writer) = fixture()?;
+    let registry = ManagedDevices::open([(deployment.clone(), home.0.clone())])?;
+    let configured = registry
+        .get(&deployment.device)
+        .ok_or("missing fixture managed device")?;
+    let before = writer.reader().checkpoint()?;
+    let original = writer.prepare(
+        &event_log::sha256_hex(b"original publication"),
+        &before,
+        &before,
+        false,
+    )?;
+    writer.reconcile(&original.next, &original.next)?;
+    let later = writer.prepare(
+        &event_log::sha256_hex(b"unrelated presentation"),
+        &original.next,
+        &original.next,
+        false,
+    )?;
+    writer.reconcile(&later.next, &later.next)?;
+    validate_managed_checkpoints(&configured, &original.next, &later.next, &later.next)?;
+    let guard = configured.upload_guard(&original.next)?;
+    let retirement = event_log::sha256_hex(b"retire managed generation");
+    assert_eq!(
+        writer.prepare(&retirement, &later.next, &later.next, true),
+        Err(relay_admission::managed_images::AnchorError::Busy)
+    );
+    // Rolling both stores back to an original checkpoint still conflicts with
+    // the independent external tip; retaining history is not restore authority.
+    assert!(validate_managed_checkpoints(
+        &configured,
+        &original.next,
+        &original.next,
+        &original.next,
+    )
+    .is_err());
+    assert!(
+        validate_managed_checkpoints(&configured, &original.next, &later.next, &original.next,)
+            .is_err()
+    );
+    drop(guard);
+    let retired = writer.prepare(&retirement, &later.next, &later.next, true)?;
+    writer.reconcile(&retired.next, &retired.next)?;
+    assert!(validate_managed_checkpoints(
+        &configured,
+        &original.next,
+        &retired.next,
+        &retired.next,
+    )
+    .is_err());
+    assert!(configured.upload_guard(&original.next).is_err());
+    Ok(())
+}

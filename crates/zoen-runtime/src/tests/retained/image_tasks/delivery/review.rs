@@ -6,6 +6,7 @@ pub(in crate::tests::retained::image_tasks) async fn run(
     intent: crate::ImageReviewIntent,
 ) -> (String, String, Envelope) {
     let relay = relay::Relay::start(f).await;
+    Box::pin(binding::genesis(f, &relay)).await;
     let proxy = proxy::Proxy::start(relay.address).await;
     let target = relay.target(f, proxy.address);
     let unavailable = crate::ImageDeliveryTarget::configured(

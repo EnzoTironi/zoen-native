@@ -176,6 +176,16 @@ impl AnchorReader {
         Ok(GenerationGuard { _lock: lock })
     }
 
+    /// Hold the generation of an exact retained effect while unrelated effects
+    /// advance the tip. This is not a publication permit or a store checkpoint
+    /// attestation; the caller must also validate its actual current store read.
+    pub fn historical_generation_guard(
+        &self,
+        expected: &Checkpoint,
+    ) -> Result<GenerationGuard, AnchorError> {
+        self.effect_generation_guard(expected)
+    }
+
     pub(super) fn effect_generation_guard(
         &self,
         expected: &Checkpoint,
