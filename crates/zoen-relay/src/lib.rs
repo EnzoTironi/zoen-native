@@ -22,6 +22,7 @@ pub mod hub;
 pub mod key_package_claims;
 pub mod limits;
 pub mod log;
+pub mod managed_devices;
 pub mod metrics;
 pub mod ownership;
 pub mod pseudonym;
@@ -228,6 +229,18 @@ pub fn metrics_router(state: Shared) -> Router {
 }
 
 pub async fn build(cfg: &Config) -> anyhow::Result<(Router, Shared)> {
+    build_with_managed(cfg, managed_devices::ManagedDevices::default()).await
+}
+
+/// Operator-only configured registry, retained outside SQL/FDB restore state.
+pub async fn build_with_managed(
+    cfg: &Config,
+    managed: managed_devices::ManagedDevices,
+) -> anyhow::Result<(Router, Shared)> {
+    anyhow::ensure!(
+        managed.is_empty() || cfg.nats_url.is_none(),
+        "managed devices require a single host"
+    );
     let pool = connect(cfg).await?;
     let auth_pool = || {
         PgPoolOptions::new()
@@ -241,6 +254,7 @@ pub async fn build(cfg: &Config) -> anyhow::Result<(Router, Shared)> {
     let (blobs, where_) = blobs::store_from_env(&cfg.blob_dir)?;
     tracing::info!(blobs = %where_, "blob store ready");
     let log = log::fdb::FdbLog::open(cfg.fdb_cluster_file.as_deref(), &cfg.fdb_cell)?;
+    log.configure_managed_devices(managed)?;
     tracing::info!(cell = %cfg.fdb_cell, "log store ready (FoundationDB)");
     let log = Arc::new(log);
     let node = log.owner.node.clone();
@@ -317,7 +331,15 @@ const SOCKET_BUFFER: usize = 8 * 1024;
 
 /// Runs until Ctrl-C / SIGTERM.
 pub async fn serve(cfg: Config) -> anyhow::Result<()> {
-    let (app, state) = build(&cfg).await?;
+    serve_with_managed(cfg, managed_devices::ManagedDevices::default()).await
+}
+
+/// The operator supplies private locators; no environment or caller path adoption.
+pub async fn serve_with_managed(
+    cfg: Config,
+    managed: managed_devices::ManagedDevices,
+) -> anyhow::Result<()> {
+    let (app, state) = build_with_managed(&cfg, managed).await?;
     if let Some(bind) = cfg.metrics_bind {
         let listener = tokio::net::TcpListener::bind(bind).await?;
         tracing::info!(bind = %bind, "metrics listening");

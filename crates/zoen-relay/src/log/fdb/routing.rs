@@ -7,6 +7,12 @@ impl FdbLog {
         env: &Envelope,
         target_known: bool,
     ) -> Result<Sequencing, Reject> {
+        if env
+            .device()
+            .is_some_and(|device| self.managed_device(device).is_some())
+        {
+            return Err(Reject::retry("managed publication binding required"));
+        }
         if !env.valid_invite() {
             return Err(Reject::no("invalid invite code"));
         }

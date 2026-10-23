@@ -10,6 +10,17 @@ impl LogStore for FdbLog {
         self.observed_managed_publication(condition, env).await
     }
 
+    fn managed_device(&self, device: &str) -> Option<Arc<crate::managed_devices::ManagedDevice>> {
+        self.managed_devices
+            .get()
+            .and_then(|registry| registry.get(device))
+    }
+    async fn managed_checkpoint(
+        &self,
+        deployment: &relay_admission::managed_images::Deployment,
+    ) -> Result<Option<relay_admission::managed_images::Checkpoint>, StoreError> {
+        self.managed_store_checkpoint(deployment).await
+    }
     async fn append_managed_publish(
         &self,
         env: &Envelope,
