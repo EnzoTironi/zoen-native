@@ -243,3 +243,70 @@ fn ordinary_prompt_json_is_not_a_control_and_explicit_refusal_is_not_installatio
         .is_err());
     Ok(())
 }
+
+#[test]
+fn policy_quote_reads_only_confirmed_image_review_without_act_or_approval() -> TestResult {
+    use types::owner_policy_context::OwnerPolicyInquiry;
+    let (mut f, request, hash, envelope) = super::image_review_cases::pending();
+    let now = crate::engine::now_ms();
+    let author = f.owner.net.author.clone().ok_or("missing owner author")?;
+    let inquiry = OwnerPolicyInquiry {
+        id: "policy_query_nonce".into(),
+        owner: f.owner_profile.id.clone(),
+        agent: f.agent_profile.id.clone(),
+        space: f.space.clone(),
+        request: request.clone(),
+        content_hash: hash,
+        price_digest: image_task_cases::input().definition.price_digest,
+        at_ms: now,
+    };
+    let signed =
+        event_log::owner_policy_inquiry::sign(&author, inquiry.clone()).ok_or("inquiry refused")?;
+    assert!(
+        f.core.owner_policy_image_context(&signed, now).is_err(),
+        "unconfirmed request is not context"
+    );
+    let frame = ordered(&f.owner, envelope);
+    assert_eq!(f.owner.ingest(frame.clone()), Ingest::Applied);
+    f.core.ingest(vec![frame])?;
+    let before = f.core.image()?;
+    assert_eq!(
+        f.core.owner_policy_image_context(&signed, now)?,
+        image_task_cases::input()
+    );
+    assert_eq!(
+        f.core.image()?.as_bytes(),
+        before.as_bytes(),
+        "read has no side effects"
+    );
+    assert!(
+        f.core.image_task(&request, now).is_err(),
+        "quote read is not ApproveOnce"
+    );
+    f.encrypted(
+        EventBody::GrantRevoked {
+            grant: "image-review-act".into(),
+        },
+        now,
+    );
+    assert_eq!(
+        f.core.owner_policy_image_context(&signed, now)?,
+        image_task_cases::input(),
+        "read does not require Act"
+    );
+    for field in ["request", "content_hash", "price_digest"] {
+        let mut value = serde_json::to_value(&inquiry)?;
+        value[field] = "changed".into();
+        let changed = serde_json::from_value(value)?;
+        assert!(event_log::owner_policy_inquiry::sign(&author, changed)
+            .is_none_or(|changed| f.core.owner_policy_image_context(&changed, now).is_err()));
+    }
+    assert!(f
+        .core
+        .owner_policy_image_context(
+            &signed,
+            now + types::owner_policy_context::CONTEXT_TTL_MS + 1
+        )
+        .is_err());
+    Ok(())
+}
