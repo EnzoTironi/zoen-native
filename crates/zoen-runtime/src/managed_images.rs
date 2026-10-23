@@ -1,5 +1,6 @@
 //! Images restore checkpoint orchestration. External state never grants a send
 //! permit: existing one-shot claims and native output authority remain required.
+mod recovery;
 mod setup;
 mod stores;
 use crate::{finance::FreshClaim, Binding, RuntimeAuthority, RuntimeError};
@@ -18,6 +19,42 @@ pub(crate) struct ManagedImages {
 pub(crate) struct DispatchCheckpoint {
     pub(super) deployment: Deployment,
     pub(super) prepared: Prepared,
+    pub(super) reference: DispatchReference,
+}
+
+/// Existing admission locators only. No amount, grant, output or send permit.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DispatchReference {
+    pub(crate) attempt: String,
+    pub(crate) nonce: String,
+    pub(crate) binding_digest: String,
+}
+
+impl DispatchReference {
+    pub(crate) fn digest(&self) -> Result<String, RuntimeError> {
+        if !crate::id(&self.attempt)
+            || [&self.nonce, &self.binding_digest]
+                .into_iter()
+                .any(|value| {
+                    value.len() != 64
+                        || !value
+                            .bytes()
+                            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+                })
+        {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        Ok(crate::hash(
+            &serde_json::to_vec(&(
+                "managed-image-dispatch/1",
+                &self.attempt,
+                &self.nonce,
+                &self.binding_digest,
+            ))
+            .map_err(|_| RuntimeError::InvalidBinding)?,
+        ))
+    }
 }
 
 pub(crate) struct Transition {
@@ -39,11 +76,9 @@ impl RuntimeAuthority {
             return Ok(());
         };
         let mut guard = managed.lock().await;
-        let (sql, fdb) = self.image_checkpoints(&guard.deployment).await?;
-        match guard.anchor.reconcile(&sql, &fdb).map_err(error)? {
-            Recovery::Clean | Recovery::BothBefore | Recovery::BothAfter => Ok(()),
-            Recovery::SqlBefore | Recovery::FdbBefore => Err(RuntimeError::RestoreUnreconciled),
-        }
+        let deployment = guard.deployment.clone();
+        self.reconcile_image_anchor(&mut guard.anchor, &deployment)
+            .await
     }
 
     pub(crate) async fn begin_image_dispatch_checkpoint(
@@ -68,6 +103,7 @@ impl RuntimeAuthority {
         let checkpoint = DispatchCheckpoint {
             deployment: guard.deployment.clone(),
             prepared,
+            reference: claim.checkpoint_reference(),
         };
         Ok(Some(Transition { guard, checkpoint }))
     }

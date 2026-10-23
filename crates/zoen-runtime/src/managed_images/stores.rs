@@ -57,6 +57,8 @@ impl DispatchCheckpoint {
         if old != self.prepared.previous {
             return Err(RuntimeError::RestoreUnreconciled);
         }
+        self.write_dispatch_reference(execution, transaction)
+            .await?;
         transaction.set(
             &key,
             &serde_json::to_vec(&self.prepared.next).map_err(|_| RuntimeError::InvalidBinding)?,
