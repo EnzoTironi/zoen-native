@@ -175,25 +175,75 @@ async fn output_bound_is_enforced_before_a_missing_newline_allocates_unbounded_m
 }
 #[tokio::test]
 async fn timeout_retires_an_actual_stalled_child_process() {
+    let (_dir, brain, marker) = fixture("hang");
+    let work = Work::new().unwrap();
+    // Establish the real child independently of the inference timeout. A slow
+    // interpreter/admission must not masquerade as a started, stalled session.
+    let mut session =
+        tokio::time::timeout(brain.timeout, Session::start(&brain.binary, &work.0, None))
+            .await
+            .expect("fixture session startup exceeded its harness budget")
+            .unwrap();
+    let pid = session.child.id().expect("fixture child has an owned PID");
+    assert_eq!(
+        std::fs::read_to_string(marker.with_extension("pid"))
+            .unwrap()
+            .parse::<u32>()
+            .unwrap(),
+        pid
+    );
+    assert!(
+        process_alive(pid),
+        "fixture child must be alive before timeout"
+    );
+    let result = tokio::time::timeout(Duration::from_millis(500), async move {
+        session
+            .rpc(
+                "turn/start",
+                json!({"threadId":"thread-fixture","environments":[],
+                    "outputSchema":output_schema(&[tool()])}),
+            )
+            .await
+    })
+    .await;
+    assert!(
+        result.is_err(),
+        "the stalled RPC must expire, not fail startup"
+    );
+    assert_eq!(std::fs::read_to_string(marker).unwrap(), "turn\n");
+    assert_retired(pid).await;
+}
+
+#[tokio::test]
+async fn full_brain_timeout_bounds_admission_without_assuming_a_started_session() {
     let (_dir, mut brain, marker) = fixture("hang");
     brain.timeout = Duration::from_millis(500);
     assert_eq!(
         think(&brain).await.unwrap_err(),
         "Codex local inference timed out"
     );
-    let pid = std::fs::read_to_string(marker.with_extension("pid")).unwrap();
+    // This timeout includes version and admission subprocesses. A PID marker
+    // may not exist yet; only the prestarted-session test proves a stalled child.
+    match std::fs::read_to_string(marker.with_extension("pid")) {
+        Ok(pid) => assert_retired(pid.parse().unwrap()).await,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => panic!("cannot read fixture PID marker: {error}"),
+    }
+}
+
+fn process_alive(pid: u32) -> bool {
+    std::process::Command::new("/bin/kill")
+        .args(["-0", &pid.to_string()])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .unwrap()
+        .success()
+}
+
+async fn assert_retired(pid: u32) {
     let until = tokio::time::Instant::now() + Duration::from_secs(2);
-    loop {
-        let alive = std::process::Command::new("/bin/kill")
-            .args(["-0", &pid])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .unwrap()
-            .success();
-        if !alive {
-            break;
-        }
+    while process_alive(pid) {
         assert!(
             tokio::time::Instant::now() < until,
             "stalled child remained alive"
