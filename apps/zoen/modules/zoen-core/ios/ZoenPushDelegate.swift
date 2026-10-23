@@ -1,4 +1,5 @@
 import ExpoModulesCore
+import OSLog
 import UIKit
 
 /// Native OS entry, independent of React being mounted. No TaskManager runtime,
@@ -31,6 +32,7 @@ public final class ZoenPushDelegate: ExpoAppDelegateSubscriber {
 /// log/cursors remain responsible for catch-up on the next permitted launch.
 @MainActor
 private final class ZoenPushSystemWork {
+  private static let logger = Logger(subsystem: "xyz.tironi.zoen", category: "PushWake")
   private let application: UIApplication
   private let completion: (UIBackgroundFetchResult) -> Void
   private var identifier: UIBackgroundTaskIdentifier = .invalid
@@ -44,6 +46,7 @@ private final class ZoenPushSystemWork {
   }
 
   func start() {
+    Self.logger.notice("accepted")
     let deadline = ContinuousClock.now.advanced(by: .seconds(8))
     identifier = application.beginBackgroundTask(withName: "Zoen content-free sync") { [weak self] in
       Task { @MainActor in self?.finish(.failed) }
@@ -71,9 +74,15 @@ private final class ZoenPushSystemWork {
       identifier = .invalid
     }
     switch result {
-    case .newData: completion(.newData)
-    case .noData: completion(.noData)
-    case .failed: completion(.failed)
+    case .newData:
+      Self.logger.notice("completed:newData")
+      completion(.newData)
+    case .noData:
+      Self.logger.notice("completed:noData")
+      completion(.noData)
+    case .failed:
+      Self.logger.notice("completed:failed")
+      completion(.failed)
     }
   }
 }
