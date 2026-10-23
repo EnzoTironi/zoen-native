@@ -109,7 +109,10 @@ impl DeviceCore {
             || env.space() != pending.space
             || env.device() != pending.device.as_deref()
             || env.cert != pending.cert
+            || env.at_ms() != pending.at_ms
+            || env.seen() != pending.seen
             || !env.is_sealed()
+            || env.sealed_kind() != Some(event_log::content::SealedKind::Application)
             || env.is_pruned()
             || env.invite.is_some()
             || env.recovery().is_some()

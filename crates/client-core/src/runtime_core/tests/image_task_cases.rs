@@ -110,6 +110,17 @@ fn approved_image_task_produces_real_encrypted_filedoc_and_cold_native_image() {
         Some(bytes)
     );
     let mut cold = restored;
+    assert!(
+        cold.engine.outbox_envelopes().is_empty(),
+        "file offer waits for encrypted blob upload receipt"
+    );
+    let uploads = cold.engine.pending_uploads(100);
+    assert!(!uploads.is_empty());
+    // Explicit fixture acknowledgement, not a claim of real HTTP blob delivery.
+    for (sha, _) in uploads {
+        cold.engine.upload_done(&sha);
+    }
+    assert_eq!(cold.engine.outbox_envelopes(), vec![envelope.clone()]);
     let frame = ordered(&f.owner, envelope);
     assert_eq!(f.owner.ingest(frame.clone()), Ingest::Applied);
     cold.ingest(vec![frame]).unwrap();

@@ -141,18 +141,15 @@ impl RuntimeAuthority {
         if admitted.binding != task.binding {
             return Err(RuntimeError::InvalidBinding);
         }
-        self.retain_image_capture(
-            &admitted.nonce,
-            ImageCapture {
-                task: task.clone(),
-                result,
-            },
-        )
+        self.retain_image_capture(ImageCapture {
+            task: task.clone(),
+            result,
+            nonce: admitted.nonce,
+        })
         .await
     }
     async fn retain_image_capture(
         &self,
-        nonce: &str,
         capture: ImageCapture,
     ) -> Result<FinancialState, RuntimeError> {
         let plain = zeroize::Zeroizing::new(capture.encode()?);
@@ -162,10 +159,16 @@ impl RuntimeAuthority {
             &plain,
             capture::MAXIMUM,
         )?;
-        let _ = self
-            .execution
-            .associate_image_capture(&capture.task, nonce, &digest, &self.custody)
-            .await;
+        #[cfg(test)]
+        let associate = self.fault.load(Ordering::SeqCst) != 40;
+        #[cfg(not(test))]
+        let associate = true;
+        if associate {
+            let _ = self
+                .execution
+                .associate_image_capture(&capture.task, &capture.nonce, &digest, &self.custody)
+                .await;
+        }
         let charge = capture.task.retained_charge(&capture.result)?;
         // Either existing durable store can retain incurred cost independently
         // of output or a later device/grant/lease loss. Unknown usage keeps hold.

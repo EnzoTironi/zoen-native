@@ -334,3 +334,50 @@ impl NativeCustody {
         result
     }
 }
+
+#[cfg(test)]
+pub(crate) async fn seed_association_fixture(runtime: &RuntimeAuthority, task: &ImageTask) {
+    // Authenticated metadata protocol only: this contains no native image/MLS
+    // facts and cannot load as a production execution step.
+    let b = &task.binding;
+    let original = Root {
+        context: Context {
+            format: 1,
+            key_version: 1,
+            principal: Principal {
+                owner: b.context.owner.clone(),
+                agent: b.context.agent.clone(),
+                device: b.context.device.clone(),
+                certificate_digest: hash(b.device_cert.as_bytes()),
+            },
+            previous: None,
+            generation: 1,
+            capsule: "controlled-image-capsule".into(),
+            image_bytes: 512,
+            image_digest: "a".repeat(64),
+            chunks: 1,
+        },
+        manifest_digest: "b".repeat(64),
+    };
+    let record = Record {
+        source: runtime.execution.source.as_ref().unwrap().cell().into(),
+        task: task.clone(),
+        original,
+    };
+    let run = &b.context.run_id;
+    record.validate(run, &record.source).unwrap();
+    let (_, bytes) = runtime
+        .custody
+        .seal(&format!("native-image-run/1/{run}"), &record)
+        .unwrap();
+    let trx = runtime.execution.transaction().await.unwrap();
+    trx.set(&runtime.execution.run(run, "image-record/1"), &bytes);
+    trx.set(
+        &runtime
+            .execution
+            .native_references(&record.original)
+            .pack(&(run.as_str(),)),
+        record.original.manifest_digest.as_bytes(),
+    );
+    trx.commit().await.unwrap();
+}

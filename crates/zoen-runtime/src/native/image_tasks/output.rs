@@ -1,5 +1,4 @@
 use super::*;
-use crate::image_tasks::capture::{ImageCapture, MAXIMUM};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ImageOutputInspection {
@@ -89,27 +88,8 @@ impl NativeCustody {
         capability: &FreshOutputNamespace,
     ) -> Result<ImageOutputInspection, RuntimeError> {
         let task = &step.record.task;
-        let attempt = &task.binding.context.attempt_id;
         let run = &task.binding.context.run_id;
-        let digest = runtime
-            .execution
-            .image_capture_digest(task, &runtime.custody)
-            .await?;
-        let sealed=match runtime.execution.image_evidence_bytes(attempt,&digest).await? {
-            Some(bytes)=>bytes,
-            None=>sqlx::query_scalar("SELECT e.sealed FROM runtime_evidence e JOIN runtime_attempts a USING(attempt) WHERE e.attempt=$1 AND e.digest=$2 AND a.binding_digest=$3")
-                .bind(attempt).bind(&digest).bind(task.binding.digest()?).fetch_optional(&runtime.finance.pool).await?.ok_or(RuntimeError::Unavailable)?,
-        };
-        let plain = runtime.custody.open_bounded_bytes(
-            &format!("evidence/{attempt}"),
-            Some(&digest),
-            &sealed,
-            MAXIMUM,
-        )?;
-        let capture = ImageCapture::decode(&plain)?;
-        if capture.task != *task {
-            return Err(RuntimeError::InvalidBinding);
-        }
+        let (digest, capture) = runtime.retained_image_capture(task).await?;
         let image = capture.result.output.map_err(|_| RuntimeError::Denied)?;
         let principal = &step.record.original.context.principal;
         let credential = self.credential(&principal.agent, &principal.device)?;
@@ -120,9 +100,10 @@ impl NativeCustody {
         if capsule.root != step.current {
             return Err(RuntimeError::Denied);
         }
-        let mut core =
+        let mut core = Box::new(
             DeviceCore::restore(self.open_image(principal, capsule)?, credential.unlocked()?)
-                .map_err(|_| RuntimeError::Denied)?;
+                .map_err(|_| RuntimeError::Denied)?,
+        );
         let now = runtime.finance.reply_clock().await?;
         let prepared = core
             .prepare_image_task(&task.request_id, &task.approval_hash, &image.bytes, now)

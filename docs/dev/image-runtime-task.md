@@ -36,7 +36,10 @@ for those orphans is not claimed here.
 Incomplete usage, unsupported usage detail and unrepresentable integer charges
 retain an unresolved hold and the original evidence. They do not produce a zero
 charge. Supported charges above the configured hold are posted in full. A lost
-result or retry cannot mint another claim or provider admission.
+result or retry cannot mint another claim or provider admission. A result whose
+association write failed can recover that association from the authenticated
+capture and its original admitted nonce. Conflicting retained results are
+refused; recovery never invents an admission or calls the provider.
 
 Output preparation validates the original admitted result and current native
 approval, then uses the existing encrypted `FileDoc` / PNG path. The signed

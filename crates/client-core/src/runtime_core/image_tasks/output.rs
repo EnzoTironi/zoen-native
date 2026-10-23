@@ -88,7 +88,7 @@ impl DeviceCore {
             let space = facts.space.clone();
             let actor = facts.agent.clone();
             let name = format!("{item}.png");
-            let file = self
+            let (file, event) = self
                 .engine
                 .atomic_agent_action(|engine| {
                     let key = engine.file_key(None)?;
@@ -105,7 +105,7 @@ impl DeviceCore {
                     engine
                         .store
                         .set_meta(&format!("file_key:{item}"), &hex::encode(key))?;
-                    engine.append(
+                    let event = engine.append(
                         &space,
                         &actor,
                         EventBody::ItemCreated {
@@ -123,16 +123,18 @@ impl DeviceCore {
                             },
                         )?,
                     )?;
-                    Ok(file)
+                    Ok((file, event))
                 })
                 .map_err(|_| NativeError::Storage)?;
             self.engine
                 .mls_seal_outbox()
                 .map_err(|_| NativeError::Storage)?;
-            let envelopes = self.engine.outbox_envelopes();
-            let [envelope] = envelopes.as_slice() else {
-                return Err(NativeError::NotReady);
-            };
+            // Prepare and retain the producer's original, without bypassing the
+            // ordinary upload-dependent outbox offer gate.
+            let envelope = self
+                .engine
+                .outgoing_envelope_with(&event, &mut std::collections::HashMap::new())
+                .ok_or(NativeError::NotReady)?;
             if !envelope.is_sealed()
                 || envelope.is_pruned()
                 || envelope.verify().is_err()
@@ -143,13 +145,7 @@ impl DeviceCore {
             {
                 return Err(NativeError::History);
             }
-            let event = self
-                .engine
-                .store
-                .outbox_get(envelope.client_id())
-                .map_err(|_| NativeError::Storage)?
-                .ok_or(NativeError::History)?;
-            self.retain_image_task_reference(request, &event, envelope)?;
+            self.retain_image_task_reference(request, &event, &envelope)?;
             Ok(PreparedImageTask {
                 facts,
                 file,

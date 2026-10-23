@@ -31,14 +31,7 @@ impl crate::execution::Execution {
         if frozen != task.binding {
             return Err(RuntimeError::InvalidBinding);
         }
-        // A generic fixture or another producer cannot claim a native task run.
-        if trx
-            .get(&self.run(run, "image-record/1"), false)
-            .await?
-            .is_none()
-        {
-            return Err(RuntimeError::InvalidBinding);
-        }
+        self.image_task_original_in(&trx, task, custody).await?;
         let value = Association {
             task: task.task_digest.clone(),
             evidence: digest.into(),
@@ -100,5 +93,98 @@ impl crate::execution::Execution {
         self.read_evidence_payload(attempt, digest, &root)
             .await
             .map(Some)
+    }
+}
+
+impl RuntimeAuthority {
+    /// Repairs only the association of a previously retained original result.
+    /// It cannot mint a claim, admission witness, provider send or native task.
+    pub(crate) async fn retained_image_capture(
+        &self,
+        task: &ImageTask,
+    ) -> Result<(String, capture::ImageCapture), RuntimeError> {
+        task.validate()?;
+        let attempt = &task.binding.context.attempt_id;
+        let (digest, repair) = match self
+            .execution
+            .image_capture_digest(task, &self.custody)
+            .await
+        {
+            Ok(digest) => (digest, false),
+            Err(RuntimeError::Unavailable) => {
+                let mut candidates = std::collections::BTreeSet::new();
+                let sql: Vec<String> = sqlx::query_scalar(
+                    "SELECT digest FROM runtime_evidence WHERE attempt=$1 ORDER BY digest LIMIT 3",
+                )
+                .bind(attempt)
+                .fetch_all(&self.finance.pool)
+                .await?;
+                candidates.extend(sql);
+                let trx = self.execution.transaction().await?;
+                let sub = self
+                    .execution
+                    .root
+                    .subspace(&("evidence", attempt.as_str()));
+                let mut range = foundationdb::RangeOption::from(sub.range());
+                range.limit = Some(3);
+                let rows = trx.get_range(&range, 1, false).await?;
+                if rows.more() {
+                    return Err(RuntimeError::InvalidBinding);
+                }
+                for row in rows.iter() {
+                    let (digest,): (String,) = sub
+                        .unpack(row.key())
+                        .map_err(|_| RuntimeError::InvalidBinding)?;
+                    candidates.insert(digest);
+                }
+                if candidates.is_empty() {
+                    return Err(RuntimeError::Unavailable);
+                }
+                if candidates.len() != 1 {
+                    return Err(RuntimeError::InvalidBinding);
+                }
+                (
+                    candidates
+                        .into_iter()
+                        .next()
+                        .ok_or(RuntimeError::Unavailable)?,
+                    true,
+                )
+            }
+            Err(error) => return Err(error),
+        };
+        if !valid_digest(&digest) {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        let sealed=match self.execution.image_evidence_bytes(attempt,&digest).await? {
+            Some(bytes)=>bytes,
+            None=>sqlx::query_scalar("SELECT e.sealed FROM runtime_evidence e JOIN runtime_attempts a USING(attempt) WHERE e.attempt=$1 AND e.digest=$2 AND a.binding_digest=$3")
+                .bind(attempt).bind(&digest).bind(task.binding.digest()?).fetch_optional(&self.finance.pool).await?.ok_or(RuntimeError::Unavailable)?,
+        };
+        let plain = self.custody.open_bounded_bytes(
+            &format!("evidence/{attempt}"),
+            Some(&digest),
+            &sealed,
+            capture::MAXIMUM,
+        )?;
+        let capture = capture::ImageCapture::decode(&plain)?;
+        if capture.task != *task {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        // Existing association validation checks the same immutable native record,
+        // prepared binding and ORIGINAL nonce retained inside authenticated capture.
+        self.execution
+            .associate_image_capture(task, &capture.nonce, &digest, &self.custody)
+            .await?;
+        if repair
+            && self
+                .execution
+                .image_capture_digest(task, &self.custody)
+                .await?
+                != digest
+        {
+            return Err(RuntimeError::Unavailable);
+        }
+        Ok((digest, capture))
     }
 }

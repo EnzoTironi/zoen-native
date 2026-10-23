@@ -174,6 +174,8 @@ impl ImageAttemptAdapter for Provider {
 pub(super) async fn run() {
     let mut w = world().await;
     let (step, task) = task(&w).await;
+    native::testing::seed_association_fixture(&w.runtime, &task).await;
+    w.runtime.fault.store(40, Ordering::SeqCst); // suppress association before evidence succeeds
     let provider = Provider {
         result: result(&task, true),
         task: task.clone(),
@@ -238,6 +240,38 @@ pub(super) async fn run() {
     let trx = reopened.execution.transaction().await.unwrap();
     trx.set(&chunk_key, &chunk);
     trx.commit().await.unwrap();
+    assert_eq!(
+        reopened
+            .execution
+            .image_capture_digest(&task, &reopened.custody)
+            .await
+            .unwrap_err(),
+        RuntimeError::Unavailable
+    );
+    let (recovered_digest, recovered) = reopened.retained_image_capture(&task).await.unwrap();
+    assert_eq!(recovered_digest, digest);
+    assert!(recovered.task == task);
+    assert_eq!(
+        reopened
+            .execution
+            .image_capture_digest(&task, &reopened.custody)
+            .await
+            .unwrap(),
+        digest
+    );
+    assert_eq!(
+        reopened.retained_image_capture(&task).await.unwrap().0,
+        digest,
+        "repair is idempotent"
+    );
+    assert_eq!(
+        reopened
+            .execution
+            .associate_image_capture(&task, &"c".repeat(64), &digest, &reopened.custody)
+            .await
+            .unwrap_err(),
+        RuntimeError::InvalidBinding
+    );
     reopened.reconcile(64).await.unwrap();
     reopened.reconcile(64).await.unwrap();
     assert_eq!(

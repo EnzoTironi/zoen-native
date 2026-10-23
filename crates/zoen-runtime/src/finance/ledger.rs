@@ -15,7 +15,7 @@ impl Finance {
         let row: Option<(i64, i64)> = sqlx::query_as(sqlx::AssertSqlSafe(query.to_owned()))
             .bind(&b.context.owner)
             .bind(b.period_start)
-            .bind(&b.price.currency())
+            .bind(b.price.currency())
             .bind(i16::from(b.price.scale()))
             .fetch_optional(&mut **tx)
             .await?;

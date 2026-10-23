@@ -6,6 +6,41 @@ use crate::{
 use foundationdb::Transaction;
 
 impl Execution {
+    pub(crate) async fn image_task_original_in(
+        &self,
+        trx: &Transaction,
+        task: &ImageTask,
+        custody: &Custody,
+    ) -> Result<(), RuntimeError> {
+        let run = &task.binding.context.run_id;
+        let bytes = trx
+            .get(&self.run(run, "image-record/1"), false)
+            .await?
+            .ok_or(RuntimeError::InvalidBinding)?;
+        let record: Record = custody.open(&format!("native-image-run/1/{run}"), None, &bytes)?;
+        record.validate(
+            run,
+            self.source
+                .as_ref()
+                .ok_or(RuntimeError::CoreAuthorityUnavailable)?
+                .cell(),
+        )?;
+        if record.task != *task {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        let pin = trx
+            .get(
+                &self
+                    .native_references(&record.original)
+                    .pack(&(run.as_str(),)),
+                false,
+            )
+            .await?;
+        if pin.as_deref() != Some(record.original.manifest_digest.as_bytes()) {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        Ok(())
+    }
     pub(super) async fn read_image_task(
         &self,
         run: &str,

@@ -13,6 +13,7 @@ struct Header {
     receipt: ProviderReceipt,
     usage: ImageUsageEvidence,
     complete: bool,
+    nonce: String,
     body: u64,
     output: Result<ImageHeader, OutputFailure>,
 }
@@ -27,10 +28,14 @@ struct ImageHeader {
 pub(crate) struct ImageCapture {
     pub(crate) task: ImageTask,
     pub(crate) result: ImageAttemptResult,
+    pub(crate) nonce: String,
 }
 impl ImageCapture {
     pub(crate) fn encode(&self) -> Result<Vec<u8>, RuntimeError> {
         self.task.validate()?;
+        if !valid_digest(&self.nonce) {
+            return Err(RuntimeError::InvalidBinding);
+        }
         if self.result.context != self.task.binding.context
             || self.result.request_digest != self.task.binding.request_digest
             || self.result.evidence.body.len() as u64 > self.task.dispatch.max_response_bytes
@@ -64,6 +69,7 @@ impl ImageCapture {
             receipt: self.result.receipt.clone(),
             usage: self.result.image_usage.clone(),
             complete: self.result.evidence.complete,
+            nonce: self.nonce.clone(),
             body: self.result.evidence.body.len() as u64,
             output,
         };
@@ -116,6 +122,9 @@ impl ImageCapture {
             serde_json::from_slice(bytes.get(split..end).ok_or(RuntimeError::InvalidBinding)?)
                 .map_err(|_| RuntimeError::InvalidBinding)?;
         header.task.validate()?;
+        if !valid_digest(&header.nonce) {
+            return Err(RuntimeError::InvalidBinding);
+        }
         let body_len = usize::try_from(header.body).map_err(|_| RuntimeError::InvalidBinding)?;
         if header.body > header.task.dispatch.max_response_bytes {
             return Err(RuntimeError::InvalidBinding);
@@ -169,6 +178,7 @@ impl ImageCapture {
         Ok(Self {
             task: header.task,
             result,
+            nonce: header.nonce,
         })
     }
 }
