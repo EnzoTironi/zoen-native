@@ -162,14 +162,36 @@ pub(super) async fn run() {
             .await,
         32
     );
-    let mut claimed =
-        zoen_relay::db::claim_key_packages(&f.world.runtime.finance.pool, &[agent.clone()])
+    let operation = types::new_ulid(
+        zoen_relay::key_package_claims::clock_ms(&f.world.runtime.finance.pool)
             .await
-            .unwrap();
+            .unwrap(),
+    );
+    let mut claimed = zoen_relay::key_package_claims::claim(
+        &f.world.runtime.finance.pool,
+        &f.owner.id,
+        f.world.owner.device.as_deref().unwrap(),
+        &operation,
+        std::slice::from_ref(agent),
+    )
+    .await
+    .unwrap();
     assert_eq!(claimed.len(), 1);
     let package = claimed.pop().unwrap();
     assert_eq!(&package.identity, agent);
     assert_eq!(package.device, device);
+    let retried_claim = zoen_relay::key_package_claims::claim(
+        &f.world.runtime.finance.pool,
+        &f.owner.id,
+        f.world.owner.device.as_deref().unwrap(),
+        &operation,
+        std::slice::from_ref(agent),
+    )
+    .await
+    .unwrap();
+    assert_eq!(retried_claim.len(), 1);
+    assert_eq!(retried_claim[0].data, package.data);
+
     assert_eq!(f.world.count("SELECT count(*) FROM key_packages").await, 31);
     reopen(&mut f.world, vault.clone()).await;
     let published = f
