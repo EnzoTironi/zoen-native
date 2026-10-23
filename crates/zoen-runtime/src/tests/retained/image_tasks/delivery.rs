@@ -5,22 +5,14 @@ use super::*;
 use object_store::ObjectStoreExt;
 
 async fn head(f: &Fixture) -> Seen {
-    let observed = f
-        .world
-        .runtime
-        .execution
-        .reply_source()
-        .unwrap()
-        .head_in(
-            &f.world.runtime.execution.transaction().await.unwrap(),
-            &f.space,
-        )
-        .await
-        .unwrap()
-        .unwrap();
+    // Independent observation through the actual relay log used by the router.
+    // This small fixture must fit the bounded read rather than guess its head.
+    let entries = f.log.read(&f.space, 1, 256).await.unwrap();
+    assert!(entries.len() < 256);
+    let observed = entries.last().unwrap();
     Seen {
-        seq: observed.seq(),
-        hash: observed.hash().into(),
+        seq: observed.seq,
+        hash: observed.hash.clone(),
     }
 }
 
