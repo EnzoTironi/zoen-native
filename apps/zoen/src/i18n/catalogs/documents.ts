@@ -3,6 +3,7 @@ import { defineFeature } from '../catalog.ts';
 export const documents = defineFeature(
   {
     defaultMarkdownBasename: 'page',
+    pageImageUnavailable: 'Image not available in this chat.',
     discussion: 'Discuss in chat',
     discussionCount: 'Discussion · %{count}',
     loadingDiscussion: 'Loading discussion…',
@@ -188,6 +189,7 @@ export const documents = defineFeature(
     loadingDiscussion: 'Carregando comentários…',
     retryDiscussion: 'Tentar carregar comentários novamente',
     defaultMarkdownBasename: 'pagina',
+    pageImageUnavailable: 'Imagem indisponível nesta conversa.',
     recoverEditorInput: 'Recuperar texto do editor',
     editorInputRetained: 'Texto salvo neste aparelho. Aplique para atualizar seu rascunho.',
     editorInputNotRetained:
