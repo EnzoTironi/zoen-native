@@ -8,6 +8,9 @@ pub const MAX_HTML_BYTES: u64 = 2 * 1024 * 1024;
 
 /// Stable across a human owner's linked devices. Public identity only, never an
 /// authorization capability; each mutation still requires current device proof.
+///
+/// # Errors
+/// Returns an error if the v1 identity tuple cannot be JSON-encoded.
 pub fn site_id(
     owner: &str,
     space: &str,
@@ -102,6 +105,10 @@ pub struct SignedInspection {
 }
 
 impl SignedInspection {
+    /// Encodes the inspection and its destination in the v1 signature domain.
+    ///
+    /// # Errors
+    /// Returns an error if the signed tuple cannot be JSON-encoded.
     pub fn signing_bytes(&self, audience: &str) -> serde_json::Result<Vec<u8>> {
         serde_json::to_vec(&(
             "zoen-site-inspection.v1",
@@ -141,6 +148,10 @@ pub struct SignedMutation {
 }
 
 impl SignedMutation {
+    /// Encodes the exact publication intent in the v1 signature domain.
+    ///
+    /// # Errors
+    /// Returns an error if the signed tuple cannot be JSON-encoded.
     pub fn signing_bytes(&self, audience: &str) -> serde_json::Result<Vec<u8>> {
         serde_json::to_vec(&(
             "zoen-site-publication.v1",
@@ -154,6 +165,9 @@ impl SignedMutation {
 
     /// A renewed signature or another currently linked device can recover the
     /// same immutable receipt. Neither changes the logical publication intent.
+    ///
+    /// # Errors
+    /// Returns an error if the intent tuple cannot be JSON-encoded.
     pub fn intent_digest(&self, audience: &str) -> serde_json::Result<String> {
         let bytes = serde_json::to_vec(&(
             "zoen-site-intent.v1",
@@ -180,6 +194,10 @@ pub struct Receipt {
 }
 
 impl Receipt {
+    /// Derives the receipt from the publication's immutable intent.
+    ///
+    /// # Errors
+    /// Returns the intent encoding error without manufacturing a receipt head.
     pub fn for_mutation(signed: &SignedMutation, audience: &str) -> serde_json::Result<Self> {
         let source = match &signed.mutation.change {
             Change::Publish { source } => Some(source.clone()),
