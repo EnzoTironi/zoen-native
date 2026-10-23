@@ -174,11 +174,8 @@ fn parse<T: serde::de::DeserializeOwned>(s: &str) -> Option<T> {
 
 pub use relay_admission::code_hash;
 
-fn random_code() -> String {
-    const A: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-    let mut b = [0u8; 10];
-    getrandom::getrandom(&mut b).expect("entropy");
-    b.iter().map(|x| A[(*x & 31) as usize] as char).collect()
+fn random_code() -> Result<String, StoreError> {
+    fallible::invite_code(getrandom::getrandom)
 }
 
 fn now_ms() -> i64 {
@@ -242,7 +239,7 @@ impl FdbLog {
             cell.root.clone(),
             node.to_string(),
             ttl,
-        ));
+        )?);
         Ok(Self {
             sequencer: Sequencer::new(cell.clone()),
             owner,
@@ -417,6 +414,7 @@ impl FdbLog {
 
 mod apply;
 mod cell;
+mod fallible;
 mod store;
 
 /// Append transactions run again after a conflict (two writers on one Space head) or a
@@ -445,8 +443,9 @@ impl Batcher for Cell {
             .db
             .run(|trx, _committed| {
                 attempts.fetch_add(1, Ordering::Relaxed);
-                let cached = cached.lock().expect("cache lock").take();
+                let cached = fallible::take_cache(&cached);
                 async move {
+                    let cached = cached?;
                     ownership::bound_transaction(&trx)?;
                     self.apply(&trx, space, batch, cached).await
                 }

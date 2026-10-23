@@ -40,7 +40,8 @@ pub async fn run() {
         root.clone(),
         "fresh".into(),
         Duration::from_secs(30),
-    );
+    )
+    .unwrap();
     owner.maintain().await.unwrap();
     assert!(owner.ready().await);
     assert_eq!(count(&db, &nodes).await, 1);
