@@ -5,6 +5,32 @@ use super::*;
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub(super) enum Command {
+    SiteRead {
+        scope: crate::sites::SiteScope,
+        item_id: String,
+        version: u32,
+        expected_sha256: String,
+    },
+    SiteCreate {
+        scope: crate::sites::SiteScope,
+        name: String,
+        html: String,
+        mutation_id: String,
+    },
+    SiteSave {
+        scope: crate::sites::SiteScope,
+        source: protocol::sites::SourceVersion,
+        html: String,
+    },
+    SiteReview {
+        scope: crate::sites::SiteScope,
+        source: protocol::sites::SourceVersion,
+        site_id: Option<String>,
+        expected_head: Option<String>,
+    },
+    SitePrepare {
+        review: crate::sites::SiteReview,
+    },
     ProviderSignIn {
         relay_url: String,
         proof_token: String,

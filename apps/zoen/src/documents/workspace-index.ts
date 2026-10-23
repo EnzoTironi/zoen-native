@@ -1,6 +1,6 @@
 import type { ItemDetail } from '../core/types';
 
-export const workspaceKinds = ['all', 'pages', 'slides', 'images', 'files', 'apps'] as const;
+export const workspaceKinds = ['all', 'pages', 'slides', 'sites', 'images', 'files', 'apps'] as const;
 export type WorkspaceKind = (typeof workspaceKinds)[number];
 export type WorkspaceFilter = {
   spaces: ReadonlySet<string>;
@@ -17,6 +17,7 @@ export function workspaceKind(item: ItemDetail): Exclude<WorkspaceKind, 'all'> {
   if (item.kind_id === 'page') return 'pages';
   if (item.app?.app_id === 'deckcraft') return 'slides';
   if (item.app) return 'apps';
+  if (item.kind_id === 'file' && item.file?.mime === 'text/html') return 'sites';
   if (item.file?.mime.startsWith('image/')) return 'images';
   return 'files';
 }

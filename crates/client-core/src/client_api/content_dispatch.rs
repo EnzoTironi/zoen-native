@@ -9,6 +9,39 @@ impl Client {
     ) -> Result<String, CoreError> {
         use Command::*;
         match command {
+            SiteRead {
+                scope,
+                item_id,
+                version,
+                expected_sha256,
+            } => encode_site(&self.lock().site_source(
+                &scope,
+                &item_id,
+                version,
+                &expected_sha256,
+            )?),
+            SiteCreate {
+                scope,
+                name,
+                html,
+                mutation_id,
+            } => encode_site(
+                &self
+                    .lock()
+                    .site_create(&scope, &name, &html, &mutation_id)?,
+            ),
+            SiteSave {
+                scope,
+                source,
+                html,
+            } => encode_site(&self.lock().site_save(&scope, &source, &html)?),
+            SiteReview {
+                scope,
+                source,
+                site_id,
+                expected_head,
+            } => encode_site(&self.site_review(scope, source, site_id, expected_head)?),
+            SitePrepare { review } => encode_site(&self.site_prepare(review)?),
             Search { query } => encode(&self.search(query)),
             SearchMessages {
                 space_id,

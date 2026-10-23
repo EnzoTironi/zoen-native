@@ -15,6 +15,7 @@ declare class ZoenCoreModule extends NativeModule<{
   onCallAudio: (event: { json: string }) => void;
   onPageInputStatus: (event: { json: string }) => void;
 }> {
+  readonly sitePreviewVersion?: number;
   startCall?(spaceId: string, video: boolean): Promise<void>;
   callAudioReply?(ticket: string, success: boolean): Promise<void>;
   readonly failedMediaRecoveryVersion?: number;
