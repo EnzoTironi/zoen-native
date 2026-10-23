@@ -41,6 +41,7 @@ impl Engine {
             || r.req.tool_proposal_hash(&r.space).as_deref() != Some(hash)
             || parsed(p).is_err()
             || !self.tool_non_blocked(&r.req)
+            || !self.tool_review_confirmed(r)
         {
             return Err(denied());
         }
@@ -105,6 +106,9 @@ impl Engine {
         observed: &str,
         decision: ToolRequestDecision,
     ) -> R<DecideOutcome> {
+        if decision == ToolRequestDecision::RequestReview {
+            return self.request_tool_review(id, observed);
+        }
         let r = self.state.requests.get(id).cloned().ok_or_else(stale)?;
         let p = r.req.tool_proposal.as_ref().ok_or_else(malformed)?;
         let me = self.me_id()?;
@@ -123,6 +127,7 @@ impl Engine {
             ToolRequestDecision::ApproveOnce => ToolDecision::ApproveOnce,
             ToolRequestDecision::Deny => ToolDecision::Deny,
             ToolRequestDecision::Cancel => ToolDecision::Cancel,
+            ToolRequestDecision::RequestReview => return Err(malformed()),
         };
         if r.status != ReqStatus::Pending {
             if r.resolution.as_ref().and_then(|r| r.tool_decision) == Some(decision) {

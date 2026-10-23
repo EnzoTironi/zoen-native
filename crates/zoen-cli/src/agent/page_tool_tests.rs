@@ -196,3 +196,5 @@ async fn canonical_page_read_approve_once_write_and_cold_resume_use_the_normal_h
     drop(client);
     std::fs::remove_dir_all(path).unwrap();
 }
+
+mod renewal;

@@ -536,7 +536,7 @@ async fn approved_recovery_enters_only_selected_request_and_retains_executor_adm
     f.approve(&selected).await;
     assert_eq!(
         run.head(&f.client).unwrap(),
-        Some((selected.id.clone(), RequestStatus::Approved))
+        Some((selected.id.clone(), RequestStatus::Approved, None))
     );
     assert_eq!(f.client.approved_tool_sources(&f.space).len(), 2);
     assert!(!run

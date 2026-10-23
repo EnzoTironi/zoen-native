@@ -3,7 +3,7 @@ use super::*;
 use client_core::{Delivery, RequestStatus};
 use sha2::{Digest, Sha256};
 
-pub(super) type Head = Option<(String, RequestStatus)>;
+pub(super) type Head = Option<(String, RequestStatus, Option<String>)>;
 pub(super) struct Attempt {
     pub handled: bool,
     /// Canonical head actually read inside turn, not a snapshot taken after its await.
@@ -263,7 +263,7 @@ impl Run {
         Ok(())
     }
 
-    fn head(&self, e: &Client) -> Result<Option<(String, RequestStatus)>, String> {
+    fn head(&self, e: &Client) -> Result<Head, String> {
         self.check(e)?;
         let requests = e.tool_approval_requests(&self.bound.space, &self.bound.id);
         let Some(request) = requests.last() else {
@@ -275,7 +275,8 @@ impl Run {
             .find(|dto| dto.id == request.id)
             .ok_or("agent_host_source_request_unavailable")?;
         self.check(e)?;
-        Ok(Some((dto.id, dto.status)))
+        let intent = e.tool_review_pending_intent(&dto.id);
+        Ok(Some((dto.id, dto.status, intent)))
     }
     pub(super) async fn tick(
         &mut self,

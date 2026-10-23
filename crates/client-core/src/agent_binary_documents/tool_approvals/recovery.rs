@@ -173,7 +173,19 @@ impl Client {
             })
             .map(|r| r.req.clone())
             .collect();
-        requests.sort_by_key(|r| r.tool_proposal.as_ref().map_or(0, |p| p.step));
+        requests.sort_by_key(|r| {
+            let p = r.tool_proposal.as_ref();
+            (
+                p.map_or(0, |p| p.step),
+                p.and_then(|p| p.review.as_ref())
+                    .map_or(0, |r| r.generation),
+                e.state
+                    .request_order
+                    .iter()
+                    .position(|id| id == &r.id)
+                    .unwrap_or(0),
+            )
+        });
         requests
     }
 }

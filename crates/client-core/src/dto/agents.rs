@@ -21,6 +21,30 @@ pub struct ToolApprovalDto {
     pub version: u32,
     pub operation: String,
     pub expires_ms: i64,
+    /// Presentation of the signed review lineage, never a permit or effect receipt.
+    #[uniffi(default = None)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "client-types", ts(optional))]
+    pub review: Option<ToolReviewDto>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+pub enum ToolReviewState {
+    Unavailable,
+    Available,
+    Requested,
+    Superseded,
+    Reconcile,
+}
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+pub struct ToolReviewDto {
+    pub state: ToolReviewState,
+    pub root_request_id: String,
+    pub predecessor_request_id: Option<String>,
+    pub successor_request_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum, serde::Serialize, serde::Deserialize)]
@@ -29,6 +53,8 @@ pub enum ToolRequestDecision {
     ApproveOnce,
     Deny,
     Cancel,
+    /// Preparation only. A successor needs a separate normal ApproveOnce.
+    RequestReview,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
@@ -177,3 +203,5 @@ pub struct StandingDecisionDto {
     pub at_ms: i64,
 }
 
+#[cfg(test)]
+mod tests;

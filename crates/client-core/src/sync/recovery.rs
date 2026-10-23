@@ -65,7 +65,10 @@ impl Engine {
             self.net
                 .pending
                 .insert(e.client_id.clone(), e.space.clone());
-            if matches!(e.body, EventBody::RequestResolved { .. }) {
+            if matches!(
+                e.body,
+                EventBody::RequestResolved { .. } | EventBody::ToolReviewRequested { .. }
+            ) {
                 self.net.optimistic_approvals.insert(e.space.clone());
             }
         }
@@ -85,6 +88,7 @@ impl Engine {
             || matches!(
                 e.body,
                 EventBody::RequestOpened { .. }
+                    | EventBody::ToolReviewRequested { .. }
                     | EventBody::RequestResolved { .. }
                     | EventBody::MemberAdded { .. }
                     | EventBody::MemberRemoved { .. }
@@ -255,7 +259,10 @@ impl Engine {
             if matches!(e.body, EventBody::SpaceCreated { .. }) && !order.contains(&e.space) {
                 order.push(e.space.clone());
             }
-            if matches!(e.body, EventBody::RequestResolved { .. }) {
+            if matches!(
+                e.body,
+                EventBody::RequestResolved { .. } | EventBody::ToolReviewRequested { .. }
+            ) {
                 optimistic.insert(e.space.clone());
             }
             let scoped = projections.entry(e.space.clone()).or_default();

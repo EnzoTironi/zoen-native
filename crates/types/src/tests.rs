@@ -150,3 +150,29 @@ fn voice_waveforms_are_bounded_on_send_and_receive() {
     assert_eq!(VoiceMeta::encode(&vec![0.5; 1000]).len(), 160);
     assert_eq!(VoiceMeta::encode(&[f32::NAN, -1.0, 2.0]), "00f");
 }
+
+#[test]
+fn legacy_schema1_and_schema2_tool_proposal_bytes_remain_exact_without_review_lineage() {
+    for schema in [1, 2] {
+        let bytes = format!(
+            r#"{{"schema":{schema},"source":"source","serving":"person","source_sha256":"sha","device":"device","owner":"owner","task_sha256":"task","step":0,"artifact":"item","version":1,"sha256":"hash","canonical_tool":"read","arguments_json":"{{}}","worker_binding":"worker","engine_revision":"revision","continuation_json":"{{}}","expires_at_ms":100,"gate_rule":"rule"}}"#
+        );
+        let mut proposal: ToolProposal = serde_json::from_str(&bytes).unwrap();
+        assert!(proposal.review.is_none());
+        assert_eq!(serde_json::to_string(&proposal).unwrap(), bytes);
+        proposal.review = Some(ToolReviewLineage {
+            root: "root".into(),
+            predecessor: "previous".into(),
+            intent: "signed-owner-intent".into(),
+            generation: 1,
+        });
+        assert_eq!(
+            serde_json::from_str::<ToolProposal>(&serde_json::to_string(&proposal).unwrap())
+                .unwrap(),
+            proposal
+        );
+        let mut invalid = serde_json::to_value(proposal).unwrap();
+        invalid["review"]["approves"] = true.into();
+        assert!(serde_json::from_value::<ToolProposal>(invalid).is_err());
+    }
+}

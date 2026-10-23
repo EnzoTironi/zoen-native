@@ -126,7 +126,11 @@ async fn checked(
             return true;
         };
         if selection.is_some() {
-            *observed = Some(Some((dto.id.clone(), dto.status)));
+            *observed = Some(Some((
+                dto.id.clone(),
+                dto.status,
+                e.tool_review_pending_intent(&dto.id),
+            )));
         }
         if let Some(category) = trace::Stop::request_status(dto.status) {
             stop(category);
@@ -147,6 +151,24 @@ async fn checked(
                 return true;
             }
         };
+        match tools.prepare_review(cx, tc, &inbound, request, &ask).await {
+            Ok(
+                space_tools::renewal::Preparation::Unrequested
+                | space_tools::renewal::Preparation::Recovered,
+            ) => {}
+            Ok(space_tools::renewal::Preparation::Pending) => {
+                stop(trace::Stop::Pending);
+                return true;
+            }
+            Ok(space_tools::renewal::Preparation::Reconcile) | Err(_) => {
+                // This is an explanation of a refused continuation, never a receipt
+                // or an implicit permission to repeat an ambiguous operation.
+                stop(trace::Stop::RecoveryRefused);
+                return selected_reply(e, space,
+                    "I cannot safely renew this action. Reconcile its result and request a new proposal if needed; I have not repeated it.",
+                    &t.id, selection);
+            }
+        }
         let checkpoint = match tools.recovery_checkpoint(&request.id, &request.content_hash) {
             Ok(checkpoint) => checkpoint,
             Err(error) => {

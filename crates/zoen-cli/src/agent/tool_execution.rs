@@ -9,6 +9,7 @@ impl ApprovedToolAdmission for CanonicalToolAdmission<'_, '_> {
         if serde_json::to_string(ask).map_err(|_| "Invalid held call")? != continuation {
             return Err("The approved intent changed".into());
         }
+        self.tools.entering_canonical_executor()?;
         // Native authorization is rechecked even for a cached read result. Writes
         // always recover through their canonical binary receipt instead.
         if let page_tools::CanonicalPermit::Deck(permit) = &self.permit {

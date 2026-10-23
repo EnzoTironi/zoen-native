@@ -31,6 +31,7 @@ impl Engine {
                 version: p.version,
                 operation: crate::agent_binary_documents::tool_approvals::operation(&p.canonical_tool),
                 expires_ms: p.expires_at_ms,
+                review: Some(self.tool_review_dto(r)),
             }),
             id: r.req.id.clone(),
             agent: self.persona(&r.req.agent),

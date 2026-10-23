@@ -119,6 +119,7 @@ impl State {
                     && !request.id.is_empty()
                     && !request.content_hash.is_empty()
                     && !self.requests.contains_key(&request.id)
+                    && self.tool_review_successor_valid(request, e.at_ms)
                     && self.writer(&e.space, &e.author)
                     && identities
                         .get(&request.agent)
@@ -154,6 +155,10 @@ impl State {
                                 })
                     })
             }
+            EventBody::ToolReviewRequested {
+                request,
+                content_hash,
+            } => self.tool_review_intent_valid(e, request, content_hash, identities),
             EventBody::RequestResolved {
                 request,
                 approved,

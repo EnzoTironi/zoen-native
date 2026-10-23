@@ -273,11 +273,32 @@ impl State {
                         status: ReqStatus::Pending,
                         resolved_ms: None,
                         resolution: None,
+                        review: None,
                     },
                 );
+                self.tool_review_successor_opened(request);
                 if let Some(s) = self.spaces.get_mut(&e.space) {
                     s.entries.push(entry(EntryBody::Request {
                         request: request.id.clone(),
+                    }));
+                }
+            }
+            EventBody::ToolReviewRequested { request, .. } => {
+                if let Some(r) = self.requests.get_mut(request) {
+                    r.review = Some(
+                        crate::agent_binary_documents::tool_approvals::renewal::ReviewIntent {
+                            id: e.client_id.clone(),
+                            at_ms: e.at_ms,
+                            successor: None,
+                        },
+                    );
+                }
+                if let Some(s) = self.spaces.get_mut(&e.space) {
+                    s.entries.push(entry(EntryBody::System {
+                        text: t(
+                            "Nova revisão solicitada. A aprovação anterior não foi renovada.",
+                            "New review requested. The previous approval was not renewed.",
+                        ),
                     }));
                 }
             }

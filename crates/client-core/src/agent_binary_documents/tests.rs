@@ -353,3 +353,5 @@ fn serving_writer_and_exact_native_receipts_remain_authoritative_after_compute()
     assert_eq!(counts(&f), before);
     assert_eq!(f.agent.item(f.base.item_id.clone()).unwrap().version, 2);
 }
+
+pub(crate) mod renewal_history;

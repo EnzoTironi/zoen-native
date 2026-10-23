@@ -457,6 +457,10 @@ struct ResumeAttempts {
     source: Option<String>,
     prepared: Option<ToolAsk>,
     progress: Option<ToolProgress>,
+    /// A held call was durably registered before it could enter its executor.
+    registered: bool,
+    /// Persisted before executor IO; absence of a result never clears this fence.
+    outcome_unknown: bool,
 }
 
 /// The mini-app tools of one chat, for one turn: calls run as the agent serving `serving`.

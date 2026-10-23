@@ -13,6 +13,7 @@ import { useClient } from '../core/provider';
 import { money } from '../core/presentation';
 import { Avatar, NativeButton, Surface } from '../components/primitives';
 import { useDialogs } from '../components/dialogs';
+import { ToolReviewRecovery } from './tool-review-recovery';
 import { useTheme } from '../theme';
 
 const statuses = {
@@ -207,6 +208,13 @@ export function RequestCard({
         <Text style={{ color: colors.secondary, fontSize: 12, lineHeight: 18 }}>
           {t('agents.permissionAppliesToTheExactContentOfThis')}
         </Text>
+      ) : null}
+      {tool != null && toolValid && request.status === 'Approved' && toolExpired ? (
+        <ToolReviewRecovery
+          requestId={request.id}
+          onResolved={onResolved}
+          disabled={disabled || busy}
+        />
       ) : null}
       {failure ? (
         <Text accessibilityRole="alert" selectable style={{ color: colors.danger }}>

@@ -1,6 +1,7 @@
 import { attachmentTabs } from './catalogs/attachment-tabs.ts';
 import { access } from './catalogs/access.ts';
 import { activity } from './catalogs/activity.ts';
+import { reviewRenewal } from './catalogs/review-renewal.ts';
 import { agents } from './catalogs/agents.ts';
 import { agentEnrollment } from './catalogs/agent-enrollment.ts';
 import { agentDefinition } from './catalogs/agent-definition.ts';
@@ -41,6 +42,7 @@ const catalogs = {
   access,
   activity,
   agents,
+  reviewRenewal,
   agentEnrollment,
   agentDefinition,
   auth,
