@@ -162,16 +162,64 @@ pub(crate) fn access(state: &State, p: &ToolProposal) -> bool {
 }
 
 impl Engine {
+    pub(crate) fn image_task_trust_deadline(
+        &self,
+        agent: &str,
+        owner: &str,
+        space: &str,
+        at_ms: i64,
+    ) -> R<Option<i64>> {
+        // A revoked newest baseline must not fall back to a default or revive an
+        // earlier grant. This native paid task requires actual signed trust.
+        let grant = self
+            .state
+            .grants
+            .iter()
+            .rev()
+            .find(|g| {
+                g.grant.grantor == owner
+                    && g.grant.grantee.as_deref() == Some(agent)
+                    && g.grant.scope == GrantScope::Space(space.into())
+                    && matches!(g.grant.capability, Capability::Trust(_))
+            })
+            .ok_or_else(denied)?;
+        let Capability::Trust(level) = grant.grant.capability else {
+            return Err(denied());
+        };
+        if grant.revoked
+            || grant
+                .grant
+                .expires_at_ms
+                .is_some_and(|expiry| expiry <= at_ms)
+            || matches!(
+                grants::evaluate_permission(level, &ActionClass::Reversible, &self.policy),
+                grants::Decision::Block(_)
+            )
+        {
+            return Err(denied());
+        }
+        Ok(grant.grant.expires_at_ms)
+    }
     pub(crate) fn image_task_actor(
         &self,
         space: &str,
         source: &str,
         serving: &str,
     ) -> R<(String, String, String)> {
+        self.image_task_actor_at(space, source, serving, crate::engine::now_ms())
+    }
+    pub(crate) fn image_task_actor_at(
+        &self,
+        space: &str,
+        source: &str,
+        serving: &str,
+        at_ms: i64,
+    ) -> R<(String, String, String)> {
         let actor = self.me_id()?;
         let account = self.account().ok_or_else(denied)?;
         let identity = self.identities.get(&actor).ok_or_else(denied)?;
         let owner = identity.owner.as_deref().ok_or_else(denied)?;
+        self.image_task_trust_deadline(&actor, owner, space, at_ms)?;
         if identity.kind != IdentityKind::Agent
             || !event_log::agent_owner::profile_authorized(identity)
             || account.identity != actor

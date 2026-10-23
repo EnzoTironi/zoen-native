@@ -15,6 +15,7 @@ pub struct ImageTaskFacts {
     pub(super) agent: String,
     pub(super) frontier: NativeFrontier,
     pub(super) input: ImageTaskInput,
+    expires_at_ms: i64,
 }
 impl std::fmt::Debug for ImageTaskFacts {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -39,6 +40,9 @@ impl ImageTaskFacts {
     }
     pub fn frontier(&self) -> &NativeFrontier {
         &self.frontier
+    }
+    pub fn expires_at_ms(&self) -> i64 {
+        self.expires_at_ms
     }
     pub fn input(&self) -> &ImageTaskInput {
         &self.input
@@ -110,7 +114,7 @@ impl DeviceCore {
         image_tasks::parsed(p).map_err(|_| NativeError::Permission)?;
         let (agent, device, source_sha) = self
             .engine
-            .image_task_actor(&r.space, &p.source, &p.serving)
+            .image_task_actor_at(&r.space, &p.source, &p.serving, at_ms)
             .map_err(|_| NativeError::Permission)?;
         if agent != self.agent
             || r.req.agent != agent
@@ -139,6 +143,11 @@ impl DeviceCore {
             .get(&r.space)
             .and_then(SpaceLog::head)
             .ok_or(NativeError::History)?;
+        let trust_expiry = self
+            .engine
+            .image_task_trust_deadline(&self.agent, &self.owner, &r.space, at_ms)
+            .map_err(|_| NativeError::Permission)?;
+        let expires_at_ms = p.expires_at_ms.min(trust_expiry.unwrap_or(p.expires_at_ms));
         let input = serde_json::from_str(&p.arguments_json).map_err(|_| NativeError::Bounds)?;
         Ok(ImageTaskFacts {
             request: request.into(),
@@ -152,6 +161,7 @@ impl DeviceCore {
                 epoch,
             },
             input,
+            expires_at_ms,
         })
     }
 }

@@ -178,3 +178,52 @@ fn reply_only_trust_never_opens_an_image_review() {
     assert!(f.core.stage_image_task(SPACE, &source, input()).is_err());
     assert!(f.core.engine.state.requests.is_empty());
 }
+
+#[test]
+fn image_task_uses_sql_observed_trust_expiry_and_never_revives_an_older_grant() {
+    let (mut f, request, _) = approved();
+    let expiry = crate::engine::now_ms() + 30_000;
+    f.encrypted(
+        EventBody::GrantIssued {
+            grant: Grant {
+                id: "image-short".into(),
+                grantor: f.owner_profile.id.clone(),
+                grantee: Some(f.agent_profile.id.clone()),
+                scope: GrantScope::Space(SPACE.into()),
+                capability: Capability::Trust(TrustLevel::Act),
+                expires_at_ms: Some(expiry),
+            },
+        },
+        crate::engine::now_ms(),
+    );
+    let facts = f.core.image_task(&request, expiry - 1).unwrap();
+    assert!(facts.proposal().expires_at_ms > expiry);
+    assert_eq!(
+        facts.expires_at_ms(),
+        expiry,
+        "paid admission uses earlier trust deadline"
+    );
+    assert!(
+        f.core.image_task(&request, expiry).is_err(),
+        "explicit observed clock, not host wall-clock fallback"
+    );
+    f.encrypted(
+        EventBody::GrantRevoked {
+            grant: "image-short".into(),
+        },
+        crate::engine::now_ms(),
+    );
+    assert!(f
+        .core
+        .engine
+        .state
+        .grants
+        .iter()
+        .any(|g| g.grant.id == "image-act" && !g.revoked));
+    assert!(
+        f.core
+            .image_task(&request, crate::engine::now_ms())
+            .is_err(),
+        "revoked newest baseline cannot revive older Act"
+    );
+}

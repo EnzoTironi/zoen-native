@@ -55,7 +55,7 @@ impl ImageStep {
         &self.record.task
     }
     pub(crate) fn deadline(&self) -> Option<i64> {
-        Some(self.facts.proposal().expires_at_ms)
+        Some(self.facts.expires_at_ms())
     }
     pub(crate) fn binding(&self, request: &DispatchRequest) -> Result<Binding, RuntimeError> {
         self.record.task.validate()?;
