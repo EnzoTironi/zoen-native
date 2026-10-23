@@ -153,7 +153,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     const foreground = AppState.addEventListener('change', (state) => {
       if (state === 'active') void coordinator.foreground();
     });
-    void coordinator.foreground();
+    // A background-launched React tree must not start token registration work.
+    if (AppState.currentState === 'active') void coordinator.foreground();
     return () => {
       stopStore();
       stopEvents();

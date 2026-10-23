@@ -57,6 +57,12 @@ registration even on Simulator. A simulator wake injected locally is separate
 from that registration and from provider delivery. Do not assume that enabling
 the native configuration makes a foreground QA launch network-free.
 
+The provider starts its initial permission/token refresh only when the app is
+active. A React tree mounted by a background launch waits for the existing
+AppState activation listener; it does not start device-token registration from
+that mount. Normal foreground registration and native rotation handling retain
+their existing coordinator and account-invalidation checks.
+
 `ZoenPushDelegate` receives the content-free OS callback without starting a
 TaskManager/headless JavaScript runtime. A process transition gate borrows the
 existing module's `ZoenSession`, or opens one temporary session only after the
@@ -185,6 +191,10 @@ and a Foundation-only Swift ownership/payload model harness;
 harness compiles the UIKit/Core adapter or establishes physical push delivery.
 `notification-presentation.test.ts` checks the single-presenter port and actual
 SDK adapter opt-in/version gate without invoking an OS notification service.
+`notification-provider-lifecycle.test.ts` compiles the actual provider with its
+real registration coordinator and controlled React/OS/client ports. It checks
+background/inactive mount, active transition, active mount, cleanup, account
+replacement and the existing web path without making token or relay calls.
 
 The relay attempts content-free wakes for all currently authorized recipient
 devices except the author, including an identity whose sibling has a live WS.
