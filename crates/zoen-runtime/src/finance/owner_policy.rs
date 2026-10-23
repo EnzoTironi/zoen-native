@@ -11,6 +11,33 @@ impl NativeDirectoryGuard {
         if signed.policy.owner != self.owner {
             return Err(RuntimeError::Denied);
         }
+        if !event_log::owner_budget::verify(&signed) {
+            return Err(RuntimeError::InvalidPolicy);
+        }
+        let policy = &signed.policy;
+        let (start, _) = period(policy.year, policy.month)?;
+        let digest = event_log::owner_budget::digest(policy).ok_or(RuntimeError::InvalidPolicy)?;
+        let original: Option<(String, Json<SignedOwnerPolicy>)> = sqlx::query_as(
+            "SELECT digest,signed FROM runtime_policies WHERE owner=$1 AND period_start=$2 AND version=$3 FOR SHARE",
+        ).bind(&self.owner).bind(start).bind(i64::from(policy.version))
+            .fetch_optional(&mut *self.tx).await?;
+        if let Some((stored_digest, Json(stored))) = original {
+            if stored_digest != digest {
+                return Err(RuntimeError::InvalidBinding);
+            }
+            if !event_log::owner_budget::verify(&stored)
+                || stored.policy != *policy
+                || event_log::owner_budget::digest(&stored.policy).as_deref() != Some(&digest)
+            {
+                return Err(RuntimeError::RestoreUnreconciled);
+            }
+            // A lost ACK can cross expiry, revocation of the original human
+            // signing device, or a newer disabled policy. This read observes
+            // the actual historical installation under CURRENT native owner/
+            // agent/device locks. It writes nothing and grants no live budget.
+            self.tx.commit().await?;
+            return Ok(digest);
+        }
         let digest = Finance::install_policy_in(&mut self.tx, signed).await?;
         self.tx.commit().await?;
         Ok(digest)
