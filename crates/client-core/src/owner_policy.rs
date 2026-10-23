@@ -2,11 +2,13 @@
 //! A queued submission never proves installation in the Runtime authority.
 mod control;
 mod image_context;
+mod options;
 use crate::{
     engine::{Engine, R},
     Client, CoreError,
 };
 pub use control::OwnerPolicySubmission;
+pub use options::{OwnerPolicyContext, OwnerPolicyInquiryControl, OwnerPolicyOptionsStatus};
 use serde::{Deserialize, Serialize};
 use types::{owner_budget::OwnerPeriodPolicy, EventBody, IdentityKind, Privacy, SpaceKind};
 

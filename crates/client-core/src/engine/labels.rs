@@ -209,6 +209,10 @@ pub(crate) fn event_label(b: &EventBody) -> String {
         EventBody::OwnerPolicyOptionsRequested { .. } => {
             t("Consulta de limite de IA", "AI spending policy inquiry")
         }
+        EventBody::OwnerPolicyOptionsRefused { .. } => t(
+            "Consulta de limite de IA recusada",
+            "AI spending policy inquiry refused",
+        ),
         EventBody::OwnerPolicyOptionsReported { .. } => {
             t("Opções do limite de IA", "AI spending policy options")
         }

@@ -102,6 +102,10 @@ pub enum EventBody {
         agent: IdentityId,
         signed: crate::owner_policy_context::SignedOwnerPolicyInquiry,
     },
+    OwnerPolicyOptionsRefused {
+        source: String,
+        inquiry_digest: String,
+    },
     OwnerPolicyOptionsReported {
         source: String,
         options: crate::owner_policy_context::OwnerPolicyOptions,

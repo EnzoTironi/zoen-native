@@ -9,6 +9,29 @@ impl Client {
     ) -> Result<String, CoreError> {
         use Command::*;
         match command {
+            RequestOwnerPolicyOptions {
+                scope,
+                request_id,
+                expected_hash,
+            } => encode(&self.request_owner_policy_options(scope, request_id, expected_hash)?),
+            OwnerPolicyOptions { scope, source } => {
+                encode(&self.owner_policy_options(scope, source)?)
+            }
+            PrepareOwnerPolicy {
+                scope,
+                source,
+                options_digest,
+                limit_units,
+                max_attempt_units,
+                enabled,
+            } => encode(&self.prepare_owner_policy(
+                scope,
+                source,
+                options_digest,
+                limit_units,
+                max_attempt_units,
+                enabled,
+            )?),
             ReviewOwnerPolicy { scope, policy_json } => {
                 encode(&self.review_owner_policy(scope, policy_json)?)
             }

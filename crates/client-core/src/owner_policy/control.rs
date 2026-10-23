@@ -128,7 +128,7 @@ impl Engine {
         })
     }
 
-    fn owner_policy_agent(&self, space: &str) -> R<String> {
+    pub(super) fn owner_policy_agent(&self, space: &str) -> R<String> {
         let account = self.account().ok_or_else(denied)?;
         self.native_surface_owner(&account.identity, &account.device)?;
         let agent = self.identities.get(&account.identity).ok_or_else(denied)?;

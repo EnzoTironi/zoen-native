@@ -296,7 +296,11 @@ fn policy_quote_reads_only_confirmed_image_review_without_act_or_approval() -> T
     );
     for field in ["request", "content_hash", "price_digest"] {
         let mut value = serde_json::to_value(&inquiry)?;
-        value[field] = "changed".into();
+        value[field] = if field == "request" {
+            "different_request".into()
+        } else {
+            "bb".repeat(32).into()
+        };
         let changed = serde_json::from_value(value)?;
         assert!(event_log::owner_policy_inquiry::sign(&author, changed)
             .is_none_or(|changed| f.core.owner_policy_image_context(&changed, now).is_err()));
@@ -308,5 +312,179 @@ fn policy_quote_reads_only_confirmed_image_review_without_act_or_approval() -> T
             now + types::owner_policy_context::CONTEXT_TTL_MS + 1
         )
         .is_err());
+    Ok(())
+}
+
+#[test]
+fn authenticated_options_prepare_exact_money_and_successor_of_expired_disabled_policy() -> TestResult
+{
+    use chrono::Datelike;
+    use types::owner_policy_context::OwnerPolicyOptions;
+    let (mut f, request, hash, envelope) = super::image_review_cases::pending();
+    let frame = ordered(&f.owner, envelope);
+    assert_eq!(f.owner.ingest(frame.clone()), Ingest::Applied);
+    f.core.ingest(vec![frame])?;
+    f.owner.set_registered(true)?;
+    f.core.engine.set_registered(true)?;
+    let account = f.owner.account().ok_or("missing owner")?;
+    let scope = OwnerPolicyScope {
+        expected_identity_id: account.identity.clone(),
+        expected_device_id: account.device.clone(),
+        space_id: f.space.clone(),
+        agent_id: f.agent_profile.id.clone(),
+    };
+    let query_status = f
+        .owner
+        .request_owner_policy_options(&scope, &request, &hash)?;
+    assert_eq!(query_status.state, "pending");
+    assert!(f
+        .owner
+        .prepare_owner_policy(
+            &scope,
+            &query_status.source,
+            "not-ready",
+            "100",
+            "100",
+            true
+        )
+        .is_err());
+    deliver_owner(&mut f)?;
+    let query = f
+        .core
+        .engine
+        .owner_policy_inquiry(&scope.space_id, &query_status.source)?;
+    let now = crate::engine::now_ms();
+    let date = chrono::DateTime::from_timestamp_millis(now).ok_or("invalid clock")?;
+    let options = OwnerPolicyOptions {
+        inquiry_digest: query.digest().into(),
+        currency: "USD".into(),
+        scale: 6,
+        reservation_units: 9_007_199_254_740_993,
+        image_profile_digest: image_task_cases::input().definition.price_digest,
+        observed_at_ms: now,
+        year: date.year(),
+        month: u8::try_from(date.month())?,
+        current_policy: None,
+        current_policy_digest: None,
+    };
+    let mut wrong = options.clone();
+    wrong.inquiry_digest = "bb".repeat(32);
+    assert!(f
+        .core
+        .engine
+        .report_owner_policy_options(&query, wrong)
+        .is_err());
+    f.core
+        .engine
+        .report_owner_policy_options(&query, options.clone())?;
+    f.core
+        .engine
+        .report_owner_policy_options(&query, options.clone())?;
+    assert_eq!(f.core.engine.outbox_len(), 1);
+    assert!(f
+        .owner
+        .owner_policy_options(&scope, &query_status.source)?
+        .context
+        .is_none());
+    deliver_agent(&mut f)?;
+    let context = f
+        .owner
+        .owner_policy_options(&scope, &query_status.source)?
+        .context
+        .ok_or("no options")?;
+    assert_eq!(
+        context.reservation_units, "9007199254740993",
+        "bridge must not round money beyond JS safe integers"
+    );
+    assert!(context.current_limit_units.is_none(), "no implicit budget");
+    assert!(f
+        .owner
+        .prepare_owner_policy(
+            &scope,
+            &query_status.source,
+            &context.options_digest,
+            "9007199254740992",
+            "1",
+            true
+        )
+        .is_err());
+    let review = f.owner.prepare_owner_policy(
+        &scope,
+        &query_status.source,
+        &context.options_digest,
+        "9007199254740995",
+        "9007199254740993",
+        true,
+    )?;
+    assert_eq!(review.limit_units, "9007199254740995");
+    let first: OwnerPeriodPolicy = serde_json::from_str(&review.canonical_policy_json)?;
+    assert_eq!(first.version, 1);
+    assert!(first.previous_digest.is_none());
+    assert_eq!(
+        first.allowed_profiles,
+        vec![options.image_profile_digest.clone()]
+    );
+    assert!(f
+        .owner
+        .prepare_owner_policy(
+            &scope,
+            &query_status.source,
+            "bb",
+            "9007199254740995",
+            "9007199254740993",
+            true
+        )
+        .is_err());
+
+    let second_status = f
+        .owner
+        .request_owner_policy_options(&scope, &request, &hash)?;
+    deliver_owner(&mut f)?;
+    let second = f
+        .core
+        .engine
+        .owner_policy_inquiry(&scope.space_id, &second_status.source)?;
+    let author = f.owner.net.author.clone().ok_or("missing owner author")?;
+    let prior = OwnerPeriodPolicy {
+        version: 7,
+        previous_digest: Some("ab".repeat(32)),
+        expires_at_ms: now - 1,
+        enabled: false,
+        ..first
+    };
+    let signed = event_log::owner_budget::sign(&author, prior).ok_or("policy signature refused")?;
+    let latest_digest =
+        event_log::owner_budget::digest(&signed.policy).ok_or("policy digest refused")?;
+    let options = OwnerPolicyOptions {
+        inquiry_digest: second.digest().into(),
+        current_policy: Some(signed),
+        current_policy_digest: Some(latest_digest.clone()),
+        ..options
+    };
+    f.core
+        .engine
+        .report_owner_policy_options(&second, options)?;
+    deliver_agent(&mut f)?;
+    let context = f
+        .owner
+        .owner_policy_options(&scope, &second_status.source)?
+        .context
+        .ok_or("no latest policy")?;
+    assert_eq!(context.current_enabled, Some(false));
+    assert_eq!(context.current_expired, Some(true));
+    let review = f.owner.prepare_owner_policy(
+        &scope,
+        &second_status.source,
+        &context.options_digest,
+        "9007199254740995",
+        "9007199254740993",
+        true,
+    )?;
+    let successor: OwnerPeriodPolicy = serde_json::from_str(&review.canonical_policy_json)?;
+    assert_eq!(
+        successor.version, 8,
+        "expired/disabled existing rows must not reset to v1"
+    );
+    assert_eq!(successor.previous_digest, Some(latest_digest));
     Ok(())
 }

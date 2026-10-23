@@ -361,6 +361,7 @@ impl State {
             }
             EventBody::OwnerPolicyOptionsRequested { .. }
             | EventBody::OwnerPolicyOptionsReported { .. }
+            | EventBody::OwnerPolicyOptionsRefused { .. }
             | EventBody::OwnerPolicySubmitted { .. }
             | EventBody::OwnerPolicyReported { .. }
             | EventBody::ProfileKeyShared { .. }
