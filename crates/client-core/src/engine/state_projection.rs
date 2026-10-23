@@ -8,6 +8,9 @@ impl State {
         identities: &HashMap<IdentityId, Identity>,
         context: &BeforeEvent,
     ) -> Projection {
+        if !self.call_event_valid(e, identities) {
+            return Projection::Refused;
+        }
         if !self.media_message_valid(&e.space, &e.author, &e.body) {
             return Projection::Refused;
         }
@@ -39,6 +42,7 @@ impl State {
                 self.spaces.insert(
                     e.space.clone(),
                     SpaceState {
+                        calls: Vec::new(),
                         id: e.space.clone(),
                         title: title.clone(),
                         kind: *kind,
@@ -59,6 +63,9 @@ impl State {
             EventBody::MemberRemoved { identity } => {
                 if let Some(s) = self.spaces.get_mut(&e.space) {
                     s.members.retain(|(id, _)| id != identity);
+                    for call in &mut s.calls {
+                        call.invalidated = true;
+                    }
                 }
             }
             EventBody::SpaceEncrypted => {
@@ -329,6 +336,9 @@ impl State {
                         approved: *approved,
                     }));
                 }
+            }
+            EventBody::CallV1 { .. } => {
+                self.apply_call(e);
             }
             EventBody::UsageRecorded { agent, cents, .. } => {
                 self.usage.push((agent.clone(), *cents, e.at_ms));

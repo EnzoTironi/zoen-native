@@ -17,7 +17,7 @@ const iosArchitectures = process.argv.includes('--simulator')
   : ['aarch64-apple-ios', 'aarch64-apple-ios-sim'];
 const androidAbis = process.env.ZOEN_ANDROID_ABIS ?? 'arm64-v8a,x86_64';
 const folder = profile === 'dev' ? 'debug' : 'release';
-const sharedTarget = process.env.CARGO_TARGET_DIR !== undefined && platform !== 'android';
+const sharedTarget = process.env.CARGO_TARGET_DIR !== undefined;
 const env = {
   ...process.env,
   PATH: `${process.env.HOME}/.cargo/bin:${process.env.PATH}`,
@@ -37,7 +37,7 @@ function run(command, args, cwd = root, extra = {}) {
   });
 }
 
-const guarded = sharedTarget
+const guarded = sharedTarget && platform !== 'android'
   ? new ExpoCargoArtifacts({
       root,
       target,
@@ -159,6 +159,8 @@ async function sourceInputs() {
             'build-android-core.sh',
             'android-core-contract.py',
             'fix-android-uniffi-callbacks.py',
+            'expo-android-guarded.mjs',
+            'expo-android-cargo-proxy.mjs',
           ].map((name) => join(root, 'scripts', name)),
           join(moduleRoot, 'android/uniffi.toml'),
         ]
@@ -180,7 +182,7 @@ try {
   const previous = JSON.parse(await readFile(stamp, 'utf8'));
   // TypeScript is checked in and can drift independently from the Rust inputs.
   // Always rerun its inexpensive exporter; Cargo already caches the executable.
-  if (!guarded && platform !== 'types' && previous.sha256 === hash) {
+  if (!sharedTarget && platform !== 'types' && previous.sha256 === hash) {
     await Promise.all(previous.outputs.map((path) => stat(path)));
     await validateGeneratedInventory();
     process.exit(0);
@@ -335,9 +337,16 @@ if (platform === 'types') {
   outputs = [join(framework, 'Info.plist'), join(out, 'ClientFFI.generated.swift')];
 }
 await validateGeneratedInventory();
-if (guarded && (await sourceInputs()).sha256 !== hash)
+if (sharedTarget && (await sourceInputs()).sha256 !== hash)
   throw new Error('Build inputs changed; generated outputs remain unqualified');
-const cargoQualification = guarded ? await guarded.finish(hash) : undefined;
+const cargoQualification = guarded
+  ? await guarded.finish(hash)
+  : sharedTarget && platform === 'android'
+    ? JSON.parse(await readFile(join(moduleRoot, 'generated/android/core-contract.json'), 'utf8'))
+        .cargo_qualification?.path
+    : undefined;
+if (sharedTarget && !cargoQualification)
+  throw new Error('Shared build produced no Cargo qualification');
 await writeFile(
   stamp,
   `${JSON.stringify({ sha256: hash, profile, platform, outputs, cargoQualification }, null, 2)}\n`,
