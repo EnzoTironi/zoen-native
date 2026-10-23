@@ -193,6 +193,17 @@ fn public_key(value: &str) -> bool {
 }
 
 impl Engine {
+    /// Device-local contact policy gates effects, never the canonical call fold.
+    /// Ending/declining and reading history remain possible after blocking.
+    pub(crate) fn assert_call_peer_allowed(&self, peer: &str) -> R<()> {
+        if self.store.blocked()?.iter().any(|id| id == peer) {
+            return Err(CoreError::Forbidden {
+                reason: "Call participant is blocked on this device".into(),
+            });
+        }
+        Ok(())
+    }
+
     pub(crate) fn assert_call_owner(&self, identity: &str, device: &str) -> R<()> {
         if !self.is_unlocked()
             || !self
@@ -235,6 +246,7 @@ impl Engine {
             .ok_or_else(|| not_found("Call participant"))?
             .0
             .clone();
+        self.assert_call_peer_allowed(&callee)?;
         let id = new_secret_id("call");
         let at = now_ms();
         self.append_at(
@@ -271,6 +283,19 @@ impl Engine {
     ) -> R<CallRecord> {
         self.assert_call_owner(identity, device)?;
         let me = self.me_id()?;
+        if action == "accept" {
+            let call = self
+                .space_state(space)?
+                .calls
+                .iter()
+                .find(|call| call.call_id == id)
+                .ok_or_else(|| not_found("Call"))?;
+            self.assert_call_peer_allowed(if call.caller == me {
+                &call.callee
+            } else {
+                &call.caller
+            })?;
+        }
         let signal = match action {
             "accept" => CallSignal::Accept {
                 call_id: id.into(),

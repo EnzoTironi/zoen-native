@@ -401,6 +401,7 @@ private enum PushWakeTests {
     try await quarantine()
     try await expiredWorkAndRetirement()
     try await cancelledQueueCannotOpenAClient()
+    try await RetainedSessionTests.run()
     let once = ZoenPushCompletion()
     let winners = await withTaskGroup(of: Bool.self) { group in
       for _ in 0..<100 { group.addTask { once.claim() } }
