@@ -63,6 +63,9 @@ pub(super) struct ApprovalBinding {
 }
 
 fn parsed(p: &ToolProposal) -> R<(Value, Option<Value>)> {
+    if p.schema == crate::image_tasks::SCHEMA {
+        return crate::image_tasks::parsed(p);
+    }
     if p.schema == 2 {
         return crate::agent_pages::approvals::parsed(p);
     }
@@ -162,6 +165,7 @@ fn command_intent(p: &ToolProposal, action: Option<&Value>) -> R<String> {
 pub(crate) fn operation(tool: &str) -> String {
     use crate::i18n::t;
     match tool {
+        "generate_image" => t("Criar imagem", "Create image"),
         "read_page" => t("Ler página", "Read Page"),
         "replace_page_block" => t("Substituir bloco da página", "Replace Page block"),
         "read_deckcraft" => t("Ler apresentação", "Read presentation"),

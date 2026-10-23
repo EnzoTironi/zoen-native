@@ -1,3 +1,6 @@
+mod evidence;
+#[cfg(test)]
+mod testing;
 use crate::{custody::Custody, finance::FreshClaim, Binding, RuntimeError, VerifiedStep};
 use foundationdb::{
     options::TransactionOption, tuple::Subspace, Database, RangeOption, Transaction,
@@ -189,6 +192,7 @@ impl Execution {
     ) -> Result<(), RuntimeError> {
         match step {
             VerifiedStep::Native(step) => step.scope_in(self, trx, custody).await,
+            VerifiedStep::NativeImage(step) => step.scope_in(self, trx, custody).await,
             #[cfg(test)]
             VerifiedStep::Fixture(step) => {
                 self.fixture_scope(trx, step, custody, _cancelling).await
@@ -415,6 +419,16 @@ impl Execution {
         digest: &str,
         sealed: &[u8],
     ) -> Result<(), RuntimeError> {
+        let preflight = self.transaction().await?;
+        if preflight
+            .get(&self.attempt(attempt, "admitted"), false)
+            .await?
+            .is_none()
+        {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        drop(preflight);
+        let payload = self.evidence_payload(attempt, digest, sealed).await?;
         let trx = self.transaction().await?;
         if trx
             .get(&self.attempt(attempt, "admitted"), false)
@@ -425,8 +439,8 @@ impl Execution {
         }
         let key = self.root.pack(&("evidence", attempt, digest));
         if trx.get(&key, false).await?.is_none() {
-            trx.set(&key, sealed);
-            trx.set(&self.root.pack(&("transfer", attempt, digest)), sealed);
+            trx.set(&key, &payload);
+            trx.set(&self.root.pack(&("transfer", attempt, digest)), &payload);
         }
         trx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
         Ok(())
@@ -440,15 +454,25 @@ impl Execution {
         range.limit = Some(usize::from(limit));
         let trx = self.transaction().await?;
         let values = trx.get_range(&range, 1, true).await?;
-        values
-            .iter()
-            .map(|v| {
-                let (attempt, digest): (String, String) = subspace
-                    .unpack(v.key())
-                    .map_err(|_| RuntimeError::InvalidBinding)?;
-                Ok((attempt, digest, v.value().to_vec()))
-            })
-            .collect()
+        let mut records = Vec::with_capacity(values.len());
+        let mut total = 0usize;
+        for value in values.iter() {
+            let next = total
+                .checked_add(Self::evidence_payload_size(value.value())?)
+                .ok_or(RuntimeError::EvidenceTooLarge)?;
+            if next > 32 * 1024 * 1024 {
+                break;
+            }
+            total = next;
+            let (attempt, digest): (String, String) = subspace
+                .unpack(value.key())
+                .map_err(|_| RuntimeError::InvalidBinding)?;
+            let sealed = self
+                .read_evidence_payload(&attempt, &digest, value.value())
+                .await?;
+            records.push((attempt, digest, sealed));
+        }
+        Ok(records)
     }
     pub async fn ack_evidence(&self, attempt: &str, digest: &str) -> Result<(), RuntimeError> {
         let trx = self.transaction().await?;
@@ -463,12 +487,20 @@ impl Execution {
         digest: &str,
         sealed: Option<&[u8]>,
     ) -> Result<(), RuntimeError> {
+        let payload = if kind == "evidence" {
+            Some(
+                self.evidence_payload(attempt, digest, sealed.ok_or(RuntimeError::InvalidBinding)?)
+                    .await?,
+            )
+        } else {
+            None
+        };
         let trx = self.transaction().await?;
         let reference = self.root.pack(&("financial", attempt, kind, digest));
         if trx.get(&reference, false).await?.is_none() {
             trx.set(&reference, b"1");
             if kind == "evidence" {
-                let sealed = sealed.ok_or(RuntimeError::InvalidBinding)?;
+                let sealed = payload.as_deref().ok_or(RuntimeError::InvalidBinding)?;
                 let key = self.root.pack(&("evidence", attempt, digest));
                 if trx.get(&key, false).await?.is_none() {
                     trx.set(&key, sealed);
@@ -477,71 +509,5 @@ impl Execution {
         }
         trx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
         Ok(())
-    }
-    // Fixture core projections are compiled only in tests. They do not implement
-    // MLS sender, ordered grants, approvals or certified device-state import.
-    #[cfg(test)]
-    pub async fn seed(&self, step: &VerifiedStep, custody: &Custody) -> Result<(), RuntimeError> {
-        let step = step.fixture();
-        let trx = self.transaction().await?;
-        let expires = trx
-            .get_read_version()
-            .await?
-            .checked_add(60_000_000)
-            .ok_or(RuntimeError::Unavailable)?;
-        let context = &step.request.context;
-        for (key, fence) in [
-            (self.run(&context.run_id, "lease"), &step.run_fence),
-            (self.device(context), &step.device_fence),
-        ] {
-            trx.set(
-                &key,
-                &serde_json::to_vec(&Lease {
-                    holder: fence.holder.clone(),
-                    token: fence.token,
-                    expires,
-                })
-                .unwrap(),
-            );
-        }
-        let capsule = CoreCapsule {
-            request: step.request.clone(),
-            frontier: step.frontier.clone(),
-            policy_digest: step.policy_digest.clone(),
-        };
-        let (_, sealed) = custody.seal(&format!("core/{}", context.run_id), &capsule)?;
-        trx.set(&self.run(&context.run_id, "core"), &sealed);
-        trx.set(
-            &self.root.pack(&("frontier", context.space.as_str())),
-            step.frontier.as_bytes(),
-        );
-        trx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
-        Ok(())
-    }
-    #[cfg(test)]
-    pub async fn has_admission(&self, attempt: &str) -> bool {
-        self.transaction()
-            .await
-            .unwrap()
-            .get(&self.attempt(attempt, "admitted"), false)
-            .await
-            .unwrap()
-            .is_some()
-    }
-    #[cfg(test)]
-    pub async fn take_device(&self, step: &VerifiedStep) {
-        let step = step.fixture();
-        let trx = self.transaction().await.unwrap();
-        let expires = trx.get_read_version().await.unwrap() + 60_000_000;
-        trx.set(
-            &self.device(&step.request.context),
-            &serde_json::to_vec(&Lease {
-                holder: "new-owner".into(),
-                token: step.device_fence.token + 1,
-                expires,
-            })
-            .unwrap(),
-        );
-        trx.commit().await.unwrap();
     }
 }

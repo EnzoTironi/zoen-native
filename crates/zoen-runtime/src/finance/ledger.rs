@@ -15,8 +15,8 @@ impl Finance {
         let row: Option<(i64, i64)> = sqlx::query_as(sqlx::AssertSqlSafe(query.to_owned()))
             .bind(&b.context.owner)
             .bind(b.period_start)
-            .bind(&b.price.currency)
-            .bind(i16::from(b.price.scale))
+            .bind(&b.price.currency())
+            .bind(i16::from(b.price.scale()))
             .fetch_optional(&mut **tx)
             .await?;
         let Some((held_units, spent_units)) = row else {
@@ -48,8 +48,8 @@ impl Finance {
             || now >= end
             || now >= p.expires_at_ms
             || !p.enabled
-            || p.currency != b.price.currency
-            || p.scale != b.price.scale
+            || p.currency != b.price.currency()
+            || p.scale != b.price.scale()
             || !p.allowed_profiles.contains(&b.price.digest()?)
             || b.hold_units > p.max_attempt_units
         {

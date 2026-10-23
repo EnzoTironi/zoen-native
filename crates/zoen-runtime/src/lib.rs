@@ -7,7 +7,9 @@ use admission::{Binding, Capture, Session, VerifiedStep};
 mod custody;
 mod execution;
 mod finance;
+mod image_tasks;
 mod native;
+pub use native::ImageOutputInspection;
 mod pricing;
 pub use pricing::{ImagePriceProfile, ImagePriceQuote, PriceProfile};
 pub use types::owner_budget::{OwnerPeriodPolicy, SignedOwnerPolicy};
@@ -426,12 +428,8 @@ impl RuntimeAuthority {
         let mut report = ReconcileReport::default();
         for (attempt, digest, sealed) in self.execution.pending_evidence(limit).await? {
             report.inspected += 1;
-            let capture: Capture =
-                self.custody
-                    .open(&format!("evidence/{attempt}"), Some(&digest), &sealed)?;
             if self
-                .finance
-                .capture(&capture, &digest, &sealed)
+                .capture_retained_evidence(&attempt, &digest, &sealed)
                 .await
                 .is_ok()
             {
@@ -474,6 +472,7 @@ impl RuntimeAuthority {
             runtime: self,
             step,
             admitted: Mutex::new(None),
+            image: None,
         };
         let result = self
             .gateway

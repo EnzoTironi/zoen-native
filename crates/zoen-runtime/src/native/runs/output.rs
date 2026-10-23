@@ -28,7 +28,11 @@ pub(crate) struct FreshOutputNamespace {
 }
 
 impl FreshOutputNamespace {
-    async fn check_in(&self, execution: &Execution, trx: &Transaction) -> Result<(), RuntimeError> {
+    pub(crate) async fn check_in(
+        &self,
+        execution: &Execution,
+        trx: &Transaction,
+    ) -> Result<(), RuntimeError> {
         if self.namespace != execution.root.bytes()
             || self.deployment != execution.deployment
             || self.source != execution.reply_source()?.cell()
@@ -144,7 +148,8 @@ impl RetainedCapture {
                 .receipt
                 .http_status
                 .is_some_and(|s| (200..300).contains(&s))
-            || result.receipt.reported_model.as_deref() != Some(record.binding.price.model.as_str())
+            || result.receipt.reported_model.as_deref()
+                != Some(record.binding.price.chat()?.model.as_str())
             || text.trim().is_empty()
             || text.len() > 32768
         {
@@ -317,11 +322,9 @@ pub(crate) async fn associate_capture(
     evidence: &str,
     sealed: &[u8],
 ) -> Result<(), RuntimeError> {
-    #[cfg(not(test))]
-    let VerifiedStep::Native(step) = step;
-    #[cfg(test)]
     let step = match step {
         VerifiedStep::Native(step) => step,
+        VerifiedStep::NativeImage(_) => return Err(RuntimeError::InvalidBinding),
         #[cfg(test)]
         VerifiedStep::Fixture(_) => return Err(RuntimeError::Denied),
     };

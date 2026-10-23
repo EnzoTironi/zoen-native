@@ -1,7 +1,10 @@
 //! Complete image custody. Deployment construction stays private and absent
 //! until a managed key/credential backend is implemented. A fixture key is not
 //! enrollment, relay currentness, restore continuity or dispatch authority.
+mod image_tasks;
 mod runs;
+pub use image_tasks::ImageOutputInspection;
+pub(crate) use image_tasks::ImageStep;
 mod storage;
 pub(crate) use runs::output::{associate_capture, FreshOutputNamespace, ReplyOutputScope};
 pub(crate) use runs::{CleanupAcquisition, CleanupStep, ReplyStep};

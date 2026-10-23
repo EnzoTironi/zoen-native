@@ -37,10 +37,19 @@ impl Custody {
         subject: &str,
         plain: &[u8],
     ) -> Result<(String, Vec<u8>), RuntimeError> {
-        if plain
-            .len()
-            .checked_add(40)
-            .is_none_or(|size| size > MAX_SEALED)
+        self.seal_bounded_bytes(subject, plain, MAX_SEALED)
+    }
+    pub(crate) fn seal_bounded_bytes(
+        &self,
+        subject: &str,
+        plain: &[u8],
+        maximum: usize,
+    ) -> Result<(String, Vec<u8>), RuntimeError> {
+        if maximum > 32 * 1024 * 1024
+            || plain
+                .len()
+                .checked_add(40)
+                .is_none_or(|size| size > maximum)
         {
             return Err(RuntimeError::EvidenceTooLarge);
         }
@@ -76,7 +85,16 @@ impl Custody {
         digest: Option<&str>,
         sealed: &[u8],
     ) -> Result<Zeroizing<Vec<u8>>, RuntimeError> {
-        if !(40..=MAX_SEALED).contains(&sealed.len()) {
+        self.open_bounded_bytes(subject, digest, sealed, MAX_SEALED)
+    }
+    pub(crate) fn open_bounded_bytes(
+        &self,
+        subject: &str,
+        digest: Option<&str>,
+        sealed: &[u8],
+        maximum: usize,
+    ) -> Result<Zeroizing<Vec<u8>>, RuntimeError> {
+        if maximum > 32 * 1024 * 1024 || !(40..=maximum).contains(&sealed.len()) {
             return Err(RuntimeError::InvalidBinding);
         }
         let nonce: [u8; 24] = sealed[..24]

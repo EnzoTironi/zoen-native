@@ -1,6 +1,8 @@
 mod arithmetic;
 mod images;
+mod obligation;
 pub use images::{ImagePriceProfile, ImagePriceQuote};
+pub(crate) use obligation::BoundPrice;
 
 use crate::{hash, RuntimeError};
 use serde::{Deserialize, Serialize};

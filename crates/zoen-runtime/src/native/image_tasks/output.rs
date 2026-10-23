@@ -1,0 +1,204 @@
+use super::*;
+use crate::image_tasks::capture::{ImageCapture, MAXIMUM};
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImageOutputInspection {
+    pub item: String,
+    pub sha256: String,
+    pub generation: u64,
+}
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Publication {
+    task: String,
+    evidence: String,
+    item: String,
+    sha256: String,
+    wire: Vec<u8>,
+    generation: u64,
+}
+
+impl NativeCustody {
+    pub(crate) async fn prepare_image_output(
+        &self,
+        runtime: &RuntimeAuthority,
+        run: &str,
+        gateway: &ModelGateway,
+        capability: &FreshOutputNamespace,
+    ) -> Result<ImageOutputInspection, RuntimeError> {
+        runtime.continuity()?;
+        // A lost activation acknowledgement is an observation of retained
+        // output, never another signing, provider attempt or current grant.
+        let trx = runtime.execution.transaction().await?;
+        capability.check_in(&runtime.execution, &trx).await?;
+        if let Some(bytes) = trx
+            .get(&runtime.execution.run(run, "image-output/1"), false)
+            .await?
+        {
+            let (record, _) = runtime
+                .execution
+                .read_image_task(run, &runtime.custody)
+                .await?;
+            let principal = &record.original.context.principal;
+            let credential = self.credential(&principal.agent, &principal.device)?;
+            runtime
+                .finance
+                .native_directory(
+                    &credential.agent,
+                    &credential.owner,
+                    &principal.device,
+                    &credential.certificate,
+                )
+                .await?
+                .commit()
+                .await?;
+            let publication: Publication =
+                runtime
+                    .custody
+                    .open(&format!("native-image-output/1/{run}"), None, &bytes)?;
+            if publication.task != record.task.task_digest
+                || publication.evidence
+                    != runtime
+                        .execution
+                        .image_capture_digest(&record.task, &runtime.custody)
+                        .await?
+                || !id(&publication.item)
+                || !digest(&publication.sha256)
+                || publication.generation <= record.original.context.generation
+            {
+                return Err(RuntimeError::InvalidBinding);
+            }
+            return Ok(ImageOutputInspection {
+                item: publication.item,
+                sha256: publication.sha256,
+                generation: publication.generation,
+            });
+        }
+        drop(trx);
+        let step = self.verified_image(runtime, run, gateway).await?;
+        let result = self
+            .prepare_image_output_fenced(runtime, &step, capability)
+            .await;
+        let _ = step.release(&runtime.execution).await;
+        result
+    }
+    async fn prepare_image_output_fenced(
+        &self,
+        runtime: &RuntimeAuthority,
+        step: &ImageStep,
+        capability: &FreshOutputNamespace,
+    ) -> Result<ImageOutputInspection, RuntimeError> {
+        let task = &step.record.task;
+        let attempt = &task.binding.context.attempt_id;
+        let run = &task.binding.context.run_id;
+        let digest = runtime
+            .execution
+            .image_capture_digest(task, &runtime.custody)
+            .await?;
+        let sealed=match runtime.execution.image_evidence_bytes(attempt,&digest).await? {
+            Some(bytes)=>bytes,
+            None=>sqlx::query_scalar("SELECT e.sealed FROM runtime_evidence e JOIN runtime_attempts a USING(attempt) WHERE e.attempt=$1 AND e.digest=$2 AND a.binding_digest=$3")
+                .bind(attempt).bind(&digest).bind(task.binding.digest()?).fetch_optional(&runtime.finance.pool).await?.ok_or(RuntimeError::Unavailable)?,
+        };
+        let plain = runtime.custody.open_bounded_bytes(
+            &format!("evidence/{attempt}"),
+            Some(&digest),
+            &sealed,
+            MAXIMUM,
+        )?;
+        let capture = ImageCapture::decode(&plain)?;
+        if capture.task != *task {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        let image = capture.result.output.map_err(|_| RuntimeError::Denied)?;
+        let principal = &step.record.original.context.principal;
+        let credential = self.credential(&principal.agent, &principal.device)?;
+        let capsule = runtime
+            .execution
+            .read_native(principal, Some(&step.device_fence))
+            .await?;
+        if capsule.root != step.current {
+            return Err(RuntimeError::Denied);
+        }
+        let mut core =
+            DeviceCore::restore(self.open_image(principal, capsule)?, credential.unlocked()?)
+                .map_err(|_| RuntimeError::Denied)?;
+        let now = runtime.finance.reply_clock().await?;
+        let prepared = core
+            .prepare_image_task(&task.request_id, &task.approval_hash, &image.bytes, now)
+            .map_err(|_| RuntimeError::Denied)?;
+        if prepared.facts().frontier() != step.facts.frontier()
+            || prepared.file().sha256 != image.sha256
+        {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        let next = self.seal_image(principal, Some(&step.current), prepared.image())?;
+        let publication = Publication {
+            task: task.task_digest.clone(),
+            evidence: digest,
+            item: prepared.facts().proposal().artifact.clone(),
+            sha256: image.sha256,
+            wire: protocol::ClientFrame::Publish {
+                env: prepared.envelope().clone(),
+            }
+            .encode(),
+            generation: next.root.context.generation,
+        };
+        if publication.wire.len() > 98_304 {
+            return Err(RuntimeError::EvidenceTooLarge);
+        }
+        let (_, publication_bytes) = runtime
+            .custody
+            .seal(&format!("native-image-output/1/{run}"), &publication)?;
+        let staged = runtime
+            .execution
+            .stage_native(
+                principal,
+                Some(step.current.clone()),
+                &step.device_fence,
+                next,
+            )
+            .await?;
+        let mut scope = staged.scope(&runtime.execution, &step.device_fence);
+        scope.effects = hash(&publication_bytes);
+        let admission = runtime
+            .finance
+            .native_directory(
+                &credential.agent,
+                &credential.owner,
+                &principal.device,
+                &credential.certificate,
+            )
+            .await?
+            .authorize_before(scope.clone(), step.deadline())
+            .await?;
+        admission.check(&scope)?;
+        let trx = runtime.execution.transaction().await?;
+        capability.check_in(&runtime.execution, &trx).await?;
+        step.scope_in(&runtime.execution, &trx, &runtime.custody)
+            .await?;
+        if trx
+            .get(&runtime.execution.run(run, "image-output/1"), false)
+            .await?
+            .is_some()
+        {
+            return Err(RuntimeError::Denied);
+        }
+        runtime
+            .execution
+            .native_activation(&trx, &staged, &step.device_fence)
+            .await?;
+        trx.set(
+            &runtime.execution.run(run, "image-output/1"),
+            &publication_bytes,
+        );
+        admission.consume(&scope)?;
+        runtime.continuity()?;
+        trx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
+        Ok(ImageOutputInspection {
+            item: publication.item,
+            sha256: publication.sha256,
+            generation: publication.generation,
+        })
+    }
+}

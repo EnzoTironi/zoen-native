@@ -26,6 +26,7 @@ pub use agent_enrollment::{
 /// Closed, shared schema validation only; this module grants no execution authority.
 pub use miniapps::deckcraft::agent_tools as deckcraft_agent_tools;
 mod agent_notes;
+pub mod image_tasks;
 pub use agent_binary_documents::{
     AgentBinaryTurn, AgentToolApprovalInput, ApprovedToolTurn, AGENT_BINARY_DOCUMENT_LIMIT,
 };

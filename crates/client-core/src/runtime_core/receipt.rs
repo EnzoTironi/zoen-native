@@ -205,6 +205,8 @@ impl DeviceCore {
                 return Err(NativeError::History);
             }
             expected
+        } else if let Some(expected) = self.image_task_pending_envelope(pending)? {
+            expected
         } else if crate::mls::must_seal(&pending.body)
             && !matches!(&pending.body, EventBody::Sealed { kind } if kind == SealedKind::Commit.name() || kind == SealedKind::Welcome.name())
         {

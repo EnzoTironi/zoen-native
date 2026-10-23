@@ -10,6 +10,7 @@ use protocol::{ClientFrame, Envelope, KeyPackageClaimClock, KeyPackageRecord};
 const SPACE: &str = "certified-owner-agent-direct";
 
 mod canonical_approvals;
+mod image_task_cases;
 
 struct Fixture {
     space: String,
