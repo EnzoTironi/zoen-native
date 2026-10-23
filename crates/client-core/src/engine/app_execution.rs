@@ -351,7 +351,7 @@ impl crate::Client {
 
     /// The mini-app tools the agent host may call in `space` (through
     /// [`Self::agent_call_tool`]). Not exported.
-    pub fn agent_tools(&self, space: &str) -> Vec<engine::AgentTool> {
+    pub fn agent_tools(&self, space: &str) -> Vec<crate::engine::AgentTool> {
         self.lock().agent_tools(space)
     }
 }

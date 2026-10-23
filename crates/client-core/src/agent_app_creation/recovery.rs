@@ -50,6 +50,13 @@ impl Client {
             if call["arguments"]["artifactId"] != p.artifact {
                 return Err(stale());
             }
+            // Even read-only reconciliation rechecks present artifact access.
+            e.agent_binary_authority(&p.artifact, &p.source, &p.serving, action.is_some())?;
+            let mut access = p.clone();
+            access.schema = 1;
+            if !e.state.tool_app_act(&access, crate::engine::now_ms()) {
+                return Err(stale());
+            }
             if let Some(action) = action {
                 let mut command = p.clone();
                 command.canonical_tool = tool;
