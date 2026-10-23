@@ -89,6 +89,8 @@ mod conflicts;
 mod invite_routing;
 mod managed;
 mod managed_publish;
+mod managed_registry;
+mod routing;
 mod runtime;
 pub use runtime::{RuntimeHead, RuntimeSource, RuntimeSourceBatch};
 
@@ -97,6 +99,7 @@ pub struct FdbLog {
     sequencer: Sequencer<Cell>,
     pub owner: Arc<NodeOwner>,
     forwarding: std::sync::OnceLock<ownership::forward::Forwarder>,
+    managed_devices: std::sync::OnceLock<crate::managed_devices::ManagedDevices>,
     routing_count: Arc<tokio::sync::Semaphore>,
     routing_bytes: Arc<tokio::sync::Semaphore>,
 }
@@ -249,6 +252,7 @@ impl FdbLog {
             sequencer: Sequencer::new(cell.clone()),
             owner,
             forwarding: std::sync::OnceLock::new(),
+            managed_devices: std::sync::OnceLock::new(),
             routing_count: Arc::new(tokio::sync::Semaphore::new(super::sequencer::MAX_PENDING)),
             routing_bytes: Arc::new(tokio::sync::Semaphore::new(
                 super::sequencer::MAX_PENDING_BYTES,
@@ -263,6 +267,12 @@ impl FdbLog {
         cell: &str,
         pool: sqlx::PgPool,
     ) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.managed_devices
+                .get()
+                .is_none_or(crate::managed_devices::ManagedDevices::is_empty),
+            "managed devices require a single host"
+        );
         let forwarder = ownership::forward::Forwarder::connect(self, url, cell, pool).await?;
         self.forwarding
             .set(forwarder)
@@ -289,6 +299,12 @@ impl FdbLog {
         target_known: bool,
         fence: Fence,
     ) -> Result<Sequencing, Reject> {
+        if self
+            .managed_device(env.device().unwrap_or_default())
+            .is_some()
+        {
+            return Err(Reject::retry("managed publication binding required"));
+        }
         self.append_fenced_guarded(env, target_known, fence, None)
             .await
     }

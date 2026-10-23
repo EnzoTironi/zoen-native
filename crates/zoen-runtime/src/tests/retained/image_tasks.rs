@@ -41,7 +41,24 @@ fn png() -> Vec<u8> {
     bytes
 }
 
-pub(in crate::tests) async fn run() {
+pub(in crate::tests) struct PreparedJourney {
+    fixture: Fixture,
+    run: String,
+    output: crate::ImageOutputInspection,
+    provider: provider::Provider,
+    model: ModelGateway,
+}
+
+pub(in crate::tests) struct ReviewedJourney {
+    fixture: Fixture,
+    request: String,
+    actor: Author,
+    price: ImagePriceProfile,
+    provider: provider::Provider,
+    original_bytes: Vec<u8>,
+}
+
+pub(in crate::tests) async fn review() -> ReviewedJourney {
     let mut f = Fixture::with_managed_output().await;
     let original_bytes = png();
     assert!(original_bytes.len() > 4 * 1024 * 1024);
@@ -168,7 +185,27 @@ pub(in crate::tests) async fn run() {
         before_runs,
         "applying the real owner review must not discover an unrelated chat run"
     );
-    let runtime = &f.world.runtime;
+    ReviewedJourney {
+        fixture: f,
+        request,
+        actor,
+        price,
+        provider,
+        original_bytes,
+    }
+}
+
+pub(in crate::tests) async fn prepare(reviewed: ReviewedJourney) -> PreparedJourney {
+    let ReviewedJourney {
+        mut fixture,
+        request,
+        actor,
+        price,
+        provider,
+        original_bytes,
+    } = reviewed;
+    let device = actor.device.as_deref().unwrap();
+    let runtime = &fixture.world.runtime;
     let run = runtime
         .prepare_image_task(
             &actor.identity,
@@ -208,14 +245,14 @@ pub(in crate::tests) async fn run() {
     assert_eq!(provider.sends.load(Ordering::SeqCst), 1);
     crate::tests::managed_images::assert_dispatch_checkpoint(
         runtime,
-        f.managed_directory.as_ref().unwrap(),
+        fixture.managed_directory.as_ref().unwrap(),
         &actor.identity,
         device,
     )
     .await;
     crate::tests::managed_images::matching_checkpoint_rollback(
         runtime,
-        f.managed_directory.as_ref().unwrap(),
+        fixture.managed_directory.as_ref().unwrap(),
         &actor.identity,
         device,
     )
@@ -231,63 +268,94 @@ pub(in crate::tests) async fn run() {
             .unwrap_err(),
         RuntimeError::CoreAuthorityUnavailable
     );
-    output::cold(&mut f).await;
-    assert_eq!(proof::output(&f.world.runtime, &run, &model).await, output);
+    output::cold(&mut fixture).await;
     assert_eq!(
-        proof::bytes(&f.world.runtime, &run).await.unwrap(),
+        proof::output(&fixture.world.runtime, &run, &model).await,
+        output
+    );
+    assert_eq!(
+        proof::bytes(&fixture.world.runtime, &run).await.unwrap(),
         original_bytes
     );
-    let removed = proof::remove_chunk(&f.world.runtime, &run).await;
-    assert!(proof::bytes(&f.world.runtime, &run).await.is_err());
-    assert!(proof::try_output(&f.world.runtime, &run, &model)
+    let removed = proof::remove_chunk(&fixture.world.runtime, &run).await;
+    assert!(proof::bytes(&fixture.world.runtime, &run).await.is_err());
+    assert!(proof::try_output(&fixture.world.runtime, &run, &model)
         .await
         .is_err());
     assert_eq!(provider.sends.load(Ordering::SeqCst), 1);
-    proof::restore_chunk(&f.world.runtime, removed).await;
+    proof::restore_chunk(&fixture.world.runtime, removed).await;
     assert_eq!(
-        proof::bytes(&f.world.runtime, &run).await.unwrap(),
+        proof::bytes(&fixture.world.runtime, &run).await.unwrap(),
         original_bytes
     );
-    assert_eq!(proof::output(&f.world.runtime, &run, &model).await, output);
+    assert_eq!(
+        proof::output(&fixture.world.runtime, &run, &model).await,
+        output
+    );
     assert_eq!(provider.sends.load(Ordering::SeqCst), 1);
     assert_eq!(
-        f.world.balance().await,
+        fixture.world.balance().await,
         PeriodBalance {
             held_units: 0,
             spent_units: 15
         }
     );
     assert_eq!(
-        f.world.count("SELECT count(*) FROM runtime_claims").await,
+        fixture
+            .world
+            .count("SELECT count(*) FROM runtime_claims")
+            .await,
         1
     );
     assert_eq!(
-        f.world
+        fixture
+            .world
             .count("SELECT count(*) FROM runtime_dispositions WHERE kind='settle'")
             .await,
         1
     );
-    delivery::run(&mut f, &run, &output).await;
+    PreparedJourney {
+        fixture,
+        run,
+        output,
+        provider,
+        model,
+    }
+}
+
+pub(in crate::tests) async fn deliver(prepared: PreparedJourney) {
+    let PreparedJourney {
+        mut fixture,
+        run,
+        output,
+        provider,
+        model,
+    } = prepared;
+    delivery::run(&mut fixture, &run, &output).await;
     assert_eq!(provider.sends.load(Ordering::SeqCst), 1);
     assert_eq!(
-        f.world.balance().await,
+        fixture.world.balance().await,
         PeriodBalance {
             held_units: 0,
             spent_units: 15
         }
     );
     assert_eq!(
-        f.world.count("SELECT count(*) FROM runtime_claims").await,
+        fixture
+            .world
+            .count("SELECT count(*) FROM runtime_claims")
+            .await,
         1
     );
     assert_eq!(
-        f.world
+        fixture
+            .world
             .count("SELECT count(*) FROM runtime_dispositions WHERE kind='settle'")
             .await,
         1
     );
     drop(model);
     drop(provider);
-    f.finish().await;
+    fixture.finish().await;
     println!("native image journey: signed review, real MLS task, shared bill, canonical blob PUT, original relay publication and lost ACK cold recovery PASS (actual unpaid loopback HTTP gateway; production output gate closed)");
 }

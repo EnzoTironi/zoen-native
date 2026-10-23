@@ -90,6 +90,9 @@ pub async fn put(
             }
         }
     };
+    if st.log.managed_device(&device).is_some() && binding.is_none() {
+        return err(StatusCode::FORBIDDEN, "managed runtime binding required");
+    }
     let policy = match &binding {
         Some(binding) => {
             policy::put_bound_policy(&sha, &device, &ts, &sig, &st.relay_name, now_ms(), binding)
@@ -100,14 +103,14 @@ pub async fn put(
         Ok(admitted) => admitted,
         Err(error) => return policy_error(error),
     };
-    if let Some(binding) = &binding {
-        if crate::runtime_binding::verify_blob(&st, &device, binding)
-            .await
-            .is_err()
-        {
-            return err(StatusCode::FORBIDDEN, "runtime binding refused");
+    let generation = if let Some(binding) = &binding {
+        match crate::runtime_binding::verify_blob(&st, &device, binding).await {
+            Ok(generation) => generation,
+            Err(_) => return err(StatusCode::FORBIDDEN, "runtime binding refused"),
         }
-    }
+    } else {
+        None
+    };
     match crate::db::device_active(&st.pool, &device).await {
         Ok(true) => {}
         Ok(false) => return err(StatusCode::FORBIDDEN, "unlinked device"),
@@ -133,15 +136,15 @@ pub async fn put(
         mode: PutMode::Create,
         ..Default::default()
     };
-    match st
-        .blobs
-        .put_opts(
-            &ObjPath::from(admitted.key),
-            PutPayload::from_bytes(body),
-            opts,
-        )
-        .await
-    {
+    let result = put_effect(
+        st.blobs.clone(),
+        ObjPath::from(admitted.key),
+        body,
+        opts,
+        generation,
+    )
+    .await;
+    match result {
         Ok(_) => {
             st.metrics.blob_stored(n);
             st.analytics.count("blobs_stored", 1);
@@ -200,3 +203,35 @@ pub async fn get(State(st): State<Shared>, Path(sha): Path<String>) -> Response 
         }
     }
 }
+
+/// The actual object-store task owns the OS guard independently of its caller.
+/// Dropping/cancelling the HTTP handler only detaches the JoinHandle; retirement
+/// still waits for the put future and its real storage effect to terminate.
+async fn put_effect(
+    store: Arc<dyn ObjectStore>,
+    key: ObjPath,
+    body: Bytes,
+    options: PutOptions,
+    generation: Option<relay_admission::managed_images::GenerationGuard>,
+) -> object_store::Result<object_store::PutResult> {
+    let Some(generation) = generation else {
+        return store
+            .put_opts(&key, PutPayload::from_bytes(body), options)
+            .await;
+    };
+    tokio::spawn(async move {
+        let result = store
+            .put_opts(&key, PutPayload::from_bytes(body), options)
+            .await;
+        drop(generation);
+        result
+    })
+    .await
+    .map_err(|_| object_store::Error::Generic {
+        store: "managed upload",
+        source: "managed object-store task failed".into(),
+    })?
+}
+
+#[cfg(test)]
+mod managed_tests;

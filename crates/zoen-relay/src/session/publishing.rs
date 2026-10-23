@@ -126,7 +126,20 @@ impl Session {
             }
             _ => true,
         };
-        match self.st.log.append(&env, target_known).await {
+        let result = match self.append_effect(&env, target_known).await {
+            Ok(super::managed::Appended::Sequenced(result)) => Ok(result),
+            Ok(super::managed::Appended::Observed(original)) => {
+                self.send(ServerFrame::Accepted {
+                    space: original.env.space().into(),
+                    client_id: original.env.client_id().into(),
+                    seq: original.seq,
+                })
+                .await;
+                return;
+            }
+            Err(error) => Err(error),
+        };
+        match result {
             Ok(Sequencing::Duplicate {
                 ev,
                 audience,

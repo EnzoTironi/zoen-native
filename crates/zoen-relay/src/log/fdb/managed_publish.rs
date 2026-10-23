@@ -4,6 +4,71 @@ use super::*;
 use relay_admission::managed_images::{Checkpoint, Prepared, PublishCondition};
 use serde::{Deserialize, Serialize};
 
+impl FdbLog {
+    pub(super) async fn observed_managed_publication(
+        &self,
+        condition: &PublishCondition,
+        env: &Envelope,
+    ) -> Result<Option<Sequenced>, StoreError> {
+        let (prefix, cell): (String, String) =
+            unpack(self.cell.root.bytes()).map_err(|_| StoreError("invalid relay cell".into()))?;
+        let wire = protocol::ClientFrame::Publish { env: env.clone() }.encode();
+        if prefix != "zoen"
+            || cell != condition.source
+            || env.author() != condition.agent
+            || env.device() != Some(condition.device.as_str())
+            || event_log::sha256_hex(&wire) != condition.wire_digest
+            || relay_admission::managed_images::publish_digest(&condition.namespace, env)
+                .ok()
+                .as_deref()
+                != Some(condition.effect_digest.as_str())
+        {
+            return Ok(None);
+        }
+        self.cell
+            .db
+            .run(|transaction, _| {
+                let wire = &wire;
+                async move {
+                    ownership::bound_transaction(&transaction)?;
+                    if self
+                        .cell
+                        .role_in(&transaction, env.space(), env.author())
+                        .await?
+                        .is_none()
+                    {
+                        return Ok(None);
+                    }
+                    let key = self
+                        .cell
+                        .space_key(env.space(), ("dedupe", env.author(), env.client_id()));
+                    let Some(sequence) = transaction.get(&key, false).await? else {
+                        return Ok(None);
+                    };
+                    let sequence: i64 =
+                        unpack(&sequence).map_err(|_| custom("invalid dedupe sequence"))?;
+                    let Ok(sequence) = u64::try_from(sequence) else {
+                        return Err(custom("invalid dedupe sequence"));
+                    };
+                    let Some(event) = self
+                        .cell
+                        .entry(&transaction, env.space(), sequence, false)
+                        .await?
+                    else {
+                        return Ok(None);
+                    };
+                    let stored = protocol::ClientFrame::Publish {
+                        env: event.env.clone(),
+                    }
+                    .encode();
+                    Ok((stored.as_slice() == wire.as_slice()).then_some(event))
+                }
+            })
+            .await
+            .map_err(store_err)
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Committed {

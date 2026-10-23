@@ -36,6 +36,10 @@ fn original_publish_is_consumed_once_even_after_restart_and_new_checkpoint() -> 
     let mut writer = AnchorWriter::create(&home.0, configured.clone())?;
     let digest = publish_digest(&configured.namespace, &envelope)?;
     let checkpoint = commit(&mut writer, &digest)?;
+    assert_eq!(
+        writer.reader().retained_checkpoint(&checkpoint)?.next,
+        checkpoint
+    );
     let ConsumePublish::Fresh(permit) = writer.reader().consume_publish(&checkpoint, &envelope)?
     else {
         panic!("first original consumption must produce the single permit")
@@ -51,6 +55,10 @@ fn original_publish_is_consumed_once_even_after_restart_and_new_checkpoint() -> 
     let mut restarted = AnchorWriter::open(&home.0, configured)?;
     let newer = commit(&mut restarted, &digest)?;
     assert_ne!(newer, checkpoint);
+    assert_eq!(
+        restarted.reader().retained_checkpoint(&checkpoint)?.next,
+        checkpoint
+    );
     let ConsumePublish::Consumed(observation) =
         restarted.reader().consume_publish(&newer, &envelope)?
     else {
@@ -67,6 +75,10 @@ fn checkpoint_authorizes_exact_original_wire_only() -> TestResult {
     let (_, other) = envelope("other");
     let mut writer = AnchorWriter::create(&home.0, configured.clone())?;
     let genesis = writer.reader().checkpoint()?;
+    assert_eq!(
+        writer.reader().retained_checkpoint(&genesis),
+        Err(AnchorError::Unreconciled)
+    );
     assert!(writer
         .reader()
         .consume_publish(&genesis, &original)
