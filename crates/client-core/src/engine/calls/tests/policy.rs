@@ -8,6 +8,7 @@ fn own(f: &mut Fixture, caller: bool) {
         f.callee.clone()
     };
     f.engine.store.set_meta("me", &by.identity).unwrap();
+    f.engine.me = Some(by.identity.clone());
     f.engine.net.account = Some(crate::sync::AccountMeta {
         identity: by.identity.clone(),
         device: by.device.clone().unwrap(),
