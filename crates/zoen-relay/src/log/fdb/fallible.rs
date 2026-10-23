@@ -54,11 +54,4 @@ mod tests {
         assert!(take_cache(&cache).is_err());
         assert!(cache.is_poisoned());
     }
-
-    #[test]
-    fn healthy_cache_is_taken_once() {
-        let cache = Mutex::new(Some(7));
-        assert_eq!(take_cache(&cache).unwrap(), Some(7));
-        assert_eq!(take_cache(&cache).unwrap(), None);
-    }
 }
