@@ -353,6 +353,7 @@ mod tools {
                 return Ok(BrainOut::Say(format!("done: {}", r.join(","))));
             }
             Ok(BrainOut::CallTools(vec![ToolCall {
+                requires_review: false,
                 id: format!("c{}", steps.len()),
                 name: self.call.0.into(),
                 arguments: self.call.1.clone(),
@@ -462,6 +463,7 @@ mod tools {
         );
         let done = vec![ToolStep {
             call: ToolCall {
+                requires_review: false,
                 id: "c0".into(),
                 name: call.0.into(),
                 arguments: call.1.clone(),

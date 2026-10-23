@@ -124,10 +124,15 @@ pub struct ToolCall {
     pub id: String,
     pub name: String,
     pub arguments: Value,
+    /// A stricter request, never an execution permit. False preserves legacy bytes.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub requires_review: bool,
 }
 
 mod public_references;
 pub use public_references::PublicArtifactReferences;
+mod observation;
+pub use observation::ToolObservation;
 
 /// A call and what came back, in the order they ran.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -289,6 +294,10 @@ pub trait ApprovedToolAdmission: Send + Sync {
 /// is for, the mini-app's own rules); the model only picks the tool and the arguments.
 pub trait ToolHost: Send + Sync {
     fn tools(&self) -> Vec<ToolDef>;
+    /// Diagnostics only, at the actual Brain boundary. Default has no side effects.
+    fn observe_model_input(&self, _tools: &[ToolDef], _steps: &[ToolStep], _round: usize) {}
+    /// A closed class, never a raw result or an execution/approval permit.
+    fn observe_tool_outcome(&self, _call: &ToolCall, _outcome: ToolObservation) {}
     /// Native first-delivery policy may require a canonical review after Gate Allow.
     /// This cannot override Block, repeat an Ask or authorize execution itself.
     fn requires_native_review(&self, _call: &ToolCall) -> bool {

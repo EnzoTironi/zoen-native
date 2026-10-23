@@ -68,6 +68,7 @@ impl Budget {
 impl Expected {
     pub(super) fn read(&self) -> ToolCall {
         ToolCall {
+            requires_review: false,
             id: "synthetic-read".into(),
             name: crate::deckcraft::model_name("read_deckcraft", &self.item).unwrap(),
             arguments: json!({"artifactId":self.item}),
@@ -103,6 +104,7 @@ impl Expected {
             .filter(|id| *id <= u32::MAX as u64)
             .ok_or("acceptance guard: native-slide-id")?;
         Ok(ToolCall {
+            requires_review: false,
             id: "synthetic-write".into(),
             name: crate::deckcraft::model_name("deckcraft_slide_notes", &self.item).unwrap(),
             arguments: json!({"artifactId":self.item,"version":self.version,"sha256":self.head,"slideId":slide,"text":NOTES}),

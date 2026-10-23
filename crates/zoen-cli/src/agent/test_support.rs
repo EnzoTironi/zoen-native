@@ -178,6 +178,7 @@ pub(crate) async fn exercise_deckcraft_dispatch(
     mismatched["artifactId"] = other.item_id.clone().into();
     assert!(host
         .call(&ToolCall {
+            requires_review: false,
             id: "wrong_full_artifact".into(),
             name: call_name.clone(),
             arguments: mismatched
@@ -230,6 +231,7 @@ pub(crate) async fn exercise_deckcraft_dispatch(
     assert_eq!(steps[0].call.name, call_name);
     let repeated = host
         .call(&ToolCall {
+            requires_review: false,
             id: "retained_call".into(),
             name: call_name,
             arguments: replay_arguments,

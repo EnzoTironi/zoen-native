@@ -28,6 +28,9 @@ for raw in sys.stdin:
  elif method=='thread/start':
   p=m['params'];assert p['environments']==[]and p['dynamicTools']==[]and p['ephemeral']is True
   assert p['approvalPolicy']=='never'and p['runtimeWorkspaceRoots']==[]
+  assert 'review proposes the same tools'in p['developerInstructions']
+  assert 'say is an answer or clarification and cannot create a canonical approval request'in p['developerInstructions']
+  assert 'without a successful tool result'in p['developerInstructions']
   result={'thread':{'id':'thread-fixture','ephemeral':True},'modelProvider':'openai','model':'fixture-model','sandbox':{'type':'readOnly','networkAccess':False},'instructionSources':[]}
  elif method=='turn/start':
   assert m['params']['environments']==[]
@@ -38,7 +41,7 @@ for raw in sys.stdin:
   if MODE=='overtake':send({'method':'item/started','params':{'threadId':'thread-fixture','item':{'type':'userMessage'}}})
   send({'id':i,'result':{'turn':{'id':'turn-fixture'}}})
   tool='unknown'if MODE=='unknown-tool'else'edit_deck'
-  text=json.dumps({'kind':'call','text':'','calls':[{'id':'call1','name':tool,'arguments_json':json.dumps({'shapeId':42,'text':'Real proposal'})}]})
+  text=json.dumps({'kind':'review'if MODE=='review'else'call','text':'','calls':[{'id':'call1','name':tool,'arguments_json':json.dumps({'shapeId':42,'text':'Real proposal'})}]})
   if MODE=='after-tools':
    context=json.loads(m['params']['input'][0]['text'])
    assert context['completed_tool_steps']==EXPECTED['steps']
@@ -133,6 +136,7 @@ async fn isolated_metadata_admission_returns_only_exact_offered_proposal() {
     assert_eq!(
         calls,
         vec![ToolCall {
+            requires_review: false,
             id: "call1".into(),
             name: "edit_deck".into(),
             arguments: json!({"shapeId":42,"text":"Real proposal"})
@@ -254,6 +258,7 @@ async fn actual_wasi_read_metadata_reaches_fake_codex_completed_tool_steps_exact
         .unwrap();
     let step = ToolStep {
         call: ToolCall {
+            requires_review: false,
             id: "accepted-synthetic-read".into(),
             name: "read_deck".into(),
             arguments: json!({"artifactId":"it_deck_codex_read_fixture"}),
@@ -282,6 +287,7 @@ async fn actual_wasi_read_metadata_reaches_fake_codex_completed_tool_steps_exact
     assert_eq!(
         out,
         BrainOut::CallTools(vec![ToolCall {
+            requires_review: false,
             id: "after-read".into(),
             name: "edit_deck".into(),
             arguments: json!({"shapeId":native_shape,"text":"Synthetic next step"}),
@@ -300,3 +306,6 @@ async fn actual_wasi_read_metadata_reaches_fake_codex_completed_tool_steps_exact
         .await
         .is_err());
 }
+
+#[path = "tests/explicit_review.rs"]
+mod explicit_review;

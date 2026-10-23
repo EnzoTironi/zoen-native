@@ -109,7 +109,16 @@ impl Runtime {
         if let Some(blocked) = Self::resume_block(inbound, host, &ask) {
             return Ok(blocked);
         }
-        let result = admission.execute(&ask).map_err(HostError::ToolAdmission)?;
+        let result = admission.execute(&ask);
+        host.observe_tool_outcome(
+            &ask.call,
+            match &result {
+                Ok(result) if !result.is_error => ToolObservation::HostOk,
+                Ok(_) => ToolObservation::HostError,
+                Err(_) => ToolObservation::AdmissionError,
+            },
+        );
+        let result = result.map_err(HostError::ToolAdmission)?;
         let ToolAsk {
             call,
             mut steps,
@@ -244,6 +253,7 @@ impl Runtime {
             } else {
                 &[]
             };
+            host.observe_model_input(offer, &steps, round);
             let out = self
                 .brain
                 .think_with_tools(cx, history, inbound, offer, &steps)
@@ -282,21 +292,29 @@ impl Runtime {
         let mut calls = calls.into_iter().take(capacity);
         while let Some(call) = calls.next() {
             let (result, is_error) = match tools.iter().find(|t| t.name == call.name) {
-                None => (format!("unknown tool: {}", call.name), true),
+                None => {
+                    host.observe_tool_outcome(&call, ToolObservation::UnknownTool);
+                    (format!("unknown tool: {}", call.name), true)
+                }
                 Some(def) => {
                     let check = Self::tool_check(inbound, host, &call, def);
                     let d = self.gate.check(&check);
                     // A native first-delivery review is narrower than Gate Allow.
                     // Block and Ask retain their original policy outcome/rule.
-                    let (outcome, rule) =
-                        if d.outcome == Outcome::Allow && host.requires_native_review(&call) {
-                            (Outcome::Ask, NATIVE_REVIEW_REQUIRED.to_string())
-                        } else {
-                            (d.outcome, d.rule)
-                        };
+                    let (outcome, rule) = if d.outcome == Outcome::Allow
+                        && (call.requires_review || host.requires_native_review(&call))
+                    {
+                        (Outcome::Ask, NATIVE_REVIEW_REQUIRED.to_string())
+                    } else {
+                        (d.outcome, d.rule)
+                    };
                     match outcome {
-                        Outcome::Block => (format!("blocked: {}", rule), true),
+                        Outcome::Block => {
+                            host.observe_tool_outcome(&call, ToolObservation::Blocked);
+                            (format!("blocked: {}", rule), true)
+                        }
                         Outcome::Ask => {
+                            host.observe_tool_outcome(&call, ToolObservation::Held);
                             let ask = ToolAsk {
                                 version: 1,
                                 policy_sha256: self.tool_policy_sha256()?,
@@ -324,11 +342,22 @@ impl Runtime {
                                 rule,
                             };
                             prepared.validate(cx, inbound)?;
-                            host.prepare(&prepared)
-                                .map_err(HostError::ToolContinuation)?;
+                            if let Err(error) = host.prepare(&prepared) {
+                                host.observe_tool_outcome(
+                                    &call,
+                                    ToolObservation::PreparationRefused,
+                                );
+                                return Err(HostError::ToolContinuation(error));
+                            }
                             match host.call(&call) {
-                                Ok(result) => (result, false),
-                                Err(result) => (result, true),
+                                Ok(result) => {
+                                    host.observe_tool_outcome(&call, ToolObservation::HostOk);
+                                    (result, false)
+                                }
+                                Err(result) => {
+                                    host.observe_tool_outcome(&call, ToolObservation::HostError);
+                                    (result, true)
+                                }
                             }
                         }
                     }

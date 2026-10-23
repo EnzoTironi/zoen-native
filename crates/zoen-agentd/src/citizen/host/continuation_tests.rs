@@ -114,6 +114,7 @@ impl ApprovedToolAdmission for TestAdmission {
 
 fn call(name: &str) -> ToolCall {
     ToolCall {
+        requires_review: false,
         id: format!("synthetic-{name}"),
         name: name.into(),
         arguments: serde_json::json!({"artifactId": "synthetic-artifact", "version": 1}),
@@ -536,3 +537,6 @@ async fn completed_progress_recovers_without_reexecuting_tools_or_resetting_the_
     ));
     assert_eq!(observed.lock().unwrap().len(), 1);
 }
+
+mod explicit_review;
+mod observations;

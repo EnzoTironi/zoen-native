@@ -111,6 +111,7 @@ fn run(name: &str, args: Value) -> (Option<ToolAsk>, Vec<ToolStep>, Vec<String>)
             &tools.tools(),
             &mut steps,
             vec![ToolCall {
+                requires_review: false,
                 id: "call".into(),
                 name: name.into(),
                 arguments: args,

@@ -447,6 +447,14 @@ fn deck(f: &Fixture) -> client_core::AppBinaryDocumentDto {
         .unwrap()
 }
 fn stage(f: &Fixture, item: &str, source: &str) -> client_core::AgentRequestDto {
+    stage_review(f, item, source, false)
+}
+fn stage_review(
+    f: &Fixture,
+    item: &str,
+    source: &str,
+    review: bool,
+) -> client_core::AgentRequestDto {
     let turn = f
         .client
         .agent_binary_turn(item, source, &f.owner, None, None)
@@ -465,11 +473,19 @@ fn stage(f: &Fixture, item: &str, source: &str) -> client_core::AgentRequestDto 
         .unwrap();
     definition.name = crate::deckcraft::model_name("read_deckcraft", item).unwrap();
     let arguments = json!({"artifactId":item});
-    let ask = json!({"version":1,"policy_sha256":"77".repeat(32),
+    let rule = if review {
+        zoen_agentd::NATIVE_REVIEW_REQUIRED
+    } else {
+        "model:low-confidence"
+    };
+    let mut ask = json!({"version":1,"policy_sha256":"77".repeat(32),
         "envelope":{"agent":account.identity_id,"device":account.device_id,"owner":f.owner,"space":f.space,"from":f.owner,
             "inbound_sha256":hex::encode(Sha256::digest(text_of(&entry).unwrap().as_bytes()))},
         "call":{"id":"source-held-read","name":definition.name,"arguments":arguments},"definition":definition,
-        "steps":[],"remaining":[],"round":0,"rule":"model:low-confidence"});
+        "steps":[],"remaining":[],"round":0,"rule":rule});
+    if review {
+        ask["call"]["requires_review"] = true.into();
+    }
     f.client
         .stage_tool_approval(
             &turn,
@@ -477,8 +493,11 @@ fn stage(f: &Fixture, item: &str, source: &str) -> client_core::AgentRequestDto 
                 canonical_tool: "read_deckcraft".into(),
                 arguments,
                 worker_binding: "88".repeat(32),
-                continuation_json: ask.to_string(),
-                gate_rule: "model:low-confidence".into(),
+                continuation_json: serde_json::to_string(
+                    &serde_json::from_value::<ToolAsk>(ask).unwrap(),
+                )
+                .unwrap(),
+                gate_rule: rule.into(),
             },
         )
         .unwrap()
@@ -549,3 +568,5 @@ async fn approved_recovery_enters_only_selected_request_and_retains_executor_adm
     assert!(server.cursors.lock().unwrap().is_empty());
     assert!(!f.path.join("source-steps.json").exists());
 }
+
+mod review;

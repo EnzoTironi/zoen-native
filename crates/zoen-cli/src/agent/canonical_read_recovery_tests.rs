@@ -205,11 +205,13 @@ async fn offline_read_ask_accepted_write_and_cold_recovery_never_repeat_the_effe
         .space_id;
     let trace = trace::tests::capture(&space, &fixture.source);
     let read = ToolCall {
+        requires_review: false,
         id: "held_synthetic_read".into(),
         name: crate::deckcraft::model_name("read_deckcraft", &fixture.base.item_id).unwrap(),
         arguments: json!({"artifactId":fixture.base.item_id}),
     };
     let write = ToolCall {
+        requires_review: false,
         id: "prepared_synthetic_notes".into(),
         name: crate::deckcraft::model_name("deckcraft_slide_notes", &fixture.base.item_id).unwrap(),
         arguments: json!({"artifactId":fixture.base.item_id,"version":fixture.base.version,"sha256":fixture.base.sha256,"slideId":inspected["slides"][0]["id"],"text":"Accepted once, recovered without another edit."}),
