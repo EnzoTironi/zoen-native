@@ -3,7 +3,7 @@ const SECRET: &str = "0123456789abcdef0123456789abcdef";
 fn service() -> Service {
     Service::configured(
         Some(
-            "turns:turn.example.test:5349?transport=tcp,turn:turn.example.test:3478?transport=udp"
+            "turns:turn.example.test:5349?transport=tcp,turns:alternate.example.test:443?transport=tcp"
                 .into(),
         ),
         Some(SECRET.into()),

@@ -27,13 +27,18 @@ fn scope(
     let account = e
         .account()
         .ok_or_else(|| invalid("Call account unavailable"))?;
-    let state = e.space_state(space)?;
     if !e.is_unlocked()
         || !account.registered
         || account.identity != identity
         || account.device != device
         || peer == identity
-        || state.kind != SpaceKind::Direct
+    {
+        return Err(CoreError::Forbidden {
+            reason: "Call owner or device changed".into(),
+        });
+    }
+    let state = e.space_state(space)?;
+    if state.kind != SpaceKind::Direct
         || state.privacy != Privacy::EndToEnd
         || state.members.len() != 2
         || ![identity, peer].iter().all(|who| {

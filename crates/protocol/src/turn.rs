@@ -76,8 +76,9 @@ fn valid_port_suffix(value: &str) -> bool {
 pub fn valid_urls(urls: &[String]) -> bool {
     !urls.is_empty()
         && urls.len() <= MAX_URLS
-        && urls.iter().all(|url| valid_url(url))
-        && urls.iter().any(|url| url.starts_with("turns:"))
+        && urls
+            .iter()
+            .all(|url| url.starts_with("turns:") && valid_url(url))
 }
 
 impl TurnCredentials {
