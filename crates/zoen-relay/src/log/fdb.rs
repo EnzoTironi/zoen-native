@@ -83,6 +83,9 @@ use super::{
     InviteInfo, LogStore, Reject, Sequencing, StoreError, VisiblePage,
 };
 
+mod commit_lanes;
+#[cfg(debug_assertions)]
+mod conflicts;
 mod invite_routing;
 mod runtime;
 pub use runtime::{RuntimeHead, RuntimeSource, RuntimeSourceBatch};
@@ -174,11 +177,8 @@ fn parse<T: serde::de::DeserializeOwned>(s: &str) -> Option<T> {
 
 pub use relay_admission::code_hash;
 
-fn random_code() -> String {
-    const A: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-    let mut b = [0u8; 10];
-    getrandom::getrandom(&mut b).expect("entropy");
-    b.iter().map(|x| A[(*x & 31) as usize] as char).collect()
+fn random_code() -> Result<String, StoreError> {
+    fallible::invite_code(getrandom::getrandom)
 }
 
 fn now_ms() -> i64 {
@@ -242,7 +242,7 @@ impl FdbLog {
             cell.root.clone(),
             node.to_string(),
             ttl,
-        ));
+        )?);
         Ok(Self {
             sequencer: Sequencer::new(cell.clone()),
             owner,
@@ -417,6 +417,7 @@ impl FdbLog {
 
 mod apply;
 mod cell;
+mod fallible;
 mod store;
 
 /// Append transactions run again after a conflict (two writers on one Space head) or a
@@ -437,17 +438,39 @@ impl Batcher for Cell {
         batch: &[Pending],
         state: &mut Option<SpaceState>,
     ) -> Applied {
+        // Separate local clients retain separate databases/caches, but must not
+        // repeatedly race their bounded transactions against the same head.
+        // This is contention coordination only; every transaction still reads
+        // and validates the canonical persisted ownership fence and Space head.
+        let _lane = match commit_lanes::acquire(&self.space_key(space, "head")).await {
+            Ok(lane) => lane,
+            Err(error) => {
+                tracing::error!(error = %error, "append coordination unavailable");
+                return Applied {
+                    results: batch.iter().map(|_| Err(Reject::unavailable())).collect(),
+                    attempts: 0,
+                };
+            }
+        };
         // A retry reruns the closure, so the cache moves into the first attempt and comes
         // back only with a committed result. Later attempts reload from the head they read.
         let cached = Mutex::new(state.take());
         let attempts = AtomicU32::new(0);
+        let started = std::time::Instant::now();
+        #[cfg(debug_assertions)]
+        let hooks = conflicts::Diagnostics::new(self, space);
+        #[cfg(not(debug_assertions))]
+        let hooks = foundationdb::NoopHooks;
         let r = self
             .db
-            .run(|trx, _committed| {
+            .run_with_hooks(&hooks, |trx, _committed| {
                 attempts.fetch_add(1, Ordering::Relaxed);
-                let cached = cached.lock().expect("cache lock").take();
+                let cached = fallible::take_cache(&cached);
                 async move {
+                    let cached = cached?;
                     ownership::bound_transaction(&trx)?;
+                    #[cfg(debug_assertions)]
+                    conflicts::Diagnostics::configure(&trx)?;
                     self.apply(&trx, space, batch, cached).await
                 }
             })
@@ -455,13 +478,16 @@ impl Batcher for Cell {
         let attempts = attempts.into_inner();
         APPEND_RETRIES.fetch_add(u64::from(attempts.saturating_sub(1)), Ordering::Relaxed);
         APPEND_BATCHES.fetch_add(1, Ordering::Relaxed);
+        #[cfg(debug_assertions)]
+        hooks.report(attempts, started.elapsed(), r.is_err());
         let results = match r {
             Ok((results, fresh)) => {
                 *state = Some(fresh);
                 results
             }
             Err(e) => {
-                tracing::error!(error = %e, size = batch.len(), "log store error while sequencing");
+                tracing::error!(error = %e, size = batch.len(), attempts,
+                    elapsed_ms = started.elapsed().as_millis() as u64, "log store error while sequencing");
                 batch.iter().map(|_| Err(Reject::unavailable())).collect()
             }
         };
