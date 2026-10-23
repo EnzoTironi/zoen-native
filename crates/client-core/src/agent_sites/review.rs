@@ -3,6 +3,11 @@ use super::*;
 use crate::{AgentRequestDto, AgentToolApprovalInput};
 use types::EventBody;
 
+fn invalid_review(reason: &str) -> CoreError {
+    CoreError::Invalid {
+        reason: format!("Invalid private Site review: {reason}."),
+    }
+}
 fn creation_artifact(space: &str, args: &Value) -> R<String> {
     Ok(format!(
         "future_site_{}",
@@ -23,13 +28,13 @@ pub(crate) fn parsed(p: &ToolProposal) -> R<(Value, Option<Value>)> {
         || p.gate_rule.is_empty()
         || p.gate_rule.len() > 256
     {
-        return Err(invalid());
+        return Err(invalid_review("proposal capacity or executor binding"));
     }
     let args: Value = serde_json::from_str(&p.arguments_json).map_err(|_| invalid())?;
     if miniapps::deckcraft::agent_tools::canonical_json(&args).map_err(|_| invalid())?
         != p.arguments_json
     {
-        return Err(invalid());
+        return Err(invalid_review("noncanonical arguments"));
     }
     let command = parse(&p.canonical_tool, &args)?;
     let ask: Value = serde_json::from_str(&p.continuation_json).map_err(|_| invalid())?;
@@ -73,7 +78,7 @@ pub(crate) fn parsed(p: &ToolProposal) -> R<(Value, Option<Value>)> {
                 contract::selected_definition(&p.canonical_tool, locator, p.version, &p.sha256)?
             }
     {
-        return Err(invalid());
+        return Err(invalid_review("continuation descriptor binding"));
     }
     Ok((ask, command.is_write().then_some(args)))
 }
