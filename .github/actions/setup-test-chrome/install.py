@@ -58,7 +58,7 @@ def verify_archive(path, pin):
 
 def namespace_policy(binary):
     # This path is root-owned, non-writable by the runner and has no globs.
-    if not re.fullmatch(r"/opt/zoen-cft/\d+\.\d+\.\d+\.\d+-[0-9a-f]{12}/chrome-linux64/chrome", str(binary)):
+    if not re.fullmatch(r"/usr/lib/zoen-cft/\d+\.\d+\.\d+\.\d+-[0-9a-f]{12}/chrome-linux64/chrome", str(binary)):
         raise ValueError("Invalid pinned browser installation path")
     return f'''abi <abi/4.0>,
 include <tunables/global>
@@ -78,7 +78,7 @@ def main():
     if platform.system() != "Linux" or platform.machine() != "x86_64":
         raise RuntimeError("Pinned browser setup requires the Linux x64 CI runner")
     pin = read_pin(Path(__file__).with_name("browser.json"))
-    destination = Path("/opt/zoen-cft") / (pin["version"] + "-" + pin["sha256"][:12])
+    destination = Path("/usr/lib/zoen-cft") / (pin["version"] + "-" + pin["sha256"][:12])
     binary = destination / "chrome-linux64/chrome"
     policy = Path("/etc/apparmor.d/zoen-test-chrome")
     if destination.exists() or destination.is_symlink() or policy.exists() or policy.is_symlink():
@@ -95,7 +95,8 @@ def main():
         verify_archive(archive, pin)
         unpacked = folder / "unpacked"
         subprocess.run(["unzip", "-q", str(archive), "-d", str(unpacked)], check=True, timeout=30)
-        require_protected_directory(Path("/opt"))
+        for ancestor in [Path("/"), Path("/usr"), Path("/usr/lib")]:
+            require_protected_directory(ancestor)
         if destination.parent.is_symlink():
             raise RuntimeError("Browser installation parent is not protected")
         if not destination.parent.exists():

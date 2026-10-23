@@ -67,13 +67,13 @@ class ArtifactAdmission(unittest.TestCase):
             installer.verify_archive(path, pin)
 
     def test_namespace_policy_is_scoped_to_one_pinned_immutable_executable(self):
-        path = "/opt/zoen-cft/156.0.8078.47-abababababab/chrome-linux64/chrome"
+        path = "/usr/lib/zoen-cft/156.0.8078.47-abababababab/chrome-linux64/chrome"
         policy = installer.namespace_policy(Path(path))
         self.assertIn('"' + path + '"', policy)
         self.assertIn("userns,", policy)
         self.assertNotIn("*", policy)
         self.assertNotIn("sysctl", policy)
-        for bad in ["/tmp/chrome", path + "*", path.replace("abababababab", "../outside")]:
+        for bad in ["/tmp/chrome", path.replace("/usr/lib/", "/opt/"), path + "*", path.replace("abababababab", "../outside")]:
             with self.assertRaises(ValueError):
                 installer.namespace_policy(Path(bad))
 

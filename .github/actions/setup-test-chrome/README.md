@@ -7,7 +7,10 @@ preinstalled browser. There is no additional npm installer or browser dependency
 
 The installer needs the existing Ubuntu runner's Python, curl, unzip, sudo and
 AppArmor tools. It verifies the archive before extracting, installs it in a fresh
-root-owned `/opt/zoen-cft` directory, and refuses an existing installation/policy.
+root-owned `/usr/lib/zoen-cft` directory, and refuses an existing installation/policy.
+The `/`, `/usr` and `/usr/lib` ancestors must already satisfy the same root-owner,
+non-symlink and no group/other-write checks; setup never repairs them. The first
+Linux candidate rejected `/opt` at that boundary before browser startup.
 When AppArmor is enabled, the policy allows user namespaces only for that exact
 protected executable. It neither changes the global namespace restriction nor adds
 `--no-sandbox` to a browser invocation.
