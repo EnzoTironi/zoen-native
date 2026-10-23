@@ -11,6 +11,7 @@ const SPACE: &str = "certified-owner-agent-direct";
 
 mod canonical_approvals;
 mod image_delivery_cases;
+mod image_review_cases;
 mod image_task_cases;
 
 struct Fixture {

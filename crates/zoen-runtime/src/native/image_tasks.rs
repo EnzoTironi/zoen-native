@@ -2,6 +2,7 @@
 mod blobs;
 mod delivery;
 mod output;
+mod review;
 mod storage;
 #[cfg(test)]
 pub(crate) mod testing;
@@ -10,6 +11,7 @@ use crate::{image_tasks::ImageTask, pricing::BoundPrice, Binding, ImagePriceProf
 use client_core::runtime_core::ImageTaskFacts;
 pub use delivery::{ImageDeliveryProgress, ImageDeliveryTarget};
 pub use output::ImageOutputInspection;
+pub use review::{ImageReviewIntent, ImageReviewProgress};
 use zoen_models::{
     AttemptContext, DispatchRequest, ImageRequest, InputMessage, ModelGateway, ModelRequest,
     Operation,

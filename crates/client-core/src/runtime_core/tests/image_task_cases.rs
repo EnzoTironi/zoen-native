@@ -2,7 +2,7 @@ use super::*;
 use crate::image_tasks::{ImageTaskDefinition, ImageTaskInput};
 use sha2::Digest;
 
-fn input() -> ImageTaskInput {
+pub(super) fn input() -> ImageTaskInput {
     ImageTaskInput {
         prompt: "A quiet blue sky".into(),
         definition: ImageTaskDefinition {

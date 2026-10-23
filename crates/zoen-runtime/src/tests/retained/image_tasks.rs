@@ -79,6 +79,38 @@ pub(in crate::tests) async fn run() {
     f.sync(false).await.unwrap();
     let actor = f.world.agents[0].clone();
     let device = actor.device.as_deref().unwrap();
+    assert_eq!(
+        f.world
+            .runtime
+            .stage_image_task_review(
+                crate::ImageReviewIntent {
+                    agent: actor.identity.clone(),
+                    device: device.into(),
+                    space: f.space.clone(),
+                    source: source.clone(),
+                    input: ImageTaskInput {
+                        prompt: "Must not stage through an unqualified output scope".into(),
+                        definition: ImageTaskDefinition {
+                            version: "native-image-fixture-v1".into(),
+                            price_digest: price.digest().unwrap(),
+                            size: "1024x1024".into(),
+                            quality: "low".into(),
+                            background: "opaque".into(),
+                            max_image_bytes: price.image.max_image_bytes,
+                        }
+                    },
+                },
+                crate::ImageDeliveryTarget::configured(
+                    "http://127.0.0.1:1".into(),
+                    "uncontacted-fixture".into(),
+                    f.world.relay_cell.clone().unwrap()
+                )
+                .unwrap(),
+            )
+            .await
+            .unwrap_err(),
+        RuntimeError::CoreAuthorityUnavailable,
+    );
     let (request, approval_hash, envelope) = proof::stage(
         &f.world.runtime,
         &actor.identity,

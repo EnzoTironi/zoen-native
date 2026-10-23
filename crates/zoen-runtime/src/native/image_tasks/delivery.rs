@@ -12,9 +12,9 @@ use types::Seen;
 /// Challenge must match it before any artifact bytes leave custody.
 #[derive(Clone, Debug)]
 pub struct ImageDeliveryTarget {
-    url: String,
-    relay: String,
-    source: String,
+    pub(super) url: String,
+    pub(super) relay: String,
+    pub(super) source: String,
 }
 impl ImageDeliveryTarget {
     pub fn configured(url: String, relay: String, source: String) -> Result<Self, RuntimeError> {
@@ -51,7 +51,7 @@ struct Delivery<'a> {
     core: Box<DeviceCore>,
     source_head: Seen,
 }
-fn transport_error(error: RelayOutputError) -> RuntimeError {
+pub(super) fn transport_error(error: RelayOutputError) -> RuntimeError {
     match error {
         RelayOutputError::Invalid
         | RelayOutputError::Blob(client_core::blob_transport::BlobUploadError::Invalid) => {
