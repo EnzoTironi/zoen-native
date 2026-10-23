@@ -201,6 +201,7 @@ impl Brain for ModelBrain {
                     name,
                     arguments,
                 } => calls.push(ToolCall {
+                    requires_review: false,
                     id: call_id,
                     name,
                     arguments,

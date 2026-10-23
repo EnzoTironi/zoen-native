@@ -43,6 +43,7 @@ export default function Thread() {
     snapshot?.conversations.some((chat) => chat.id === space && chat.kind !== 'Direct') ?? false;
   const headerHeight = useHeaderHeight();
   const { top: statusBarHeight } = useSafeAreaInsets();
+  const timelineTopInset = process.env.EXPO_OS === 'ios' ? 0 : statusBarHeight;
   const { allItems: items } = useHome();
   const input = useRef<TextInputInstance>(null);
   const list = useRef<FlashListRef<ConversationTimelineRow>>(null);
@@ -105,7 +106,12 @@ export default function Thread() {
   }
   return (
     <ConversationContainer style={{ flex: 1, backgroundColor: 'transparent' }}>
-      <Stack.Screen options={{ title: t('chat.replies') }} />
+      <Stack.Screen
+        options={{
+          title: t('chat.replies'),
+          scrollEdgeEffects: { top: 'automatic', bottom: 'hidden' },
+        }}
+      />
       <ConversationViewport
         composer={
           <>
@@ -171,7 +177,7 @@ export default function Thread() {
             <Loading />
           ) : (
             <FlashList
-              style={{ flex: 1, marginTop: statusBarHeight, overflow: 'hidden' }}
+              style={{ flex: 1, marginTop: timelineTopInset, overflow: 'hidden' }}
               ref={list}
               testID="conversation-timeline"
               renderScrollComponent={ScrollComponent}
@@ -183,7 +189,7 @@ export default function Thread() {
               ListFooterComponent={composerSpacer}
               contentContainerStyle={{
                 paddingHorizontal: 16,
-                paddingTop: Math.max(0, headerHeight - statusBarHeight) + 8,
+                paddingTop: Math.max(0, headerHeight - timelineTopInset) + 8,
                 paddingBottom: 12,
               }}
               maintainVisibleContentPosition={{

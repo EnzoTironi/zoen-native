@@ -7,7 +7,16 @@
       "file": "TelegramGlassBackground.swift",
       "upstreamPath": "submodules/TelegramUI/Components/GlassBackgroundComponent/Sources/GlassBackgroundComponent.swift",
       "upstreamSHA256": "396817889b36a99633688b99b1558e2329fe0ed08fad61669a8cfeca2f1fb0a5",
-      "adaptations": "Preserved UIView rendering, native UIGlassEffect/container luma and exact legacy generation; excluded unused ComponentFlow component/context-extraction wrappers; module imports resolved locally."
+      "adaptations": "Preserved UIView rendering, native UIGlassEffect/container luma and exact legacy generation; excluded unused ComponentFlow component/context-extraction wrappers; module imports resolved locally. Local source is mechanically separated by content, rendering, geometry, image or animation responsibility; original callable bodies, one owner/cache and upstream hashes are retained.",
+      "localFiles": [
+        "TelegramGlassBackground.swift",
+        "TelegramGlassBackground+Content.swift",
+        "TelegramGlassBackground+Geometry.swift",
+        "TelegramGlassBackground+Rendering.swift",
+        "TelegramGlassBackgroundContainer.swift",
+        "TelegramGlassBackground+LegacyImages.swift",
+        "TelegramGlassBackground+ForegroundImages.swift"
+      ]
     },
     {
       "file": "TelegramLegacyGlass.swift",
@@ -25,13 +34,19 @@
       "file": "TelegramLiquidLens.swift",
       "upstreamPath": "submodules/TelegramUI/Components/LiquidLens/Sources/LiquidLensView.swift",
       "upstreamSHA256": "c106323abb6ec03a2788606d450a0ce617f6a642e54c15571a2f9904eba01af4",
-      "adaptations": "Removed Display, ComponentFlow and GlassBackgroundComponent upstream module imports because the preserved rendering types are compiled together in ZoenCore; implementation otherwise unchanged."
+      "adaptations": "Removed Display, ComponentFlow and GlassBackgroundComponent upstream module imports because the preserved rendering types are compiled together in ZoenCore; implementation otherwise unchanged. Local source is mechanically separated by content, rendering, geometry, image or animation responsibility; original callable bodies, one owner/cache and upstream hashes are retained.",
+      "localFiles": ["TelegramLiquidLens.swift", "TelegramLiquidLens+Rendering.swift"]
     },
     {
       "file": "TelegramGlassMeshGeneration.swift",
       "upstreamPath": "submodules/TelegramUI/Components/MeshTransform/Sources/GenerateMesh.swift",
       "upstreamSHA256": "d5ba7e4da2bc2f82cbd61232024c6437499859a3bf7eba5c60dbd91fcbf53adc",
-      "adaptations": "Removed separate upstream module imports; renamed file-local bezierPoint to meshDisplacementBezierPoint to avoid collision with Display/Spring.swift when upstream modules are combined. Same equations/calls."
+      "adaptations": "Removed separate upstream module imports; renamed file-local bezierPoint to meshDisplacementBezierPoint to avoid collision with Display/Spring.swift when upstream modules are combined. Same equations/calls. Local source is mechanically separated by content, rendering, geometry, image or animation responsibility; original callable bodies, one owner/cache and upstream hashes are retained.",
+      "localFiles": [
+        "TelegramGlassMeshGeneration.swift",
+        "TelegramGlassMeshTemplate.swift",
+        "TelegramGlassDisplacement.swift"
+      ]
     },
     {
       "file": "TelegramGlassMesh.swift",
@@ -55,13 +70,22 @@
       "file": "TelegramGlassTransition.swift",
       "upstreamPath": "submodules/ComponentFlow/Source/Base/Transition.swift",
       "upstreamSHA256": "3279b04549300b59cd05def776246d7ccfbb447724c04c9ec299a853a445dc08",
-      "adaptations": "Retained native transition prefix and only methods required by the glass/lens closure; omitted unused curve solve method (ListView dependency); bodies unchanged."
+      "adaptations": "Retained native transition prefix and only methods required by the glass/lens closure; omitted unused curve solve method (ListView dependency); bodies unchanged. Local source is mechanically separated by content, rendering, geometry, image or animation responsibility; original callable bodies, one owner/cache and upstream hashes are retained.",
+      "localFiles": [
+        "TelegramGlassTransition.swift",
+        "TelegramGlassTransition+Layout.swift",
+        "TelegramGlassTransition+Animation.swift"
+      ]
     },
     {
       "file": "TelegramGlassLayerAnimation.swift",
       "upstreamPath": "submodules/Display/Source/CAAnimationUtils.swift",
       "upstreamSHA256": "d15229d08439c36f6583bb2635cbd7e289adcd408c1767d6962570a388fdb6e5",
-      "adaptations": "Same layer animations; namespaced module import removed; animationDurationFactor function normalized to ComponentFlow equivalent property to combine modules."
+      "adaptations": "Same layer animations; namespaced module import removed; animationDurationFactor function normalized to ComponentFlow equivalent property to combine modules. Local source is mechanically separated by content, rendering, geometry, image or animation responsibility; original callable bodies, one owner/cache and upstream hashes are retained.",
+      "localFiles": [
+        "TelegramGlassLayerAnimation.swift",
+        "TelegramGlassLayerAnimation+Geometry.swift"
+      ]
     },
     {
       "file": "ZoenTelegramPresentationRuntime.h",
@@ -143,14 +167,54 @@
       "bytes": 1680
     },
     {
+      "path": "TelegramGlassBackground+Content.swift",
+      "sha256": "9bd1f65fe7828b1c73595e30d0172eadcacef8c05b89fe41f270decf536b3a85",
+      "bytes": 8611
+    },
+    {
+      "path": "TelegramGlassBackground+ForegroundImages.swift",
+      "sha256": "5339fef0e616faf8f07829b015cdce7ac48c7d8accc83facb4864beb72b319d9",
+      "bytes": 7252
+    },
+    {
+      "path": "TelegramGlassBackground+Geometry.swift",
+      "sha256": "2c64b2912e970d71322a503bcf326f446536b362a870d6cf4f9a3f5106e59d4b",
+      "bytes": 5824
+    },
+    {
+      "path": "TelegramGlassBackground+LegacyImages.swift",
+      "sha256": "349d2e15d4f0a8dfd11edfc74aa0d882499415f17afd344d07d2127b16a9188f",
+      "bytes": 19828
+    },
+    {
+      "path": "TelegramGlassBackground+Rendering.swift",
+      "sha256": "04c992e7b23464992b70351dccde127bf156e4229aaf749512c3a69e04d706d9",
+      "bytes": 13701
+    },
+    {
       "path": "TelegramGlassBackground.swift",
-      "sha256": "f2eb91d6379918ed26381e43b2bcacdaa47e3c7df7387da03775878108a5c85c",
-      "bytes": 66356
+      "sha256": "2e8a0d4c32821cb4ce02275f63de3ad1bd97ac692c88fb3a4c73710217ed1625",
+      "bytes": 7391
+    },
+    {
+      "path": "TelegramGlassBackgroundContainer.swift",
+      "sha256": "9abc7219e06106fef2a184812f478cb826a8f42e4a879270eea814c54f92c5a2",
+      "bytes": 4951
+    },
+    {
+      "path": "TelegramGlassDisplacement.swift",
+      "sha256": "471b51f7ea59c231c3c7467b9764c8cbf4a0c989a765d6455a218291cd29ddf8",
+      "bytes": 5572
+    },
+    {
+      "path": "TelegramGlassLayerAnimation+Geometry.swift",
+      "sha256": "add7c9c3aa84578b6edf1257664e6f776b2ec672afa121f8ba7c931b011bbbf0",
+      "bytes": 13902
     },
     {
       "path": "TelegramGlassLayerAnimation.swift",
-      "sha256": "36e4936d3b61d5d8cc2d9073d374b9e397c879805f83712fe4e50344ca8c2b06",
-      "bytes": 31375
+      "sha256": "7e3b945aba4d91f5d099bdbae6a002c10987f228dc676236043ef2bb70a5767f",
+      "bytes": 17685
     },
     {
       "path": "TelegramGlassMesh.swift",
@@ -159,8 +223,13 @@
     },
     {
       "path": "TelegramGlassMeshGeneration.swift",
-      "sha256": "a490540ea5a1228e48f8c15f809573ca3b40e7ddb5553d85e02f80b36fa2243a",
-      "bytes": 31271
+      "sha256": "7d50a202100ba15551b967df3351f8614597d019b8a1c9d70876d4e4b1af5c4c",
+      "bytes": 14435
+    },
+    {
+      "path": "TelegramGlassMeshTemplate.swift",
+      "sha256": "83154e2bd55b2ce1d1262213bcb07368ed7eb6048aa30258905ce2fe4089c7f1",
+      "bytes": 11627
     },
     {
       "path": "TelegramGlassTouchEffect.swift",
@@ -168,9 +237,19 @@
       "bytes": 13541
     },
     {
+      "path": "TelegramGlassTransition+Animation.swift",
+      "sha256": "5b45b71fb135572095d739097da35f5b8de9c94e6ed62a97129c5026cabf29e6",
+      "bytes": 13216
+    },
+    {
+      "path": "TelegramGlassTransition+Layout.swift",
+      "sha256": "b5557d89cd68f54dc5ff7bc5da2a7ed9579e5fcc226c38615a25021d136fb357",
+      "bytes": 7781
+    },
+    {
       "path": "TelegramGlassTransition.swift",
-      "sha256": "a4c405bb3eea136ec3edca951ca7be94b8bcef5ea005e23b3d6380d542d6499c",
-      "bytes": 27758
+      "sha256": "ca3b34ae31e2d8b2d7390d72c8bd249b4b7dbe25f0ba4c07adcf0341411b5711",
+      "bytes": 7223
     },
     {
       "path": "TelegramLegacyGlass.swift",
@@ -178,9 +257,14 @@
       "bytes": 9580
     },
     {
+      "path": "TelegramLiquidLens+Rendering.swift",
+      "sha256": "448eb085229cd89e2a52c100d788d9c20d5924078ae74a953471aeac2973f413",
+      "bytes": 10033
+    },
+    {
       "path": "TelegramLiquidLens.swift",
-      "sha256": "40d24e0ae9787cd2101d84e05e437b86e70acdf305fcceff62a8a80184cb9aed",
-      "bytes": 22617
+      "sha256": "c46c662e121c33dfa1b403064e66dac81cd5bc4e2f99ff71423e4b07a032c0f5",
+      "bytes": 12647
     },
     {
       "path": "TelegramSharedDisplayLinkDriver.swift",
@@ -204,8 +288,8 @@
     },
     {
       "path": "ZoenTelegramAttachmentPresentation.swift",
-      "sha256": "a607ab681f5db4594ceb56b0a6c71d5c55efef8d392c7e859aaa34ceb1f809dd",
-      "bytes": 8311
+      "sha256": "214f1b132a778fc3f04c7bd3a8c99f615618531f685fbaaa10bcc8af23458784",
+      "bytes": 8579
     },
     {
       "path": "ZoenTelegramPresentationRuntime.h",
@@ -221,6 +305,71 @@
       "path": "ZoenTelegramRenderingAdapters.swift",
       "sha256": "d3646bf7d6a3f5fff8fd56c1a23368c91aa813c8e59f27e758e9e17542603cf0",
       "bytes": 6282
+    }
+  ],
+  "localPinRepairs": [
+    {
+      "path": "ZoenTelegramAttachmentPresentation.swift",
+      "previousLocalSHA256": "a607ab681f5db4594ceb56b0a6c71d5c55efef8d392c7e859aaa34ceb1f809dd",
+      "previousLocalBytes": 8311,
+      "currentGitSource": "3fad78d2def4f8c364561eeaa25bda8e0a936dcc",
+      "reason": "Existing local manifest pin was stale before this source-only module split; source is unchanged by this batch."
+    }
+  ],
+  "moduleSplits": [
+    {
+      "originalLocalFile": "TelegramGlassBackground.swift",
+      "previousLocalSHA256": "f2eb91d6379918ed26381e43b2bcacdaa47e3c7df7387da03775878108a5c85c",
+      "previousLocalBytes": 66356,
+      "sourceCommitBeforeSplit": "3fad78d2def4f8c364561eeaa25bda8e0a936dcc",
+      "localFiles": [
+        "TelegramGlassBackground.swift",
+        "TelegramGlassBackground+Content.swift",
+        "TelegramGlassBackground+Geometry.swift",
+        "TelegramGlassBackground+Rendering.swift",
+        "TelegramGlassBackgroundContainer.swift",
+        "TelegramGlassBackground+LegacyImages.swift",
+        "TelegramGlassBackground+ForegroundImages.swift"
+      ]
+    },
+    {
+      "originalLocalFile": "TelegramGlassLayerAnimation.swift",
+      "previousLocalSHA256": "36e4936d3b61d5d8cc2d9073d374b9e397c879805f83712fe4e50344ca8c2b06",
+      "previousLocalBytes": 31375,
+      "sourceCommitBeforeSplit": "3fad78d2def4f8c364561eeaa25bda8e0a936dcc",
+      "localFiles": [
+        "TelegramGlassLayerAnimation.swift",
+        "TelegramGlassLayerAnimation+Geometry.swift"
+      ]
+    },
+    {
+      "originalLocalFile": "TelegramGlassMeshGeneration.swift",
+      "previousLocalSHA256": "a490540ea5a1228e48f8c15f809573ca3b40e7ddb5553d85e02f80b36fa2243a",
+      "previousLocalBytes": 31271,
+      "sourceCommitBeforeSplit": "3fad78d2def4f8c364561eeaa25bda8e0a936dcc",
+      "localFiles": [
+        "TelegramGlassMeshGeneration.swift",
+        "TelegramGlassMeshTemplate.swift",
+        "TelegramGlassDisplacement.swift"
+      ]
+    },
+    {
+      "originalLocalFile": "TelegramGlassTransition.swift",
+      "previousLocalSHA256": "a4c405bb3eea136ec3edca951ca7be94b8bcef5ea005e23b3d6380d542d6499c",
+      "previousLocalBytes": 27758,
+      "sourceCommitBeforeSplit": "3fad78d2def4f8c364561eeaa25bda8e0a936dcc",
+      "localFiles": [
+        "TelegramGlassTransition.swift",
+        "TelegramGlassTransition+Layout.swift",
+        "TelegramGlassTransition+Animation.swift"
+      ]
+    },
+    {
+      "originalLocalFile": "TelegramLiquidLens.swift",
+      "previousLocalSHA256": "40d24e0ae9787cd2101d84e05e437b86e70acdf305fcceff62a8a80184cb9aed",
+      "previousLocalBytes": 22617,
+      "sourceCommitBeforeSplit": "3fad78d2def4f8c364561eeaa25bda8e0a936dcc",
+      "localFiles": ["TelegramLiquidLens.swift", "TelegramLiquidLens+Rendering.swift"]
     }
   ]
 }

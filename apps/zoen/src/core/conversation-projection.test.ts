@@ -53,6 +53,8 @@ async function fixture() {
     pinnedIds: [],
     orderedIds: [],
     hiddenIds: [],
+    editing: false,
+    editSaving: false,
     loading: false,
     error: null,
   };

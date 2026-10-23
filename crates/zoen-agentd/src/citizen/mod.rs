@@ -17,8 +17,9 @@ pub use creator::{creator_definition, CREATOR_HANDLE, CREATOR_NAME};
 pub use host::{
     parse_reply, AgentSpec, ApprovedToolAdmission, Brain, BrainOut, Host, HostError,
     PublicArtifactReferences, Runtime, ToolAsk, ToolAskEnvelope, ToolCall, ToolDef, ToolHost,
-    ToolProgress, ToolResult, ToolStep, Turn, TurnContext, TurnOutcome, CREATE_AGENT_CAPABILITY,
-    MAX_CALLS_PER_ROUND, MAX_TOOL_CONTINUATION_BYTES, MAX_TOOL_ROUNDS, MAX_TOOL_STEPS,
+    ToolObservation, ToolProgress, ToolResult, ToolStep, Turn, TurnContext, TurnOutcome,
+    CREATE_AGENT_CAPABILITY, MAX_CALLS_PER_ROUND, MAX_TOOL_CONTINUATION_BYTES, MAX_TOOL_ROUNDS,
+    MAX_TOOL_STEPS, NATIVE_REVIEW_REQUIRED,
 };
 pub use models::{system_prompt, CheapTierAuthority, ModelBrain, CHEAP_CHAT_PROFILE, CHEAP_MODEL};
 pub use profile::{

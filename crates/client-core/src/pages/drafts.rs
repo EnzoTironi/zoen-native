@@ -35,6 +35,22 @@ pub(super) struct Receipt {
     pub accepted_generation: u64,
     pub content_hash: String,
     pub frontiers: Vec<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub publication: Option<PagePublication>,
+}
+
+/// An accepted native command uses the existing encrypted receipt, not another store.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct PagePublication {
+    pub intent: String,
+    pub author: String,
+    pub device: String,
+    pub space: String,
+    pub observed_base_version: u32,
+    pub applied_content_sha256: String,
+    pub client_id: String,
+    pub event_intent: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -73,6 +89,7 @@ impl Journal {
             accepted_generation: self.generation,
             content_hash,
             frontiers,
+            publication: None,
         });
         if self.receipts.len() > RETAINED_RECEIPTS {
             let removed = self.receipts.remove(0);
@@ -83,6 +100,23 @@ impl Journal {
                     .ok_or_else(storage_error)?,
             );
         }
+        Ok(())
+    }
+
+    pub fn attach_publication(&mut self, id: &str, publication: PagePublication) -> R<()> {
+        let receipt = self
+            .receipts
+            .iter_mut()
+            .find(|r| r.mutation_id == id)
+            .ok_or_else(storage_error)?;
+        if receipt
+            .publication
+            .as_ref()
+            .is_some_and(|old| old != &publication)
+        {
+            return Err(storage_error());
+        }
+        receipt.publication = Some(publication);
         Ok(())
     }
 

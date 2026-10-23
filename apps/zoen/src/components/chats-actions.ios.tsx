@@ -1,16 +1,15 @@
 import { Host } from '@expo/ui';
 import { Button, HStack } from '@expo/ui/swift-ui';
 import { buttonStyle, font, foregroundStyle, frame, labelStyle } from '@expo/ui/swift-ui/modifiers';
-import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { router } from 'expo-router';
-import { View } from 'react-native';
 import { t } from '../i18n/index.ts';
 import { useTheme } from '../theme';
+import { NavigationGlass } from './navigation-glass';
 
 export function ChatsActions() {
   const { presentation: p, scheme } = useTheme();
   const content = (
-    <Host style={{ width: 96, height: 44 }} colorScheme={scheme}>
+    <Host style={{ width: 96, height: 44 }} colorScheme={scheme} ignoreSafeArea="all">
       <HStack spacing={0}>
         <Button
           label={t('chat.searchAllHistory')}
@@ -39,16 +38,5 @@ export function ChatsActions() {
       </HStack>
     </Host>
   );
-  return isLiquidGlassAvailable() ? (
-    <GlassView
-      isInteractive
-      colorScheme={scheme}
-      glassEffectStyle="regular"
-      style={{ borderRadius: 24 }}
-    >
-      {content}
-    </GlassView>
-  ) : (
-    <View style={{ borderRadius: 24, backgroundColor: p.navigation.background }}>{content}</View>
-  );
+  return <NavigationGlass>{content}</NavigationGlass>;
 }

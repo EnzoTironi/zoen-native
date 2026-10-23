@@ -4,6 +4,9 @@ use sha2::{Digest, Sha256};
 use std::io::{self, Write};
 use zoen_agentd::{HostError, ToolAsk, ToolProgress, ToolStep, TurnOutcome};
 
+mod failure;
+pub(super) mod tool_observation;
+
 const EVENT: &str = "zoen.agent.outcome.v1";
 const LOCATOR_DOMAIN: &[u8] = b"zoen.agent.outcome.locators.v1\0";
 const REQUEST_DOMAIN: &[u8] = b"zoen.agent.outcome.request-locators.v1\0";
@@ -351,6 +354,7 @@ fn emit(record: &Record) {
 
 pub(super) fn turn_result(space: &str, source: &str, result: &Result<TurnOutcome, HostError>) {
     emit(&Record::turn(space, source, result));
+    failure::turn_result(space, source, result);
 }
 pub(super) fn delivery(space: &str, source: &str, kind: Delivery, succeeded: bool) {
     emit(&Record::delivery(space, source, kind, succeeded));

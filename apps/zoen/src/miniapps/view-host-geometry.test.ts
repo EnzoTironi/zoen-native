@@ -9,10 +9,10 @@ import type { JSONRPCMessage, Transport } from '@modelcontextprotocol/client';
 import { MiniappSession } from './protocol.ts';
 import { frameAuthority, frameClosures } from './lifetime.ts';
 
-const path = new URL('./view-host.tsx', import.meta.url);
+const path = new URL('./view-host-ready.tsx', import.meta.url);
 const compiled = await build({
   stdin: {
-    contents: readFileSync(path, 'utf8') + '\nexport { ReadyView };',
+    contents: readFileSync(path, 'utf8'),
     sourcefile: fileURLToPath(path),
     loader: 'tsx',
   },

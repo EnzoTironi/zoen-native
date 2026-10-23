@@ -1,0 +1,19 @@
+{
+  "date": "2026-10-21",
+  "baseSource": "69d0b9048fc122e6eeca835ea0c7e228ba37bd00",
+  "status": "SOURCE_AND_ENGINE_RELEASE_PASS; new native first gesture pending",
+  "receipt": "/private/tmp/zoen-deckcraft-recipe-v240/result-01/composition-proof.json",
+  "sourceTreeSha256": "599d4099df6950116fbf71b933eb8e373507671f52998a87865af96b24d77311",
+  "ui": "259 passed,0 failed,4 pre-existing screenshot/long-soak ignored; exact621 source files unchanged",
+  "uiReceipt": "/private/tmp/zoen-deckcraft-late-tests-v240/ui-tests-01.json",
+  "retainedFailure": "v239 full UI257 passed,1 failed: rapid second textual release left TextSelect active; baseline diagnostic reproduces, isolated timing control passes without being adopted",
+  "behavior": "Paired Pointer Down emits once; matching single Touch owns release. Actual multi-click physical Up completes TextSelect while preserving word/paragraph selection and unchanged document. Original owner/cancel/drag/IME gates retained",
+  "recipe": "Fresh pinned prepare reproduces all621 files; four source and six vendor paths unchanged; default and original Shift control retained; Python10 and Node3 PASS",
+  "appCheck": "1370 passed,0 failed,0 skipped; TypeScript/Oxlint/Oxfmt PASS on e9f86fe490e0c12cec4fcc29c3f8cfe38990cd61",
+  "engineRelease": "Locked/offline PASS389.305s; exact JS/WASM audit and621-file source equality PASS; first tool-PATH preflight failure retained before compilation",
+  "engineReleaseReceipt": "/private/tmp/zoen-deckcraft-v240-build-receipts/qualification.json",
+  "engineReleaseWasmSha256": "2c6ab9025a157f346849dcbb4e7cc956e2afbb6665048727654f60995eee24c6",
+  "deploymentBoundary": "Raw code assets only; runtime pins unchanged, no new iPhone artifact or native qualification",
+  "nativeFirstGestureQualified": false,
+  "wholeProductAcceptance": false
+}

@@ -1,4 +1,4 @@
-//! Exact unsigned receipt folding and bounded keyset replay.
+//! Bounded unsigned receipt folding and keyset replay.
 //! Identity rows are never deleted; values only rise. A Sync captures an initial
 //! maximum identity, then yields every pre-cut row with at least its pre-cut mark.
 //! Later raises/inserts may appear. This is not a globally atomic snapshot.
@@ -13,24 +13,79 @@ use std::{
 };
 pub const FLUSH_EVERY: Duration = Duration::from_millis(100);
 const CHUNK: usize = 2000;
-type Key = (String, String);
-type Marks = BTreeMap<Key, Watermark>;
+/// Resource bounds for retained receipt keys, independent of SQL availability.
+/// A flush holds at most one equally bounded snapshot in addition to this map.
+pub const MAX_PENDING_ROWS: usize = 65_536;
+pub const MAX_PENDING_KEY_BYTES: usize = 8 * 1024 * 1024;
+type Marks = BTreeMap<String, BTreeMap<String, Watermark>>;
 #[derive(Debug)]
 pub struct Page {
     pub rows: Vec<(String, u64, u64)>,
     pub next: Option<String>,
 }
 #[derive(Default)]
+struct Pending {
+    marks: Marks,
+    rows: usize,
+    // Counts space+identity bytes for every row (conservatively counts shared spaces).
+    key_bytes: usize,
+}
 pub struct Receipts {
-    pending: Mutex<Marks>,
-    inflight: Mutex<Marks>,
+    pending: Mutex<Pending>,
     flushing: tokio::sync::Mutex<()>,
+    max_rows: usize,
+    max_key_bytes: usize,
+}
+impl Default for Receipts {
+    fn default() -> Self {
+        Self::with_capacity(MAX_PENDING_ROWS, MAX_PENDING_KEY_BYTES)
+    }
 }
 impl Receipts {
-    pub fn raise(&self, space: &str, who: &str, delivered: u64, read: u64) {
+    /// Smaller cells can select stricter bounds without changing receipt semantics.
+    pub fn with_capacity(max_rows: usize, max_key_bytes: usize) -> Self {
+        Self {
+            pending: Mutex::default(),
+            flushing: tokio::sync::Mutex::default(),
+            max_rows,
+            max_key_bytes,
+        }
+    }
+    /// False means no receipt was admitted: the caller must disconnect before
+    /// forwarding it, so a reconnect can replay the client's durable watermarks.
+    /// Existing rows still coalesce at capacity; no acknowledged mark is evicted.
+    pub fn raise(&self, space: &str, who: &str, delivered: u64, read: u64) -> bool {
         let mut pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
-        let mark = pending.entry((space.into(), who.into())).or_default();
-        *mark = raise(Some(*mark), delivered, read).watermark;
+        if let Some(mark) = pending
+            .marks
+            .get_mut(space)
+            .and_then(|rows| rows.get_mut(who))
+        {
+            *mark = raise(Some(*mark), delivered, read).watermark;
+            return true;
+        }
+        let Some(bytes) = space.len().checked_add(who.len()) else {
+            return false;
+        };
+        let Some(total) = pending.key_bytes.checked_add(bytes) else {
+            return false;
+        };
+        if pending.rows >= self.max_rows || total > self.max_key_bytes {
+            return false;
+        }
+        pending
+            .marks
+            .entry(space.into())
+            .or_default()
+            .insert(who.into(), raise(None, delivered, read).watermark);
+        pending.rows += 1;
+        pending.key_bytes = total;
+        true
+    }
+    /// Retained logical key bytes and rows, not an allocator/RSS measurement.
+    pub fn backlog(&self) -> (usize, usize) {
+        let pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
+        (pending.rows, pending.key_bytes)
     }
     /// Capture the local pre-read ceiling before SQL so a flush/clear cannot hide it.
     pub async fn ceilings(
@@ -44,21 +99,13 @@ impl Receipts {
         }
         {
             let pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
-            let inflight = self.inflight.lock().unwrap_or_else(|e| e.into_inner());
             for space in spaces {
-                for marks in [&*pending, &*inflight] {
-                    if let Some(((.., who), _)) = marks
-                        .range((
-                            Included((space.clone(), String::new())),
-                            Included((space.clone(), "\u{10ffff}".into())),
-                        ))
-                        .next_back()
-                    {
-                        let slot = result.entry(space.clone()).or_default();
-                        if who.as_str() > slot.as_str() {
-                            *slot = who.clone()
-                        }
-                    }
+                if let Some((who, _)) = pending
+                    .marks
+                    .get(space)
+                    .and_then(|rows| rows.last_key_value())
+                {
+                    result.insert(space.clone(), who.clone());
                 }
             }
         }
@@ -79,21 +126,12 @@ impl Receipts {
     ) -> BTreeMap<String, Watermark> {
         let mut result = BTreeMap::new();
         let pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
-        let inflight = self.inflight.lock().unwrap_or_else(|e| e.into_inner());
-        for marks in [&*pending, &*inflight] {
-            for ((_, who), mark) in marks
-                .range((
-                    Excluded((space.into(), after.into())),
-                    Included((space.into(), ceiling.into())),
-                ))
+        if let Some(rows) = pending.marks.get(space) {
+            for (who, mark) in rows
+                .range::<str, _>((Excluded(after), Included(ceiling)))
                 .take(limit)
             {
-                let existing = result.entry(who.clone()).or_default();
-                let (d, r) = mark.pair();
-                *existing = raise(Some(*existing), d, r).watermark;
-                if result.len() > limit {
-                    result.pop_last();
-                }
+                result.insert(who.clone(), *mark);
             }
         }
         result
@@ -145,48 +183,43 @@ impl Receipts {
     pub async fn flush(&self, pool: &PgPool, metrics: &Metrics) -> Result<usize, sqlx::Error> {
         let _one = self.flushing.lock().await;
         let batch: Vec<_> = {
-            let mut pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
-            if pending.is_empty() {
-                return Ok(0);
-            }
-            let taken = std::mem::take(&mut *pending);
-            self.inflight
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .clone_from(&taken);
-            taken
-                .into_iter()
-                .map(|(key, mark)| (key, mark.pair()))
+            let pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
+            pending
+                .marks
+                .iter()
+                .flat_map(|(space, rows)| {
+                    rows.iter()
+                        .map(|(who, mark)| ((space.clone(), who.clone()), mark.pair()))
+                })
                 .collect()
         };
-        let result = self.write(pool, metrics, &batch).await;
-        self.inflight
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clear();
-        result
-    }
-    async fn write(
-        &self,
-        pool: &PgPool,
-        metrics: &Metrics,
-        batch: &[crate::db::ReceiptRow],
-    ) -> Result<usize, sqlx::Error> {
-        for (index, chunk) in batch.chunks(CHUNK).enumerate() {
-            if let Err(error) = crate::db::raise_receipts(pool, chunk).await {
-                for ((space, who), (d, r)) in &batch[index * CHUNK..] {
-                    self.raise(space, who, *d, *r)
+        for chunk in batch.chunks(CHUNK) {
+            // Keep the source map intact until the actual SQL statement commits.
+            // On failure it already contains every unpersisted/current watermark.
+            crate::db::raise_receipts(pool, chunk).await?;
+            let mut pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
+            for ((space, who), pair) in chunk {
+                let Some(rows) = pending.marks.get_mut(space) else {
+                    continue;
+                };
+                if rows.get(who).is_some_and(|mark| mark.pair() == *pair) {
+                    rows.remove(who);
+                    if rows.is_empty() {
+                        pending.marks.remove(space);
+                    }
+                    pending.rows -= 1;
+                    pending.key_bytes -= space.len() + who.len();
                 }
-                return Err(error);
             }
             Metrics::inc(&metrics.receipt_flushes);
+            metrics
+                .receipts_flushed
+                .fetch_add(chunk.len() as u64, std::sync::atomic::Ordering::Relaxed);
         }
-        metrics
-            .receipts_flushed
-            .fetch_add(batch.len() as u64, std::sync::atomic::Ordering::Relaxed);
         Ok(batch.len())
     }
 }
+
 pub fn spawn(st: &crate::Shared) {
     let st = std::sync::Arc::downgrade(st);
     tokio::spawn(async move {
@@ -203,131 +236,4 @@ pub fn spawn(st: &crate::Shared) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn folds_unsigned_without_clamp() {
-        let r = Receipts::default();
-        r.raise("sp", "a", 5, 4);
-        r.raise("sp", "a", 3, u64::MAX);
-        assert_eq!(
-            r.pending.lock().unwrap()[&("sp".into(), "a".into())].pair(),
-            (u64::MAX, u64::MAX)
-        );
-    }
-    #[test]
-    fn bounded_local_keyset_includes_pending_and_inflight_without_cross_space_rows() {
-        let r = Receipts::default();
-        for n in 0..400 {
-            r.raise("sp", &format!("{n:064x}"), n, 0);
-        }
-        r.raise("other", "000", u64::MAX, 0);
-        let rows = r.local_page("sp", "", &format!("{:064x}", 399), PAGE_ROWS + 1);
-        assert_eq!(rows.len(), PAGE_ROWS + 1);
-        assert_eq!(rows.first_key_value().unwrap().0, &format!("{:064x}", 0));
-        assert_eq!(
-            rows.last_key_value().unwrap().0,
-            &format!("{:064x}", PAGE_ROWS)
-        );
-    }
-    async fn owned_database() -> (PgPool, String, String) {
-        use sqlx::{Connection, PgConnection};
-        let admin =
-            std::env::var("ZOEN_TEST_PG").expect("set ZOEN_TEST_PG for actual receipt race tests");
-        let name = format!(
-            "zoen_receipt_race_{}",
-            &event_log::Signer::generate().id()[..16]
-        );
-        let mut connection = PgConnection::connect(&admin).await.unwrap();
-        sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {name}")))
-            .execute(&mut connection)
-            .await
-            .unwrap();
-        let options = admin
-            .parse::<sqlx::postgres::PgConnectOptions>()
-            .unwrap()
-            .database(&name);
-        let pool = PgPool::connect_with(options).await.unwrap();
-        sqlx::query(include_str!("../migrations/0030_receipts.sql"))
-            .execute(&pool)
-            .await
-            .unwrap();
-        (pool, admin, name)
-    }
-    async fn dispose_database(pool: PgPool, admin: &str, name: &str) {
-        use sqlx::{Connection, PgConnection};
-        pool.close().await;
-        let mut connection = PgConnection::connect(admin).await.unwrap();
-        sqlx::query(sqlx::AssertSqlSafe(format!(
-            "DROP DATABASE {name} WITH (FORCE)"
-        )))
-        .execute(&mut connection)
-        .await
-        .unwrap();
-    }
-    #[tokio::test]
-    async fn local_prequery_capture_survives_actual_sql_snapshot_then_flush_and_clear() {
-        let (pool, admin, name) = owned_database().await;
-        let receipts = std::sync::Arc::new(Receipts::default());
-        let who = "ab".repeat(32);
-        receipts.raise("sp", &who, 7, 5);
-        let (read_tx, read_rx) = tokio::sync::oneshot::channel();
-        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
-        let task = {
-            let r = receipts.clone();
-            let pool = pool.clone();
-            let who = who.clone();
-            tokio::spawn(async move {
-                r.page_after_query(&pool, "sp", "", &who, async move {
-                    read_tx.send(()).unwrap();
-                    release_rx.await.unwrap();
-                })
-                .await
-                .unwrap()
-            })
-        };
-        read_rx.await.unwrap(); // The actual PostgreSQL SELECT already returned no rows.
-        receipts.flush(&pool, &Metrics::default()).await.unwrap();
-        assert!(receipts.pending.lock().unwrap().is_empty());
-        assert!(receipts.inflight.lock().unwrap().is_empty());
-        release_tx.send(()).unwrap();
-        let actual = task.await.unwrap();
-        dispose_database(pool, &admin, &name).await;
-        assert_eq!(actual.rows, vec![(who, 7, 5)]); // Previously lost between SELECT and postquery merge.
-    }
-    #[tokio::test]
-    async fn actual_blocked_upsert_leaves_inflight_visible_to_concurrent_page() {
-        let (pool, admin, name) = owned_database().await;
-        let who = "cd".repeat(32);
-        crate::db::raise_receipts(&pool, &[(("sp".into(), who.clone()), (0, 0))])
-            .await
-            .unwrap();
-        let mut lock = pool.begin().await.unwrap();
-        sqlx::query("SELECT identity FROM space_receipts WHERE space='sp' FOR UPDATE")
-            .fetch_all(&mut *lock)
-            .await
-            .unwrap();
-        let receipts = std::sync::Arc::new(Receipts::default());
-        receipts.raise("sp", &who, u64::MAX, u64::MAX - 1);
-        let task = {
-            let r = receipts.clone();
-            let p = pool.clone();
-            tokio::spawn(async move { r.flush(&p, &Metrics::default()).await.unwrap() })
-        };
-        tokio::time::timeout(Duration::from_secs(5), async {
-            loop {
-                if !receipts.inflight.lock().unwrap().is_empty() {
-                    break;
-                }
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .unwrap();
-        let actual = receipts.page(&pool, "sp", "", &who).await.unwrap(); // SQL sees old0; actual inflight supplies full u64.
-        lock.commit().await.unwrap();
-        task.await.unwrap();
-        dispose_database(pool, &admin, &name).await;
-        assert_eq!(actual.rows, vec![(who, u64::MAX, u64::MAX - 1)]);
-    }
-}
+mod tests;

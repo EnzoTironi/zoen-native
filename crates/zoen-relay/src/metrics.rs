@@ -15,6 +15,7 @@ pub struct Metrics {
     pub upgrade_required: AtomicU64,
     pub receipts_flushed: AtomicU64,
     pub receipt_flushes: AtomicU64,
+    pub receipts_overloaded: AtomicU64,
 }
 
 impl Metrics {
@@ -117,6 +118,12 @@ impl Metrics {
             "Batched receipt statements",
             "counter",
             self.receipt_flushes.load(Relaxed),
+        );
+        put(
+            "zoen_relay_receipts_overloaded_total",
+            "Receipt admissions refused at the bounded backlog; sessions disconnected for replay",
+            "counter",
+            self.receipts_overloaded.load(Relaxed),
         );
         s
     }

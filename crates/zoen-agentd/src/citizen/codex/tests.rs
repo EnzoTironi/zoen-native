@@ -28,17 +28,25 @@ for raw in sys.stdin:
  elif method=='thread/start':
   p=m['params'];assert p['environments']==[]and p['dynamicTools']==[]and p['ephemeral']is True
   assert p['approvalPolicy']=='never'and p['runtimeWorkspaceRoots']==[]
+  assert 'review proposes the same tools'in p['developerInstructions']
+  assert 'say is an answer or clarification and cannot create a canonical approval request'in p['developerInstructions']
+  assert 'without a successful tool result'in p['developerInstructions']
   result={'thread':{'id':'thread-fixture','ephemeral':True},'modelProvider':'openai','model':'fixture-model','sandbox':{'type':'readOnly','networkAccess':False},'instructionSources':[]}
  elif method=='turn/start':
   assert m['params']['environments']==[]
   with open(MARKER,'a')as f:f.write('turn\n')
+  with open(MARKER+'.schema','w')as f:json.dump(m['params']['outputSchema'],f)
   if MODE=='oversize':print('x'*(1024*1024+1),flush=True);time.sleep(10)
   if MODE=='hang':time.sleep(10)
   if MODE=='request':send({'id':99,'method':'item/commandExecution/requestApproval','params':{'command':'must-not-run'}});time.sleep(10)
   if MODE=='overtake':send({'method':'item/started','params':{'threadId':'thread-fixture','item':{'type':'userMessage'}}})
   send({'id':i,'result':{'turn':{'id':'turn-fixture'}}})
   tool='unknown'if MODE=='unknown-tool'else'edit_deck'
-  text=json.dumps({'kind':'call','text':'','calls':[{'id':'call1','name':tool,'arguments_json':json.dumps({'shapeId':42,'text':'Real proposal'})}]})
+  text=json.dumps({'outcome':{'kind':'review'if MODE=='review'else'call','calls':[{'id':'call1','name':tool,'arguments_json':json.dumps({'shapeId':42,'text':'Real proposal'})}]}})
+  if MODE=='nested-contract':
+   context=json.loads(m['params']['input'][0]['text'])
+   offered=context['offered_tools']
+   text=json.dumps({'outcome':{'kind':'call','calls':[{'id':'nested1','name':offered[0]['name'],'arguments_json':'{}'}]}}if offered else{'outcome':{'kind':'quiet'}})
   if MODE=='after-tools':
    context=json.loads(m['params']['input'][0]['text'])
    assert context['completed_tool_steps']==EXPECTED['steps']
@@ -48,7 +56,7 @@ for raw in sys.stdin:
    assert read==EXPECTED['read']and read['slides']and read['slides'][0]['shapes']
    assert read['scope']==EXPECTED['scope']and read['head']==EXPECTED['head']
    arguments={'shapeId':read['slides'][0]['shapes'][0]['id'],'text':'Synthetic next step'}
-   text=json.dumps({'kind':'call','text':'','calls':[{'id':'after-read','name':'edit_deck','arguments_json':json.dumps(arguments)}]})
+   text=json.dumps({'outcome':{'kind':'call','calls':[{'id':'after-read','name':'edit_deck','arguments_json':json.dumps(arguments)}]}})
   send({'method':'item/completed','params':{'threadId':'thread-fixture','turnId':'turn-fixture','item':{'type':'agentMessage','text':text}}})
   send({'method':'turn/completed','params':{'threadId':'thread-fixture','turn':{'id':'turn-fixture','status':MODE if MODE in ['failed','interrupted']else'completed'}}})
   continue
@@ -133,6 +141,7 @@ async fn isolated_metadata_admission_returns_only_exact_offered_proposal() {
     assert_eq!(
         calls,
         vec![ToolCall {
+            requires_review: false,
             id: "call1".into(),
             name: "edit_deck".into(),
             arguments: json!({"shapeId":42,"text":"Real proposal"})
@@ -166,25 +175,75 @@ async fn output_bound_is_enforced_before_a_missing_newline_allocates_unbounded_m
 }
 #[tokio::test]
 async fn timeout_retires_an_actual_stalled_child_process() {
+    let (_dir, brain, marker) = fixture("hang");
+    let work = Work::new().unwrap();
+    // Establish the real child independently of the inference timeout. A slow
+    // interpreter/admission must not masquerade as a started, stalled session.
+    let mut session =
+        tokio::time::timeout(brain.timeout, Session::start(&brain.binary, &work.0, None))
+            .await
+            .expect("fixture session startup exceeded its harness budget")
+            .unwrap();
+    let pid = session.child.id().expect("fixture child has an owned PID");
+    assert_eq!(
+        std::fs::read_to_string(marker.with_extension("pid"))
+            .unwrap()
+            .parse::<u32>()
+            .unwrap(),
+        pid
+    );
+    assert!(
+        process_alive(pid),
+        "fixture child must be alive before timeout"
+    );
+    let result = tokio::time::timeout(Duration::from_millis(500), async move {
+        session
+            .rpc(
+                "turn/start",
+                json!({"threadId":"thread-fixture","environments":[],
+                    "outputSchema":output_schema(&[tool()])}),
+            )
+            .await
+    })
+    .await;
+    assert!(
+        result.is_err(),
+        "the stalled RPC must expire, not fail startup"
+    );
+    assert_eq!(std::fs::read_to_string(marker).unwrap(), "turn\n");
+    assert_retired(pid).await;
+}
+
+#[tokio::test]
+async fn full_brain_timeout_bounds_admission_without_assuming_a_started_session() {
     let (_dir, mut brain, marker) = fixture("hang");
     brain.timeout = Duration::from_millis(500);
     assert_eq!(
         think(&brain).await.unwrap_err(),
         "Codex local inference timed out"
     );
-    let pid = std::fs::read_to_string(marker.with_extension("pid")).unwrap();
+    // This timeout includes version and admission subprocesses. A PID marker
+    // may not exist yet; only the prestarted-session test proves a stalled child.
+    match std::fs::read_to_string(marker.with_extension("pid")) {
+        Ok(pid) => assert_retired(pid.parse().unwrap()).await,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => panic!("cannot read fixture PID marker: {error}"),
+    }
+}
+
+fn process_alive(pid: u32) -> bool {
+    std::process::Command::new("/bin/kill")
+        .args(["-0", &pid.to_string()])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .unwrap()
+        .success()
+}
+
+async fn assert_retired(pid: u32) {
     let until = tokio::time::Instant::now() + Duration::from_secs(2);
-    loop {
-        let alive = std::process::Command::new("/bin/kill")
-            .args(["-0", &pid])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .unwrap()
-            .success();
-        if !alive {
-            break;
-        }
+    while process_alive(pid) {
         assert!(
             tokio::time::Instant::now() < until,
             "stalled child remained alive"
@@ -195,15 +254,15 @@ async fn timeout_retires_an_actual_stalled_child_process() {
 #[test]
 fn malformed_ambiguous_unoffered_and_duplicate_calls_are_refused() {
     for output in [
-        json!({"kind":"call","text":"speak and call","calls":[]}),
-        json!({"kind":"call","text":"","calls":[{"id":"same","name":"edit_deck","arguments_json":"{}"},{"id":"same","name":"edit_deck","arguments_json":"{}"}]}),
-        json!({"kind":"call","text":"","calls":[{"id":"one","name":"edit_deck","arguments_json":"[]"}]}),
-        json!({"kind":"say","text":"ok","calls":[],"extra":true}),
+        json!({"outcome":{"kind":"call","text":"speak and call","calls":[]}}),
+        json!({"outcome":{"kind":"call","calls":[{"id":"same","name":"edit_deck","arguments_json":"{}"},{"id":"same","name":"edit_deck","arguments_json":"{}"}]}}),
+        json!({"outcome":{"kind":"call","calls":[{"id":"one","name":"edit_deck","arguments_json":"[]"}]}}),
+        json!({"outcome":{"kind":"say","text":"ok"},"extra":true}),
     ] {
         assert!(parse_output(&output.to_string(), &[tool()]).is_err());
     }
     assert_eq!(
-        parse_output(r#"{"kind":"quiet","text":"","calls":[]}"#, &[]).unwrap(),
+        parse_output(r#"{"outcome":{"kind":"quiet"}}"#, &[]).unwrap(),
         BrainOut::Silence
     );
 }
@@ -254,6 +313,7 @@ async fn actual_wasi_read_metadata_reaches_fake_codex_completed_tool_steps_exact
         .unwrap();
     let step = ToolStep {
         call: ToolCall {
+            requires_review: false,
             id: "accepted-synthetic-read".into(),
             name: "read_deck".into(),
             arguments: json!({"artifactId":"it_deck_codex_read_fixture"}),
@@ -282,6 +342,7 @@ async fn actual_wasi_read_metadata_reaches_fake_codex_completed_tool_steps_exact
     assert_eq!(
         out,
         BrainOut::CallTools(vec![ToolCall {
+            requires_review: false,
             id: "after-read".into(),
             name: "edit_deck".into(),
             arguments: json!({"shapeId":native_shape,"text":"Synthetic next step"}),
@@ -300,3 +361,9 @@ async fn actual_wasi_read_metadata_reaches_fake_codex_completed_tool_steps_exact
         .await
         .is_err());
 }
+
+#[path = "tests/explicit_review.rs"]
+mod explicit_review;
+
+#[path = "tests/output_contract.rs"]
+mod output_contract;

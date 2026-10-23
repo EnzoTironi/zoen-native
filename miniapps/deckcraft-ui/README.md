@@ -125,6 +125,24 @@ Its six dependency paths and four source paths have separate closed allowlists
 and complete before/after hashes. The original Shift experiment and default
 dependency remain available as controls. No shared Cargo source is modified.
 
+The input recipe applies five ordered, separately hashed patches. Each contains
+complete file diffs from the original `0017-eframe-ios-input.patch`; no upstream
+code or final source hashes change:
+
+| Part    | Responsibility                                        |
+| ------- | ----------------------------------------------------- |
+| `0017a` | Local eframe dependency and lock binding              |
+| `0017b` | Activation state, DOM text agent and runner handshake |
+| `0017c` | Primary pointer/touch contact routing                 |
+| `0017d` | DeckCraft canvas text admission                       |
+| `0017e` | Existing input contract tests                         |
+
+The builder refuses missing, repeated or reordered parts, checks every patch
+hash before applying the first, then verifies the same complete dependency tree
+and managed source hashes. Other experiments keep their single-patch receipt
+shape. Historical receipts retain the original patch identity in Git history;
+this source-only decomposition does not rebuild or qualify new runtime assets.
+
 The normal managed engine patch handles surrounding IME deletion through the
 existing Session, composition snapshot and undo/journal. It preserves selected
 text, Unicode scalar bounds, inherited run properties and paragraph marks.
@@ -136,3 +154,51 @@ multiple contacts and owner changes. These tests and WASM compilation do not
 prove that WKWebView opens the software keyboard on the first gesture. Keep the
 experiment unqualified until the final iPhone artifact passes input, correction,
 recovery and export. Building this package does not change the runtime asset pins.
+
+## First-touch cursor correction
+
+The reviewed successor recipe repeats the dependency arguments in this order:
+
+```sh
+--experiment eframe-ios-input --experiment-crate /absolute/eframe-0.36.2.crate \
+--experiment egui-touch-input --experiment-crate /absolute/egui-0.36.2.crate
+```
+
+The second stage uses the same checked archive/patch mechanism for egui 0.36.2.
+It requires the exact first-stage lock and source hashes, and records both
+dependency proofs. Other chains are refused before creating the output tree.
+The original recipes and their pins remain available.
+
+An initially unfocused touch TextEdit senses clicks so its parent can scroll.
+The pinned egui cursor code handled drag-capable responses but did not initialize
+the cursor for that click-only tap. Focus arrived on release with no cursor or
+IME output; the later frame missed the synchronous mobile activation opportunity.
+Patch 0018 initializes the cursor at a genuine click through the shared text
+selection path. It applies to ordinary eframe text fields across Craft apps.
+The existing eframe admission, drag thresholds and Notes save commands are retained.
+
+The focused regressions exercise the actual widget, first-release cursor/IME,
+pointer and touch selection, multiclicks, cancellation, disabled fields, and the
+actual DeckCraft Notes release callback with its existing admission gate. These
+source tests do not establish that the final WKWebView artifact opens the iOS
+keyboard or saves real user input. Candidate assets need separate native input,
+canonical save/reopen and export qualification before promotion.
+
+## First-touch admission before DOM focus
+
+The successor input recipe keeps the same eframe/egui revisions and opt-in
+chain. A real first Notes click can already own the egui TextEdit and publish
+IME while the DOM viewport is still unfocused. `Response::has_focus` includes
+that viewport state, so it previously refused this admitted click. The bounded
+host regression reproduces refusal with `RawInput.focused = false` and passes
+with `true` as the control.
+
+Patch family 0017 requires the current TextEdit memory owner for that real clicked,
+enabled response, together with current IME. It retains the synchronous outer
+contact/release eligibility, focus-loss cancellation, multitouch, drag and custom
+canvas ownership gates. It does not change global egui focus behavior. Patch
+0018 carries both real Notes focus cases, no-IME refusal and later-frame refusal.
+The recipe hashes bind these source changes; retained candidate04/05 packages
+and their receipts remain unchanged. These host tests do not establish the
+actual WebKit focus transition or software-keyboard acceptance. Candidate06
+still needs iPhone manual edit/save/reopen/export qualification (issue #174).

@@ -11,6 +11,8 @@
 //! `ZOEN_MD_CORPUS=dir1:dir2` adds more Markdown (every `*.md` below each dir).
 
 mod common;
+#[path = "fixtures/large_page.rs"]
+mod large_page_fixture;
 use common::*;
 use std::path::{Path, PathBuf};
 
@@ -99,6 +101,18 @@ async fn pages_and_files_travel_byte_for_byte() {
                 .map(PathBuf::from),
         );
     }
+    // Keep every real corpus root; this additive root keeps external payloads
+    // covered even when documentation is split into smaller source files.
+    let fixture_root = w.dir.join("large-page-fixture");
+    std::fs::create_dir(&fixture_root).unwrap();
+    let fixture_markdown = large_page_fixture::prepared_markdown();
+    std::fs::write(
+        fixture_root.join(large_page_fixture::FILE_NAME),
+        &fixture_markdown,
+    )
+    .unwrap();
+    let fixture_relative = format!("{}/{}", roots.len(), large_page_fixture::FILE_NAME);
+    roots.push(fixture_root);
     let src = w.dir.join("src");
     std::fs::write(w.dir.join("plan.md"), PLAN).unwrap();
     let mut expected: Vec<(String, Vec<u8>)> = vec![];
@@ -111,12 +125,19 @@ async fn pages_and_files_travel_byte_for_byte() {
                 continue;
             }
             let rel = format!("{n}/{}", f.strip_prefix(root).unwrap().display());
+            if rel == fixture_relative {
+                large_page_fixture::verify_bytes(&bytes);
+            }
             let dst = src.join(&rel);
             std::fs::create_dir_all(dst.parent().unwrap()).unwrap();
             std::fs::write(&dst, &bytes).unwrap();
             expected.push((rel, bytes));
         }
     }
+    assert!(
+        expected.iter().any(|(path, _)| path.starts_with("0/")),
+        "the real documentation corpus must remain nonempty"
+    );
     let total_bytes: usize = expected.iter().map(|(_, b)| b.len()).sum();
     let largest = expected.iter().map(|(_, b)| b.len()).max().unwrap();
     assert!(
@@ -181,7 +202,22 @@ async fn pages_and_files_travel_byte_for_byte() {
     for (rel, bytes) in &expected {
         match std::fs::read(out_dir.join(rel)) {
             Ok(b) if &b == bytes => identical += 1,
-            _ => differ.push(rel.clone()),
+            Ok(b) => {
+                let first = bytes.iter().zip(&b).position(|(a, b)| a != b);
+                eprintln!(
+                    "PAGE MISMATCH {rel}: changed expected_bytes={} actual_bytes={} first_difference={first:?}",
+                    bytes.len(), b.len()
+                );
+                differ.push(rel.clone());
+            }
+            Err(error) => {
+                eprintln!(
+                    "PAGE MISMATCH {rel}: unreadable kind={:?} expected_bytes={}",
+                    error.kind(),
+                    bytes.len()
+                );
+                differ.push(rel.clone());
+            }
         }
     }
     println!(
@@ -191,6 +227,7 @@ async fn pages_and_files_travel_byte_for_byte() {
         largest
     );
     assert!(differ.is_empty(), "these came back different: {differ:?}");
+    large_page_fixture::verify_bytes(&std::fs::read(out_dir.join(&fixture_relative)).unwrap());
     // The regression this guards: each page once cost more than the one before (290-700 ms in
     // debug), because every write re-read and re-sealed the whole queue under the core lock.
     // That shows up as growth across batches, which a slow or shared machine does not fake,
@@ -462,6 +499,7 @@ async fn pages_and_files_travel_byte_for_byte() {
         &big[9_000_000..9_000_064],
         &thumb[8..],
         &large_page.1[large_page.1.len() / 2..large_page.1.len() / 2 + 48],
+        &fixture_markdown.as_bytes()[fixture_markdown.len() / 2..fixture_markdown.len() / 2 + 48],
     ];
     for f in blob_files(&blobs) {
         let b = std::fs::read(&f).unwrap();

@@ -1,0 +1,282 @@
+{
+  "status": "PASS_TITLELESS_PHYSICAL_FRAME_WITH_OPEN_COLD_PULL_VARIANT",
+  "checkpoint": "v135",
+  "baseHead": "73c7574c30fb93efc6006a407dba23295ee02671",
+  "runtimeSourcePaths": 27,
+  "presentation": "iOS fullScreenModal with explicit guarded Pan/Tap/accessible close target; central empty native headerTitle clears the management and tool-form header under the grabber. Existing descendant removal guard owns flush, failure and replay.",
+  "firstAttemptNegative": {
+    "receipt": {
+      "path": "/private/tmp/zoen-ios-fullscreen-v135/header-02/initial-runtime-negative.json",
+      "sha256": "833cb733b33731adfbdf0d6c0abb72a9007b0f2ed33b815f22dd226bab41f81d"
+    },
+    "build": {
+      "path": "/private/tmp/zoen-ios-fullscreen-v135/build-acceptance.json",
+      "sha256": "529fb13afefe0317856b3bb1795c3433aa56883bbdffae5e4bf9413eb155cb73"
+    },
+    "managementGrabberCrossesNativeDetailsTitle": true,
+    "partialCanvasHandPanCloseListPassed": true,
+    "finalColdAndPeer": "NOT_RUN",
+    "runtimeAccepted": false
+  },
+  "checks": {
+    "initialSourceCutChecks": {
+      "path": "/private/tmp/zoen-ios-fullscreen-v135/checks-acceptance.json",
+      "sha256": "69089aef9c792b757470a2d020e36d5b348af565acc277c8361abec409b2fb0a"
+    },
+    "initialAppPassed": 886,
+    "initialNavigationPassed": 19,
+    "initialExcalidrawPassed": 64,
+    "followupApp": {
+      "receipt": {
+        "path": "/private/tmp/zoen-ios-fullscreen-v135/app-check-02.json",
+        "sha256": "8b93dc038a08e437a1583cef08b3f1c83dd180dafc90fa47f4dfb720b6d508d5"
+      },
+      "log": {
+        "path": "/private/tmp/zoen-ios-fullscreen-v135/app-check-02.log",
+        "sha256": "f08770e578e969f410a8e6fd8839dc867cc4b57338d2370336d195f580d6dfc1"
+      },
+      "passed": 886,
+      "failed": 0,
+      "skipped": 0
+    },
+    "initialFollowupExcalidrawNegative": {
+      "receipt": {
+        "path": "/private/tmp/zoen-ios-fullscreen-v135/excalidraw-check-02.json",
+        "sha256": "f4dde3274b57232e3235373e8b9949e42295f57c6176879c243dc9297289510f"
+      },
+      "log": {
+        "path": "/private/tmp/zoen-ios-fullscreen-v135/excalidraw-check-02.log",
+        "sha256": "64db6e7f3fa9893940af37f48e3911df813573460e8ddfd0a0ddace1b847121c"
+      },
+      "passed": 63,
+      "failed": 1,
+      "skipped": 0,
+      "failure": "The test starts its200ms grace at spawn before child stdin readiness. The controlled delayed-child trace isolates the fixture ordering; production helper remains unchanged."
+    },
+    "initialSourceCutScope": "Initial27-source cut before central header-title correction. These counts retain their original execution; the final full Excalidraw and app checks are recorded separately.",
+    "finalExcalidraw": {
+      "receipt": {
+        "path": "/private/tmp/zoen-ios-fullscreen-v135/excalidraw-check-03.json",
+        "sha256": "d423e3a56c1edb2d41b11499886bba345e687e8f68e64793155441fb8565f222"
+      },
+      "log": {
+        "path": "/private/tmp/zoen-ios-fullscreen-v135/excalidraw-check-03.log",
+        "sha256": "935d1ae4666981a361fe3fa3a96cc498f6f1adf15b9032d14a96e71645e68b6e"
+      },
+      "passed": 64,
+      "failed": 0,
+      "skipped": 0
+    },
+    "testOnlyFixtureReadinessCorrection": {
+      "map": {
+        "path": "/private/tmp/zoen-browser-lifecycle-v135/map.json",
+        "sha256": "725e16f30d40dcaeaba21315398acd88e5e6103d814351220314c4dfdfd8782e"
+      },
+      "causalTrace": {
+        "path": "/private/tmp/zoen-browser-lifecycle-v135/causal-order.log",
+        "sha256": "1c7ff31e57fc9c9b95a43144745ec83e451942acede8e65a73c48ba4659e3675"
+      },
+      "changedFile": "miniapps/excalidraw-ui/test/browser-lifecycle.test.mjs",
+      "afterSha256": "6a07e060bad4bfe9607fab34e034ef525994ab4c21a2ff99284a2f7936dc7b57",
+      "productionHelperUnchanged": true,
+      "controlledChildDelayMs": 350,
+      "spawnOnlyControl": "SIGTERM with null exit code",
+      "stdinReadyCandidate": "exit0 without signal",
+      "runtimeSourceCut27ExcludesThisLaterTestOnlyChange": true,
+      "noProductionBehaviorChangeOrTimeoutWaiver": true
+    }
+  },
+  "nativeBuild": {
+    "receipt": {
+      "path": "/private/tmp/zoen-ios-fullscreen-v135/native-acceptance.json",
+      "sha256": "f30dc20d7ace76d0ad4587cd6b15b21caa0314f2ac621b6e1fbbc344df83c21f"
+    },
+    "nativeInputs": 176,
+    "nativeArchiveSha256": "ec02a6d2bd80afda5fa54148e6d241af1cbf7915af3ab655f6578dd08f68ecb7",
+    "metadataExports": 331,
+    "actualChecksums": 218,
+    "old216ChecksumValuesRetained": true,
+    "allEightUpdatedHtmlManifestPairsAndUnchangedExcalidrawExact": true,
+    "firstStandardGeneratedProviderTransition": {
+      "path": "/private/tmp/zoen-ios-fullscreen-v135/generated-provider-provenance.json",
+      "sha256": "35c572cdd9981f3bc105d5047727b2feff87447481181a50d9faa54fc39af79f"
+    },
+    "strictInitialInputClosureNegativePreserved": "/private/tmp/zoen-ios-fullscreen-v135/seal-release-01.log"
+  },
+  "releaseAfterHeaderCorrection": {
+    "receipt": {
+      "path": "/private/tmp/zoen-ios-fullscreen-v135/header-02/build-acceptance.json",
+      "sha256": "135046b7e8bed13a10b71e4e53891326032317cee66390a762f7ffdb7d8baa8e"
+    },
+    "source914BeforeAfterExact": true,
+    "native176Exact": true,
+    "allNativeMachOSectionsByteExactToFirstArtifact": true,
+    "mainSha256": "6d06a414fd0ecc5fc527075bca773316b0a8cd3c909c906be73ad7f88457898a",
+    "hbcSha256": "e18e756ab4ea2e8e04df2dea923ebde38cf62a960586e69fd518265b66b02e2d",
+    "artifactFiles": 430,
+    "artifactManifestSha256": "96e70cc90c140c9c1479cb0ea7c0ef195276f060c5b37cc30ae8cebed32aacc0",
+    "actual18ResourceBodiesInMain": true,
+    "signatureDeepStrict": true,
+    "actualExportAndHermesCommandsObserved": true,
+    "noPodsRustOrCngRerun": true,
+    "noOriginalOrSupplementalSourceMapClaimForThisBuild": true,
+    "configuration": "Release arm64 iOS Simulator, ad-hoc QA signing; no Metro/CDP/runtime JS injection"
+  },
+  "publishedBaseCi": {
+    "head": "73c7574c30fb93efc6006a407dba23295ee02671",
+    "receipt": {
+      "path": "/private/tmp/zoen-ci-pr140-73c7574c/final-acceptance.json",
+      "sha256": "69640fbb98c1db1c91962d7e202a57e357ee25ddf39c20fa9ffab8381fe55700"
+    },
+    "success": 11,
+    "failed": 0,
+    "cancelled": 0,
+    "jobLevelSkipped": 0,
+    "actualResourceTests": {
+      "excalidraw": 62,
+      "sharedSdk": 52,
+      "failed": 0,
+      "skipped": 0,
+      "realBrowserCases": 9,
+      "runner": "Ubuntu24.04.5",
+      "proof": {
+        "path": "/private/tmp/zoen-ci-pr140-73c7574c/initial/miniapp-resources-success-proof.json",
+        "sha256": "abd426e5b00494afc9d79b5a6aab247d6381f6209abf1df0f98e8174becee47c"
+      }
+    },
+    "api28ConsoleCompleted": 108,
+    "api28ConsoleFailed": 0,
+    "api28ConsoleSkipped": 2,
+    "api35ConsoleCompleted": 106,
+    "api35ConsoleFailed": 0,
+    "api35ConsoleSkipped": 0,
+    "api35Teardown": "success",
+    "junitXmlReinspectedThisRun": false,
+    "scope": "Immutable73c only; later iOS five-path changes and test-only follow-up require their own CI. New successes do not diagnose or erase previous eff nine successes and two failed jobs.",
+    "newIosSourcePaths": 5,
+    "newIosAndTestOnlyChangesCiQualified": false
+  },
+  "historicalEvidencePreserved": "All original checkpoint objects, Android ordinary-cold proof, original60s AX unmet result and explicit pixel-classification corrections remain unchanged. Previous eff API28 PageDraft timing cause is unresolved; previous API35 offline teardown failure remains recorded.",
+  "fullAppParityAccepted": false,
+  "productionReadinessAccepted": false,
+  "scaleReadinessAccepted": false,
+  "runtimeSourceCut": {
+    "path": "/private/tmp/zoen-ios-fullscreen-v135/header-02/source-cut-27.json",
+    "sha256": "c59951ed36d74d895428f7184c06a1d72a5b8f9e2bbf95651277367b5d97be9f"
+  },
+  "actualRuntime": {
+    "receipt": {
+      "path": "/private/tmp/zoen-ios-fullscreen-v135/header-02/runtime-02/acceptance.json",
+      "sha256": "7c4411d57c6aee9696babf83de784dae81c7a450a04e1d88027e5a59495c28f3"
+    },
+    "scope": "Owned isolated iPhone18 Pro / iOS27 simulator, preserving synthetic QA134 public-protocol link to the real local backend. No deployed production backend, human-account or physical-device acceptance.",
+    "deviceUdid": "6655D39B-D8C9-4C24-8167-E4D8B2B3C76D",
+    "physicalTopAndBottomCanvasAccepted": true,
+    "visibleHostTitleAndSaveBandAbsent": true,
+    "managementHeadingCollisionCorrected": true,
+    "toolHeaderAndBackClear": true,
+    "listFullFrameAndControlsClear": true,
+    "publicLinkProof": {
+      "path": "/private/tmp/zoen-ios-fullscreen-v135/runtime-01/two-code-match-before-confirm.json",
+      "sha256": "d490fe2ebcfb5cb0ebac81545f04f1118eea305bd7025f69d5709060f794e9c7"
+    },
+    "localBackendPublicProtocolOnly": true,
+    "processCold": {
+      "beforePid": 86049,
+      "afterPid": 87340,
+      "deviceReboot": false
+    },
+    "coldCanvas": {
+      "actualPixelShowsOneRectangle": true,
+      "incorrectAXImageSelectorTimedOut15s": true,
+      "actualRoleIsAXStaticText": true,
+      "correctedActualRectangleButtonWaitPassed": true,
+      "noStartupStallInferred": true,
+      "notPreciseStartupPerformance": true
+    },
+    "gestureInputs": {
+      "managementPull450MomentumFalse": "Home observed",
+      "unmodifiedToolFormPull450MomentumFalse": "Home observed",
+      "listPull450MomentumFalse": "input sent but Home not independently observed before process restart; not promoted",
+      "firstCanvasPullAfterCold450MomentumFalse": {
+        "timestampMs": 1792491208024,
+        "homeWait10s": "UNMET",
+        "pixelsStillCanvas": true,
+        "causeNotEstablished": true
+      },
+      "tapSameCanvasGrabber": {
+        "timestampMs": 1792491253490,
+        "homeWait": "PASS86ms"
+      },
+      "warmCanvasPull650MomentumTrue": {
+        "timestampMs": 1792491363872,
+        "homeWait": "PASS68ms"
+      },
+      "warmCanvasPull450MomentumFalse": {
+        "timestampMs": 1792491435997,
+        "homeWait": "PASS96ms"
+      },
+      "noSpeculativeGestureImplementationChange": true,
+      "nextMissingEvidenceIfReproduced": "Actual pan activation/terminal state/translations and guard decision metadata"
+    },
+    "canvasNativeGrabberPullConsistencyAccepted": false,
+    "listPullHomeIndependentlyObservedBeforeCold": false,
+    "peerAfterCold": {
+      "bytes": 678,
+      "sha256": "74c2b72c8daef8856c5eadd89565fb2c49bb4b1362e7c95adb26624ce7c73fd2",
+      "exactOriginalDocument": true,
+      "rectangleCount": 1
+    },
+    "peerAfterAllCloseInputs": {
+      "publicCliHistorical": true,
+      "afterAllObservedCloseInputs": true,
+      "bytes": 678,
+      "sha256": "74c2b72c8daef8856c5eadd89565fb2c49bb4b1362e7c95adb26624ce7c73fd2",
+      "exactOriginal": true,
+      "exitCode": 0,
+      "oneRectangle": true
+    },
+    "screens": [
+      {
+        "path": "/private/tmp/zoen-ios-fullscreen-v135/header-02/runtime-02/screens/01-management-fixed.png",
+        "sha256": "ffaa7016ae8803ac38c9ac25a2d9e54916656517617bdeb9b900e644c4ecacc1"
+      },
+      {
+        "path": "/private/tmp/zoen-ios-fullscreen-v135/header-02/runtime-02/screens/02-tool-header-fixed.png",
+        "sha256": "428a7492f41d85be41181dfd8d12b9cd06af6abd99815e0fcfe297af44cb7ab0"
+      },
+      {
+        "path": "/private/tmp/zoen-ios-fullscreen-v135/header-02/runtime-02/screens/03-list-full.png",
+        "sha256": "13a12ac6d65edc8fa03209fbf93dbd55f18d58473717e26b227a4676d83e013d"
+      },
+      {
+        "path": "/private/tmp/zoen-ios-fullscreen-v135/header-02/runtime-02/screens/04-cold-canvas-full.png",
+        "sha256": "ad1f2ee228454770b0c1fb7759ce29601cab205e4c83c6f24a731643fcb8bbd0"
+      },
+      {
+        "path": "/private/tmp/zoen-ios-fullscreen-v135/header-02/runtime-02/screens/05-first-cold-pull-retained-negative.png",
+        "sha256": "c724003dc4468fc2b4d60abe9d3ffd29e161b4a1a0746c6f70b615f085c3e792"
+      },
+      {
+        "path": "/private/tmp/zoen-ios-fullscreen-v135/header-02/runtime-02/screens/06-first-cold-pull-later-negative.png",
+        "sha256": "c724003dc4468fc2b4d60abe9d3ffd29e161b4a1a0746c6f70b615f085c3e792"
+      },
+      {
+        "path": "/private/tmp/zoen-ios-fullscreen-v135/header-02/runtime-02/screens/07-warm-pull-home.png",
+        "sha256": "ccc8686096079f72cf4e16ea2de9a87ae3f3d830bdfd90920b4ab2fdd11dbf33"
+      }
+    ],
+    "walkthrough": {
+      "path": "/private/tmp/zoen-ios-fullscreen-v135/header-02/.argent/flows/ios-fullscreen-v135-002.yaml",
+      "steps": 17,
+      "crossTreeWarnings": 5,
+      "incorrectRoleWaitUnmet": 1,
+      "replayQualified": false
+    },
+    "priorHandCanvasPanScope": "First artifact27 before the header-title correction: Hand tool selected, vertical canvas pan retained, subsequent grabber closed. This partial first-artifact observation is not relabeled as final-artifact execution.",
+    "gestureRobustness": "PENDING: first450ms momentum=false canvas pull after cold leaves actual canvas pixels and unmet10s Home wait; cause unclassified. Tap then closes; separate warm650ms momentum=true and450ms momentum=false pulls reach Home. No loading-stall, gesture-product-fix or all-green gesture claim.",
+    "physicalDeviceVoiceOverNativeHeldSaveFailureAndGestureRobustness": "PENDING",
+    "noMetroCdpPrivateStateOrHumanDevices": true,
+    "performanceAcceptance": false
+  }
+}

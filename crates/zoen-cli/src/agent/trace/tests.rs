@@ -14,6 +14,7 @@ const SOURCE: &str = "ev_trace_synthetic";
 
 fn ask(rule: &str) -> ToolAsk {
     let call = ToolCall {
+        requires_review: false,
         id: CANARY.into(),
         name: CANARY.into(),
         arguments: json!({"private": CANARY}),

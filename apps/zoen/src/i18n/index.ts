@@ -1,3 +1,4 @@
+import { attachmentTabs } from './catalogs/attachment-tabs.ts';
 import { access } from './catalogs/access.ts';
 import { activity } from './catalogs/activity.ts';
 import { agents } from './catalogs/agents.ts';
@@ -36,6 +37,7 @@ import {
 
 // Feature owners only add their catalog import and assembly entry here.
 const catalogs = {
+  attachmentTabs,
   access,
   activity,
   agents,

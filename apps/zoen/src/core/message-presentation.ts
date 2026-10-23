@@ -90,3 +90,9 @@ export function messageCanRecoverMedia(entry: TimelineEntry) {
 export function messageHasAttachment(entry: TimelineEntry) {
   return !entry.deleted && Boolean(entry.voice || messageCard(entry));
 }
+
+/** Human App shares present the canonical cover alone; Agent text remains authored content. */
+export function messageHasStandaloneAppCard(entry: TimelineEntry): boolean {
+  const card = messageCard(entry);
+  return entry.author.kind === 'Person' && card?.kind_id === 'app' && card.app != null;
+}

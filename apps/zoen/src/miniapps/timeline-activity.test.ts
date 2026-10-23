@@ -30,6 +30,22 @@ const compiled = transformSync(readFileSync(sourcePath, 'utf8'), {
     supportsReactCompiler: true,
   },
 }).code;
+const serviceCompiled = transformSync(
+  readFileSync(new URL('../components/service-message.tsx', import.meta.url), 'utf8'),
+  {
+    filename: fileURLToPath(new URL('../components/service-message.tsx', import.meta.url)),
+    configFile: false,
+    babelrc: false,
+    presets: [require.resolve('babel-preset-expo')],
+    caller: {
+      name: 'metro',
+      platform: 'ios',
+      engine: 'hermes',
+      isDev: false,
+      supportsReactCompiler: true,
+    },
+  },
+).code;
 type Element = { type: string; props: Record<string, unknown> };
 function elements(value: unknown): Element[] {
   if (Array.isArray(value)) return value.flatMap(elements);
@@ -75,7 +91,10 @@ function render(
   options: { disabled?: boolean; highlighted?: boolean } = {},
 ) {
   const routes: unknown[] = [];
-  const jsx = (type: string, props: Record<string, unknown>) => ({ type, props });
+  const jsx = (
+    type: string | ((props: Record<string, unknown>) => Element),
+    props: Record<string, unknown>,
+  ): Element => (typeof type === 'function' ? type(props) : { type, props });
   let cursor = 0;
   const hooks: unknown[] = [];
   const modules: Record<string, unknown> = {
@@ -129,6 +148,15 @@ function render(
     },
     './telegram-service-message': serviceGeometry,
   };
+  modules['./message-interaction'] = modules['../components/message-interaction'];
+  modules['../miniapps/telegram-service-message'] = serviceGeometry;
+  const serviceModule = { exports: {} };
+  runInNewContext(serviceCompiled, {
+    module: serviceModule,
+    exports: serviceModule.exports,
+    require: (name: string) => modules[name],
+  });
+  modules['../components/service-message'] = serviceModule.exports;
   const module = { exports: {} as { MiniappTimelineActivityView(props: unknown): Element } };
   runInNewContext(compiled, {
     module,

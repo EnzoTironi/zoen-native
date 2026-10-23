@@ -1,0 +1,8 @@
+{
+  "localCommits": ["36b1d480", "acdedb52", "cd578f8c"],
+  "remotePullRequestHeadAtPrepare": "1b292c423336f3d9541c869808c10b95fbea641c",
+  "pullRequest": 140,
+  "draft": true,
+  "newLocalCommitsPushedAtPrepare": false,
+  "sourceByteIdenticalCommitAfterFinalCheck": "cd578f8c70034b454ee8cb7463b1c1178eec042f"
+}

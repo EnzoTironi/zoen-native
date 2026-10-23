@@ -349,7 +349,11 @@ async fn online_synced_empty_outbox_with_unsettled_mls_never_becomes_ready() {
     })
     .await
     .expect("the fixture must observe an MLS publication attempt");
-    assert!(prepared(&citizen.0, &readiness).await.is_err());
+    let error = prepared(&citizen.0, &readiness).await.unwrap_err();
+    assert!(
+        error.contains("observed online=true synced=true pending=0"),
+        "{error}"
+    );
     let connection = citizen.0.connection();
     assert_eq!(connection.state, "online");
     assert!(connection.synced);

@@ -24,6 +24,8 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls-no-p
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "signal", "sync"] }
 
 [dev-dependencies]
+documents.workspace = true
+serde.workspace = true
 # Journeys run the scripted brain and fault points; production builds never have them.
 zoen-agentd = { path = "../zoen-agentd", features = ["scripted"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }

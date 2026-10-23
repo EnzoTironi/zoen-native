@@ -1,0 +1,28 @@
+{
+  "id": "native-rust-local-production-environment-v118",
+  "decision": "Run the existing native Rust backend; retire custom Cloudflare Workers/Durable Objects adaptation. Keep Cloudflare DNS/CDN/static hosting/S3-compatible storage where useful.",
+  "immediatePhase": "LOCAL_MULTI_RELAY_DELIVERY_VERIFIED",
+  "requiredServices": [
+    "native Rust relay container",
+    "real PostgreSQL",
+    "real FoundationDB",
+    "S3-compatible encrypted object storage"
+  ],
+  "requiredLocalProof": [
+    "persistent data and migrations",
+    "health/readiness",
+    "real client sync/media/receipts/recovery",
+    "process restart and interrupted operations",
+    "backup/restore and release rollback"
+  ],
+  "archivedPendingAdapterChanges": "/private/tmp/zoen-cloudflare-retired-v118/manifest.json",
+  "historicalAdapterCheckpoint": "currentBackendCheckpoint retains historical v114a attribution; it is not the active runtime decision.",
+  "cloudProvisioningRequestedNow": false,
+  "publicBackendStillRequiredForFinalGoal": true,
+  "localEnvironmentVerified": true,
+  "productionReadinessAccepted": false,
+  "scaleReadinessAccepted": false,
+  "localVerificationScope": "Real local native server/storage/client and cold restore on fresh volumes. Actual client completed before external restart/restore; ciphertext and datastore comparisons follow it. Not production/scale, provider or post-restore device-key recovery acceptance.",
+  "releaseRollbackVerified": false,
+  "crossRelayDeliveryVerified": true
+}

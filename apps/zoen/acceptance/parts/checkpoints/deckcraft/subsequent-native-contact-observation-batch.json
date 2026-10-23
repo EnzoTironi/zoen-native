@@ -1,0 +1,19 @@
+{
+  "date": "2026-10-21",
+  "source": "5c2212a0ac3d3b88daad22227624812a8bfdd4ea",
+  "status": "OBSERVED_FAILURE: first single enters text, software keyboard absent",
+  "receipt": "/private/tmp/zoen-ios-contact-runtime-v238/native/native-result.json",
+  "receiptSha256": "5790e8a3b0d79b36a73cd3254f9b30f60ebba8e768a3e0ce2723a1ff15efcbc6",
+  "evidenceManifestSha256": "4c28ad31ad7fb41c325cc5f1461d5068b6b2e0a516c74c24a41e5ad224cd5736",
+  "artifactManifestSha256": "02a33584fa3a87d1918f5a6a112b92c77b431d63485a539dab897d85922ace9d",
+  "nativeArtifact": "/private/tmp/zoen-ios-contact-runtime-v238/release-01/installed-verification.json",
+  "nativeBuild": "Release PASS71.94s; strict signature and exact452files match after preserving install; widget runtime remains unqualified",
+  "configuredRustTests": "574 client-core and3 app registration PASS on7ef8e1f3; sole subsequent TS fixture delta explicitly checked; no Rust or production changes",
+  "appCheck": "1370 passed,0 failed/0 skipped; TypeScript,Oxlint,Oxfmt PASS; app-check02 after configured-native-core02",
+  "nativeObserved": "First fresh single displays text caret/selection; TextAgent active by TouchEnd capture; visible OS keyboard check fails unmet after3000ms",
+  "numericTrace": "12 unsaturated v2 rows, exact20columns; PointerDown precedes TouchStart; DOM observations do not prove internal ownership or cause",
+  "recordingBoundary": "10-step live diagnostic;2 cross-tree warnings, raw unlabeled canvas point, failed keyboard wait; NOT_REPLAYED and not accepted regression",
+  "documentBoundary": "No typing; canonical byte/version comparison NOT_PERFORMED; historical v236 recovery and version7 exports retain their original scope",
+  "finalState": "Teste Zoen empty timeline/composer, keyboard closed;3 existing chats and2 App cards retained",
+  "wholeProductAcceptance": false
+}

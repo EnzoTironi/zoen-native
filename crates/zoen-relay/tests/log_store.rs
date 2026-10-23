@@ -10,6 +10,9 @@ use protocol::{Envelope, Sequenced};
 use types::{EventBody, Privacy, Role, Seen, SpaceKind, GENESIS_PREV};
 use zoen_relay::log::{fdb::FdbLog, LogStore, Sequencing};
 
+#[path = "log_store/mls_contracts.rs"]
+mod mls_contracts;
+
 fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -97,592 +100,13 @@ async fn read_all(log: &FdbLog, space: &str, page: usize) -> Vec<Sequenced> {
     }
 }
 
-async fn concurrent_writers_on_one_space_build_one_gapless_chain() {
-    let log = store();
-    let a = Arc::new(Author::root(Signer::generate()));
-    let (space, genesis) = create(&log, &a).await;
-    let mut tasks = Vec::new();
-    for w in 0..8 {
-        let (log, a, space, genesis) = (log.clone(), a.clone(), space.clone(), genesis.clone());
-        tasks.push(tokio::spawn(async move {
-            for i in 0..40 {
-                let env = sign(&a, &space, Some(genesis.clone()), message(w * 100 + i));
-                assert!(matches!(
-                    log.append(&env, true).await,
-                    Ok(Sequencing::New { .. })
-                ));
-            }
-        }));
-    }
-    for t in tasks {
-        t.await.unwrap();
-    }
-    let events = read_all(&log, &space, 1000).await;
-    assert_eq!(events.len(), 321);
-    assert_chain(&space, &events);
-    log.drop_cell().await.unwrap();
-}
-
-async fn catch_up_returns_every_event_past_partial_batches() {
-    let log = store();
-    let a = Author::root(Signer::generate());
-    let (space, genesis) = create(&log, &a).await;
-    for i in 0..1200 {
-        log.append(&sign(&a, &space, Some(genesis.clone()), message(i)), true)
-            .await
-            .unwrap();
-    }
-    let events = read_all(&log, &space, 500).await;
-    assert_eq!(
-        events.len(),
-        1201,
-        "pages of 500 come back full until the end"
-    );
-    assert_chain(&space, &events);
-    assert_eq!(log.read(&space, 1100, 500).await.unwrap().len(), 101);
-    log.drop_cell().await.unwrap();
-}
-
-async fn a_retried_envelope_is_answered_with_the_stored_copy() {
-    let log = store();
-    let a = Author::root(Signer::generate());
-    let (space, genesis) = create(&log, &a).await;
-    let env = sign(&a, &space, Some(genesis), message(0));
-    let Ok(Sequencing::New { ev: first, .. }) = log.append(&env, true).await else {
-        panic!()
-    };
-    let Ok(Sequencing::Duplicate { ev, .. }) = log.append(&env, true).await else {
-        panic!("not deduplicated")
-    };
-    assert_eq!((ev.seq, ev.hash), (first.seq, first.hash));
-    assert_eq!(read_all(&log, &space, 500).await.len(), 2);
-    log.drop_cell().await.unwrap();
-}
-
-async fn membership_changes_commit_with_the_event_that_makes_them() {
-    let log = store();
-    let ana = Author::root(Signer::generate());
-    let bruno = Author::root(Signer::generate());
-    let (space, genesis) = create(&log, &ana).await;
-    let r = log
-        .append(
-            &sign(&bruno, &space, Some(genesis.clone()), message(0)),
-            true,
-        )
-        .await;
-    assert!(r.is_err_and(|r| r.reason.contains("not a member")));
-
-    let add = EventBody::MemberAdded {
-        identity: bruno.identity.clone(),
-        role: Role::Member,
-    };
-    let Ok(Sequencing::New {
-        audience, joined, ..
-    }) = log
-        .append(&sign(&ana, &space, Some(genesis.clone()), add), true)
-        .await
-    else {
-        panic!("add refused")
-    };
-    assert_eq!(joined.as_deref(), Some(bruno.identity.as_str()));
-    assert!(audience.contains(&bruno.identity) && audience.contains(&ana.identity));
-    assert_eq!(
-        log.role(&space, &bruno.identity).await.unwrap(),
-        Some(Role::Member)
-    );
-    assert_eq!(
-        log.spaces_of(&bruno.identity).await.unwrap(),
-        vec![space.clone()]
-    );
-    assert!(log
-        .append(
-            &sign(&bruno, &space, Some(genesis.clone()), message(1)),
-            true
-        )
-        .await
-        .is_ok());
-
-    let remove = EventBody::MemberRemoved {
-        identity: bruno.identity.clone(),
-    };
-    let Ok(Sequencing::New { audience, .. }) = log
-        .append(&sign(&ana, &space, Some(genesis.clone()), remove), true)
-        .await
-    else {
-        panic!("remove refused")
-    };
-    assert!(
-        audience.contains(&bruno.identity),
-        "the removed member learns it"
-    );
-    assert!(log.spaces_of(&bruno.identity).await.unwrap().is_empty());
-    assert!(log
-        .append(&sign(&bruno, &space, Some(genesis), message(2)), true)
-        .await
-        .is_err());
-    log.drop_cell().await.unwrap();
-}
-
-async fn invites_are_bounded_by_uses() {
-    let log = store();
-    let ana = Author::root(Signer::generate());
-    let (space, _) = create(&log, &ana).await;
-    let inv = log
-        .create_invite(&ana.identity, &space, Role::Member, 1, 3600)
-        .await
-        .unwrap();
-    let preview = log.preview_invite(&inv.code).await.unwrap();
-    assert_eq!(
-        (preview.space.as_str(), preview.members),
-        (space.as_str(), 1)
-    );
-
-    let join = |who: &Author| {
-        let mut env = sign(
-            who,
-            &space,
-            None,
-            EventBody::MemberAdded {
-                identity: who.identity.clone(),
-                role: Role::Member,
-            },
-        );
-        env.invite = Some(inv.code.to_lowercase());
-        env
-    };
-    let carla = Author::root(Signer::generate());
-    assert!(matches!(
-        log.append(&join(&carla), true).await,
-        Ok(Sequencing::New { .. })
-    ));
-    let dani = Author::root(Signer::generate());
-    assert!(
-        log.append(&join(&dani), true).await.is_err(),
-        "one use only"
-    );
-    assert!(log.preview_invite(&inv.code).await.is_err());
-    let stored = read_all(&log, &space, 500).await;
-    assert!(
-        stored.iter().all(|e| e.env.invite.is_none()),
-        "codes are never stored"
-    );
-    log.drop_cell().await.unwrap();
-}
-
-async fn two_storage_clients_share_one_chain_and_one_membership() {
-    let cell = types::new_id("t");
-    let relays = [store_on(&cell), store_on(&cell)];
-    let ana = Arc::new(Author::root(Signer::generate()));
-    let (space, genesis) = create(&relays[0], &ana).await;
-    let mut tasks = Vec::new();
-    for w in 0..8 {
-        let log = relays[w % 2].clone();
-        let (a, space, genesis) = (ana.clone(), space.clone(), genesis.clone());
-        tasks.push(tokio::spawn(async move {
-            for i in 0..40 {
-                let env = sign(&a, &space, Some(genesis.clone()), message(w * 100 + i));
-                assert!(matches!(
-                    log.append(&env, true).await,
-                    Ok(Sequencing::New { .. })
-                ));
-            }
-        }));
-    }
-    for t in tasks {
-        t.await.unwrap();
-    }
-    let events = read_all(&relays[1], &space, 1000).await;
-    assert_eq!(events.len(), 321);
-    assert_chain(&space, &events);
-
-    // Both relays now hold a warm cache of the Space. A change through one must bind the
-    // other.
-    let bruno = Author::root(Signer::generate());
-    let add = EventBody::MemberAdded {
-        identity: bruno.identity.clone(),
-        role: Role::Member,
-    };
-    relays[0]
-        .append(&sign(&ana, &space, Some(genesis.clone()), add), true)
-        .await
-        .unwrap();
-    assert!(
-        relays[1]
-            .append(
-                &sign(&bruno, &space, Some(genesis.clone()), message(1)),
-                true
-            )
-            .await
-            .is_ok(),
-        "the other relay sees the new member"
-    );
-    let remove = EventBody::MemberRemoved {
-        identity: bruno.identity.clone(),
-    };
-    relays[1]
-        .append(&sign(&ana, &space, Some(genesis.clone()), remove), true)
-        .await
-        .unwrap();
-    let r = relays[0]
-        .append(&sign(&bruno, &space, Some(genesis), message(2)), true)
-        .await;
-    assert!(
-        r.is_err_and(|r| r.reason.contains("not a member")),
-        "and the removal"
-    );
-    assert_chain(&space, &read_all(&relays[0], &space, 1000).await);
-    relays[0].drop_cell().await.unwrap();
-}
-
-async fn duplicates_in_one_batch_get_the_one_stored_copy() {
-    // On a single-threaded runtime the Space's worker can't run until every copy below is
-    // queued, so they meet in one batch every time.
-    tokio::task::spawn_blocking(|| {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(duplicates_in_one_batch())
-    })
-    .await
-    .unwrap();
-}
-
-async fn duplicates_in_one_batch() {
-    let log = store();
-    let a = Arc::new(Author::root(Signer::generate()));
-    let (space, genesis) = create(&log, &a).await;
-    // Each copy is queued on its first poll, and `join_all` polls them all before yielding.
-    let twin = sign(&a, &space, Some(genesis.clone()), message(0));
-    let copies = futures_util::future::join_all((0..16).map(|_| log.append(&twin, true))).await;
-    let mut new = 0;
-    let mut stored = Vec::new();
-    for c in copies {
-        match c {
-            Ok(Sequencing::New { ev, .. }) => {
-                new += 1;
-                stored.push((ev.seq, ev.hash));
-            }
-            Ok(Sequencing::Duplicate { ev, .. }) => stored.push((ev.seq, ev.hash)),
-            Err(r) => panic!("refused: {}", r.reason),
-        }
-    }
-    assert_eq!(new, 1, "one copy is sequenced");
-    assert!(
-        stored.windows(2).all(|w| w[0] == w[1]),
-        "every copy answers with it"
-    );
-    let events = read_all(&log, &space, 1000).await;
-    assert_eq!(events.len(), 2);
-    assert_chain(&space, &events);
-    log.drop_cell().await.unwrap();
-}
+#[path = "log_store/ordering.rs"]
+mod ordering;
+use ordering::*;
 
 /// ADR 0026 at the store: the privacy is part of the Space state, so a relay that never
 /// saw the creation still refuses plaintext, and a checkpoint naming an entry long out of
 /// the cache is checked against the stored chain.
-async fn end_to_end_spaces_hold_ciphertext_on_every_relay() {
-    let cell = types::new_id("t");
-    let (warm, cold) = (store_on(&cell), store_on(&cell));
-    let ana = Author::device(&Signer::generate(), Signer::generate());
-    let space = types::new_id("sp");
-    let body = EventBody::SpaceCreated {
-        title: "t".into(),
-        kind: SpaceKind::Group,
-        privacy: Privacy::EndToEnd,
-    };
-    let Ok(Sequencing::New { ev, .. }) = warm.append(&sign(&ana, &space, None, body), true).await
-    else {
-        panic!("genesis refused");
-    };
-    let genesis = Seen {
-        seq: ev.seq,
-        hash: ev.hash,
-    };
-    let seal = |seen: &Seen| {
-        let data = protocol::Sealed::new(protocol::SealedKind::Application, 3, vec![9; 48]);
-        Envelope::sealed(
-            &ana,
-            &space,
-            &types::new_ulid(now_ms()),
-            now_ms(),
-            Some(seen),
-            data,
-        )
-    };
-    for _ in 0..3 {
-        assert!(matches!(
-            warm.append(&seal(&genesis), true).await,
-            Ok(Sequencing::New { .. })
-        ));
-    }
-    let r = cold
-        .append(&sign(&ana, &space, Some(genesis.clone()), message(0)), true)
-        .await;
-    assert!(
-        r.is_err_and(|r| r.reason.contains("end-to-end")),
-        "a cold relay refuses plaintext"
-    );
-    assert!(matches!(
-        cold.append(&seal(&genesis), true).await,
-        Ok(Sequencing::New { .. })
-    ));
-
-    let checkpoint = |upto: Seen| EventBody::Checkpoint {
-        upto,
-        epoch: 0,
-        digest: "d".into(),
-    };
-    let fresh = store_on(&cell);
-    let ok = fresh
-        .append(
-            &sign(
-                &ana,
-                &space,
-                Some(genesis.clone()),
-                checkpoint(genesis.clone()),
-            ),
-            true,
-        )
-        .await;
-    assert!(
-        matches!(ok, Ok(Sequencing::New { .. })),
-        "an old upto is read from the chain"
-    );
-    let forged = Seen {
-        seq: 0,
-        hash: "f".repeat(64),
-    };
-    let r = fresh
-        .append(
-            &sign(&ana, &space, Some(genesis.clone()), checkpoint(forged)),
-            true,
-        )
-        .await;
-    assert!(
-        r.is_err_and(|r| r.reason.contains("checkpoint")),
-        "and must match it"
-    );
-
-    let events = read_all(&warm, &space, 100).await;
-    assert_eq!(events.len(), 6);
-    assert_chain(&space, &events);
-    assert_eq!(events.iter().filter(|e| e.env.is_sealed()).count(), 4);
-    warm.drop_cell().await.unwrap();
-}
-
-/// ADR 0026: two admins add Carla at once. Both commits were made at the same epoch; the
-/// relay keeps the first, refuses the second and the Welcome that rode on it, and a cold
-/// relay knows the epoch too.
-async fn one_commit_per_epoch_and_each_welcome_follows_its_commit() {
-    use mls::{sealed::state_key, Device};
-    use protocol::{Sealed, SealedKind, STALE_COMMIT};
-    let cell = types::new_id("t");
-    let (warm, cold) = (store_on(&cell), store_on(&cell));
-    let people: Vec<Author> = (0..3)
-        .map(|_| Author::device(&Signer::generate(), Signer::generate()))
-        .collect();
-    let (ana, bruno, carla) = (&people[0], &people[1], &people[2]);
-    let dbs: Vec<rusqlite::Connection> = (0..3)
-        .map(|_| {
-            let mut c = rusqlite::Connection::open_in_memory().unwrap();
-            mls::migrate(&mut c).unwrap();
-            c
-        })
-        .collect();
-    let device = |i: usize| {
-        let (a, secret) = (&people[i], people[i].key.secret());
-        let cert = a.cert.as_deref().unwrap();
-        Device::new(&dbs[i], state_key(&secret), &a.identity, secret, cert).unwrap()
-    };
-    let (d_ana, d_bruno, d_carla) = (device(0), device(1), device(2));
-    let space = types::new_id("sp");
-    let handshake = |a: &Author, kind, data: Vec<u8>, seen: &Seen| {
-        let data = Sealed::new(kind, mls::SUITE_ID, data);
-        let cid = types::new_ulid(now_ms());
-        Envelope::sealed(a, &space, &cid, now_ms(), Some(seen), data)
-    };
-    let at = |ev: &Sequenced| Seen {
-        seq: ev.seq,
-        hash: ev.hash.clone(),
-    };
-
-    let created = EventBody::SpaceCreated {
-        title: "t".into(),
-        kind: SpaceKind::Group,
-        privacy: Privacy::EndToEnd,
-    };
-    let mut head = at(&landed(
-        warm.append(&sign(ana, &space, None, created), true).await,
-    ));
-    for (who, role) in [
-        (&bruno.identity, Role::Admin),
-        (&carla.identity, Role::Member),
-    ] {
-        let body = EventBody::MemberAdded {
-            identity: who.clone(),
-            role,
-        };
-        let env = sign(ana, &space, Some(head.clone()), body);
-        head = at(&landed(warm.append(&env, true).await));
-    }
-    let listed: std::collections::BTreeSet<String> =
-        people.iter().map(|p| p.identity.clone()).collect();
-
-    // Ana's device starts the group and adds Bruno: the commit takes epoch 0.
-    d_ana.create_group(&space).unwrap();
-    let none = Default::default();
-    let first = d_ana
-        .commit(&space, &d_bruno.key_packages(1, false).unwrap(), &none)
-        .unwrap();
-    let with_context = |kind, data, epoch, head: &types::Seen| {
-        let mut sealed = protocol::Sealed::new(kind, mls::SUITE_ID, data);
-        sealed.recovery = event_log::recovery::RecoveryRef {
-            version: 1,
-            epoch,
-            blob: "ab".repeat(32),
-        }
-        .encode();
-        Envelope::sealed(ana, &space, &types::new_id("c"), 1, Some(head), sealed)
-    };
-    assert_eq!(
-        refused(
-            warm.append(
-                &with_context(SealedKind::Commit, first.commit.clone(), 99, &head),
-                true
-            )
-            .await
-        ),
-        "recovery context must follow its commit's epoch"
-    );
-    assert_eq!(
-        refused(
-            warm.append(
-                &with_context(SealedKind::Application, vec![1], 1, &head),
-                true
-            )
-            .await
-        ),
-        "recovery context must follow its commit's epoch"
-    );
-    let env = with_context(SealedKind::Commit, first.commit.clone(), 1, &head);
-    head = at(&landed(warm.append(&env, true).await));
-    let env = handshake(ana, SealedKind::Welcome, first.welcome.unwrap(), &head);
-    let welcome = landed(warm.append(&env, true).await);
-    head = at(&welcome);
-    d_ana
-        .open(&space, &first.commit, &listed, d_ana.leaf())
-        .unwrap();
-    let data = welcome.env.sealed_data().unwrap().1.to_vec();
-    assert!(d_bruno.join(&space, &data, &listed).unwrap());
-
-    // Both admins add Carla, both from epoch 1. Bruno's commit lands first.
-    let by_bruno = d_bruno
-        .commit(&space, &d_carla.key_packages(1, false).unwrap(), &none)
-        .unwrap();
-    let by_ana = d_ana
-        .commit(&space, &d_carla.key_packages(1, false).unwrap(), &none)
-        .unwrap();
-    let env = handshake(bruno, SealedKind::Commit, by_bruno.commit, &head);
-    head = at(&landed(warm.append(&env, true).await));
-    let env = handshake(ana, SealedKind::Commit, by_ana.commit.clone(), &head);
-    assert_eq!(refused(warm.append(&env, true).await), STALE_COMMIT);
-    let env = handshake(ana, SealedKind::Welcome, by_ana.welcome.unwrap(), &head);
-    assert_eq!(
-        refused(warm.append(&env, true).await),
-        "a welcome follows its own commit"
-    );
-    let env = handshake(bruno, SealedKind::Welcome, by_bruno.welcome.unwrap(), &head);
-    head = at(&landed(warm.append(&env, true).await));
-    // A relay that saw none of it reads the epoch from FoundationDB.
-    let env = handshake(ana, SealedKind::Commit, by_ana.commit, &head);
-    assert_eq!(refused(cold.append(&env, true).await), STALE_COMMIT);
-    warm.drop_cell().await.unwrap();
-}
-
-fn landed(r: Result<Sequencing, zoen_relay::log::Reject>) -> Sequenced {
-    match r {
-        Ok(Sequencing::New { ev, .. }) => ev,
-        Ok(_) => panic!("answered as a duplicate"),
-        Err(e) => panic!("refused: {}", e.reason),
-    }
-}
-
-fn refused(r: Result<Sequencing, zoen_relay::log::Reject>) -> String {
-    match r {
-        Err(e) => e.reason,
-        Ok(_) => panic!("admitted"),
-    }
-}
-
-async fn legacy_checkpoint_holds_upgrade_without_expiring_history() {
-    use foundationdb::{
-        tuple::{pack, unpack, Subspace},
-        Database,
-    };
-
-    let cell = types::new_id("t");
-    let warm = store_on(&cell);
-    let ana = Author::root(Signer::generate());
-    let (space, genesis) = create(&warm, &ana).await;
-    let encrypted = landed(
-        warm.append(
-            &sign(&ana, &space, Some(genesis), EventBody::SpaceEncrypted),
-            true,
-        )
-        .await,
-    );
-    let key =
-        Subspace::all()
-            .subspace(&("zoen", &cell))
-            .pack(&("s", &space, "ck", &ana.identity, "*"));
-    let db = Database::new(std::env::var("FDB_CLUSTER_FILE").ok().as_deref()).unwrap();
-    db.run(|trx, _| {
-        let key = key.clone();
-        async move {
-            trx.set(&key, &pack(&(encrypted.seq as i64)));
-            Ok(())
-        }
-    })
-    .await
-    .unwrap();
-    let before = now_ms();
-    let cold = store_on(&cell);
-    let joining = sign(
-        &ana,
-        &space,
-        Some(Seen {
-            seq: encrypted.seq,
-            hash: encrypted.hash.clone(),
-        }),
-        EventBody::DeviceJoining {
-            device: "a".repeat(64),
-        },
-    );
-    assert!(matches!(
-        cold.append(&joining, true).await,
-        Ok(Sequencing::New { .. })
-    ));
-    let migrated = db
-        .run(|trx, _| {
-            let key = key.clone();
-            async move { Ok(trx.get(&key, false).await?) }
-        })
-        .await
-        .unwrap()
-        .unwrap();
-    let (seq, since): (i64, i64) = unpack(&migrated).unwrap();
-    assert_eq!(seq, encrypted.seq as i64);
-    assert!(
-        since >= before && since <= now_ms(),
-        "legacy hold starts its ceiling on upgrade"
-    );
-    let events = read_all(&cold, &space, 100).await;
-    assert_chain(&space, &events);
-    assert_eq!(events[1].env, encrypted.env);
-    cold.drop_cell().await.unwrap();
-}
-
 async fn run<F: Future<Output = ()>>(name: &str, f: F) {
     f.await;
     println!("ok  {name}");
@@ -716,8 +140,38 @@ async fn co_members_deduplicates_across_read_batches() {
 }
 
 fn main() {
+    let arguments: Vec<_> = std::env::args().skip(1).collect();
+    assert!(
+        arguments.is_empty()
+            || arguments == ["--two-client"]
+            || arguments == ["--two-client-renewals"],
+        "usage: log_store [--two-client|--two-client-renewals]"
+    );
+    // The error at the FDB boundary is otherwise lost behind the retryable public
+    // rejection. Test-owned stderr observes it without weakening the contract.
+    tracing_subscriber::fmt()
+        .with_env_filter("zoen_relay=error")
+        .with_writer(std::io::stderr)
+        .with_ansi(false)
+        .init();
     let network = unsafe { foundationdb::boot() };
     tokio::runtime::Runtime::new().unwrap().block_on(async {
+        if arguments == ["--two-client-renewals"] {
+            run(
+                "two storage clients keep the chain during explicit lease renewals",
+                two_storage_clients_keep_the_chain_during_explicit_lease_renewals(),
+            )
+            .await;
+            return;
+        }
+        if !arguments.is_empty() {
+            run(
+                "two storage clients of one owner share one chain and one membership",
+                two_storage_clients_share_one_chain_and_one_membership(),
+            )
+            .await;
+            return;
+        }
         run(
             "concurrent writers on one space build one gapless chain",
             concurrent_writers_on_one_space_build_one_gapless_chain(),
@@ -746,12 +200,12 @@ fn main() {
         run("invites are bounded by uses", invites_are_bounded_by_uses()).await;
         run(
             "end-to-end spaces hold ciphertext on every relay",
-            end_to_end_spaces_hold_ciphertext_on_every_relay(),
+            mls_contracts::end_to_end_spaces_hold_ciphertext_on_every_relay(),
         )
         .await;
         run(
             "one commit per epoch, and each welcome follows its commit",
-            one_commit_per_epoch_and_each_welcome_follows_its_commit(),
+            mls_contracts::one_commit_per_epoch_and_each_welcome_follows_its_commit(),
         )
         .await;
         run(
@@ -766,7 +220,7 @@ fn main() {
         .await;
         run(
             "legacy checkpoint holds upgrade without expiring history",
-            legacy_checkpoint_holds_upgrade_without_expiring_history(),
+            mls_contracts::legacy_checkpoint_holds_upgrade_without_expiring_history(),
         )
         .await;
     });

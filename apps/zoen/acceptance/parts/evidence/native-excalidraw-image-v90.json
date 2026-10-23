@@ -1,0 +1,60 @@
+{
+  "status": "PASS_NATIVE_PHOTOS_COLD_REOPEN_AND_LINKED_DEVICE_READBACK",
+  "checkpoint": "v90",
+  "runtimeSourceCommit": "db626dce7f1a8525047b409b1727bd2fd6d78556",
+  "testPortabilityCommit": "6902ce6a52406e6b9d710b80ccebaf6553f3444a",
+  "sourceManifest": "/private/tmp/zoen-iphone-release-v90-inputs.json",
+  "sourceSha256": "df5cba505a84e171ea31032b0040cf2562adde9dd1aa8dc3821e88adc74ddf00",
+  "sourceInputs": 904,
+  "signedArtifactVerification": "/private/tmp/zoen-iphone-release-v90-verification.json",
+  "evidenceRoot": "/private/tmp/zoen-excalidraw-native-image-v90",
+  "evidenceManifest": "/private/tmp/zoen-excalidraw-native-image-v90/evidence-manifest.json",
+  "evidenceManifestSha256": "5feaa50a8676ce4607aca75b3673aee560748916d370379a86524618d83a249a",
+  "nativeProof": "/private/tmp/zoen-excalidraw-native-image-v90/native-v90-acceptance.json",
+  "video": {
+    "path": ".argent/recordings/excalidraw-photo-iphone-v90-proof.mp4",
+    "seconds": 47.233333,
+    "sha256": "9231c14e428b880866084f42fa6ac82a8308b1e44b7321d3a754bdc3e690f45a",
+    "losslessPacketConcat": true,
+    "recordedWallSeconds": 122.042,
+    "existingStaticTrim": true,
+    "bytes": 5330447
+  },
+  "nativeAcceptance": "Normal native Photos picker inserted one synthetic image into the original canonical drawing, guarded Back returned its six-element Home card, and a full process restart reopened the same image. Prior copy remained at six elements. Both preserving installs and public executable/JavaScript/strict signature checks passed. Main Home retained recipe6/8 and four existing cards with larger text.",
+  "canonicalItem": {
+    "id": "it_01m58hskre9krj16jhx2125qtd",
+    "version": 13,
+    "elements": 6,
+    "images": 1,
+    "sceneBytes": 32316,
+    "sha256": "d98ae817c85f02e793e50c355de2f33891290ad8ef03c65ced07a35df8e3ae3a"
+  },
+  "linkedDeviceReadback": {
+    "receipt": "/private/tmp/zoen-excalidraw-native-image-v90/linked-device-readback.json",
+    "scope": "new memory-only linked device of same synthetic identity, not a second recipient identity or cryptographic author-device proof",
+    "receivedHistoryEvents": 146,
+    "receivedHistoryChunks": 1,
+    "verifiedDrawings": 2,
+    "unchangedSecondCheck": true,
+    "jpegBytesEach": 21025,
+    "jpegSha256": "8e2f41bdd949d7def08785a747000c129cf0dfb533d4d3071a451e7dd670bbe0",
+    "stoppedAndOwnedVolatileVaultCleared": true,
+    "ownedDeviceRevokedThroughNativeUi": true,
+    "cleanupReceipt": "/private/tmp/zoen-excalidraw-native-image-v90/owned-device-cleanup.json"
+  },
+  "chatCards": "Exact conversation opened with one message-input; both pinned drawing cards show6 elements and the copy inline card also shows6. No message or item mutation.",
+  "checks": {
+    "macAppPassed": 776,
+    "rendererPassed": 24,
+    "nativeSwiftProbePassed": 1,
+    "exactSourceExpoCiRun": 39175638131,
+    "exactSourceExpoCiCommit": "6902ce6a52406e6b9d710b80ccebaf6553f3444a",
+    "exactSourceExpoCiConclusion": "success"
+  },
+  "limitations": [
+    "Narrow image/cold-reopen and preserving Home proof; whole-app v85 acceptance remains unchanged.",
+    "Recorded native walkthroughs, no full import replay or two-pass regression.",
+    "No physical-iPhone, every-provider, accessibility or comparative whole-app parity claim.",
+    "Does not accept later v91 builtin MCP renderer integration."
+  ]
+}

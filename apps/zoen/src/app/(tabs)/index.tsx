@@ -10,14 +10,14 @@ import { t } from '../../i18n/index.ts';
 import { ReorderableAppCards, useCardScrollPort } from '../../miniapps/reorderable-cards';
 import { mergeCardSubset } from '../../miniapps/card-reorder';
 import { appCardGrid } from '../../miniapps/app-card-layout';
+import { AppCardEditControls } from '../../miniapps/card-edit-controls';
 import type { ItemDetail } from '../../core/generated/ItemDetail';
 import { useTheme } from '../../theme';
 
 export default function Home() {
   const home = useHome();
-  const [editOwner, setEditOwner] = useState<string | null>(null);
-  const editing = editOwner !== null && editOwner === home.ownerKey;
-  const setEditing = (value: boolean) => setEditOwner(value ? home.ownerKey : null);
+  const editing = home.editing;
+  const setEditing = (value: boolean) => (value ? home.beginEdit() : home.discardEdit());
   const [pending, setPending] = useState({ pinned: false, available: false });
   const scrollPort = useCardScrollPort(false);
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
@@ -46,14 +46,21 @@ export default function Home() {
             previous[group] === value ? previous : { ...previous, [group]: value },
           );
         }}
-        onReorder={(next, expected) =>
-          favorites
+        onReorder={(next, expected) => {
+          home.requireEdit();
+          return favorites
             ? home.reorder(next, expected)
-            : home.reorderItems(mergeCardSubset(complete, next), complete)
-        }
+            : home.reorderItems(mergeCardSubset(complete, next), complete);
+        }}
         onOpen={(item) => router.push({ pathname: '/miniapp/[id]', params: { id: item.id } })}
-        onRemove={(item) => home.hide(item.id)}
-        onTogglePin={(item) => (home.isPinned(item.id) ? home.unpin(item.id) : home.pin(item.id))}
+        onRemove={(item) => {
+          home.requireEdit();
+          return home.hide(item.id);
+        }}
+        onTogglePin={(item) => {
+          home.requireEdit();
+          return home.isPinned(item.id) ? home.unpin(item.id) : home.pin(item.id);
+        }}
         isPinned={home.isPinned}
       />
     );
@@ -93,11 +100,12 @@ export default function Home() {
             {t('home.title')}
           </Text>
           {editing ? (
-            <NativeButton
-              testID="home-rearrange-done"
-              label={saving ? t('home.saving') : t('home.doneRearranging')}
-              disabled={saving}
-              onPress={() => setEditing(false)}
+            <AppCardEditControls
+              pending={saving || home.editSaving}
+              onDone={() => {
+                void home.commitEdit().catch(() => {});
+              }}
+              onDiscard={home.discardEdit}
             />
           ) : (
             <HomeActions

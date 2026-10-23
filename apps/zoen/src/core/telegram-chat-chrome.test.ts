@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import { telegramPresentation } from '../theme/telegram.ts';
+import { navigationGlassAppearance } from '../components/navigation-appearance.ts';
 
 type Element = { type: unknown; props: Record<string, any> };
 const compiled = await Promise.all(
@@ -11,6 +12,8 @@ const compiled = await Promise.all(
     '../components/chat-header.ios.tsx',
     '../components/chat-title.tsx',
     './telegram-chat-header-layout.ts',
+    '../components/navigation-glass.tsx',
+    '../components/chats-actions.ios.tsx',
   ].map(async (name) => {
     const source = new URL(name, import.meta.url);
     const output = await build({
@@ -38,7 +41,7 @@ function nodes(tree: unknown): Element[] {
   const node = tree as Element;
   return [node, ...nodes(node.props.children)];
 }
-function fixture(platform: 'ios' | 'android' = 'ios', width = 402, fontScale = 1) {
+function fixture(platform: 'ios' | 'android' = 'ios', width = 402, fontScale = 1, glass = true) {
   const paths: unknown[] = [];
   let searches = 0;
   let backs = 0;
@@ -75,7 +78,15 @@ function fixture(platform: 'ios' | 'android' = 'ios', width = 402, fontScale = 1
         Toolbar: Object.assign('StackToolbar', { Button: 'ToolbarButton', View: 'ToolbarView' }),
       },
     },
-    'expo-glass-effect': { GlassView: 'GlassView', isLiquidGlassAvailable: () => true },
+    'expo-glass-effect': { GlassView: 'GlassView', isLiquidGlassAvailable: () => glass },
+    '@expo/ui': { Host: 'Host' },
+    '@expo/ui/swift-ui': { Button: 'Button', HStack: 'HStack' },
+    '@expo/ui/swift-ui/modifiers': Object.fromEntries(
+      ['buttonStyle', 'font', 'foregroundStyle', 'frame', 'labelStyle'].map((name) => [
+        name,
+        (value: unknown) => ({ [name]: value }),
+      ]),
+    ),
     '../i18n/index.ts': { t: (key: string) => key },
     '../profile/profile-avatar': { ProfileAvatar: 'ProfileAvatar' },
     '../theme': {
@@ -86,7 +97,9 @@ function fixture(platform: 'ios' | 'android' = 'ios', width = 402, fontScale = 1
       }),
     },
     './primitives': { Icon: 'Icon' },
+    './navigation-container': { NavigationContainer: 'View' },
     './chat-title': { ChatTitle: 'ChatTitle' },
+    './navigation-appearance': { navigationGlassAppearance },
   };
   const load = (code: string) => {
     const module = { exports: {} as Record<string, (props: any) => Element> };
@@ -103,10 +116,14 @@ function fixture(platform: 'ios' | 'android' = 'ios', width = 402, fontScale = 1
   };
   const geometry = load(compiled[2]!);
   ports['../core/telegram-chat-header-layout'] = geometry;
+  const material = load(compiled[3]!);
+  ports['./navigation-glass'] = material;
   const header = load(compiled[0]!);
   const title = load(compiled[1]!);
+  const chats = load(compiled[4]!);
   const props = {
     id: 'space-one',
+    scrollViewTag: 1234,
     title: 'A real conversation with a long name',
     counterpart: { id: 'person', tint_hex: '#123' },
     activityLabel: 'typing',
@@ -116,12 +133,11 @@ function fixture(platform: 'ios' | 'android' = 'ios', width = 402, fontScale = 1
     props,
     header: () => header.ChatHeader!(props),
     title: () => title.ChatTitle!(props),
-    bar(back = true) {
-      const screen = header.ChatHeader!(props);
-      const element = screen.props.options.header({
-        back: back ? { title: 'Chats' } : undefined,
-        navigation: { goBack: () => backs++ },
-      });
+    inbox: () => chats.ChatsActions!({}),
+    material: material.NavigationGlass!,
+    bar() {
+      const element =
+        header.ChatHeader!(props).props.options.unstable_headerRightItems()[0].element;
       return element.type(element.props) as Element;
     },
     titleWithBounds(availableWidth: number, onLayout?: (event: any) => void) {
@@ -136,34 +152,35 @@ function fixture(platform: 'ios' | 'android' = 'ios', width = 402, fontScale = 1
   };
 }
 
-test('public custom header is the only bar and preserves real Back, title, Details and Search', () => {
+test('native bar keeps the inbox backdrop and Back while title, Details and Search remain actionable', () => {
   const f = fixture();
-  const screen = f.header();
-  const options = screen.props.options;
+  const options = f.header().props.options;
   assert.equal(options.headerShown, true);
-  assert.equal(options.headerTransparent, true);
-  assert.equal(typeof options.header, 'function');
-  assert.equal(options.headerTitle, undefined);
+  assert.equal(options.header, undefined);
   assert.equal(options.headerLeft, undefined);
+  assert.equal(options.headerBackButtonDisplayMode, 'minimal');
+  assert.equal(options.headerTransparent, true);
+  assert.equal(options.headerStyle.backgroundColor, 'transparent');
+  assert.equal(options.headerLargeStyle.backgroundColor, 'transparent');
+  assert.equal(options.headerBlurEffect, 'none');
+  assert.equal(options.headerBackground, undefined);
+  assert.equal(options.headerRight, undefined);
+  assert.equal(options.unstable_headerRightItems()[0].hidesSharedBackground, true);
+  assert.equal(options.scrollEdgeEffects.top, 'automatic');
+  assert.equal(options.scrollEdgeEffects.bottom, 'hidden');
   assert.equal(options.gestureEnabled, undefined);
-  assert.equal(nodes(screen).filter((node) => node.type === 'StackScreen').length, 1);
-  assert.equal(
-    nodes(screen).some((node) => node.type === 'StackTitle' || node.type === 'StackToolbar'),
-    false,
-  );
+  const container = options.headerTitle();
+  assert.equal(container.props.scrollViewTag, 1234);
+  const title = container.props.children;
+  assert.equal(title.type, 'ChatTitle');
+  assert.equal(title.props.activityLabel, 'typing');
+  assert.equal(title.props.id, 'space-one');
   const all = nodes(f.bar());
-  const back = all.find((node) => node.props.testID === 'chat-back')!;
-  assert.equal(back.props.accessibilityLabel, 'access.back');
-  back.props.onPress();
-  assert.equal(f.backs(), 1);
+  assert.equal(f.bar().type, f.material);
   const search = all.find((node) => node.props.testID === 'chat-search')!;
   assert.equal(search.props.accessibilityLabel, 'chat.searchThisChat');
   search.props.onPress();
   assert.equal(f.searches(), 1);
-  const title = all.find((node) => node.type === 'ChatTitle')!;
-  assert.equal(title.props.activityLabel, 'typing');
-  assert.equal(title.props.id, 'space-one');
-  assert.equal(title.props.availableWidth, 218);
   const avatar = all.find((node) => node.props.testID === 'chat-details-avatar')!;
   assert.equal(avatar.props.style({ pressed: false }).width, 44);
   assert.equal(nodes(avatar).find((node) => node.type === 'ProfileAvatar')!.props.size, 38);
@@ -176,10 +193,36 @@ test('public custom header is the only bar and preserves real Back, title, Detai
     nodes(f.bar()).find((node) => node.props.testID === 'chat-search')!.props.accessibilityLabel,
     'chat.closeSearch',
   );
-  assert.equal(
-    nodes(f.bar(false)).some((node) => node.props.testID === 'chat-back'),
-    false,
-  );
+});
+
+test('inbox, conversation actions and title share one native material without a second bar background', () => {
+  for (const available of [true, false]) {
+    const f = fixture('ios', 402, 1, available);
+    const host = nodes(f.inbox()).find((node) => node.type === 'Host')!;
+    assert.equal(host.props.ignoreSafeArea, 'all');
+    assert.equal(host.props.style.width, 96);
+    assert.equal(host.props.style.height, 44);
+    const surfaces = [f.inbox(), f.bar(), ...nodes(f.title()).filter((n) => n.type === f.material)];
+    assert.equal(surfaces.length, 3);
+    for (const surface of surfaces) {
+      assert.equal(surface.type, f.material);
+      const rendered = f.material(surface.props);
+      assert.equal(rendered.type, available ? 'GlassView' : 'View');
+      if (available) {
+        assert.equal(rendered.props.glassEffectStyle, 'regular');
+        assert.equal(rendered.props.isInteractive, true);
+        assert.equal(rendered.props.colorScheme, 'dark');
+        assert.equal(rendered.props.tintColor, undefined);
+      } else {
+        assert.equal(
+          rendered.props.style.backgroundColor,
+          telegramPresentation('night').navigation.background,
+        );
+      }
+      assert.equal(rendered.props.style.opacity, undefined);
+      assert.equal(rendered.props.style.overflow, undefined);
+    }
+  }
 });
 
 test('title centers its own source typography and preserves details/long-press without claiming native window placement', () => {
@@ -212,61 +255,6 @@ test('title centers its own source typography and preserves details/long-press w
   const other = fixture('android');
   assert.ok(nodes(other.title()).some((node) => node.type === 'ProfileAvatar'));
   assert.equal(other.title().props.onLongPress, undefined);
-});
-
-test('rendered preferred title width centers first then clamps clear of the actual right group', () => {
-  const f = fixture();
-  let all = nodes(f.bar());
-  assert.equal(
-    all.find((node) => node.props.testID === 'chat-navigation-bar')!.props.style.height,
-    122,
-  );
-  const title = all.find((node) => node.type === 'ChatTitle')!;
-  title.props.onLayout({ nativeEvent: { layout: { width: 178 } } });
-  all = nodes(f.bar());
-  assert.equal(
-    all.find((node) => node.props.testID === 'chat-title-position')!.props.style.left,
-    110,
-  );
-  title.props.onLayout({ nativeEvent: { layout: { width: 190 + 2 / 3 } } });
-  all = nodes(f.bar());
-  assert.equal(
-    all.find((node) => node.props.testID === 'chat-title-position')!.props.style.left,
-    288 - (190 + 2 / 3),
-  );
-  const position = all.find((node) => node.props.testID === 'chat-title-position')!.props.style;
-  assert.equal(position.top, 72);
-  assert.equal(position.transform, undefined);
-});
-
-test('old conversation/viewport measurements cannot move the current title', () => {
-  const f = fixture();
-  const old = nodes(f.bar()).find((node) => node.type === 'ChatTitle')!;
-  f.props.id = 'space-two';
-  f.props.title = 'Another conversation';
-  let current = nodes(f.bar()).find((node) => node.type === 'ChatTitle')!;
-  current.props.onLayout({ nativeEvent: { layout: { width: 178 } } });
-  old.props.onLayout({ nativeEvent: { layout: { width: 50 } } });
-  assert.equal(
-    nodes(f.bar()).find((node) => node.props.testID === 'chat-title-position')!.props.style.left,
-    110,
-  );
-  f.frame.width = 874;
-  f.safe.top = 0;
-  f.safe.left = 62;
-  const wide = nodes(f.bar());
-  const fresh = wide.find((node) => node.type === 'ChatTitle')!;
-  fresh.props.onLayout({ nativeEvent: { layout: { width: 178 } } });
-  current.props.onLayout({ nativeEvent: { layout: { width: 100 } } });
-  const after = nodes(f.bar());
-  assert.equal(
-    after.find((node) => node.props.testID === 'chat-title-position')!.props.style.left,
-    348,
-  );
-  assert.equal(
-    after.find((node) => node.props.testID === 'chat-navigation-bar')!.props.style.height,
-    60,
-  );
 });
 
 test('title bound reaches the actual Pressable and can be narrower than the former88pt floor', () => {

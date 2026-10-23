@@ -19,6 +19,7 @@ impl Drop for Directory {
 fn step(id: &str) -> ToolStep {
     ToolStep {
         call: ToolCall {
+            requires_review: false,
             id: id.into(),
             name: "synthetic-read".into(),
             arguments: json!({"artifactId":"synthetic-artifact"}),
@@ -29,6 +30,7 @@ fn step(id: &str) -> ToolStep {
 }
 fn tools<'a>(client: &'a Arc<Client>, journal: &'a Path) -> SpaceTools<'a> {
     SpaceTools {
+        selection: None,
         e: client,
         journal,
         source: "synthetic-source",
@@ -37,6 +39,7 @@ fn tools<'a>(client: &'a Arc<Client>, journal: &'a Path) -> SpaceTools<'a> {
         names: vec![],
         deckcraft: None,
         deckcraft_items: vec![],
+        page_items: vec![],
     }
 }
 

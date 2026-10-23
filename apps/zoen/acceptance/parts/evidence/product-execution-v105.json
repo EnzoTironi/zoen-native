@@ -1,0 +1,99 @@
+{
+  "status": "PRIVATE_BACKEND_VERIFIED_PRODUCTION_GOAL_ACTIVE",
+  "proof": {
+    "path": "/private/tmp/zoen-backend-v105/acceptance.json",
+    "bytes": 2065,
+    "sha256": "617aaaa08b68965341b2dc7feb443a3df33eeb40bc154c721cb8bc2598b6f743"
+  },
+  "mls": {
+    "nativeOriginalSteps": 17,
+    "encryptedTransitions": 302,
+    "peerDecryptions": 275,
+    "workerdCases": 8,
+    "originalStorageContracts": 4,
+    "wasmSha256": "2b3dac526ecbb26c31a36e5c4af67bcc964bbc43ffbf8fcc935cabd07831d37c"
+  },
+  "encryptedDirectory": {
+    "proof": {
+      "path": "/private/tmp/zoen-claim-quota-v103/final-acceptance.json",
+      "bytes": 54099,
+      "sha256": "31dd98f2a4fc9c5af894dece720279282e279b99f3ac77be4c28e45f7bfbeb6f"
+    },
+    "nativeOriginalSteps": 71,
+    "nativeReadSteps": 76,
+    "nativeEncryptedProfileSteps": 45,
+    "nativeAeadOpenWrongKeyAndWrongVersionProof": true,
+    "workerdPass": 27,
+    "workerdFail": 0,
+    "workerdSkipped": 0,
+    "claimBudgetOrdering": "Active-device/registration admission then durable account charge before bounded operation-specific validation; invalid claims spend budget without consuming stock or receipts.",
+    "profileVersions": "Exact decimal through WASM/SQLite; monotonic update and identical-ciphertext retry; shared native guard prevents UInt64 to signed BIGINT overflow."
+  },
+  "ciE2a": {
+    "proof": {
+      "path": "/private/tmp/zoen-ci-e2a-audit-v104/audit-checkpoint.json",
+      "bytes": 16146,
+      "sha256": "2ceed0770034493af84b6dae0612e4942de3fc38df3548f75605d1de7401df86"
+    },
+    "client": "811pass and2Darwin-only skips in Linux CI; local813/813 proof remains separately attributed to V103.",
+    "web": "22checkpoints per locale with exact Excalidraw/native-peer bytes.",
+    "remainingFailures": "Two Rust formatting differences corrected in source; existing Directory32/34 idle closure gate and legacy Android MCP matrix remain red in that immutable revision."
+  },
+  "dependencyTriage": {
+    "proof": {
+      "path": "/Users/enzotironi/.codex/state/plugins/codex-security/scans/zoen-native/artifacts-207778a518289d9c4800312967d78d226788435dc764ef75f9479ae190cb49f2/artifacts/triage/zoen-expo58-npm-e2a-v104.json",
+      "bytes": 15967,
+      "sha256": "6917a4b81d07e426c477f6824322e3953a1ac1d46b705be6baa5271db08d6b66"
+    },
+    "uuidXcode": "Installed sole caller uses no-argument v4 outside the affected v3/v5/v6 output-buffer paths.",
+    "bracesAndForge": "needs_review; supported lower-trust input reachability or upstream mitigation still unestablished.",
+    "fullDependencySecurityAccepted": false
+  },
+  "operatingEnvelope": {
+    "path": "/Users/enzotironi/project/zoen-native/docs/dev/zoen-operating-envelope-v1.json",
+    "bytes": 10638,
+    "sha256": "4a3a1c3f8bb80a349c4133cfcc7463a46b5aa347261fdc16bd649b8de0468a6d"
+  },
+  "boundaries": [
+    "All new backend proofs are private/local and bind exact source/fixture/WASM; existing remote artifacts retain their older source attribution.",
+    "Public Directory/Space protocol composition, discovery, removal visibility, paginated delivery, fanout, provider auth, recovery and real push/calls remain required.",
+    "No fresh whole-app acceptance across six platforms, load/cost qualification, production availability or release/migration/rollback approval."
+  ],
+  "fullAppParityAccepted": false,
+  "productionReadinessAccepted": false,
+  "scaleReadinessAccepted": false,
+  "ciCompletedAndroid": {
+    "proof": {
+      "path": "/private/tmp/zoen-ci-e2a-audit-v104/audit-completed-android.json",
+      "sha256": "9bbdc351c04a0aec23e9b4fbefbf66e02a1e91885cefcc0f0d6d3f8aff827749"
+    },
+    "commit": "e2a002cd95aefb7676a2939ce47cf42d5208fe8d",
+    "expoReleaseBuildPassed": true,
+    "nativeJvmTestsPassed": 14,
+    "nativeJvmTestsSkipped": 0,
+    "releaseApk": {
+      "bytes": 124622009,
+      "sha256": "094d9b9ba3a22bbf4eb56a52111234f9d2fc1f735e275bac0cca8c9fb419a186",
+      "debuggable": false,
+      "signing": "Android Debug certificate; not production signing"
+    },
+    "legacyAndroid35": {
+      "passed": 104,
+      "failed": 2,
+      "skipped": 0
+    },
+    "legacyAndroid28": {
+      "passed": 104,
+      "failed": 0,
+      "skipped": 2
+    },
+    "coldProcessTlsPerLegacyApi": {
+      "passed": 1,
+      "failed": 0
+    },
+    "verifiedImmutableSourceInputs": 422,
+    "finalApkNativeMetadataVerified": true,
+    "newExpoRuntimeJourneysAccepted": false,
+    "productionSigningAccepted": false
+  }
+}

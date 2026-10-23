@@ -1,7 +1,8 @@
 # Zoen · shared app
 
 Expo SDK 58, React Native 0.88 and React 19.3, targeting iOS, Android and web.
-This is an active reconstruction. `acceptance.json` records the required journeys;
+This is an active reconstruction. The [composed acceptance record](acceptance/README.md)
+at `acceptance.json` records the required journeys;
 the archived standalone clients remain historical comparison references until
 those journeys pass. They are not build inputs; see the
 [retirement record](../../docs/dev/legacy-client-retirement.md).

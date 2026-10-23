@@ -13,7 +13,7 @@
     "archiveSha256": "55ad41fac6e3149abb4866e93df37dbd33baa95db525c3368c944584e95a5dc2",
     "sourceRevision": "49682f8baa058bf49e011035cfbd6e825f88a5ef",
     "beforeTreeSha256": "6d5168aabcbf959b2c7670dd255baef5d79b9e89ad274b9f2a8b20f7acd3aac2",
-    "afterTreeSha256": "51b9fd73a2cdc8ad45738933cff2c3789058543525614f3c0be9de5949639dba",
+    "afterTreeSha256": "62656f7a492d7b907ae0dd19e712c887198d57b17c1bf67676691835b3073d8d",
     "changedFiles": [
       "src/web/app_runner.rs",
       "src/web/backend.rs",
@@ -22,10 +22,6 @@
       "src/web/text_agent.rs",
       "src/web/text_input_activation.rs"
     ]
-  },
-  "patch": {
-    "path": "patches/0017-eframe-ios-input.patch",
-    "sha256": "20ac9af88b43e2cb3bb387349af3a0fce7c0c49031db029596adeb852cfc461b"
   },
   "sourceFiles": [
     {
@@ -47,6 +43,28 @@
       "path": "crates/ui-egui/src/host_phone_landscape_tests.rs",
       "before": "fee671e3cf6ec30a760395dd51bf2352c628ce60987eec75b2946cea115ce83d",
       "after": "7ec0046ffd9dc5f93f01a30089ca5eb2055027771b6712db46e860d7ce67277d"
+    }
+  ],
+  "patches": [
+    {
+      "path": "patches/0017a-eframe-vendor-binding.patch",
+      "sha256": "7ac54becccc7a4ba73aa1e910c65be21dc3e5c5068d663d5f9e00a54f848ea65"
+    },
+    {
+      "path": "patches/0017b-eframe-text-activation.patch",
+      "sha256": "e1aaf3f4afd978ff0b7e87a2912542d754f96fc249b3a749d6b90732f28d69bd"
+    },
+    {
+      "path": "patches/0017c-eframe-primary-contact.patch",
+      "sha256": "52ef89a672af8316450cee77fd09ec123b836f6372ad8637a32361762e01d0bb"
+    },
+    {
+      "path": "patches/0017d-deckcraft-text-admission.patch",
+      "sha256": "a77ec301bea6c12f36ab211538fa761da12f6727046fe205e5fbbcbb8fad9702"
+    },
+    {
+      "path": "patches/0017e-deckcraft-input-contracts.patch",
+      "sha256": "3b6039ed3c9384764186c73dacdb82fc69ce281c51f9a559f015cd72a47d36da"
     }
   ]
 }

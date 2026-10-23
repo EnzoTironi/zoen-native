@@ -1,0 +1,308 @@
+diff --git a/node_modules/react-native-enriched-markdown/ReactNativeEnrichedMarkdown.podspec b/node_modules/react-native-enriched-markdown/ReactNativeEnrichedMarkdown.podspec
+index aa878306fd3e5a295297c75a3704bdc3cc97c52f..70b501cc42cf1e0aa33ffebd6e1674eb775025f7 100644
+--- a/node_modules/react-native-enriched-markdown/ReactNativeEnrichedMarkdown.podspec
++++ b/node_modules/react-native-enriched-markdown/ReactNativeEnrichedMarkdown.podspec
+@@ -22,11 +22,13 @@ Pod::Spec.new do |s|
+   s.source       = { :git => "https://github.com/software-mansion/enriched-markdown.git", :tag => "#{s.version}" }
+ 
+   if monorepo
+-    s.private_header_files = "ios/**/*.h"
++    s.public_header_files = "ios/input/ENRMDraftSnapshot.h"
++    s.private_header_files = Dir.glob(File.join(__dir__, "ios/**/*.h")).map { |p| p.delete_prefix("#{__dir__}/") }.reject { |p| p.end_with?("/ENRMDraftSnapshot.h") }
+     s.source_files = "ios/**/*.{h,m,mm,cpp,swift}"
+     s.dependency "EnrichedMarkdownCore"
+   else
+-    s.private_header_files = "ios/**/*.h", "cpp/**/*.{h,hpp}"
++    s.public_header_files = "ios/input/ENRMDraftSnapshot.h"
++    s.private_header_files = Dir.glob(File.join(__dir__, "ios/**/*.h")).map { |p| p.delete_prefix("#{__dir__}/") }.reject { |p| p.end_with?("/ENRMDraftSnapshot.h") } + Dir.glob(File.join(__dir__, "cpp/**/*.{h,hpp}")).map { |p| p.delete_prefix("#{__dir__}/") }
+     s.source_files = ["ios/**/*.{h,m,mm,cpp,swift}", "cpp/md4c/*.{c,h}", "cpp/parser/*.{hpp,cpp}", "cpp/highlight/*.{hpp,cpp}"] + code_highlight[:source_files]
+     s.preserve_paths = "cpp/highlight/vendor/**/*" if code_highlight[:enabled]
+   end
+diff --git a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.cpp b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.cpp
+index 2d1077e5be84ae882b1a9bef7a31bed717b9222e..17f4e9e6f366a29c0bab2c31764545165d0ea547 100644
+--- a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.cpp
++++ b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.cpp
+@@ -182,6 +182,7 @@ EnrichedMarkdownTextInputProps::EnrichedMarkdownTextInputProps(
+     placeholder(convertRawProp(context, rawProps, "placeholder", sourceProps.placeholder, {})),
+     placeholderTextColor(convertRawProp(context, rawProps, "placeholderTextColor", sourceProps.placeholderTextColor, {})),
+     editable(convertRawProp(context, rawProps, "editable", sourceProps.editable, {false})),
++    draftCheckpointToken(convertRawProp(context, rawProps, "draftCheckpointToken", sourceProps.draftCheckpointToken, {})),
+     autoFocus(convertRawProp(context, rawProps, "autoFocus", sourceProps.autoFocus, {false})),
+     scrollEnabled(convertRawProp(context, rawProps, "scrollEnabled", sourceProps.scrollEnabled, {false})),
+     markdownShortcuts(convertRawProp(context, rawProps, "markdownShortcuts", sourceProps.markdownShortcuts, {})),
+@@ -235,6 +236,10 @@ folly::dynamic EnrichedMarkdownTextInputProps::getDiffProps(
+     result["editable"] = editable;
+   }
+     
++  if (draftCheckpointToken != oldProps->draftCheckpointToken) {
++    result["draftCheckpointToken"] = draftCheckpointToken;
++  }
++    
+   if (autoFocus != oldProps->autoFocus) {
+     result["autoFocus"] = autoFocus;
+   }
+diff --git a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h
+index 06fa054e92f77befdb84baf13dde03f32643b3d7..e2234f7adea5ebe257de6b6ff3c1ed63726aac0d 100644
+--- a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h
++++ b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h
+@@ -2567,6 +2567,7 @@ static inline folly::dynamic toDynamic(const EnrichedMarkdownMarkdownStyleStruct
+ #endif
+ 
+ struct EnrichedMarkdownMd4cFlagsStruct {
++  bool noMedia{false};
+   bool underline{false};
+   bool superscript{false};
+   bool subscript{false};
+@@ -2582,6 +2583,7 @@ struct EnrichedMarkdownMd4cFlagsStruct {
+ 
+   folly::dynamic toDynamic() const {
+     folly::dynamic result = folly::dynamic::object();
++    result["noMedia"] = noMedia;
+     result["underline"] = underline;
+     result["superscript"] = superscript;
+     result["subscript"] = subscript;
+@@ -2598,6 +2600,10 @@ struct EnrichedMarkdownMd4cFlagsStruct {
+ static inline void fromRawValue(const PropsParserContext& context, const RawValue &value, EnrichedMarkdownMd4cFlagsStruct &result) {
+   auto map = (std::unordered_map<std::string, RawValue>)value;
+ 
++  auto tmp_noMedia = map.find("noMedia");
++  if (tmp_noMedia != map.end()) {
++    fromRawValue(context, tmp_noMedia->second, result.noMedia);
++  }
+   auto tmp_underline = map.find("underline");
+   if (tmp_underline != map.end()) {
+     fromRawValue(context, tmp_underline->second, result.underline);
+@@ -4101,6 +4107,7 @@ class EnrichedMarkdownTextInputProps final : public ViewProps {
+   std::string placeholder{};
+   SharedColor placeholderTextColor{};
+   bool editable{false};
++  std::string draftCheckpointToken{};
+   bool autoFocus{false};
+   bool scrollEnabled{false};
+   EnrichedMarkdownTextInputMarkdownShortcutsStruct markdownShortcuts{};
+@@ -6680,6 +6687,7 @@ static inline folly::dynamic toDynamic(const EnrichedMarkdownTextMarkdownStyleSt
+ #endif
+ 
+ struct EnrichedMarkdownTextMd4cFlagsStruct {
++  bool noMedia{false};
+   bool underline{false};
+   bool superscript{false};
+   bool subscript{false};
+@@ -6695,6 +6703,7 @@ struct EnrichedMarkdownTextMd4cFlagsStruct {
+ 
+   folly::dynamic toDynamic() const {
+     folly::dynamic result = folly::dynamic::object();
++    result["noMedia"] = noMedia;
+     result["underline"] = underline;
+     result["superscript"] = superscript;
+     result["subscript"] = subscript;
+@@ -6711,6 +6720,10 @@ struct EnrichedMarkdownTextMd4cFlagsStruct {
+ static inline void fromRawValue(const PropsParserContext& context, const RawValue &value, EnrichedMarkdownTextMd4cFlagsStruct &result) {
+   auto map = (std::unordered_map<std::string, RawValue>)value;
+ 
++  auto tmp_noMedia = map.find("noMedia");
++  if (tmp_noMedia != map.end()) {
++    fromRawValue(context, tmp_noMedia->second, result.noMedia);
++  }
+   auto tmp_underline = map.find("underline");
+   if (tmp_underline != map.end()) {
+     fromRawValue(context, tmp_underline->second, result.underline);
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftSnapshot+Internal.h b/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftSnapshot+Internal.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..24507550e175d80a2d4caccc6492dd98192ea76e
+--- /dev/null
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftSnapshot+Internal.h
+@@ -0,0 +1,36 @@
++#pragma once
++#import "ENRMDraftSnapshot.h"
++#import "ENRMFormattingStore.h"
++#import "ENRMBlockStore.h"
++#import "ENRMEditPipeline.h"
++
++NS_ASSUME_NONNULL_BEGIN
++
++@interface ENRMDraftCheckpointRegistry (Internal)
+++ (nullable id<ENRMDraftCheckpointSink>)claimToken:(NSString *)token producer:(id<ENRMDraftSnapshotProducer>)producer;
+++ (void)releaseToken:(NSString *)token producer:(id<ENRMDraftSnapshotProducer>)producer;
++@end
++
++/// Detached semantic model. It never holds the live text storage or mutable live range objects.
++@interface ENRMDraftSnapshotModel : NSObject <ENRMEditPipelineHost>
++@property (nonatomic, readonly) ENRMFormattingStore *formatting;
++@property (nonatomic, readonly) ENRMFormattingStore *detected;
++@property (nonatomic, readonly) ENRMBlockStore *blocks;
++@property (nonatomic, readonly) NSString *text;
++- (instancetype)initWithText:(NSString *)text
++                     ranges:(NSArray<ENRMFormattingRange *> *)ranges
++                   detected:(NSArray<ENRMFormattingRange *> *)detected
++                     blocks:(NSArray<ENRMBlockRange *> *)blocks;
++- (BOOL)replaceRange:(NSRange)range text:(NSString *)replacement preimage:(NSString *)preimage
++          pendingAdd:(NSSet<NSNumber *> *)add pendingRemove:(NSSet<NSNumber *> *)remove
++               error:(NSError *_Nullable *_Nullable)error;
++- (nullable NSData *)encodeSequence:(uint64_t)sequence selection:(NSRange)selection
++                        composition:(NSRange)composition add:(NSSet<NSNumber *> *)add
++                             remove:(NSSet<NSNumber *> *)remove error:(NSError *_Nullable *_Nullable)error;
+++ (nullable NSDictionary *)decode:(NSData *)data error:(NSError *_Nullable *_Nullable)error;
+++ (nullable instancetype)modelFromValue:(NSDictionary *)value error:(NSError *_Nullable *_Nullable)error;
++@end
++
++FOUNDATION_EXPORT NSError *ENRMDraftError(ENRMDraftSnapshotError code);
++
++NS_ASSUME_NONNULL_END
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftSnapshot.h b/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftSnapshot.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..dc1b5637ce8ac07cd292bc6683569308c557f6b0
+--- /dev/null
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftSnapshot.h
+@@ -0,0 +1,69 @@
++#pragma once
++#import <Foundation/Foundation.h>
++
++NS_ASSUME_NONNULL_BEGIN
++
++FOUNDATION_EXPORT NSErrorDomain const ENRMDraftSnapshotErrorDomain;
++typedef NS_ERROR_ENUM(ENRMDraftSnapshotErrorDomain, ENRMDraftSnapshotError) {
++  ENRMDraftSnapshotInvalid = 1,
++  ENRMDraftSnapshotUnexplainedMutation,
++  ENRMDraftSnapshotUnavailable,
++  ENRMDraftSnapshotRetentionFailed,
++};
++
++/// The application owns encryption/storage. All methods run synchronously on main.
++/// A nonnil receipt acknowledges this exact immutable byte payload, never a queued task.
++@protocol ENRMDraftCheckpointSink <NSObject>
++- (nullable NSString *)retainDraftSnapshot:(NSData *)snapshot
++                                  sequence:(uint64_t)sequence
++                                     error:(NSError *_Nullable *_Nullable)error;
++- (void)draftCheckpointFailed:(NSError *)error;
++@optional
++/// Already-authenticated recovery bytes, supplied synchronously before this producer can edit/focus.
++- (nullable NSData *)initialDraftSnapshotWithError:(NSError *_Nullable *_Nullable)error
++    __attribute__((swift_error(none)));
++@end
++
++@protocol ENRMDraftSnapshotProducer;
++
++/// No account identifiers or keys enter this library. A token binds one exact producer.
++@interface ENRMDraftCheckpointRegistry : NSObject
+++ (NSString *)registerSink:(id<ENRMDraftCheckpointSink>)sink;
+++ (void)revokeToken:(NSString *)token;
++/// Retain the bound producer's current input without sealing or changing IME/focus.
+++ (BOOL)flushToken:(NSString *)token error:(NSError *_Nullable *_Nullable)error
++    NS_SWIFT_NAME(flush(token:));
++/// Seal the exact producer already bound to this token. Fails if no producer is bound.
++/// Success means its immutable final bytes have a synchronous receipt; keep the token
++/// registered until the application finishes applying/discarding those bytes.
+++ (BOOL)sealToken:(NSString *)token error:(NSError *_Nullable *_Nullable)error
++    NS_SWIFT_NAME(seal(token:));
++/// Freeze admission for explicit discard without attempting capture or retention.
++/// Returns a strong handle to the exact already-bound producer. The application
++/// must keep it and its token until durable discard/release ACK, then revoke.
+++ (nullable id<ENRMDraftSnapshotProducer>)freezeForDiscardToken:(NSString *)token
++    error:(NSError *_Nullable *_Nullable)error NS_SWIFT_NAME(freezeForDiscard(token:));
++@end
++
++@protocol ENRMDraftSnapshotProducer <NSObject>
++- (BOOL)bindDraftCheckpointToken:(NSString *)token error:(NSError *_Nullable *_Nullable)error;
++- (void)unbindDraftCheckpoint;
++/// Closed enrm-ios/1 JSON, at most 1 MiB, with copied semantic ranges (no archived attributes).
++- (nullable NSData *)copyDraftSnapshotWithError:(NSError *_Nullable *_Nullable)error;
++/// Restore before focus. Former IME characters become ordinary text; no candidate session is invented.
++- (BOOL)restoreDraftSnapshotData:(NSData *)snapshot error:(NSError *_Nullable *_Nullable)error;
++/// Explicit retry remains available after sealing; automatic retention stays closed.
++- (BOOL)flushDraftSnapshotWithError:(NSError *_Nullable *_Nullable)error;
++/// Close input and automatic events before synchronously retaining immutable final bytes.
++/// Keeps the live IME, responder, editable state and attributes untouched. A failed
++/// receipt keeps the producer sealed and the exact pending bytes available for retry.
++- (BOOL)sealDraftSnapshotWithError:(NSError *_Nullable *_Nullable)error
++    NS_SWIFT_NAME(sealDraftSnapshot());
++/// Closes mutation/automatic events only. Does not capture, repair a rejected
++/// checkpoint, call the sink, change editable/focus or unmark live composition.
++/// Explicit seal/flush remains available; the caller owns the durable tombstone.
++- (BOOL)freezeDraftInputForDiscardWithError:(NSError *_Nullable *_Nullable)error
++    NS_SWIFT_NAME(freezeDraftInputForDiscard());
++@end
++
++NS_ASSUME_NONNULL_END
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftTextStorage.h b/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftTextStorage.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..12e457f805bb5bae7518579ffe046bc687f8ff13
+--- /dev/null
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftTextStorage.h
+@@ -0,0 +1,10 @@
++#pragma once
++#import "ENRMUIKit.h"
++
++NS_ASSUME_NONNULL_BEGIN
++/// NSTextStorage's primitive sees every exact replacement, including IME, undo and programmatic edits.
++/// The observer reads only the preimage. It must never edit this live storage.
++@interface ENRMDraftTextStorage : NSTextStorage
++@property (nonatomic, copy, nullable) void (^willReplace)(NSString *preimage, NSRange range, NSString *replacement);
++@end
++NS_ASSUME_NONNULL_END
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftTextStorage.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftTextStorage.mm
+new file mode 100644
+index 0000000000000000000000000000000000000000..25fb1f2d31185c3cf4000fd631246904f161ebcc
+--- /dev/null
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftTextStorage.mm
+@@ -0,0 +1,27 @@
++#import "ENRMDraftTextStorage.h"
++
++@implementation ENRMDraftTextStorage {
++  NSMutableAttributedString *_backing;
++}
++- (instancetype)init
++{
++  if (self = [super init]) _backing = [NSMutableAttributedString new];
++  return self;
++}
++- (NSString *)string { return _backing.string; }
++- (NSDictionary<NSAttributedStringKey,id> *)attributesAtIndex:(NSUInteger)location effectiveRange:(NSRangePointer)range
++{
++  return [_backing attributesAtIndex:location effectiveRange:range];
++}
++- (void)replaceCharactersInRange:(NSRange)range withString:(NSString *)text
++{
++  if (self.willReplace) self.willReplace([_backing.string copy],range,[text copy]);
++  [_backing replaceCharactersInRange:range withString:text];
++  [self edited:NSTextStorageEditedCharacters range:range changeInLength:(NSInteger)text.length-(NSInteger)range.length];
++}
++- (void)setAttributes:(NSDictionary<NSAttributedStringKey,id> *)attributes range:(NSRange)range
++{
++  [_backing setAttributes:attributes range:range];
++  [self edited:NSTextStorageEditedAttributes range:range changeInLength:0];
++}
++@end
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput+Internal.h b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput+Internal.h
+index a8d35308136c996f74e4a30152a5e7f091c62932..85d083779605b9adf05e359bdbe709c32a2c41d6 100644
+--- a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput+Internal.h
++++ b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput+Internal.h
+@@ -36,6 +36,9 @@ typedef struct {
+ @property (nonatomic, readonly) ENRMInputEventEmitter *inputEventEmitter;
+ @property (nonatomic, readonly) ENRMInputTypingAttributesController *typingController;
+ 
++/// The owned UITextInput calls these only at an actual native mutation boundary.
++- (BOOL)draftNativeMutationWillBegin;
++- (void)draftNativeMutationDidEnd;
+ - (void)toggleBold;
+ - (void)toggleItalic;
+ - (void)toggleUnderline;
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.h b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.h
+index 231d841f677fc01c269a4696ec363137c12bab31..cd43441428da39ff3875fa0c440302cd61a373cf 100644
+--- a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.h
++++ b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.h
+@@ -1,4 +1,5 @@
+ #import "ENRMUIKit.h"
++#import "ENRMDraftSnapshot.h"
+ #import <React/RCTViewComponentView.h>
+ 
+ #ifndef EnrichedMarkdownTextInput_h
+@@ -8,7 +9,7 @@
+ 
+ NS_ASSUME_NONNULL_BEGIN
+ 
+-@interface EnrichedMarkdownTextInput : RCTViewComponentView
++@interface EnrichedMarkdownTextInput : RCTViewComponentView <ENRMDraftSnapshotProducer>
+ @property (nonatomic, readonly) ENRMEditSession *editSession;
+ - (CGSize)measureSize:(CGFloat)maxWidth;
+ - (nullable NSString *)markdownForSelectedRange;

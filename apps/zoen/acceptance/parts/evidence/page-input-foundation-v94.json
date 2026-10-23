@@ -1,0 +1,27 @@
+{
+  "status": "SOURCE_AND_SEPARATE_HOST_CHECKS_PASS_NATIVE_APP_INTEGRATION_PENDING",
+  "sourceCommit": "68b9900c7a725b6d5cc5de5570c95154b6a806f1",
+  "sourceValidationOnly": true,
+  "ffiPassed": 509,
+  "clientPassed": 777,
+  "typescriptOxlintOxfmtStrictClippy": "PASS",
+  "scope": "Encrypted native input capture, UTF-16 selection/IME state, revision checks and durable exact Apply/Discard receipts; real SQLite/cold Engine and failure tests. Separate UIKit producer 16 tests and Swift 6/UniFFI host proof do not establish a combined app journey.",
+  "receipts": [
+    {
+      "path": "/private/tmp/zoen-page-input-v94/verified-core-foundation.json",
+      "bytes": 1121,
+      "sha256": "1ebfdf2a687b0b228c02350e4cbb0d26731d8ca7e69352a245f995ccfe55640e"
+    },
+    {
+      "path": "/private/tmp/zoen-page-input-bridge-v94/host-proof/acceptance.json",
+      "bytes": 10187,
+      "sha256": "e158073cfd54abd6bcda26e69116aa35fbd6d780ac0869ea8969ceab8a2ea94d"
+    },
+    {
+      "path": "/private/tmp/zoen-page-native-producer-v94/native-seal-api-v94-06.json",
+      "bytes": 5102,
+      "sha256": "73d353bce8c8d4deafc4a97ae5dbe8fe5823d539199104b03725b8f8b379ba22"
+    }
+  ],
+  "limits": "Producer patch not installed; source/plain producers, native ownership/recovery UI and safe teardown remain integration work. Canonical Plan Apply remains closed. No new signed iPhone acceptance."
+}

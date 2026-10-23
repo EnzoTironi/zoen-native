@@ -1,128 +1,36 @@
-import type { ItemDetail } from '../core/generated/ItemDetail';
-
-export type HomeOwner = Readonly<{
-  mode: 'account' | 'demo';
-  identityId: string;
-  deviceId: string;
-}>;
-export type HomeSource = {
-  owner(): HomeOwner | null;
-  spaces(): ReadonlySet<string>;
-  items(): Promise<ItemDetail[]>;
-};
-export type HomePreferencesPort = {
-  get(key: string): Promise<string | null>;
-  set(key: string, value: string): Promise<void>;
-};
-export type HomeFailureKind = 'load' | 'save' | 'accountChanged';
-export class HomeFailure extends Error {
-  readonly kind: HomeFailureKind;
-  constructor(kind: HomeFailureKind, cause?: unknown) {
-    super(kind, { cause });
-    this.kind = kind;
-  }
-}
-export type HomePreference = Readonly<{
-  pinnedIds: readonly string[];
-  orderedIds: readonly string[];
-  hiddenIds: readonly string[];
-}>;
-export type HomeState = HomePreference &
-  Readonly<{
-    owner: HomeOwner | null;
-    items: ItemDetail[];
-    loading: boolean;
-    error: HomeFailure | null;
-  }>;
-
-const itemId = (value: unknown): value is string =>
-  typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
-const emptyState = (): HomeState => ({
-  owner: null,
-  items: [],
-  pinnedIds: [],
-  orderedIds: [],
-  hiddenIds: [],
-  loading: false,
-  error: null,
-});
-export function homeOwnerKey(owner: HomeOwner | null): string | null {
-  return owner
-    ? `home-pins:1:${JSON.stringify([owner.mode, owner.identityId, owner.deviceId])}`
-    : null;
-}
-const validIds = (value: unknown): value is string[] =>
-  Array.isArray(value) && value.length <= 100 && value.every(itemId);
-const maxPreferenceLength = 49_152;
-const emptyPreference = (): HomePreference => ({ pinnedIds: [], orderedIds: [], hiddenIds: [] });
-
-/** Same per-device key as legacy favorites; no account content or cross-device order. */
-export function parseHomePreference(value: string | null): HomePreference {
-  if (!value || value.length > maxPreferenceLength) return emptyPreference();
-  try {
-    const decoded: unknown = JSON.parse(value);
-    // Old favorite arrays and v2 orders migrate in memory; reads never rewrite them.
-    if (validIds(decoded))
-      return { pinnedIds: [...new Set(decoded)], orderedIds: [], hiddenIds: [] };
-    if (!decoded || typeof decoded !== 'object' || Array.isArray(decoded)) return emptyPreference();
-    const fields = Object.keys(decoded);
-    const { version, pinnedIds, orderedIds, hiddenIds } = decoded as Record<string, unknown>;
-    const allowed =
-      version === 2
-        ? ['version', 'pinnedIds', 'orderedIds']
-        : version === 3
-          ? ['version', 'pinnedIds', 'orderedIds', 'hiddenIds']
-          : [];
-    if (
-      fields.length !== allowed.length ||
-      !fields.every((field) => allowed.includes(field)) ||
-      !validIds(pinnedIds) ||
-      !validIds(orderedIds) ||
-      (version === 3 && !validIds(hiddenIds))
-    )
-      return emptyPreference();
-    const hidden = version === 3 ? [...new Set(hiddenIds as string[])] : [];
-    return {
-      pinnedIds: [...new Set(pinnedIds)].filter((id) => !hidden.includes(id)),
-      orderedIds: [...new Set(orderedIds)],
-      hiddenIds: hidden,
-    };
-  } catch {
-    return emptyPreference();
-  }
-}
-export function parseHomePins(value: string | null): readonly string[] {
-  return parseHomePreference(value).pinnedIds;
-}
-
-/** Orders an already authorized projection; unseen saved IDs never supply App content. */
-export function orderHomeItems(
-  items: readonly ItemDetail[],
-  orderedIds: readonly string[],
-): ItemDetail[] {
-  const remaining = new Map(items.map((item) => [item.id, item]));
-  const result: ItemDetail[] = [];
-  for (const id of orderedIds) {
-    const item = remaining.get(id);
-    if (item) {
-      result.push(item);
-      remaining.delete(id);
-    }
-  }
-  return [...result, ...remaining.values()];
-}
-/** Local shortcuts only: hiding never removes the canonical App or conversation content. */
-export function projectHomeItems(items: readonly ItemDetail[], preference: HomePreference) {
-  const allItems = orderHomeItems(items, preference.orderedIds);
-  const hidden = new Set(preference.hiddenIds);
-  return {
-    allItems,
-    items: allItems.filter((item) => !hidden.has(item.id)),
-    hiddenItems: allItems.filter((item) => hidden.has(item.id)),
-  };
-}
-const sameOrder = (first: readonly string[], second: readonly string[]) =>
-  first.length === second.length && first.every((id, index) => id === second[index]);
+import {
+  emptyState,
+  HomeFailure,
+  homeOwnerKey,
+  itemId,
+  maxPreferenceLength,
+  orderHomeItems,
+  parseHomePreference,
+  projectHomeItems,
+  sameOrder,
+  validIds,
+  type HomeOwner,
+  type HomePreference,
+  type HomePreferencesPort,
+  type HomeSource,
+  type HomeState,
+} from './preference-model.ts';
+export {
+  HomeFailure,
+  homeOwnerKey,
+  orderHomeItems,
+  parseHomePins,
+  parseHomePreference,
+  projectHomeItems,
+} from './preference-model.ts';
+export type {
+  HomeFailureKind,
+  HomeOwner,
+  HomePreference,
+  HomePreferencesPort,
+  HomeSource,
+  HomeState,
+} from './preference-model.ts';
 
 /** Only local IDs persist. Every displayed miniapp is reread from the canonical core. */
 export class HomeController {
@@ -130,6 +38,122 @@ export class HomeController {
   private readonly listeners = new Set<() => void>();
   private generation = 0;
   private layoutRevision = 0;
+  private pendingWrites = 0;
+  /** One bounded preview over the existing device preference; only Done writes its v3 key. */
+  private draft: {
+    owner: HomeOwner;
+    generation: number;
+    revision: string | number;
+    access: string;
+    baseline: HomePreference;
+  } | null = null;
+  private accessKey(items = this.state.items) {
+    const spaces = this.source.spaces();
+    return JSON.stringify([
+      [...spaces].sort(),
+      items
+        .filter((item) => spaces.has(item.space_id))
+        .map((item) => [item.id, item.space_id])
+        .sort(),
+    ]);
+  }
+  private draftCurrent(draft: NonNullable<HomeController['draft']>) {
+    return (
+      this.current(draft.owner, draft.generation) &&
+      draft.revision === (this.source.revision?.() ?? 0) &&
+      draft.access === this.accessKey()
+    );
+  }
+  beginEdit = (owner: HomeOwner | null = this.state.owner): boolean => {
+    if (this.draft) return !this.state.editSaving && this.draftCurrent(this.draft);
+    if (
+      !owner ||
+      !this.current(owner, this.generation) ||
+      !this.restored ||
+      this.pendingWrites ||
+      this.state.loading
+    )
+      return false;
+    this.draft = {
+      owner: { ...owner },
+      generation: this.generation,
+      revision: this.source.revision?.() ?? 0,
+      access: this.accessKey(),
+      baseline: {
+        pinnedIds: this.state.pinnedIds,
+        orderedIds: this.state.orderedIds,
+        hiddenIds: this.state.hiddenIds,
+      },
+    };
+    this.publish({ editing: true, error: null });
+    return true;
+  };
+  discardEdit = (owner: HomeOwner | null = this.state.owner): void => {
+    const draft = this.draft;
+    if (!draft || this.state.editSaving || homeOwnerKey(owner) !== homeOwnerKey(draft.owner))
+      return;
+    this.draft = null;
+    this.publish({ ...draft.baseline, editing: false, error: null });
+  };
+  commitEdit = (owner: HomeOwner | null = this.state.owner): Promise<void> => {
+    const draft = this.draft;
+    if (
+      !draft ||
+      this.state.editSaving ||
+      this.pendingWrites ||
+      !owner ||
+      !this.draftCurrent(draft) ||
+      homeOwnerKey(owner) !== homeOwnerKey(draft.owner) ||
+      draft.access !== this.accessKey()
+    )
+      return Promise.reject(new HomeFailure('accountChanged'));
+    const preference = {
+      pinnedIds: this.state.pinnedIds,
+      orderedIds: this.state.orderedIds,
+      hiddenIds: this.state.hiddenIds,
+    };
+    if (
+      sameOrder(preference.pinnedIds, draft.baseline.pinnedIds) &&
+      sameOrder(preference.orderedIds, draft.baseline.orderedIds) &&
+      sameOrder(preference.hiddenIds, draft.baseline.hiddenIds)
+    ) {
+      this.draft = null;
+      this.publish({ editing: false, error: null });
+      return Promise.resolve();
+    }
+    this.publish({ editSaving: true });
+    return this.writePreference(
+      () => {
+        if (this.draft !== draft || !this.draftCurrent(draft)) throw new HomeFailure('save');
+        return preference;
+      },
+      owner,
+      true,
+    )
+      .then(() => {
+        if (this.draft === draft) {
+          this.draft = null;
+          this.publish({ editing: false });
+        }
+      })
+      .finally(() => {
+        if (this.current(owner, draft.generation)) this.publish({ editSaving: false });
+      });
+  };
+  requireEdit = (owner: HomeOwner | null = this.state.owner): void => {
+    if (
+      !this.draft ||
+      !owner ||
+      this.state.editSaving ||
+      !this.draftCurrent(this.draft) ||
+      homeOwnerKey(owner) !== homeOwnerKey(this.draft.owner) ||
+      this.draft.access !== this.accessKey()
+    )
+      throw new HomeFailure('accountChanged');
+  };
+  private retireEdit() {
+    if (this.draft && !this.state.editSaving) this.discardEdit(this.draft.owner);
+  }
   private disposed = false;
   private erasing = false;
   private cleanupOwner: HomeOwner | null = null;
@@ -174,6 +198,7 @@ export class HomeController {
     const owner = this.source.owner();
     if (homeOwnerKey(owner) !== homeOwnerKey(this.state.owner)) {
       ++this.generation;
+      this.draft = null;
       this.restored = false;
       this.restoreTask = null;
       this.itemsTask = null;
@@ -188,9 +213,13 @@ export class HomeController {
     if (this.disposed || this.erasing) return Promise.resolve();
     const owner = this.synchronize();
     if (!owner) return Promise.resolve();
+    if (this.draft && !this.draftCurrent(this.draft)) this.retireEdit();
     const spaces = this.source.spaces();
     const accessible = this.state.items.filter((item) => spaces.has(item.space_id));
-    if (accessible.length !== this.state.items.length) this.publish({ items: accessible });
+    if (accessible.length !== this.state.items.length) {
+      this.retireEdit();
+      this.publish({ items: accessible });
+    }
     const generation = this.generation;
     if (!this.restored && !this.restoreTask) {
       const priorWrites = this.ownerWrites.get(homeOwnerKey(owner)!);
@@ -230,14 +259,15 @@ export class HomeController {
             if (this.itemsDirty) continue;
             const spaces = this.source.spaces();
             const seen = new Set<string>();
-            this.publish({
-              items: items.filter((item) => {
-                if (item.app === null || !spaces.has(item.space_id) || seen.has(item.id))
-                  return false;
-                seen.add(item.id);
-                return true;
-              }),
+            const nextItems = items.filter((item) => {
+              if (item.app === null || !spaces.has(item.space_id) || seen.has(item.id))
+                return false;
+              seen.add(item.id);
+              return true;
             });
+            const nextAccess = this.accessKey(nextItems);
+            if (this.draft && this.draft.access !== nextAccess) this.retireEdit();
+            this.publish({ items: nextItems });
           } catch (cause) {
             if (this.current(owner, generation))
               this.publish({ items: [], error: new HomeFailure('load', cause) });
@@ -257,11 +287,16 @@ export class HomeController {
   private writePreference(
     update: () => HomePreference | null,
     owner: HomeOwner | null,
+    commit = false,
   ): Promise<void> {
     const generation = this.generation;
+    const draftAtRequest = this.draft;
+    ++this.pendingWrites;
     const work = this.writes.then(async () => {
       if (!owner || !this.current(owner, generation)) throw new HomeFailure('accountChanged');
       try {
+        if (draftAtRequest && (this.draft !== draftAtRequest || !this.draftCurrent(draftAtRequest)))
+          throw new HomeFailure('accountChanged');
         if (!this.restored) throw new HomeFailure('save');
         const preference = update();
         if (!preference) return;
@@ -278,7 +313,10 @@ export class HomeController {
           hiddenIds: preference.hiddenIds,
         });
         if (serialized.length > maxPreferenceLength) throw new HomeFailure('save');
-        if (owner.mode === 'account') await this.port.set(homeOwnerKey(owner)!, serialized);
+        if (this.draft && !commit) {
+          if (this.state.editSaving || this.draft.access !== this.accessKey())
+            throw new HomeFailure('save');
+        } else if (owner.mode === 'account') await this.port.set(homeOwnerKey(owner)!, serialized);
         if (!this.current(owner, generation)) throw new HomeFailure('accountChanged');
         this.publish({ ...preference, error: null });
       } catch (cause) {
@@ -297,7 +335,9 @@ export class HomeController {
         if (this.ownerWrites.get(key) === settled) this.ownerWrites.delete(key);
       });
     }
-    return work;
+    return work.finally(() => {
+      --this.pendingWrites;
+    });
   }
   private writePins(update: () => readonly string[] | null, owner: HomeOwner | null) {
     return this.writePreference(() => {
@@ -432,7 +472,9 @@ export class HomeController {
     return this.refresh();
   }
   dispose() {
+    this.retireEdit();
     this.disposed = true;
+    this.draft = null;
     ++this.generation;
     this.restoreTask = null;
     this.itemsTask = null;
@@ -442,6 +484,7 @@ export class HomeController {
   /** Retained cleanup ownership survives ClientStore clearing its account snapshot. */
   async eraseDevice(): Promise<void> {
     this.erasing = true;
+    this.draft = null;
     ++this.generation;
     this.state = emptyState();
     this.listeners.forEach((listener) => listener());

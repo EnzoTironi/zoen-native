@@ -1,3 +1,4 @@
+import type { ConversationAttachmentCategory } from './attachment-categories';
 import { randomUUID } from 'expo-crypto';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
@@ -17,7 +18,14 @@ import {
 } from './attachment-recent-session';
 import CoreModule from '../../modules/zoen-core/src/ZoenCoreModule';
 
-export function useAttachmentPhotoPicker(recentConfiguration?: RecentAttachmentConfiguration) {
+export type AttachmentRouteHandoff = {
+  categories: readonly ConversationAttachmentCategory[];
+  open(category: ConversationAttachmentCategory, current: () => boolean): void;
+};
+export function useAttachmentPhotoPicker(
+  recentConfiguration?: RecentAttachmentConfiguration,
+  routes?: AttachmentRouteHandoff,
+) {
   const keyboard = useAttachmentKeyboardSession();
   const [keyboardRequest, setKeyboardRequest] = useState<KeyboardPresentation | null>(null);
   const pickerOwner = useRef<string | null>(null);
@@ -141,6 +149,7 @@ export function useAttachmentPhotoPicker(recentConfiguration?: RecentAttachmentC
         request={keyboardRequest}
         sendAsFileAllowed={sendAsFileAllowed}
         existingOptions={existingOptions}
+        routes={routes}
         onResume={setKeyboardRequest}
         onPreferredIndex={(index) => {
           preferredIndex.current = index;

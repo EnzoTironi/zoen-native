@@ -1,0 +1,15 @@
+{
+  "id": "custom-cloudflare-runtime",
+  "status": "RETIRED",
+  "activeProductRuntime": false,
+  "currentBackend": "native Rust with PostgreSQL, FoundationDB and S3-compatible object storage",
+  "retainedCloudflareScope": [
+    "static Expo Web hosting",
+    "edge DNS",
+    "optional private S3-compatible R2 storage"
+  ],
+  "historicalProofsPolicy": "Earlier Cloudflare adapter receipts below retain their original source/artifact attribution. Removed runtime paths are historical references and do not qualify the native local composition or public production.",
+  "historicalSource": "https://github.com/EnzoTironi/zoen-native/blob/b4cffb7163888d34e47e470f6bb007672a1ed028/infra/cloudflare/README.md",
+  "nativeLocalQualificationAccepted": true,
+  "publicBackendQualificationAccepted": false
+}

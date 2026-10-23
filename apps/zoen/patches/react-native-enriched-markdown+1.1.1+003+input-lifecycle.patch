@@ -1,0 +1,395 @@
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTextView.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTextView.mm
+index a5391c7e8a6b1c063a6159ced46161ec58bf01aa..c916c2150af82162f065df5f38c8287508d096d5 100644
+--- a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTextView.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTextView.mm
+@@ -15,6 +15,32 @@ @implementation ENRMInputTextView {
+   CGFloat _lastLayoutWidth;
+ }
+ 
++// These wrappers preserve UIKit behavior and do not set attributes, selection, or marked text.
++// The storage primitive records the exact replacements; the outer boundary captures final metadata.
++- (void)setMarkedText:(NSString *)text selectedRange:(NSRange)range
++{
++  if (self.markdownTextInput && ![self.markdownTextInput draftNativeMutationWillBegin]) return;
++  @try { [super setMarkedText:text selectedRange:range]; }
++  @finally { [self.markdownTextInput draftNativeMutationDidEnd]; }
++}
++- (void)unmarkText
++{
++  if (self.markdownTextInput && ![self.markdownTextInput draftNativeMutationWillBegin]) return;
++  @try { [super unmarkText]; }
++  @finally { [self.markdownTextInput draftNativeMutationDidEnd]; }
++}
++- (void)insertText:(NSString *)text
++{
++  if (self.markdownTextInput && ![self.markdownTextInput draftNativeMutationWillBegin]) return;
++  @try { [super insertText:text]; }
++  @finally { [self.markdownTextInput draftNativeMutationDidEnd]; }
++}
++- (void)replaceRange:(UITextRange *)range withText:(NSString *)text
++{
++  if (self.markdownTextInput && ![self.markdownTextInput draftNativeMutationWillBegin]) return;
++  @try { [super replaceRange:range withText:text]; }
++  @finally { [self.markdownTextInput draftNativeMutationDidEnd]; }
++}
+ - (void)copy:(id)sender
+ {
+   NSRange selection = self.selectedRange;
+@@ -94,7 +120,9 @@ - (void)deleteBackward
+   if (self.markdownTextInput != nil && [self.markdownTextInput handleBackspaceAtDocumentStart]) {
+     return;
+   }
+-  [super deleteBackward];
++  if (self.markdownTextInput && ![self.markdownTextInput draftNativeMutationWillBegin]) return;
++  @try { [super deleteBackward]; }
++  @finally { [self.markdownTextInput draftNativeMutationDidEnd]; }
+ }
+ 
+ /// Hardware-keyboard Tab / Shift+Tab indent and outdent the current list item.
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
+index 7e72cff2624c636d78192c02a7f5db79d79f37b6..d634549f4b14b84580429666eebe73a37ccd41fe 100644
+--- a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
+@@ -1,4 +1,6 @@
+ #import "EnrichedMarkdownTextInput.h"
++#import "ENRMDraftSnapshot+Internal.h"
++#import "ENRMDraftTextStorage.h"
+ #import "ContextMenuUtils.h"
+ #import "ENRMAutoLinkDetector.h"
+ #import "ENRMBlockEditCoordinator.h"
+@@ -58,6 +60,9 @@ @interface EnrichedMarkdownTextInput () <RCTEnrichedMarkdownTextInputViewProtoco
+                                          ENRMInputTypingAttributesDataSource>
+ #endif
+ - (void)setupTextView;
++- (BOOL)draftReconcileFinishedComposition:(NSError **)error;
++- (NSData *)draftCopyLiveSnapshotWithError:(NSError **)error;
++- (BOOL)draftOwnsCheckpointToken;
+ - (void)applyFormatting;
+ - (void)applyFormattingScopedToEditAtLocation:(NSUInteger)editLocation insertedLength:(NSUInteger)insertedLength;
+ - (void)applyFormattingScopedFromParagraphAtLocation:(NSUInteger)editLocation;
+@@ -69,6 +74,14 @@ - (void)resetBaseTypingAttributes;
+ 
+ @implementation EnrichedMarkdownTextInput {
+   ENRMPlatformTextView *_textView;
++  BOOL _draftRequired, _draftRestoring, _draftCompositionPending, _draftSealed, _draftDiscardFrozen, _draftRetaining, _draftBinding;
++  NSUInteger _draftNativeDepth, _draftSemanticDepth;
++  uint64_t _draftSequence;
++  NSString *_draftToken;
++  id<ENRMDraftCheckpointSink> _draftSink;
++  ENRMDraftSnapshotModel *_draftModel;
++  NSData *_draftPending, *_draftRetained, *_draftSealedSnapshot;
++  NSError *_draftFailure;
+   ENRMInputLayoutManager *_layoutManager;
+   EnrichedMarkdownTextInputShadowNode::ConcreteState::Shared _state;
+   int _heightUpdateCounter;
+@@ -177,6 +190,18 @@ - (instancetype)initWithFrame:(CGRect)frame
+     _inputEventEmitter = [[ENRMInputEventEmitter alloc] initWithDataSource:self];
+ 
+     [self setupDetectorPipeline];
++#if !TARGET_OS_OSX
++    __weak EnrichedMarkdownTextInput *draftOwner = self;
++    ((ENRMDraftTextStorage *)_textView.textStorage).willReplace = ^(NSString *preimage, NSRange range, NSString *replacement) {
++      EnrichedMarkdownTextInput *owner=draftOwner;
++      if(!owner || !owner->_draftRequired || (owner->_draftSealed || owner->_draftDiscardFrozen) || owner->_draftRestoring || owner->_editSession.shouldSuppressFormatting)return;
++      if(!owner->_draftModel)owner->_draftModel=[owner draftLiveModel];
++      NSError *failure=nil;
++      if(![owner->_draftModel replaceRange:range text:replacement preimage:preimage
++          pendingAdd:owner->_typingController.pendingStyles pendingRemove:owner->_typingController.pendingStyleRemovals error:&failure])
++        [owner draftDidFail:failure];
++    };
++#endif
+ 
+     _editPipeline = [[ENRMEditPipeline alloc] initWithFormattingStore:_formattingStore
+                                                            blockStore:_blockStore
+@@ -221,7 +246,7 @@ - (void)setupTextView
+   textContainer.widthTracksTextView = YES;
+   [_layoutManager addTextContainer:textContainer];
+ 
+-  NSTextStorage *textStorage = [[NSTextStorage alloc] init];
++  ENRMDraftTextStorage *textStorage = [[ENRMDraftTextStorage alloc] init];
+   [textStorage addLayoutManager:_layoutManager];
+ 
+   ENRMInputTextView *inputTextView = [[ENRMInputTextView alloc] initWithFrame:CGRectZero textContainer:textContainer];
+@@ -378,10 +403,16 @@ - (CGSize)measureSize:(CGFloat)maxWidth
+ 
+ - (void)updateProps:(Props::Shared const &)props oldProps:(Props::Shared const &)oldProps
+ {
++  // A sealed producer keeps live IME and attributes intact even if React sends
++  // editable/defaultValue/style/token changes while the application awaits apply.
++  if (_draftSealed || _draftDiscardFrozen || _draftBinding) {
++    [super updateProps:props oldProps:oldProps];
++    return;
++  }
+   const auto &oldViewProps = *std::static_pointer_cast<EnrichedMarkdownTextInputProps const>(_props);
+   const auto &newViewProps = *std::static_pointer_cast<EnrichedMarkdownTextInputProps const>(props);
+ 
+-  if (newViewProps.editable != oldViewProps.editable) {
++  if (newViewProps.draftCheckpointToken.empty() && !_draftRequired && newViewProps.editable != oldViewProps.editable) {
+     _textView.editable = newViewProps.editable;
+   }
+ 
+@@ -536,6 +567,16 @@ - (void)updateProps:(Props::Shared const &)props oldProps:(Props::Shared const &
+     [self applyFormatting];
+   }
+ 
++  if (!newViewProps.draftCheckpointToken.empty()) {
++    NSString *token=[NSString stringWithUTF8String:newViewProps.draftCheckpointToken.c_str()];
++    NSError *failure=nil;
++    BOOL ready=[self bindDraftCheckpointToken:token error:&failure];
++    if(!ready)[self draftDidFail:failure ?: ENRMDraftError(ENRMDraftSnapshotUnavailable)];
++    if (!(_draftFailure && _editSession.isComposing)) _textView.editable=newViewProps.editable && ready;
++  } else if (_draftRequired) {
++    [self unbindDraftCheckpoint];
++    _textView.editable=NO;
++  }
+   [super updateProps:props oldProps:oldProps];
+ }
+ 
+@@ -587,7 +628,7 @@ - (void)didMoveToWindow
+     [self requestHeightUpdate];
+ 
+     const auto &viewProps = *std::static_pointer_cast<EnrichedMarkdownTextInputProps const>(_props);
+-    if (viewProps.autoFocus) {
++    if (viewProps.autoFocus && [self draftMayMutate]) {
+       ENRMFocusTextView(_textView);
+     }
+   }
+@@ -671,6 +712,7 @@ - (void)updatePlaceholderVisibility
+ 
+ - (void)importMarkdown:(NSString *)markdown
+ {
++  _draftRestoring=YES;
+   ENRMInputParser *parser = [[ENRMInputParser alloc] init];
+   ENRMParseResult *parsed = [parser parseToPlainTextAndRanges:markdown];
+ 
+@@ -696,6 +738,8 @@ - (void)importMarkdown:(NSString *)markdown
+   if (parsed.plainText.length == 0) {
+     [self resetBaseTypingAttributes];
+   }
++  _draftRestoring=NO;
++  if(_draftRequired)_draftModel=[self draftLiveModel];
+ }
+ 
+ - (void)replaceTextInRange:(NSRange)selection
+@@ -703,6 +747,9 @@ - (void)replaceTextInRange:(NSRange)selection
+           formattingRanges:(NSArray<ENRMFormattingRange *> *)ranges
+                blockRanges:(NSArray<ENRMBlockRange *> *)blockRanges
+ {
++  // Every known semantic replacement enters admission before text or stores change.
++  if (![self draftMayMutate]) return;
++  if (_draftRequired) _draftSemanticDepth++;
+   NSUInteger editLocation = selection.location;
+ 
+   [_editSession enterPhase:ENRMEditPhaseFormatting];
+@@ -730,6 +777,21 @@ - (void)replaceTextInRange:(NSRange)selection
+ 
+   [_detectorPipeline processTextChange:plainText modificationRange:NSMakeRange(editLocation, text.length)];
+ 
++  // This is the package's explicit semantic replacement, not a guessed text diff.
++  // Adopt its completed stores before the first event attempts synchronous retention.
++  if (_draftRequired) {
++    // The explicit replacement consumed the edit; a later UIKit callback must
++    // start from its final selection rather than stale pre-replacement metadata.
++    _lastTextLength = plainText.length;
++    _lastSelectedRange = _textView.selectedRange;
++    _preEditSelectedRange = _textView.selectedRange;
++    _preEditBlockType = ENRMInputBlockTypeParagraph;
++    _preEditBlockLevel = 0;
++    _preEditParagraphWasEmpty = NO;
++    _preEditReplacedNewline = NO;
++    _draftModel = [self draftLiveModel];
++    _draftSemanticDepth--;
++  }
+   [self updatePlaceholderVisibility];
+   [_inputEventEmitter emitOnChangeText];
+   [_inputEventEmitter emitOnChangeSelection];
+@@ -804,6 +866,7 @@ - (void)pasteMarkdown:(NSString *)markdown
+ 
+ - (void)resetBaseTypingAttributes
+ {
++  if (_draftSealed || _draftDiscardFrozen) return;
+   ENRMSetDefaultTypingAttributes(_textView, @{
+     NSFontAttributeName : _formatterStyle.baseFont,
+     NSForegroundColorAttributeName : _formatterStyle.baseTextColor,
+@@ -812,6 +875,7 @@ - (void)resetBaseTypingAttributes
+ 
+ - (void)applyFormatting
+ {
++  if (_draftSealed || _draftDiscardFrozen) return;
+   [self applyFormattingScopedToRange:NSMakeRange(0, ENRMGetPlainText(_textView).length)];
+ }
+ 
+@@ -819,6 +883,7 @@ - (void)applyFormatting
+ /// line(s) touched by the edit, mirroring Android's applyFormattingScopedToEdit.
+ - (void)applyFormattingScopedToEditAtLocation:(NSUInteger)editLocation insertedLength:(NSUInteger)insertedLength
+ {
++  if (_draftSealed || _draftDiscardFrozen) return;
+   NSString *plainText = ENRMGetPlainText(_textView);
+   NSUInteger textLength = plainText.length;
+   if (textLength == 0) {
+@@ -840,6 +905,7 @@ - (void)applyFormattingScopedToEditAtLocation:(NSUInteger)editLocation insertedL
+ /// whose paragraph range extends back over the joined previous line.
+ - (void)applyFormattingScopedFromParagraphAtLocation:(NSUInteger)editLocation
+ {
++  if (_draftSealed || _draftDiscardFrozen) return;
+   NSString *plainText = ENRMGetPlainText(_textView);
+   NSUInteger textLength = plainText.length;
+   if (textLength == 0) {
+@@ -855,6 +921,7 @@ - (void)applyFormattingScopedFromParagraphAtLocation:(NSUInteger)editLocation
+ 
+ - (void)applyFormattingScopedToRange:(NSRange)scope
+ {
++  if (_draftSealed || _draftDiscardFrozen) return;
+   if (_editSession.shouldSuppressFormatting) {
+     return;
+   }
+@@ -883,6 +950,7 @@ - (void)applyFormattingScopedToRange:(NSRange)scope
+ 
+ - (void)applyWritingDirection
+ {
++  if (_draftSealed || _draftDiscardFrozen) return;
+   NSTextStorage *textStorage = _textView.textStorage;
+   if (textStorage.length == 0) {
+     return;
+@@ -896,7 +964,7 @@ - (void)applyWritingDirection
+ 
+ - (void)focus
+ {
+-  ENRMFocusTextView(_textView);
++  if ([self draftMayMutate]) ENRMFocusTextView(_textView);
+ }
+ 
+ - (void)blur
+@@ -906,6 +974,7 @@ - (void)blur
+ 
+ - (void)setValue:(NSString *)markdown
+ {
++  if(![self draftMayMutate])return;
+   [self importMarkdown:markdown];
+   _lastSelectedRange = _textView.selectedRange;
+   [_inputEventEmitter emitOnChangeText];
+@@ -916,6 +985,7 @@ - (void)setValue:(NSString *)markdown
+ 
+ - (void)setSelection:(NSInteger)start end:(NSInteger)end
+ {
++  if (_draftSealed || _draftDiscardFrozen) return;
+   NSInteger textLen = (NSInteger)ENRMGetPlainText(_textView).length;
+   NSInteger clampedStart = MIN(MAX(start, 0), textLen);
+   NSInteger clampedEnd = MIN(MAX(end, clampedStart), textLen);
+@@ -951,6 +1021,7 @@ - (void)toggleSpoiler
+ 
+ - (void)toggleInlineStyle:(ENRMInputStyleType)styleType
+ {
++  if(![self draftMayMutate])return;
+   id<ENRMStyleHandler> handler = [_formatter handlerForStyleType:styleType];
+   if (!handler) {
+     return;
+@@ -986,6 +1057,7 @@ - (void)toggleHeading:(NSInteger)level
+ 
+ - (void)toggleBlockType:(ENRMInputBlockType)type level:(NSInteger)level
+ {
++  if(![self draftMayMutate])return;
+   NSString *text = ENRMGetPlainText(_textView);
+   BOOL alreadyActive = [_blockCoordinator toggleBlockType:type
+                                                     level:level
+@@ -1038,6 +1110,7 @@ - (void)outdentList
+ 
+ - (void)changeListDepthBy:(NSInteger)delta
+ {
++  if(![self draftMayMutate])return;
+   NSString *text = ENRMGetPlainText(_textView);
+   ENRMDepthChangeResult result = [_blockCoordinator changeDepthBy:delta
+                                                    cursorPosition:_textView.selectedRange.location
+@@ -1319,6 +1392,7 @@ - (NSString *)adjustStoresForEditAtLocation:(NSUInteger)editLocation
+ 
+ - (void)setLink:(NSString *)url
+ {
++  if(![self draftMayMutate])return;
+   NSRange selection = _textView.selectedRange;
+   if (![_linkCoordinator setLinkURL:url atCursor:selection.location selection:selection]) {
+     return;
+@@ -1329,6 +1403,7 @@ - (void)setLink:(NSString *)url
+ 
+ - (void)insertLink:(NSString *)text url:(NSString *)url
+ {
++  if(![self draftMayMutate])return;
+   NSString *displayText = text.length > 0 ? text : url;
+   NSRange linkRange = NSMakeRange(0, displayText.length);
+   ENRMFormattingRange *range = [ENRMFormattingRange rangeWithType:ENRMInputStyleTypeLink
+@@ -1339,6 +1414,7 @@ - (void)insertLink:(NSString *)text url:(NSString *)url
+ 
+ - (void)insertText:(NSString *)text
+ {
++  if(![self draftMayMutate])return;
+   if (text.length == 0) {
+     return;
+   }
+@@ -1385,6 +1461,7 @@ - (void)insertMention:(NSString *)displayText url:(NSString *)url
+ 
+ - (void)removeLink
+ {
++  if(![self draftMayMutate])return;
+   if (![_linkCoordinator removeLinkAtPosition:_textView.selectedRange.location]) {
+     return;
+   }
+@@ -1472,6 +1549,13 @@ - (void)handleCommand:(const NSString *)commandName args:(const NSArray *)args
+ 
+ - (std::shared_ptr<EnrichedMarkdownTextInputEventEmitter const>)fabricEventEmitter
+ {
++  // Selection/format callbacks can re-enter during a known semantic replacement.
++  // Only the completed boundary may retain/emit; failure requires explicit retry.
++  if (_draftRequired && (_draftSealed || _draftDiscardFrozen || _draftBinding || _draftSemanticDepth || _draftFailure)) return nullptr;
++  if (_draftRequired && !_draftRestoring) {
++    NSError *failure=nil;
++    if(![self flushDraftSnapshotWithError:&failure]) { [self draftDidFail:failure];return nullptr; }
++  }
+   if (_eventEmitter == nullptr || _editSession.shouldSuppressEvents) {
+     return nullptr;
+   }
+@@ -1681,9 +1765,21 @@ - (BOOL)applyMarkdownShortcutForEditAtLocation:(NSUInteger)editLocation
+ 
+ - (void)handleTextChanged
+ {
++  if (_draftSealed || _draftDiscardFrozen) return;
+   if (_editSession.isComposing) {
+     return;
+   }
++  if (_draftRequired && _draftCompositionPending) {
++    NSError *failure = nil;
++    if (![self draftReconcileFinishedComposition:&failure]) {
++      [self draftDidFail:failure];
++      return;
++    }
++    [_inputEventEmitter emitOnChangeText];
++    [_inputEventEmitter emitOnChangeSelection];
++    [_inputEventEmitter emitFormattingChanged];
++    return;
++  }
+ 
+   NSUInteger newLength = ENRMGetPlainText(_textView).length;
+   NSRange selection = _textView.selectedRange;
+@@ -1835,6 +1931,7 @@ - (void)manageSelectionBasedChanges
+ 
+ - (BOOL)textView:(UITextView *)textView shouldChangeTextInRange:(NSRange)range replacementText:(NSString *)text
+ {
++  if(![self draftMayMutate])return NO;
+   [_inputEventEmitter emitOnKeyPress:text];
+   if ([self deleteLinkForReplacementRange:range replacementText:text]) {
+     return NO;
+@@ -1917,7 +2014,7 @@ - (void)schedulePostGestureAtomicSnap
+                      return;
+                    }
+                    strongSelf->_atomicSnapScheduled = NO;
+-                   if (strongSelf->_editSession.shouldSuppressSelectionSideEffects ||
++                   if (strongSelf->_draftSealed || strongSelf->_draftDiscardFrozen || strongSelf->_editSession.shouldSuppressSelectionSideEffects ||
+                        strongSelf->_editSession.isComposing) {
+                      return;
+                    }
+@@ -1935,6 +2032,7 @@ - (void)schedulePostGestureAtomicSnap
+ 
+ - (void)textViewDidChangeSelection:(UITextView *)textView
+ {
++  if (_draftSealed || _draftDiscardFrozen) return;
+   NSRange newSelection = textView.selectedRange;
+   if (!_editSession.shouldSuppressSelectionSideEffects && !_editSession.isComposing) {
+     if ([self selectionGestureIsActive]) {

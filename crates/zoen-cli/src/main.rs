@@ -11,8 +11,12 @@
 mod agent;
 mod agent_enrollment;
 mod agent_host_lock;
+mod agent_inspect;
+mod cli;
+mod commands;
 mod deckcraft;
 mod file_vault;
+mod terminal;
 
 use std::{
     path::{Path, PathBuf},
@@ -20,11 +24,13 @@ use std::{
     time::Duration,
 };
 
+use cli::{usage, Cli};
 use client_core::{
     Client, ConnectionDto, CoreListener, Delivery, EntryKind, MarkdownFileDto, PhotoChange,
     PrivacyDto, ProfileDto, SecretVault, SpaceKindDto,
 };
 use file_vault::FileVault;
+use terminal::{line, receive_history, Printer, Progress};
 
 impl SecretVault for FileVault {
     fn load(&self, key: String) -> Option<Vec<u8>> {
@@ -37,100 +43,6 @@ impl SecretVault for FileVault {
         // SecretVault cannot report deletion errors. Callers needing confirmed
         // removal must still reconcile with the retained enrollment/setup state.
         let _ = self.remove(&key);
-    }
-}
-
-/// Prints a history transfer's progress.
-struct Progress;
-
-impl client_core::TransferListener for Progress {
-    fn on_progress(&self, done: u32, total: u32) {
-        println!("history {done}/{total}");
-    }
-}
-
-/// Takes the first history bundle from the device that linked this one.
-async fn receive_history(e: &Client, timeout: u64) {
-    match e
-        .receive_history(timeout.max(30_000), Some(Arc::new(Progress)))
-        .await
-    {
-        Ok(h) => println!(
-            "history: {} messages in {} chunks ({} resumed)",
-            h.messages, h.chunks, h.resumed
-        ),
-        Err(err) => die(err),
-    }
-}
-
-struct Printer {
-    me: String,
-    engine: std::sync::Weak<Client>,
-}
-
-impl CoreListener for Printer {
-    fn on_change(&self, space_ids: Vec<String>) {
-        let Some(e) = self.engine.upgrade() else {
-            return;
-        };
-        for s in space_ids {
-            if let Ok(entries) = e.timeline(s.clone()) {
-                if let Some(last) = entries.last() {
-                    if last.author.id != self.me {
-                        println!("[{}] {}", title_of(&e, &s), line(last));
-                    }
-                }
-            }
-        }
-    }
-    fn on_ephemeral(&self, space_id: String, from_id: String, kind: String, detail: String) {
-        let Some(e) = self.engine.upgrade() else {
-            return;
-        };
-        let who = e
-            .personas()
-            .into_iter()
-            .find(|p| p.id == from_id)
-            .map(|p| p.name)
-            .unwrap_or_else(|| "someone".into());
-        let what = match kind.as_str() {
-            "typing" => "is typing…".to_string(),
-            "stopped" => "stopped typing".to_string(),
-            "status" => format!("is {detail}"),
-            other => format!("{other} {detail}"),
-        };
-        println!("[{}] {who} {what}", title_of(&e, &space_id));
-    }
-    fn on_presence(&self, identity_id: String, online: bool) {
-        let Some(e) = self.engine.upgrade() else {
-            return;
-        };
-        if let Some(p) = e.personas().into_iter().find(|p| p.id == identity_id) {
-            println!(
-                "· {} is {}",
-                p.name,
-                if online { "online" } else { "offline" }
-            );
-        }
-    }
-    fn on_connection(&self, status: ConnectionDto) {
-        if std::env::var_os("ZOEN_NET_DEBUG").is_some() {
-            eprintln!(
-                "[zoen-net] connection={} synced={} pending={} error={:?}",
-                status.state, status.synced, status.pending, status.error
-            );
-        }
-    }
-    fn on_error(&self, message: String) {
-        eprintln!("! relay refused: {message}");
-    }
-    fn on_profile_changed(&self, identity_id: String) {
-        let Some(e) = self.engine.upgrade() else {
-            return;
-        };
-        if let Ok(p) = e.get_profile(identity_id) {
-            println!("· @{} updated their profile", p.handle);
-        }
     }
 }
 
@@ -168,107 +80,6 @@ async fn person(e: &Client, handle: &str) -> String {
         .find(|p| p.handle == h)
         .map(|p| p.id)
         .unwrap_or_else(|| die(format!("@{h} isn't on Zoen")))
-}
-
-fn title_of(e: &Client, space: &str) -> String {
-    e.space(space.to_string())
-        .map(|s| s.title)
-        .unwrap_or_else(|_| space.chars().take(10).collect())
-}
-
-fn line(t: &client_core::TimelineEntry) -> String {
-    let body = match &t.kind {
-        EntryKind::Message { text, .. } => text.clone(),
-        EntryKind::ItemEdited { title, note, .. } => format!("✎ {title}: {note}"),
-        EntryKind::Request { title, .. } => format!("? {title}"),
-        EntryKind::System { text } => format!("· {text}"),
-        EntryKind::Background { background } => format!("· background: {}", background.style),
-    };
-    let mark = match t.delivery {
-        Delivery::Sending => " (sending)",
-        Delivery::Failed => " (failed)",
-        _ => "",
-    };
-    format!("{}: {body}{mark}", t.author.name)
-}
-
-fn usage() -> ! {
-    eprintln!(
-        "usage: zoen [--home DIR] <command>\n\n\
-         init --name NAME --handle HANDLE [--relay URL]\n\
-         whoami | status | chats | verify\n\
-         people QUERY\n\
-         dm @HANDLE [TEXT]                end-to-end (MLS): the relay holds ciphertext\n\
-         group TITLE @HANDLE... [--readable]   end-to-end unless --readable\n\
-         encrypt CHAT                     make a relay-readable chat end-to-end, for good\n\
-         add CHAT @HANDLE [--admin]       bring someone in (an admin can add and remove too)\n\
-         remove CHAT @HANDLE              take someone out (end-to-end: they read nothing after)\n\
-         keys CHAT                        an end-to-end chat's group: epoch, digest, members\n\
-         send CHAT TEXT [--offline]      CHAT = @handle, title or space id\n\
-         read CHAT [--older]              --older: ask your other device for an older page\n\
-         agent-keys | agent-init --name N --handle H --owner ID --proof JSON --definition FILE\n\
-         agent-host [--for SECS]          run this agent citizen (relay-backed cursors)\n\
-         agent-enroll-request --owner ID --relay URL --name N --handle H --definition FILE\n\
-         agent-enroll-wait [--timeout MS]  recover or wait for owner consent, then register\n\
-         agent-enroll-cancel --offer-digest HASH   discard only an unused offer\n\
-         app CHAT install APP JSON        install a catalog mini-app in CHAT\n\
-         app CHAT view                    each mini-app in CHAT as you see it (JSON)\n\
-         authorize-agent AGENT_ID         owner: sign an agent's root\n\
-         agent-pause|agent-resume|agent-revoke @AGENT   owner controls\n\
-         agent-define @AGENT --definition FILE [--version N]\n\
-         link-request [--relay URL]       new device: show a code, become your account, get history\n\
-         link CODE                        existing device: link the device showing CODE\n\
-         history                          new device: finish (resume) the history transfer\n\
-         devices | unlink DEVICE          your devices; unlink one (prefix ok)\n\
-         invite CHAT\n\
-         join CODE\n\
-         agent CODE|HANDLE|LINK   open the chat behind an agent link\n\
-         sync [--timeout MS]\n\
-         open LINK                        (before init: where this install came from)\n\
-         onboarding [--relay URL]         (the onboarding plan for that source and arm)\n\
-         growth-sync [--health S C]       (config + source/exposures/health report)\n\
-         variant FLAG\n\
-         watch [--for SECONDS]\n\
-         typing CHAT [--for SECONDS]\n\
-         background CHAT --photo FILE     photo background for everyone (encrypted on the relay)\n\
-         photo CHAT --out FILE            save the chat's background photo\n\
-         profile set [--name N] [--bio B] [--photo FILE | --no-photo]\n\
-         profile show [@HANDLE] [--out FILE]   what this device can read (FILE = their photo)\n\
-         block @HANDLE | unblock @HANDLE\n\
-         page import CHAT FILE... [--root DIR]  Markdown files as pages (path relative to DIR)\n\
-         page export ITEM --out FILE | page export-all CHAT --dir DIR\n\
-         page show ITEM | page check ITEM N | page add ITEM TEXT | page set ITEM N TEXT\n\
-         page new CHAT TITLE | pages CHAT\n\
-         file add CHAT FILE [--thumb PNG] [--path DIR] | files CHAT\n\
-         file get ITEM --out FILE [--version N] [--thumb-out PNG]\n\
-         file version ITEM FILE [--thumb PNG]\n\
-         versions ITEM | restore ITEM N      ITEM = id (prefix ok), path or title\n\
-         backup on (--password P | --recovery-key) | backup now | backup off | backup status\n\
-         recover @HANDLE (--password P | --recovery-key KEY) [--relay URL]   a new device from a backup"
-    );
-    std::process::exit(2)
-}
-
-struct Cli {
-    args: Vec<String>,
-}
-
-impl Cli {
-    fn flag(&mut self, name: &str) -> Option<String> {
-        let i = self.args.iter().position(|a| a == name)?;
-        let v = self.args.get(i + 1).cloned();
-        self.args.drain(i..(i + 2).min(self.args.len()));
-        v
-    }
-    fn switch(&mut self, name: &str) -> bool {
-        match self.args.iter().position(|a| a == name) {
-            Some(i) => {
-                self.args.remove(i);
-                true
-            }
-            None => false,
-        }
-    }
 }
 
 fn open(home: &Path) -> Arc<Client> {
@@ -427,12 +238,34 @@ async fn main() {
         usage();
     }
     let cmd = cli.args.remove(0);
+    let agent_source = if cmd == "agent-host" {
+        agent::Source::parse(&std::env::args().skip(1).collect::<Vec<_>>())
+            .unwrap_or_else(|error| die(error))
+    } else {
+        None
+    };
+    if agent_source.is_some() {
+        agent_inspect::existing_home(&home)
+            .unwrap_or_else(|_| die("agent_host_source_existing_home_required"));
+    }
+    if cmd == "agent-inspect" {
+        agent_inspect::validate_args(&std::env::args().skip(1).collect::<Vec<_>>())
+            .unwrap_or_else(|error| die(error));
+        agent_inspect::existing_home(&home).unwrap_or_else(|error| die(error));
+    }
     // Hold the local host's OS lock through sync shutdown, before opening any
     // account state or provider. Early returns and process death release it too.
     let enrollment = agent_enrollment::Action::parse(&cmd, &cli.args, timeout, offline)
         .unwrap_or_else(|err| die(err));
     let agent_host_lock = if agent_enrollment::requires_home_lock(&cmd) {
-        Some(agent_host_lock::HostLock::acquire(&home).unwrap_or_else(|err| die(err)))
+        Some(
+            agent_host_lock::HostLock::acquire(&home).unwrap_or_else(|err| {
+                if cmd == "agent-inspect" {
+                    die("agent_inspect_home_locked_or_unavailable");
+                }
+                die(err)
+            }),
+        )
     } else {
         None
     };
@@ -456,7 +289,29 @@ async fn main() {
             .unwrap_or_else(|err| die(err));
     }
     let vault: Arc<dyn SecretVault> = concrete_vault.clone();
-    let e = open(&home);
+    let e = if cmd == "agent-inspect" {
+        agent_inspect::open_existing(&home).unwrap_or_else(|error| die(error))
+    } else {
+        open(&home)
+    };
+    if cmd == "agent-inspect" {
+        let result = async {
+            if !e
+                .unlock(vault.clone())
+                .map_err(|_| "agent_inspect_unlock_failed")?
+            {
+                return Err("agent_inspect_missing_account");
+            }
+            agent_inspect::preflight(&e)?;
+            e.start_sync(None)
+                .map_err(|_| "agent_inspect_sync_start_failed")?;
+            agent_inspect::inspect(&e, timeout).await
+        }
+        .await;
+        e.stop_sync();
+        println!("{}", result.unwrap_or_else(|error| die(error)));
+        return;
+    }
     if let Some(action) = enrollment {
         let result = action.run(&e, concrete_vault).await;
         e.stop_sync();
@@ -647,14 +502,26 @@ async fn main() {
         return;
     }
 
-    if !e.unlock(vault.clone()).unwrap_or_else(|err| die(err)) {
+    if !e.unlock(vault.clone()).unwrap_or_else(|err| {
+        if agent_source.is_some() {
+            die("agent_host_source_unlock_failed");
+        }
+        die(err)
+    }) {
+        if agent_source.is_some() {
+            die("agent_host_source_account_unavailable");
+        }
         die(format!(
             "no account in {} (run `zoen init`)",
             home.display()
         ));
     }
+    if agent_source.is_some() {
+        agent::Source::preflight(&e).unwrap_or_else(|error| die(error));
+    }
     let me = e.account().map(|a| a.identity_id).unwrap_or_default();
     let watching = cmd == "watch";
+    let mut sync_budget = commands::SyncBudget::new(timeout);
     if !offline {
         let listener: Option<Arc<dyn CoreListener>> = if watching {
             Some(Arc::new(Printer {
@@ -665,7 +532,7 @@ async fn main() {
             None
         };
         e.start_sync(listener).unwrap_or_else(|err| die(err));
-        let c = e.wait_until_idle(timeout).await;
+        let c = sync_budget.wait_startup(&e).await;
         if c.state != "online"
             && !matches!(
                 cmd.as_str(),
@@ -677,428 +544,13 @@ async fn main() {
     }
 
     match cmd.as_str() {
-        "backup" => {
-            let sub = if cli.args.is_empty() {
-                "status".to_string()
-            } else {
-                cli.args.remove(0)
-            };
-            let show = |s: client_core::BackupStatusDto| {
-                println!(
-                    "backup {} mode={} bytes={} last={}",
-                    if s.enabled { "on" } else { "off" },
-                    if s.mode.is_empty() { "-" } else { &s.mode },
-                    s.bytes,
-                    s.last_backup_ms
-                )
-            };
-            match sub.as_str() {
-                "on" => {
-                    if let Some(p) = cli.flag("--password") {
-                        let s = e
-                            .backup_turn_on_password(p, vault.clone())
-                            .await
-                            .unwrap_or_else(|err| die(err));
-                        show(s);
-                    } else if cli.switch("--recovery-key") {
-                        let rk = e
-                            .backup_turn_on_recovery_key(vault.clone())
-                            .await
-                            .unwrap_or_else(|err| die(err));
-                        println!("recovery-key\t{rk}");
-                        show(e.backup_status());
-                    } else {
-                        usage();
-                    }
-                }
-                "now" => show(
-                    e.backup_now(vault.clone())
-                        .await
-                        .unwrap_or_else(|err| die(err)),
-                ),
-                "off" => {
-                    e.backup_turn_off(vault.clone())
-                        .await
-                        .unwrap_or_else(|err| die(err));
-                    show(e.backup_status());
-                }
-                "status" => show(e.backup_status()),
-                _ => usage(),
-            }
-        }
-        "whoami" | "status" => {
-            let a = e.account().unwrap_or_else(|| die("no account"));
-            let c = e.connection();
-            println!(
-                "@{} {} ({}) relay={} registered={} connection={} synced={} pending={}{}",
-                a.handle,
-                a.name,
-                &a.identity_id[..12],
-                a.relay_url,
-                a.registered,
-                c.state,
-                c.synced,
-                c.pending,
-                c.error.map(|x| format!(" error={x}")).unwrap_or_default()
-            );
-        }
-        "people" => {
-            let q = cli.args.first().cloned().unwrap_or_else(|| usage());
-            for p in e.find_people(q).await.unwrap_or_else(|err| die(err)) {
-                println!("@{}\t{}\t{}", p.handle, p.name, &p.id[..12]);
-            }
-        }
-        "dm" => {
-            let h = cli.args.first().cloned().unwrap_or_else(|| usage());
-            let h = h.trim_start_matches('@').to_string();
-            let people = e
-                .find_people(h.clone())
-                .await
-                .unwrap_or_else(|err| die(err));
-            let p = people
-                .into_iter()
-                .find(|p| p.handle == h)
-                .unwrap_or_else(|| die(format!("@{h} isn't on Zoen")));
-            let space = e.start_direct(p.id).unwrap_or_else(|err| die(err));
-            if cli.args.len() > 1 {
-                e.send_message(space.clone(), cli.args[1..].join(" "))
-                    .unwrap_or_else(|err| die(err));
-            }
-            e.wait_until_idle(timeout).await;
-            println!("{space}");
-        }
-        "group" => {
-            let privacy = if cli.switch("--readable") {
-                PrivacyDto::Closed
-            } else {
-                PrivacyDto::EndToEnd
-            };
-            if cli.args.is_empty() {
-                usage();
-            }
-            let title = cli.args.remove(0);
-            let mut ids = vec![];
-            for h in &cli.args {
-                let h = h.trim_start_matches('@').to_string();
-                let p = e
-                    .find_people(h.clone())
-                    .await
-                    .unwrap_or_else(|err| die(err))
-                    .into_iter()
-                    .find(|p| p.handle == h)
-                    .unwrap_or_else(|| die(format!("@{h} isn't on Zoen")));
-                ids.push(p.id);
-            }
-            let space = e
-                .create_group_with(title, ids, privacy)
-                .unwrap_or_else(|err| die(err));
-            if !offline {
-                e.wait_until_settled(timeout)
-                    .await
-                    .unwrap_or_else(|err| die(err));
-            }
-            println!("{space}");
-        }
-        "send" => {
-            if cli.args.len() < 2 {
-                usage();
-            }
-            let space = chat(&e, &cli.args[0]);
-            let t = e
-                .send_message(space, cli.args[1..].join(" "))
-                .unwrap_or_else(|err| die(err));
-            if !offline {
-                e.wait_until_idle(timeout).await;
-            }
-            let c = e.connection();
-            println!(
-                "{} {}",
-                if offline || c.pending > 0 {
-                    "queued"
-                } else {
-                    "sent"
-                },
-                t.id
-            );
-        }
-        "read" => {
-            let space = chat(
-                &e,
-                cli.args
-                    .first()
-                    .map(String::as_str)
-                    .unwrap_or_else(|| usage()),
-            );
-            if cli.switch("--older") {
-                let wait: u64 = std::env::var("ZOEN_PAGE_TIMEOUT_MS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(8000);
-                let older = e
-                    .load_older(space.clone(), wait)
-                    .await
-                    .unwrap_or_else(|err| die(err));
-                match older.message {
-                    Some(m) => println!("({m})"),
-                    None => println!(
-                        "(older: {} more{})",
-                        older.loaded,
-                        if older.more { ", still more" } else { "" }
-                    ),
-                }
-            }
-            for t in e.timeline(space.clone()).unwrap_or_else(|err| die(err)) {
-                println!("{}", line(&t));
-            }
-            let _ = e.mark_read(space);
-        }
-        "link" => {
-            let code = cli.args.first().cloned().unwrap_or_else(|| usage());
-            let linked = e
-                .link_device(code, vault.clone())
-                .await
-                .unwrap_or_else(|err| die(err));
-            println!("check: {}", linked.check);
-            // The new device comes online and publishes key packages; then this device
-            // adds it to every group, and only then seals the history for it.
-            let deadline =
-                std::time::Instant::now() + std::time::Duration::from_secs(for_secs.unwrap_or(120));
-            loop {
-                e.wait_until_idle(timeout).await;
-                let p = e.link_progress(linked.device_id.clone()).await;
-                if p[0] == p[1] {
-                    println!("in {} of {} groups", p[0], p[1]);
-                    break;
-                }
-                if std::time::Instant::now() > deadline {
-                    die(format!("the new device is in {} of {} groups", p[0], p[1]));
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            }
-            let n = e
-                .send_history(linked.device_id.clone(), Some(Arc::new(Progress)))
-                .await
-                .unwrap_or_else(|err| die(err));
-            println!("history sent: {n} messages");
-        }
-        "history" => receive_history(&e, timeout).await,
-        "devices" => {
-            for d in e.devices().await.unwrap_or_else(|err| die(err)) {
-                println!(
-                    "{}{}{}",
-                    d.device_id,
-                    if d.this_device { " (this device)" } else { "" },
-                    if d.revoked { " unlinked" } else { "" }
-                );
-            }
-        }
-        "unlink" => {
-            let prefix = cli.args.first().cloned().unwrap_or_else(|| usage());
-            let device = e
-                .devices()
-                .await
-                .unwrap_or_else(|err| die(err))
-                .into_iter()
-                .find(|d| d.device_id.starts_with(&prefix) && !d.this_device && !d.revoked)
-                .unwrap_or_else(|| die("no such linked device"));
-            e.unlink_device(device.device_id.clone())
-                .await
-                .unwrap_or_else(|err| die(err));
-            e.wait_until_idle(timeout).await;
-            println!("unlinked {}", &device.device_id[..12]);
-        }
-        "add" | "remove" => {
-            let admin = cli.switch("--admin");
-            if cli.args.len() != 2 {
-                usage();
-            }
-            let space = chat(&e, &cli.args[0]);
-            let h = cli.args[1].trim_start_matches('@').to_string();
-            let who = e
-                .find_people(h.clone())
-                .await
-                .unwrap_or_else(|err| die(err))
-                .into_iter()
-                .find(|p| p.handle == h)
-                .unwrap_or_else(|| die(format!("@{h} isn't on Zoen")));
-            match (cmd.as_str(), admin) {
-                ("add", true) => e.add_admin(space, who.id),
-                ("add", false) => e.add_member(space, who.id),
-                _ => e.remove_member(space, who.id),
-            }
-            .unwrap_or_else(|err| die(err));
-            e.wait_until_idle(timeout).await;
-        }
-        "encrypt" => {
-            let space = chat(
-                &e,
-                cli.args
-                    .first()
-                    .map(String::as_str)
-                    .unwrap_or_else(|| usage()),
-            );
-            e.encrypt_chat(space).unwrap_or_else(|err| die(err));
-            e.wait_until_idle(timeout).await;
-        }
-        "keys" => {
-            let space = chat(
-                &e,
-                cli.args
-                    .first()
-                    .map(String::as_str)
-                    .unwrap_or_else(|| usage()),
-            );
-            match e.group_keys(space.clone()) {
-                Some(k) => println!(
-                    "epoch={}\tdigest={}\tmembers={}\tdevices={}",
-                    k.epoch,
-                    k.digest,
-                    k.members.len(),
-                    e.group_devices(space.clone()).len()
-                ),
-                None => die("no group keys for that chat on this device"),
-            }
-        }
-        "chats" => {
-            for s in e.spaces() {
-                let where_ = if e.is_synced(s.id.clone()) {
-                    "relay"
-                } else {
-                    "local"
-                };
-                let privacy = match s.privacy {
-                    PrivacyDto::EndToEnd => "e2e",
-                    PrivacyDto::Closed | PrivacyDto::Public => "readable",
-                };
-                println!(
-                    "{}\t{}\t{:?}\t{}\t{}\tunread={}\t{}",
-                    s.id, s.title, s.kind, where_, privacy, s.unread, s.last_preview
-                );
-            }
-        }
-        "app" => {
-            let space = chat(
-                &e,
-                cli.args
-                    .first()
-                    .map(String::as_str)
-                    .unwrap_or_else(|| usage()),
-            );
-            match cli.args.get(1).map(String::as_str) {
-                Some("install") if cli.args.len() >= 4 => {
-                    let it = e
-                        .install_app(space, cli.args[2].clone(), cli.args[3..].join(" "))
-                        .unwrap_or_else(|err| die(err));
-                    e.wait_until_idle(timeout).await;
-                    println!("{}", it.id);
-                }
-                Some("view") => {
-                    for it in e.items().into_iter().filter(|i| i.space_id == space) {
-                        if let Some(app) = it.app {
-                            println!("{}\t{}\t{}", it.id, app.app_id, app.view_json);
-                        }
-                    }
-                }
-                _ => usage(),
-            }
-        }
-        "invite" => {
-            let space = chat(
-                &e,
-                cli.args
-                    .first()
-                    .map(String::as_str)
-                    .unwrap_or_else(|| usage()),
-            );
-            let inv = e.create_invite(space).await.unwrap_or_else(|err| die(err));
-            println!("{}\t{}", inv.code, inv.link);
-        }
-        "agent" => {
-            let target = cli.args.first().cloned().unwrap_or_else(|| usage());
-            let chat = e
-                .open_agent_link(target)
-                .await
-                .unwrap_or_else(|err| die(err));
-            e.wait_until_idle(timeout).await;
-            println!("{chat}");
-        }
-        "join" => {
-            let code = cli.args.first().cloned().unwrap_or_else(|| usage());
-            let space = e.join_invite(code).await.unwrap_or_else(|err| die(err));
-            e.wait_until_idle(timeout).await;
-            println!("{space}");
-        }
-        "growth-sync" => {
-            // zoen growth-sync [--health <sessions> <crashes>]
-            let (share, s, c) = match cli.args.iter().position(|a| a == "--health") {
-                Some(i) => (
-                    true,
-                    cli.args
-                        .get(i + 1)
-                        .and_then(|v| v.parse().ok())
-                        .unwrap_or(0),
-                    cli.args
-                        .get(i + 2)
-                        .and_then(|v| v.parse().ok())
-                        .unwrap_or(0),
-                ),
-                None => (false, 0, 0),
-            };
-            let r = e
-                .growth_sync(None, share, s, c)
-                .await
-                .unwrap_or_else(|err| die(err));
-            println!("config={} reported={}", r.config_version, r.reported);
-        }
-        "variant" => {
-            let flag = cli.args.first().cloned().unwrap_or_else(|| usage());
-            println!(
-                "{}",
-                e.growth_variant(flag).unwrap_or_else(|| "unknown".into())
-            );
-        }
-        "sync" => {
-            let c = e.wait_until_idle(timeout).await;
-            println!(
-                "connection={} synced={} pending={}{}",
-                c.state,
-                c.synced,
-                c.pending,
-                c.error.map(|x| format!(" error={x}")).unwrap_or_default()
-            );
-        }
-        "verify" => {
-            let mut bad = 0;
-            for r in e.verify_all() {
-                if !r.valid {
-                    bad += 1;
-                }
-                println!(
-                    "{}\t{}\t{}\t{} events\t{}",
-                    r.space_id,
-                    r.space_title,
-                    if r.valid { "ok" } else { "BROKEN" },
-                    r.events,
-                    r.error.unwrap_or_default()
-                );
-            }
-            if bad > 0 {
-                std::process::exit(3);
-            }
-        }
-        "authorize-agent" => {
-            let id = cli.args.first().cloned().unwrap_or_else(|| usage());
-            println!(
-                "{}",
-                e.authorize_agent_json(id).unwrap_or_else(|err| die(err))
-            );
-        }
         "agent-host" => {
             if let Err(error) = agent::host(
                 &e,
                 &home,
                 agent_readiness.as_ref().expect("agent-host readiness"),
                 for_secs,
+                agent_source,
             )
             .await
             {
@@ -1108,512 +560,22 @@ async fn main() {
                 die(error);
             }
         }
-        // Owner controls over an agent you answer for: `agent-pause @bot`, `agent-resume @bot`,
-        // `agent-revoke @bot`, `agent-define @bot --definition def.json --version N`.
-        "agent-pause" | "agent-resume" | "agent-revoke" | "agent-define" => {
-            let who = cli.args.first().cloned().unwrap_or_else(|| usage());
-            let h = who.trim_start_matches('@').to_string();
-            let id = if who.starts_with('@') {
-                e.find_people(h.clone())
-                    .await
-                    .unwrap_or_else(|err| die(err))
-                    .into_iter()
-                    .find(|p| p.handle == h)
-                    .map(|p| p.id)
-                    .unwrap_or_else(|| die(format!("@{h} isn't on Zoen")))
-            } else {
-                who.clone()
-            };
-            let r = if cmd == "agent-define" {
-                let def =
-                    agent::read_definition(&cli.flag("--definition").unwrap_or_else(|| usage()));
-                let version: u32 = cli
-                    .flag("--version")
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(def.version);
-                let bytes = def.encode().unwrap_or_else(|err| die(err));
-                e.agent_define(id, version, def.kind.relay_kind().into(), bytes)
-                    .await
-            } else {
-                e.agent_control(id, cmd.trim_start_matches("agent-").to_string())
-                    .await
-            };
-            r.unwrap_or_else(|err| die(err));
-            println!("{} {who}", cmd.trim_start_matches("agent-"));
+        _ => {
+            commands::run(
+                cmd,
+                &mut cli,
+                commands::Context {
+                    e: e.clone(),
+                    vault: vault.clone(),
+                    me,
+                    timeout,
+                    sync_budget,
+                    offline,
+                    for_secs,
+                },
+            )
+            .await
         }
-        "watch" => {
-            println!(
-                "watching as @{} (Ctrl-C to stop)",
-                e.account().map(|a| a.handle).unwrap_or_default()
-            );
-            let wait = async {
-                match for_secs {
-                    Some(s) => tokio::time::sleep(Duration::from_secs(s)).await,
-                    None => {
-                        let _ = tokio::signal::ctrl_c().await;
-                    }
-                }
-            };
-            wait.await;
-        }
-        "background" => {
-            let path = cli.flag("--photo").unwrap_or_else(|| usage());
-            let space = chat(
-                &e,
-                cli.args
-                    .first()
-                    .map(String::as_str)
-                    .unwrap_or_else(|| usage()),
-            );
-            let bytes = std::fs::read(&path).unwrap_or_else(|err| die(format!("{path}: {err}")));
-            let m = e
-                .put_media(bytes, "image/jpeg".into(), 1, 1)
-                .unwrap_or_else(|err| die(err));
-            let bg = client_core::BackgroundDto {
-                style: "photo".into(),
-                media: Some(m.clone()),
-                zoom_pm: 1000,
-                offset_x_pm: 0,
-                offset_y_pm: 0,
-                dim_pm: None,
-                blur_pm: 0,
-                appearance: "auto".into(),
-            };
-            e.set_background(space, bg).unwrap_or_else(|err| die(err));
-            e.wait_until_idle(timeout).await;
-            println!("{}", m.sha256);
-        }
-        "photo" => {
-            let out = cli.flag("--out").unwrap_or_else(|| usage());
-            let space = chat(
-                &e,
-                cli.args
-                    .first()
-                    .map(String::as_str)
-                    .unwrap_or_else(|| usage()),
-            );
-            let bytes = e
-                .wait_for_background_media(space, timeout)
-                .await
-                .unwrap_or_else(|| die("no photo yet"));
-            std::fs::write(&out, &bytes).unwrap_or_else(|err| die(format!("{out}: {err}")));
-            println!("{} bytes", bytes.len());
-        }
-        "profile" => {
-            let sub = cli.args.first().cloned().unwrap_or_else(|| usage());
-            match sub.as_str() {
-                "set" => {
-                    let current = e.get_profile(me.clone()).unwrap_or_else(|err| die(err));
-                    let name = cli.flag("--name").or(current.name).unwrap_or_default();
-                    let bio = cli.flag("--bio").or(current.bio).unwrap_or_default();
-                    let photo = match (cli.flag("--photo"), cli.switch("--no-photo")) {
-                        (Some(path), _) => {
-                            let bytes = std::fs::read(&path)
-                                .unwrap_or_else(|err| die(format!("{path}: {err}")));
-                            let mime = if path.ends_with(".png") {
-                                "image/png"
-                            } else {
-                                "image/jpeg"
-                            };
-                            PhotoChange::Set {
-                                bytes,
-                                mime: mime.into(),
-                            }
-                        }
-                        (None, true) => PhotoChange::Remove,
-                        (None, false) => PhotoChange::Keep,
-                    };
-                    let p = e
-                        .update_my_profile(name, bio, photo)
-                        .unwrap_or_else(|err| die(err));
-                    e.wait_until_idle(timeout).await;
-                    println!("{}", profile_line(&p));
-                }
-                "show" => {
-                    let out = cli.flag("--out");
-                    let id = match cli.args.get(1) {
-                        Some(h) => person(&e, h).await,
-                        None => me.clone(),
-                    };
-                    e.wait_until_idle(timeout).await;
-                    let mut p = e.get_profile(id.clone()).unwrap_or_else(|err| die(err));
-                    let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout);
-                    while out.is_some()
-                        && p.photo_sha256.is_some()
-                        && !p.photo_ready
-                        && tokio::time::Instant::now() < deadline
-                    {
-                        tokio::time::sleep(Duration::from_millis(100)).await;
-                        p = e.get_profile(id.clone()).unwrap_or_else(|err| die(err));
-                    }
-                    println!("{}", profile_line(&p));
-                    if let (Some(out), Some(sha), true) = (out, &p.photo_sha256, p.photo_ready) {
-                        let bytes = e
-                            .media(sha.clone())
-                            .ok()
-                            .flatten()
-                            .unwrap_or_else(|| die("photo not on this device"));
-                        std::fs::write(&out, &bytes)
-                            .unwrap_or_else(|err| die(format!("{out}: {err}")));
-                    }
-                }
-                _ => usage(),
-            }
-        }
-        "block" | "unblock" => {
-            let h = cli.args.first().cloned().unwrap_or_else(|| usage());
-            let id = person(&e, &h).await;
-            if cmd == "block" {
-                e.block_person(id).unwrap_or_else(|err| die(err));
-            } else {
-                e.unblock_person(id).unwrap_or_else(|err| die(err));
-            }
-            e.wait_until_idle(timeout).await;
-            println!("{cmd}ed {h}");
-        }
-        "typing" => {
-            let space = chat(
-                &e,
-                cli.args
-                    .first()
-                    .map(String::as_str)
-                    .unwrap_or_else(|| usage()),
-            );
-            let secs = for_secs.unwrap_or(3);
-            for _ in 0..secs.max(1) {
-                e.set_typing(space.clone(), true);
-                tokio::time::sleep(Duration::from_secs(1)).await;
-            }
-            e.set_typing(space, false);
-            tokio::time::sleep(Duration::from_millis(200)).await;
-        }
-        "pages" | "files" => {
-            let space = chat(
-                &e,
-                cli.args
-                    .first()
-                    .map(String::as_str)
-                    .unwrap_or_else(|| usage()),
-            );
-            let kind = if cmd == "pages" { "page" } else { "file" };
-            for i in e
-                .items()
-                .into_iter()
-                .filter(|i| i.space_id == space && i.kind_id == kind)
-            {
-                let extra = match &i.file {
-                    Some(f) => format!("\t{} bytes\t{}/{} here", f.bytes, f.chunks_here, f.chunks),
-                    None => String::new(),
-                };
-                println!("{}\t{}\tv{}\t{}{}", i.id, i.path, i.version, i.title, extra);
-            }
-        }
-        "page" => {
-            if cli.args.is_empty() {
-                usage();
-            }
-            let sub = cli.args.remove(0);
-            match sub.as_str() {
-                "import" => {
-                    let root = cli.flag("--root").map(PathBuf::from);
-                    if cli.args.len() < 2 {
-                        usage();
-                    }
-                    let space = chat(&e, &cli.args[0]);
-                    let mut files = Vec::new();
-                    for f in &cli.args[1..] {
-                        let bytes = read_file(f);
-                        let md = String::from_utf8(bytes)
-                            .unwrap_or_else(|_| die(format!("{f}: not UTF-8 text")));
-                        let fp = PathBuf::from(f);
-                        let path = match &root {
-                            Some(r) => fp
-                                .strip_prefix(r)
-                                .unwrap_or(&fp)
-                                .to_string_lossy()
-                                .into_owned(),
-                            None => fp
-                                .file_name()
-                                .map(|n| n.to_string_lossy().into_owned())
-                                .unwrap_or_default(),
-                        };
-                        files.push(MarkdownFileDto { path, markdown: md });
-                    }
-                    let paths: Vec<String> = files.iter().map(|f| f.path.clone()).collect();
-                    let items = e
-                        .pages_import_markdown(space.clone(), files)
-                        .unwrap_or_else(|err| die(format!("import: {err}")));
-                    if !offline {
-                        e.wait_until_settled(timeout)
-                            .await
-                            .unwrap_or_else(|err| die(format!("import: {err}")));
-                    }
-                    for (d, path) in items.iter().zip(&paths) {
-                        println!("{}\t{}", d.id, path);
-                    }
-                }
-                "new" => {
-                    if cli.args.len() < 2 {
-                        usage();
-                    }
-                    let space = chat(&e, &cli.args[0]);
-                    let d = e
-                        .page_create(space, cli.args[1..].join(" "))
-                        .unwrap_or_else(|err| die(err));
-                    e.wait_until_idle(timeout).await;
-                    println!("{}", d.id);
-                }
-                "export" => {
-                    let out = cli.flag("--out").unwrap_or_else(|| usage());
-                    let it = item(
-                        &e,
-                        cli.args
-                            .first()
-                            .map(String::as_str)
-                            .unwrap_or_else(|| usage()),
-                    );
-                    if !ready(&e, &it.id, timeout).await {
-                        die("the page is still arriving");
-                    }
-                    let md = e.page_markdown(it.id).unwrap_or_else(|err| die(err));
-                    write_file(Path::new(&out), md.as_bytes());
-                    println!("{} bytes", md.len());
-                }
-                "export-all" => {
-                    let dir = PathBuf::from(cli.flag("--dir").unwrap_or_else(|| usage()));
-                    let space = chat(
-                        &e,
-                        cli.args
-                            .first()
-                            .map(String::as_str)
-                            .unwrap_or_else(|| usage()),
-                    );
-                    let (mut n, mut bytes, mut missing) = (0, 0, 0);
-                    for i in e
-                        .items()
-                        .into_iter()
-                        .filter(|i| i.space_id == space && i.kind_id == "page")
-                    {
-                        if !ready(&e, &i.id, timeout).await {
-                            missing += 1;
-                            continue;
-                        }
-                        let md = e.page_markdown(i.id.clone()).unwrap_or_else(|err| die(err));
-                        let name = if i.path.is_empty() {
-                            format!("{}.md", i.id)
-                        } else {
-                            i.path.clone()
-                        };
-                        write_file(&dir.join(name), md.as_bytes());
-                        n += 1;
-                        bytes += md.len();
-                    }
-                    println!("{n} pages, {bytes} bytes, {missing} still arriving");
-                }
-                "show" => {
-                    let it = item(
-                        &e,
-                        cli.args
-                            .first()
-                            .map(String::as_str)
-                            .unwrap_or_else(|| usage()),
-                    );
-                    let p = e.page(it.id).unwrap_or_else(|err| die(err));
-                    println!(
-                        "{} (v{}{})",
-                        p.title,
-                        p.version,
-                        if p.unsaved { ", unsaved" } else { "" }
-                    );
-                    for (n, b) in p.blocks.iter().enumerate() {
-                        let mark = match b.kind.as_str() {
-                            "task" => {
-                                if b.checked {
-                                    "[x] "
-                                } else {
-                                    "[ ] "
-                                }
-                            }
-                            _ => "",
-                        };
-                        println!(
-                            "{}\t{}\t{mark}{}",
-                            n + 1,
-                            b.kind,
-                            b.text.replace('\u{2028}', " / ")
-                        );
-                    }
-                }
-                "check" => {
-                    if cli.args.len() < 2 {
-                        usage();
-                    }
-                    let it = item(&e, &cli.args[0]);
-                    let n: usize = cli.args[1].parse().unwrap_or_else(|_| usage());
-                    edit_page(&e, &it.id, |blocks| {
-                        let tasks: Vec<usize> = (0..blocks.len())
-                            .filter(|&i| blocks[i].kind == "task")
-                            .collect();
-                        let i = *tasks
-                            .get(n.wrapping_sub(1))
-                            .unwrap_or_else(|| die(format!("no task {n}")));
-                        blocks[i].checked = !blocks[i].checked;
-                        vec![blocks[i].id.clone()]
-                    });
-                    e.wait_until_idle(timeout).await;
-                }
-                "add" => {
-                    if cli.args.len() < 2 {
-                        usage();
-                    }
-                    let it = item(&e, &cli.args[0]);
-                    let text = cli.args[1..].join(" ");
-                    edit_page(&e, &it.id, |blocks| {
-                        let id = new_block_id();
-                        blocks.push(client_core::PageBlockDto {
-                            id: id.clone(),
-                            kind: "paragraph".into(),
-                            level: 0,
-                            indent: 0,
-                            number: 0,
-                            checked: false,
-                            lang: String::new(),
-                            url: String::new(),
-                            alt: String::new(),
-                            text,
-                            spans: vec![],
-                        });
-                        vec![id]
-                    });
-                    e.wait_until_idle(timeout).await;
-                }
-                "set" => {
-                    if cli.args.len() < 3 {
-                        usage();
-                    }
-                    let it = item(&e, &cli.args[0]);
-                    let n: usize = cli.args[1].parse().unwrap_or_else(|_| usage());
-                    let text = cli.args[2..].join(" ");
-                    edit_page(&e, &it.id, |blocks| {
-                        let b = blocks
-                            .get_mut(n.wrapping_sub(1))
-                            .unwrap_or_else(|| die(format!("no block {n}")));
-                        b.text = text;
-                        b.spans.clear();
-                        vec![b.id.clone()]
-                    });
-                    e.wait_until_idle(timeout).await;
-                }
-                _ => usage(),
-            }
-        }
-        "file" => {
-            if cli.args.is_empty() {
-                usage();
-            }
-            let sub = cli.args.remove(0);
-            let thumb = cli.flag("--thumb").map(|p| read_file(&p));
-            match sub.as_str() {
-                "add" => {
-                    let dir = cli.flag("--path").unwrap_or_default();
-                    if cli.args.len() < 2 {
-                        usage();
-                    }
-                    let space = chat(&e, &cli.args[0]);
-                    let f = &cli.args[1];
-                    let name = Path::new(f)
-                        .file_name()
-                        .map(|n| n.to_string_lossy().into_owned())
-                        .unwrap_or_else(|| f.clone());
-                    let path = if dir.is_empty() {
-                        name.clone()
-                    } else {
-                        format!("{}/{name}", dir.trim_end_matches('/'))
-                    };
-                    let d = e
-                        .file_add(space, path, name, mime_of(f).into(), read_file(f), thumb)
-                        .unwrap_or_else(|err| die(err));
-                    e.wait_until_idle(timeout).await;
-                    let fi = d.file.unwrap_or_else(|| die("not a file"));
-                    println!("{}\t{} bytes\t{} pieces", d.id, fi.bytes, fi.chunks);
-                }
-                "version" => {
-                    if cli.args.len() < 2 {
-                        usage();
-                    }
-                    let it = item(&e, &cli.args[0]);
-                    let d = e
-                        .file_new_version(it.id, read_file(&cli.args[1]), thumb, String::new())
-                        .unwrap_or_else(|err| die(err));
-                    e.wait_until_idle(timeout).await;
-                    println!("v{}", d.version);
-                }
-                "get" => {
-                    let out = cli.flag("--out").unwrap_or_else(|| usage());
-                    let version: Option<u32> = cli.flag("--version").and_then(|v| v.parse().ok());
-                    let thumb_out = cli.flag("--thumb-out");
-                    let it = item(
-                        &e,
-                        cli.args
-                            .first()
-                            .map(String::as_str)
-                            .unwrap_or_else(|| usage()),
-                    );
-                    let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout);
-                    let bytes = loop {
-                        if let Some(b) = e
-                            .file_bytes(it.id.clone(), version)
-                            .unwrap_or_else(|err| die(err))
-                        {
-                            break b;
-                        }
-                        if tokio::time::Instant::now() >= deadline {
-                            die("the file is still arriving");
-                        }
-                        tokio::time::sleep(Duration::from_millis(100)).await;
-                    };
-                    write_file(Path::new(&out), &bytes);
-                    if let Some(t) = thumb_out {
-                        let tb = e
-                            .file_thumbnail(it.id.clone())
-                            .unwrap_or_else(|err| die(err))
-                            .unwrap_or_else(|| die("no preview"));
-                        write_file(Path::new(&t), &tb);
-                    }
-                    println!("{} bytes", bytes.len());
-                }
-                _ => usage(),
-            }
-        }
-        "versions" => {
-            let it = item(
-                &e,
-                cli.args
-                    .first()
-                    .map(String::as_str)
-                    .unwrap_or_else(|| usage()),
-            );
-            for v in &it.versions {
-                println!("v{}\t{}\t{}", v.number, v.author.name, v.note);
-            }
-        }
-        "restore" => {
-            if cli.args.len() < 2 {
-                usage();
-            }
-            let it = item(&e, &cli.args[0]);
-            let n: u32 = cli.args[1].parse().unwrap_or_else(|_| usage());
-            let d = if it.kind_id == "plan" {
-                let observed = e.plan_page(it.id.clone()).unwrap_or_else(|err| die(err));
-                e.restore_plan_version(it.id, n, observed.content_hash)
-                    .unwrap_or_else(|err| die(err))
-            } else {
-                e.restore_version(it.id, n).unwrap_or_else(|err| die(err))
-            };
-            e.wait_until_idle(timeout).await;
-            println!("v{}", d.version);
-        }
-        _ => usage(),
     }
     e.stop_sync();
     drop(agent_readiness);

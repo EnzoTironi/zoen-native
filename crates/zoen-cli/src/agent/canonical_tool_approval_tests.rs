@@ -208,6 +208,7 @@ async fn offline_canonical_ask_owner_resume_receipt_and_cold_reopen() {
     let inspected = crate::deckcraft::tests::inspect(&fixture, &worker).await;
     let slide = inspected["slides"][0]["id"].clone();
     let call = ToolCall {
+        requires_review: false,
         id: "held_synthetic_notes".into(),
         name: crate::deckcraft::model_name("deckcraft_slide_notes", &fixture.base.item_id).unwrap(),
         arguments: json!({"artifactId":fixture.base.item_id,"version":fixture.base.version,"sha256":fixture.base.sha256,"slideId":slide,"text":"Exact canonical approval notes."}),

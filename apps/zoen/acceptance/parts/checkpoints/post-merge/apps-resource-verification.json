@@ -1,0 +1,23 @@
+{
+  "receipt": {
+    "path": "/private/tmp/zoen-app-resource-verification-v125/async-verified-resource-v2-proof.json",
+    "sha256": "baf25ca25fbb2b293adb9f40478eb3fc83f4f61fd1d7d36328fdeca9ed47a33b"
+  },
+  "independentSourceReview": {
+    "path": "/private/tmp/zoen-app-resource-review-v125/review.json",
+    "sha256": "2623fb22432f596c0ec9d6a777e4e4bc1b9edc6d5cc673b07282b59a33619605"
+  },
+  "integratedSourcePaths": 8,
+  "causalSourceTestsPassed": 18,
+  "oneAsyncVerifiedResourceManifestPair": true,
+  "resourceManifestIntegrityAndOwnerFencesPreserved": true,
+  "pendingLoaderAndMountedDocumentRetiredByExactFocusGroup": true,
+  "performanceImprovementAccepted": false,
+  "actualCurrentAndroidEditorAccepted": false,
+  "limits": "Actual edit/save/process-cold-reopen and linked-device exact680byte scene pass in prior APKba0c8ad1 on fresh5556. No callback-exact timing or A/B speedup; native URL unobserved. v128 changed presentation has only bounded first visual acceptance; latest v129 has no current Android runtime qualification.",
+  "runtimeReceipt": {
+    "path": "/private/tmp/zoen-expo-android-fresh-v126/apps-acceptance.json",
+    "sha256": "0bdab9e7475b73503c3bc7d29c57c1200b45f82838d7f2146d043397af1d33f6"
+  },
+  "actualAndroidEditorAcceptedAtPriorArtifact": true
+}

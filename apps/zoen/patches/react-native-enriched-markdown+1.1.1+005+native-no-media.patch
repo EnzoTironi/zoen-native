@@ -1,0 +1,212 @@
+diff --git a/node_modules/react-native-enriched-markdown/cpp/parser/MD4CParser.cpp b/node_modules/react-native-enriched-markdown/cpp/parser/MD4CParser.cpp
+index c99a52d978578b5b7c2c1e4c80764e4f4cde40ff..669afc3bbdb5796de3e24ead7b15876ac60414bc 100644
+--- a/node_modules/react-native-enriched-markdown/cpp/parser/MD4CParser.cpp
++++ b/node_modules/react-native-enriched-markdown/cpp/parser/MD4CParser.cpp
+@@ -798,6 +798,21 @@ MD4CParser::MD4CParser() : impl_(std::make_unique<Impl>()) {}
+ 
+ MD4CParser::~MD4CParser() = default;
+ 
++// Media-free parsing is a tree admission boundary, before either platform renderer.
++// Keep alt formatting and an explicit navigable URL; never retain a media node.
++static void replaceMediaWithLinks(MarkdownASTNode &node) {
++  for (auto &child : node.children) {
++    if (child) replaceMediaWithLinks(*child);
++  }
++  if (node.type != NodeType::Image && node.type != NodeType::Video) return;
++  const auto url = node.attributes.find("url");
++  const std::string target = url == node.attributes.end() ? std::string{} : url->second;
++  node.type = target.empty() ? NodeType::Text : NodeType::Link;
++  node.attributes.clear();
++  if (!target.empty()) node.setAttribute("url", target);
++  if (node.children.empty() && node.content.empty()) node.content = target;
++}
++
+ std::shared_ptr<MarkdownASTNode> MD4CParser::parse(const std::string &markdown, const Md4cFlags &md4cFlags,
+                                                    bool isGFM) {
+   if (markdown.empty()) {
+@@ -818,6 +833,7 @@ std::shared_ptr<MarkdownASTNode> MD4CParser::parse(const std::string &markdown,
+   impl_->inputText = markdown.c_str();
+ 
+   unsigned flags = MD_FLAG_NOHTMLSPANS | MD_FLAG_SPOILERS;
++  if (md4cFlags.noMedia) flags |= MD_FLAG_NOHTMLBLOCKS;
+   if (isGFM) {
+     flags |= MD_FLAG_TABLES | MD_FLAG_STRIKETHROUGH | MD_FLAG_TASKLISTS;
+   }
+@@ -871,6 +887,7 @@ std::shared_ptr<MarkdownASTNode> MD4CParser::parse(const std::string &markdown,
+     promoteDisplayMathFromParagraphs(*impl_->root);
+     wrapListItemInlineRuns(*impl_->root);
+     promoteVideosFromListItems(*impl_->root);
++    if (md4cFlags.noMedia) replaceMediaWithLinks(*impl_->root);
+   }
+ 
+   return impl_->root ? impl_->root : std::make_shared<MarkdownASTNode>(NodeType::Document);
+diff --git a/node_modules/react-native-enriched-markdown/cpp/parser/MD4CParser.hpp b/node_modules/react-native-enriched-markdown/cpp/parser/MD4CParser.hpp
+index 10f1afbf0be6564e7d8f1ab68793ae4c4e505fc5..ef0d68e58d137a7e04f9ddd636f1c9de6e8f71d6 100644
+--- a/node_modules/react-native-enriched-markdown/cpp/parser/MD4CParser.hpp
++++ b/node_modules/react-native-enriched-markdown/cpp/parser/MD4CParser.hpp
+@@ -16,6 +16,7 @@ struct Md4cFlags {
+     bool hardSoftBreaks = false;
+     bool preserveBlankLines = false;
+     bool admonitions = true;
++    bool noMedia = false;
+ };
+ 
+ class MD4CParser {
+diff --git a/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdown.mm b/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdown.mm
+index b7edde7a019a91eac7c2e78eacab2654106d607b..e024652a8fbe1d9c3038881c7d431f0c39bf49ad 100644
+--- a/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdown.mm
++++ b/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdown.mm
+@@ -159,6 +159,7 @@ + (ENRMMd4cFlags *)flagsFromProps:(const EnrichedMarkdownMd4cFlagsStruct &)props
+   flags.hardSoftBreaks = props.hardSoftBreaks;
+   flags.preserveBlankLines = props.preserveBlankLines;
+   flags.admonitions = props.admonitions;
++  flags.noMedia = props.noMedia;
+   return flags;
+ }
+ 
+@@ -1128,7 +1129,8 @@ - (void)updateProps:(Props::Shared const &)props oldProps:(Props::Shared const &
+       newViewProps.md4cFlags.highlight != oldViewProps.md4cFlags.highlight ||
+       newViewProps.md4cFlags.hardSoftBreaks != oldViewProps.md4cFlags.hardSoftBreaks ||
+       newViewProps.md4cFlags.preserveBlankLines != oldViewProps.md4cFlags.preserveBlankLines ||
+-      newViewProps.md4cFlags.admonitions != oldViewProps.md4cFlags.admonitions) {
++      newViewProps.md4cFlags.admonitions != oldViewProps.md4cFlags.admonitions ||
++      newViewProps.md4cFlags.noMedia != oldViewProps.md4cFlags.noMedia) {
+     _md4cFlags = [EnrichedMarkdown flagsFromProps:newViewProps.md4cFlags];
+     _dirtyFlags |= ENRMDirtyForceHeight | ENRMDirtyRender;
+   }
+diff --git a/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdownText.mm b/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdownText.mm
+index 1b3841713a0f50789ad338aa3fe5f95adcd66476..d320f60436fc9855cff25d44570cb67b86a4c17d 100644
+--- a/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdownText.mm
++++ b/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdownText.mm
+@@ -146,6 +146,7 @@ + (ENRMMd4cFlags *)flagsFromProps:(const EnrichedMarkdownTextMd4cFlagsStruct &)p
+   flags.hardSoftBreaks = props.hardSoftBreaks;
+   flags.preserveBlankLines = props.preserveBlankLines;
+   flags.admonitions = props.admonitions;
++  flags.noMedia = props.noMedia;
+   return flags;
+ }
+ 
+@@ -647,7 +648,8 @@ - (void)updateProps:(Props::Shared const &)props oldProps:(Props::Shared const &
+       newViewProps.md4cFlags.highlight != oldViewProps.md4cFlags.highlight ||
+       newViewProps.md4cFlags.hardSoftBreaks != oldViewProps.md4cFlags.hardSoftBreaks ||
+       newViewProps.md4cFlags.preserveBlankLines != oldViewProps.md4cFlags.preserveBlankLines ||
+-      newViewProps.md4cFlags.admonitions != oldViewProps.md4cFlags.admonitions) {
++      newViewProps.md4cFlags.admonitions != oldViewProps.md4cFlags.admonitions ||
++      newViewProps.md4cFlags.noMedia != oldViewProps.md4cFlags.noMedia) {
+     _md4cFlags = [EnrichedMarkdownText flagsFromProps:newViewProps.md4cFlags];
+     _forceHeightUpdateOnNextRender = YES;
+     _dirtyFlags |= ENRMDirtyRender;
+diff --git a/node_modules/react-native-enriched-markdown/ios/internals/ENRMViewFreeMeasurement.h b/node_modules/react-native-enriched-markdown/ios/internals/ENRMViewFreeMeasurement.h
+index 8f7b44006ef080ff62976be02520c08c5b6463f2..6f7552c3d83b192a4436258c1bf1977d098f843b 100644
+--- a/node_modules/react-native-enriched-markdown/ios/internals/ENRMViewFreeMeasurement.h
++++ b/node_modules/react-native-enriched-markdown/ios/internals/ENRMViewFreeMeasurement.h
+@@ -93,6 +93,7 @@ template <typename Md4cFlagsT> static inline ENRMMd4cFlags *ENRMMd4cFlagsFromPro
+   flags.hardSoftBreaks = props.hardSoftBreaks;
+   flags.preserveBlankLines = props.preserveBlankLines;
+   flags.admonitions = props.admonitions;
++  flags.noMedia = props.noMedia;
+   return flags;
+ }
+ 
+diff --git a/node_modules/react-native-enriched-markdown/ios/internals/MeasurementCache.h b/node_modules/react-native-enriched-markdown/ios/internals/MeasurementCache.h
+index 64604a3ac7e8788c06701ca6074badc3b852bcb9..2def2c3e021d32100ca67236ecb2b55e6990505c 100644
+--- a/node_modules/react-native-enriched-markdown/ios/internals/MeasurementCache.h
++++ b/node_modules/react-native-enriched-markdown/ios/internals/MeasurementCache.h
+@@ -43,6 +43,7 @@ struct MeasurementCacheKey {
+   bool md4cFlagsHardSoftBreaks;
+   bool md4cFlagsPreserveBlankLines;
+   bool md4cFlagsAdmonitions;
++  bool md4cFlagsNoMedia;
+   size_t styleFingerprint;
+   CGFloat fontScale;
+   MarkdownFlavor flavor;
+@@ -55,13 +56,13 @@ struct MeasurementCacheKey {
+   {
+     return std::tie(markdown, maxWidth, allowTrailingMargin, allowFontScaling, maxFontSizeMultiplier,
+                     md4cFlagsUnderline, md4cFlagsSuperscript, md4cFlagsSubscript, md4cFlagsHighlight,
+-                    md4cFlagsLatexMath, md4cFlagsHardSoftBreaks, md4cFlagsPreserveBlankLines, md4cFlagsAdmonitions,
++                    md4cFlagsLatexMath, md4cFlagsHardSoftBreaks, md4cFlagsPreserveBlankLines, md4cFlagsAdmonitions, md4cFlagsNoMedia,
+                     styleFingerprint, fontScale, flavor, lineBreakStrategyIOS, writingDirection, numberOfLines,
+                     ellipsizeMode) ==
+            std::tie(other.markdown, other.maxWidth, other.allowTrailingMargin, other.allowFontScaling,
+                     other.maxFontSizeMultiplier, other.md4cFlagsUnderline, other.md4cFlagsSuperscript,
+                     other.md4cFlagsSubscript, other.md4cFlagsHighlight, other.md4cFlagsLatexMath,
+-                    other.md4cFlagsHardSoftBreaks, other.md4cFlagsPreserveBlankLines, other.md4cFlagsAdmonitions,
++                    other.md4cFlagsHardSoftBreaks, other.md4cFlagsPreserveBlankLines, other.md4cFlagsAdmonitions, other.md4cFlagsNoMedia,
+                     other.styleFingerprint, other.fontScale, other.flavor, other.lineBreakStrategyIOS,
+                     other.writingDirection, other.numberOfLines, other.ellipsizeMode);
+   }
+@@ -84,6 +85,7 @@ struct MeasurementCacheKeyHash {
+     HashUtils::hash_one(h, key.md4cFlagsHardSoftBreaks);
+     HashUtils::hash_one(h, key.md4cFlagsPreserveBlankLines);
+     HashUtils::hash_one(h, key.md4cFlagsAdmonitions);
++    HashUtils::hash_one(h, key.md4cFlagsNoMedia);
+     HashUtils::hash_one(h, key.styleFingerprint);
+     HashUtils::hash_one(h, key.fontScale);
+     HashUtils::hash_one(h, static_cast<uint8_t>(key.flavor));
+@@ -175,6 +177,7 @@ inline MeasurementCacheKey buildMeasurementCacheKey(const PropsType &props, CGFl
+       .md4cFlagsHardSoftBreaks = props.md4cFlags.hardSoftBreaks,
+       .md4cFlagsPreserveBlankLines = props.md4cFlags.preserveBlankLines,
+       .md4cFlagsAdmonitions = props.md4cFlags.admonitions,
++      .md4cFlagsNoMedia = props.md4cFlags.noMedia,
+       .styleFingerprint = computeStyleFingerprint(props.markdownStyle),
+       .fontScale = fontScale,
+       .flavor = flavor,
+diff --git a/node_modules/react-native-enriched-markdown/ios/internals/ShadowMeasurementUtils.h b/node_modules/react-native-enriched-markdown/ios/internals/ShadowMeasurementUtils.h
+index 9904ae55fa14919e7c41fcc2d445268e5b673b70..6857cab151cd00bc837c844abcc8fe04453cf5fc 100644
+--- a/node_modules/react-native-enriched-markdown/ios/internals/ShadowMeasurementUtils.h
++++ b/node_modules/react-native-enriched-markdown/ios/internals/ShadowMeasurementUtils.h
+@@ -70,7 +70,8 @@ static inline bool ENRMPropsNeedExactStreamingMeasurement(const PropsT &oldProps
+          oldProps.md4cFlags.highlight != newProps.md4cFlags.highlight ||
+          oldProps.md4cFlags.hardSoftBreaks != newProps.md4cFlags.hardSoftBreaks ||
+          oldProps.md4cFlags.preserveBlankLines != newProps.md4cFlags.preserveBlankLines ||
+-         oldProps.isGFM != newProps.isGFM || oldProps.md4cFlags.admonitions != newProps.md4cFlags.admonitions ||
++         oldProps.isGFM != newProps.isGFM || oldProps.md4cFlags.noMedia != newProps.md4cFlags.noMedia ||
++         oldProps.md4cFlags.admonitions != newProps.md4cFlags.admonitions ||
+          computeStyleFingerprint(oldProps.markdownStyle) != computeStyleFingerprint(newProps.markdownStyle);
+ }
+ 
+diff --git a/node_modules/react-native-enriched-markdown/ios/parser/ENRMMarkdownParser.h b/node_modules/react-native-enriched-markdown/ios/parser/ENRMMarkdownParser.h
+index 7bcba9f8c131e3ec81e1ed94ea851f00ef9a324d..d28e039f617a1acb83b31dbd85d92b076870074c 100644
+--- a/node_modules/react-native-enriched-markdown/ios/parser/ENRMMarkdownParser.h
++++ b/node_modules/react-native-enriched-markdown/ios/parser/ENRMMarkdownParser.h
+@@ -11,6 +11,7 @@
+ @property (nonatomic, assign) BOOL hardSoftBreaks;
+ @property (nonatomic, assign) BOOL preserveBlankLines;
+ @property (nonatomic, assign) BOOL admonitions;
++@property (nonatomic, assign) BOOL noMedia;
+ 
+ + (instancetype)defaultFlags;
+ 
+diff --git a/node_modules/react-native-enriched-markdown/ios/parser/ENRMMarkdownParser.mm b/node_modules/react-native-enriched-markdown/ios/parser/ENRMMarkdownParser.mm
+index a4a0022b73edeb53924a4ca067f68c5e6d2bd58a..f4d4108ea5acad2f9f945e9d43a3b8a9771a3edc 100644
+--- a/node_modules/react-native-enriched-markdown/ios/parser/ENRMMarkdownParser.mm
++++ b/node_modules/react-native-enriched-markdown/ios/parser/ENRMMarkdownParser.mm
+@@ -16,6 +16,7 @@ - (instancetype)init
+     _hardSoftBreaks = NO;
+     _preserveBlankLines = NO;
+     _admonitions = YES;
++    _noMedia = NO;
+   }
+   return self;
+ }
+@@ -36,6 +37,7 @@ - (id)copyWithZone:(NSZone *)zone
+   copy.hardSoftBreaks = self.hardSoftBreaks;
+   copy.preserveBlankLines = self.preserveBlankLines;
+   copy.admonitions = self.admonitions;
++  copy.noMedia = self.noMedia;
+   return copy;
+ }
+ 
+diff --git a/node_modules/react-native-enriched-markdown/ios/parser/MarkdownParserBridge.mm b/node_modules/react-native-enriched-markdown/ios/parser/MarkdownParserBridge.mm
+index e700fcee063a5def59cf0a966f69221d627e24fe..f908c38c6ec008bb0a0d8b056636f26ccd89c9d8 100644
+--- a/node_modules/react-native-enriched-markdown/ios/parser/MarkdownParserBridge.mm
++++ b/node_modules/react-native-enriched-markdown/ios/parser/MarkdownParserBridge.mm
+@@ -167,6 +167,7 @@
+   cppFlags.hardSoftBreaks = flags.hardSoftBreaks;
+   cppFlags.preserveBlankLines = flags.preserveBlankLines;
+   cppFlags.admonitions = flags.admonitions;
++  cppFlags.noMedia = flags.noMedia;
+ 
+   Markdown::MD4CParser parser;
+   auto cppAST = parser.parse(cppMarkdown, cppFlags, isGFM);

@@ -42,6 +42,14 @@ async function readRenderedScene(frame) {
   return { bytes, manifest: observed.manifest, scene: JSON.parse(bytes.toString("utf8")) };
 }
 
+async function expectHumanAppCard(row, messageId) {
+  await row.getByTestId(`message-app-card-${messageId}`).waitFor();
+  assert.equal(await row.getByTestId(`message-body-${messageId}`).count(), 0,
+    "a human App share renders only its card, without the generated caption");
+  assert.equal(await row.getByTestId(`message-bubble-${messageId}`).count(), 0,
+    "a human App card has no surrounding message bubble");
+}
+
 export async function acceptDrawingJourney({
   page, ui, browserAuthor, nativeAuthor, origin, space, tag, privateRoot, peerHome, cli, screenshot, step,
 }) {
@@ -63,11 +71,8 @@ export async function acceptDrawingJourney({
   const historicalRowId = await historicalRow.getAttribute("data-testid");
   assert.match(historicalRowId, /^message-row-.+$/);
   const historicalMessageId = historicalRowId.slice("message-row-".length);
-  const historicalBody = await historicalRow.getByTestId(`message-body-${historicalMessageId}`).innerText();
-  assert.ok(historicalBody.length > 0);
+  await expectHumanAppCard(historicalRow, historicalMessageId);
   await historicalRow.getByRole("button", { name: ui.messageActions(nativeAuthor), exact: true }).waitFor();
-  assert.ok(historyBefore.split("\n").includes(`${nativeAuthor}: ${historicalBody}`),
-    "the visible historical ID/body/author must match the genuine native peer");
   const counts = (history) => {
     const result = new Map();
     for (const line of history.split("\n").filter(Boolean)) {
@@ -93,9 +98,7 @@ export async function acceptDrawingJourney({
   const messageId = rowId.slice("message-row-".length);
   assert.notEqual(messageId, historicalMessageId, "new installation has its own original message ID");
   await row.getByRole("button", { name: ui.messageActions(browserAuthor), exact: true }).waitFor();
-  const body = row.getByTestId(`message-body-${messageId}`);
-  await body.waitFor();
-  assert.equal(await body.innerText(), ui.appAdded);
+  await expectHumanAppCard(row, messageId);
   await cli(peerHome, "sync");
   const historyAfter = await cli(peerHome, "read", space);
   const afterCounts = counts(historyAfter);
@@ -106,13 +109,13 @@ export async function acceptDrawingJourney({
     assert.ok((afterCounts.get(bytes) ?? 0) >= count, "retain every genuine earlier native history line byte-for-byte");
   const preserved = page.getByTestId(`message-row-${historicalMessageId}`);
   await preserved.scrollIntoViewIfNeeded();
-  assert.equal(await preserved.getByTestId(`message-body-${historicalMessageId}`).innerText(), historicalBody);
+  await expectHumanAppCard(preserved, historicalMessageId);
   await preserved.getByRole("button", { name: ui.messageActions(nativeAuthor), exact: true }).waitFor();
   // Reading older history can recycle the newest row. Reveal its genuine public
   // message link instead of assuming an offscreen FlashList row stays mounted.
   await page.goto(`${origin}/chat/${space}?jump=${encodeURIComponent(messageId)}`, { waitUntil: "domcontentloaded" });
   await row.scrollIntoViewIfNeeded();
-  await screenshot("09a-current-app-install-localized-copy.png");
+  await screenshot("09a-current-app-install-card-only.png");
   await page.goto(`${origin}/miniapp/${id}`, { waitUntil: "domcontentloaded" });
   const selector = `iframe[title=${JSON.stringify(title)}]`;
   const frame = page.frameLocator(selector);
@@ -126,9 +129,11 @@ export async function acceptDrawingJourney({
     itemId: id,
     newMessageId: messageId,
     newMessageAuthor: browserAuthor,
-    visibleAppBody: ui.appAdded,
+    visibleAppBody: null,
+    canonicalAppBody: ui.appAdded,
+    humanAppRendering: "card-only-without-caption-or-bubble",
     nativePeerNewAppOccurrenceDelta: 1,
-    historicalNativeAppMessage: { itemId: historicalItem, messageId: historicalMessageId, author: nativeAuthor, body: historicalBody },
+    historicalNativeAppMessage: { itemId: historicalItem, messageId: historicalMessageId, author: nativeAuthor, rendering: "card-only-without-caption-or-bubble" },
     allHistoricalNativeLineBytesPreserved: true,
   });
 

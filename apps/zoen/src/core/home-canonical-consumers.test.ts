@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import test from 'node:test';
-import { transform } from 'esbuild';
+import { build } from 'esbuild';
+import { dirname } from 'node:path';
 import { HomeController, projectHomeItems } from '../home/preferences.ts';
 import {
   projectConversationTimeline,
@@ -24,14 +25,32 @@ const compiled = Object.fromEntries(
   await Promise.all(
     Object.entries(sources).map(async ([name, relative]) => {
       const path = new URL(relative, sourceRoot);
-      const result = await transform(readFileSync(path, 'utf8'), {
-        sourcefile: fileURLToPath(path),
-        loader: 'tsx',
+      const result = await build({
+        stdin: {
+          contents: readFileSync(path, 'utf8'),
+          resolveDir: dirname(fileURLToPath(path)),
+          loader: 'tsx',
+        },
+        bundle: true,
+        platform: 'node',
         format: 'cjs',
         jsx: 'automatic',
+        write: false,
         define: { 'process.env.EXPO_OS': '"ios"' },
+        plugins: [
+          {
+            name: 'actual-chat-owner-and-view',
+            setup(builder) {
+              builder.onResolve({ filter: /./ }, ({ path }) =>
+                /\/(?:chat-screen|use-chat-controller)$/.test(path)
+                  ? undefined
+                  : { path, external: true },
+              );
+            },
+          },
+        ],
       });
-      return [name, result.code];
+      return [name, result.outputFiles[0]!.text];
     }),
   ),
 );

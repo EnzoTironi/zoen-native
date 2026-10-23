@@ -1,0 +1,14 @@
+{
+  "testsPassed": 874,
+  "failed": 0,
+  "skipped": 0,
+  "receipt": {
+    "path": "/private/tmp/zoen-fullscreen-sheet-check-v128.json",
+    "sha256": "65252260772df7e7bc7871d69de3a5290371f714eba23cfe7f36f08411a801dc"
+  },
+  "sourceHead": "1b292c423336f3d9541c869808c10b95fbea641c",
+  "sourceCutIncludesUncommittedChanges": true,
+  "integratedSourcePaths": 10,
+  "sourceBytesMatchReceipt": true,
+  "qualification": "Last completed v128 ten-source check:874/874 plus TypeScript/Oxlint/Oxfmt. It does not qualify the latest v129 titleless/fullbleed/menu/Permissions follow-up; its final full check and runtime receipt are pending."
+}

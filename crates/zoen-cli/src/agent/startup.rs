@@ -22,7 +22,7 @@ impl<'host> Readiness<'host> {
         Ok(Self { path, _host: host })
     }
 
-    fn publish(&self) -> Result<(), String> {
+    pub(super) fn publish(&self) -> Result<(), String> {
         let mut options = File::options();
         options.write(true).create_new(true);
         #[cfg(unix)]
@@ -59,18 +59,10 @@ pub(super) async fn prepare(
     readiness: &Readiness<'_>,
     timeout_ms: u64,
 ) -> Result<BTreeMap<String, u64>, String> {
-    client
-        .wait_until_settled(timeout_ms)
-        .await
-        .map_err(|error| format!("agent sync did not settle: {error}"))?;
-    let state = client
-        .agent_state()
-        .await
-        .map_err(|error| error.to_string())?;
-    if state.status == "revoked" {
-        return Err("this agent was revoked by its owner".into());
-    }
-    let mut cursors: BTreeMap<String, u64> = state.cursors.into_iter().collect();
+    let mut cursors: BTreeMap<String, u64> = settled_cursors(client, timeout_ms)
+        .await?
+        .into_iter()
+        .collect();
     let mut fresh = Vec::new();
     for space in client.spaces() {
         if cursors.contains_key(&space.id) {
@@ -88,6 +80,38 @@ pub(super) async fn prepare(
     }
     readiness.publish()?;
     Ok(cursors)
+}
+
+/// Common admission only. Source mode deliberately never calls cursor seeding.
+pub(super) async fn settled_cursors(
+    client: &Client,
+    timeout_ms: u64,
+) -> Result<Vec<(String, u64)>, String> {
+    settle(client, timeout_ms).await?;
+    let state = client
+        .agent_state()
+        .await
+        .map_err(|error| error.to_string())?;
+    if state.status == "revoked" {
+        return Err("this agent was revoked by its owner".into());
+    }
+    Ok(state.cursors)
+}
+
+pub(super) async fn settle(client: &Client, timeout_ms: u64) -> Result<(), String> {
+    client
+        .wait_until_settled(timeout_ms)
+        .await
+        .map_err(|error| {
+            let observed = client.connection();
+            format!(
+                "agent sync did not settle: {error}; observed online={} synced={} pending={}",
+                observed.state == "online",
+                observed.synced,
+                observed.pending
+            )
+        })?;
+    Ok(())
 }
 
 #[cfg(test)]

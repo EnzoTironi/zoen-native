@@ -1,0 +1,18 @@
+{
+  "status": "SOURCE_CHECKS_PASS_NO_NEW_SIGNED_IPHONE_ACCEPTANCE",
+  "sourceCommits": [
+    "e191fd1ce400ebc0a57efd79c642116adcff7861",
+    "e76c74be4af4bfe483f4de4b63b6f932a83f0d8b"
+  ],
+  "sourceValidationOnly": true,
+  "ffiPassed": 512,
+  "clientPassed": 791,
+  "typescriptOxlintOxfmt": "PASS",
+  "scope": "Owner-preserving session retirement drains admitted writes/closes with retry; exact empty-input release receipts survive cold reopen and lost responses without discarding newer captures. Plan projections expose pending input without edit authority.",
+  "receipt": {
+    "path": "/private/tmp/zoen-page-editor-v95/verified-source-and-proof-index.json",
+    "bytes": 5979,
+    "sha256": "6abd453180ac9f7fd5ac82a1ef5b7d8c30adde5595d24979f9a29d6d27cbb511"
+  },
+  "limits": "External producer public Swift API passed; UIKit run could not start without prepared dependencies. Unfinished bridge preserved externally and removed from app. No producer patch, raw-input bridge, recovery UI or new signed app journey was installed."
+}

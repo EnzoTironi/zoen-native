@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { test } from 'node:test';
 import { build } from 'esbuild';
-import { annotateOwnedBrowserFailure } from '../../../../tools/miniapp-build/browser-startup.ts';
 import {
   nativeMiniappCommand,
   nativeMiniappHtml,
@@ -14,6 +13,9 @@ import {
   nativeMiniappNavigation,
 } from './host-transport.ts';
 import { sandboxHtml } from './sandbox.ts';
+import { findBrowserExecutable } from '../../../../tools/miniapp-build/browser-executable.ts';
+import { annotateOwnedBrowserFailure } from '../../../../tools/miniapp-build/browser-startup.ts';
+import { chromeEndpoint, type ChromeStartup } from './chrome-startup.fixtures.ts';
 
 const nonce = 'a24582bd-0377-4fee-bb76-73d465c927c3';
 const other = 'c34128af-3476-4ce2-ba34-37d459c934d6';
@@ -47,6 +49,10 @@ async function realBrowserResult(chrome: string, folder: string, path: string): 
   child.stdout.on('data', (data: Buffer) => {
     stdout = (stdout + data.toString()).slice(-16_384);
   });
+  const startup: ChromeStartup = { portFile: 'unobserved', checksStarted: 0, checksCompleted: 0 };
+  child.stderr.on('data', (data: Buffer) => {
+    stderr = (stderr + data.toString()).slice(-16_384);
+  });
   const failure = (message: string, cause?: Error) =>
     new Error(
       `${message}: ${JSON.stringify({
@@ -57,6 +63,7 @@ async function realBrowserResult(chrome: string, folder: string, path: string): 
         ...(cause ? { spawnError: cause.message } : {}),
         stderr,
         stdout,
+        startup,
       })}`,
     );
   let socket: WebSocket | undefined;
@@ -64,25 +71,7 @@ async function realBrowserResult(chrome: string, folder: string, path: string): 
   try {
     return await Promise.race([
       (async () => {
-        const endpoint = await new Promise<string>((resolve, reject) => {
-          const timer = setTimeout(() => reject(failure('Owned Chrome did not start')), 10_000);
-          child.once('error', (error) => {
-            clearTimeout(timer);
-            reject(failure('Owned Chrome could not spawn', error));
-          });
-          child.once('exit', () => {
-            clearTimeout(timer);
-            reject(failure('Owned Chrome exited before connection'));
-          });
-          child.stderr.on('data', (data: Buffer) => {
-            stderr = (stderr + data.toString()).slice(-16_384);
-            const match = stderr.match(/DevTools listening on (ws:\/\/127\.0\.0\.1:[^\s]+)/);
-            if (match) {
-              clearTimeout(timer);
-              resolve(match[1]!);
-            }
-          });
-        });
+        const endpoint = await chromeEndpoint(child, join(folder, 'profile'), startup, failure);
         socket = new WebSocket(endpoint);
         const connection = socket;
         await new Promise<void>((resolve, reject) => {
@@ -190,6 +179,23 @@ test('owned browser startup failures retain executable, process and bounded stde
       assert.ok(detail.stderr.length <= 16_384);
       return true;
     });
+    if (process.platform !== 'win32') {
+      const noisy = join(folder, 'synthetic-chrome');
+      await writeFile(
+        noisy,
+        `#!${process.execPath}\nprocess.stdout.write('x'.repeat(20_000)+'OWNED_STDOUT_END');process.stderr.write('owned synthetic stderr');process.exit(7);\n`,
+        { mode: 0o700 },
+      );
+      await assert.rejects(realBrowserResult(noisy, folder, ''), (error: Error) => {
+        assert.match(error.message, /Owned Chrome exited before connection/);
+        const detail = JSON.parse(error.message.slice(error.message.indexOf(': ') + 2));
+        assert.equal(detail.exitCode, 7);
+        assert.equal(detail.stdout.length, 16_384);
+        assert.ok(detail.stdout.endsWith('OWNED_STDOUT_END'));
+        assert.equal(detail.stderr, 'owned synthetic stderr');
+        return true;
+      });
+    }
     const missing = join(folder, 'missing-chrome');
     await assert.rejects(realBrowserResult(missing, folder, ''), (error: Error) => {
       assert.match(error.message, /Owned Chrome could not spawn/);
@@ -268,20 +274,7 @@ test(
   'official App uses a real parent/source through the native shell and retires after disposal',
   { timeout: 30_000 },
   async (t) => {
-    const candidates =
-      process.platform === 'darwin'
-        ? ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome']
-        : ['/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser'];
-    let chrome: string | undefined;
-    for (const candidate of candidates) {
-      try {
-        await access(candidate);
-        chrome = candidate;
-        break;
-      } catch {
-        /* Optional real browser oracle. */
-      }
-    }
+    const chrome = await findBrowserExecutable();
     if (!chrome) {
       t.skip('Real Chrome is unavailable; codec tests do not claim browser source semantics.');
       return;

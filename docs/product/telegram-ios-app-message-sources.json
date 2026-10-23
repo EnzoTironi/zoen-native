@@ -30,13 +30,14 @@
   "implementation": [
     "apps/zoen/src/miniapps/telegram-service-message.ts",
     "apps/zoen/src/miniapps/timeline-activity.tsx",
-    "apps/zoen/src/components/conversation-message.tsx"
+    "apps/zoen/src/components/conversation-message.tsx",
+    "apps/zoen/src/components/service-message.tsx"
   ],
   "scope": "Presentation only. No Telegram account, protocol, data model, storage, fonts or media imported. App update events and authenticated history remain canonical Zoen core data.",
   "adaptations": [
     "UIKit line rects supplied by React Native native Text layout; local SVG mask decoded by existing expo-image.",
     "Native text taller than22pt expands the mask to avoid clipping accessibility text.",
-    "App shares keep their canonical160pt cover inside a164pt message face; updates do not repeat the cover."
+    "Human App shares present only the canonical160pt cover; Agent-authored App text keeps the164pt message face. Typed updates and approvals use the shared service face without duplicating covers."
   ],
   "nativeRuntimeQualified": false
 }

@@ -1,0 +1,73 @@
+{
+  "id": "android-guarded-grabber-safe-area-v134-normal-cold-confirmed",
+  "appsPresentationV133": {
+    "$part": "checkpoints/post-merge/apps-presentation-v133.json"
+  },
+  "nativeReleaseLifecycleV131": {
+    "$part": "checkpoints/post-merge/native-release-lifecycle-v131.json"
+  },
+  "nativeLinkExecutionV130": {
+    "$part": "checkpoints/post-merge/native-link-execution-v130.json"
+  },
+  "mergedBaseline": {
+    "$part": "checkpoints/post-merge/merged-baseline.json"
+  },
+  "activePullRequest": 140,
+  "appChecks": {
+    "$part": "checkpoints/post-merge/app-checks.json"
+  },
+  "appsTerminology": {
+    "$part": "checkpoints/post-merge/apps-terminology.json"
+  },
+  "webAttachmentMenu": {
+    "$part": "checkpoints/post-merge/web-attachment-menu.json"
+  },
+  "webOfflineMessaging": {
+    "$part": "checkpoints/post-merge/web-offline-messaging.json"
+  },
+  "localMultiRelay": {
+    "$part": "checkpoints/post-merge/local-multi-relay.json"
+  },
+  "fullAppParityAccepted": false,
+  "productionReadinessAccepted": false,
+  "scaleReadinessAccepted": false,
+  "androidRelease": {
+    "$part": "checkpoints/post-merge/android-release.json"
+  },
+  "appsResourceVerification": {
+    "$part": "checkpoints/post-merge/apps-resource-verification.json"
+  },
+  "homeCardMenus": {
+    "$part": "checkpoints/post-merge/home-card-menus.json"
+  },
+  "androidBottomNavigation": {
+    "$part": "checkpoints/post-merge/android-bottom-navigation.json"
+  },
+  "currentAndroidCiRegressions": {
+    "$part": "checkpoints/post-merge/current-android-ci-regressions.json"
+  },
+  "historicalNineSourceUiCheckReceipt": {
+    "$part": "checkpoints/post-merge/historical-nine-source-ui-check-receipt.json"
+  },
+  "nativeAppSheetSource": {
+    "$part": "checkpoints/post-merge/native-app-sheet-source.json"
+  },
+  "latestTitlelessAppFollowup": {
+    "$part": "checkpoints/post-merge/latest-titleless-app-followup.json"
+  },
+  "checkpointGitBoundary": {
+    "$part": "checkpoints/post-merge/checkpoint-git-boundary.json"
+  },
+  "historicalV128AppChecks": {
+    "$part": "checkpoints/post-merge/historical-v128-app-checks.json"
+  },
+  "androidGrabberV134": {
+    "$part": "checkpoints/post-merge/android-grabber-v134.json"
+  },
+  "iosPhysicalTopV135": {
+    "$part": "checkpoints/post-merge/ios-physical-top-v135.json"
+  },
+  "webAttachmentV136": {
+    "$part": "checkpoints/post-merge/web-attachment-v136.json"
+  }
+}

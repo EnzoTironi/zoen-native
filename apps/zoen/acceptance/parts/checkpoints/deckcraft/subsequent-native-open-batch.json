@@ -1,0 +1,102 @@
+{
+  "date": "2026-10-20",
+  "source": "a974701b0dfa7047fd503d7adbe14c271f6b03e3",
+  "parentPullRequestMerged": "https://github.com/EnzoTironi/zoen-native/pull/144",
+  "parentMergeCommit": "ec28d8bc46a71011558ceee721fec6f5acb2d74b",
+  "status": "PARTIAL; actual WK canonical open, close and cold re-open passed; desktop layout and theme unaccepted",
+  "appCheck": {
+    "status": "PASS",
+    "passed": 1094,
+    "failed": 0,
+    "skipped": 0,
+    "typescript": true,
+    "oxlint": true,
+    "oxfmt": true,
+    "receipt": "/private/tmp/zoen-deckcraft-live-v166/app-check-01.json"
+  },
+  "nativeCoreBuild": "/private/tmp/zoen-deckcraft-live-v166/native-build-source-complete-01.json",
+  "resourceManifestSha256": "ada281483b260132dd496f847e50eac0f22a2a814a7dd2f8e38bca4829a4bbb5",
+  "controlledArtifact": {
+    "sourceHead": "a974701b0dfa7047fd503d7adbe14c271f6b03e3",
+    "createdAt": "2026-10-20T19:53:37.814485+00:00",
+    "artifact": "/private/tmp/zoen-deckcraft-live-v166/release-01/Zoen.app",
+    "configuration": "Release",
+    "codesignVerify": "PASS",
+    "executableSha256": "5cf1b3cdfda7bc2349164dfb1f670caf0bca7fe96f92b615c6ac4244c8d77d44",
+    "bundleManifestSha256": "5ef74835566404de9a193e8a1d5cf26eb3ef2782b48d46533b22d1b928f107c0",
+    "bundleDigestAlgorithm": "SHA256 of sorted compact JSON file entries path/sha256/bytes and symlink targets; UTF-8",
+    "bundleFiles": 431,
+    "phoneOrientations": [
+      "UIInterfaceOrientationPortrait",
+      "UIInterfaceOrientationPortraitUpsideDown",
+      "UIInterfaceOrientationLandscapeLeft",
+      "UIInterfaceOrientationLandscapeRight"
+    ],
+    "buildReceipt": "../ios-release-build-01.json",
+    "appCheckReceipt": "../app-check-01.json",
+    "nativeUiQualification": "PENDING",
+    "device": "591F1216-9B73-4BE1-807A-309DB937D6FA",
+    "wholeProductAcceptance": false,
+    "appCheckStatusAtSeal": "PASS",
+    "checkedSourceHead": "a974701b0dfa7047fd503d7adbe14c271f6b03e3",
+    "sourceDelta": "Build and checked production sources are identical"
+  },
+  "installedVerification": {
+    "status": "PASS",
+    "device": "591F1216-9B73-4BE1-807A-309DB937D6FA",
+    "installedPath": "/Users/enzotironi/Library/Developer/CoreSimulator/Devices/591F1216-9B73-4BE1-807A-309DB937D6FA/data/Containers/Bundle/Application/C2F5A590-291D-4E3C-9633-87CC72A934DE/Zoen.app",
+    "createdAt": "2026-10-20T19:54:00.687049+00:00",
+    "filesVerified": 431,
+    "matchesSeal": "5ef74835566404de9a193e8a1d5cf26eb3ef2782b48d46533b22d1b928f107c0",
+    "preservedExistingData": true,
+    "wholeProductAcceptance": false
+  },
+  "nativeObserved": {
+    "artifact": "../release-01/seal.json",
+    "account": "qa_media143_1020",
+    "existingArtifact": "it_deck_ba058d336d3c49685405a2b31ee1228f43220e14e5ee7baca12de0db94adf304",
+    "actualWKCanonicalOpen": "PASS",
+    "savedHostStatus": "PASS",
+    "closeToRetainedHomeCard": "PASS",
+    "processRestartReopenSameDocument": "PASS",
+    "fixtureSpecificReplay": "PASS after one timeout correction; raw failed take and result retained",
+    "coldOpenSavedStatusElapsedMs": 7837,
+    "layout": "UNACCEPTED desktop geometry confirmed on iPhone portrait",
+    "theme": "UNACCEPTED light canvas while host dark",
+    "homeIdleWarning": "small region changing; exact fixture card was present and next strict ID tap passed; no source of motion established",
+    "manualEdit": "NOT_RUN",
+    "certifiedAgentEdit": "NOT_RUN",
+    "exportPDF": "NOT_RUN",
+    "exportPPTX": "NOT_RUN",
+    "wholeProductAcceptance": false
+  },
+  "nativeReceipt": "/private/tmp/zoen-deckcraft-live-v166/native-qa-01/outcome.json",
+  "openingFailureBoundary": "Earlier five-minute WK opening failure remains a historical observation. The actual browser engine independently exposed an unsupported process-ID call; shared0006 removes it. The new WK artifact now opens, without proving the precise cause of the earlier native observation.",
+  "startupNegativeControl": "Actual final engine browser control opens exact canonical seed; missing canvas rejects pending layout/open and future status with canvas_missing. Unexpected traps after drain admission are not globally bounded.",
+  "browserControlReceipt": "/private/tmp/zoen-deckcraft-host-layout-export-v161/managed-startup-browser-final.json",
+  "signalObserverReliability": {
+    "pullRequest": "https://github.com/EnzoTironi/zoen-native/pull/146",
+    "statusAtCheckpoint": "DRAFT; focused71 PASS and independent source review clear; CI client Chrome startup failed before App assertions, cause unproven",
+    "receipt": "/private/tmp/zoen-signal-media-pr-v167/focused-media-01.json",
+    "review": "/private/tmp/zoen-signal-pr146-review-v167/report.md",
+    "scope": "Original Zoen received-audio, recording, draft and review observer fault cases; genuine native errors/cancellation/release failures still propagate and retry. Signal upstream suites NOT_RUN."
+  },
+  "remaining": [
+    "Hosted compact touch layout and host theme, with real geometry regression proof",
+    "Manual edit, keyboard, portrait/landscape and cold content recovery on iPhone",
+    "Actual isolated certified-agent edit through production runtime and the same native artifact; no provider/model call proven",
+    "PPTX/PDF selected-version native Share and independent exported-file inspection",
+    "Accessibility, memory, startup performance and native lifecycle qualification",
+    "Other selected Storytold editors after first complete DeckCraft journey"
+  ],
+  "wholeProductAcceptance": false,
+  "historicalPolicy": "All fields of the preceding checkpoint retain their original source/artifact scope. This additive batch does not overwrite their failed or partial observations.",
+  "editorAccessibility": {
+    "status": "UNACCEPTED",
+    "source": "Pinned eframe0.36.2 src/web/app_runner.rs:394 explicitly discards accesskit_update",
+    "sourceFileSha256": "4af77733d252e8125171753e9d9d70cc3713c140b614586be051623859df54d7",
+    "nativeObservation": "WK editor exposes native host Close/status but no semantic egui controls in AX; enabling accesskit Cargo feature alone is insufficient",
+    "review": "/private/tmp/zoen-deckcraft-compact-review-v169/report.md",
+    "scope": "Source-confirmed limitation, not a completed VoiceOver assessment or repair"
+  }
+}

@@ -22,8 +22,15 @@ export function MiniappRail({
   onRestore,
   error,
   onReorder,
+  editing: controlledEditing,
+  onEditingChange,
+  onPendingChange,
 }: {
   items: readonly ItemDetail[];
+  /** A containing header may own the transient edit state; no second draft is created. */
+  editing?: boolean;
+  onEditingChange?: (editing: boolean) => boolean | void;
+  onPendingChange?: (pending: boolean) => void;
   label?: string;
   paddingVertical?: number;
   onLongPress?: (item: ItemDetail) => void;
@@ -36,7 +43,9 @@ export function MiniappRail({
   onReorder?: (next: readonly string[], expected: readonly string[]) => Promise<unknown>;
 }) {
   const { colors } = useTheme();
-  const [editing, setEditing] = useState(false);
+  const [localEditing, setLocalEditing] = useState(false);
+  const editing = controlledEditing ?? localEditing;
+  const setEditing = onEditingChange ?? setLocalEditing;
   const [pending, setPending] = useState(false);
   const scrollPort = useCardScrollPort(true);
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
@@ -81,7 +90,8 @@ export function MiniappRail({
           contentContainerStyle={{
             gap: APP_CARD_METRICS.gap,
             paddingHorizontal: 20,
-            paddingBottom: 4,
+            // Clearance contains the rounded outline and subtle jiggle within the viewport.
+            paddingVertical: 4,
           }}
         >
           {onReorder ? (
@@ -93,7 +103,10 @@ export function MiniappRail({
               scrollRef={scrollRef}
               editing={editing}
               onEditingChange={setEditing}
-              onPendingChange={setPending}
+              onPendingChange={(value) => {
+                setPending(value);
+                onPendingChange?.(value);
+              }}
               onReorder={onReorder}
               onOpen={(item) => router.push({ pathname: '/miniapp/[id]', params: { id: item.id } })}
               onRemove={onRemove}
@@ -111,7 +124,7 @@ export function MiniappRail({
           )}
         </Animated.ScrollView>
       ) : null}
-      {editing ? (
+      {editing && controlledEditing === undefined ? (
         <View style={{ paddingHorizontal: 20, alignItems: 'flex-end', minHeight: 44 }}>
           <NativeButton
             testID="app-rail-rearrange-done"

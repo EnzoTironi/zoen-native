@@ -1,0 +1,441 @@
+--- /dev/null
++++ b/vendor/eframe-0.36.2/src/web/text_input_activation.rs
+@@ -0,0 +1,228 @@
++//! A primary contact has one release-family owner. This is not a gesture clock:
++//! egui remains responsible for click/drag thresholds and textual admission.
++
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub(crate) enum Family {
++    Pointer,
++    Touch,
++}
++
++#[derive(Default)]
++pub(crate) struct PrimaryContact {
++    owner: Option<Family>,
++    pointer: Option<i32>,
++    touch: Option<i32>,
++    ended: bool,
++    blocked: bool,
++}
++
++impl PrimaryContact {
++    /// Returns whether to emit this contact's single emulated primary Down.
++    /// If Touch accompanies an active Pointer contact, release moves to Touch;
++    /// the Pointer Down already admitted is retained without emitting another.
++    pub fn start(&mut self, family: Family, id: i32, single_primary: bool) -> bool {
++        if !single_primary {
++            self.blocked = true;
++            return false;
++        }
++        if self.owner.is_none() || self.ended {
++            *self = Self {
++                owner: Some(family),
++                ..Self::default()
++            };
++        }
++        let slot = match family {
++            Family::Pointer => &mut self.pointer,
++            Family::Touch => &mut self.touch,
++        };
++        if slot.is_some() {
++            return false;
++        }
++        *slot = Some(id);
++        if family == Family::Touch && self.owner == Some(Family::Pointer) {
++            // Touch start still precedes release: use its native end callback
++            // for the existing semantic text admission, without a second Down.
++            self.owner = Some(Family::Touch);
++            return false;
++        }
++        self.owner == Some(family)
++    }
++
++    /// Returns once for the owning release, carrying eligibility for activation.
++    /// IDs of PointerEvent and Touch are deliberately never compared with each other.
++    pub fn end(&mut self, family: Family, id: i32) -> Option<bool> {
++        let slot = match family {
++            Family::Pointer => self.pointer,
++            Family::Touch => self.touch,
++        };
++        if self.ended || self.owner != Some(family) || slot != Some(id) {
++            return None;
++        }
++        self.ended = true;
++        Some(!self.blocked)
++    }
++
++    pub fn block(&mut self) {
++        self.blocked = true;
++    }
++
++    pub fn cancel(&mut self) -> bool {
++        let active = self.owner.is_some() && !self.ended;
++        self.blocked = true;
++        self.ended = true;
++        active
++    }
++}
++
++/// Cancellation must drop button/click state, not synthesize a clickable Up.
++/// PointerGone alone only hides hover and deliberately leaves buttons down.
++pub(crate) fn cancel_primary(
++    ctx: &egui::Context,
++    contact: &mut PrimaryContact,
++    events: &mut Vec<egui::Event>,
++) -> bool {
++    if !contact.cancel() {
++        return false;
++    }
++    let position = ctx.input(|input| input.pointer.interact_pos());
++    ctx.input_mut(|input| input.pointer = egui::PointerState::default());
++    // Keep the last real position for normal editor gesture cleanup on the
++    // next frame. There is still no ButtonUp/click or keyboard authorization.
++    if let Some(position) = position {
++        events.push(egui::Event::PointerMoved(position));
++    }
++    events.push(egui::Event::PointerGone);
++    true
++}
++
++const ACTIVATION: &str = "eframe.text_input_activation";
++
++/// A custom editor may publish a content-free (egui-frame, current-owner-ID)
++/// pulse after admitting a textual click. The standard TextEdit needs no adapter.
++/// The runner clears before logic and consumes after that same synchronous run.
++pub(crate) fn clear_custom(ctx: &egui::Context) {
++    ctx.data_mut(|data| data.remove::<Option<(u64, egui::Id)>>(egui::Id::new(ACTIVATION)));
++}
++
++pub(crate) fn accepted_current_text(ctx: &egui::Context, ime: bool) -> bool {
++    let custom = ctx.data_mut(|data| {
++        data.remove_temp::<Option<(u64, egui::Id)>>(egui::Id::new(ACTIVATION))
++            .flatten()
++    });
++    if !ime {
++        return false;
++    }
++    if ctx.text_edit_focused()
++        && let Some(id) = ctx.memory(|memory| memory.focused())
++        && let Some(response) = ctx.read_response(id)
++        && response.enabled()
++        // DOM focus may arrive only after this real first textual click.
++        // Bind to the current TextEdit owner without bypassing release/IME gates.
++        && ctx.memory(|memory| memory.has_focus(response.id))
++        && response.clicked_by(egui::PointerButton::Primary)
++    {
++        return true;
++    }
++    // A custom canvas owns IME only while no ordinary egui widget has focus.
++    ctx.memory(|memory| memory.focused().is_none())
++        && custom
++            .is_some_and(|(frame, _owner)| frame.checked_add(1) == Some(ctx.cumulative_frame_nr()))
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn pointer_only_and_touch_only_admit_one_pair_and_release() {
++        for family in [Family::Pointer, Family::Touch] {
++            let mut contact = PrimaryContact::default();
++            assert!(contact.start(family, 7, true));
++            assert!(!contact.start(family, 7, true));
++            assert_eq!(contact.end(family, 99), None);
++            assert_eq!(contact.end(family, 7), Some(true));
++            assert_eq!(contact.end(family, 7), None);
++        }
++    }
++
++    #[test]
++    fn both_families_release_on_touch_without_comparing_their_ids() {
++        for (first, second) in [
++            (Family::Pointer, Family::Touch),
++            (Family::Touch, Family::Pointer),
++        ] {
++            for release_owner_first in [true, false] {
++                let mut contact = PrimaryContact::default();
++                assert!(contact.start(first, 11, true));
++                assert!(!contact.start(second, 93, true));
++                let expected = |family| (family == Family::Touch).then_some(true);
++                if release_owner_first {
++                    assert_eq!(contact.end(first, 11), expected(first));
++                    assert_eq!(contact.end(second, 93), expected(second));
++                } else {
++                    assert_eq!(contact.end(second, 93), expected(second));
++                    assert_eq!(contact.end(first, 11), expected(first));
++                }
++                assert_eq!(contact.end(Family::Pointer, 11), None);
++                assert_eq!(contact.end(Family::Touch, 93), None);
++            }
++        }
++    }
++
++    #[test]
++    fn a_touch_start_after_pointer_release_is_an_independent_contact() {
++        let mut contact = PrimaryContact::default();
++        assert!(contact.start(Family::Pointer, 11, true));
++        assert_eq!(contact.end(Family::Pointer, 11), Some(true));
++        assert_eq!(contact.end(Family::Pointer, 11), None);
++        // No cross-family identifier or timeout guesses whether this is a
++        // delayed companion or a real next Touch-only gesture.
++        assert!(contact.start(Family::Touch, 93, true));
++        assert!(!contact.start(Family::Touch, 93, true));
++        assert_eq!(contact.end(Family::Pointer, 11), None);
++        assert_eq!(contact.end(Family::Touch, 11), None);
++        assert_eq!(contact.end(Family::Touch, 93), Some(true));
++        assert_eq!(contact.end(Family::Touch, 93), None);
++    }
++
++    #[test]
++    fn touch_handoff_rejects_duplicates_wrong_ids_cancel_and_multitouch() {
++        for cancel in [false, true] {
++            let mut contact = PrimaryContact::default();
++            assert!(contact.start(Family::Pointer, 11, true));
++            assert!(!contact.start(Family::Touch, 93, true));
++            assert!(!contact.start(Family::Pointer, 11, true));
++            assert!(!contact.start(Family::Touch, 93, true));
++            assert_eq!(contact.end(Family::Pointer, 11), None);
++            assert_eq!(contact.end(Family::Touch, 11), None);
++            if cancel {
++                assert!(contact.cancel());
++                assert!(!contact.cancel());
++                assert_eq!(contact.end(Family::Touch, 93), None);
++            } else {
++                assert!(!contact.start(Family::Touch, 94, false));
++                assert_eq!(contact.end(Family::Touch, 94), None);
++                assert_eq!(contact.end(Family::Touch, 93), Some(false));
++            }
++            assert_eq!(contact.end(Family::Pointer, 11), None);
++            assert_eq!(contact.end(Family::Touch, 93), None);
++            assert!(contact.start(Family::Pointer, 12, true));
++            assert_eq!(contact.end(Family::Pointer, 12), Some(true));
++        }
++    }
++
++    #[test]
++    fn cancel_and_multitouch_cannot_authorize_keyboard_and_next_contact_recovers() {
++        for family in [Family::Pointer, Family::Touch] {
++            let mut contact = PrimaryContact::default();
++            assert!(contact.start(family, 1, true));
++            contact.block();
++            assert_eq!(contact.end(family, 1), Some(false));
++            assert!(contact.start(family, 2, true));
++            contact.cancel();
++            assert_eq!(contact.end(family, 2), None);
++            assert!(contact.start(family, 3, true));
++            assert_eq!(contact.end(family, 3), Some(true));
++        }
++    }
++}
+--- a/vendor/eframe-0.36.2/src/web/mod.rs
++++ b/vendor/eframe-0.36.2/src/web/mod.rs
+@@ -10,6 +10,7 @@
+ mod input;
+ mod panic_handler;
+ mod text_agent;
++mod text_input_activation;
+ mod web_logger;
+ mod web_runner;
+ 
+--- a/vendor/eframe-0.36.2/src/web/backend.rs
++++ b/vendor/eframe-0.36.2/src/web/backend.rs
+@@ -13,6 +13,9 @@
+ pub(crate) struct WebInput {
+     /// Required because we don't get a position on touchend
+     pub primary_touch: Option<egui::TouchId>,
++
++    /// Owner of the one primary PointerButton stream across Pointer/Touch.
++    pub primary_contact: super::text_input_activation::PrimaryContact,
+ 
+     /// Helps to track the delta scale from gesture events
+     pub accumulated_scale: f32,
+@@ -62,7 +65,10 @@
+         self.modifiers = egui::Modifiers::default(); // Avoid sticky modifier keys on alt-tab:
+         self.raw.focused = focused;
+         self.raw.events.push(egui::Event::WindowFocused(focused));
+-        self.primary_touch = None;
++        if !focused {
++            self.primary_touch = None;
++            self.primary_contact.cancel();
++        }
+     }
+ 
+     /// Update the modifier state, emitting [`egui::Event::ModifiersChanged`] if it changed.
+--- a/vendor/eframe-0.36.2/src/web/text_agent.rs
++++ b/vendor/eframe-0.36.2/src/web/text_agent.rs
+@@ -68,16 +68,16 @@
+ 
+         // attach event listeners
+ 
+-        runner_ref.add_event_listener(
+-            &input,
+-            "compositionstart",
++        runner_ref.add_event_listener(&input, "compositionstart", {
++            let input_state = Rc::clone(&input_state);
+             move |_: web_sys::CompositionEvent, runner: &mut AppRunner| {
++                input_state.borrow_mut().is_composing = true;
+                 // Repaint moves the text agent into place,
+                 // see `AppRunner::handle_platform_output`, which calls
+                 // `TextAgent::update`.
+                 runner.needs_repaint.repaint_asap();
+-            },
+-        )?;
++            }
++        })?;
+ 
+         runner_ref.add_event_listener(&input, "input", {
+             let input_state = Rc::clone(&input_state);
+@@ -131,14 +131,6 @@
+             .update(ime, canvas, zoom_factor)
+     }
+ 
+-    pub fn set_focus(&self, on: bool) {
+-        if on {
+-            self.focus();
+-        } else {
+-            self.blur();
+-        }
+-    }
+-
+     pub fn has_focus(&self) -> bool {
+         super::has_focus(&self.input)
+     }
+@@ -150,6 +142,25 @@
+ 
+         log::trace!("Focusing text agent");
+ 
++        if let Err(err) = super::focus_without_scroll(&self.input) {
++            log::error!("failed to set focus: {}", super::string_from_js_value(&err));
++        }
++    }
++
++    /// Reuse the same DOM agent without clearing its committed prefix.
++    pub(crate) fn focus_from_user_gesture(&self) {
++        if self.input_state.borrow().is_composing {
++            return; // Never blur an active composition to reopen the keyboard.
++        }
++        if self.has_focus()
++            && let Err(err) = self.input.blur()
++        {
++            log::error!(
++                "failed to refocus text agent: {}",
++                super::string_from_js_value(&err)
++            );
++            return;
++        }
+         if let Err(err) = super::focus_without_scroll(&self.input) {
+             log::error!("failed to set focus: {}", super::string_from_js_value(&err));
+         }
+@@ -184,6 +195,7 @@
+     last_text: String,
+     ime_output: Option<egui::output::IMEOutput>,
+     keydown_special_case: KeydownSpecialCase,
++    is_composing: bool,
+ }
+ 
+ #[derive(Clone, Copy)]
+@@ -222,6 +234,7 @@
+             last_text: String::new(),
+             ime_output: None,
+             keydown_special_case: KeydownSpecialCase::None,
++            is_composing: false,
+         }
+     }
+ 
+@@ -279,9 +292,11 @@
+     fn clear(&mut self) {
+         self.input.set_value("");
+         self.last_text.clear();
++        self.is_composing = false;
+     }
+ 
+     fn handle_input_event(&mut self, event: &web_sys::InputEvent, runner: &mut AppRunner) {
++        self.is_composing |= event.is_composing();
+         if self
+             .ime_output
+             .as_ref()
+@@ -391,6 +406,7 @@
+     }
+ 
+     fn handle_composition_end_event(&mut self, runner: &mut AppRunner) {
++        self.is_composing = false;
+         let text = self.input.value();
+ 
+         let commit_text = {
+@@ -422,7 +438,8 @@
+         if event.is_composing() || !matches!(special_case, KeydownSpecialCase::None) {
+             true
+         } else {
+-            if event.key().chars().count() > 1
++            // Zoen experiment: preserve the buffer for pure Shift only.
++            if (event.key().chars().count() > 1 && event.key() != "Shift")
+                 || event.ctrl_key()
+                 || event.alt_key()
+                 || event.meta_key()
+--- a/vendor/eframe-0.36.2/src/web/app_runner.rs
++++ b/vendor/eframe-0.36.2/src/web/app_runner.rs
+@@ -17,6 +17,8 @@
+     pub(crate) needs_repaint: Arc<NeedRepaint>,
+     last_save_time: f64,
+     pub(crate) text_agent: TextAgent,
++    pointer_callback: bool,
++    allow_text_activation: bool,
+ 
+     // If not empty, the painter should capture n frames from now.
+     // zero means capture the exact next frame.
+@@ -158,6 +160,8 @@
+             needs_repaint,
+             last_save_time: now_sec(),
+             text_agent,
++            pointer_callback: false,
++            allow_text_activation: false,
+             screenshot_commands_with_frame_delay: vec![],
+             textures_delta: Default::default(),
+             clipped_primitives: None,
+@@ -251,7 +255,16 @@
+     /// Runs the logic, but doesn't paint the result.
+     ///
+     /// The result can be painted later with a call to [`Self::run_and_paint`] or [`Self::paint`].
++    pub fn logic_from_pointer(&mut self, allow_text_activation: bool) {
++        self.pointer_callback = true;
++        self.allow_text_activation = allow_text_activation;
++        self.logic();
++        self.allow_text_activation = false;
++        self.pointer_callback = false;
++    }
++
+     pub fn logic(&mut self) {
++        super::text_input_activation::clear_custom(&self.egui_ctx);
+         // We sometimes miss blur/focus events due to the text agent, so let's just poll each frame:
+         self.update_focus();
+         // We might have received a screenshot
+@@ -412,14 +425,25 @@
+ 
+         super::set_cursor_icon(self.canvas(), cursor_icon);
+ 
+-        if self.has_focus() {
++        let accepted_text = super::text_input_activation::accepted_current_text(
++            &self.egui_ctx,
++            ime.as_ref()
++                .is_some_and(|ime| !ime.should_interrupt_composition),
++        );
++        let activate = self.pointer_callback && self.allow_text_activation && accepted_text;
++        if activate {
++            // Synchronous user activation, tied to the target admitted in this run.
++            self.text_agent.focus_from_user_gesture();
++        } else if self.has_focus() {
+             // The eframe app has focus.
+             if let Some(ime) = ime {
+                 if ime.should_interrupt_composition {
+                     self.text_agent.interrupt_ime_composition();
+                 }
+                 // We are editing text: give the focus to the text agent.
+-                self.text_agent.focus();
++                if !self.pointer_callback {
++                    self.text_agent.focus();
++                }
+             } else {
+                 // We are not editing text - give the focus to the canvas.
+                 self.text_agent.blur();
