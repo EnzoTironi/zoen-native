@@ -373,3 +373,10 @@ mod support;
 use support::*;
 
 mod initial_key_packages;
+
+mod outbox_fifo;
+
+#[test]
+fn native_image_upgrades_only_exact_previous_outbox_schema_without_changing_signed_queue() {
+    outbox_fifo::native_image_upgrades_only_exact_previous_outbox_schema_without_changing_signed_queue();
+}

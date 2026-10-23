@@ -272,6 +272,8 @@ fn provider_migrations(store: &Store) -> Result<Vec<(i64, String, String)>> {
         .map_err(|_| NativeError::Image)
 }
 
+mod image_schema;
+
 fn validate_image(store: &Store) -> Result<()> {
     let trusted = Engine::open(":memory:").map_err(|_| NativeError::Storage)?;
     let version: i64 = store
@@ -279,7 +281,7 @@ fn validate_image(store: &Store) -> Result<()> {
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .map_err(|_| NativeError::Image)?;
     if version != 2
-        || schema(store)? != schema(&trusted.store)?
+        || !image_schema::supported(store, &trusted.store)?
         || provider_migrations(store)? != provider_migrations(&trusted.store)?
         || store
             .meta(EVENT_FORMAT_META)
@@ -328,6 +330,15 @@ fn validate_image(store: &Store) -> Result<()> {
             .iter()
             .any(|(profile, _)| !agent_owner::profile_authorized(profile))
     {
+        return Err(NativeError::Image);
+    }
+    // Only the exact previous schema reaches this narrow, inert upgrade. The
+    // authenticated custody image and all event/provider/credential checks above
+    // remain required before installing any Engine state.
+    store
+        .upgrade_outbox_order()
+        .map_err(|_| NativeError::Image)?;
+    if schema(store)? != schema(&trusted.store)? {
         return Err(NativeError::Image);
     }
     limit_pages(store)
