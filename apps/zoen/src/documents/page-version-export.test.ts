@@ -36,8 +36,11 @@ function fixture() {
     resolve = done;
   });
   const commands: unknown[] = [];
+  let epoch = 1;
   const store = {
-    sessionEpoch: 1,
+    get sessionEpoch() {
+      return epoch;
+    },
     getSnapshot: () => state,
     driver: {
       request: async (command: unknown) => {
@@ -60,6 +63,9 @@ function fixture() {
     );
   return {
     state,
+    advanceEpoch: () => {
+      epoch++;
+    },
     page,
     store,
     result,
@@ -90,7 +96,7 @@ test('selected Page export sends the exact observed binding and shares its versi
   assert.deepEqual(f.shares[0]!.slice(0, 2), ['Observed title v2', '# Shared\r\n']);
   const current = f.shares[0]![2] as () => boolean;
   assert.equal(current(), true);
-  f.store.sessionEpoch++;
+  f.advanceEpoch();
   assert.equal(current(), false);
 });
 
@@ -111,7 +117,7 @@ test('late completion cannot share across owner, device, membership, route or lo
     const running = f.run();
     if (condition === 'owner') f.state.snapshot!.account!.identity_id = 'bob';
     if (condition === 'device') f.state.snapshot!.account!.device_id = 'other';
-    if (condition === 'epoch') f.store.sessionEpoch++;
+    if (condition === 'epoch') f.advanceEpoch();
     if (condition === 'membership') f.state.snapshot!.conversations[0]!.members = [];
     if (condition === 'route') f.dispose();
     if (condition === 'locked') f.state.snapshot!.account!.unlocked = false;
