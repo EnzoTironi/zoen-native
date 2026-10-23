@@ -41,6 +41,11 @@ async fn world() -> World {
     policy.version += 1;
     policy.previous_digest = Some(w.policy_digest.clone());
     policy.allowed_profiles.push(profile().digest().unwrap());
+    policy.allowed_profiles.sort();
+    assert!(
+        policy.valid_shape(),
+        "fixture policy preserves canonical profile order"
+    );
     w.signed = event_log::owner_budget::sign(&w.owner, policy).unwrap();
     w.policy_digest = w.runtime.install_policy(w.signed.clone()).await.unwrap();
     w
