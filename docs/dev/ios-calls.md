@@ -163,6 +163,22 @@ UIKit layout, native animation feel, keyboard behavior or physical media. Those
 remain in the next manual batch. The earlier app artifact at `24db0777` does not
 contain this cohort.
 
+## Local video preview
+
+The video-call controller displays the existing authorized camera track in a compact
+native preview. Front-camera mirroring follows the actual capture device, including
+fallback when a requested camera is unavailable. The preview owns no capture or RTC
+resources. Its renderer detaches while hidden and reconnects to the same track when
+the call screen returns.
+
+The native switch control preserves per-call front/back intent before RTC exists.
+After creation, switching immediately disables the old sending track/preview and
+serializes stop/start with existing RTC work. A newer switch supersedes a queued
+older request. Permission and the current canonical call lease are revalidated;
+camera-off intent wins over delayed capture completion. No new signaling protocol
+or Core authority is introduced. Device camera behavior and orientation still need
+physical QA; model/wiring tests and SDK typecheck are reported on #312.
+
 ## Native packaging evidence
 
 The first local pod install exposed an empty aggregate target from a local `:path`

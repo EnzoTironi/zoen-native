@@ -4,6 +4,7 @@ struct ZoenCallMediaIntent: Sendable {
   var muted = false
   var speaker = false
   var cameraEnabled = true
+  var frontCamera = true
   func microphoneLive(allowed: Bool, activated: Bool, live: Bool) -> Bool {
     live && allowed && activated && !muted
   }
