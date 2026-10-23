@@ -38,6 +38,10 @@ pub enum EventBody {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         forwarded: bool,
     },
+    /// Closed v1 signaling; carried inside MLS for an encrypted person-to-person DM.
+    CallV1 {
+        signal: crate::calls::CallSignal,
+    },
     /// How I keep one of my chats (pinned, archived, muted). Lives only in my Personal
     /// Space, so it syncs across my own devices and nobody else ever sees it. The whole
     /// record is restated each time: the latest one wins.
