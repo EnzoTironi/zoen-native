@@ -1,13 +1,16 @@
 //! Restore actual source/dedupe AND original Runtime capsule/Review after a
 //! consumed Publish. SQL is proven byte-equivalent over this read-only effect;
-//! this is not a pg_dump/full-cluster deployment restore claim.
+//! operational partition ownership remains live and is never rewound. This is
+//! scoped logical-state rollback, not pg_dump/full-cluster deployment restore.
 use super::*;
+mod ownership;
 use foundationdb::{options::StreamingMode, tuple::Subspace, KeySelector, RangeOption};
 
 pub(super) struct Snapshot {
     ranges: Vec<(Vec<u8>, Vec<u8>)>,
     values: Vec<(Vec<u8>, Vec<u8>)>,
     sql_digest: String,
+    ownership: (Vec<u8>, Vec<u8>),
 }
 
 async fn sql_digest(f: &Fixture) -> String {
@@ -41,17 +44,36 @@ async fn sql_digest(f: &Fixture) -> String {
 
 impl Snapshot {
     pub(super) async fn capture(f: &Fixture) -> Self {
+        let cell = Subspace::all().subspace(&("zoen", f.world.relay_cell.as_deref().unwrap()));
+        let (cell_begin, cell_end) = cell.range();
+        let ownership = cell.subspace(&("ownership",)).range();
+        assert!(cell_begin < ownership.0 && ownership.0 < ownership.1 && ownership.1 < cell_end);
+        // All cell data is restored except the exact operational ownership range.
+        // The fixed 4096 partition leases are not part of this logical snapshot.
         let ranges = vec![
             f.world.runtime.execution.root.range(),
-            Subspace::all()
-                .subspace(&("zoen", f.world.relay_cell.as_deref().unwrap()))
-                .range(),
+            (cell_begin, ownership.0.clone()),
+            (ownership.1.clone(), cell_end),
         ];
+        for (index, (begin, end)) in ranges.iter().enumerate() {
+            assert!(begin < end);
+            assert!(
+                end <= &ownership.0 || &ownership.1 <= begin,
+                "capture/clear range must not overlap operational ownership"
+            );
+            for (other_begin, other_end) in &ranges[..index] {
+                assert!(
+                    end <= other_begin || other_end <= begin,
+                    "capture ranges must be disjoint"
+                );
+            }
+        }
         let transaction = f.world.runtime.execution.transaction().await.unwrap();
         let mut values = Vec::new();
         let mut total_bytes = 0usize;
         let mut pages = 0usize;
         for range in &ranges {
+            let mut previous: Option<Vec<u8>> = None;
             let mut options = RangeOption::from(range.clone());
             options.mode = StreamingMode::WantAll;
             // A soft response size deliberately exercises normal paging; WantAll
@@ -70,6 +92,15 @@ impl Snapshot {
                     "snapshot page must advance"
                 );
                 for row in rows.iter() {
+                    assert!(
+                        range.0.as_slice() <= row.key() && row.key() < range.1.as_slice(),
+                        "snapshot key must remain in its exact capture range"
+                    );
+                    assert!(
+                        previous.as_deref().is_none_or(|last| last < row.key()),
+                        "snapshot pages must be strictly ordered without duplicate keys"
+                    );
+                    previous = Some(row.key().to_vec());
                     assert!(
                         values.len() < 4096,
                         "restore fixture exceeds total key bound"
@@ -106,6 +137,7 @@ impl Snapshot {
             ranges,
             values,
             sql_digest: sql_digest(f).await,
+            ownership,
         }
     }
 
@@ -116,13 +148,23 @@ impl Snapshot {
             "SQL did not change between snapshot and this read-only relay publication"
         );
         let transaction = f.world.runtime.execution.transaction().await.unwrap();
+        // Compare current full ownership bytes in the same actual transaction;
+        // heartbeats outside this operation may legitimately renew those leases.
+        let live_ownership = ownership::state(&transaction, &self.ownership).await;
         for (begin, end) in &self.ranges {
+            assert!(end <= &self.ownership.0 || &self.ownership.1 <= begin);
             transaction.clear_range(begin, end);
         }
         for (key, value) in &self.values {
             transaction.set(key, value);
         }
+        assert_eq!(
+            ownership::state(&transaction, &self.ownership).await,
+            live_ownership,
+            "logical restore must preserve every live ownership byte and fence"
+        );
         transaction.commit().await.unwrap();
+        println!("managed restore: preserved {} complete current ownership records without rewinding fences", live_ownership.len());
         let actual = Self::capture(f).await;
         assert!(
             actual.values == self.values,
