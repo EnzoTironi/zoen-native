@@ -5,6 +5,45 @@ use super::*;
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub(super) enum Command {
+    FindOwnerPolicyOptions {
+        scope: crate::owner_policy::OwnerPolicyScope,
+        request_id: String,
+        expected_hash: String,
+    },
+    RequestOwnerPolicyOptions {
+        scope: crate::owner_policy::OwnerPolicyScope,
+        request_id: String,
+        expected_hash: String,
+    },
+    OwnerPolicyOptions {
+        scope: crate::owner_policy::OwnerPolicyScope,
+        source: String,
+    },
+    PrepareOwnerPolicy {
+        scope: crate::owner_policy::OwnerPolicyScope,
+        source: String,
+        options_digest: String,
+        limit_units: String,
+        max_attempt_units: String,
+        enabled: bool,
+    },
+    FindOwnerPolicySubmission {
+        scope: crate::owner_policy::OwnerPolicyScope,
+        policy_digest: String,
+    },
+    ReviewOwnerPolicy {
+        scope: crate::owner_policy::OwnerPolicyScope,
+        policy_json: String,
+    },
+    SubmitOwnerPolicy {
+        scope: crate::owner_policy::OwnerPolicyScope,
+        policy_json: String,
+        confirmation_digest: String,
+    },
+    OwnerPolicyStatus {
+        scope: crate::owner_policy::OwnerPolicyScope,
+        source: String,
+    },
     SiteToolReview {
         expected_identity_id: String,
         expected_device_id: String,

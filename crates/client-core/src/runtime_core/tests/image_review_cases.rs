@@ -1,6 +1,6 @@
 use super::*;
 
-fn pending() -> (Fixture, String, String, Envelope) {
+pub(super) fn pending() -> (Fixture, String, String, Envelope) {
     let mut fixture = Fixture::new();
     fixture.encrypted(
         EventBody::GrantIssued {

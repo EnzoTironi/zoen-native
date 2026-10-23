@@ -9,6 +9,49 @@ impl Client {
     ) -> Result<String, CoreError> {
         use Command::*;
         match command {
+            FindOwnerPolicyOptions {
+                scope,
+                request_id,
+                expected_hash,
+            } => encode(&self.find_owner_policy_options(scope, request_id, expected_hash)?),
+            RequestOwnerPolicyOptions {
+                scope,
+                request_id,
+                expected_hash,
+            } => encode(&self.request_owner_policy_options(scope, request_id, expected_hash)?),
+            OwnerPolicyOptions { scope, source } => {
+                encode(&self.owner_policy_options(scope, source)?)
+            }
+            PrepareOwnerPolicy {
+                scope,
+                source,
+                options_digest,
+                limit_units,
+                max_attempt_units,
+                enabled,
+            } => encode(&self.prepare_owner_policy(
+                scope,
+                source,
+                options_digest,
+                limit_units,
+                max_attempt_units,
+                enabled,
+            )?),
+            FindOwnerPolicySubmission {
+                scope,
+                policy_digest,
+            } => encode(&self.find_owner_policy_submission(scope, policy_digest)?),
+            ReviewOwnerPolicy { scope, policy_json } => {
+                encode(&self.review_owner_policy(scope, policy_json)?)
+            }
+            SubmitOwnerPolicy {
+                scope,
+                policy_json,
+                confirmation_digest,
+            } => encode(&self.submit_owner_policy(scope, policy_json, confirmation_digest)?),
+            OwnerPolicyStatus { scope, source } => {
+                encode(&self.owner_policy_status(scope, source)?)
+            }
             ProviderSignIn {
                 relay_url,
                 proof_token,
