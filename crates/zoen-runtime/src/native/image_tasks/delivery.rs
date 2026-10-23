@@ -230,16 +230,14 @@ impl Delivery<'_> {
             event_log::Signer::from_secret(&self.credential.secret),
             self.credential.certificate.clone(),
         );
-        let mut transport = self
-            .runtime
-            .connect_bound_image_output(
-                &target.url,
-                &target.relay,
-                actor,
-                &self.envelope,
-                self.publication.checkpoint.as_ref(),
-            )
-            .await?;
+        let mut transport = Box::pin(self.runtime.connect_bound_image_output(
+            &target.url,
+            &target.relay,
+            actor,
+            &self.envelope,
+            self.publication.checkpoint.as_ref(),
+        ))
+        .await?;
         for index in 0..self.publication.blobs.len() {
             let blob = self.publication.blobs[index].chunk.blob.clone();
             if !self

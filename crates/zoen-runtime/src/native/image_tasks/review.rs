@@ -255,9 +255,14 @@ impl NativeCustody {
                 .ok_or(RuntimeError::InvalidBinding)?
                 .checkpoint
                 .as_ref();
-            let mut transport = runtime
-                .connect_bound_image_output(&target.url, &target.relay, actor, envelope, checkpoint)
-                .await?;
+            let mut transport = Box::pin(runtime.connect_bound_image_output(
+                &target.url,
+                &target.relay,
+                actor,
+                envelope,
+                checkpoint,
+            ))
+            .await?;
             staging.authorize().await?;
             let envelope = staging
                 .envelope
