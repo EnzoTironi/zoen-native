@@ -113,6 +113,17 @@ class DocumentationScopeTests(unittest.TestCase):
         self.git("merge", "--no-ff", "--no-edit", "other")
         self.assertFalse(self.classify(self.git("rev-parse", "HEAD"))["documentation_only"])
 
+    def test_crisscross_merge_bases_require_full_suite(self):
+        tree = self.git("rev-parse", self.base + "^{tree}")
+        b = self.git("commit-tree", tree, "-p", self.base, "-m", "b")
+        c = self.git("commit-tree", tree, "-p", self.base, "-m", "c")
+        first = self.git("commit-tree", tree, "-p", b, "-p", c, "-m", "first")
+        second = self.git("commit-tree", tree, "-p", c, "-p", b, "-m", "second")
+        self.assertEqual(len(self.git("merge-base", "--all", first, second).splitlines()), 2)
+        result = SCOPE.classify(first, second, "pull_request")
+        self.assertFalse(result["documentation_only"])
+        self.assertIn("Ambiguous merge bases", result["reason"])
+
     def test_document_integrity_rejects_oversize_invalid_utf8_and_broken_local_links(self):
         for body in [b"x" * 20_001, b"\xff", b"[Broken](../missing.rs)", b"[Escape](../../outside)"]:
             with self.subTest(body=body[:30]):
