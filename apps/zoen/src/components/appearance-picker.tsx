@@ -1,6 +1,7 @@
 import { Host, Picker } from '@expo/ui';
 import { useTheme } from '../theme';
-import { SKY_PHASES, type ThemePreference } from '../theme/sky.ts';
+import { type ThemePreference } from '../theme/sky.ts';
+import { THEME_PROFILES } from '../theme/catalog';
 import { skyLabels } from './appearance-options';
 
 export function AppearancePicker() {
@@ -14,7 +15,7 @@ export function AppearancePicker() {
         onValueChange={setPreference}
         appearance="menu"
       >
-        {(['auto', ...SKY_PHASES] as const).map((value) => (
+        {(['auto', ...THEME_PROFILES] as const).map((value) => (
           <Picker.Item key={value} label={labels[value]} value={value} />
         ))}
       </Picker>

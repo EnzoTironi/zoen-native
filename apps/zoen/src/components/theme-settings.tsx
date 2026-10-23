@@ -19,6 +19,7 @@ import {
 import { SettingsScreen } from './settings-screen';
 import { SkyLayer } from './sky-background';
 import { ThemeColorPicker } from './theme-color-picker';
+import { THEME_PROFILES, isDarkTheme } from '../theme/catalog';
 
 const accentColors = [
   '#0088FF',
@@ -31,6 +32,7 @@ const accentColors = [
   '#EB6CA4',
 ];
 
+// Ported geometry: ThemeSettingsThemeIconItemNode (116pt row, 98×62 image).
 function Preview({
   profile,
   selected,
@@ -40,86 +42,86 @@ function Preview({
   selected: boolean;
   onPress(): void;
 }) {
-  const { customizations, presentation } = useTheme();
-  const style = telegramPresentation(profile, customizations[profile]);
-  const sky = resolveSkyTheme(profile, new Date(2026, 0, 1), customizations[profile]).sky;
+  const { customizations, presentation: p } = useTheme();
+  const resolved = resolveSkyTheme(profile, new Date(2026, 0, 1), customizations[profile]);
+  const preview = resolved.presentation;
+  const label = themeLabels()[profile];
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ selected }}
-      accessibilityLabel={t(profile === 'day' ? 'settings.skyDay' : 'settings.skyNight')}
+      accessibilityLabel={label}
       onPress={onPress}
-      style={{ flex: 1, gap: 9, alignItems: 'center' }}
+      testID={`theme-preset-${profile}`}
+      style={({ pressed }) => ({ width: 116, height: 116, opacity: pressed ? 0.65 : 1 })}
     >
       <View
         style={{
-          width: '100%',
-          height: 154,
-          borderRadius: 12,
-          overflow: 'hidden',
+          position: 'absolute',
+          left: 9,
+          top: 13,
+          width: 100,
+          height: 64,
+          borderRadius: 17,
+          padding: 1,
           borderWidth: selected ? 2 : 1,
-          borderColor: selected ? presentation.accent : presentation.separator,
+          borderColor: selected ? p.accent : p.list.disclosure,
         }}
       >
-        <SkyLayer sky={sky} />
-        <View
-          style={{
-            height: 28,
-            backgroundColor: style.navigation.background,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Text style={{ fontSize: 11, color: style.text, fontWeight: '600' }}>
-            {t('settings.themePreviewTitle')}
-          </Text>
-        </View>
-        <View style={{ margin: 10, gap: 8 }}>
-          <View
-            style={{
-              alignSelf: 'flex-start',
-              maxWidth: '90%',
-              paddingHorizontal: 9,
-              paddingVertical: 6,
-              borderRadius: 10,
-              backgroundColor: style.chat.incoming.fill,
-            }}
-          >
-            <Text numberOfLines={2} style={{ fontSize: 11, color: style.chat.incoming.text }}>
-              {t('settings.themePreviewReceived')}
-            </Text>
-          </View>
-          <View
-            style={{
-              alignSelf: 'flex-end',
-              maxWidth: '90%',
-              paddingHorizontal: 9,
-              paddingVertical: 6,
-              borderRadius: 10,
-              backgroundColor: style.chat.outgoing.fill,
-              experimental_backgroundImage:
-                style.chat.outgoing.fillColors.length > 1
-                  ? `linear-gradient(to bottom, ${style.chat.outgoing.fillColors.join(', ')})`
-                  : undefined,
-            }}
-          >
-            <Text numberOfLines={2} style={{ fontSize: 11, color: style.chat.outgoing.text }}>
-              {t('settings.themePreviewOwn')}
-            </Text>
+        <View style={{ flex: 1, borderRadius: 14, overflow: 'hidden' }}>
+          <SkyLayer sky={resolved.sky} />
+          <View style={{ height: 10, backgroundColor: preview.navigation.background }} />
+          <View style={{ margin: 6, gap: 5 }}>
+            <View
+              style={{
+                width: 48,
+                height: 13,
+                borderRadius: 7,
+                backgroundColor: preview.chat.incoming.fill,
+              }}
+            />
+            <View
+              style={{
+                width: 56,
+                height: 13,
+                alignSelf: 'flex-end',
+                borderRadius: 7,
+                backgroundColor: preview.chat.outgoing.fill,
+                experimental_backgroundImage:
+                  preview.chat.outgoing.fillColors.length > 1
+                    ? `linear-gradient(to bottom, ${preview.chat.outgoing.fillColors.join(', ')})`
+                    : undefined,
+              }}
+            />
           </View>
         </View>
       </View>
       <Text
+        numberOfLines={1}
         style={{
-          color: selected ? presentation.accent : presentation.text,
-          fontSize: 13,
-          fontWeight: selected ? '600' : '400',
+          position: 'absolute',
+          top: 88,
+          width: '100%',
+          textAlign: 'center',
+          fontSize: 12,
+          fontWeight: selected ? '700' : '400',
+          color: selected ? p.accent : p.text,
         }}
       >
-        {t(profile === 'day' ? 'settings.skyDay' : 'settings.skyNight')}
+        {label}
       </Text>
     </Pressable>
   );
+}
+function themeLabels(): Record<ThemeProfile, string> {
+  return {
+    day: t('settings.skyDay'),
+    night: t('settings.skyNight'),
+    'telegram-classic': t('settings.themeClassic'),
+    'telegram-day': t('settings.themeDay'),
+    'telegram-night': t('settings.themeNight'),
+    'telegram-tinted': t('settings.themeTinted'),
+  };
 }
 
 function Block({
@@ -244,18 +246,18 @@ function ColorRow({
   );
 }
 
-/** One editor for the two shipped skies. Changes preview through the same app-wide theme. */
+/** Every preset edits the same presentation owner used by the running app. */
 export function ThemeSettings() {
   const {
     presentation: p,
     preference,
-    phase,
+    profile,
     setPreference,
     customizations,
     setCustomization,
     preferenceError,
   } = useTheme();
-  const [editing, setEditing] = useState<ThemeProfile>(phase);
+  const [editing, setEditing] = useState<ThemeProfile>(profile);
   const settings = customizations[editing];
   const preview = telegramPresentation(editing, settings);
   const sky = resolveSkyTheme(editing, new Date(2026, 0, 1), settings).sky;
@@ -266,9 +268,54 @@ export function ThemeSettings() {
   }
   return (
     <SettingsScreen title={t('settings.appearance')} testID="theme-settings-screen">
-      <View style={{ flexDirection: 'row', gap: 16 }}>
-        <Preview profile="day" selected={editing === 'day'} onPress={() => select('day')} />
-        <Preview profile="night" selected={editing === 'night'} onPress={() => select('night')} />
+      <Block title={t('settings.themeChoose')}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 6 }}
+        >
+          {THEME_PROFILES.map((theme) => (
+            <Preview
+              key={theme}
+              profile={theme}
+              selected={editing === theme}
+              onPress={() => select(theme)}
+            />
+          ))}
+        </ScrollView>
+      </Block>
+      <View style={{ minHeight: 176, borderRadius: 10, overflow: 'hidden', padding: 12, gap: 10 }}>
+        <SkyLayer sky={sky} />
+        <View
+          style={{
+            alignSelf: 'flex-start',
+            maxWidth: '84%',
+            padding: 11,
+            borderRadius: 16,
+            backgroundColor: preview.chat.incoming.fill,
+          }}
+        >
+          <Text style={{ color: preview.chat.incoming.text, fontSize: settings.textSize }}>
+            {t('settings.themePreviewReceived')}
+          </Text>
+        </View>
+        <View
+          style={{
+            alignSelf: 'flex-end',
+            maxWidth: '84%',
+            padding: 11,
+            borderRadius: 16,
+            backgroundColor: preview.chat.outgoing.fill,
+            experimental_backgroundImage:
+              preview.chat.outgoing.fillColors.length > 1
+                ? `linear-gradient(to bottom, ${preview.chat.outgoing.fillColors.join(', ')})`
+                : undefined,
+          }}
+        >
+          <Text style={{ color: preview.chat.outgoing.text, fontSize: settings.textSize }}>
+            {t('settings.themePreviewOwn')}
+          </Text>
+        </View>
       </View>
       <Block footer={t('settings.skyFollowsLocalTime')}>
         <Toggle
@@ -288,7 +335,7 @@ export function ThemeSettings() {
           label={t('settings.themeMessages')}
           value={preview.chat.outgoing.fill}
           colors={
-            editing === 'day'
+            !isDarkTheme(editing)
               ? ['#FFFFFF', '#E1FFC7', '#D9F4FF', '#FDE3CF', '#E4DAFC', '#F9D8E5']
               : ['#000000', '#313131', '#0088FF', '#194D48', '#493C58', '#5A3439']
           }
@@ -300,7 +347,7 @@ export function ThemeSettings() {
           label={t('settings.themeSkyTop')}
           value={settings.backgroundTop ?? sky.top}
           colors={
-            editing === 'day'
+            !isDarkTheme(editing)
               ? ['#ECF4FA', '#E3F2FF', '#F2F6F8', '#E8F5F3']
               : ['#080F19', '#07121F', '#0B1722', '#121826']
           }
@@ -310,7 +357,7 @@ export function ThemeSettings() {
           label={t('settings.themeSkyBottom')}
           value={settings.backgroundBottom ?? sky.bottom}
           colors={
-            editing === 'day'
+            !isDarkTheme(editing)
               ? ['#FBFCFC', '#ECF4FA', '#E4F0F8', '#F8FAFB']
               : ['#14212C', '#0D1723', '#172A37', '#101C29']
           }

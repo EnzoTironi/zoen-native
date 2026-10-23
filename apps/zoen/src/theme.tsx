@@ -27,6 +27,7 @@ import {
 } from './theme/sky.ts';
 
 export type { SkyPhase, SkyColors, SemanticColors, ThemePreference } from './theme/sky.ts';
+import { THEME_PROFILES, themeRecord } from './theme/catalog';
 const CLOCK_INTERVAL = 30_000;
 type Theme = ReturnType<typeof resolveSkyTheme> & {
   preference: ThemePreference;
@@ -48,7 +49,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [customizationsRestored, setCustomizationsRestored] = useState(false);
   const [preferenceErrors, setPreferenceErrors] = useState<
     Record<'appearance' | ThemeProfile, string | null>
-  >({ appearance: null, day: null, night: null });
+  >({ appearance: null, ...themeRecord<string | null>(null) });
   const preferenceError = Object.values(preferenceErrors).find((error) => error !== null) ?? null;
   const setPreferenceError = useCallback(
     (key: 'appearance' | ThemeProfile, error: string | null) => {
@@ -58,21 +59,19 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   );
   const revision = useRef(0);
   const writes = useRef<Promise<void>>(Promise.resolve());
-  const customizationRevision = useRef({ day: 0, night: 0 });
-  const [customizations, setCustomizations] = useState<Record<ThemeProfile, ThemeCustomization>>({
-    day: DEFAULT_THEME_CUSTOMIZATION,
-    night: DEFAULT_THEME_CUSTOMIZATION,
-  });
+  const customizationRevision = useRef(themeRecord(0));
+  const [customizations, setCustomizations] = useState<Record<ThemeProfile, ThemeCustomization>>(
+    themeRecord(DEFAULT_THEME_CUSTOMIZATION),
+  );
   // Latest admitted presentation values also cover native callbacks queued before React commits.
   // This is the merge snapshot for this provider's existing state/persistence owner.
-  const customizationValues = useRef<Record<ThemeProfile, ThemeCustomization>>({
-    day: DEFAULT_THEME_CUSTOMIZATION,
-    night: DEFAULT_THEME_CUSTOMIZATION,
-  });
+  const customizationValues = useRef<Record<ThemeProfile, ThemeCustomization>>(
+    themeRecord(DEFAULT_THEME_CUSTOMIZATION),
+  );
   useEffect(() => {
     let current = true;
-    let remaining = 2;
-    for (const profile of ['day', 'night'] as const) {
+    let remaining = THEME_PROFILES.length;
+    for (const profile of THEME_PROFILES) {
       void preferences
         .get(`theme-customization-${profile}`)
         .then((value) => {
@@ -182,11 +181,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     () => (preference === 'auto' ? clock.automatic : resolveSkyTheme(preference, clock.date)),
     [preference, clock],
   );
-  const profile = base.scheme === 'dark' ? 'night' : 'day';
+  const profile = base.profile;
   const selectedCustomization = customizations[profile];
   const resolved = useMemo(
-    () => resolveSkyTheme(base.phase, clock.date, selectedCustomization),
-    [base.phase, clock.date, selectedCustomization],
+    () => resolveSkyTheme(profile, clock.date, selectedCustomization),
+    [profile, clock.date, selectedCustomization],
   );
   useEffect(() => {
     if (Platform.OS === 'ios') Appearance.setColorScheme(resolved.scheme);

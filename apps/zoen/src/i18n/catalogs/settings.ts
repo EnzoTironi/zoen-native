@@ -36,6 +36,11 @@ export const settings = defineFeature(
     appearance: 'Appearance',
     skyAuto: 'Automatic',
     skyDay: 'Day sky',
+    themeClassic: 'Classic',
+    themeDay: 'Day',
+    themeNight: 'Night',
+    themeTinted: 'Tinted night',
+    themeChoose: 'Color theme',
     skyNight: 'Night sky',
     skyFollowsLocalTime:
       'Day sky from 6 AM to 8 PM; night sky the rest of the day. Uses your local time.',
@@ -139,6 +144,11 @@ export const settings = defineFeature(
     appearance: 'Aparência',
     skyAuto: 'Automático',
     skyDay: 'Céu diurno',
+    themeClassic: 'Clássico',
+    themeDay: 'Dia',
+    themeNight: 'Noite',
+    themeTinted: 'Noite colorida',
+    themeChoose: 'Tema de cores',
     skyNight: 'Céu noturno',
     skyFollowsLocalTime:
       'Céu diurno das 6h às 20h; céu noturno no restante do dia. Usa a hora local.',
