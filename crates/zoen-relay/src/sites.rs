@@ -21,7 +21,6 @@ pub struct Service {
     audience: String,
     publication_kib: Arc<crate::limits::Limiter>,
     in_flight: Arc<tokio::sync::Semaphore>,
-    http_in_flight: Arc<tokio::sync::Semaphore>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -50,7 +49,6 @@ impl Service {
                 crate::limits::Quota::per_minute(8192, 16384),
             )),
             in_flight: Arc::new(tokio::sync::Semaphore::new(16)),
-            http_in_flight: Arc::new(tokio::sync::Semaphore::new(16)),
         })
     }
 

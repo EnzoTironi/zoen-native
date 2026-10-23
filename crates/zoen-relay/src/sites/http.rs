@@ -7,6 +7,7 @@ use axum::{
 };
 use protocol::sites::{SignedMutation, MAX_HTML_BYTES};
 use serde::Deserialize;
+use std::{sync::Arc, time::Duration};
 
 use super::{Error, Service};
 
@@ -25,7 +26,7 @@ pub fn management_router(service: Service) -> Router {
         .route("/v1/sites/publications", post(publish))
         .layer(DefaultBodyLimit::max(MAX_REQUEST_BYTES))
         .layer(axum::middleware::from_fn_with_state(
-            service.clone(),
+            HttpGate::new(),
             admission,
         ))
         .with_state(service)
@@ -37,7 +38,7 @@ pub fn public_router(service: Service) -> Router {
     Router::new()
         .route("/s/{site_id}", get(document))
         .layer(axum::middleware::from_fn_with_state(
-            service.clone(),
+            HttpGate::new(),
             admission,
         ))
         .with_state(service)
@@ -45,15 +46,86 @@ pub fn public_router(service: Service) -> Router {
 
 // Before JSON/body extraction or storage fetch, not merely before the SQL write.
 // This bounds handler work, not socket buffers or total process RSS.
+#[derive(Clone)]
+struct HttpGate {
+    slots: Arc<tokio::sync::Semaphore>,
+    deadline: Duration,
+}
+
+impl HttpGate {
+    fn new() -> Self {
+        Self {
+            slots: Arc::new(tokio::sync::Semaphore::new(16)),
+            deadline: Duration::from_secs(20),
+        }
+    }
+}
+
 async fn admission(
-    State(service): State<Service>,
+    State(gate): State<HttpGate>,
     request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
-    let Ok(_permit) = service.http_in_flight.try_acquire() else {
+    let Ok(_permit) = gate.slots.try_acquire() else {
         return error(Error::Limited);
     };
-    next.run(request).await
+    match tokio::time::timeout(gate.deadline, next.run(request)).await {
+        Ok(response) => response,
+        Err(_) => (
+            StatusCode::REQUEST_TIMEOUT,
+            [(header::CACHE_CONTROL, "no-store")],
+            "request expired",
+        )
+            .into_response(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    #[tokio::test]
+    async fn sites_unfinished_body_expires_and_releases_its_handler_slot() {
+        let gate = HttpGate {
+            deadline: Duration::from_millis(20),
+            ..HttpGate::new()
+        };
+        let router = Router::new()
+            .route("/", post(|bytes: axum::body::Bytes| async { bytes }))
+            .layer(axum::middleware::from_fn_with_state(
+                gate.clone(),
+                admission,
+            ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        let mut stream = tokio::net::TcpStream::connect(address).await.unwrap();
+        stream
+            .write_all(b"POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 5\r\n\r\n")
+            .await
+            .unwrap();
+        let mut bytes = [0; 512];
+        let read = tokio::time::timeout(Duration::from_secs(2), stream.read(&mut bytes))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(std::str::from_utf8(&bytes[..read])
+            .unwrap()
+            .starts_with("HTTP/1.1 408"));
+        assert_eq!(gate.slots.available_permits(), 16);
+        let response = reqwest::Client::new()
+            .post(format!("http://{address}/"))
+            .body("ready")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.bytes().await.unwrap().as_ref(), b"ready");
+        server.abort();
+    }
 }
 
 fn error(error: Error) -> Response {

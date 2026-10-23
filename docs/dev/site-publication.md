@@ -54,8 +54,9 @@ Respostas usam no-store, nosniff, no-referrer e permissões de câmera/microfone
 localização negadas. Unpublish impede novas seleções no servidor depois do commit;
 não revoga cópias já recebidas nem respostas admitidas antes da confirmação.
 
-Limites iniciais por processo: 16 handlers simultâneos antes de extrair JSON ou
-buscar conteúdo, 16 operações diretas de publicação, 8 MiB/minuto por pessoa com
+Limites iniciais por listener: 16 handlers simultâneos antes de extrair JSON ou
+buscar conteúdo e prazo de 20 s incluindo leitura do corpo. Gestão e leitura
+pública têm filas independentes. Por processo: 16 operações diretas de publicação, 8 MiB/minuto por pessoa com
 burst de 16 MiB, 5 s por operação de storage e limites SQL de 5 s. São limites de
 trabalho e payload, não uma medição de RSS ou capacidade de produção. Ainda faltam
 retenção/GC de órfãos e histórico, operação pública e provas do envelope de carga.
