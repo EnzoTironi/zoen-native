@@ -90,14 +90,17 @@ impl Session {
             return;
         };
         for read in plan {
-            let (space, mut next, through) = (read.space, read.from, read.through);
+            let (space, mut next, mut through) = (read.space, read.from, read.through);
             #[cfg(debug_assertions)]
             if crate::log::sequencer::fork_histories::armed(&space) {
                 let Ok(Ok(full)) = tokio::time::timeout(
                     Duration::from_secs(5),
-                    self.st
-                        .log
-                        .read(&space, 0, crate::log::sequencer::fork_histories::READ_LIMIT),
+                    self.st.log.read_visible(
+                        &space,
+                        &self.identity,
+                        0,
+                        crate::log::sequencer::fork_histories::READ_LIMIT,
+                    ),
                 )
                 .await
                 else {
@@ -108,8 +111,14 @@ impl Session {
                     .await;
                     return;
                 };
-                let page =
-                    crate::log::sequencer::fork_histories::view(&space, &self.identity, next, full);
+                let Some(full) = full else { continue };
+                through = through.or(full.through);
+                let page = crate::log::sequencer::fork_histories::view(
+                    &space,
+                    &self.identity,
+                    next,
+                    full.events,
+                );
                 for ev in page {
                     if through.is_some_and(|last| ev.seq > last) {
                         break;
@@ -125,7 +134,9 @@ impl Session {
             loop {
                 let Ok(Ok(page)) = tokio::time::timeout(
                     Duration::from_secs(5),
-                    self.st.log.read(&space, next, SYNC_PAGE),
+                    self.st
+                        .log
+                        .read_visible(&space, &self.identity, next, SYNC_PAGE),
                 )
                 .await
                 else {
@@ -136,8 +147,10 @@ impl Session {
                     .await;
                     return;
                 };
-                let n = page.len();
-                for ev in page {
+                let Some(page) = page else { break };
+                through = through.or(page.through);
+                let n = page.events.len();
+                for ev in page.events {
                     if through.is_some_and(|last| ev.seq > last) {
                         break;
                     }

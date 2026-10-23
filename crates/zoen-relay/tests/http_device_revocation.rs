@@ -32,6 +32,16 @@ impl LogStore for UnusedLog {
     async fn read(&self, _: &str, _: u64, _: usize) -> Result<Vec<Sequenced>, StoreError> {
         unreachable!()
     }
+    async fn read_visible(
+        &self,
+        space: &str,
+        who: &str,
+        from: u64,
+        limit: usize,
+    ) -> Result<Option<zoen_relay::log::VisiblePage>, StoreError> {
+        let _ = (space, who, from, limit);
+        unreachable!("HTTP device admission does not read history")
+    }
     async fn role(&self, _: &str, _: &str) -> Result<Option<Role>, StoreError> {
         unreachable!()
     }

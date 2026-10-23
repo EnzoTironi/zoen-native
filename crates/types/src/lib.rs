@@ -17,7 +17,8 @@ pub mod call_transport;
 pub mod calls;
 pub mod media;
 pub use media::{
-    AttachmentGrouping, AttachmentPresentation, AttachmentSendOptions, MediaGroup, MessageMedia,
+    AttachmentGrouping, AttachmentPresentation, AttachmentSendOptions, MediaGroup,
+    MediaMetadataError, MessageMedia,
 };
 pub mod annotation;
 pub mod owner_budget;

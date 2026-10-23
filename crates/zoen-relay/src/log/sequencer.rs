@@ -141,8 +141,17 @@ impl<B: Batcher> Sequencer<B> {
         // A send fails only when the worker just exited (idle, or a panic). It is already
         // gone from the map or is removed here, so the retry starts a fresh worker.
         for attempt in 0..2 {
-            let Some(tx) = self.queue(&space) else {
-                return busy();
+            let tx = match self.queue(&space) {
+                Ok(tx) => tx,
+                Err(error) => {
+                    return (
+                        Err(error),
+                        BatchStats {
+                            size: 0,
+                            attempts: 0,
+                        },
+                    )
+                }
             };
             match tx.try_send(job) {
                 Ok(()) => break,
@@ -152,7 +161,15 @@ impl<B: Batcher> Sequencer<B> {
                         return busy();
                     }
                     job = back;
-                    let mut queues = self.queues.lock().expect("queues lock");
+                    let Ok(mut queues) = self.queues.lock() else {
+                        return (
+                            Err(Reject::unavailable()),
+                            BatchStats {
+                                size: 0,
+                                attempts: 0,
+                            },
+                        );
+                    };
                     if queues.get(&space).is_some_and(|q| q.same_channel(&tx)) {
                         queues.remove(&space);
                     }
@@ -169,17 +186,20 @@ impl<B: Batcher> Sequencer<B> {
     }
 
     /// Spaces with a live worker (for tests and metrics).
-    pub fn active(&self) -> usize {
-        self.queues.lock().expect("queues lock").len()
+    pub fn active(&self) -> Result<usize, Reject> {
+        self.queues
+            .lock()
+            .map(|queues| queues.len())
+            .map_err(|_| Reject::unavailable())
     }
 
-    fn queue(&self, space: &str) -> Option<mpsc::Sender<Job>> {
-        let mut queues = self.queues.lock().expect("queues lock");
+    fn queue(&self, space: &str) -> Result<mpsc::Sender<Job>, Reject> {
+        let mut queues = self.queues.lock().map_err(|_| Reject::unavailable())?;
         if let Some(tx) = queues.get(space) {
-            return Some(tx.clone());
+            return Ok(tx.clone());
         }
         if queues.len() >= MAX_ACTIVE_SPACES {
-            return None;
+            return Err(Reject::retry("sequencer capacity reached"));
         }
         let (tx, rx) = mpsc::channel(SPACE_QUEUE);
         queues.insert(space.to_string(), tx.clone());
@@ -191,7 +211,7 @@ impl<B: Batcher> Sequencer<B> {
             self.queues.clone(),
             self.idle,
         ));
-        Some(tx)
+        Ok(tx)
     }
 }
 
@@ -215,7 +235,11 @@ async fn work<B: Batcher>(
                 // a sender that cloned `me` before the removal fails and starts a new
                 // worker. Finish anything that slipped in before the close.
                 {
-                    let mut q = queues.lock().expect("queues lock");
+                    let Ok(mut q) = queues.lock() else {
+                        // Dropping this receiver refuses queued jobs through the
+                        // existing unavailable reply path and releases their permits.
+                        return;
+                    };
                     if !rx.is_empty() {
                         continue;
                     }
@@ -225,27 +249,28 @@ async fn work<B: Batcher>(
                 }
                 drop(me);
                 rx.close();
-                while let Some(batch) = take(&mut rx, None) {
+                while let Ok(first) = rx.try_recv() {
+                    let batch = take(&mut rx, first);
                     run(&*batcher, &space, batch, &mut state).await;
                 }
                 return;
             }
         };
-        let batch = take(&mut rx, Some(first)).expect("a first job");
+        let batch = take(&mut rx, first);
         run(&*batcher, &space, batch, &mut state).await;
     }
 }
 
 /// `first`, then whatever is already queued, within the batch limits.
-fn take(rx: &mut mpsc::Receiver<Job>, first: Option<Job>) -> Option<Vec<Job>> {
-    let mut batch: Vec<Job> = first.into_iter().collect();
+fn take(rx: &mut mpsc::Receiver<Job>, first: Job) -> Vec<Job> {
+    let mut batch = vec![first];
     let mut bytes: usize = batch.iter().map(|j| j.pending.env.retained_len()).sum();
     while batch.len() < MAX_BATCH && bytes < MAX_BATCH_BYTES {
         let Ok(job) = rx.try_recv() else { break };
         bytes += job.pending.env.retained_len();
         batch.push(job);
     }
-    (!batch.is_empty()).then_some(batch)
+    batch
 }
 
 async fn run<B: Batcher>(batcher: &B, space: &str, batch: Vec<Job>, state: &mut B::State) {

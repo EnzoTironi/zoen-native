@@ -186,6 +186,14 @@ impl Engine {
                 ),
             });
         }
+        if approve && !self.trust_available(&r.req.agent, &r.space) {
+            return Err(CoreError::Forbidden {
+                reason: t(
+                    "A confiança foi revogada ou expirou.",
+                    "Trust was revoked or expired.",
+                ),
+            });
+        }
         if approve {
             match self.request_currentness(&r.req)? {
                 Currentness::Current => {}

@@ -38,7 +38,7 @@ impl Engine {
         if record.revision != expected || expected == MEDIA_DRAFT_REVISION_ZERO {
             return Err(stale());
         }
-        let preflight = (|| -> R<()> {
+        let preflight = (|| -> R<Vec<Option<types::MessageMedia>>> {
             let content = record.content.as_ref().ok_or_else(invalid)?;
             if !self
                 .state
@@ -62,17 +62,37 @@ impl Engine {
                     ),
                 });
             }
-            Ok(())
+            if let Content::Attachments { items, options, .. } = content {
+                let mutations: Vec<&str> =
+                    items.iter().map(|item| item.mutation_id.as_str()).collect();
+                return (0..items.len())
+                    .map(|index| {
+                        options
+                            .metadata(
+                                &scope.expected_identity_id,
+                                &scope.space_id,
+                                reply.or(scope.thread_root_id.as_deref()),
+                                scope.thread_root_id.is_some(),
+                                &mutations,
+                                index,
+                            )
+                            .map_err(|error| CoreError::Invalid {
+                                reason: error.to_string(),
+                            })
+                    })
+                    .collect();
+            }
+            Ok(Vec::new())
         })();
-        if let Err(error) = preflight {
-            return Err(if record.attempted {
+        let metadata = preflight.map_err(|error| {
+            if record.attempted {
                 error
             } else {
                 CoreError::DraftRejected {
                     reason: error.to_string(),
                 }
-            });
-        }
+            }
+        })?;
         // Authenticate every source/derived asset before admitting the immutable intent.
         let bytes = record
             .assets
@@ -84,28 +104,19 @@ impl Engine {
             self.atomic_agent_action(|engine| engine.persist_media_record(&storage, &record))?;
         }
         self.atomic_agent_action(|engine| {
-            let reply = match record.content.as_ref().expect("preflight") {
+            let content = record.content.as_ref().ok_or_else(invalid)?;
+            let reply = match content {
                 Content::Attachments { reply_to, .. } | Content::Voice { reply_to, .. } => {
                     reply_to.as_deref().or(scope.thread_root_id.as_deref())
                 }
             };
             let thread = scope.thread_root_id.is_some();
-            let entries = match record.content.as_ref().expect("preflight") {
-                Content::Attachments { items, options, .. } => {
-                    let mutations: Vec<&str> =
-                        items.iter().map(|item| item.mutation_id.as_str()).collect();
+            let entries = match content {
+                Content::Attachments { items, .. } => {
                     let mut entries = Vec::with_capacity(items.len());
-                    for (index, ((item, asset), bytes)) in
-                        items.iter().zip(&record.assets).zip(&bytes).enumerate()
+                    for (((item, asset), bytes), media) in
+                        items.iter().zip(&record.assets).zip(&bytes).zip(&metadata)
                     {
-                        let media = options.metadata(
-                            &scope.expected_identity_id,
-                            &scope.space_id,
-                            reply,
-                            thread,
-                            &mutations,
-                            index,
-                        );
                         entries.push(engine.send_file_message_with_media(
                             &scope.space_id,
                             &asset.name,
@@ -116,7 +127,7 @@ impl Engine {
                             thread,
                             &item.mutation_id,
                             &item.caption,
-                            media,
+                            media.clone(),
                         )?);
                     }
                     entries
@@ -134,7 +145,7 @@ impl Engine {
                     reply,
                     thread,
                 )?],
-                _ => unreachable!("preflight"),
+                _ => return Err(invalid()),
             };
             let cleared = Record {
                 revision: types::new_id("media_draft"),

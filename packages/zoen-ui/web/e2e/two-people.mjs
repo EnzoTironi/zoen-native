@@ -1,5 +1,7 @@
 // Two people, each with a CLI "phone" that links a headless browser; they chat on the web.
 import { chromium } from 'playwright-core';
+import { journeyEvidence } from './evidence.mjs';
+import { deleteForEveryone } from './delete-message.mjs';
 import { spawn, execFileSync } from 'node:child_process';
 const RELAY = process.env.RELAY ?? 'http://127.0.0.1:8790';
 const WEB = process.env.WEB ?? 'http://127.0.0.1:4174';
@@ -14,9 +16,12 @@ const [ana, bruno] = people;
 const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/google-chrome', args: ['--no-sandbox', '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required'] });
 const watchers = [];
 const errors = [];
+const capture = journeyEvidence(people, SHOTS, errors);
+try {
 async function linkWeb(p) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 820 }, deviceScaleFactor: 2, locale: 'pt-BR', permissions: ['microphone'] });
   const page = await ctx.newPage();
+  p.page = page;
   page.on('pageerror', (e) => errors.push(`${p.name}: ${e.message}`));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(`${p.name}: ${m.text()}`); });
   await page.goto(`${WEB}/?relay=${encodeURIComponent(RELAY)}`);
@@ -29,7 +34,6 @@ async function linkWeb(p) {
   const out = run(p.home, 'link', code);
   console.log(p.name, 'link:', out.trim().split('\n').at(-1));
   await page.waitForSelector('.zm-app', { timeout: 60000 });
-  p.page = page;
 }
 await linkWeb(ana); await linkWeb(bruno);
 const watch = (p) => { p.watcher = spawn(ZOEN, ['--home', p.home, 'watch', '--for', '900'], { stdio: 'ignore' }); watchers.push(p.watcher); };
@@ -89,12 +93,7 @@ await bruno.page.locator('.zm-thread', { hasText: 'Fechado' }).waitFor({ timeout
 await ana.page.screenshot({ path: `${SHOTS}/07-thread-ana.png` });
 // Delete for everyone.
 await send(bruno.page, 'mensagem errada');
-await ana.page.locator('.zm-main .zm-text', { hasText: 'mensagem errada' }).waitFor({ timeout: 30000 });
-const wrong = bruno.page.locator('.zm-main [data-testid=message]', { hasText: 'mensagem errada' });
-bruno.page.once('dialog', (d) => d.accept());
-await wrong.hover(); await wrong.getByRole('button', { name: 'Mais ações' }).click();
-await bruno.page.getByRole('menuitem', { name: 'Apagar para todos' }).click();
-await ana.page.locator('.zm-main .zm-deleted').waitFor({ timeout: 30000 });
+await deleteForEveryone(bruno.page, ana.page, 'mensagem errada', capture);
 // A second chat, unread + pinned/muted/archived in the list.
 await offline(bruno, () => { run(bruno.home, 'group', 'Churrasco de sexta', `@${ana.handle}`); run(bruno.home, 'send', 'Churrasco de sexta', `@${ana.name.toLowerCase()} traz o carvão?`); });
 await ana.page.locator('.zm-chat-open', { hasText: 'Churrasco de sexta' }).waitFor({ timeout: 60000 });
@@ -158,6 +157,13 @@ await ana.page.locator('.zm-main .zm-own').last().screenshot({ path: `${SHOTS}/2
 const fatal = errors;
 console.log('errors:', JSON.stringify(errors));
 if (fatal.length) throw new Error(`Browser errors: ${fatal.join(' | ')}`);
-watchers.forEach((w) => w.kill());
-await browser.close();
 console.log('E2E OK');
+} catch (error) {
+  await capture('journey-failed', { error: error.stack ?? String(error) }).catch((captureError) => {
+    console.error('Failure evidence could not be saved:', captureError);
+  });
+  throw error;
+} finally {
+  watchers.forEach((w) => w.kill());
+  await browser.close();
+}

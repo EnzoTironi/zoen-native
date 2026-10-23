@@ -66,9 +66,11 @@ impl Engine {
     }
 
     pub(super) fn demanded_file_blobs(&self) -> Vec<Wanted> {
-        self.net
-            .file_demands
-            .active()
+        let Ok(active) = self.net.file_demands.active() else {
+            crate::net::tracing_like("media: historical demand state unavailable");
+            return Vec::new();
+        };
+        active
             .into_iter()
             .flat_map(|(key, bound)| self.file_demand_blobs(&key, bound))
             .collect()
@@ -78,11 +80,22 @@ impl Engine {
     /// button press. Initial loads use the same API; background snapshots do not.
     pub(crate) fn take_foreground_file_attempts(&self) -> std::collections::HashSet<Wanted> {
         let mut out = std::collections::HashSet::new();
-        for (key, bound) in self.net.file_demands.foreground_attempts() {
+        let Ok(attempts) = self.net.file_demands.foreground_attempts() else {
+            crate::net::tracing_like("media: historical demand state unavailable");
+            return out;
+        };
+        for (key, bound) in attempts {
             let wanted = self.file_demand_blobs(&key, bound);
             // Unsynced demands retain their pulse until they can be admitted.
-            if !wanted.is_empty() && self.net.file_demands.consume_foreground_attempt(&key) {
-                out.extend(wanted);
+            if !wanted.is_empty() {
+                match self.net.file_demands.consume_foreground_attempt(&key) {
+                    Ok(true) => out.extend(wanted),
+                    Ok(false) => {}
+                    Err(_) => {
+                        crate::net::tracing_like("media: historical demand state unavailable");
+                        return std::collections::HashSet::new();
+                    }
+                }
             }
         }
         out
@@ -95,11 +108,15 @@ impl Engine {
     ) -> Vec<Wanted> {
         let mut out = Vec::new();
         let Ok(info) = self.file_demand_info(key, bound) else {
-            self.net.file_demands.remove(key);
+            if self.net.file_demands.remove(key).is_err() {
+                crate::net::tracing_like("media: historical demand state unavailable");
+            }
             return out;
         };
         if info.ready {
-            self.net.file_demands.remove(key);
+            if self.net.file_demands.remove(key).is_err() {
+                crate::net::tracing_like("media: historical demand state unavailable");
+            }
             return out;
         }
         let item = &self.state.items[&key.item];
