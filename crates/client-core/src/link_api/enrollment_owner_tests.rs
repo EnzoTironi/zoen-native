@@ -170,3 +170,58 @@ async fn corrupt_peer_vault_is_not_replaced_by_a_successful_empty_directory() {
     assert_eq!(*f.vault.values.lock().unwrap(), before);
     assert!(f.client().lock().net.link.peers.is_empty());
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn missing_corrupt_or_foreign_agreement_cannot_persist_peer_or_deliver_enrollment() {
+    for agreement in [
+        None,
+        Some(vec![]),
+        Some(vec![1; 31]),
+        Some(vec![1; 33]),
+        Some(vec![79; 32]),
+    ] {
+        let mut f = Fixture::new().await;
+        f.online().await;
+        match agreement {
+            None => {
+                f.vault.values.lock().unwrap().remove(VAULT_AGREEMENT);
+            }
+            Some(bytes) => {
+                f.vault
+                    .values
+                    .lock()
+                    .unwrap()
+                    .insert(VAULT_AGREEMENT.into(), bytes);
+            }
+        }
+        let before = f.vault.values.lock().unwrap().clone();
+        let writes = f.vault.writes.load(Ordering::SeqCst);
+        assert!(enroll(&f, &code().0).await.unwrap().is_err());
+        assert!(
+            f.relay.calls.try_recv().is_err(),
+            "no DeliverLink for an unusable account key"
+        );
+        assert_eq!(f.vault.writes.load(Ordering::SeqCst), writes);
+        assert_eq!(*f.vault.values.lock().unwrap(), before);
+        assert!(f.client().lock().net.link.peers.is_empty());
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn corrupt_profile_key_cannot_be_sealed_as_successful_enrollment() {
+    let mut f = Fixture::new().await;
+    f.online().await;
+    let me = f.client().account().unwrap().identity_id;
+    f.client()
+        .lock()
+        .store
+        .put_profile_key(&me, "not-a-profile-key", 1)
+        .unwrap();
+    let before = f.vault.values.lock().unwrap().clone();
+    let writes = f.vault.writes.load(Ordering::SeqCst);
+    assert!(enroll(&f, &code().0).await.unwrap().is_err());
+    assert!(f.relay.calls.try_recv().is_err());
+    assert_eq!(f.vault.writes.load(Ordering::SeqCst), writes);
+    assert_eq!(*f.vault.values.lock().unwrap(), before);
+    assert!(f.client().lock().net.link.peers.is_empty());
+}

@@ -57,7 +57,21 @@ pub(super) fn prepare(
         if code.device == account.device || engine.revoked_devices().contains(&code.device) {
             return Err(invalid("That device cannot be linked with this request."));
         }
-        let agreement = Zeroizing::new(vault.load(VAULT_AGREEMENT.into()).unwrap_or_default());
+        let agreement = Zeroizing::new(
+            secret32(vault.load(VAULT_AGREEMENT.into()))
+                .ok_or_else(|| invalid("The account agreement key is unavailable or invalid."))?,
+        );
+        let current_agreement = engine
+            .net
+            .profiles
+            .agreement
+            .as_ref()
+            .ok_or_else(|| invalid("The account agreement key is not loaded."))?;
+        if current_agreement.secret() != *agreement {
+            return Err(invalid(
+                "The retained agreement key does not match this account session.",
+            ));
+        }
         let mut peers = peers(vault)?;
         let (peer, public, persist) = match peers.iter().find(|peer| peer.device == code.device) {
             Some(peer) => {
@@ -87,6 +101,13 @@ pub(super) fn prepare(
         let me = engine.my_profile().ok_or_else(|| invalid("account"))?;
         let (profile_key, profile_key_version, profile_seen_version, profile_fields) =
             engine.profile_for_link()?;
+        if event_log::profile::ProfileKey::from_hex(&profile_key).is_none()
+            || profile_key_version == 0
+        {
+            return Err(invalid(
+                "The account profile key is unavailable or invalid.",
+            ));
+        }
         let mut boxed = IdentityBox {
             identity_secret: hex::encode(identity.secret()),
             agreement_secret: hex::encode(&*agreement),
