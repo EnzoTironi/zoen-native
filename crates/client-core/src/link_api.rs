@@ -244,13 +244,6 @@ fn http() -> Result<reqwest::Client, CoreError> {
         .map_err(|e| invalid(e.to_string()))
 }
 
-fn save_peers(vault: &Arc<dyn SecretVault>, peers: &[Peer]) -> bool {
-    vault.save(
-        VAULT_PEERS.into(),
-        serde_json::to_vec(peers).unwrap_or_default(),
-    )
-}
-
 pub(crate) fn load_peers(vault: &Arc<dyn SecretVault>) -> Vec<Peer> {
     vault
         .load(VAULT_PEERS.into())
@@ -378,6 +371,9 @@ mod initial_history_tests;
 
 mod directory;
 mod enrollment;
+mod install;
+#[cfg(test)]
+mod install_tests;
 mod enroll_prepare;
 mod owner;
 #[cfg(test)]

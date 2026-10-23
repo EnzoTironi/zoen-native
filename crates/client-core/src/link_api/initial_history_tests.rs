@@ -43,10 +43,16 @@ fn finish_test_link(core: &Client, vault: Arc<dyn SecretVault>) -> Result<Accoun
         relay: pending.relay.clone(),
         primary: Signer::from_secret(&[25; 32]).id(),
         primary_hpke: hex::encode(primary_hpke),
-        profile_key: String::new(),
-        profile_key_version: 0,
-        profile_seen_version: 0,
-        profile_fields: String::new(),
+        profile_key: hex::encode([27; 32]),
+        profile_key_version: 1,
+        profile_seen_version: 1,
+        profile_fields: hex::encode(
+            event_log::profile::ProfileFields {
+                name: "Linked person".into(),
+                ..Default::default()
+            }
+            .to_bytes(),
+        ),
     };
     core.finish_link(
         &pending,
