@@ -153,7 +153,7 @@ class Proof:
         (self.private / (name + ".credentials")).write_text(username + "\n" + credential + "\n")
         # No -W: the upstream client must use our production-issued credential,
         # not generate a separate REST password itself.
-        shell = ("exec turnutils_uclient -t -S -c -m 1 -n 5 -l 100 -z 20 "
+        shell = ("exec turnutils_uclient -t -S -v -c -m 1 -n 5 -l 100 -z 20 "
                  "-E /proof/tls.crt -p 5349 "
                  f'-u "$(sed -n 1p /proof/{name}.credentials)" '
                  f'-w "$(sed -n 2p /proof/{name}.credentials)" '
@@ -178,13 +178,21 @@ class Proof:
         wrong = ("A" if valid["credential"][0] != "A" else "B") + valid["credential"][1:]
         for name, credential in (("invalid-mac", {**valid, "credential": wrong}),
                                  ("expired", self.data["expired"])):
+            reason = ("message integrity does not match any auth secret" if name == "invalid-mac"
+                      else "the time-limited username timestamp is in the past")
+            before = self.docker("logs", self.server)
+            count_before = (before.stdout + before.stderr).count(reason)
             code, log = self.client(name, **credential)
             # A timeout, TLS failure, empty output or unrelated failure is NOT an
-            # authentication rejection proof. Require the actual TURN error.
-            refused = code != 0 and bool(re.search(r"\berror\s+401\b", log, re.I))
+            # authentication rejection proof. Require a fresh, explicit auth
+            # cause from the pinned server, not the initial nonce challenge.
+            after = self.docker("logs", self.server)
+            count_after = (after.stdout + after.stderr).count(reason)
+            refused = code != 0 and "Cannot complete Allocation" in log and count_after > count_before
             relayed = re.search(r"tot_recv_msgs=([1-9]\d*)", log)
             self.report["cases"][name] = {"pass": refused and not relayed, "exit": code,
-                                          "unauthorized401": refused}
+                                          "serverAuthRejections": count_after - count_before,
+                                          "reason": "integrity_mismatch" if name == "invalid-mac" else "expired"}
             if not refused or relayed:
                 raise RuntimeError(name + " was not proven refused by TURN authentication")
         code, log = self.client("private-peer", **valid, peer="10.0.0.1")
