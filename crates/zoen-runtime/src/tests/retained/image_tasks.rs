@@ -37,7 +37,7 @@ fn png() -> Vec<u8> {
     bytes
 }
 
-pub(super) async fn run() {
+pub(in crate::tests) async fn run() {
     let mut f = Fixture::with_output().await;
     let mut price = crate::tests::image_tasks::profile();
     price.image.max_image_bytes = 8 * 1024 * 1024;
