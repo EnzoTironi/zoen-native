@@ -27,7 +27,8 @@ extension ZoenSession {
   }
 
   private func retireAbandonedCalls(_ borrow: CallBorrow, space: String) async throws {
-    guard callCoordinator == nil else { return }
+    guard callCoordinator == nil, callsRecovering.insert(space).inserted else { return }
+    defer { callsRecovering.remove(space) }
     for call in try callRecords(borrow, space: space) where !call.terminal {
       if call.acceptedDevice != nil && (call.callerDevice == borrow.device || call.acceptedDevice == borrow.device) {
         try await callAction(borrow, space: space, call: call, action: "hang_up")
@@ -178,6 +179,7 @@ extension ZoenSession {
     }
     let now = Int64(Date().timeIntervalSince1970 * 1000)
     for space in spaces {
+      if !callStarting && !callPresenting { try? await retireAbandonedCalls(borrow, space: space) }
       guard callBorrowIsCurrent(borrow), let calls = try? callRecords(borrow, space: space) else { continue }
       if let incoming = calls.last(where: { $0.callee == borrow.identity && $0.invitationConfirmed && $0.ringing(at: now) }) {
         try? await presentCall(borrow, space: space, call: incoming, outgoing: false)

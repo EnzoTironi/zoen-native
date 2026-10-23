@@ -17,6 +17,7 @@ actor ZoenSession {
   var sessionLocale = "en"
   var notificationBaseline: String?
   var notificationActive = true
+  var callsRecovering: Set<String> = []
   var callPresenting = false
   var callStarting = false
   var callsBorrow: CallBorrow?

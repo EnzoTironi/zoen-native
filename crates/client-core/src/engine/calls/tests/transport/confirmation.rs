@@ -112,3 +112,38 @@ fn canonical_other_device_accept_overrides_local_accept_before_any_media() {
         .call_transport_valid(&event(&f, &f.other_device, answer)));
     assert!(f.engine.store.outbox().unwrap().is_empty());
 }
+
+#[test]
+fn accepted_before_queued_cancel_recovers_through_signed_hangup() {
+    let mut f = Fixture::new();
+    let call = f.invite();
+    let cancel = f.end(&call, CallEndReason::Cancelled);
+    let pending = f
+        .engine
+        .append_synced(
+            "sp_calls",
+            &f.caller,
+            201,
+            EventBody::CallV1 { signal: cancel },
+        )
+        .unwrap();
+    assert!(f.record().terminal());
+    let accepted = f.event(&f.callee, 200, f.accept(&call));
+    deliver(&mut f, accepted, Ingest::Applied);
+    assert!(!f.record().terminal() && f.record().acceptance_confirmed);
+    deliver(&mut f, pending, Ingest::Confirmed);
+    assert!(!f.record().terminal());
+    let hangup = f.end(&call, CallEndReason::HungUp);
+    let retirement = f
+        .engine
+        .append_synced(
+            "sp_calls",
+            &f.caller,
+            250,
+            EventBody::CallV1 { signal: hangup },
+        )
+        .unwrap();
+    deliver(&mut f, retirement, Ingest::Confirmed);
+    assert!(f.record().terminal());
+    assert_eq!(f.record().end_reason, Some(CallEndReason::HungUp));
+}

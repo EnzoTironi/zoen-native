@@ -26,13 +26,13 @@ public class ZoenCoreModule: Module {
         return ZoenComposerSizing.measure(root: root, tag: tag, expectedText: expectedText, expectedLabel: expectedLabel, expectedPlaceholder: expectedPlaceholder, width: width, expectedFontSize: expectedFontSize, nonce: nonce)
       }
     }
-    AsyncFunction("open") { [session, pushLease, weak self] (mode: String, locale: String) async throws -> String in
+    let emitChange: @Sendable ([String: Any]) -> Void = { [weak self] event in self?.sendEvent("onChange", event) }
+    let emitCall: @Sendable (String) -> Void = { [weak self] json in self?.sendEvent("onCallState", ["json": json]) }
+    let emitAudio: @Sendable (String) -> Void = { [weak self] json in self?.sendEvent("onCallAudio", ["json": json]) }
+    AsyncFunction("open") { [session, pushLease, emitChange, emitCall, emitAudio] (mode: String, locale: String) async throws -> String in
       try await ZoenNativePushSessions.gate.open(session: session, lease: pushLease) {
-        let result = try await session.open(mode: mode, locale: locale) { [weak self] event in
-          self?.sendEvent("onChange", event)
-        }
-        await session.bindCalls(lease: pushLease, changed: { [weak self] json in self?.sendEvent("onCallState", ["json": json]) },
-          audio: { [weak self] json in self?.sendEvent("onCallAudio", ["json": json]) })
+        let result = try await session.open(mode: mode, locale: locale, changed: emitChange)
+        await session.bindCalls(lease: pushLease, changed: emitCall, audio: emitAudio)
         return result
       }
     }

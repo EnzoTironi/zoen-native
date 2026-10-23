@@ -100,8 +100,23 @@ new unregistered call ports in the chat-chrome fixture. The corrected actual
 component test passed all six chat-chrome cases, including voice/video menu and
 availability. Broader rerun and Core transport results belong on the issue.
 
-Still open: build/typecheck the integrated generated Core/FFI and Session cohort;
-implement PushKit registration/report/cold handover with the same process gate;
+The actual host Core was built and genuine UniFFI0.32.2 Swift bindings were
+emitted from it. All135 ZoenCore Swift sources plus those bindings typechecked
+against real existing Expo/dependency modules and the pinned WebRTC SDK. A linked
+host Swift-to-Rust probe exercised all four new native call methods and confirmed
+stale owners/malformed negotiation remain refused. This is ABI/typechecking evidence,
+not an iOS app link or a call. The final privacy/retirement tests exercise the actual
+transient Swift resource models; they do not execute real camera/CallKit hardware.
+
+Own call and transport ACKs use the existing canonical replay gate. Real optimistic
+append-to-Sequenced tests cover both confirmation flags and canonical device choice
+against a competing local accept. A queued cancel losing to a canonical accept is
+retired by normal signed hangup once the abandoned call is observed again. Privacy
+intent is installed before RTC creation and gates delayed permission/capture results.
+The owner-specific retirement fence is installed before cleanup awaits; deactivation
+and reset cannot be lost while stop or terminal publication is suspended.
+
+Still open: implement PushKit registration/report/cold handover with the same process gate;
 build the integrated app once; prove real two-client TURN
 media, reconnection and revocation; then test the physical-device matrix in #266.
 No simulator camera or standalone typecheck can close that matrix. Manual broad QA

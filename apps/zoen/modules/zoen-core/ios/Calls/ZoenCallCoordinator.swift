@@ -151,7 +151,8 @@ final class ZoenCallCoordinator: NSObject {
     // Stop all capture before an awaited write. Failure stays in the canonical
     // outbox/recovery path; no SDK callback may revive this resource lifetime.
     if writeEnd {
-      let action = call.acceptedDevice == nil ? (call.caller == port.scope.identity ? "cancel" : "decline") : "hang_up"
+      let latest = (try? await port.current()) ?? call
+      let action = latest.acceptedDevice == nil ? (latest.caller == port.scope.identity ? "cancel" : "decline") : "hang_up"
       try? await port.action(action)
     }
     provider.reportCall(with: id, endedAt: Date(), reason: reason)
