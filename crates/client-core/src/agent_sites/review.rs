@@ -9,10 +9,10 @@ fn invalid_review(reason: &str) -> CoreError {
     }
 }
 fn creation_artifact(space: &str, args: &Value) -> R<String> {
-    Ok(format!(
-        "future_site_{}",
-        sha(&serde_json::to_vec(&(REVISION, space, args)).map_err(|_| invalid())?)
-    ))
+    let canonical =
+        miniapps::deckcraft::agent_tools::canonical_json(&json!([REVISION, space, args]))
+            .map_err(|_| invalid())?;
+    Ok(format!("future_site_{}", sha(canonical.as_bytes())))
 }
 pub(crate) fn parsed(p: &ToolProposal) -> R<(Value, Option<Value>)> {
     if p.schema != SCHEMA
@@ -52,7 +52,7 @@ pub(crate) fn parsed(p: &ToolProposal) -> R<(Value, Option<Value>)> {
             if c.artifact_id == p.artifact && c.version == p.version && c.sha256 == p.sha256 => {}
         Command::Replace(c)
             if c.artifact_id == p.artifact && c.version == p.version && c.sha256 == p.sha256 => {}
-        _ => return Err(invalid()),
+        _ => return Err(invalid_review("source version binding")),
     }
     let locator = if command.artifact().is_none() {
         space
@@ -85,7 +85,7 @@ pub(crate) fn parsed(p: &ToolProposal) -> R<(Value, Option<Value>)> {
 }
 pub(super) fn intent(p: &ToolProposal) -> R<String> {
     let (ask, _) = parsed(p)?;
-    Ok(sha(&serde_json::to_vec(&(
+    let canonical = miniapps::deckcraft::agent_tools::canonical_json(&json!([
         REVISION,
         &ask["envelope"],
         &p.source,
@@ -93,8 +93,9 @@ pub(super) fn intent(p: &ToolProposal) -> R<String> {
         p.step,
         &p.canonical_tool,
         &p.arguments_json,
-    ))
-    .map_err(|_| invalid())?))
+    ]))
+    .map_err(|_| invalid())?;
+    Ok(sha(canonical.as_bytes()))
 }
 pub(crate) fn access(state: &State, p: &ToolProposal) -> bool {
     let Ok((ask, _)) = parsed(p) else {
@@ -277,5 +278,33 @@ impl Client {
         let id = request.id.clone();
         e.append(space, &actor, EventBody::RequestOpened { request })?;
         Ok(e.request_dto(e.state.requests.get(&id).ok_or_else(stale)?))
+    }
+}
+
+#[cfg(test)]
+mod canonical_identity_tests {
+    use super::*;
+
+    #[test]
+    fn creation_binding_is_canonical_in_both_explicit_field_orders() {
+        let fields = [
+            ("title", json!("Shared Site")),
+            ("html", json!("<h1>α</h1>")),
+        ];
+        let first: serde_json::Map<String, Value> = fields
+            .iter()
+            .map(|(k, v)| ((*k).into(), v.clone()))
+            .collect();
+        let second: serde_json::Map<String, Value> = fields
+            .iter()
+            .rev()
+            .map(|(k, v)| ((*k).into(), v.clone()))
+            .collect();
+        for args in [Value::Object(first), Value::Object(second)] {
+            assert_eq!(
+                creation_artifact("space", &args).unwrap(),
+                "future_site_faaf4f6a858d4ca5825d14b96934f824b6644d7597233237e81e4b4e23162fe7"
+            );
+        }
     }
 }

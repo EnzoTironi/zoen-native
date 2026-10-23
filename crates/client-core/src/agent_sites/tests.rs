@@ -318,3 +318,29 @@ fn lost_receipt_metadata_cannot_duplicate_an_existing_canonical_file() {
         )
         .is_ok());
 }
+
+#[test]
+fn receipt_identity_is_independent_of_the_envelopes_json_field_order() {
+    let f = setup();
+    let r = stage(&f, "create_site", create_args(), json!([]));
+    let request = f
+        .agent
+        .tool_approval_requests(&f.space, &f.source)
+        .into_iter()
+        .find(|v| v.id == r.id)
+        .unwrap();
+    let p = request.tool_proposal.unwrap();
+    let original = review::intent(&p).unwrap();
+    let mut reordered = (*p).clone();
+    let mut ask: Value = serde_json::from_str(&p.continuation_json).unwrap();
+    let reverse: serde_json::Map<String, Value> = ask["envelope"]
+        .as_object()
+        .unwrap()
+        .iter()
+        .rev()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    ask["envelope"] = Value::Object(reverse);
+    reordered.continuation_json = serde_json::to_string(&ask).unwrap();
+    assert_eq!(review::intent(&reordered).unwrap(), original);
+}

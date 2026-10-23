@@ -5,9 +5,24 @@ use serde_json::Value;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use zoen_agentd::citizen::{testing::ControlledToolBrain, BrainOut};
 
-fn context(client: &Arc<Client>, journal: &Path, starts: &Arc<AtomicUsize>) -> Ctx {
+fn context(client: &Arc<Client>, journal: &Path, starts: &Arc<AtomicUsize>, reversed: bool) -> Ctx {
     let account = client.account().unwrap();
     let starts = starts.clone();
+    // The host enables serde_json/preserve_order. Both insertion orders must bind
+    // to the same canonical proposal; Core-only BTreeMap tests cannot prove this.
+    let mut source = serde_json::Map::new();
+    let fields = [
+        ("title", json!("Requested Site")),
+        ("html", json!("<!doctype html><h1>Created privately</h1>")),
+    ];
+    for (name, value) in if reversed {
+        fields.into_iter().rev().collect::<Vec<_>>()
+    } else {
+        fields.into_iter().collect()
+    } {
+        source.insert(name.into(), value);
+    }
+    let create_arguments = Value::Object(source);
     Ctx {
         me: account.identity_id,
         device: account.device_id,
@@ -24,10 +39,7 @@ fn context(client: &Arc<Client>, journal: &Path, starts: &Arc<AtomicUsize>) -> C
                     let (name, arguments) = match steps {
                         [] => {
                             starts.fetch_add(1, Ordering::SeqCst);
-                            (
-                                "create_site".into(),
-                                json!({"title":"Requested Site","html":"<!doctype html><h1>Created privately</h1>"}),
-                            )
+                            ("create_site".into(), create_arguments.clone())
                         }
                         [create] => {
                             assert!(!create.is_error, "{}", create.result);
@@ -68,6 +80,11 @@ fn context(client: &Arc<Client>, journal: &Path, starts: &Arc<AtomicUsize>) -> C
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn site_create_approve_lost_ack_cold_read_review_edit_reopen_exact_v2() {
+    for reversed in [false, true] {
+        site_journey(reversed).await;
+    }
+}
+async fn site_journey(reversed: bool) {
     let path = std::env::temp_dir().join(types::new_id("site-agent-journey"));
     std::fs::create_dir_all(&path).unwrap();
     let fixture = crate::deckcraft::tests::fixture_with_privacy_at(
@@ -88,7 +105,7 @@ async fn site_create_approve_lost_ack_cold_read_review_edit_reopen_exact_v2() {
     drop(fixture);
     let before = client.items().len();
     let starts = Arc::new(AtomicUsize::new(0));
-    let cx = context(&client, &journal, &starts);
+    let cx = context(&client, &journal, &starts, reversed);
     canonical_tool_approval_tests::handle(&client, &cx, &space, &source).await;
     let create = client
         .tool_approval_requests(&space, &source)
@@ -101,7 +118,7 @@ async fn site_create_approve_lost_ack_cold_read_review_edit_reopen_exact_v2() {
     drop(client);
     canonical_tool_approval_tests::signed_owner_resolution(&path, &space, &create, &owner);
     client = canonical_tool_approval_tests::reopen(&path, vault.clone());
-    let cx = context(&client, &journal, &starts);
+    let cx = context(&client, &journal, &starts, reversed);
     let host = SpaceTools::new(&client, &cx, &space, &owner, &source);
     assert!(host.begin_resume(&create.id, &create.content_hash).unwrap());
     host.entering_canonical_executor().unwrap();
@@ -119,7 +136,7 @@ async fn site_create_approve_lost_ack_cold_read_review_edit_reopen_exact_v2() {
     drop(cx);
     drop(client);
     client = canonical_tool_approval_tests::reopen(&path, vault.clone());
-    let cx = context(&client, &journal, &starts);
+    let cx = context(&client, &journal, &starts, reversed);
     canonical_tool_approval_tests::handle(&client, &cx, &space, &source).await;
     assert_eq!(
         starts.load(Ordering::SeqCst),
@@ -141,7 +158,7 @@ async fn site_create_approve_lost_ack_cold_read_review_edit_reopen_exact_v2() {
     drop(client);
     canonical_tool_approval_tests::signed_owner_resolution(&path, &space, &edit, &owner);
     client = canonical_tool_approval_tests::reopen(&path, vault.clone());
-    let cx = context(&client, &journal, &starts);
+    let cx = context(&client, &journal, &starts, reversed);
     canonical_tool_approval_tests::handle(&client, &cx, &space, &source).await;
     let info = client.file_info_at(item.clone(), Some(2)).unwrap();
     assert_eq!(client.items().len(), before + 1);
