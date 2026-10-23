@@ -18,6 +18,7 @@ use crate::CoreError;
 
 mod drafts;
 mod exports;
+#[cfg(any(test, feature = "client-types"))]
 pub(crate) use exports::PageVersionExport;
 mod input;
 pub use input::{
