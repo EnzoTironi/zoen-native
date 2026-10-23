@@ -16,4 +16,6 @@ runs:
     - name: Verify browser version and an owned DevTools startup
       shell: bash
       working-directory: ${{ github.workspace }}
-      run: node "$GITHUB_ACTION_PATH/preflight.mjs"
+      # 2s version + 10s startup/protocol + bounded diagnostics/cleanup. This wall
+      # also fails a wedged Node/stdio/filesystem teardown; it never admits an App.
+      run: timeout --signal=TERM --kill-after=2s 20s node "$GITHUB_ACTION_PATH/preflight.mjs"
