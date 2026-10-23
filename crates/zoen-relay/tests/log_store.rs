@@ -146,13 +146,18 @@ fn main() {
     assert!(
         arguments.is_empty()
             || arguments == ["--two-client"]
-            || arguments == ["--two-client-renewals"],
-        "usage: log_store [--two-client|--two-client-renewals]"
+            || arguments == ["--two-client-renewals"]
+            || arguments == ["--two-client-conflicts"],
+        "usage: log_store [--two-client|--two-client-renewals|--two-client-conflicts]"
     );
     // The error at the FDB boundary is otherwise lost behind the retryable public
     // rejection. Test-owned stderr observes it without weakening the contract.
     tracing_subscriber::fmt()
-        .with_env_filter("zoen_relay=error")
+        .with_env_filter(if arguments == ["--two-client-conflicts"] {
+            "zoen_relay=error,zoen_relay::log::fdb::conflicts=debug"
+        } else {
+            "zoen_relay=error"
+        })
         .with_writer(std::io::stderr)
         .with_ansi(false)
         .init();

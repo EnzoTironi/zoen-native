@@ -83,6 +83,8 @@ use super::{
     InviteInfo, LogStore, Reject, Sequencing, StoreError,
 };
 
+#[cfg(debug_assertions)]
+mod conflicts;
 mod invite_routing;
 mod runtime;
 pub use runtime::{RuntimeHead, RuntimeSource, RuntimeSourceBatch};
@@ -439,14 +441,21 @@ impl Batcher for Cell {
         // back only with a committed result. Later attempts reload from the head they read.
         let cached = Mutex::new(state.take());
         let attempts = AtomicU32::new(0);
+        let started = std::time::Instant::now();
+        #[cfg(debug_assertions)]
+        let hooks = conflicts::Diagnostics::new(self, space);
+        #[cfg(not(debug_assertions))]
+        let hooks = foundationdb::NoopHooks;
         let r = self
             .db
-            .run(|trx, _committed| {
+            .run_with_hooks(&hooks, |trx, _committed| {
                 attempts.fetch_add(1, Ordering::Relaxed);
                 let cached = fallible::take_cache(&cached);
                 async move {
                     let cached = cached?;
                     ownership::bound_transaction(&trx)?;
+                    #[cfg(debug_assertions)]
+                    conflicts::Diagnostics::configure(&trx)?;
                     self.apply(&trx, space, batch, cached).await
                 }
             })
@@ -454,13 +463,25 @@ impl Batcher for Cell {
         let attempts = attempts.into_inner();
         APPEND_RETRIES.fetch_add(u64::from(attempts.saturating_sub(1)), Ordering::Relaxed);
         APPEND_BATCHES.fetch_add(1, Ordering::Relaxed);
+        #[cfg(debug_assertions)]
+        {
+            let counts = hooks.counts();
+            if counts.commits > 0 || counts.closure_errors > 0 {
+                tracing::debug!(target: "zoen_relay::log::fdb::conflicts", attempts, elapsed_ms = started.elapsed().as_millis() as u64,
+                    commit_errors = counts.commits, head_conflicts = counts.head, lease_conflicts = counts.lease,
+                    other_conflicts = counts.other, unreported_conflicts = counts.unreported,
+                    closure_errors = counts.closure_errors, report_errors = counts.report_errors,
+                    failed = r.is_err(), "append transaction conflict diagnosis");
+            }
+        }
         let results = match r {
             Ok((results, fresh)) => {
                 *state = Some(fresh);
                 results
             }
             Err(e) => {
-                tracing::error!(error = %e, size = batch.len(), "log store error while sequencing");
+                tracing::error!(error = %e, size = batch.len(), attempts,
+                    elapsed_ms = started.elapsed().as_millis() as u64, "log store error while sequencing");
                 batch.iter().map(|_| Err(Reject::unavailable())).collect()
             }
         };
