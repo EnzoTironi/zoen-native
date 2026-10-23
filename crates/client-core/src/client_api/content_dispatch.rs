@@ -39,6 +39,9 @@ impl Client {
                 item_ids,
             )?),
             Item { item_id } => encode(&self.item(item_id)?),
+            ItemDiscussion { space_id, item_id } => {
+                encode(&self.lock().item_discussion(&space_id, &item_id)?)
+            }
             ItemAt { item_id, version } => encode(&self.item_at(item_id, version)?),
             Page { item_id } => encode(&self.page(item_id)?),
             PlanPage { item_id } => encode(&self.plan_page(item_id)?),
@@ -59,6 +62,17 @@ impl Client {
                 encode(&self.page_apply_from(item_id, mutation_id, edit_context, order, changed)?)
             }
             PageCommit { item_id, note } => encode(&self.page_commit(item_id, note)?),
+            PageExportVersion {
+                space_id,
+                item_id,
+                version,
+                observed_hash,
+            } => encode(&self.lock().page_export_version(
+                &space_id,
+                &item_id,
+                version,
+                &observed_hash,
+            )?),
             PageMarkdown { item_id } => encode(&self.page_markdown(item_id)?),
             TogglePlanLine {
                 item_id,

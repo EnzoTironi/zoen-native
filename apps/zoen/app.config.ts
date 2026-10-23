@@ -48,6 +48,7 @@ export default ({ config, projectRoot }: ConfigContext): ExpoConfig => {
   const plugins = [
     ...(config.plugins ?? []),
     './plugins/with-native-surfaces.cjs',
+    './plugins/with-native-calls.cjs',
     './plugins/with-native-window-policy.cjs',
     './plugins/with-shortcut-localizations.cjs',
     './plugins/with-android-back-dispatch.cjs',

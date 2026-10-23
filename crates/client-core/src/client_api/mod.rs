@@ -71,10 +71,12 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
     TimelinePage::export_all(&config)?;
     LogEventsPage::export_all(&config)?;
     crate::ItemDetail::export_all(&config)?;
+    crate::replies::ItemDiscussionDto::export_all(&config)?;
     crate::NativeSurfaceItemDto::export_all(&config)?;
     crate::NativeSurfaceAppDto::export_all(&config)?;
     crate::EditOutcome::export_all(&config)?;
     crate::PageDto::export_all(&config)?;
+    crate::pages::PageVersionExport::export_all(&config)?;
     crate::PlanPageDto::export_all(&config)?;
     crate::SearchHit::export_all(&config)?;
     crate::MessageSearchPage::export_all(&config)?;

@@ -14,13 +14,14 @@ import { ProfileInfoRow, ProfileSection } from '../../profile/profile-section';
 
 function YouContent() {
   const { snapshot, store, mode } = useClient();
-  const { colors, preferenceError } = useTheme();
+  const { colors, presentation: p, preferenceError } = useTheme();
   const { confirm } = useDialogs();
   const me = snapshot?.me;
   const photo = useProfilePhoto(me?.id, me?.photo_sha256, me?.photo_ready ?? false);
   return (
     <ScrollView
       testID="you-settings-screen"
+      style={{ flex: 1, backgroundColor: p.list.background }}
       contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={{
         padding: 16,
@@ -53,6 +54,7 @@ function YouContent() {
           rows={[
             {
               id: 'settings-edit-profile',
+              iconColor: '#007AFF',
               title: t('settings.editMyProfile'),
               icon: { ios: 'pencil', android: 'edit', web: 'edit' },
               onPress: () => router.push('/edit-profile'),
@@ -64,7 +66,12 @@ function YouContent() {
       <View style={{ gap: 8 }}>
         <Text
           accessibilityRole="header"
-          style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}
+          style={{
+            color: p.list.section,
+            fontSize: 13,
+            marginLeft: 16,
+            textTransform: 'uppercase',
+          }}
         >
           {t('settings.settings')}
         </Text>
@@ -73,12 +80,14 @@ function YouContent() {
           rows={[
             {
               id: 'settings-appearance',
+              iconColor: '#5856D6',
               title: t('settings.appearance'),
               icon: { ios: 'paintbrush', android: 'palette', web: 'palette' },
               onPress: () => router.push('/settings/appearance'),
             },
             {
               id: 'settings-general',
+              iconColor: '#8E8E93',
               title: t('settings.general'),
               hint: t('settings.generalHint'),
               icon: { ios: 'gearshape', android: 'settings', web: 'settings' },
@@ -86,6 +95,7 @@ function YouContent() {
             },
             {
               id: 'settings-permissions',
+              iconColor: '#AF52DE',
               title: t('settings.permissions'),
               hint: t('settings.permissionsHint'),
               icon: { ios: 'hand.raised', android: 'back_hand', web: 'back_hand' },
@@ -93,6 +103,7 @@ function YouContent() {
             },
             {
               id: 'settings-notifications',
+              iconColor: '#FF3B30',
               title: t('settings.notifications'),
               hint: t('settings.notificationsHint'),
               icon: { ios: 'bell', android: 'notifications', web: 'notifications' },
@@ -100,6 +111,7 @@ function YouContent() {
             },
             {
               id: 'settings-devices',
+              iconColor: '#34AADC',
               title: t('settings.devices'),
               hint: t('settings.devicesHint'),
               icon: { ios: 'laptopcomputer.and.iphone', android: 'devices', web: 'devices' },
@@ -107,6 +119,7 @@ function YouContent() {
             },
             {
               id: 'settings-data-controls',
+              iconColor: '#FF9500',
               title: t('settings.dataControls'),
               hint: t('settings.dataControlsHint'),
               icon: { ios: 'lock', android: 'lock', web: 'lock' },
@@ -119,7 +132,12 @@ function YouContent() {
         <View style={{ gap: 8 }}>
           <Text
             accessibilityRole="header"
-            style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}
+            style={{
+              color: p.list.section,
+              fontSize: 13,
+              marginLeft: 16,
+              textTransform: 'uppercase',
+            }}
           >
             {t('settings.privacyAndSafety')}
           </Text>
@@ -128,6 +146,7 @@ function YouContent() {
             rows={[
               {
                 id: 'settings-blocked-people',
+                iconColor: '#FF3B30',
                 title: t('settings.blockedPeople'),
                 hint: t('settings.blockedPeopleDescription'),
                 icon: { ios: 'hand.raised.slash', android: 'block', web: 'block' },

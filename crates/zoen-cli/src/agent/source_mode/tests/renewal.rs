@@ -42,7 +42,15 @@ async fn signed_renewal_waits_for_actual_sync_without_reply_attempt_or_effect_th
     online(&f.client, false).await;
     let cx = super::super::super::page_tool_tests::cx(&f.client, &journal, &item, starts.clone());
     let def = super::super::super::canonical_tool_approval_tests::definition();
-    let mut run = Run::prepare(&f.client, source(&f.source)).unwrap();
+    let seq = f
+        .client
+        .timeline(f.space.clone())
+        .unwrap()
+        .iter()
+        .find(|entry| entry.id == f.source)
+        .unwrap()
+        .seq;
+    let mut run = Run::prepare(&f.client, source(&f.source), &[(f.space.clone(), seq)]).unwrap();
     let before = std::fs::read(&journal).unwrap();
     let end = deadline();
     assert!(!run.tick(&f.client, &cx, &def, end).await.unwrap());

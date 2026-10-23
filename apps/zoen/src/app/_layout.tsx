@@ -13,6 +13,7 @@ import { KeyboardMotionProvider } from '../components/keyboard-motion';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
+import { NativeCallsProvider } from '../calls/provider';
 import { ClientProvider } from '../core/provider';
 import { ThemeProvider, useTheme } from '../theme';
 import { SessionGate } from '../components/session-gate';
@@ -82,6 +83,20 @@ function Navigation() {
               <Stack.Screen name="(tabs)" options={{ title: '' }} />
               <Stack.Screen name="chat/[id]" options={{ title: '' }} />
               <Stack.Screen
+                name="chat-attachment/[id]"
+                options={{
+                  // All attachment categories share this presentation from their
+                  // first frame; the child retains its capture/dismissal guard.
+                  presentation: process.env.EXPO_OS === 'web' ? 'modal' : 'formSheet',
+                  title: t('media.attachmentAdd'),
+                  headerTransparent: false,
+                  sheetAllowedDetents: [0.65, 1],
+                  sheetGrabberVisible: true,
+                  sheetExpandsWhenScrolledToEdge: true,
+                  gestureEnabled: true,
+                }}
+              />
+              <Stack.Screen
                 name="miniapps"
                 options={{
                   presentation: process.env.EXPO_OS === 'ios' ? 'fullScreenModal' : 'card',
@@ -123,15 +138,17 @@ export default function RootLayout() {
             <ThemeProvider>
               <DialogsProvider>
                 <ClientProvider>
-                  <HomeProvider>
-                    <ConversationCardsProvider>
-                      <NativeSurfacesProvider>
-                        <NotificationProvider>
-                          <Navigation />
-                        </NotificationProvider>
-                      </NativeSurfacesProvider>
-                    </ConversationCardsProvider>
-                  </HomeProvider>
+                  <NativeCallsProvider>
+                    <HomeProvider>
+                      <ConversationCardsProvider>
+                        <NativeSurfacesProvider>
+                          <NotificationProvider>
+                            <Navigation />
+                          </NotificationProvider>
+                        </NativeSurfacesProvider>
+                      </ConversationCardsProvider>
+                    </HomeProvider>
+                  </NativeCallsProvider>
                 </ClientProvider>
               </DialogsProvider>
             </ThemeProvider>

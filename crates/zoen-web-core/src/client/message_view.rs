@@ -2,6 +2,24 @@
 use super::*;
 
 impl<S: Signer> Client<S> {
+    fn accepted_page_post(&self, event: &Event) -> bool {
+        let EventBody::ItemCreated {
+            item,
+            kind: types::ItemKind::Page,
+            content: types::ItemContent::Page(_),
+            ..
+        } = &event.body
+        else {
+            return false;
+        };
+        self.document_item(item).is_ok_and(|source| {
+            source.space == event.space
+                && source.versions[0].failure.is_none()
+                && event_log::content_hash_of(&source.versions[0].event)
+                    == event_log::content_hash_of(event)
+        })
+    }
+
     // Hashes are authoritative. An untrusted client id must never shadow one.
     pub(super) fn resolve_post(&self, space: &str, reference: &str) -> Option<&Event> {
         let events = self.logs.get(space)?.events();
@@ -10,6 +28,15 @@ impl<S: Signer> Client<S> {
             .find(|e| e.hash == reference)
             .or_else(|| events.iter().find(|e| e.client_id == reference))
             .filter(|e| is_post(&e.body))
+            .filter(|event| {
+                !matches!(
+                    &event.body,
+                    EventBody::ItemCreated {
+                        kind: types::ItemKind::Page,
+                        ..
+                    }
+                ) || self.accepted_page_post(event)
+            })
     }
 
     /// The reply link of the message with this entry id in `space`, if it is a message.
@@ -26,6 +53,11 @@ impl<S: Signer> Client<S> {
                     content: types::ItemContent::File(doc),
                     ..
                 } => Some(doc.voice.as_ref().and_then(|v| v.reply.clone())),
+                EventBody::ItemCreated {
+                    kind: types::ItemKind::Page,
+                    content: types::ItemContent::Page(_),
+                    ..
+                } if self.accepted_page_post(e) => Some(None),
                 _ => None,
             })
     }
@@ -241,6 +273,13 @@ impl<S: Signer> Client<S> {
                 doc.voice.as_ref().is_some_and(|v| v.forwarded),
                 Some(doc.clone()),
             ),
+            EventBody::ItemCreated {
+                kind: types::ItemKind::Page,
+                content: types::ItemContent::Page(_),
+                ..
+            } if delivery != "failed" && self.accepted_page_post(event) => {
+                (String::new(), None, false, None)
+            }
             EventBody::ItemVersioned { .. } | EventBody::ItemReverted { .. } => {
                 let edit = item_edit.as_ref()?;
                 (edit.note.clone(), None, false, None)
@@ -304,6 +343,12 @@ impl<S: Signer> Client<S> {
                 attaches: Some(item),
                 ..
             } if file.is_none() => self.item_card_value(&event.space, item).ok().flatten(),
+            EventBody::ItemCreated {
+                item,
+                kind: types::ItemKind::Page,
+                content: types::ItemContent::Page(_),
+                ..
+            } => self.item_card_value(&event.space, item).ok().flatten(),
             _ => None,
         };
         Some(MessageView {

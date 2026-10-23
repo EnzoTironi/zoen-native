@@ -20,7 +20,65 @@ use crate::{Client, CoreError};
 /// How much of the quoted message an inline reply carries to the UI.
 const QUOTE_CHARS: usize = 140;
 
+/// A read of the existing artifact thread, never another comments store.
+#[derive(serde::Serialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+pub(crate) struct ItemDiscussionDto {
+    pub item_id: String,
+    pub space_id: String,
+    pub root: Option<TimelineEntry>,
+}
+
 impl Engine {
+    pub(crate) fn item_discussion(&self, space: &str, item: &str) -> R<ItemDiscussionDto> {
+        let me = self.me_id()?;
+        if !self.is_member(space, &me) {
+            return Err(CoreError::Forbidden {
+                reason: t(
+                    "só membros leem esta discussão",
+                    "only members can read this discussion",
+                ),
+            });
+        }
+        let it = self.item_state(item)?;
+        if it.space != space
+            || self.state.is_recovery_item(item)
+            || self.card_in_space(space, item).is_none()
+        {
+            return Err(CoreError::NotFound {
+                what: "Item".into(),
+            });
+        }
+        let entries = &self.space_state(space)?.entries;
+        let root = entries
+            .iter()
+            .find(|entry| {
+                matches!(
+                    &entry.body,
+                    EntryBody::Message { attaches: Some(id), reply: None, marks, .. }
+                        if id == item && !marks.forwarded
+                )
+            })
+            .map(|entry| {
+                let mut root = self.entry_dto(entry);
+                root.thread_replies = entries
+                    .iter()
+                    .filter(|reply| {
+                        matches!(
+                            &reply.body,
+                            EntryBody::Message { reply: Some(reference), .. }
+                                if reference.thread && reference.to == root.id
+                        )
+                    })
+                    .count() as u32;
+                root
+            });
+        Ok(ItemDiscussionDto {
+            item_id: item.to_owned(),
+            space_id: space.to_owned(),
+            root,
+        })
+    }
     /// The quote (inline) or thread root (thread) of a timeline entry.
     pub(crate) fn reply_parts(&self, e: &Entry) -> (Option<ReplyQuote>, Option<String>) {
         let EntryBody::Message { reply: Some(r), .. } = &e.body else {
@@ -218,3 +276,6 @@ impl Client {
         self.lock().thread(&space_id, &root_id)
     }
 }
+
+#[cfg(test)]
+mod discussion_tests;

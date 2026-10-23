@@ -40,6 +40,7 @@ mod online;
 mod publishing;
 mod requests;
 mod syncing;
+mod turn;
 
 use authentication::{handshake, LoggedIn};
 

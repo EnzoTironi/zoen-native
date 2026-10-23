@@ -93,6 +93,25 @@ export async function acceptMarkdownJourney({
     "valid committed Markdown page must have no errors",
   );
 
+  await page.getByRole("button", { name: ui.artifactDiscussion, exact: true }).click();
+  await page.waitForURL((url) => url.pathname.startsWith(`/thread/${encodeURIComponent(space)}/`));
+  const rootId = decodeURIComponent(new URL(page.url()).pathname.split("/").at(-1));
+  assert.ok(rootId, "the artifact opens its original canonical post");
+  await page.getByTestId(`message-row-${rootId}`).waitFor();
+  const comment = `Artifact discussion ${tag}`;
+  await page.locator('[data-testid="message-input"]:visible').fill(comment);
+  await page.locator('[data-testid="send-message"]:visible').click();
+  await page.locator('[data-testid^="message-body-"]:visible').filter({ hasText: comment }).waitFor();
+  await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: ui.artifactDiscussionCount(1), exact: true }).click();
+  await page.waitForURL((url) => url.pathname.startsWith(`/thread/${encodeURIComponent(space)}/`));
+  assert.equal(decodeURIComponent(new URL(page.url()).pathname.split("/").at(-1)), rootId,
+    "cold route reload keeps the same discussion root");
+  await page.locator('[data-testid^="message-body-"]:visible').filter({ hasText: comment }).waitFor();
+  await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: ui.exportMarkdown, exact: true }).waitFor();
+  step("markdown-discussion-keeps-original-post-and-comment-after-cold-route-reload", { rootId });
+
   const downloading = page.waitForEvent("download");
   await page.getByRole("button", { name: ui.exportMarkdown, exact: true }).click();
   const download = await downloading;
@@ -121,5 +140,27 @@ export async function acceptMarkdownJourney({
   step("markdown-browser-and-native-core-exports-match", {
     bytes: Buffer.byteLength(browserMarkdown),
     sha256: createHash("sha256").update(browserMarkdown).digest("hex"),
+  });
+
+  await page.goto(`${origin}/item/${encodeURIComponent(itemId)}?history=1`, {
+    waitUntil: "domcontentloaded",
+  });
+  await page.getByRole("button").filter({ has: page.getByText("v1", { exact: true }) }).click();
+  await page.getByText(original, { exact: true }).waitFor();
+  const historicalDownload = page.waitForEvent("download");
+  await page.getByTestId("page-version-export").click();
+  const historical = await historicalDownload;
+  assert.equal(historical.suggestedFilename(), `${title} v1.md`);
+  const historicalPath = join(privateRoot, "browser-version-1.md");
+  await historical.saveAs(historicalPath);
+  const historicalBytes = await readFile(historicalPath, "utf8");
+  assert.equal(historicalBytes, await readFile(source, "utf8"),
+    "history must export the exact selected version, not the current document");
+  assert.equal(historicalBytes.includes(edited), false);
+  await screenshot("markdown-selected-version-export.png");
+  step("markdown-history-download-preserves-selected-version", {
+    version: 1,
+    bytes: Buffer.byteLength(historicalBytes),
+    sha256: createHash("sha256").update(historicalBytes).digest("hex"),
   });
 }

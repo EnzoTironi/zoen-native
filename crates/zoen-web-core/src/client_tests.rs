@@ -1,6 +1,8 @@
 use super::*;
 #[path = "client_tests/app_documents.rs"]
 mod app_documents;
+#[path = "client_tests/artifact_discussions.rs"]
+mod artifact_discussions;
 #[path = "client_tests/attachments.rs"]
 mod attachments;
 #[path = "client_tests/crypto_interop.rs"]
@@ -9,6 +11,8 @@ mod crypto_interop;
 mod cursor_repair;
 #[path = "client_tests/page_documents.rs"]
 mod page_documents;
+#[path = "client_tests/page_version_exports.rs"]
+mod page_version_exports;
 #[path = "client_tests/projection.rs"]
 mod projection;
 #[path = "client_tests/receipts.rs"]

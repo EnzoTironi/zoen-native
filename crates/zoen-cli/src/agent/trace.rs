@@ -43,6 +43,8 @@ pub(super) enum Stop {
     AttemptLimit,
     ReservationRefused,
     ApprovalRefused,
+    SourceAttemptLimit,
+    SourceReservationRefused,
 }
 impl Stop {
     pub(super) fn request_status(status: RequestStatus) -> Option<Self> {
@@ -69,6 +71,8 @@ impl Stop {
             Self::AttemptLimit => "attempt_limit",
             Self::ReservationRefused => "reservation_refused",
             Self::ApprovalRefused => "approval_refused",
+            Self::SourceAttemptLimit => "source_attempt_limit",
+            Self::SourceReservationRefused => "source_reservation_refused",
         }
     }
 }

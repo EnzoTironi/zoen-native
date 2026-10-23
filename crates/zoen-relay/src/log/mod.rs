@@ -72,6 +72,11 @@ pub trait LogStore: Send + Sync {
     /// Where `who` was removed from `space`, if they were and haven't been added back.
     async fn removed_at(&self, space: &str, who: &str) -> Result<Option<u64>, StoreError>;
     async fn members(&self, space: &str) -> Result<Vec<(String, Role)>, StoreError>;
+    /// One bounded transaction over current DM metadata and exactly two writers.
+    /// Transport admission only; the relay cannot inspect encrypted call consent.
+    async fn call_pair(&self, _space: &str, _who: &str, _peer: &str) -> Result<bool, StoreError> {
+        Ok(false)
+    }
     async fn spaces_of(&self, who: &str) -> Result<Vec<String>, StoreError>;
     /// Identities that share at least one Space with `who` (presence audience).
     async fn co_members(&self, who: &str) -> Result<Vec<String>, StoreError>;

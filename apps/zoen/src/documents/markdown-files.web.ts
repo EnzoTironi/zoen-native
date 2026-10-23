@@ -14,7 +14,12 @@ export async function pickMarkdown(): Promise<{ path: string; markdown: string }
   return { path: asset.name, markdown: validateMarkdown(await asset.file.text()) };
 }
 
-export async function exportMarkdown(title: string, markdown: string): Promise<void> {
+export async function exportMarkdown(
+  title: string,
+  markdown: string,
+  isCurrent = () => true,
+): Promise<void> {
+  if (!isCurrent()) return;
   const url = URL.createObjectURL(new Blob([markdown], { type: 'text/markdown;charset=utf-8' }));
   const link = document.createElement('a');
   link.href = url;

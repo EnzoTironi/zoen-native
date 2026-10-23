@@ -4,6 +4,7 @@
 //! (callbacks that trigger a refresh on the main actor). Everything else stays in Rust.
 
 mod agent_runtime;
+pub(crate) mod call_turn;
 mod sync_completion;
 
 pub use agent_runtime::agent_id_for_root;

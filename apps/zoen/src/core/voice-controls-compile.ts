@@ -25,6 +25,12 @@ export const compiled = Object.fromEntries(
             name: 'native-voice-ports',
             setup(builder) {
               builder.onResolve(
+                { filter: /^\.\/(?:native-capture-owner|call-audio-focus|audio-mode)\.ts$/ },
+                ({ path }) => ({
+                  path: fileURLToPath(new URL(`../media/${path.slice(2)}`, import.meta.url)),
+                }),
+              );
+              builder.onResolve(
                 {
                   filter:
                     /^\.\/(?:voice-waveform-(?:model|precision)|(?:use-)?media-composer-(?:controller|capture|shared|selection|view|lifecycle|contract))$/,

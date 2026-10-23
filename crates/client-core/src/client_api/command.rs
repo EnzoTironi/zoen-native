@@ -269,6 +269,10 @@ pub(super) enum Command {
     Item {
         item_id: String,
     },
+    ItemDiscussion {
+        space_id: String,
+        item_id: String,
+    },
     ItemAt {
         item_id: String,
         version: u32,
@@ -302,6 +306,12 @@ pub(super) enum Command {
     PageCommit {
         item_id: String,
         note: String,
+    },
+    PageExportVersion {
+        space_id: String,
+        item_id: String,
+        version: u32,
+        observed_hash: String,
     },
     PageMarkdown {
         item_id: String,

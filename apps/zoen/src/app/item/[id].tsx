@@ -8,6 +8,8 @@ import { useTheme } from '../../theme';
 import { EmptyState, Loading, NativeButton, Surface } from '../../components/primitives';
 import { useDialogs } from '../../components/dialogs';
 import { PlanBlocks, PlanVersion } from '../../documents/plan-blocks';
+import { ArtifactDiscussion } from '../../documents/artifact-discussion';
+import { PageVersionExportAction } from '../../documents/page-version-export-action';
 import { PageBlocks } from '../../documents/page-blocks';
 import { clearPlanUndo, rememberPlanUndo, usePlanUndo } from '../../documents/plan-undo';
 import { FileAttachment } from '../../media/MediaAttachment';
@@ -131,6 +133,9 @@ export default function Item() {
       >
         {selected === null ? item.title : (past.data?.title ?? item.title)}
       </Text>
+      {selected === null && !history ? (
+        <ArtifactDiscussion itemId={id} spaceId={item.space_id} />
+      ) : null}
       {failure || readError ? (
         <Surface>
           <Text accessibilityRole="alert" selectable style={{ color: colors.danger }}>
@@ -165,6 +170,9 @@ export default function Item() {
                 disabled={busy}
                 onPress={() => setSelected(null)}
               />
+              {pastPage.data && pastPage.data.version === selected && !oldError ? (
+                <PageVersionExportAction page={pastPage.data} />
+              ) : null}
               {canRestore && oldReady ? (
                 <NativeButton
                   label={busy ? t('documents.restoring') : t('documents.restoreThisVersion')}

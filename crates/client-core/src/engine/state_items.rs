@@ -31,29 +31,36 @@ impl State {
                 }],
             },
         );
-        // A voice note is a message in the chat: a player, not a file in a list.
-        if let ItemContent::File(doc) = content {
-            if doc.is_voice() {
-                if let Some(s) = self.spaces.get_mut(&e.space) {
-                    s.entries.push(Entry {
-                        hash: e.hash.clone(),
-                        client_id: e.client_id.clone(),
-                        space: e.space.clone(),
-                        seq: e.seq,
-                        author: e.author.clone(),
-                        at_ms: e.at_ms,
-                        body: EntryBody::Message {
-                            text: String::new(),
-                            attaches: Some(item.to_string()),
-                            reply: doc.voice.as_ref().and_then(|meta| meta.reply.clone()),
-                            marks: MessageMarks {
-                                forwarded: doc.voice.as_ref().is_some_and(|meta| meta.forwarded),
-                                ..Default::default()
-                            },
+        // A Page's original signed creation is its card and discussion root.
+        // This is a projection, not another event or a publication of its draft.
+        let presentation = match content {
+            ItemContent::Page(_) if kind == ItemKind::Page => Some((None, false)),
+            ItemContent::File(doc) if doc.is_voice() => Some((
+                doc.voice.as_ref().and_then(|meta| meta.reply.clone()),
+                doc.voice.as_ref().is_some_and(|meta| meta.forwarded),
+            )),
+            _ => None,
+        };
+        if let Some((reply, forwarded)) = presentation {
+            if let Some(s) = self.spaces.get_mut(&e.space) {
+                s.entries.push(Entry {
+                    hash: e.hash.clone(),
+                    client_id: e.client_id.clone(),
+                    space: e.space.clone(),
+                    seq: e.seq,
+                    author: e.author.clone(),
+                    at_ms: e.at_ms,
+                    body: EntryBody::Message {
+                        text: String::new(),
+                        attaches: Some(item.to_string()),
+                        reply,
+                        marks: MessageMarks {
+                            forwarded,
+                            ..Default::default()
                         },
-                    });
-                    s.last_at_ms = s.last_at_ms.max(e.at_ms);
-                }
+                    },
+                });
+                s.last_at_ms = s.last_at_ms.max(e.at_ms);
             }
         }
     }

@@ -8,6 +8,7 @@ import type { Command } from '../../core/types';
 import type { PageBlockDto } from '../../core/generated/PageBlockDto';
 import { EmptyState, Loading, NativeButton, Surface } from '../../components/primitives';
 import { useDialogs } from '../../components/dialogs';
+import { ArtifactDiscussion } from '../../documents/artifact-discussion';
 import { PageBlocks } from '../../documents/page-blocks';
 import { moveBlock } from '../../documents/editing';
 import { exportMarkdown } from '../../documents/markdown-files';
@@ -167,6 +168,7 @@ export default function Page() {
                   : t('documents.sharedInChat'))}
         </Text>
       </View>
+      <ArtifactDiscussion itemId={id} spaceId={page.space_id} />
       {failure || error ? (
         <Surface>
           <Text selectable accessibilityRole="alert" style={{ color: colors.danger }}>
