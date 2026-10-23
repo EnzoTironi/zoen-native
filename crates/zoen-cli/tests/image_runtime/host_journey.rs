@@ -122,7 +122,11 @@ async fn install_policy(w: &World, config: &config::Config, runtime: &RuntimeAut
     let signed = event_log::owner_budget::sign(&author, policy).unwrap();
     let mut tampered = signed.clone();
     tampered.policy.limit_units += 1;
-    assert!(runtime.install_policy(tampered).await.is_err());
+    assert_eq!(
+        runtime.install_policy(tampered).await.unwrap_err(),
+        zoen_runtime::RuntimeError::InvalidPolicy
+    );
+    assert_eq!(w.count("SELECT count(*) FROM runtime_policies").await, 0);
     runtime.install_policy(signed).await.unwrap();
 }
 async fn review(owner: &Client, space: &str, source: &str, host: &mut Host) -> AgentRequestDto {
@@ -221,6 +225,17 @@ pub(super) async fn run(
             ToolRequestDecision::ApproveOnce
         )
         .is_err());
+    assert_eq!(
+        owner
+            .requests()
+            .into_iter()
+            .find(|r| r.id == request.id)
+            .unwrap()
+            .status,
+        RequestStatus::Pending
+    );
+    assert_eq!(provider.sends.load(Ordering::SeqCst), 0);
+    assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 0);
     owner
         .decide_tool_request(
             request.id.clone(),
