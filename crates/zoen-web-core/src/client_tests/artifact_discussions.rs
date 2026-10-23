@@ -149,6 +149,36 @@ fn browser_discussion_does_not_publish_private_draft_or_choose_forwarded_inline_
         json!({"op":"page_apply","item_id":item,"mutation_id":"private-draft","edit_context":page["edit_context"],"order":page["blocks"].as_array().unwrap().iter().map(|block|block["id"].clone()).collect::<Vec<_>>(),"changed":[block]}),
         13,
     );
+    let duplicate_content = client.document_item(&item).unwrap().versions[0]
+        .content
+        .clone();
+    let duplicate = clear(
+        &mut log,
+        &author,
+        EventBody::ItemCreated {
+            item: item.clone(),
+            kind: types::ItemKind::Page,
+            content: duplicate_content,
+            origin: "Rejected duplicate creation".into(),
+        },
+        16,
+    );
+    client.receive(&duplicate, 17).unwrap();
+    let duplicate_event = log.events().last().unwrap();
+    let before = serde_json::to_string(&client.saved).unwrap();
+    for alias in [&duplicate_event.client_id, &duplicate_event.hash] {
+        assert!(client
+            .queue_post(
+                &space,
+                "Cannot reply to a rejected creation",
+                Some((alias.clone(), true)),
+                false,
+                18
+            )
+            .is_err());
+        assert!(client.resolve_post(&space, alias).is_none());
+    }
+    assert_eq!(serde_json::to_string(&client.saved).unwrap(), before);
     for (index, reply, forwarded) in [
         (0, None, true),
         (
