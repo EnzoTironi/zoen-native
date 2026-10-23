@@ -10,7 +10,7 @@ mod finance;
 mod image_host;
 mod image_tasks;
 mod managed_images;
-pub use image_host::{ImageHostConfig, ImageHostProgress, ImageRuntimeHost};
+pub use image_host::{ImageHostConfig, ImageHostProgress, ImageRuntimeHost, OwnerPolicyInstallation};
 mod native;
 pub use native::{
     ImageDeliveryProgress, ImageDeliveryTarget, ImageOutputInspection, ImageReviewIntent,

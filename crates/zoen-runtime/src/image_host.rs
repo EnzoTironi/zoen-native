@@ -23,6 +23,13 @@ pub struct ImageHostConfig {
     pub target: ImageDeliveryTarget,
 }
 
+/// A scoped installation observation, not active budget or a dispatch permit.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum OwnerPolicyInstallation {
+    Installed(String),
+    Refused(String),
+}
+
 pub struct ImageRuntimeHost {
     runtime: Arc<RuntimeAuthority>,
     vault: Arc<dyn SecretVault>,
@@ -68,7 +75,7 @@ impl ImageRuntimeHost {
     pub async fn import_owner_policy(
         &self,
         signed: types::owner_budget::SignedOwnerPolicy,
-    ) -> Result<String, RuntimeError> {
+    ) -> Result<OwnerPolicyInstallation, RuntimeError> {
         self.runtime
             .native
             .as_ref()

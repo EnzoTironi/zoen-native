@@ -9,6 +9,7 @@ mod managed_custody;
 mod managed_image_recovery;
 mod managed_images;
 mod policy_replay;
+mod owner_policy_controls;
 mod retained;
 mod stores;
 mod vault;

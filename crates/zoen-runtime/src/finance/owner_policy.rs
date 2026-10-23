@@ -7,40 +7,78 @@ impl NativeDirectoryGuard {
     pub(crate) async fn install_owner_policy(
         mut self,
         signed: SignedOwnerPolicy,
-    ) -> Result<String, RuntimeError> {
+    ) -> Result<crate::OwnerPolicyInstallation, RuntimeError> {
         if signed.policy.owner != self.owner {
             return Err(RuntimeError::Denied);
         }
         if !event_log::owner_budget::verify(&signed) {
             return Err(RuntimeError::InvalidPolicy);
         }
+        let digest =
+            event_log::owner_budget::digest(&signed.policy).ok_or(RuntimeError::InvalidPolicy)?;
+        if let Some(exact) = self.observed_policy(&signed, &digest).await? {
+            self.tx.commit().await?;
+            return Ok(if exact {
+                crate::OwnerPolicyInstallation::Installed(digest)
+            } else {
+                crate::OwnerPolicyInstallation::Refused(digest)
+            });
+        }
+        match Finance::install_policy_in(&mut self.tx, signed.clone()).await {
+            Ok(actual) => {
+                self.tx.commit().await?;
+                Ok(crate::OwnerPolicyInstallation::Installed(actual))
+            }
+            Err(
+                RuntimeError::InvalidPolicy
+                | RuntimeError::InvalidBinding
+                | RuntimeError::Denied
+                | RuntimeError::InvalidProfile,
+            ) => {
+                // A concurrent known commit may have become visible while live
+                // validation refused (e.g. expiry). Reobserve before reporting.
+                let exact = self.observed_policy(&signed, &digest).await? == Some(true);
+                // Never commit speculative period writes from refused setup.
+                self.tx.rollback().await?;
+                Ok(if exact {
+                    crate::OwnerPolicyInstallation::Installed(digest)
+                } else {
+                    crate::OwnerPolicyInstallation::Refused(digest)
+                })
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    async fn observed_policy(
+        &mut self,
+        signed: &SignedOwnerPolicy,
+        digest: &str,
+    ) -> Result<Option<bool>, RuntimeError> {
         let policy = &signed.policy;
         let (start, _) = period(policy.year, policy.month)?;
-        let digest = event_log::owner_budget::digest(policy).ok_or(RuntimeError::InvalidPolicy)?;
-        let original: Option<(String, Json<SignedOwnerPolicy>)> = sqlx::query_as(
+        let row: Option<(String, Json<SignedOwnerPolicy>)> = sqlx::query_as(
             "SELECT digest,signed FROM runtime_policies WHERE owner=$1 AND period_start=$2 AND version=$3 FOR SHARE",
         ).bind(&self.owner).bind(start).bind(i64::from(policy.version))
             .fetch_optional(&mut *self.tx).await?;
-        if let Some((stored_digest, Json(stored))) = original {
-            if stored_digest != digest {
-                return Err(RuntimeError::InvalidBinding);
-            }
-            if !event_log::owner_budget::verify(&stored)
-                || stored.policy != *policy
-                || event_log::owner_budget::digest(&stored.policy).as_deref() != Some(&digest)
-            {
-                return Err(RuntimeError::RestoreUnreconciled);
-            }
-            // A lost ACK can cross expiry, revocation of the original human
-            // signing device, or a newer disabled policy. This read observes
-            // the actual historical installation under CURRENT native owner/
-            // agent/device locks. It writes nothing and grants no live budget.
-            self.tx.commit().await?;
-            return Ok(digest);
+        let Some((stored_digest, Json(stored))) = row else {
+            return Ok(None);
+        };
+        if !event_log::owner_budget::verify(&stored)
+            || stored.policy.owner != self.owner
+            || stored.policy.year != policy.year
+            || stored.policy.month != policy.month
+            || stored.policy.version != policy.version
+            || event_log::owner_budget::digest(&stored.policy).as_deref() != Some(&stored_digest)
+        {
+            return Err(RuntimeError::RestoreUnreconciled);
         }
-        let digest = Finance::install_policy_in(&mut self.tx, signed).await?;
-        self.tx.commit().await?;
-        Ok(digest)
+        if stored_digest == digest && stored.policy != *policy {
+            return Err(RuntimeError::RestoreUnreconciled);
+        }
+        // Historical acknowledgement only, under CURRENT native directory locks.
+        // Expiry/disabled latest never becomes usable through this read.
+        Ok(Some(stored_digest == digest))
     }
 
     /// A read does not install a policy, reserve money, or admit dispatch.

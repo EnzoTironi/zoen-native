@@ -1,16 +1,6 @@
 //! Local transport of authenticated owner controls, never a model tool.
 use crate::image_protocol::{Command, PolicyProgress};
-use zoen_runtime::{ImageRuntimeHost, RuntimeError};
-
-fn definite_refusal(error: RuntimeError) -> bool {
-    matches!(
-        error,
-        RuntimeError::InvalidPolicy
-            | RuntimeError::InvalidBinding
-            | RuntimeError::InvalidProfile
-            | RuntimeError::Denied
-    )
-}
+use zoen_runtime::{ImageRuntimeHost, OwnerPolicyInstallation};
 
 pub(super) async fn execute(
     host: &ImageRuntimeHost,
@@ -22,11 +12,17 @@ pub(super) async fn execute(
             policy_digest,
             ..
         } => match host.import_owner_policy(*signed).await {
-            Ok(actual) if actual == policy_digest => Ok(PolicyProgress::Installed {
-                policy_digest: actual,
-            }),
+            Ok(OwnerPolicyInstallation::Installed(actual)) if actual == policy_digest => {
+                Ok(PolicyProgress::Installed {
+                    policy_digest: actual,
+                })
+            }
+            Ok(OwnerPolicyInstallation::Refused(actual)) if actual == policy_digest => {
+                Ok(PolicyProgress::Refused {
+                    policy_digest: actual,
+                })
+            }
             Ok(_) => Err("owner policy installation response differs".into()),
-            Err(error) if definite_refusal(error) => Ok(PolicyProgress::Refused { policy_digest }),
             Err(_) => Err("owner policy installation unavailable; original remains pending".into()),
         },
         Command::PolicyContext { signed, .. } => {
@@ -37,9 +33,6 @@ pub(super) async fn execute(
                     options: Box::new(options),
                 }),
                 Ok(_) => Err("owner policy context differs".into()),
-                Err(error) if definite_refusal(error) => Ok(PolicyProgress::OptionsRefused {
-                    inquiry_digest: digest,
-                }),
                 Err(_) => Err("owner policy context unavailable; original remains pending".into()),
             }
         }

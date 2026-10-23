@@ -12,7 +12,7 @@ impl NativeCustody {
         runtime: &RuntimeAuthority,
         config: &crate::ImageHostConfig,
         signed: SignedOwnerPolicy,
-    ) -> Result<String, RuntimeError> {
+    ) -> Result<crate::OwnerPolicyInstallation, RuntimeError> {
         let credential = self.credential(&config.agent, &config.device)?;
         if signed.policy.owner != credential.owner.id {
             return Err(RuntimeError::Denied);
