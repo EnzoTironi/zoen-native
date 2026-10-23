@@ -269,6 +269,39 @@ pub(super) async fn run(
     );
     tokio::time::sleep(Duration::from_secs(2)).await;
     cold.alive();
+    drop(cold);
+    // The ordinary host correctly skips terminal scheduling. Also reopen the
+    // actual Runtime executable: this must recover its accepted original, not
+    // merely return the ordinary host's cached scheduling projection.
+    use tokio::io::AsyncWriteExt;
+    let mut process = tokio::process::Command::new(env!("CARGO_BIN_EXE_zoen-image-host"))
+        .arg("--config")
+        .arg(path)
+        .arg("execute")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .unwrap();
+    let bytes = serde_json::to_vec(&serde_json::json!({"command":"advance","agent":config.agent,"space":space,"request":request.id})).unwrap();
+    let mut stdin = process.stdin.take().unwrap();
+    stdin.write_all(&bytes).await.unwrap();
+    drop(stdin);
+    let output = tokio::time::timeout(Duration::from_secs(150), process.wait_with_output())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "cold Runtime advance failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let actual: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        actual, first,
+        "cold Runtime changed the retained output receipt"
+    );
     assert_eq!(
         provider.sends.load(Ordering::SeqCst),
         1,
