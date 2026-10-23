@@ -29,6 +29,7 @@ class Proof:
         self.owner = "zoen-turn-proof-" + uuid.uuid4().hex
         self.network = None
         self.containers = []
+        self.container_ids = []
         self.server = None
         self.private = None
         self.redactions = [data["secret"]]
@@ -55,6 +56,9 @@ class Proof:
 
     def container(self, suffix, command, ip=None, server=False, writable=False):
         name = self.owner + "-" + suffix
+        # A CLI timeout is ambiguous: Docker may have committed creation. Reserve
+        # the UUID name before calling it, so cleanup can inspect that exact name.
+        self.containers.append(name)
         args = ["create", "--name", name, "--label", OWNER_LABEL + "=" + self.owner,
                 "--network", self.network or "none", "--user", "0:0", "--read-only",
                 "--cap-drop", "ALL", "--pids-limit", "64", "--memory", "128m",
@@ -71,7 +75,7 @@ class Proof:
             mount += ",readonly"
         args.extend(["--mount", mount, "--entrypoint", command[0], IMAGE, *command[1:]])
         cid = self.docker(*args).stdout.strip()
-        self.containers.append(cid)
+        self.container_ids.append(cid)
         info = json.loads(self.docker("inspect", cid).stdout)[0]
         if info["HostConfig"].get("PortBindings") or info["HostConfig"].get("PublishAllPorts"):
             raise RuntimeError("proof container unexpectedly publishes host ports")
@@ -98,10 +102,10 @@ class Proof:
             if any(subnet.version == old.version and subnet.overlaps(old) for old in ranges):
                 continue
             name = self.owner + "-net"
-            self.docker("network", "create", "--internal", "--subnet", candidate,
-                        "--label", OWNER_LABEL + "=" + self.owner, name)
             self.network = name
             self.report["subnet"] = candidate
+            self.docker("network", "create", "--internal", "--subnet", candidate,
+                        "--label", OWNER_LABEL + "=" + self.owner, name)
             return str(subnet.network_address + 2), str(subnet.network_address + 3)
         raise RuntimeError("all isolated documentation subnets overlap existing networks")
 
@@ -205,27 +209,44 @@ class Proof:
     def cleanup(self):
         failures = []
         if self.server:
-            result = self.docker("logs", self.server, check=False)
-            (self.evidence / "server.log").write_text(self.redact(result.stdout + result.stderr))
-        for cid in reversed(self.containers):
-            inspected = self.docker("inspect", cid, check=False)
-            if inspected.returncode:
-                failures.append("cannot inspect owned container " + cid)
-                continue
-            info = json.loads(inspected.stdout)[0]
-            if info.get("Config", {}).get("Labels", {}).get(OWNER_LABEL) != self.owner:
-                failures.append("ownership mismatch for " + cid)
-                continue
-            if self.docker("rm", "--force", "--volumes", cid, check=False).returncode:
-                failures.append("cannot remove owned container " + cid)
+            try:
+                result = self.docker("logs", self.server)
+                (self.evidence / "server.log").write_text(self.redact(result.stdout + result.stderr))
+            except Exception as error:
+                failures.append("server log unavailable: " + self.redact(str(error)))
+        for name in reversed(self.containers):
+            try:
+                inspected = self.docker("inspect", name, check=False)
+                if inspected.returncode:
+                    if re.search(r"no such (object|container)", inspected.stderr, re.I):
+                        continue  # Creation failed before committing, or already gone.
+                    raise RuntimeError("cannot establish container presence " + name)
+                info = json.loads(inspected.stdout)[0]
+                if info.get("Config", {}).get("Labels", {}).get(OWNER_LABEL) != self.owner:
+                    raise RuntimeError("ownership mismatch for " + name)
+                cid = info["Id"]
+                if cid not in self.container_ids:
+                    self.container_ids.append(cid)
+                # Remove the inspected immutable ID, never a possibly reused name.
+                self.docker("rm", "--force", "--volumes", cid)
+            except Exception as error:
+                failures.append("container cleanup: " + self.redact(str(error)))
         if self.network:
-            info = json.loads(self.docker("network", "inspect", self.network).stdout)[0]
-            if info.get("Labels", {}).get(OWNER_LABEL) != self.owner:
-                failures.append("network ownership mismatch")
-            elif self.docker("network", "rm", self.network, check=False).returncode:
-                failures.append("cannot remove owned network")
+            try:
+                inspected = self.docker("network", "inspect", self.network, check=False)
+                if inspected.returncode:
+                    if not re.search(r"no such network", inspected.stderr, re.I):
+                        raise RuntimeError("cannot establish network presence")
+                else:
+                    info = json.loads(inspected.stdout)[0]
+                    if info.get("Labels", {}).get(OWNER_LABEL) != self.owner:
+                        raise RuntimeError("network ownership mismatch")
+                    self.docker("network", "rm", info["Id"])
+            except Exception as error:
+                failures.append("network cleanup: " + self.redact(str(error)))
         self.report["cleanup"] = {"complete": not failures, "failures": failures,
-                                   "containerIds": self.containers, "network": self.network}
+                                   "containerIds": self.container_ids,
+                                   "containerNames": self.containers, "network": self.network}
         return not failures
 
 

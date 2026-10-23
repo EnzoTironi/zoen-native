@@ -74,3 +74,17 @@ ephemeral usernames/passwords. `report.json` records the pinned image, template,
 case results, owned resource IDs and cleanup. This remains a transport proof;
 it cannot certify real iPhone calls, carrier NAT, active-allocation revocation,
 load capacity or the authenticated relay admission journey by itself.
+
+TLS attribution is precise: upstream `turnutils_uclient -E` loads the chosen CA
+and enables `SSL_VERIFY_PEER` in
+[mainuclient.c](https://github.com/coturn/coturn/blob/4.18.0/src/apps/uclient/mainuclient.c#L672-L684).
+Its [TLS connection path](https://github.com/coturn/coturn/blob/4.18.0/src/apps/uclient/startuclient.c#L104-L122)
+sets SNI but does not configure expected-hostname verification. The separate
+OpenSSL preflight verifies CA and hostname against the same isolated server.
+Hostname verification is not attributed to every relay client or to iOS.
+
+The harness reserves UUID resource names before creation can time out. Cleanup
+checks ownership and attempts each resource independently, even if logs or a
+different removal fail; an unconfirmed outcome stays FAIL. Fault tests in
+`infra/local/test_call_turn_proof.py` drive this actual harness through a stateful
+Docker adapter without running Docker or Cargo.
