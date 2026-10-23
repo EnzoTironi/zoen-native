@@ -91,7 +91,7 @@ impl Session {
                     return Err("bad link id".into());
                 }
                 Ok(Reply::Link(
-                    db::take_link_box(pool, &id)
+                    db::read_link_box(pool, &id)
                         .await
                         .map_err(|e| e.to_string())?,
                 ))
@@ -107,14 +107,21 @@ impl Session {
                     return Err("bad link box".into());
                 }
                 let authorization = authorization.ok_or("link authorization unavailable")?;
-                if let Some(device) = device {
+                if let Some(device) = &device {
                     db::enroll_device(authorization, &self.identity, &device.device, &device.cert)
                         .await
                         .map_err(|e| e.to_string())?;
                 }
-                if !db::put_link_box(authorization, &id, &sealed)
-                    .await
-                    .map_err(|e| e.to_string())?
+                if !db::put_link_box(
+                    authorization,
+                    &id,
+                    &sealed,
+                    &self.identity,
+                    &self.device,
+                    device.as_ref(),
+                )
+                .await
+                .map_err(|e| e.to_string())?
                 {
                     return Err("a link box is already there".into());
                 }

@@ -1,6 +1,9 @@
 //! Complete original test bodies; registration remains in the parent.
 use super::*;
 
+mod retry;
+mod transport;
+
 fn sealed_identity(pending: &Pending) -> Vec<u8> {
     let seed: [u8; 32] = hex::decode(&pending.device_secret)
         .unwrap()
@@ -46,93 +49,10 @@ async fn pickup_peer(
     response: oneshot::Receiver<Vec<u8>>,
 ) {
     use futures_util::{SinkExt, StreamExt};
-    use protocol::{
-        auth_message, ClientFrame, Op, Reply, ServerFrame, CAPABILITIES, PROTOCOL_VERSION,
-    };
+    use protocol::{Reply, ServerFrame};
     use tokio_tungstenite::tungstenite::Message;
 
-    let (stream, _) = tokio::time::timeout(BOUND, listener.accept())
-        .await
-        .unwrap()
-        .unwrap();
-    let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
-    let Message::Binary(hello) = socket.next().await.unwrap().unwrap() else {
-        panic!("binary Hello")
-    };
-    let ClientFrame::Hello {
-        identity,
-        device,
-        cert,
-        protocol,
-        capabilities,
-    } = ClientFrame::decode(&hello).unwrap()
-    else {
-        panic!("Hello")
-    };
-    assert_eq!(identity, device);
-    assert_eq!(protocol, PROTOCOL_VERSION);
-    assert_eq!(
-        capabilities,
-        CAPABILITIES
-            .iter()
-            .map(|value| value.to_string())
-            .collect::<Vec<_>>()
-    );
-    assert!(event_log::verify_sig(
-        &device,
-        &event_log::device_cert_message(&device),
-        &cert
-    ));
-    let nonce = "owned-pickup-regression-challenge";
-    let relay = "owned-pickup-regression-relay";
-    socket
-        .send(Message::Binary(
-            ServerFrame::Challenge {
-                nonce: nonce.into(),
-                relay: relay.into(),
-                protocol: PROTOCOL_VERSION,
-                capabilities: Vec::new(),
-                server_time_ms: None,
-            }
-            .encode()
-            .into(),
-        ))
-        .await
-        .unwrap();
-    let Message::Binary(auth) = socket.next().await.unwrap().unwrap() else {
-        panic!("binary Auth")
-    };
-    let ClientFrame::Auth { sig } = ClientFrame::decode(&auth).unwrap() else {
-        panic!("Auth")
-    };
-    assert!(event_log::verify_sig(
-        &device,
-        &auth_message(nonce, relay),
-        &sig
-    ));
-    socket
-        .send(Message::Binary(
-            ServerFrame::Ready {
-                identity,
-                registered: false,
-            }
-            .encode()
-            .into(),
-        ))
-        .await
-        .unwrap();
-    let Message::Binary(request) = socket.next().await.unwrap().unwrap() else {
-        panic!("binary FetchLink")
-    };
-    let ClientFrame::Req {
-        id: request_id,
-        op: Op::FetchLink { id },
-    } = ClientFrame::decode(&request).unwrap()
-    else {
-        panic!("FetchLink")
-    };
-    assert_eq!(request_id, 1);
-    assert_eq!(id, box_id);
+    let (mut socket, request_id) = transport::accept_fetch(&listener, &box_id).await;
     let _ = fetched.send(());
     let response = tokio::time::timeout(BOUND, response)
         .await
@@ -500,4 +420,8 @@ pub(super) async fn agent_purpose_uses_distinct_mailbox_and_same_revocable_insta
     assert_typed_cancel(waiter.wait().await);
     drop(waiter);
     tokio::time::timeout(BOUND, control.drain()).await.unwrap();
+}
+
+pub(super) async fn lost_transport_response_retries_the_original_pending_and_installs_only_once() {
+    retry::lost_transport_response_retries_the_original_pending_and_installs_only_once().await;
 }

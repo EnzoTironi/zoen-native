@@ -48,7 +48,7 @@ impl Client {
     }
 
     /// The history box: from the device database if an earlier try got it, else from the
-    /// relay (one-time), kept until the bundle is in.
+    /// relay (immutable until its original expiry), kept until the bundle is in.
     pub(super) async fn history_manifest(
         &self,
         receive: &mut HistoryReceive,

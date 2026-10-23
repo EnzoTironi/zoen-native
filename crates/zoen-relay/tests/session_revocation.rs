@@ -455,12 +455,17 @@ mod admission;
 mod concurrent_revocation;
 #[path = "session_revocation/enrollment.rs"]
 mod enrollment;
+#[path = "session_revocation/mailbox.rs"]
+mod mailbox;
 #[path = "session_revocation/presence.rs"]
 mod presence;
 #[path = "session_revocation/profiles.rs"]
 mod profiles;
 #[path = "session_revocation/receipts.rs"]
 mod receipts;
-
+#[path = "session_revocation/reconciliation.rs"]
+mod reconciliation;
+#[path = "session_revocation/response_loss.rs"]
+mod response_loss;
 #[path = "session_revocation/sync_membership.rs"]
 mod sync_membership;

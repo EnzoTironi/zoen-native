@@ -32,6 +32,25 @@ plaintext, and pruning (ADR 0026) must not take away history a new device still 
 5. Once the new device is in every group, the existing one sends the **first history
    bundle** (below).
 
+### Sender retry after an ambiguous response
+
+The native sender retains the exact original sealed identity box in its existing
+`link.peers` Vault entry before dispatch. Its device signs the owner, certified
+sender, relay, pairing-code digest, sender HPKE public key, target certificate and
+canonical ciphertext. A cold retry verifies that record against the current owner
+and original code and sends the same bytes; it does not reseal from a newer profile.
+A legacy peer without an authenticated original remains ambiguous and requires a
+new pairing code. Separate Vault writes and relay SQL are not one atomic commit.
+
+The existing mailbox row records publisher identity/device and optional certified
+target. Under active sponsor admission, `DeliverLink` reruns target enrollment and
+acknowledges a live original only when that provenance and ciphertext match exactly.
+It does not refresh expiry or overwrite a live box. A history box cannot become an
+enrollment through payload equality, and a legacy row without provenance cannot
+manufacture a successful original receipt. Current revocation still wins. An
+expired id can be republished under current admission as new work, as before;
+that is a new publication with a new TTL, not evidence of an old delivery.
+
 ### Enrollment and upgrades
 - A registered account accepts only devices already enrolled and active in the relay's
   directory. A valid root certificate alone cannot create a device row. First account
@@ -54,9 +73,14 @@ plaintext, and pruning (ADR 0026) must not take away history a new device still 
   `psk` = link secret, `psk_id` = `zoen-link-v1`, `info` = `zoen-link-v1:<context>`. Only a
   holder of both the new device's HPKE secret and the QR's secret opens anything, so a relay
   that swaps keys learns nothing, and a box made for another code doesn't open.
-- Boxes on the relay (`link_boxes`, ≤64 KB, single fetch, 15-minute TTL) are addressed by
+- Boxes on the relay (`link_boxes`, ≤64 KB, immutable publication, 15-minute TTL) are addressed by
   `SHA-256("zoen-link-box-v1\0" ‖ secret ‖ label)`: unguessable, and the relay never sees
-  the secret.
+  the secret. Fetches return the same sealed bytes until the original publication expiry;
+  they neither delete the box nor refresh its TTL. A response lost before durable local
+  retention can be retried with the same pending pairing material. A live box cannot be
+  overwritten, and this transport retry is not another enrollment authorization. The
+  original destructive single-fetch contract was replaced after #365/#372 identified
+  that cancellation or an interrupted local install could otherwise consume the only copy.
 - Afterwards the two devices keep the link secret and each other's HPKE key as a **peer**
   (in the vault) for device-to-device messages (`SendDevice` → `DeviceMessage`, fanned out to
   the identity's online sessions only), each sealed with the same HPKE setup.
