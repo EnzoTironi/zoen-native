@@ -360,7 +360,7 @@ mod watermarks;
 pub(crate) use key_material::claim_key_packages_on;
 pub use key_material::{
     agreement_keys, claim_key_packages, key_package_stock, put_agreement_key, put_key_packages,
-    put_profile, sealed_profiles,
+    put_key_packages_in, put_profile, sealed_profiles,
 };
 pub use watermarks::{raise_receipts, receipt_ceilings, receipt_page, ReceiptRow};
 

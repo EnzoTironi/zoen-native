@@ -126,6 +126,14 @@ pub struct NativeInspection {
     pub image_bytes: u32,
 }
 
+/// Historical initial publication state, not current relay stock or permission.
+#[derive(Debug, PartialEq, Eq)]
+pub struct NativeKeyPackagePublication {
+    pub native: NativeInspection,
+    pub packages: u32,
+    pub published: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReplyRun {
     pub run: String,

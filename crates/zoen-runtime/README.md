@@ -71,6 +71,18 @@ currentness, paid execution or guarded output, and it publishes no key packages.
 A fresh file-backed fixture vault exercises the public constructor in the real
 SQL/FDB journey; it is not evidence of a deployed KMS or process-crash recovery.
 
+## Managed initial MLS publication
+
+`prepare_native_key_packages` retains the exact initial32 single-use public
+packages and their private OpenMLS material in the authenticated device image
+before delivery. `publish_native_key_packages` uses the existing SQL directory
+transaction and publication hash receipts, then retains the known ACK in that
+same device image. Cold retry reuses the batch and cannot reinsert a package
+already consumed by a claim. Welcome/Commit/Application hydration uses the
+existing configured RuntimeSource, not a caller-provided image or frontier.
+See [managed MLS ingress](../../docs/dev/managed-mls-ingress.md) for failure
+ordering and limits. This does not enable continuity, paid dispatch or output.
+
 ## Retained reply discovery and loading
 
 `relay_cell` optionally identifies the actual relay cell on the same FDB

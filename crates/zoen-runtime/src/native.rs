@@ -2,6 +2,7 @@
 //! registered SQL directory. A fixture key is not
 //! enrollment, relay currentness, restore continuity or dispatch authority.
 mod managed;
+mod packages;
 mod runs;
 mod storage;
 pub(crate) use runs::output::{associate_capture, FreshOutputNamespace, ReplyOutputScope};
