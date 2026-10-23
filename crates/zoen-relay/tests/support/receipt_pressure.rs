@@ -30,6 +30,22 @@ impl LogStore for Roster {
     async fn read(&self, _: &str, _: u64, _: usize) -> Result<Vec<Sequenced>, StoreError> {
         Ok(vec![])
     }
+    async fn read_visible(
+        &self,
+        space: &str,
+        who: &str,
+        from: u64,
+        limit: usize,
+    ) -> Result<Option<zoen_relay::log::VisiblePage>, StoreError> {
+        let _ = (space, who, from, limit);
+        Ok(self
+            .role(space, who)
+            .await?
+            .map(|_| zoen_relay::log::VisiblePage {
+                events: vec![],
+                through: None,
+            }))
+    }
     async fn role(&self, space: &str, who: &str) -> Result<Option<Role>, StoreError> {
         Ok((space == SPACE && self.0.iter().any(|id| id == who)).then_some(Role::Member))
     }
