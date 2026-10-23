@@ -9,6 +9,8 @@ import type { ItemDetail } from './generated/ItemDetail';
 import type { SiteSource } from './generated/SiteSource';
 import type { SiteReview } from './generated/SiteReview';
 import type { SitePrepared } from './generated/SitePrepared';
+import type { SiteStatus } from './generated/SiteStatus';
+import type { Receipt } from './generated/Receipt';
 import type { PageVersionExport } from './generated/PageVersionExport';
 import type { PageDto } from './generated/PageDto';
 import type { PlanPageDto } from './generated/PlanPageDto';
@@ -81,6 +83,8 @@ type Results = {
   site_save: SiteSource;
   site_review: SiteReview;
   site_prepare: SitePrepared;
+  site_status: SiteStatus | null;
+  site_publish: Receipt;
   snapshot: Snapshot;
   timeline: TimelinePage;
   send_message: TimelineEntry;

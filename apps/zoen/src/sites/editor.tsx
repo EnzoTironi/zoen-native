@@ -15,6 +15,7 @@ import { useTheme } from '../theme';
 import { SitePreview } from './preview';
 import { sameSource, siteAuthority, validSiteText } from './source';
 import { saveObservedSite } from './actions';
+import { SitePublicationAction } from './publication-action';
 
 export function SiteEditor({
   initial,
@@ -41,6 +42,10 @@ export function SiteEditor({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dirty = saved.html !== null && html !== saved.html;
+  // Current permissions can change without replacing the user's draft/base.
+  const publishAllowed = saved.publish_allowed && initial.publish_allowed;
+  const editable = saved.editable && publishAllowed
+    && Math.max(initial.current_version, saved.current_version) === saved.source.version;
   useDirtyEditor(dirty, busy);
   useFocusEffect(
     useCallback(() => {
@@ -55,7 +60,7 @@ export function SiteEditor({
   );
   const current = () => focused && available && siteAuthority(store, scope) === authority;
   async function save() {
-    if (!current() || busy || !saved.editable || !dirty) return;
+    if (!current() || busy || !editable || !dirty) return;
     if (!validSiteText(html)) {
       setError(t('sites.tooLarge'));
       return;
@@ -92,10 +97,10 @@ export function SiteEditor({
     setBusy(true);
     setError(null);
     try {
-      const local = await store.driver.media.materializeFile(
-        saved.source.item_id,
-        saved.source.version,
-      );
+      const media = store.driver.media;
+      if (!media) throw new Error(t('sites.unavailable'));
+      const local = await media.materializeFile(saved.source.item_id, saved.source.version);
+      if (!local) throw new Error(t('sites.unavailable'));
       try {
         if (!ticket.current() || !current()) return;
         const result = await store.driver.request({
@@ -111,7 +116,7 @@ export function SiteEditor({
         setSaved(result);
         setHtml(result.html);
       } finally {
-        await store.driver.media.releaseLocalFile(local.uri);
+        await media.releaseLocalFile(local.uri);
       }
     } catch (reason) {
       if (ticket.current() && current())
@@ -137,7 +142,7 @@ export function SiteEditor({
           headerRight: () => (
             <NativeButton
               label={busy ? t('sites.saving') : t('sites.save')}
-              disabled={!dirty || busy || !saved.editable}
+              disabled={!dirty || busy || !editable}
               onPress={() => void save()}
             />
           ),
@@ -177,7 +182,7 @@ export function SiteEditor({
           multiline
           value={html}
           onChangeText={setHtml}
-          editable={saved.editable && !busy}
+          editable={editable && !busy}
           autoCapitalize="none"
           autoCorrect={false}
           textAlignVertical="top"
@@ -193,6 +198,18 @@ export function SiteEditor({
         />
       )}
       <View style={{ paddingHorizontal: 16, paddingVertical: 8 }}>
+        {Math.max(initial.current_version, saved.current_version) > saved.source.version ? (
+          <NativeButton secondary label={t('sites.openVersion', { version: Math.max(initial.current_version, saved.current_version) })}
+            disabled={busy} onPress={() => router.replace({ pathname: '/site/[id]', params: { id: saved.source.item_id, version: String(Math.max(initial.current_version, saved.current_version)) } })} />
+        ) : null}
+        {!dirty && publishAllowed ? (
+          <SitePublicationAction
+            key={JSON.stringify(saved.source)}
+            saved={saved}
+            scope={scope}
+            authority={authority}
+          />
+        ) : null}
         <NativeButton
           secondary
           label={t('sites.history')}

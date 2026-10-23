@@ -2,7 +2,7 @@ import { Host, Picker } from '@expo/ui';
 import { FlashList } from '@shopify/flash-list';
 import { useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
-import { EmptyState, Loading, NativeButton } from '../components/primitives';
+import { EmptyState, IconButton, Loading, NativeButton } from '../components/primitives';
 import { useClient } from '../core/provider';
 import { useCoreQuery } from '../core/query';
 import { homeSpacesFor } from '../home/access';

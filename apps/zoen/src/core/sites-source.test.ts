@@ -36,6 +36,7 @@ function fixture() {
     source: { ...source, version: 2, sha256: bytesToHex(sha256(bytes)), byte_length: bytes.length },
     current_version: 2,
     editable: true,
+    publish_allowed: true,
     html,
     name: 'site.html',
   };

@@ -27,6 +27,9 @@ pub(crate) struct SiteSource {
     pub name: String,
     pub current_version: u32,
     pub editable: bool,
+    /// Publishing an old saved version is allowed for current writers even
+    /// though editing that old base is forbidden.
+    pub publish_allowed: bool,
     /// None means the selected version needs downloading, never an empty draft.
     pub html: Option<String>,
 }
@@ -102,6 +105,29 @@ fn secret_id(s: &str, prefix: &str) -> bool {
     })
 }
 
+fn valid_source(source: &SourceVersion) -> bool {
+    let id = |value: &str| {
+        !value.is_empty()
+            && value.len() <= 128
+            && value
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+    };
+    source.version > 0
+        && hex64(&source.sha256)
+        && (1..=MAX_HTML_BYTES).contains(&source.byte_length)
+        && id(&source.space_id)
+        && id(&source.item_id)
+}
+
+fn safe_time() -> R<i64> {
+    let now = crate::engine::now_ms();
+    if !(1..=9_007_199_254_740_991).contains(&now) {
+        return Err(invalid());
+    }
+    Ok(now)
+}
+
 impl Engine {
     fn site_scope(&self, scope: &SiteScope, write: bool) -> R<()> {
         self.native_surface_owner(&scope.identity_id, &scope.device_id)?;
@@ -153,17 +179,22 @@ impl Engine {
         if let Some(html) = &html {
             html_valid(html)?;
         }
+        let source = SourceVersion {
+            space_id: scope.space_id.clone(),
+            item_id: item.into(),
+            version,
+            sha256: sha.into(),
+            byte_length: file.bytes,
+        };
+        if !valid_source(&source) {
+            return Err(invalid());
+        }
         Ok(SiteSource {
-            source: SourceVersion {
-                space_id: scope.space_id.clone(),
-                item_id: item.into(),
-                version,
-                sha256: sha.into(),
-                byte_length: file.bytes,
-            },
+            source,
             name: file.name,
             current_version: it.current().number,
             editable: self.file_edit_allowed(item, version, sha)?,
+            publish_allowed: self.state.writer(&scope.space_id, &scope.identity_id),
             html,
         })
     }
@@ -289,7 +320,7 @@ impl Engine {
         let mut signed = SignedMutation {
             owner_id: review.scope.identity_id.clone(),
             device_id: review.scope.device_id.clone(),
-            at_ms: crate::engine::now_ms(),
+            at_ms: safe_time()?,
             mutation: mutation.clone(),
             signature: String::new(),
         };

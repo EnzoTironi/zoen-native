@@ -192,14 +192,15 @@ fn stale_device_wrong_space_reader_and_revoked_membership_do_not_read_edit_or_si
         },
     )
     .unwrap();
-    assert!(e
+    let reader = e
         .site_source(
             &scope,
             &first.source.item_id,
             first.source.version,
-            &first.source.sha256
+            &first.source.sha256,
         )
-        .is_ok());
+        .unwrap();
+    assert!(!reader.publish_allowed && !reader.editable);
     assert!(e.site_save(&scope, &first.source, "<p>Bad</p>").is_err());
     let r = review(&scope, &first);
     assert!(e.site_prepare(&r, &r.relay_url, &r.configuration).is_err());
@@ -256,6 +257,87 @@ fn device_revocation_invalid_html_and_hash_mismatch_fail_before_signing_or_writi
         .is_err());
     let r = review(&scope, &first);
     assert!(e.site_prepare(&r, &r.relay_url, &r.configuration).is_err());
+}
+
+#[test]
+fn unavailable_corrupt_non_utf8_and_non_html_sources_cannot_become_publication_bytes() {
+    let (c, scope, first) = fixture();
+    let mut e = c.lock();
+    let chunk = match &e
+        .item_state(&first.source.item_id)
+        .unwrap()
+        .current()
+        .content
+    {
+        types::ItemContent::File(file) => file.chunks[0].sha256.clone(),
+        _ => unreachable!(),
+    };
+    e.store
+        .conn()
+        .execute("DELETE FROM media WHERE sha256=?1", [&chunk])
+        .unwrap();
+    assert!(e
+        .site_source(
+            &scope,
+            &first.source.item_id,
+            first.source.version,
+            &first.source.sha256
+        )
+        .unwrap()
+        .html
+        .is_none());
+    let r = review(&scope, &first);
+    assert!(e.site_prepare(&r, &r.relay_url, &r.configuration).is_err());
+    e.store
+        .put_media(
+            &chunk,
+            "text/html",
+            &vec![b'x'; first.source.byte_length as usize],
+            0,
+        )
+        .unwrap();
+    assert!(e
+        .site_source(
+            &scope,
+            &first.source.item_id,
+            first.source.version,
+            &first.source.sha256
+        )
+        .is_err());
+    for (mime, bytes) in [
+        ("text/html", vec![0xff]),
+        ("text/plain", b"<h1>Not HTML</h1>".to_vec()),
+    ] {
+        let item = e
+            .file_add(&scope.space_id, "", "other.html", mime, &bytes, None)
+            .unwrap();
+        let file = e.file_info_at(&item, Some(1)).unwrap();
+        assert!(e.site_source(&scope, &item, 1, &file.sha256).is_err());
+    }
+}
+
+#[test]
+fn unpublish_requires_an_observed_head_and_signs_no_html_payload() {
+    let (c, scope, first) = fixture();
+    let e = c.lock();
+    let mut r = review(&scope, &first);
+    r.mutation.change = Change::Unpublish;
+    assert!(e.site_prepare(&r, &r.relay_url, &r.configuration).is_err());
+    r.mutation.expected_head = Some("a".repeat(64));
+    let result = e.site_prepare(&r, &r.relay_url, &r.configuration).unwrap();
+    assert!(result.html.is_none());
+    assert!(event_log::verify_sig(
+        &scope.device_id,
+        &result.signed.signing_bytes(&r.configuration.audience),
+        &result.signed.signature
+    ));
+    let mut tampered = result.signed.clone();
+    tampered.mutation.expected_head = Some("b".repeat(64));
+    assert!(!event_log::verify_sig(
+        &scope.device_id,
+        &tampered.signing_bytes(&r.configuration.audience),
+        &tampered.signature
+    ));
 }
 
 #[tokio::test]

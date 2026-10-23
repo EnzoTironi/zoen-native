@@ -127,7 +127,7 @@ impl Client {
             let mut signed = SignedInspection {
                 owner_id: scope.identity_id.clone(),
                 device_id: scope.device_id.clone(),
-                at_ms: crate::engine::now_ms(),
+                at_ms: safe_time()?,
                 site_id: protocol::sites::site_id(
                     &scope.identity_id,
                     &scope.space_id,
@@ -323,6 +323,10 @@ fn validate_inspection(value: &Inspection, signed: &SignedInspection) -> R<()> {
             || previous.as_ref() != Some(&receipt.head)
             || !hex64(&receipt.head)
             || receipt.active != receipt.source.is_some()
+            || receipt
+                .source
+                .as_ref()
+                .is_some_and(|source| !valid_source(source))
         {
             return Err(unavailable());
         }
