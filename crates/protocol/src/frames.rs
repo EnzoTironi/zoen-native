@@ -154,6 +154,11 @@ pub enum Op {
     /// Agent citizens (migration 0028): the runtime's own state and cursors, or an
     /// owner's control over an agent it answers for.
     Agent(AgentRequest),
+    /// Relay-only transport allocation; no call consent or media permission.
+    CallTurn {
+        space: SpaceId,
+        peer: IdentityId,
+    },
 }
 
 /// What an agent runtime or its owner asks the relay about an agent citizen.
@@ -253,6 +258,7 @@ impl Op {
             Op::Agent(AgentRequest::Define { .. }) => "agent_define",
             Op::Agent(AgentRequest::Control { .. }) => "agent_control",
             Op::Agent(AgentRequest::Status { .. }) => "agent_status",
+            Op::CallTurn { .. } => "call_turn",
         }
     }
 }
@@ -293,6 +299,7 @@ pub enum Reply {
     Link(Option<Vec<u8>>),
     Devices(Vec<DeviceRecord>),
     AgentState(AgentStateRecord),
+    CallTurn(crate::turn::TurnCredentials),
 }
 
 /// One of an identity's devices, as the directory has it.
