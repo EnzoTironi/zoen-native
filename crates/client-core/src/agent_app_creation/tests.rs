@@ -290,7 +290,7 @@ fn renewed_creation_keeps_the_future_item_but_requires_its_own_signed_decision()
     decide(
         &f,
         &old.id,
-        &old.content_hash,
+        &old.tool_approval.as_ref().unwrap().content_hash,
         ToolRequestDecision::RequestReview,
     )
     .unwrap();
@@ -301,8 +301,13 @@ fn renewed_creation_keeps_the_future_item_but_requires_its_own_signed_decision()
         .unwrap()
         .unwrap();
     assert_eq!(
-        next.tool_proposal.as_ref().unwrap().artifact,
-        old.tool_proposal.as_ref().unwrap().artifact
+        f.agent.lock().state.requests[&next.id]
+            .req
+            .tool_proposal
+            .as_ref()
+            .unwrap()
+            .artifact,
+        old_permit.proposal().artifact
     );
     assert!(f.agent.approved_app_creation(&next.id).is_err());
     assert_eq!(
@@ -317,10 +322,7 @@ fn renewed_creation_keeps_the_future_item_but_requires_its_own_signed_decision()
     let before = f.agent.items().len();
     let created: Value =
         serde_json::from_str(&f.agent.execute_app_creation(&permit).unwrap()).unwrap();
-    assert_eq!(
-        created["itemId"],
-        old.tool_proposal.as_ref().unwrap().artifact
-    );
+    assert_eq!(created["itemId"], old_permit.proposal().artifact);
     assert_eq!(f.agent.items().len(), before + 1);
     assert!(f.agent.approved_app_creation(&old.id).is_err());
     assert!(f.agent.verify_all().iter().all(|result| result.valid));
