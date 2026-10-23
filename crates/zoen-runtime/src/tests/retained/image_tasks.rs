@@ -267,6 +267,9 @@ pub(in crate::tests) async fn prepare(reviewed: ReviewedJourney) -> PreparedJour
     let activation = runtime.pending_image_activation().await;
     runtime.refuse_unproven_image_activation().await;
     assert_eq!(provider.sends.load(Ordering::SeqCst), 1);
+    fixture
+        .message("The conversation continued while image output activation was offline.")
+        .await;
     output::cold(&mut fixture).await;
     fixture
         .world
