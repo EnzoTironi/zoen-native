@@ -128,6 +128,29 @@ fn owner_policy_stays_pending_until_exact_confirmed_host_receipt_and_replays_one
         f.owner.owner_policy_status(&scope, &pending.source)?.state,
         "installed"
     );
+    // A later authentic negative report cannot erase an observed installation.
+    let actor = f
+        .core
+        .engine
+        .net
+        .author
+        .clone()
+        .ok_or("missing agent author")?;
+    f.core.engine.append_synced(
+        &scope.space_id,
+        &actor,
+        crate::engine::now_ms(),
+        EventBody::OwnerPolicyReported {
+            source: pending.source.clone(),
+            policy_digest: pending.policy_digest.clone(),
+            outcome: types::OwnerPolicyOutcome::Refused,
+        },
+    )?;
+    deliver_agent(&mut f)?;
+    assert_eq!(
+        f.owner.owner_policy_status(&scope, &pending.source)?.state,
+        "installed"
+    );
     assert_eq!(submit(&mut f, &scope, &json)?.source, pending.source);
     assert_eq!(f.owner.outbox_len(), 0);
     Ok(())

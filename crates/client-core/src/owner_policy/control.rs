@@ -89,7 +89,7 @@ impl Engine {
             return Err(denied());
         }
         let digest = event_log::owner_budget::digest(&signed.policy).ok_or_else(invalid)?;
-        let outcome = log.events().iter().rev().find_map(|reply| {
+        let outcomes = log.events().iter().filter_map(|reply| {
             let EventBody::OwnerPolicyReported {
                 source: target,
                 policy_digest,
@@ -107,6 +107,13 @@ impl Engine {
                 && reply.cert.is_some()
                 && event_log::verify_author(reply).is_ok())
             .then_some(outcome)
+        });
+        let outcome = outcomes.fold(None, |previous, next| {
+            if matches!(previous, Some(OwnerPolicyOutcome::Installed)) {
+                previous
+            } else {
+                Some(next.clone())
+            }
         });
         Ok(OwnerPolicyStatus {
             source: source.into(),
