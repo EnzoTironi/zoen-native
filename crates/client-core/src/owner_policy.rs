@@ -3,6 +3,7 @@
 mod control;
 mod image_context;
 mod options;
+mod publication;
 use crate::{
     engine::{Engine, R},
     Client, CoreError,

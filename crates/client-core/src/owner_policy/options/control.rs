@@ -105,7 +105,10 @@ impl Engine {
                     && event_log::verify_author(event).is_ok()
             }))
     }
-    fn refuse_owner_policy_options(&mut self, query: &OwnerPolicyInquiryControl) -> R<()> {
+    pub(crate) fn refuse_owner_policy_options(
+        &mut self,
+        query: &OwnerPolicyInquiryControl,
+    ) -> R<()> {
         let current = self.owner_policy_inquiry(query.space(), query.source())?;
         if current.digest() != query.digest() {
             return Err(denied());
@@ -117,10 +120,9 @@ impl Engine {
             .net
             .account_author(current.agent())
             .ok_or_else(denied)?;
-        self.append_synced(
+        self.append_owner_policy_report(
             current.space(),
             &author,
-            crate::engine::now_ms(),
             EventBody::OwnerPolicyOptionsRefused {
                 source: current.source().into(),
                 inquiry_digest: current.digest().into(),
@@ -145,10 +147,9 @@ impl Engine {
             .net
             .account_author(current.agent())
             .ok_or_else(denied)?;
-        self.append_synced(
+        self.append_owner_policy_report(
             current.space(),
             &author,
-            crate::engine::now_ms(),
             EventBody::OwnerPolicyOptionsReported {
                 source: current.source().into(),
                 options,
