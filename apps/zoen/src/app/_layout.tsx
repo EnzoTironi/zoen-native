@@ -14,6 +14,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { NativeCallsProvider } from '../calls/provider';
+import { CallReturnLayout } from '../calls/return-layout';
 import { ClientProvider } from '../core/provider';
 import { ThemeProvider, useTheme } from '../theme';
 import { SessionGate } from '../components/session-gate';
@@ -53,78 +54,80 @@ function Navigation() {
       {process.env.EXPO_OS !== 'ios' && <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />}
       <View style={{ flex: 1, backgroundColor: sky.bottom }}>
         <SkyBackground />
-        <MessageContextSession>
-          <SessionGate>
-            <NativeIntentConsumer />
-            <Stack
-              screenOptions={({ route }) => ({
-                // Tab surfaces own their headings; never restore a native group header.
-                headerShown: route.name !== '(tabs)',
-                headerBackButtonDisplayMode: 'minimal',
-                headerShadowVisible: false,
-                headerTransparent: process.env.EXPO_OS !== 'android',
-                headerBlurEffect: 'none',
-                headerStyle: { backgroundColor: 'transparent' },
-                headerLargeStyle: { backgroundColor: 'transparent' },
-                headerLargeTitleShadowVisible: false,
-                headerTitleStyle: { ...p.typography.title, color: p.navigation.text },
-                headerLargeTitleStyle: { ...p.typography.largeTitle, color: p.navigation.text },
-                scrollEdgeEffects: { top: 'hidden', bottom: 'hidden' },
-                headerTintColor: p.navigation.control,
-                contentStyle: { backgroundColor: 'transparent' },
-                ...(process.env.EXPO_OS === 'ios'
-                  ? {
-                      statusBarStyle: scheme === 'dark' ? 'light' : 'dark',
-                      statusBarAnimation: 'none',
-                    }
-                  : {}),
-              })}
-            >
-              <Stack.Screen name="(tabs)" options={{ title: '' }} />
-              <Stack.Screen name="chat/[id]" options={{ title: '' }} />
-              <Stack.Screen
-                name="chat-attachment/[id]"
-                options={{
-                  // All attachment categories share this presentation from their
-                  // first frame; the child retains its capture/dismissal guard.
-                  presentation: process.env.EXPO_OS === 'web' ? 'modal' : 'formSheet',
-                  title: t('media.attachmentAdd'),
-                  headerTransparent: false,
-                  sheetAllowedDetents: [0.65, 1],
-                  sheetGrabberVisible: true,
-                  sheetExpandsWhenScrolledToEdge: true,
-                  gestureEnabled: true,
-                }}
-              />
-              <Stack.Screen
-                name="miniapps"
-                options={{
-                  presentation: process.env.EXPO_OS === 'ios' ? 'fullScreenModal' : 'card',
-                  headerShown: false,
-                }}
-              />
-              <Stack.Screen
-                name="miniapp"
-                options={{
-                  presentation: process.env.EXPO_OS === 'web' ? 'card' : 'fullScreenModal',
-                  orientation: 'default',
-                  animation: process.env.EXPO_OS === 'web' ? undefined : 'slide_from_bottom',
-                  gestureEnabled: true,
-                  headerShown: false,
-                }}
-              />
-              <Stack.Screen
-                name="new-chat"
-                options={{
-                  title: t('common.newChat'),
-                  presentation: 'formSheet',
-                  sheetGrabberVisible: true,
-                }}
-              />
-              <Stack.Screen name="item/[id]" options={{ title: t('common.details') }} />
-            </Stack>
-          </SessionGate>
-        </MessageContextSession>
+        <CallReturnLayout>
+          <MessageContextSession>
+            <SessionGate>
+              <NativeIntentConsumer />
+              <Stack
+                screenOptions={({ route }) => ({
+                  // Tab surfaces own their headings; never restore a native group header.
+                  headerShown: route.name !== '(tabs)',
+                  headerBackButtonDisplayMode: 'minimal',
+                  headerShadowVisible: false,
+                  headerTransparent: process.env.EXPO_OS !== 'android',
+                  headerBlurEffect: 'none',
+                  headerStyle: { backgroundColor: 'transparent' },
+                  headerLargeStyle: { backgroundColor: 'transparent' },
+                  headerLargeTitleShadowVisible: false,
+                  headerTitleStyle: { ...p.typography.title, color: p.navigation.text },
+                  headerLargeTitleStyle: { ...p.typography.largeTitle, color: p.navigation.text },
+                  scrollEdgeEffects: { top: 'hidden', bottom: 'hidden' },
+                  headerTintColor: p.navigation.control,
+                  contentStyle: { backgroundColor: 'transparent' },
+                  ...(process.env.EXPO_OS === 'ios'
+                    ? {
+                        statusBarStyle: scheme === 'dark' ? 'light' : 'dark',
+                        statusBarAnimation: 'none',
+                      }
+                    : {}),
+                })}
+              >
+                <Stack.Screen name="(tabs)" options={{ title: '' }} />
+                <Stack.Screen name="chat/[id]" options={{ title: '' }} />
+                <Stack.Screen
+                  name="chat-attachment/[id]"
+                  options={{
+                    // All attachment categories share this presentation from their
+                    // first frame; the child retains its capture/dismissal guard.
+                    presentation: process.env.EXPO_OS === 'web' ? 'modal' : 'formSheet',
+                    title: t('media.attachmentAdd'),
+                    headerTransparent: false,
+                    sheetAllowedDetents: [0.65, 1],
+                    sheetGrabberVisible: true,
+                    sheetExpandsWhenScrolledToEdge: true,
+                    gestureEnabled: true,
+                  }}
+                />
+                <Stack.Screen
+                  name="miniapps"
+                  options={{
+                    presentation: process.env.EXPO_OS === 'ios' ? 'fullScreenModal' : 'card',
+                    headerShown: false,
+                  }}
+                />
+                <Stack.Screen
+                  name="miniapp"
+                  options={{
+                    presentation: process.env.EXPO_OS === 'web' ? 'card' : 'fullScreenModal',
+                    orientation: 'default',
+                    animation: process.env.EXPO_OS === 'web' ? undefined : 'slide_from_bottom',
+                    gestureEnabled: true,
+                    headerShown: false,
+                  }}
+                />
+                <Stack.Screen
+                  name="new-chat"
+                  options={{
+                    title: t('common.newChat'),
+                    presentation: 'formSheet',
+                    sheetGrabberVisible: true,
+                  }}
+                />
+                <Stack.Screen name="item/[id]" options={{ title: t('common.details') }} />
+              </Stack>
+            </SessionGate>
+          </MessageContextSession>
+        </CallReturnLayout>
       </View>
     </NavigationThemeProvider>
   );
