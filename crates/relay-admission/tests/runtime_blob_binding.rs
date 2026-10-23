@@ -7,6 +7,7 @@ fn bound_signature_is_required_for_the_complete_binding() {
     let request = Request {
         namespace: "runtime-a".into(),
         nonce: vec![12; 32],
+        managed: None,
     };
     let expected = Expectation::new(
         &"19".repeat(32),
