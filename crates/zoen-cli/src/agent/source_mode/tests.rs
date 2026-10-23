@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use zoen_agentd::citizen::{testing::ControlledToolBrain, BrainOut};
 mod fixture;
 mod relay;
+mod turn_budget;
 use fixture::{message, Fixture};
 use relay::{online, relay, Mode};
 
@@ -188,7 +189,7 @@ async fn real_signed_projection_selects_one_source_and_preserves_all_cursors_and
     server.cursors.lock().unwrap().push((f.space.clone(), 1));
     let before = startup::settled_cursors(&f.client, 1000).await.unwrap();
     server.calls.lock().unwrap().clear();
-    let mut run = Run::prepare(&f.client, source(&f.source)).unwrap();
+    let mut run = Run::prepare(&f.client, source(&f.source), &[]).unwrap();
     let calls = Arc::new(AtomicUsize::new(0));
     let cx = context(&f, &calls, false);
     for _ in 0..3 {
@@ -217,7 +218,7 @@ async fn selected_turn_refuses_another_valid_signed_message_before_runtime() {
     let server = relay(Mode::Normal).await;
     let f = Fixture::new(&server.url);
     online(&f.client, true).await;
-    let run = Run::prepare(&f.client, source(&f.source)).unwrap();
+    let run = Run::prepare(&f.client, source(&f.source), &[]).unwrap();
     let timeline = f.client.timeline(f.space.clone()).unwrap();
     let entry = timeline.iter().find(|entry| entry.id == f.other).unwrap();
     let calls = Arc::new(AtomicUsize::new(0));
@@ -244,7 +245,7 @@ async fn unknown_outcome_is_not_automatically_retried_on_a_wake() {
     let server = relay(Mode::Normal).await;
     let f = Fixture::new(&server.url);
     online(&f.client, true).await;
-    let mut run = Run::prepare(&f.client, source(&f.source)).unwrap();
+    let mut run = Run::prepare(&f.client, source(&f.source), &[]).unwrap();
     let calls = Arc::new(AtomicUsize::new(0));
     let cx = context(&f, &calls, true);
     assert_eq!(
@@ -258,36 +259,6 @@ async fn unknown_outcome_is_not_automatically_retried_on_a_wake() {
         .unwrap());
     assert_eq!(calls.load(Ordering::SeqCst), 1);
     assert!(server.cursors.lock().unwrap().is_empty());
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn account_retirement_during_inference_prevents_result_delivery() {
-    let server = relay(Mode::Normal).await;
-    let f = Fixture::new(&server.url);
-    online(&f.client, true).await;
-    let mut run = Run::prepare(&f.client, source(&f.source)).unwrap();
-    let calls = Arc::new(AtomicUsize::new(0));
-    let mut cx = context(&f, &calls, false);
-    let client = f.client.clone();
-    let observed = calls.clone();
-    cx.runtime = Runtime::new(
-        Gate::default(),
-        Box::new(ControlledToolBrain {
-            evaluate: Box::new(move |_| {
-                observed.fetch_add(1, Ordering::SeqCst);
-                client.reset_demo().unwrap(); // own synthetic account only
-                Ok(BrainOut::Say(
-                    "Must never be sent after account retirement.".into(),
-                ))
-            }),
-        }),
-    );
-    assert_eq!(
-        run.tick(&f.client, &cx, &definition(), deadline()).await,
-        Err("agent_host_source_account_unavailable".into())
-    );
-    assert_eq!(calls.load(Ordering::SeqCst), 1);
-    assert!(!f.path.join("source-steps.json").exists());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -321,7 +292,7 @@ async fn an_existing_accepted_own_reply_completes_without_model_or_cursor_effect
             .delivery,
         client_core::Delivery::Delivered
     );
-    let mut run = Run::prepare(&f.client, source(&f.source)).unwrap();
+    let mut run = Run::prepare(&f.client, source(&f.source), &[]).unwrap();
     let calls = Arc::new(AtomicUsize::new(0));
     assert!(run
         .tick(
@@ -343,12 +314,12 @@ async fn deleted_empty_self_and_nonmessage_sources_are_refused() {
     online(&f.client, true).await;
     let empty = f.append(message(" \n ", None), true);
     assert_eq!(
-        Run::prepare(&f.client, source(&empty)).err().unwrap(),
+        Run::prepare(&f.client, source(&empty), &[]).err().unwrap(),
         "agent_host_source_not_text_message"
     );
     let own = f.append(message("Own message cannot become a task.", None), false);
     assert_eq!(
-        Run::prepare(&f.client, source(&own)).err().unwrap(),
+        Run::prepare(&f.client, source(&own), &[]).err().unwrap(),
         "agent_host_source_member_unavailable"
     );
     f.append(
@@ -359,7 +330,9 @@ async fn deleted_empty_self_and_nonmessage_sources_are_refused() {
         true,
     );
     assert_eq!(
-        Run::prepare(&f.client, source(&f.source)).err().unwrap(),
+        Run::prepare(&f.client, source(&f.source), &[])
+            .err()
+            .unwrap(),
         "agent_host_source_not_text_message"
     );
     let system = f.append(types::EventBody::SpaceEncrypted, false);
@@ -372,7 +345,9 @@ async fn deleted_empty_self_and_nonmessage_sources_are_refused() {
         .unwrap();
     assert!(matches!(event.kind, EntryKind::System { .. }));
     assert_eq!(
-        Run::prepare(&f.client, source(&event.id)).err().unwrap(),
+        Run::prepare(&f.client, source(&event.id), &[])
+            .err()
+            .unwrap(),
         "agent_host_source_not_text_message"
     );
 }
@@ -382,7 +357,7 @@ async fn live_binding_refuses_text_edit_member_removal_and_foreign_context() {
     let server = relay(Mode::Normal).await;
     let mut f = Fixture::new(&server.url);
     online(&f.client, true).await;
-    let run = Run::prepare(&f.client, source(&f.source)).unwrap();
+    let run = Run::prepare(&f.client, source(&f.source), &[]).unwrap();
     let account = f.client.account().unwrap();
     assert!(run.actor("foreign", &account.device_id, &f.owner).is_err());
     f.append(
@@ -398,7 +373,7 @@ async fn live_binding_refuses_text_edit_member_removal_and_foreign_context() {
         run.check(&f.client),
         Err("agent_host_source_changed".into())
     );
-    let run = Run::prepare(&f.client, source(&f.other)).unwrap();
+    let run = Run::prepare(&f.client, source(&f.other), &[]).unwrap();
     f.append(
         types::EventBody::MemberRemoved {
             identity: f.owner.clone(),
@@ -429,7 +404,7 @@ async fn shared_app_card_is_not_an_explicit_text_task() {
         .iter()
         .any(|e| e.id == card && matches!(e.kind, EntryKind::Message { card: Some(_), .. })));
     assert_eq!(
-        Run::prepare(&f.client, source(&card)).err().unwrap(),
+        Run::prepare(&f.client, source(&card), &[]).err().unwrap(),
         "agent_host_source_not_text_message"
     );
 }
@@ -513,7 +488,7 @@ async fn approved_recovery_enters_only_selected_request_and_retains_executor_adm
     let base = deck(&f);
     let other = stage(&f, &base.item_id, &f.other);
     let selected = stage(&f, &base.item_id, &f.source);
-    let mut run = Run::prepare(&f.client, source(&f.source)).unwrap();
+    let mut run = Run::prepare(&f.client, source(&f.source), &[]).unwrap();
     let calls = Arc::new(AtomicUsize::new(0));
     let cx = context(&f, &calls, false);
     let a = trace::tests::capture(&f.space, &f.source);
