@@ -69,7 +69,8 @@ impl Engine {
             Some(g) if g.revoked || g.grant.expires_at_ms.is_some_and(|at| at <= now_ms()) => None,
             Some(g) => match g.grant.capability {
                 Capability::Trust(level) => Some(level),
-                _ => unreachable!("trust baseline selects only Trust grants"),
+                // An inconsistent selector must never manufacture authority.
+                _ => None,
             },
             // Preserve established local defaults only when no explicit baseline
             // ever existed. Paid/native dispatch still requires its own admission.
