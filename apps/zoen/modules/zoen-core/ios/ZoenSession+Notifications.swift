@@ -3,6 +3,20 @@ import UIKit
 import UserNotifications
 
 extension ZoenSession {
+  struct NotificationBorrow: Sendable {
+    let engine: Client
+    let generation: UInt64
+    let identityID: String
+    let deviceID: String
+  }
+
+  func notificationBorrow(identityID: String, deviceID: String, lease: ZoenModuleSessionLease) throws -> NotificationBorrow {
+    guard lease.isLive, !erasing, !closing, mode == "account", let engine = core,
+          let account = engine.account(), account.unlocked, account.registered, !account.setupPending,
+          account.identityId == identityID, account.deviceId == deviceID else { throw SessionError.closed }
+    return NotificationBorrow(engine: engine, generation: generation, identityID: identityID, deviceID: deviceID)
+  }
+
   func setNotificationForeground(_ active: Bool) { notificationActive = active }
 
   private func notificationIsCurrent(_ engine: Client, _ expected: UInt64, _ account: ZoenPushSnapshot.Account, _ lease: ZoenPushWakeLease) -> Bool {
@@ -13,7 +27,7 @@ extension ZoenSession {
 
   /// The deadline starts at OS callback admission, before the process transition queue.
   /// No identity creation, provider setup, history retry pump or alternative vault.
-  func notificationWake(cold: Bool, deadline: ContinuousClock.Instant, lease: ZoenPushWakeLease) async throws -> ZoenPushResult {
+  func notificationWake(cold: Bool, deadline: ContinuousClock.Instant, lease: ZoenPushWakeLease, expectedBorrow: NotificationBorrow? = nil) async throws -> ZoenPushResult {
     guard lease.isLive else { throw CancellationError() }
     notificationActive = false
     if cold {
@@ -29,6 +43,10 @@ extension ZoenSession {
     }
     guard !erasing, !closing, mode == "account", let engine = core,
           let account = engine.account(), account.unlocked, account.registered, !account.setupPending else { return .noData }
+    if let expectedBorrow {
+      guard !cold, engine === expectedBorrow.engine, generation == expectedBorrow.generation,
+            account.identityId == expectedBorrow.identityID, account.deviceId == expectedBorrow.deviceID else { throw SessionError.closed }
+    }
     requests += 1
     defer { retireRequest() }
     let expected = generation

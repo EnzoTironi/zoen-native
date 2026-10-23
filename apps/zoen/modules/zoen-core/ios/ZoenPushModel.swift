@@ -1,6 +1,16 @@
 import Foundation
 import CoreFoundation
 
+enum ZoenPushBuildAdmission {
+  static func enabled(_ info: [String: Any], bundleIdentifier: String?) -> Bool {
+    guard let bundleIdentifier, !bundleIdentifier.isEmpty,
+          info["ZoenRemoteNotificationsEnabled"] as? Bool == true,
+          ["sandbox", "production"].contains(info["ZoenPushEnvironment"] as? String ?? ""),
+          info["ZoenPushTopic"] as? String == bundleIdentifier else { return false }
+    return true
+  }
+}
+
 /// Untrusted remote bytes can ask for a sync, never choose an account or route.
 enum ZoenPushWakePayload {
   static func accepts(_ input: [AnyHashable: Any]) -> Bool {

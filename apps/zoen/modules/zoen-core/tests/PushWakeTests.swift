@@ -16,6 +16,22 @@ private actor Effects {
   func record() { count += 1 }
 }
 
+private actor Seal {
+  let entered = Entered()
+  private let release = Entered()
+  private var task: Task<Void, Never>?
+  private(set) var starts = 0
+  private(set) var escalations = 0
+  func close(force: Bool = false) async {
+    if force { escalations += 1; await release.signal() }
+    if let task { await task.value; return }
+    starts += 1
+    let pending = Task { await entered.signal(); await release.wait() }
+    task = pending
+    await pending.value
+  }
+}
+
 private actor Probe {
   private var current: Int?
   private(set) var opens = 0
@@ -58,6 +74,14 @@ private func snapshotModels(_ fixture: URL) throws {
 }
 
 private func payloads() throws {
+  let info: [String: Any] = ["ZoenRemoteNotificationsEnabled": true, "ZoenPushEnvironment": "sandbox", "ZoenPushTopic": "xyz.tironi.zoen"]
+  check(ZoenPushBuildAdmission.enabled(info, bundleIdentifier: "xyz.tironi.zoen"))
+  check(!ZoenPushBuildAdmission.enabled(info, bundleIdentifier: nil))
+  check(!ZoenPushBuildAdmission.enabled(info, bundleIdentifier: "other.app"))
+  for (field, value) in [("ZoenRemoteNotificationsEnabled", false as Any), ("ZoenPushEnvironment", "debug" as Any), ("ZoenPushTopic", "other.app" as Any)] {
+    var changed = info; changed[field] = value
+    check(!ZoenPushBuildAdmission.enabled(changed, bundleIdentifier: "xyz.tironi.zoen"))
+  }
   func accepts(_ text: String) throws -> Bool {
     ZoenPushWakePayload.accepts(try JSONSerialization.jsonObject(with: Data(text.utf8)) as! [AnyHashable: Any])
   }
@@ -134,16 +158,129 @@ private func quarantine() async throws {
 private func staleCloseCannotReenterAnOlderSession() async throws {
   let probe = Probe(), effects = Effects()
   let gate = ZoenProcessSessionGate<Session> { try await probe.close($0.id) }
-  let first = Session(1), second = Session(2)
-  try await gate.open(session: first, lease: ZoenModuleSessionLease()) { await probe.open(1) }
+  let first = Session(1), second = Session(2), oldLease = ZoenModuleSessionLease()
+  try await gate.open(session: first, lease: oldLease) { await probe.open(1) }
   try await gate.open(session: second, lease: ZoenModuleSessionLease()) { await probe.open(2) }
   // Old OnDestroy/close callbacks can arrive after replacement. Their callback
   // must not retire the new module's UI or reopen an erasure-recovery Client.
   try await gate.close(session: first) { await effects.record() }
   check(await effects.count == 0, "A stale module callback reentered an already retired session")
+  check(!oldLease.isLive, "Replacement must retire the previous module's lease")
+  var rejected = false
+  do { try await gate.open(session: first, lease: oldLease) { await effects.record() } }
+  catch ZoenPushGateError.retired { rejected = true }
+  let oldOpenEffects = await effects.count
+  check(rejected && oldOpenEffects == 0, "An old bridge open reclaimed the new owner")
+  rejected = false
+  do { try await gate.finishOwned(session: first, lease: oldLease) { await effects.record() } }
+  catch ZoenPushGateError.retired { rejected = true }
+  let oldEraseEffects = await effects.count
+  check(rejected && oldEraseEffects == 0, "Old erasure reopened a recovery Client")
   try await gate.close(session: second) { try await probe.close(2) }
   let count = await probe.count()
   check(count.0 == 2 && count.1 == 2 && count.2 == 2)
+}
+
+private func forceAndErasureCanEscalateAGracefulSeal() async throws {
+  for erasure in [false, true] {
+    let session = Seal(), lease = ZoenModuleSessionLease()
+    let gate = ZoenProcessSessionGate<Seal> { await $0.close(force: true) }
+    try await gate.open(session: session, lease: lease) {}
+    let graceful = Task { try await gate.close(session: session) { await session.close() } }
+    await session.entered.wait()
+    if erasure {
+      try await gate.finishOwned(session: session, lease: lease) { await session.close(force: true) }
+    } else {
+      try await gate.close(session: session) { await session.close(force: true) }
+    }
+    try await graceful.value
+    check(await session.starts == 1, "Escalation must borrow the actor's existing closeTask")
+    check(await session.escalations == 1)
+  }
+}
+
+private func transferDrainsLatestModuleRecoveryAfterClose() async throws {
+  let probe = Probe(), started = Entered(), release = Entered(), closed = Entered(), effects = Effects()
+  let first = Session(1), second = Session(2), lease = ZoenModuleSessionLease()
+  let gate = ZoenProcessSessionGate<Session> {
+    try await probe.close($0.id)
+    if $0 === first { await closed.signal() }
+  }
+  try await gate.open(session: first, lease: lease) { await probe.open(1) }
+  let recovery = Task {
+    try await gate.finishOwned(session: first, lease: lease) {
+      await started.signal()
+      await release.wait()
+      // A pending erase may need its recovery Client after the old graceful
+      // seal completed. It remains the only owner until this callback drains.
+      await probe.open(1)
+      try await probe.close(1)
+      await effects.record()
+    }
+  }
+  await started.wait()
+  let replacing = Task {
+    try await gate.open(session: second, lease: ZoenModuleSessionLease()) {
+      check(await effects.count == 1, "New Client opened before accepted recovery drained")
+      await probe.open(2)
+    }
+  }
+  await closed.wait()
+  await release.signal()
+  try await recovery.value
+  try await replacing.value
+  check(!lease.isLive)
+  try await gate.close(session: second) { try await probe.close(2) }
+  let count = await probe.count(); check(count.0 == 3 && count.1 == 3)
+}
+
+private func latestClosedModuleKeepsItsRecoveryLease() async throws {
+  let probe = Probe(), session = Session(1), lease = ZoenModuleSessionLease()
+  let gate = ZoenProcessSessionGate<Session> { try await probe.close($0.id) }
+  try await gate.open(session: session, lease: lease) { await probe.open(1) }
+  try await gate.close(session: session) { try await probe.close(1) }
+  try await gate.finishOwned(session: session, lease: lease) {
+    await probe.open(1)
+    try await probe.close(1)
+  }
+  check(lease.isLive)
+  lease.retire()
+  var rejected = false
+  do { try await gate.finishOwned(session: session, lease: lease) { preconditionFailure("Retired module recovered") } }
+  catch ZoenPushGateError.retired { rejected = true }
+  check(rejected)
+}
+
+private func bridgeAndOSWakeShareOnlyTheCurrentModule() async throws {
+  let probe = Probe(), entered = Entered(), release = Entered(), effects = Effects()
+  let first = Session(1), lease = ZoenModuleSessionLease()
+  let gate = ZoenProcessSessionGate<Session> { try await probe.close($0.id) }
+  try await gate.open(session: first, lease: lease) { await probe.open(1) }
+  let bridge = Task {
+    await gate.runWake(session: first, lease: lease) { session, cold, work in
+      check(session === first && !cold && work.isLive)
+      await entered.signal()
+      await release.wait()
+      guard work.isLive else { throw CancellationError() }
+      await effects.record()
+      return .newData
+    }
+  }
+  await entered.wait()
+  let os = await gate.runWake(make: { preconditionFailure("OS duplicate opened another Client") }) { _, _, _ in preconditionFailure() }
+  let duplicate = await gate.runWake(session: first, lease: lease) { _, _, _ in preconditionFailure("Bridge duplicate presented again") }
+  check(os == .noData && duplicate == .noData)
+  await release.signal()
+  check(await bridge.value == .newData)
+  check(await effects.count == 1)
+  try await gate.close(session: first) { try await probe.close(1) }
+  let closed = await gate.runWake(session: first, lease: lease) { _, _, _ in preconditionFailure("Bridge reopened a closed owner") }
+  check(closed == .noData)
+  let second = Session(2)
+  try await gate.open(session: second, lease: ZoenModuleSessionLease()) { await probe.open(2) }
+  let stale = await gate.runWake(session: first, lease: lease) { _, _, _ in preconditionFailure("Old callback reached a different module") }
+  check(stale == .noData && !lease.isLive)
+  try await gate.close(session: second) { try await probe.close(2) }
 }
 
 private func expiredWorkAndRetirement() async throws {
@@ -212,6 +349,10 @@ private enum PushWakeTests {
     try snapshotModels(URL(fileURLWithPath: CommandLine.arguments[1]))
     try await ownership()
     try await staleCloseCannotReenterAnOlderSession()
+    try await forceAndErasureCanEscalateAGracefulSeal()
+    try await transferDrainsLatestModuleRecoveryAfterClose()
+    try await latestClosedModuleKeepsItsRecoveryLease()
+    try await bridgeAndOSWakeShareOnlyTheCurrentModule()
     try await quarantine()
     try await expiredWorkAndRetirement()
     try await cancelledQueueCannotOpenAClient()

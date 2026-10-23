@@ -79,6 +79,7 @@ public class ZoenCoreModule: Module {
     }
     Constant("composerGlassVersion") { 1 }
     Constant("failedMediaRecoveryVersion") { 1 }
+    Constant("nativePushPresentationVersion") { 1 }
     Constant("navigationContainerVersion") { 1 }
     View(ZoenNavigationContainer.self) {
       ViewName("NavigationContainer")
@@ -258,9 +259,12 @@ public class ZoenCoreModule: Module {
       try await self.session.materializeProfilePhoto(ownerId: ownerId, deviceId: deviceId, identityId: identityId, expectedSha256: expectedSha256)
     }
     AsyncFunction("releaseProfilePhoto") { (uri: String) async in await self.session.releaseProfilePhoto(uri) }
-    AsyncFunction("eraseDevice") { (identityId: String, deviceId: String) async throws in
-      try await ZoenNativePushSessions.gate.close(session: self.session) {
-        try await self.session.eraseDevice(expected: ZoenDeviceScope(identityId: identityId, deviceId: deviceId))
+    AsyncFunction("notificationWake") { [session, pushLease] (identityId: String, deviceId: String) async in
+      await ZoenNativePushSessions.wake(session: session, lease: pushLease, identityID: identityId, deviceID: deviceId)
+    }
+    AsyncFunction("eraseDevice") { [session, pushLease] (identityId: String, deviceId: String) async throws in
+      try await ZoenNativePushSessions.gate.finishOwned(session: session, lease: pushLease) {
+        try await session.eraseDevice(expected: ZoenDeviceScope(identityId: identityId, deviceId: deviceId))
       }
     }
     AsyncFunction("close") { () async throws in

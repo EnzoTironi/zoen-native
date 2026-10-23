@@ -15,9 +15,7 @@ public final class ZoenPushDelegate: ExpoAppDelegateSubscriber {
     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
   ) {
     let info = Bundle.main.infoDictionary ?? [:]
-    guard info["ZoenRemoteNotificationsEnabled"] as? Bool == true,
-          ["sandbox", "production"].contains(info["ZoenPushEnvironment"] as? String ?? ""),
-          info["ZoenPushTopic"] as? String == Bundle.main.bundleIdentifier,
+    guard ZoenPushBuildAdmission.enabled(info, bundleIdentifier: Bundle.main.bundleIdentifier),
           ZoenPushWakePayload.accepts(userInfo), application.applicationState != .active else {
       completionHandler(.noData)
       return

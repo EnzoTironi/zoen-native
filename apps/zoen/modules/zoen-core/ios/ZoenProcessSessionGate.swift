@@ -21,16 +21,28 @@ struct ZoenPushWakeLease: Sendable {
 /// gain access to a later module's account. Only cold work receives a new session.
 actor ZoenProcessSessionGate<Session: AnyObject & Sendable> {
   private struct Entry: Sendable {
+    let id: UUID
     let session: Session
     let lease: ZoenModuleSessionLease
     let background: Bool
+    var ready: Bool
+    var quarantined = false
+  }
+  private struct Selection: Sendable {
+    let id: UUID
+    let session: Session
+    let lease: ZoenModuleSessionLease
   }
   private let close: @Sendable (Session) async throws -> Void
+  // A closed foreground entry retains only module affinity. Replacing it retires
+  // that module's lease, so a delayed old bridge open cannot reclaim a new owner.
   private var current: Entry?
   private var tail: Task<Void, Never>?
   private var wake: Task<ZoenPushResult, Error>?
   private var wakeID: UUID?
   private var wakeCancellation: ZoenModuleSessionLease?
+  private var finishes: [UUID: Int] = [:]
+  private var finishWaiters: [UUID: [CheckedContinuation<Void, Never>]] = [:]
 
   init(close: @escaping @Sendable (Session) async throws -> Void) { self.close = close }
 
@@ -61,27 +73,76 @@ actor ZoenProcessSessionGate<Session: AnyObject & Sendable> {
     operation: @escaping @Sendable () async throws -> T
   ) async throws -> T {
     guard lease.isLive else { throw ZoenPushGateError.retired }
-    if let entry = current, entry.session !== session {
-      try await close(entry.session)
-      current = nil
+    if let entry = current {
+      let replacing = entry.session !== session || entry.lease !== lease
+      if replacing && (entry.ready || entry.background || entry.quarantined || finishes[entry.id, default: 0] > 0) {
+        try await close(entry.session)
+      }
+      // Closing may admit a same-owner erasure escalation. Fence any later
+      // admissions synchronously, then drain the already accepted operations.
+      if replacing { entry.lease.retire() }
+      await drainFinishes(entry.id)
     }
     try Task.checkCancellation()
     guard lease.isLive else { throw ZoenPushGateError.retired }
-    current = Entry(session: session, lease: lease, background: false)
-    return try await operation()
-  }
-
-  func close<T: Sendable>(session: Session, operation: @escaping @Sendable () async throws -> T) async throws -> T {
-    if current?.session === session { cancelWake() }
-    return try await serialized {
-      let result = try await operation()
-      await self.closed(session)
-      return result
+    let id = UUID()
+    current = Entry(id: id, session: session, lease: lease, background: false, ready: false)
+    do {
+      let value = try await operation()
+      guard lease.isLive, current?.id == id else { throw ZoenPushGateError.retired }
+      current?.ready = true
+      return value
+    } catch {
+      if current?.id == id { current?.ready = true; current?.quarantined = true }
+      throw error
     }
   }
 
-  private func closed(_ session: Session) {
-    if current?.session === session { current = nil }
+  /// Same-session close/closeForce must reach the actor's existing coalesced
+  /// closeTask immediately. Queuing force behind a graceful seal would deadlock
+  /// its escalation. An old module's already-drained close is an idempotent no-op.
+  func close(session: Session, operation: @escaping @Sendable () async throws -> Void) async throws {
+    guard let entry = current, entry.session === session else { return }
+    cancelWake()
+    try await operation()
+    await drainFinishes(entry.id)
+    closed(entry.id)
+  }
+
+  /// Destructive completion may reopen the existing actor's recovery Client only
+  /// while it is still the latest module. It can supersede that actor's graceful
+  /// seal; every owner transfer waits for this accepted operation to drain.
+  func finishOwned(
+    session: Session, lease: ZoenModuleSessionLease,
+    operation: @escaping @Sendable () async throws -> Void
+  ) async throws {
+    guard let entry = current, entry.session === session, entry.lease === lease,
+          lease.isLive, !entry.background else { throw ZoenPushGateError.retired }
+    cancelWake()
+    finishes[entry.id, default: 0] += 1
+    current?.ready = true
+    defer { finishEnded(entry.id) }
+    try await operation()
+    if current?.id == entry.id { current?.ready = false }
+  }
+
+  private func drainFinishes(_ id: UUID) async {
+    if finishes[id, default: 0] > 0 {
+      await withCheckedContinuation { finishWaiters[id, default: []].append($0) }
+    }
+  }
+
+  private func finishEnded(_ id: UUID) {
+    let left = finishes[id, default: 1] - 1
+    if left > 0 { finishes[id] = left; return }
+    finishes.removeValue(forKey: id)
+    for waiter in finishWaiters.removeValue(forKey: id) ?? [] { waiter.resume() }
+  }
+
+  private func closed(_ id: UUID) {
+    guard current?.id == id else { return }
+    if current?.lease.isLive == true { current?.ready = false; current?.quarantined = false }
+    else { current = nil }
   }
 
   private func cancelWake() { wakeCancellation?.retire(); wake?.cancel() }
@@ -92,10 +153,33 @@ actor ZoenProcessSessionGate<Session: AnyObject & Sendable> {
     make: @escaping @Sendable () -> Session,
     operation: @escaping @Sendable (Session, Bool, ZoenPushWakeLease) async throws -> ZoenPushResult
   ) async -> ZoenPushResult {
+    await admitWake(expected: nil, make: make, operation: operation)
+  }
+
+  /// A bridge callback borrows only its own already-open module generation. It
+  /// cannot choose the process's later account or reopen a closed session.
+  func runWake(
+    session: Session, lease: ZoenModuleSessionLease,
+    operation: @escaping @Sendable (Session, Bool, ZoenPushWakeLease) async throws -> ZoenPushResult
+  ) async -> ZoenPushResult {
+    guard let entry = current, entry.session === session, entry.lease === lease,
+          lease.isLive, entry.ready, !entry.background, !entry.quarantined else { return .noData }
+    return await admitWake(expected: Selection(id: entry.id, session: session, lease: lease), make: { session }, operation: operation)
+  }
+
+  private func matches(_ expected: Selection) -> Bool {
+    current?.id == expected.id && current?.session === expected.session && current?.lease === expected.lease
+      && expected.lease.isLive && current?.ready == true && current?.background == false && current?.quarantined == false
+  }
+
+  private func admitWake(
+    expected: Selection?, make: @escaping @Sendable () -> Session,
+    operation: @escaping @Sendable (Session, Bool, ZoenPushWakeLease) async throws -> ZoenPushResult
+  ) async -> ZoenPushResult {
     guard wake == nil else { return .noData }
     let id = UUID()
     let admission = ZoenModuleSessionLease()
-    let task = Task { try await self.serialized { try await self.wakeNow(make: make, admission: admission, operation: operation) } }
+    let task = Task { try await self.serialized { try await self.wakeNow(expected: expected, make: make, admission: admission, operation: operation) } }
     wakeID = id
     wakeCancellation = admission
     wake = task
@@ -105,36 +189,47 @@ actor ZoenProcessSessionGate<Session: AnyObject & Sendable> {
     switch result { case .success(let value): return value; case .failure: return .failed }
   }
 
+  private func retireCold(_ entry: Entry) async throws {
+    if entry.background { entry.lease.retire() }
+    do {
+      try await close(entry.session)
+      await drainFinishes(entry.id)
+      closed(entry.id)
+    } catch {
+      if current?.id == entry.id { current?.quarantined = true }
+      throw error
+    }
+  }
+
   private func wakeNow(
-    make: @Sendable () -> Session,
+    expected: Selection?, make: @Sendable () -> Session,
     admission: ZoenModuleSessionLease,
     operation: @Sendable (Session, Bool, ZoenPushWakeLease) async throws -> ZoenPushResult
   ) async throws -> ZoenPushResult {
     try Task.checkCancellation()
     guard admission.isLive else { throw ZoenPushGateError.retired }
-    let cold = current == nil
+    if let expected { guard matches(expected) else { throw ZoenPushGateError.retired } }
     let entry: Entry
     if let active = current {
-      // A failed retirement remains quarantined. Never repair it by opening
-      // another engine against the same files from a notification callback.
-      guard active.lease.isLive, !active.background else { throw ZoenPushGateError.retired }
+      // Only an explicit foreground transition can drain a failed retirement.
+      guard active.lease.isLive, !active.background, !active.quarantined else { throw ZoenPushGateError.retired }
       entry = active
     } else {
-      entry = Entry(session: make(), lease: ZoenModuleSessionLease(), background: true)
+      entry = Entry(id: UUID(), session: make(), lease: ZoenModuleSessionLease(), background: true, ready: false)
       current = entry
     }
+    let cold = !entry.ready
     do {
       let value = try await operation(entry.session, cold, ZoenPushWakeLease(parent: entry.lease, work: admission))
       try Task.checkCancellation()
-      guard entry.lease.isLive else { throw ZoenPushGateError.retired }
-      if cold { entry.lease.retire(); try await close(entry.session); current = nil }
+      guard entry.lease.isLive, admission.isLive else { throw ZoenPushGateError.retired }
+      if cold { try await retireCold(entry) }
       return value
     } catch {
-      if cold && entry.lease.isLive {
-        entry.lease.retire()
-        // Keep a failed close as the sole quarantined owner; do not create a
-        // replacement session until an explicit foreground transition drains it.
-        do { try await close(entry.session); current = nil } catch {}
+      if cold, current?.id == entry.id, current?.quarantined != true {
+        // Failed close remains the sole quarantined owner. Never silently retry
+        // it or construct another Client against the same protected files.
+        do { try await retireCold(entry) } catch {}
       }
       throw error
     }

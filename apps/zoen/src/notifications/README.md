@@ -42,11 +42,19 @@ existing vault keys and a registered account. It never creates an identity,
 resumes provider setup or imports an owner's keys. An unreadable/locked keychain
 after boot is a refusal; AfterFirstUnlockThisDeviceOnly remains unchanged.
 
+The latest foreground module keeps its lease after an ordinary Core close, so
+its existing erasure recovery can still finish. Replacement retires that lease:
+old closes become no-ops, old opens/destructive completions are refused, and
+transfer waits for accepted recovery work. Same-session close/closeForce/erase
+reach the existing actor's coalesced closeTask instead of queuing force or erase
+behind a graceful seal they need to release. No durable custody state is added.
+
 The callback has an eight-second whole-work ceiling, shortened by OS expiry.
 Duplicates receive no new engine or extended budget. Foreground open, module
 destruction, account replacement and cancellation retire late work. A failed
-close quarantines the sole owner rather than opening a second Client against the
-same journal. System completion and background-task cleanup each occur once.
+cold retirement quarantines the sole owner rather than opening a second Client
+against the same journal. Existing foreground graceful-close recovery stays in
+its own actor. System completion and background-task cleanup each occur once.
 The OS can deny or terminate the window; completion is not delivery assurance.
 
 Sync uses the existing strict `wait_until_settled` predicate and only the time
@@ -57,6 +65,16 @@ session. The same current-account, membership, mute and archive checks produce
 the same local identifiers as JavaScript. The native adapter rechecks scope and
 the projection around asynchronous OS writes and removes its note if retired.
 These checks are observations, not an atomic transaction with Notification Center.
+
+In the matching opt-in iOS binary, JavaScript background snapshot events delegate
+to that native presenter through `notificationWake`. The bridge receives only
+expected public identity/device IDs; the module lease and native engine/generation
+must still match at execution. It cannot select another account or pass content.
+WS and APNs share the same in-flight admission/baseline, while JavaScript retains
+token handling, taps, badges and cleanup. Android, native-off and older bridge
+versions retain the existing JavaScript presenter. A matching JS/native build is
+required. Identifiers replace pending requests; reusing an already-delivered ID
+alone is not proof of exactly-once visual alerts. No such device claim is made.
 
 This source requires genuine regenerated UniFFI bindings/checksums and a new
 native build. Model/config/backend tests are distinct from physical-device
@@ -142,6 +160,8 @@ serialized rotations and stale callbacks. They do not prove FCM delivery.
 and a Foundation-only Swift ownership/payload model harness;
 `notifications-ios-build.test.ts` exercises actual CNG configuration. Neither
 harness compiles the UIKit/Core adapter or establishes physical push delivery.
+`notification-presentation.test.ts` checks the single-presenter port and actual
+SDK adapter opt-in/version gate without invoking an OS notification service.
 
 The relay attempts content-free wakes for all currently authorized recipient
 devices except the author, including an identity whose sibling has a live WS.
