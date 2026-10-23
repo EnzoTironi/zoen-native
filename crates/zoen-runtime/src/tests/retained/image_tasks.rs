@@ -135,6 +135,7 @@ pub(super) async fn run() {
     let sha256 = hash(&bytes);
     let mut result = crate::tests::image_tasks::result(&task, true);
     let mut body: serde_json::Value = serde_json::from_slice(&result.evidence.body).unwrap();
+    body.as_object_mut().unwrap().remove("padding");
     body["data"] = serde_json::json!([{"b64_json":STANDARD.encode(&bytes)}]);
     result.evidence.body = serde_json::to_vec(&body).unwrap();
     result.output = Ok(GeneratedImage {
