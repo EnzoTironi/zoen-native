@@ -90,7 +90,7 @@ fn owner_client(w: &World) -> Arc<Client> {
     client.start_sync(None).unwrap();
     client
 }
-async fn install_policy(w: &World, config: &config::Config, runtime: &RuntimeAuthority) {
+pub(super) async fn install_policy(w: &World, config: &config::Config, runtime: &RuntimeAuthority) {
     // These are only this World's generated keys. Use the same actual owner
     // device/certificate; no SQL policy/financial authority rows are inserted.
     let vault = file_vault::FileVault {
@@ -105,6 +105,14 @@ async fn install_policy(w: &World, config: &config::Config, runtime: &RuntimeAut
         .await;
     let (year, month) = date.split_once('-').unwrap();
     let end=w.scalar("SELECT ((extract(epoch FROM (date_trunc('month',now())+interval '1 month'))*1000)::bigint)::text").await.parse().unwrap();
+    // This fixture also exercises general reply discovery to prove the two
+    // MLS leaves opened the same granted source. Authorize both exact profiles
+    // explicitly; the Images-only production path does not need chat discovery.
+    let mut profiles = vec![
+        config.image_price.digest().unwrap(),
+        config.chat_price.digest().unwrap(),
+    ];
+    profiles.sort();
     let policy = zoen_runtime::OwnerPeriodPolicy {
         owner: author.identity.clone(),
         year: year.parse().unwrap(),
@@ -117,7 +125,7 @@ async fn install_policy(w: &World, config: &config::Config, runtime: &RuntimeAut
         max_attempt_units: 10,
         expires_at_ms: end,
         enabled: true,
-        allowed_profiles: vec![config.image_price.digest().unwrap()],
+        allowed_profiles: profiles,
     };
     let signed = event_log::owner_budget::sign(&author, policy).unwrap();
     let mut tampered = signed.clone();
@@ -193,7 +201,6 @@ pub(super) async fn run(
     space: &str,
     provider: &Provider,
 ) {
-    install_policy(w, config, &runtime).await;
     let runtime = runtime
         .open_managed_image_continuity(&config.continuity, &config.agent, &config.device)
         .await

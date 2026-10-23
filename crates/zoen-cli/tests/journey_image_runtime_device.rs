@@ -150,6 +150,7 @@ fn dedicated_runtime_and_citizen_open_the_same_source_from_their_own_welcome() {
         // Publish the permission through the actual owner Client and encrypted
         // conversation. The independent Runtime leaf must open this grant and
         // a subsequent source; test setup never writes authority rows directly.
+        host_journey::install_policy(&w, &config, &runtime).await;
         owner_client.set_trust(agent.clone(), space.clone(), TrustLevelDto::Listen).unwrap();
         owner_client.send_message(space.clone(), "The authorized shared source is a calm sea".into()).unwrap();
         owner_client.wait_until_settled(20_000).await.unwrap();
