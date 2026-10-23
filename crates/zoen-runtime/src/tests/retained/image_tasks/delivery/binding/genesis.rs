@@ -1,7 +1,10 @@
 //! A real bootstrap connection proves registration but cannot upload/publish.
 use super::*;
 
-pub(super) async fn run(f: &Fixture, relay: &relay::Relay) {
+pub(in crate::tests::retained::image_tasks::delivery) async fn run(
+    f: &Fixture,
+    relay: &relay::Relay,
+) {
     let actor = actor(f);
     let deployment = f
         .world
