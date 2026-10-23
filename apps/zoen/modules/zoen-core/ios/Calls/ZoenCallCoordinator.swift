@@ -15,6 +15,7 @@ final class ZoenCallCoordinator: NSObject {
   private var rtc: ZoenCallRTC?
   private var call: ZoenCallRecord
   private var screen: ZoenCallViewController?
+  private weak var localVideoTrack: RTCVideoTrack?
   private var watchdog: Task<Void, Never>?
   private var deadline: Task<Void, Never>?
   private var retired = false
@@ -103,7 +104,10 @@ final class ZoenCallCoordinator: NSObject {
       if rtc == nil {
         let rtc = ZoenCallRTC(port: port, intent: mediaIntent, changed: { [weak self] phase in self?.phase(phase) },
           failed: { [weak self] in Task { await self?.stop(writeEnd: true, reason: .failed) } },
-          remoteVideo: { [weak self] track in self?.screen?.showVideo(track) })
+          remoteVideo: { [weak self] track in self?.screen?.showVideo(track) },
+          localVideo: { [weak self] track, front in
+            self?.localVideoTrack = track; self?.screen?.showLocalVideo(track, front: front)
+          })
         self.rtc = rtc
         rtc.start()
         if let audio { rtc.audioActivated(audio) }
@@ -120,11 +124,16 @@ final class ZoenCallCoordinator: NSObject {
     let view = screen ?? ZoenCallViewController(name: name, video: call.video, locale: port.locale)
     view.end = { [weak self] in Task { await self?.requestEnd() } }
     view.camera = { [weak self] value in self?.mediaIntent.cameraEnabled = value; self?.rtc?.setCameraEnabled(value) }
+    view.flipCamera = { [weak self] in
+      guard let self, !self.retired else { return }
+      self.mediaIntent.frontCamera.toggle(); self.rtc?.setCameraFacing(front: self.mediaIntent.frontCamera)
+    }
     view.mute = { [weak self] value in self?.requestMute(value) }
     view.speaker = { [weak self] value in self?.mediaIntent.speaker = value; try? self?.rtc?.setSpeaker(value) }
     view.minimize = { [weak self] in self?.minimize() }
     screen = view
     view.setIntent(mediaIntent)
+    view.showLocalVideo(localVideoTrack, front: mediaIntent.frontCamera)
     view.setPhase(currentPhase)
     let accepted = view.presentIfNeeded { [weak self] in
       guard let self, !self.retired, self.presentation.shown(ticket) else { return }

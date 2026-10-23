@@ -87,3 +87,36 @@ test('failure before system installation projects terminal presentation and clea
     /catch \{ await coordinator\.stop\(writeEnd: true, reason: \.failed\); throw error \}/,
   );
 });
+
+test('camera selection serializes capture and hides preview during switching, off and retirement', () => {
+  const rtc = source('Calls/ZoenCallRTC.swift');
+  const selection = rtc
+    .split('  func setCameraFacing(')[1]!
+    .split('  private func publishLocalPreview')[0]!;
+  before(selection, 'cameraTrack?.isEnabled = false', 'enqueue {');
+  before(selection, 'localVideo(nil, capturingFront)', 'enqueue {');
+  before(selection, 'await rtc.stopCamera()', 'try await rtc.startCamera()');
+  assert.equal(selection.match(/revision == rtc.cameraSwitch/g)?.length, 2);
+  const publish = rtc
+    .split('  private func publishLocalPreview()')[1]!
+    .split('  func setMuted(')[0]!;
+  assert.match(
+    publish,
+    /intent.cameraLive\(allowed: cameraAllowed, started: cameraStarted, live: live\)/,
+  );
+  assert.match(publish, /localVideo\(enabled \? cameraTrack : nil, capturingFront\)/);
+  const capture = rtc.split('  private func startCamera()')[1]!.split('  func stop()')[0]!;
+  before(capture, 'capturingFront = device.position == .front', 'camera.startCapture');
+  before(capture, '_ = try await current()', 'publishLocalPreview()');
+  const screen = source('Calls/ZoenCallViewController.swift');
+  assert.match(
+    screen,
+    /localPreview.transform = CGAffineTransform\(scaleX: front \? -1 : 1, y: 1\)/,
+  );
+  const hide = screen
+    .split('override func viewWillDisappear(')[1]!
+    .split('  func presentIfNeeded(')[0]!;
+  assert.match(hide, /localTrack\?\.remove\(localPreview\)/);
+  const stop = rtc.split('  func stop() async')[1]!.split('\nextension ')[0]!;
+  assert.match(stop, /localVideo\(nil, intent.frontCamera\)/);
+});

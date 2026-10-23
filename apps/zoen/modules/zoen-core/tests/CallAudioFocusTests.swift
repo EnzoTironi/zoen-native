@@ -105,10 +105,10 @@ struct CallAudioFocusTests {
     precondition(released == 2 && completed.last == resetOwner)
 
     var beforeRTC = ZoenCallMediaIntent()
-    beforeRTC.muted = true; beforeRTC.cameraEnabled = false; beforeRTC.speaker = true
+    beforeRTC.muted = true; beforeRTC.cameraEnabled = false; beforeRTC.speaker = true; beforeRTC.frontCamera = false
     var rtc = beforeRTC // The exact snapshot lent to a newly created native peer.
     precondition(!rtc.microphoneLive(allowed: true, activated: true, live: true))
-    precondition(rtc.speaker)
+    precondition(rtc.speaker && !rtc.frontCamera)
     precondition(!rtc.cameraLive(allowed: true, started: true, live: true))
     rtc.cameraEnabled = true
     precondition(!rtc.cameraLive(allowed: false, started: false, live: true))
@@ -116,6 +116,7 @@ struct CallAudioFocusTests {
     precondition(!rtc.cameraLive(allowed: true, started: false, live: true))
     precondition(!rtc.cameraLive(allowed: true, started: true, live: true)) // late capture completion
     let replacement = ZoenCallMediaIntent()
+    precondition(replacement.frontCamera && !rtc.frontCamera)
     precondition(replacement.microphoneLive(allowed: true, activated: true, live: true))
     precondition(!rtc.microphoneLive(allowed: true, activated: true, live: true))
     precondition(!replacement.cameraLive(allowed: true, started: true, live: false))
