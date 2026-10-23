@@ -107,6 +107,11 @@ fn unrelated_progress_preserves_pending_permit_but_retirement_drains_it() -> Tes
     let later = commit(&mut writer, &effect())?;
     permit.check(&envelope)?;
     assert_eq!(
+        permit.check_store_checkpoint(&checkpoint),
+        Err(AnchorError::Unreconciled)
+    );
+    permit.check_store_checkpoint(&later)?;
+    assert_eq!(
         writer.prepare(&effect(), &later, &later, true),
         Err(AnchorError::Busy)
     );

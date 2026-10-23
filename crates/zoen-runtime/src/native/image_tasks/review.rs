@@ -253,6 +253,17 @@ impl NativeCustody {
                 .envelope
                 .as_ref()
                 .ok_or(RuntimeError::InvalidBinding)?;
+            runtime
+                .validate_image_publish_checkpoint(
+                    envelope,
+                    staging
+                        .review
+                        .as_ref()
+                        .ok_or(RuntimeError::InvalidBinding)?
+                        .checkpoint
+                        .as_ref(),
+                )
+                .await?;
             let seq = transport
                 .publish(envelope)
                 .await

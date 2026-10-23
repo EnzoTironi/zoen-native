@@ -9,6 +9,43 @@ pub(crate) struct PublishTransition {
 }
 
 impl RuntimeAuthority {
+    /// An original retained checkpoint is a transport binding, never another
+    /// permission. Omitting the anchor cannot downgrade a managed publication.
+    pub(crate) async fn validate_image_publish_checkpoint(
+        &self,
+        envelope: &Envelope,
+        checkpoint: Option<&Checkpoint>,
+    ) -> Result<(), RuntimeError> {
+        let Some(managed) = &self.managed_images else {
+            return if checkpoint.is_none() {
+                Ok(())
+            } else {
+                Err(RuntimeError::RestoreUnreconciled)
+            };
+        };
+        let checkpoint = checkpoint.ok_or(RuntimeError::RestoreUnreconciled)?;
+        self.check_image_checkpoint().await?;
+        let guard = managed.lock().await;
+        let facts = guard
+            .anchor
+            .reader()
+            .inspect_publish(checkpoint, envelope)
+            .map_err(error)?;
+        let transaction = self.execution.transaction().await?;
+        let key = self
+            .execution
+            .root
+            .pack(&("managed-images/effect/1", checkpoint.sequence));
+        let bytes = transaction
+            .get(&key, false)
+            .await?
+            .ok_or(RuntimeError::RestoreUnreconciled)?;
+        if crate::hash(&bytes) != facts.checkpoint_record_digest {
+            return Err(RuntimeError::RestoreUnreconciled);
+        }
+        Ok(())
+    }
+
     pub(crate) async fn begin_image_publish_checkpoint(
         &self,
         envelope: &Envelope,
