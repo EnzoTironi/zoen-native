@@ -8,25 +8,23 @@ pub(super) fn discover(
     source: &str,
     serving: &str,
     names: &mut Vec<(ToolDef, String, String)>,
-) {
+) -> Result<(), &'static str> {
     if names.len() < 64 && e.can_create_agent_site(space, source, serving) {
-        if let Ok(value) = sites::definition("create_site", space) {
-            let definition: ToolDef =
-                serde_json::from_value(value).expect("native Site definition");
-            if !names.iter().any(|(d, _, _)| d.name == definition.name) {
-                names.push((definition, space.into(), "create_site".into()));
-            }
+        let value = sites::definition("create_site", space)
+            .map_err(|_| "Native Site creation definition is unavailable")?;
+        let definition: ToolDef =
+            serde_json::from_value(value).map_err(|_| "Native Site tool definition is invalid")?;
+        if !names.iter().any(|(d, _, _)| d.name == definition.name) {
+            names.push((definition, space.into(), "create_site".into()));
         }
     }
     for (item, version, hash) in e.agent_site_sources(space, source, serving) {
         let mut offered = Vec::new();
         for tool in ["read_site", "replace_site_source"] {
-            let Ok(value) = sites::selected_definition(tool, &item, version, &hash) else {
-                offered.clear();
-                break;
-            };
-            let definition: ToolDef =
-                serde_json::from_value(value).expect("native Site definition");
+            let value = sites::selected_definition(tool, &item, version, &hash)
+                .map_err(|_| "Native Site source definition is unavailable")?;
+            let definition: ToolDef = serde_json::from_value(value)
+                .map_err(|_| "Native Site tool definition is invalid")?;
             if names.iter().any(|(d, _, _)| d.name == definition.name) {
                 offered.clear();
                 break;
@@ -37,6 +35,7 @@ pub(super) fn discover(
             names.extend(offered);
         }
     }
+    Ok(())
 }
 impl SpaceTools<'_> {
     pub(super) fn site_binding(&self, call: &ToolCall) -> Option<(&str, &str)> {

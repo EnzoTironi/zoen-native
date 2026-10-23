@@ -1,6 +1,14 @@
 //! Storage operations on the original Engine state.
 
 use super::*;
+pub(crate) struct FileAddInput<'a> {
+    pub space: &'a str,
+    pub path: &'a str,
+    pub name: &'a str,
+    pub mime: &'a str,
+    pub bytes: &'a [u8],
+    pub thumbnail: Option<&'a [u8]>,
+}
 
 impl Engine {
     pub(super) fn file_item(&self, item: &str) -> R<(&crate::engine::ItemState, FileDoc)> {
@@ -130,22 +138,30 @@ impl Engine {
         bytes: &[u8],
         thumbnail: Option<&[u8]>,
     ) -> R<String> {
-        self.file_add_at(space, path, name, mime, bytes, thumbnail, &new_id("it"))
+        self.file_add_at(
+            FileAddInput {
+                space,
+                path,
+                name,
+                mime,
+                bytes,
+                thumbnail,
+            },
+            &new_id("it"),
+        )
     }
 
     /// A caller-bound canonical Item ID makes an unknown/missing receipt fail
     /// closed instead of creating a second file. Existing IDs are never reused.
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn file_add_at(
-        &mut self,
-        space: &str,
-        path: &str,
-        name: &str,
-        mime: &str,
-        bytes: &[u8],
-        thumbnail: Option<&[u8]>,
-        item: &str,
-    ) -> R<String> {
+    pub(crate) fn file_add_at(&mut self, input: FileAddInput<'_>, item: &str) -> R<String> {
+        let FileAddInput {
+            space,
+            path,
+            name,
+            mime,
+            bytes,
+            thumbnail,
+        } = input;
         if item.is_empty()
             || item.len() > 128
             || !item

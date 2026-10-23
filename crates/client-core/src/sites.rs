@@ -87,7 +87,10 @@ fn stale() -> CoreError {
     }
 }
 fn html_valid(html: &str) -> R<()> {
-    if html.is_empty() || html.len() as u64 > MAX_HTML_BYTES || html.contains('\0') {
+    if html.is_empty()
+        || u64::try_from(html.len()).map_err(|_| invalid())? > MAX_HTML_BYTES
+        || html.contains('\0')
+    {
         return Err(invalid());
     }
     Ok(())
@@ -344,7 +347,12 @@ impl Client {
         let audience = self
             .net
             .lock()
-            .unwrap_or_else(|p| p.into_inner())
+            .map_err(|_| CoreError::Invalid {
+                reason: crate::i18n::t(
+                    "A conexão precisa ser restabelecida antes de publicar.",
+                    "Reconnect before publishing.",
+                ),
+            })?
             .as_ref()
             .and_then(|net| {
                 net.authenticated_relay_name(&relay, &scope.identity_id, &scope.device_id)

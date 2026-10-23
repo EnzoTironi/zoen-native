@@ -58,7 +58,7 @@ pub(crate) fn parsed(p: &ToolProposal) -> R<(Value, Option<Value>)> {
         || ask["policy_sha256"].as_str().is_none_or(|v| !digest(v))
         || ask["steps"]
             .as_array()
-            .is_none_or(|v| v.len() != p.step as usize)
+            .is_none_or(|v| u32::try_from(v.len()).ok() != Some(p.step))
         || ask["remaining"].as_array().is_none_or(|v| !v.is_empty())
         || ask["round"].as_u64().is_none_or(|v| v >= 4)
         || ask["call"]["name"] != model_name(&p.canonical_tool, locator).ok_or_else(invalid)?
@@ -129,7 +129,7 @@ pub(crate) fn matches(state: &State, req: &AgentRequest, space: &str) -> bool {
                 && it.current().number == p.version
                 && file.mime == "text/html"
                 && file.sha256 == p.sha256
-                && (1..=HTML_LIMIT as u64).contains(&file.bytes)
+                && (1..=u64::from(HTML_LIMIT)).contains(&file.bytes)
         }),
     };
     current
@@ -142,11 +142,9 @@ pub(crate) fn matches(state: &State, req: &AgentRequest, space: &str) -> bool {
         && p.serving != req.agent
         && source == p.source_sha256
         && req.tool_proposal_hash(space).as_deref() == Some(&req.content_hash)
-        && p.task_sha256
-            == sha(
-                &serde_json::to_vec(&("zoen.tool-task.v1", space, &req.agent, &p.source))
-                    .unwrap_or_default(),
-            )
+        && serde_json::to_vec(&("zoen.tool-task.v1", space, &req.agent, &p.source))
+            .ok()
+            .is_some_and(|bytes| p.task_sha256 == sha(&bytes))
         && ask["envelope"]
             == json!({"agent":req.agent,"device":p.device,"owner":p.owner,"space":space,"from":p.serving,"inbound_sha256":inbound})
 }
@@ -158,6 +156,9 @@ impl Client {
         serving: &str,
         input: AgentToolApprovalInput,
     ) -> R<AgentRequestDto> {
+        if input.continuation_json.len() > shared::CONTINUATION_LIMIT {
+            return Err(invalid());
+        }
         let mut e = self.lock();
         let command = parse(&input.canonical_tool, &input.arguments)?;
         let (device, owner, _, source_sha256) =
@@ -204,7 +205,7 @@ impl Client {
             ),
             step: ask["steps"]
                 .as_array()
-                .map(|v| v.len() as u32)
+                .and_then(|v| u32::try_from(v.len()).ok())
                 .ok_or_else(invalid)?,
             artifact,
             version,

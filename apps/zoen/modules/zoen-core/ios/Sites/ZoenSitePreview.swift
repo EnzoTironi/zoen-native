@@ -74,7 +74,7 @@ final class ZoenSitePreview: ExpoView, WKNavigationDelegate, WKUIDelegate {
     decisionHandler(initial ? .allow : .cancel)
   }
 
-  func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+  func webView(_ webView: WKWebView, didFinish navigation: WKNavigation?) {
     self.navigation = .init()
   }
 

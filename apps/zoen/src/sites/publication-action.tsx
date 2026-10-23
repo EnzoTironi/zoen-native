@@ -35,7 +35,8 @@ export function SitePublicationAction({
   useFocusEffect(
     useCallback(() => {
       const end = activity.focus();
-      const ticket = activity.begin()!;
+      const ticket = activity.begin();
+      if (!ticket) return end;
       setBusy(true);
       setStatus(null);
       setError(null);

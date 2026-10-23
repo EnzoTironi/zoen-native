@@ -53,7 +53,9 @@ impl<'a> SpaceTools<'a> {
                 ));
             }
         }
-        site_tools::discover(e, space, source, serving, &mut names);
+        if let Err(reason) = site_tools::discover(e, space, source, serving, &mut names) {
+            say(reason);
+        }
         let binary_items: std::collections::BTreeSet<_> = e
             .items()
             .into_iter()

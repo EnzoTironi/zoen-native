@@ -97,7 +97,7 @@ fn contracts_refuse_authority_hosting_fields_and_bound_exact_unicode() {
         assert!(parse("create_site", &args).is_err());
     }
     let mut args = create_args();
-    args["html"] = json!("x".repeat(HTML_LIMIT + 1));
+    args["html"] = json!("x".repeat(usize::try_from(HTML_LIMIT).unwrap() + 1));
     assert!(parse("create_site", &args).is_err());
     args["html"] = json!("a\0b");
     assert!(parse("create_site", &args).is_err());

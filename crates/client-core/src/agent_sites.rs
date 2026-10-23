@@ -27,7 +27,7 @@ mod tests;
 
 pub const REVISION: &str = "zoen.native-site.file.v1";
 pub const SCHEMA: u8 = 5;
-const HTML_LIMIT: usize = 16 * 1024;
+const HTML_LIMIT: u32 = 16 * 1024;
 const ARGUMENT_LIMIT: usize = 32 * 1024;
 
 fn sha(bytes: &[u8]) -> String {
@@ -57,7 +57,9 @@ fn digest(value: &str) -> bool {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 fn html_valid(value: &str) -> bool {
-    !value.is_empty() && value.len() <= HTML_LIMIT && !value.contains('\0')
+    !value.is_empty()
+        && u32::try_from(value.len()).is_ok_and(|length| length <= HTML_LIMIT)
+        && !value.contains('\0')
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -117,12 +119,12 @@ impl Engine {
             || !digest(expected_sha)
             || info.sha256 != expected_sha
             || info.mime != "text/html"
-            || info.bytes > HTML_LIMIT as u64
+            || info.bytes > u64::from(HTML_LIMIT)
         {
             return Err(stale());
         }
         let bytes = self
-            .file_bytes_bounded(item, Some(version), HTML_LIMIT as u64)?
+            .file_bytes_bounded(item, Some(version), u64::from(HTML_LIMIT))?
             .ok_or_else(stale)?;
         let html = String::from_utf8(bytes).map_err(|_| invalid())?;
         if !html_valid(&html) {
@@ -166,7 +168,7 @@ impl Client {
                 let ItemContent::File(file) = &it.current().content else {
                     return None;
                 };
-                (file.mime == "text/html" && file.bytes > 0 && file.bytes <= HTML_LIMIT as u64)
+                (file.mime == "text/html" && file.bytes > 0 && file.bytes <= u64::from(HTML_LIMIT))
                     .then(|| (it.id.clone(), it.current().number, file.sha256.clone()))
             })
             .collect();

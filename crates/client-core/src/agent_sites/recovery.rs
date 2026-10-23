@@ -101,7 +101,9 @@ impl Engine {
                 r.req.agent == actor
                     && r.space == space
                     && r.req.tool_proposal.as_ref().is_some_and(|p| {
-                        p.schema == SCHEMA && p.source == source && p.step as usize == step
+                        p.schema == SCHEMA
+                            && p.source == source
+                            && usize::try_from(p.step).ok() == Some(step)
                     })
             })
             .max_by_key(|r| self.state.tool_approval_order(&r.req))

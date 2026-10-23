@@ -148,15 +148,21 @@ impl Client {
             let (item_id, version) = match command {
                 Command::Create(c) => {
                     let name = format!("{}.html", c.title);
-                    let entry = e.send_file_message_for_item(
-                        &space,
-                        &format!("it_site_{intent}"),
-                        &name,
-                        "text/html",
-                        c.html.as_bytes(),
-                        Some(&p.source),
-                        &format!("site_{intent}"),
-                    )?;
+                    let item_id = format!("it_site_{intent}");
+                    let mutation_id = format!("site_{intent}");
+                    let entry = e.send_file_message_inner(crate::files::FileSendInput {
+                        space: &space,
+                        name: &name,
+                        mime: "text/html",
+                        bytes: c.html.as_bytes(),
+                        thumbnail: None,
+                        reply_to: Some(&p.source),
+                        thread: false,
+                        mutation_id: &mutation_id,
+                        caption: "",
+                        media: None,
+                        fixed_item: Some(&item_id),
+                    })?;
                     let crate::EntryKind::Message {
                         card: Some(card), ..
                     } = entry.kind
