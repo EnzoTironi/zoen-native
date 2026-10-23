@@ -173,14 +173,16 @@ pub(super) fn media_contract_grouped_preexisting_confirmed_files_need_no_new_cre
                         message: types::new_id("msg"),
                         text: format!("Existing {index}"),
                         attaches: Some(item.clone()),
-                        media: options.metadata(
-                            &f.scope.expected_identity_id,
-                            &f.scope.space_id,
-                            None,
-                            false,
-                            &["existing-one", "existing-two"],
-                            index,
-                        ),
+                        media: options
+                            .metadata(
+                                &f.scope.expected_identity_id,
+                                &f.scope.space_id,
+                                None,
+                                false,
+                                &["existing-one", "existing-two"],
+                                index,
+                            )
+                            .unwrap(),
                         reply: None,
                         forwarded: false,
                     },
@@ -253,14 +255,16 @@ pub(super) fn media_contract_rejects_invalid_group_index_and_duplicate_membershi
         grouping: types::AttachmentGrouping::Grouped,
     };
     let before = counts(&f.engine);
-    let invalid = options.metadata(
-        &f.scope.expected_identity_id,
-        &f.scope.space_id,
-        None,
-        false,
-        &["one", "two"],
-        1,
-    );
+    let invalid = options
+        .metadata(
+            &f.scope.expected_identity_id,
+            &f.scope.space_id,
+            None,
+            false,
+            &["one", "two"],
+            1,
+        )
+        .unwrap();
     assert!(f
         .engine
         .lock()
@@ -278,14 +282,16 @@ pub(super) fn media_contract_rejects_invalid_group_index_and_duplicate_membershi
         )
         .is_err());
     assert_eq!(counts(&f.engine), before);
-    let first = options.metadata(
-        &f.scope.expected_identity_id,
-        &f.scope.space_id,
-        None,
-        false,
-        &["one", "two"],
-        0,
-    );
+    let first = options
+        .metadata(
+            &f.scope.expected_identity_id,
+            &f.scope.space_id,
+            None,
+            false,
+            &["one", "two"],
+            0,
+        )
+        .unwrap();
     f.engine
         .lock()
         .send_file_message_with_media(
@@ -368,7 +374,8 @@ pub(super) fn media_contract_forwarded_group_is_rejected_and_single_forward_pres
         false,
         &["new-1", "new-2"],
         0,
-    );
+    )
+    .unwrap();
     let before = counts(&f.engine);
     assert!(f
         .engine
