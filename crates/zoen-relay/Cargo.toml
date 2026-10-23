@@ -66,6 +66,7 @@ ring = "0.17"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 
 [dev-dependencies]
+tokio = { version = "1", features = ["test-util"] }
 mls = { workspace = true, features = ["device"] }
 rusqlite.workspace = true
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "handshake"] }

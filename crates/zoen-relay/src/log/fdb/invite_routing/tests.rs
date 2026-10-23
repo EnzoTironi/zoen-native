@@ -7,7 +7,7 @@ use std::{
     },
 };
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn retryable_owner_resolution_returns_only_the_fresh_fence() {
     let mut calls = 0;
     let result = resolve(
@@ -33,7 +33,7 @@ async fn retryable_owner_resolution_returns_only_the_fresh_fence() {
     assert_eq!(result.token, 12);
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn permanent_rejection_never_retries_even_if_its_text_looks_transient() {
     let mut calls = 0;
     let result = resolve::<(), _, _>(
@@ -49,7 +49,7 @@ async fn permanent_rejection_never_retries_even_if_its_text_looks_transient() {
     assert_eq!(result, Err("partition ownership is changing".into()));
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn retryable_unavailability_expires_without_resetting_the_deadline() {
     let mut calls = 0;
     let deadline = Instant::now() + Duration::from_millis(10);
@@ -80,7 +80,7 @@ async fn retryable_unavailability_expires_without_resetting_the_deadline() {
     assert_eq!(result, Err(DEADLINE.into()));
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn loss_of_forwarding_stops_before_another_resolution() {
     let available = AtomicBool::new(true);
     let mut calls = 0;
@@ -105,7 +105,7 @@ impl Drop for Dropped {
     }
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_pending_resolver_is_cancelled_at_the_same_deadline() {
     let dropped = Arc::new(AtomicUsize::new(0));
     let result = resolve::<(), _, _>(
