@@ -1,3 +1,4 @@
+
 /* Chat */
 .zm-main { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: linear-gradient(180deg, #fcf0e6 0, #fdf7f1 170px, #fff 410px); }
 .zm-chat-head { position: absolute; inset: 0 0 auto; z-index: 3; display: flex; justify-content: center; padding: 16px; background: linear-gradient(#fffffff0 35%, #ffffffa0 75%, #fff0); pointer-events: none; }
@@ -104,4 +105,3 @@
   .zm-row, .zm-thread, .zm-picker, .zm-menu, .zm-reactions button, .zm-replying, .zm-toast, .zm-sheet, .zm-swap { animation: zm-fade 120ms linear both; }
   .zm-app { transition: none; }
 }
-

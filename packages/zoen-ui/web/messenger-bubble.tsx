@@ -81,4 +81,3 @@ export function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, 
     </button> : null}
   </article>;
 }
-

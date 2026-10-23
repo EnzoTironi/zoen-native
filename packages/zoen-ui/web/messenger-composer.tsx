@@ -60,4 +60,3 @@ export function Composer({ placeholder, disabled, reply, cancelReply, submit, au
     </form>}
   </div>;
 }
-

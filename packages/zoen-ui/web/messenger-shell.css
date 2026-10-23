@@ -56,4 +56,3 @@ body { background: var(--zm-canvas); color: var(--zm-ink); }
 .zm-side-foot > span:not(.zm-avatar) { flex: 1; display: grid; }
 .zm-online { color: #2f9e5b; } .zm-offline { color: var(--zm-grey); }
 .zm-side-foot .zw-secondary { padding: 6px 10px; font-size: 12px; border-radius: 999px; }
-

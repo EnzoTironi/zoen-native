@@ -31,4 +31,3 @@ export function Icon({ name }: { name: 'plus' | 'send' | 'mic' | 'reply' | 'thre
   };
   return <svg className="zm-icon" viewBox="0 0 24 24" aria-hidden="true">{p[name]}</svg>;
 }
-
