@@ -1,4 +1,5 @@
 mod catchup_cases;
+mod catchup_projection;
 mod lease_cases;
 mod ordering_cases;
 mod pickup_cases;

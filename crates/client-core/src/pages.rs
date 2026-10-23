@@ -30,6 +30,8 @@ pub(crate) use plan::PlanSnapshot;
 pub use plan::{
     PlanPageBlockDto, PlanPageContentDto, PlanPageDto, PlanPageReadSourceDto, PlanProseKindDto,
 };
+#[cfg(test)]
+mod catchup_projection_tests;
 mod session;
 #[cfg(test)]
 mod tests;
