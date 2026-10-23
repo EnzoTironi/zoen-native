@@ -19,11 +19,17 @@ pub(crate) struct ManagedImages {
 
 #[cfg(test)]
 impl ManagedImages {
-    pub(crate) fn activation_evidence(&self) -> (Deployment, Option<Prepared>, Checkpoint) {
+    pub(crate) fn activation_evidence(
+        &self,
+    ) -> (
+        Deployment,
+        Option<Prepared>,
+        Result<Checkpoint, AnchorError>,
+    ) {
         (
             self.deployment.clone(),
             self.anchor.pending().unwrap(),
-            self.anchor.reader().checkpoint().unwrap(),
+            self.anchor.reader().checkpoint(),
         )
     }
 }
