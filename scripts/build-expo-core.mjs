@@ -105,7 +105,7 @@ async function validateGeneratedInventory() {
     ]);
   }
 }
-async function sourceHash() {
+async function sourceInputs() {
   const hash = createHash('sha256');
   hash.update(
     JSON.stringify({
@@ -127,10 +127,12 @@ async function sourceHash() {
   );
   const packages = JSON.parse(stdout).packages;
   const byDirectory = new Map(packages.map((pkg) => [dirname(pkg.manifest_path), pkg]));
+  const manifests = new Map();
   const pending = ['client-core', ...(platform === 'types' ? [] : ['uniffi-bindgen'])].map(
     (name) => {
       const pkg = packages.find((candidate) => candidate.name === name);
       if (!pkg) throw new Error(`Missing build package: ${name}`);
+      manifests.set(name, pkg.manifest_path);
       return dirname(pkg.manifest_path);
     },
   );
@@ -166,12 +168,12 @@ async function sourceHash() {
     hash.update(path.slice(root.length));
     hash.update(await readFile(path));
   }
-  return hash.digest('hex');
+  return { sha256: hash.digest('hex'), manifests };
 }
 
 if (!['ios', 'android', 'types'].includes(platform))
   throw new Error('usage: build-expo-core.mjs ios|android|types [--release]');
-const hash = await sourceHash();
+const { sha256: hash, manifests } = await sourceInputs();
 // One stamp describes the artifact currently installed at the shared output path.
 const stamp = join(moduleRoot, 'generated', `${platform}.json`);
 try {
@@ -197,7 +199,7 @@ if (platform === 'types') {
       [
         {
           key: 'exporter',
-          manifest: 'crates/client-core/Cargo.toml',
+          manifest: manifests.get('client-core'),
           name: 'export-client-types',
           executable: true,
         },
@@ -251,7 +253,7 @@ if (platform === 'types') {
   if (guarded) {
     const host = await guarded.build(
       ['-p', 'client-core', '--profile', profile],
-      [{ key: 'host', manifest: 'crates/client-core/Cargo.toml', name: 'libclient_core.dylib' }],
+      [{ key: 'host', manifest: manifests.get('client-core'), name: 'libclient_core.dylib' }],
       { SDKROOT: hostSdk },
     );
     hostLibrary = host.host;
@@ -267,7 +269,7 @@ if (platform === 'types') {
     if (guarded) {
       const { library } = await guarded.build(
         ['-p', 'client-core', '--profile', profile, '--target', architecture],
-        [{ key: 'library', manifest: 'crates/client-core/Cargo.toml', name: 'libclient_core.a' }],
+        [{ key: 'library', manifest: manifests.get('client-core'), name: 'libclient_core.a' }],
         options,
       );
       libraries.set(architecture, library);
@@ -286,7 +288,7 @@ if (platform === 'types') {
       [
         {
           key: 'generator',
-          manifest: 'crates/uniffi-bindgen/Cargo.toml',
+          manifest: manifests.get('uniffi-bindgen'),
           name: 'uniffi-bindgen',
           executable: true,
         },
@@ -333,7 +335,7 @@ if (platform === 'types') {
   outputs = [join(framework, 'Info.plist'), join(out, 'ClientFFI.generated.swift')];
 }
 await validateGeneratedInventory();
-if (guarded && (await sourceHash()) !== hash)
+if (guarded && (await sourceInputs()).sha256 !== hash)
   throw new Error('Build inputs changed; generated outputs remain unqualified');
 const cargoQualification = guarded ? await guarded.finish(hash) : undefined;
 await writeFile(

@@ -33,6 +33,8 @@ and output hashes. The builder declares its tooling files and the SDK/deployment
 library search and DeckCraft resource-manifest environment inputs. Guarded builds
 consolidate `CARGO_BUILD_BUILD_DIR` into the selected target, as the guard requires.
 No environment values are added to builder receipts; the guard records hashes.
+Artifact lookup uses the package manifest paths returned by locked/offline Cargo
+metadata, including tools outside `crates/`; it does not infer package directories.
 
 The builder verifies and copies each required executable/library into that private
 directory before consuming it. Hash mismatch, missing/ambiguous output or changed
@@ -64,5 +66,9 @@ Entrypoint checks (tiny Rust fixture only, no Core/native build):
 
 ```sh
 ZOEN_CARGO_GUARD_PYTHON=/path/to/python3.12 \
-  node --test scripts/tests/build-expo-core.test.mjs
+  node --test --test-concurrency=1 scripts/tests/build-expo-core.test.mjs \
+    scripts/tests/expo-ios-orchestration.test.mjs
 ```
+
+The Rust CI job runs both files with Node 24 after the guard's Python tests. Its
+locked metadata preparation handles a cold registry cache without compiling Core.

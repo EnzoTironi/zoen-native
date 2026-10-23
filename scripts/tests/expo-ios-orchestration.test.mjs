@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { chmod, cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
@@ -10,6 +10,31 @@ import { cargoTooling } from '../expo-cargo-artifacts.mjs';
 
 const execute = promisify(execFile);
 const source = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+let repositoryPaths;
+async function repositoryPackagePaths() {
+  if (!repositoryPaths) {
+    const cargo = process.env.CARGO_TEST_BIN ?? join(process.env.HOME, '.cargo/bin/cargo');
+    const { stdout } = await execute(
+      cargo,
+      ['metadata', '--locked', '--offline', '--no-deps', '--format-version', '1'],
+      { cwd: source, maxBuffer: 8 * 1024 * 1024 },
+    );
+    const packages = JSON.parse(stdout).packages;
+    repositoryPaths = Object.fromEntries(
+      ['client-core', 'uniffi-bindgen'].map((name) => {
+        const pkg = packages.find((item) => item.name === name);
+        assert(pkg, `Missing actual repository package: ${name}`);
+        const manifest = relative(source, pkg.manifest_path);
+        assert(
+          !manifest.startsWith('..') && !isAbsolute(manifest),
+          'Fixture package must be inside the actual repository',
+        );
+        return [name, manifest];
+      }),
+    );
+  }
+  return repositoryPaths;
+}
 async function write(path, value) {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, value);
@@ -36,16 +61,19 @@ async function fixture(t, refuse = false) {
   }
   await write(join(root, 'Cargo.toml'), '[workspace]\n');
   await write(join(root, 'Cargo.lock'), '# synthetic fixture\n');
-  for (const name of ['client-core', 'uniffi-bindgen'])
-    await write(join(root, 'crates', name, 'Cargo.toml'), `[package]\nname="${name}"\n`);
+  const packagePaths = await repositoryPackagePaths();
+  await write(join(root, 'repository-package-paths.json'), JSON.stringify(packagePaths));
+  for (const [name, manifest] of Object.entries(packagePaths))
+    await write(join(root, manifest), `[package]\nname="${name}"\n`);
   const bin = join(root, 'home/.cargo/bin');
   await executable(
     join(bin, 'cargo'),
     `
     const p = require('node:path');
     if (process.argv[2] !== 'metadata') throw Error('unguarded Cargo compilation');
-    console.log(JSON.stringify({packages: ['client-core','uniffi-bindgen'].map(name => ({
-      name,manifest_path:p.join(process.cwd(),'crates',name,'Cargo.toml'),dependencies:[]
+    const paths=${JSON.stringify(packagePaths)};
+    console.log(JSON.stringify({packages: Object.entries(paths).map(([name,manifest]) => ({
+      name,manifest_path:p.join(process.cwd(),manifest),dependencies:[]
     }))}));
   `,
   );
@@ -82,7 +110,7 @@ async function fixture(t, refuse = false) {
     fs.writeFileSync(log,JSON.stringify(prior));
     fs.writeFileSync(receipt,JSON.stringify({status:'PASS',target,
       before:{packages:{fixture:'stable'},context:{config:{fixture:'stable'}}},
-      artifacts:[{manifest:p.join(root,'crates',pkg,'Cargo.toml'),path:artifact,
+      artifacts:[{manifest:p.join(root,${JSON.stringify(packagePaths)}[pkg]),path:artifact,
       sha256:crypto.createHash('sha256').update(body).digest('hex')}]}));
   `,
   );
@@ -145,6 +173,13 @@ test('iOS release binds each SDK/profile, preserves output inventories and consu
   );
   const qualification = JSON.parse(await readFile(stamp.cargoQualification, 'utf8'));
   assert.equal(qualification.builds.length, 4);
+  const generatorReceipt = JSON.parse(await readFile(qualification.builds[3].receipt, 'utf8'));
+  // The fixture uses actual repository metadata, rather than reproducing the
+  // builder's assumptions about where a workspace package ought to live.
+  assert.equal(
+    generatorReceipt.artifacts[0].manifest,
+    join(root, (await repositoryPackagePaths())['uniffi-bindgen']),
+  );
   assert.equal(
     await readFile(
       join(root, 'apps/zoen/modules/zoen-core/ios/generated/ClientFFI.generated.swift'),

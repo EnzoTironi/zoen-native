@@ -94,7 +94,8 @@ export class ExpoCargoArtifacts {
         qualified.artifacts
           .filter(
             (artifact) =>
-              artifact.manifest === join(this.root, manifest) && basename(artifact.path) === name,
+              artifact.manifest === resolve(this.root, manifest) &&
+              basename(artifact.path) === name,
           )
           .map((artifact) => [artifact.path, artifact]),
       );
