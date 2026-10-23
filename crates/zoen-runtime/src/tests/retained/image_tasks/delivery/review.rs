@@ -15,7 +15,7 @@ pub(in crate::tests::retained::image_tasks) async fn run(
         f.world.relay_cell.clone().unwrap(),
     )
     .unwrap();
-    let before = head(f).await;
+    let before_activation = head(f).await;
     f.world.runtime.fault.store(66, Ordering::SeqCst);
     assert_eq!(
         proof::review::stage(&f.world.runtime, &intent, &unavailable)
@@ -26,7 +26,11 @@ pub(in crate::tests::retained::image_tasks) async fn run(
     f.world.runtime.fault.store(0, Ordering::SeqCst);
     let activation = f.world.runtime.pending_image_activation().await;
     f.world.runtime.refuse_unproven_image_activation().await;
-    assert_eq!(head(f).await, before);
+    assert_eq!(head(f).await, before_activation);
+    f.message("I added a message while image review activation was offline.")
+        .await;
+    let before = head(f).await;
+    assert_eq!(before.seq, before_activation.seq + 1);
     output::cold(f).await;
     f.world
         .runtime
