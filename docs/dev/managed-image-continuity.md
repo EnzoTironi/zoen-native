@@ -92,3 +92,11 @@ dispatch checkpoint and cold file reopen. Its restore case rewinds matching
 checkpoint rows in actual SQL and FDB and verifies refusal against the advanced
 independent file. It does not perform a full deployment backup/restore.
 Execution results must be recorded against the immutable tested commit.
+
+Qualified executable source: `1edd0e84`. Runtime full suite: 15 passed, 0 failed
+or ignored (211.56 seconds); all-target Clippy for `relay-admission` and
+`zoen-runtime`: passed with `-D warnings`. The unchanged filesystem suite passed
+8 tests on `e7caea33`; that first source's Runtime compile failure is preserved.
+Evidence index: `zoen-image-managed-continuity-v452/evidence-index.json` in the
+local build evidence directory. Static peer review found no material blocker
+in this dispatch increment. This is not native iPhone or deployment acceptance.
