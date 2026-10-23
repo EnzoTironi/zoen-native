@@ -263,6 +263,9 @@ impl Fixture {
         )
         .unwrap();
         assert!(owner.unlock(self.owner_vault.clone()).unwrap());
+        // Admit the synthetic owner through its normal initial Sync first.
+        // Only the agent's subsequent SyncDone is held by the regression.
+        server.released.store(true, Ordering::SeqCst);
         owner.start_sync(None).unwrap();
         tokio::time::timeout(Duration::from_secs(3), async {
             while server
@@ -277,7 +280,9 @@ impl Fixture {
         })
         .await
         .unwrap();
+        owner.wait_until_settled(3000).await.unwrap();
         owner.stop_sync();
+        server.released.store(false, Ordering::SeqCst);
     }
 
     pub(super) async fn approve(&mut self, request: &client_core::AgentRequestDto) {
