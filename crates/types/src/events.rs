@@ -76,6 +76,12 @@ pub enum EventBody {
     RequestOpened {
         request: AgentRequest,
     },
+    /// The owner asks for preparation of another review of one frozen action.
+    /// This event grants nothing and never changes the previous decision.
+    ToolReviewRequested {
+        request: RequestId,
+        content_hash: String,
+    },
     RequestResolved {
         request: RequestId,
         approved: bool,

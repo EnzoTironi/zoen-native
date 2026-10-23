@@ -222,7 +222,7 @@ async fn selected_turn_refuses_another_valid_signed_message_before_runtime() {
     let entry = timeline.iter().find(|entry| entry.id == f.other).unwrap();
     let calls = Arc::new(AtomicUsize::new(0));
     assert!(
-        !super::super::turn::selected(
+        super::super::turn::selected(
             &f.client,
             &context(&f, &calls, false),
             &definition(),
@@ -232,7 +232,8 @@ async fn selected_turn_refuses_another_valid_signed_message_before_runtime() {
             &run.bound
         )
         .await
-        .handled
+        .outcome
+            == super::super::turn::Outcome::Retry
     );
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     assert!(!f.path.join("source-steps.json").exists());
@@ -307,7 +308,7 @@ async fn an_existing_accepted_own_reply_completes_without_model_or_cursor_effect
         .into_iter()
         .find(|entry| entry.id == reply_id)
         .unwrap();
-    assert_eq!(reply.delivery, client_core::Delivery::Local);
+    assert_eq!(reply.delivery, client_core::Delivery::Sent);
     *server.delivered.lock().unwrap() = Some((f.space.clone(), f.owner.clone(), reply.seq));
     online(&f.client, true).await;
     assert_eq!(
@@ -536,7 +537,7 @@ async fn approved_recovery_enters_only_selected_request_and_retains_executor_adm
     f.approve(&selected).await;
     assert_eq!(
         run.head(&f.client).unwrap(),
-        Some((selected.id.clone(), RequestStatus::Approved))
+        Some((selected.id.clone(), RequestStatus::Approved, None))
     );
     assert_eq!(f.client.approved_tool_sources(&f.space).len(), 2);
     assert!(!run
@@ -570,3 +571,5 @@ async fn approved_recovery_enters_only_selected_request_and_retains_executor_adm
 }
 
 mod review;
+
+mod renewal;
