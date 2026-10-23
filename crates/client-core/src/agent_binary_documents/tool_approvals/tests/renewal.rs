@@ -379,3 +379,5 @@ fn signed_non_owner_or_wrong_hash_intents_are_inert_and_later_revocation_prevent
 }
 
 mod active_leaf_tests;
+
+mod owner_echo_tests;
