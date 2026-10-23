@@ -181,7 +181,7 @@ fn public_key(value: &str) -> bool {
 }
 
 impl Engine {
-    fn assert_call_owner(&self, identity: &str, device: &str) -> R<()> {
+    pub(crate) fn assert_call_owner(&self, identity: &str, device: &str) -> R<()> {
         if !self.is_unlocked()
             || !self
                 .account()
@@ -210,6 +210,11 @@ impl Engine {
     ) -> R<CallRecord> {
         self.assert_call_owner(identity, device)?;
         let me = self.me_id()?;
+        if !self.net.synced.contains(space) {
+            return Err(CoreError::Forbidden {
+                reason: "Calls need a relay-synchronized encrypted conversation".into(),
+            });
+        }
         let state = self.space_state(space)?;
         let callee = state
             .members

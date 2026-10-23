@@ -8,6 +8,9 @@ impl State {
         identities: &HashMap<IdentityId, Identity>,
         context: &BeforeEvent,
     ) -> Projection {
+        if !self.call_transport_valid(e) {
+            return Projection::Refused;
+        }
         if !self.call_event_valid(e, identities) {
             return Projection::Refused;
         }
@@ -43,6 +46,7 @@ impl State {
                     e.space.clone(),
                     SpaceState {
                         calls: Vec::new(),
+                        call_transport: Vec::new(),
                         id: e.space.clone(),
                         title: title.clone(),
                         kind: *kind,
@@ -56,8 +60,14 @@ impl State {
             }
             EventBody::MemberAdded { identity, role } => {
                 if let Some(s) = self.spaces.get_mut(&e.space) {
+                    let adding = !s.members.iter().any(|(id, _)| id == identity);
                     s.members.retain(|(id, _)| id != identity);
                     s.members.push((identity.clone(), *role));
+                    if adding {
+                        for call in &mut s.calls {
+                            call.invalidated = true;
+                        }
+                    }
                 }
             }
             EventBody::MemberRemoved { identity } => {
@@ -316,6 +326,7 @@ impl State {
                     }));
                 }
             }
+            EventBody::CallTransportV1 { .. } => self.apply_call_transport(e),
             EventBody::CallV1 { .. } => {
                 self.apply_call(e);
             }

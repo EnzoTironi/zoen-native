@@ -36,6 +36,7 @@ pub use app_documents::AppDocumentDto;
 mod api;
 mod backup;
 mod backup_api;
+mod call_transport_api;
 mod client_api;
 pub use backup_api::BackupStatusDto;
 #[cfg(feature = "client-types")]

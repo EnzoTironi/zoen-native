@@ -42,6 +42,10 @@ pub enum EventBody {
     CallV1 {
         signal: crate::calls::CallSignal,
     },
+    /// Authenticated SDP/ICE for the two accepted devices, never clear relay ephemera.
+    CallTransportV1 {
+        signal: crate::call_transport::CallTransportSignal,
+    },
     /// How I keep one of my chats (pinned, archived, muted). Lives only in my Personal
     /// Space, so it syncs across my own devices and nobody else ever sees it. The whole
     /// record is restated each time: the latest one wins.

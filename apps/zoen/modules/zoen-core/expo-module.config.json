@@ -1,15 +1,31 @@
 {
-  "platforms": ["apple", "android"],
+  "platforms": [
+    "apple",
+    "android"
+  ],
   "apple": {
-    "modules": ["ZoenCoreModule"],
+    "modules": [
+      "ZoenCoreModule"
+    ],
     "appDelegateSubscribers": [
       "ZoenGoogleSignInDelegate",
       "ZoenPresentationOrientationDelegate",
       "ZoenPushDelegate"
     ],
-    "reactDelegateHandlers": ["ZoenPresentationRootDelegate"]
+    "reactDelegateHandlers": [
+      "ZoenPresentationRootDelegate"
+    ],
+    "podspecPath": [
+      "ios/ZoenCore.podspec",
+      "ios/ZoenWebRTC.podspec"
+    ],
+    "swiftModuleName": [
+      "ZoenCore"
+    ]
   },
   "android": {
-    "modules": ["xyz.tironi.zoen.core.ZoenCoreModule"]
+    "modules": [
+      "xyz.tironi.zoen.core.ZoenCoreModule"
+    ]
   }
 }
