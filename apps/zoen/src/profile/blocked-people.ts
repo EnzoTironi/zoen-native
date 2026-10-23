@@ -1,12 +1,8 @@
 import type { ClientStore } from '../core/store';
 import type { ProfileDto } from '../core/generated/ProfileDto';
+import { accountScope, accountScopeKey, type AccountScope } from '../core/account-scope.ts';
 
-export type BlockedPeopleScope = Readonly<{
-  identity: string;
-  device: string;
-  relay: string;
-  epoch: number;
-}>;
+export type BlockedPeopleScope = AccountScope;
 export type BlockedPerson = Readonly<{
   id: string;
   profile: ProfileDto | null;
@@ -35,29 +31,11 @@ export const emptyBlockedPeople: BlockedPeopleState = {
   readFailed: false,
   actionFailed: false,
 };
-export const blockedPeopleScopeKey = (scope: BlockedPeopleScope | null): string =>
-  scope ? JSON.stringify([scope.identity, scope.device, scope.relay, scope.epoch]) : '';
+export const blockedPeopleScopeKey = accountScopeKey;
 
 export function createBlockedPeoplePort(store: ClientStore): BlockedPeoplePort {
   return {
-    scope() {
-      const state = store.getSnapshot();
-      const account = state.snapshot?.account;
-      return state.phase === 'ready' &&
-        state.mode === 'account' &&
-        !state.erasePending &&
-        !store.isSessionRetiring &&
-        account?.registered &&
-        account.unlocked &&
-        !account.setup_pending
-        ? {
-            identity: account.identity_id,
-            device: account.device_id,
-            relay: account.relay_url,
-            epoch: store.sessionEpoch,
-          }
-        : null;
-    },
+    scope: () => accountScope(store),
     blocked: () => store.driver.request({ op: 'blocked_people' }),
     profile: (identity_id) => store.driver.request({ op: 'profile', identity_id }),
     unblock: (identity_id) => store.request({ op: 'unblock_person', identity_id }),
