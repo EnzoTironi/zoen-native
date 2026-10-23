@@ -15,6 +15,7 @@ import { Avatar, NativeButton, Surface } from '../components/primitives';
 import { useDialogs } from '../components/dialogs';
 import { ToolReviewRecovery } from './tool-review-recovery';
 import { SiteToolReview } from './site-tool-review';
+import { siteScope, siteAuthority } from '../sites/source';
 import { useTheme } from '../theme';
 
 const statuses = {
@@ -43,14 +44,16 @@ export function RequestCard({
   const [result, setResult] = useState<string | null>(null);
   const deciding = useRef(false);
   const tool = request.tool_approval;
-  const siteReviewKey = `${request.id}:${tool?.content_hash ?? ''}:${store.sessionEpoch}`;
+  const siteNeedsReview = tool?.preview_kind === 'site';
+  const siteContext = siteNeedsReview ? siteScope(store, request.space_id) : null;
+  const siteOwner = siteContext && siteAuthority(store, siteContext);
+  const siteReviewKey = `${request.id}:${tool?.content_hash ?? ''}:${siteOwner ?? 'unavailable'}`;
   const [reviewedSiteKey, setReviewedSiteKey] = useState<string | null>(null);
-  const siteReviewed = reviewedSiteKey === siteReviewKey;
+  const siteReviewed = !!siteOwner && reviewedSiteKey === siteReviewKey;
   const siteReady = useCallback(
     (ready: boolean) => setReviewedSiteKey(ready ? siteReviewKey : null),
     [siteReviewKey],
   );
-  const siteNeedsReview = tool?.preview_kind === 'site';
   const toolValid = tool == null || toolApprovalValid(tool);
   const toolExpired = tool != null && toolApprovalExpired(tool);
   const itemId = tool == null ? request.item_id : toolValid ? tool.artifact_id : null;
