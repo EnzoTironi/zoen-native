@@ -121,6 +121,9 @@ async function readContext(path) {
 
 export async function proxyMain(args = process.argv.slice(2)) {
   const context = await readContext(process.env.ZOEN_ANDROID_CARGO_CONTEXT);
+  // cargo_metadata uses Command.output(): query stdin is legitimately closed.
+  // Only the single compilation inherits the outer NDK control pipe.
+  const readonlyQuery = same(args, metadataArguments) || args.length === 1 && versionArguments.has(args[0]);
   let active;
   let cancelled = false;
   let claimed = false;
@@ -132,9 +135,11 @@ export async function proxyMain(args = process.argv.slice(2)) {
     throw new Error('Android Cargo proxy requires its owned control pipe');
   process.on('SIGTERM', cancel);
   process.on('SIGINT', cancel);
-  process.stdin.on('end', cancel);
-  process.stdin.on('data', cancel);
-  process.stdin.resume();
+  if (!readonlyQuery) {
+    process.stdin.on('end', cancel);
+    process.stdin.on('data', cancel);
+    process.stdin.resume();
+  }
   const run = (program, arguments_, cwd = context.root, extra = {}) => new Promise((ok, fail) => {
     if (cancelled) return fail(new Error('Android Cargo invocation cancelled'));
     const child = spawn(program, arguments_, {
@@ -150,7 +155,7 @@ export async function proxyMain(args = process.argv.slice(2)) {
     });
   });
   try {
-    if (same(args, metadataArguments) || args.length === 1 && versionArguments.has(args[0])) {
+    if (readonlyQuery) {
       try {
         await stat(context.report + '.started');
         throw new Error('cargo-ndk query after its admitted build');
@@ -188,10 +193,12 @@ export async function proxyMain(args = process.argv.slice(2)) {
     if (claimed) await writeFile(context.report + '.retired', JSON.stringify({
       pid: process.pid, cancelled,
     }) + '\n', { flag: 'wx', mode: 0o600 });
-    process.stdin.pause();
-    process.stdin.removeListener('end', cancel);
-    process.stdin.removeListener('data', cancel);
-    process.stdin.destroy();
+    if (!readonlyQuery) {
+      process.stdin.pause();
+      process.stdin.removeListener('end', cancel);
+      process.stdin.removeListener('data', cancel);
+      process.stdin.destroy();
+    }
     process.removeListener('SIGTERM', cancel);
     process.removeListener('SIGINT', cancel);
   }

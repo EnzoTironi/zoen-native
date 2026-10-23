@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
 import { admittedArguments, ndkArguments, ndkInputs } from '../expo-android-cargo-proxy.mjs';
@@ -43,7 +45,7 @@ test('Android options preserve both supported ABIs/profiles and refuse duplicate
 });
 
 async function tools(t) {
-  const root = await mkdtemp(join(tmpdir(), 'ndk-environment-'));
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'ndk-environment-')));
   t.after(() => rm(root, { recursive: true, force: true }));
   const files = ['cargo', 'cargo-ndk', 'cargo-ndk-runner', 'proxy', 'ndk/source.properties',
     'ndk/build/cmake/android.toolchain.cmake', 'ndk/bin/clang', 'ndk/bin/clang++', 'ndk/bin/llvm-ar'];
@@ -124,4 +126,40 @@ test('artifact helper forwards real Cargo and added NDK inputs to the canonical 
   await chmod(artifact, 0o600);
   await writeFile(artifact, 'replacement');
   assert.equal(await readFile(result.probe, 'utf8'), 'qualified-probe');
+});
+
+// cargo_metadata's Command.output() supplies a closed stdin for its read-only
+// query. That EOF is normal, unlike losing the owned pipe of the NDK build.
+test('real proxy read-only metadata tolerates closed stdin without cancelling its child; post-build queries still refuse', async (t) => {
+  const { root, value } = await tools(t);
+  await writeFile(value.cargo, `#!${process.execPath}\nsetTimeout(()=>console.log(JSON.stringify({query:'completed'})),80);\n`);
+  await chmod(value.cargo, 0o700);
+  const context = { ...value, schema: 1, root, target: join(root, 'target'), directory: root,
+    manifest: join(root, 'Cargo.toml'), package: 'probe', library: 'probe',
+    profile: 'dev', sourceSha256: '0'.repeat(64), report: join(root, 'query-result.json') };
+  const path = join(root, 'context.json');
+  await writeFile(path, JSON.stringify(context), { mode: 0o600 });
+  async function query() {
+    const executable = process.env.ZOEN_ANDROID_PROXY_UNDER_TEST ??
+      fileURLToPath(new URL('../expo-android-cargo-proxy.mjs', import.meta.url));
+    const child = spawn(process.execPath, [executable, 'metadata', '--format-version', '1', '--no-deps'], {
+      cwd: root, env: { ...process.env, ZOEN_ANDROID_CARGO_CONTEXT: path, ZOEN_ANDROID_CARGO_CONTROL: '1' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '', stderr = '';
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    return new Promise((ok, fail) => {
+      child.once('error', fail);
+      child.once('exit', (code) => ok({ code, stdout, stderr }));
+    });
+  }
+  const complete = await query();
+  assert.equal(complete.code, 0, complete.stderr);
+  assert.deepEqual(JSON.parse(complete.stdout), { query: 'completed' });
+  await writeFile(context.report + '.started', '{}');
+  const afterBuild = await query();
+  assert.notEqual(afterBuild.code, 0);
+  assert.match(afterBuild.stderr, /query after its admitted build/);
+  assert.equal(afterBuild.stdout, '');
 });

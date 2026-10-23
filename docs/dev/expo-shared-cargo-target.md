@@ -60,6 +60,9 @@ Android's explicit shared-target path also guards the host library and binding
 generator, using their actual metadata-derived manifests and private copies.
 Its `cargo-ndk 4.1.2` adapter admits only the pinned tool's exact metadata/version
 queries followed by one `build --lib` with the requested package, profile and ABI.
+Read-only queries accept the closed stdin supplied by cargo_metadata's
+`Command.output()`; only compilation treats its inherited control-pipe EOF as
+cancellation. Signal cancellation and refusal of post-build queries remain.
 The Core manifest already declares `cdylib`; this emits the required `.so` through
 ordinary Cargo's artifact stream without changing Core's crate types. The
 unchanged guard itself does not execute `cargo ndk` or `cargo rustc`.
