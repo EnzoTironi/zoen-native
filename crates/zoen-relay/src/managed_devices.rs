@@ -80,7 +80,7 @@ impl ManagedDevice {
         expected: &Checkpoint,
     ) -> Result<GenerationGuard, &'static str> {
         self.anchor
-            .generation_guard(expected)
+            .historical_generation_guard(expected)
             .map_err(|_| "managed generation refused")
     }
 }

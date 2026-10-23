@@ -6,9 +6,29 @@ use std::time::Duration;
 #[tokio::test(start_paused = true)]
 async fn cancelled_handler_retains_generation_until_real_object_store_effect_terminates(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let (_home, _deployment, mut writer) = crate::managed_devices::tests::fixture()?;
-    let checkpoint = writer.reader().checkpoint()?;
-    let guard = writer.reader().generation_guard(&checkpoint)?;
+    let (home, deployment, mut writer) = crate::managed_devices::tests::fixture()?;
+    let registry =
+        crate::managed_devices::ManagedDevices::open([(deployment.clone(), home.0.clone())])?;
+    let configured = registry
+        .get(&deployment.device)
+        .ok_or("missing managed fixture")?;
+    let before = writer.reader().checkpoint()?;
+    let original = writer.prepare(
+        &event_log::sha256_hex(b"original upload"),
+        &before,
+        &before,
+        false,
+    )?;
+    writer.reconcile(&original.next, &original.next)?;
+    let newer = writer.prepare(
+        &event_log::sha256_hex(b"unrelated document"),
+        &original.next,
+        &original.next,
+        false,
+    )?;
+    writer.reconcile(&newer.next, &newer.next)?;
+    let checkpoint = newer.next;
+    let guard = configured.upload_guard(&original.next)?;
     let store: Arc<dyn ObjectStore> = Arc::new(ThrottledStore::new(
         object_store::memory::InMemory::new(),
         ThrottleConfig {

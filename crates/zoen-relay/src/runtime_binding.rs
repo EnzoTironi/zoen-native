@@ -76,14 +76,11 @@ pub(crate) async fn verify_blob(
     let Some(configured) = st.log.managed_device(device) else {
         return Ok(None);
     };
-    let current = current_managed(st, &configured, &binding.request).await?;
-    let requested = checkpoint(&binding.request)?;
-    // Blob writes are bound to the exact current checkpoint. They cannot use an
-    // old transport proof after another checkpoint advances the deployment.
-    if requested != current {
-        return Err("managed upload checkpoint changed");
-    }
-    configured.upload_guard(&current).map(Some)
+    current_managed(st, &configured, &binding.request).await?;
+    let requested = effect_checkpoint(&binding.request)?;
+    // Unrelated documents may advance the tip. Keep this original historical
+    // checkpoint's generation locked through storage without freezing the tip.
+    configured.upload_guard(&requested).map(Some)
 }
 
 pub(crate) fn checkpoint(

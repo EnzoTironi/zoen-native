@@ -305,17 +305,6 @@ impl FdbLog {
         {
             return Err(Reject::retry("managed publication binding required"));
         }
-        self.append_fenced_guarded(env, target_known, fence, None)
-            .await
-    }
-
-    async fn append_fenced_guarded(
-        &self,
-        env: &Envelope,
-        target_known: bool,
-        fence: Fence,
-        generation: Option<Arc<relay_admission::managed_images::GenerationGuard>>,
-    ) -> Result<Sequencing, Reject> {
         if !env.valid_invite() {
             return Err(Reject::no("invalid invite code"));
         }
@@ -325,7 +314,7 @@ impl FdbLog {
         }
         let (result, stats) = self
             .sequencer
-            .append_guarded(env.clone(), target_known, fence, generation)
+            .append(env.clone(), target_known, fence)
             .await;
         let span = tracing::Span::current();
         span.record("batch", stats.size);
