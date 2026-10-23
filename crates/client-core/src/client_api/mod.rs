@@ -65,6 +65,11 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
         .with_large_int("string")
         .with_out_dir(path);
     Command::export_all(&config)?;
+    crate::sites::SiteSource::export_all(&config)?;
+    crate::sites::SiteReview::export_all(&config)?;
+    crate::sites::SitePrepared::export_all(&config)?;
+    crate::sites::SiteStatus::export_all(&config)?;
+    protocol::sites::Receipt::export_all(&config)?;
     Snapshot::export_all(&config)?;
     crate::MessageDraftDto::export_all(&config)?;
     crate::MessageDraftSendResult::export_all(&config)?;
@@ -140,6 +145,12 @@ fn encode(value: &impl Serialize) -> Result<String, CoreError> {
     wire::to_json(value).map_err(|_| invalid("Couldn't encode the application response."))
 }
 
+// The shared signed Site contract uses bounded JS-safe numeric lengths and times.
+// It must not pass through the legacy bridge's recursive u64-to-string encoder.
+fn encode_site(value: &impl Serialize) -> Result<String, CoreError> {
+    serde_json::to_string(value).map_err(|_| invalid("Couldn't encode the Site response."))
+}
+
 fn decode(request: &str) -> Result<Command, CoreError> {
     // Only document writes carry a bounded full scene. Inspect their borrowed op
     // before allocating a large command; every existing operation keeps its ceiling.
@@ -155,8 +166,12 @@ fn decode(request: &str) -> Result<Command, CoreError> {
         let envelope: Envelope<'_> =
             serde_json::from_str(request).map_err(|_| invalid("Invalid application command."))?;
         let binary = matches!(envelope.op, "app_binary_create" | "app_binary_save");
+        let site = matches!(envelope.op, "site_create" | "site_save");
         if (binary && request.len() > crate::app_binary_documents::MAX_BASE64_BYTES + 8 * 1024)
-            || (!binary && !matches!(envelope.op, "app_document_save" | "app_document_copy"))
+            || (site && request.len() > protocol::sites::MAX_HTML_BYTES as usize * 6 + 8 * 1024)
+            || (!binary
+                && !site
+                && !matches!(envelope.op, "app_document_save" | "app_document_copy"))
         {
             return Err(invalid("Application request is too large."));
         }
@@ -170,6 +185,8 @@ fn decode(request: &str) -> Result<Command, CoreError> {
                 | Command::AppDocumentCopy { .. }
                 | Command::AppBinarySave { .. }
                 | Command::AppBinaryCreate { .. }
+                | Command::SiteCreate { .. }
+                | Command::SiteSave { .. }
         )
         && !(request.len() <= MAX_REQUEST_BYTES + 8 * 1024
             && matches!(

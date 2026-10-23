@@ -6,6 +6,35 @@ use serde::{Deserialize, Serialize};
 pub const SCHEMA: u8 = 1;
 pub const MAX_HTML_BYTES: u64 = 2 * 1024 * 1024;
 
+/// Stable across a human owner's linked devices. Public identity only, never an
+/// authorization capability; each mutation still requires current device proof.
+pub fn site_id(owner: &str, space: &str, item: &str, public_origin: &str) -> String {
+    let bytes = serde_json::to_vec(&("zoen-site-id.v1", owner, space, item, public_origin))
+        .expect("site identity serialization");
+    format!("site_{}", &event_log::sha256_hex(&bytes)[..32])
+}
+
+#[cfg(test)]
+mod identity_tests {
+    #[test]
+    fn site_identity_is_stable_and_separates_owner_source_and_public_destination() {
+        let id = super::site_id("owner", "space", "item", "https://site.test");
+        assert_eq!(
+            id,
+            super::site_id("owner", "space", "item", "https://site.test")
+        );
+        assert_eq!(id.len(), 37);
+        for (owner, space, item, origin) in [
+            ("other", "space", "item", "https://site.test"),
+            ("owner", "other", "item", "https://site.test"),
+            ("owner", "space", "other", "https://site.test"),
+            ("owner", "space", "item", "https://other.test"),
+        ] {
+            assert_ne!(id, super::site_id(owner, space, item, origin));
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 #[serde(deny_unknown_fields)]

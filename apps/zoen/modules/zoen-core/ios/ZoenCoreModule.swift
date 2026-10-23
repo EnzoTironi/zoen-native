@@ -13,6 +13,8 @@ public class ZoenCoreModule: Module {
   public func definition() -> ModuleDefinition {
     Name("ZoenCore")
     Events("onChange", "onPageInputStatus", "onCallState", "onCallAudio")
+    Constant("sitePreviewVersion") { 1 }
+    zoenSitePreviewDefinition()
 
     // Reuse the exact pinned Telegram mosaic already used by selected previews.
     // Pure, bounded geometry only: no media bytes, authority or persistent state.

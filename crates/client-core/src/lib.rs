@@ -54,6 +54,7 @@ pub use file_edit_drafts::{
 };
 mod files_api;
 mod liveview;
+mod sites;
 pub use liveview::{LiveViewDemoVm, LiveViewInput, LiveViewKey, LiveViewSession};
 mod local_sealed;
 mod media;
