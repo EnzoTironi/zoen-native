@@ -110,7 +110,7 @@ pub(super) fn prepare(
         }
         let mut boxed = IdentityBox {
             identity_secret: hex::encode(identity.secret()),
-            agreement_secret: hex::encode(&*agreement),
+            agreement_secret: hex::encode(agreement.as_slice()),
             cert: identity.sign(&event_log::device_cert_message(&code.device)),
             name: me.name,
             handle: me.handle,
