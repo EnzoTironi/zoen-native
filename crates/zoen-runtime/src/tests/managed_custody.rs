@@ -91,6 +91,18 @@ pub(super) async fn run() {
         Err(RuntimeError::Denied)
     ));
     assert!(vault.save(device_key.clone(), actor.key.secret().to_vec()));
+    let foreign_namespace = types::new_id("foreign-custody");
+    assert!(matches!(
+        RuntimeAuthority::open_with_native_device(
+            config(&w.db_url, &foreign_namespace, &w.http.base),
+            vault.clone(),
+            agent,
+            device,
+            1,
+        )
+        .await,
+        Err(RuntimeError::DeploymentMismatch)
+    ));
     let runtime = Arc::new(open(&w, vault.clone(), &actor).await.unwrap());
     assert_eq!(runtime.continuity(), Err(RuntimeError::RestoreUnreconciled));
     assert_ne!(
