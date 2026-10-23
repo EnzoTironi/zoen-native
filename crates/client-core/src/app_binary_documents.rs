@@ -73,6 +73,10 @@ fn storage() -> CoreError {
 fn hash(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
+
+mod creation;
+pub(crate) use creation::creation_item_id;
+
 fn token(s: &str) -> bool {
     !s.is_empty()
         && s.len() <= 128
@@ -260,10 +264,7 @@ impl Engine {
             }
             return Ok(accepted);
         }
-        let item = format!(
-            "it_deck_{}",
-            hash(&serde_json::to_vec(&(&me, &device, space, mutation)).map_err(|_| invalid())?)
-        );
+        let item = creation_item_id(&me, &device, space, mutation)?;
         if self.state.items.contains_key(&item) {
             return Err(stale());
         }

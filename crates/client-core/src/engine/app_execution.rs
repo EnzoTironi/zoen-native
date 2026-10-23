@@ -333,3 +333,25 @@ impl Engine {
         })
     }
 }
+
+// Rust-only agent host port; native UI exports remain in their original module.
+impl crate::Client {
+    /// The agent host's `tools/call`, made while answering `serving` (the author of the
+    /// message being replied to). Not exported: only the agent runtime calls it.
+    pub fn agent_call_tool(
+        &self,
+        item_id: &str,
+        tool: &str,
+        args_json: &str,
+        serving: &str,
+    ) -> Result<AppCallOutcome, CoreError> {
+        self.lock()
+            .agent_call_tool(item_id, tool, args_json, serving)
+    }
+
+    /// The mini-app tools the agent host may call in `space` (through
+    /// [`Self::agent_call_tool`]). Not exported.
+    pub fn agent_tools(&self, space: &str) -> Vec<crate::engine::AgentTool> {
+        self.lock().agent_tools(space)
+    }
+}
