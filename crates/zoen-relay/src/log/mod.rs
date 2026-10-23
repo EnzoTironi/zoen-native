@@ -78,6 +78,16 @@ pub trait LogStore: Send + Sync {
     /// Admits and sequences one envelope in a single transaction. `target_known` says
     /// whether the identity a `MemberAdded` names is in the directory.
     async fn append(&self, env: &Envelope, target_known: bool) -> Result<Sequencing, Reject>;
+    /// A managed generation must survive the actual queued commit. Unsupported
+    /// stores refuse rather than dropping the guard and calling ordinary append.
+    async fn append_managed(
+        &self,
+        _env: &Envelope,
+        _target_known: bool,
+        _generation: relay_admission::managed_images::GenerationGuard,
+    ) -> Result<Sequencing, Reject> {
+        Err(Reject::retry("managed publication unavailable"))
+    }
     /// Events of `space` from `from` on, in order, at most `limit`.
     async fn read(
         &self,
