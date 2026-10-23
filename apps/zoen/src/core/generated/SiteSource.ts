@@ -3,6 +3,11 @@ import type { SourceVersion } from "./SourceVersion";
 
 export type SiteSource = { source: SourceVersion, name: string, current_version: number, editable: boolean, 
 /**
+ * Publishing an old saved version is allowed for current writers even
+ * though editing that old base is forbidden.
+ */
+publish_allowed: boolean, 
+/**
  * None means the selected version needs downloading, never an empty draft.
  */
 html: string | null, };
