@@ -194,10 +194,8 @@ pub async fn host(
         })?;
     let (mut cursors, mut selected) = if let Some(source) = source {
         let cursors = source_mode::admit(e, 15000).await?;
-        (
-            cursors.into_iter().collect(),
-            Some(source_mode::Run::prepare(e, source)?),
-        )
+        let selected = source_mode::Run::prepare(e, source, &cursors)?;
+        (cursors.into_iter().collect(), Some(selected))
     } else {
         (startup::prepare(e, readiness, 15000).await?, None)
     };
@@ -233,7 +231,6 @@ pub async fn host(
     say(format_args!("agent @{} hosting", acct.handle));
 
     let deadline = for_secs.map(|s| Instant::now() + Duration::from_secs(s));
-    let mut tries: BTreeMap<(String, u64), u32> = BTreeMap::new();
     let mut backoff = Duration::from_secs(1);
     let mut offline_since: Option<Instant> = None;
     let mut last_activity = Instant::now();
@@ -329,6 +326,9 @@ pub async fn host(
                 continue;
             }
         };
+        if let Some(selected) = &mut selected {
+            selected.observe_cursors(&status.cursors);
+        }
         for (space, seq) in status.cursors {
             let c = cursors.entry(space).or_insert(seq);
             *c = (*c).max(seq);
@@ -408,19 +408,16 @@ pub async fn host(
                 }
                 last_activity = Instant::now();
                 let handled = turn(e, &cx, &def, &s.id, &tl[..i], t).await;
-                let key = (s.id.clone(), t.seq);
                 if handled == turn::Outcome::Deferred {
                     caught_up = false;
                     break; // no attempt, advance or read watermark before admission
                 }
                 if handled == turn::Outcome::Retry {
-                    let n = tries.entry(key).or_insert(0);
-                    *n += 1;
-                    if *n < MAX_TRIES {
-                        caught_up = false;
-                        break; // retry this message on the next wake, in order
-                    }
-                    say(format_args!("giving up on seq {}", t.seq));
+                    caught_up = false;
+                    // Reservation and exhaustion are durable inside turn(). A
+                    // corrupt/busy journal cannot become a skipped source merely
+                    // because this in-memory wake loop has run three times.
+                    break;
                 }
                 fault("before-advance");
                 if e.agent_advance(s.id.clone(), t.seq).await.is_err() {
@@ -428,6 +425,9 @@ pub async fn host(
                     break;
                 }
                 cursors.insert(s.id.clone(), t.seq);
+                if JournalState::retire_turn(&cx.journal, &cx, &s.id, &t.id).is_err() {
+                    say("completed source budget could not be retired");
+                }
             }
             // An agent is a member like any other: once it has processed the chat it says
             // so with the same "read up to" watermark, so groups with agents reach ✓✓ read.
