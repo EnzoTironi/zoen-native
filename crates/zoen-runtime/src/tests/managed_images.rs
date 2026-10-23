@@ -17,6 +17,40 @@ impl Drop for Directory {
     }
 }
 
+pub(super) async fn replacement_anchor_refused(
+    world: &World,
+    actor: &Author,
+    agent: &Identity,
+    owner: &Identity,
+) {
+    let mut contender = world.reopen().await;
+    Arc::get_mut(&mut contender).unwrap().native = Some(native::testing::custody(
+        &world.config_namespace,
+        agent.clone(),
+        owner.clone(),
+        actor.cert.clone().unwrap(),
+        actor.key.secret(),
+    ));
+    let contender = match Arc::try_unwrap(contender) {
+        Ok(contender) => contender,
+        Err(_) => panic!("bootstrap contender unexpectedly shared"),
+    };
+    let replacement = Directory::new();
+    let result = contender
+        .initialize_managed_image_continuity(
+            &replacement.0,
+            &actor.identity,
+            actor.device.as_deref().unwrap(),
+        )
+        .await;
+    assert!(matches!(result, Err(RuntimeError::RestoreUnreconciled)));
+    assert!(
+        !replacement.0.exists(),
+        "even genesis cannot be adopted into a second anchor directory"
+    );
+    println!("managed image genesis: existing actual SQL/FDB genesis refuses a second independent anchor before attempts or capsules PASS");
+}
+
 pub(super) async fn assert_dispatch_checkpoint(
     runtime: &RuntimeAuthority,
     directory: &Directory,

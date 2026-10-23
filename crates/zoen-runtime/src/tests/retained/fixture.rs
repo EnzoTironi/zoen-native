@@ -15,22 +15,18 @@ pub(super) struct Fixture {
 
 impl Fixture {
     pub(super) async fn new() -> Self {
-        Self::build(false).await
+        Self::build(false, false).await
     }
 
     pub(super) async fn with_output() -> Self {
-        Self::build(true).await
-    }
-
-    pub(super) async fn build(output: bool) -> Self {
-        Self::build_managed(output, false).await
+        Self::build(true, false).await
     }
 
     pub(super) async fn with_managed_output() -> Self {
-        Self::build_managed(true, true).await
+        Self::build(true, true).await
     }
 
-    async fn build_managed(output: bool, managed: bool) -> Self {
+    async fn build(output: bool, managed: bool) -> Self {
         let mut world = World::with_relay().await;
         if output {
             let capability = native::testing::output::provision(&world.runtime).await;
@@ -100,6 +96,10 @@ impl Fixture {
                 world.runtime.production_output_scope().err(),
                 Some(RuntimeError::CoreAuthorityUnavailable)
             );
+            crate::tests::managed_images::replacement_anchor_refused(
+                &world, &actor, &agent, &owner,
+            )
+            .await;
         }
         let first_package =
             native::testing::provision_packages(&world.runtime, &actor.identity, &device)
