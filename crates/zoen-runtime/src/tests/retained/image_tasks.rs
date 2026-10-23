@@ -213,7 +213,10 @@ pub(super) async fn run() {
             spent_units: 15
         }
     );
-    assert_eq!(f.world.count("SELECT count(*) FROM runtime_claims").await, 1);
+    assert_eq!(
+        f.world.count("SELECT count(*) FROM runtime_claims").await,
+        1
+    );
     assert_eq!(
         f.world
             .count("SELECT count(*) FROM runtime_dispositions WHERE kind='settle'")

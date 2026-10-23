@@ -16,9 +16,8 @@ use std::{
 
 use futures_util::{SinkExt, StreamExt};
 use protocol::{
-    auth_message, ClientFrame, EphemeralKind, ErrorCode, KeyPackageClaimClock,
-    Op, Reply, ServerFrame, CAPABILITIES, KEY_PACKAGE_CLAIM_TTL_MS, MIN_PROTOCOL_VERSION,
-    PROTOCOL_VERSION,
+    auth_message, ClientFrame, EphemeralKind, ErrorCode, KeyPackageClaimClock, Op, Reply,
+    ServerFrame, CAPABILITIES, KEY_PACKAGE_CLAIM_TTL_MS, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION,
 };
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio_tungstenite::tungstenite::Message;

@@ -40,9 +40,9 @@ pub use api::call_turn::CallTurnDto;
 mod backup;
 mod backup_api;
 pub mod blob_transport;
-pub mod relay_output_transport;
 mod call_transport_api;
 mod client_api;
+pub mod relay_output_transport;
 pub use backup_api::BackupStatusDto;
 #[cfg(feature = "client-types")]
 pub use client_api::export_typescript;
