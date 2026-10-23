@@ -1,7 +1,9 @@
 //! Complete image custody; managed construction uses the existing vault and
 //! registered SQL directory. A fixture key is not
 //! enrollment, relay currentness, restore continuity or dispatch authority.
+mod image_scope;
 mod image_tasks;
+pub(crate) use image_scope::{ImageOutputAuthority, ManagedImageOutput};
 mod managed;
 mod packages;
 mod runs;

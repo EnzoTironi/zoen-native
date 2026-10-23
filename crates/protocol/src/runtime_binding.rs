@@ -19,7 +19,7 @@ impl ManagedCheckpoint {
     pub fn valid(&self) -> bool {
         self.generation > 0
             && self.generation <= i64::MAX as u64
-            && self.sequence > 0
+            && (self.sequence > 0 || self.generation == 1)
             && self.sequence <= i64::MAX as u64
             && hex32(&self.digest)
     }

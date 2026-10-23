@@ -31,9 +31,9 @@ impl NativeCustody {
         runtime: &RuntimeAuthority,
         run: &str,
         gateway: &ModelGateway,
-        capability: &FreshOutputNamespace,
+        capability: &dyn ImageOutputAuthority,
     ) -> Result<ImageOutputInspection, RuntimeError> {
-        runtime.continuity()?;
+        runtime.image_continuity()?;
         // A lost activation acknowledgement is an observation of retained
         // output, never another signing, provider attempt or current grant.
         let trx = runtime.execution.transaction().await?;
@@ -47,6 +47,7 @@ impl NativeCustody {
                 .read_image_task(run, &runtime.custody)
                 .await?;
             let principal = &record.original.context.principal;
+            capability.check_device(&principal.agent, &principal.device)?;
             let credential = self.credential(&principal.agent, &principal.device)?;
             runtime
                 .finance
@@ -103,13 +104,14 @@ impl NativeCustody {
         &self,
         runtime: &RuntimeAuthority,
         step: &ImageStep,
-        capability: &FreshOutputNamespace,
+        capability: &dyn ImageOutputAuthority,
     ) -> Result<ImageOutputInspection, RuntimeError> {
         let task = &step.record.task;
         let run = &task.binding.context.run_id;
         let (digest, capture) = runtime.retained_image_capture(task).await?;
         let image = capture.result.output.map_err(|_| RuntimeError::Denied)?;
         let principal = &step.record.original.context.principal;
+        capability.check_device(&principal.agent, &principal.device)?;
         let credential = self.credential(&principal.agent, &principal.device)?;
         let capsule = runtime
             .execution
@@ -217,7 +219,7 @@ impl NativeCustody {
                 .await?;
         }
         admission.consume(&scope)?;
-        runtime.continuity()?;
+        runtime.image_continuity()?;
         trx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
         if let Some(transition) = transition {
             transition.finish(runtime).await?;

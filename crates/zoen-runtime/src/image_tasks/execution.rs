@@ -31,20 +31,13 @@ impl RuntimeAuthority {
         if !id(run) {
             return Err(RuntimeError::InvalidBinding);
         }
-        self.continuity()?;
-        let scope = self.production_output_scope()?;
+        self.image_continuity()?;
+        let scope = self.production_image_output_scope()?;
         self.native
             .as_ref()
             .ok_or(RuntimeError::CoreAuthorityUnavailable)?
             .deliver_image_output(self, run, &target, scope)
             .await
-    }
-    pub(crate) fn image_output_scope(&self) -> Result<&native::FreshOutputNamespace, RuntimeError> {
-        #[cfg(test)]
-        if let Some(scope) = self.output_fixture.as_ref() {
-            return Ok(scope);
-        }
-        self.production_output_scope()
     }
 
     /// A host supplies locators and configured prices, never native facts or a
@@ -60,6 +53,12 @@ impl RuntimeAuthority {
         if ![agent, device, request].into_iter().all(id) {
             return Err(RuntimeError::InvalidBinding);
         }
+        self.image_continuity()?;
+        let scope = self.image_output_scope()?;
+        scope.check_device(agent, device)?;
+        scope
+            .check_in(&self.execution, &self.execution.transaction().await?)
+            .await?;
         price.digest()?;
         let gateway = ModelGateway::new(gateway).map_err(|_| RuntimeError::InvalidProfile)?;
         self.native
@@ -78,8 +77,8 @@ impl RuntimeAuthority {
         if !id(run) {
             return Err(RuntimeError::InvalidBinding);
         }
-        self.continuity()?;
-        let scope = self.production_output_scope()?;
+        self.image_continuity()?;
+        let scope = self.production_image_output_scope()?;
         scope
             .check_in(&self.execution, &self.execution.transaction().await?)
             .await?;
@@ -104,8 +103,8 @@ impl RuntimeAuthority {
         if !id(run) {
             return Err(RuntimeError::InvalidBinding);
         }
-        self.continuity()?;
-        let scope = self.production_output_scope()?;
+        self.image_continuity()?;
+        let scope = self.production_image_output_scope()?;
         scope
             .check_in(&self.execution, &self.execution.transaction().await?)
             .await?;
@@ -122,7 +121,7 @@ impl RuntimeAuthority {
         task: &ImageTask,
         gateway: &dyn ImageAttemptAdapter,
     ) -> Result<FinancialState, RuntimeError> {
-        self.continuity()?;
+        self.image_continuity()?;
         task.validate()?;
         if step.request().context != task.binding.context
             || step.request().operation != zoen_models::Operation::ImageGeneration

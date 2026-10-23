@@ -98,8 +98,10 @@ impl ImageRuntimeHost {
         space: &str,
         request: &str,
     ) -> Result<ImageHostProgress, RuntimeError> {
-        self.runtime.continuity()?;
-        self.runtime.production_output_scope()?;
+        self.runtime.image_continuity()?;
+        let scope = self.runtime.production_image_output_scope()?;
+        scope.check_device(&self.config.agent, &self.config.device)?;
+        scope.check_target(&self.config.target)?;
         let progress = self
             .runtime
             .native

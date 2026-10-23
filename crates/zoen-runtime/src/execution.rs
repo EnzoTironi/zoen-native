@@ -295,7 +295,7 @@ impl Execution {
         custody: &Custody,
         runtime: &crate::RuntimeAuthority,
     ) -> Result<FreshAdmission, RuntimeError> {
-        runtime.continuity()?;
+        runtime.step_continuity(step)?;
         if binding.context != step.request().context {
             return Err(RuntimeError::InvalidBinding);
         }
@@ -334,9 +334,9 @@ impl Execution {
             runtime.native_cut_entered.notify_one();
             runtime.native_cut_resume.notified().await;
         }
-        runtime.continuity()?;
+        runtime.step_continuity(step)?;
         trx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
-        runtime.continuity()?;
+        runtime.step_continuity(step)?;
         Ok(FreshAdmission {
             attempt,
             nonce,

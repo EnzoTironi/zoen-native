@@ -1,7 +1,9 @@
 //! Actual connection and HTTP gates, including a split WS/HTTP route.
+mod genesis;
 use super::*;
 use client_core::relay_output_transport::{RelayOutputError, RelayOutputTransport};
 use futures_util::TryStreamExt;
+pub(super) use genesis::run as genesis;
 use protocol::runtime_binding::{
     BlobBinding, Expectation, ManagedCheckpoint, Request, BLOB_HEADER,
 };

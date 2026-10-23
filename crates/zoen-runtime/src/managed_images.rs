@@ -2,6 +2,8 @@
 //! permit: existing one-shot claims and native output authority remain required.
 mod publication;
 mod recovery;
+mod scope;
+pub(crate) use scope::ImageAnchor;
 mod setup;
 mod stores;
 use crate::{finance::FreshClaim, Binding, RuntimeAuthority, RuntimeError};
@@ -69,7 +71,7 @@ pub(crate) struct Transition {
     checkpoint: DispatchCheckpoint,
 }
 
-fn error(error: AnchorError) -> RuntimeError {
+pub(crate) fn error(error: AnchorError) -> RuntimeError {
     match error {
         AnchorError::Invalid => RuntimeError::InvalidBinding,
         AnchorError::Unavailable | AnchorError::Busy => RuntimeError::Unavailable,
