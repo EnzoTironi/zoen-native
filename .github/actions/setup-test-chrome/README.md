@@ -18,6 +18,9 @@ a fresh temporary profile, a 10-second startup/protocol budget, and the existing
 two-second owned process-group cleanup. Its output contains closed phase/status
 fields and bounded process observations, never the endpoint or browser output.
 An installation/preflight failure fails the job before the application oracle.
+The Linux wrapper also enforces a 20-second wall with two-second signal escalation
+so a stuck teardown cannot hold the job indefinitely. A wall/cleanup failure fails
+admission; it does not claim that a kernel-blocked process was successfully reaped.
 
 `CHROME_BIN` is exported as an absolute executable path. Both renderer-test launchers
 use the shared selector, which refuses missing/relative pins in CI. Local macOS,
