@@ -21,11 +21,18 @@ use protocol::{
     negotiate, AgentRequest, ClientFrame, ErrorCode, Op, Reply, ServerFrame, MIN_PROTOCOL_VERSION,
     PROTOCOL_VERSION,
 };
-use tokio::sync::{mpsc, Notify};
+use tokio::sync::Notify;
 use tracing::{field::Empty, Instrument};
 use types::{EventBody, IdentityKind};
 
-use crate::{db, hub::Mailbox, limits, log::Sequencing, metrics::Metrics, Shared};
+use crate::{
+    db,
+    hub::{outbox, Mailbox, Outbox},
+    limits,
+    log::Sequencing,
+    metrics::Metrics,
+    Shared,
+};
 
 mod authentication;
 mod ephemeral;
@@ -46,7 +53,7 @@ const SYNC_PAGE: usize = 500;
 
 struct Session {
     st: Shared,
-    tx: mpsc::Sender<ServerFrame>,
+    tx: Outbox,
     identity: String,
     device: String,
     cert: String,
@@ -93,12 +100,12 @@ async fn recv_frame(
 pub async fn run(socket: WebSocket, st: Shared, ip: String) {
     Metrics::inc(&st.metrics.connections);
     let (mut sink, mut stream) = socket.split();
-    let (tx, mut rx) = mpsc::channel::<ServerFrame>(1024);
+    let kick = Arc::new(Notify::new());
+    let (tx, mut rx) = outbox::channel(kick.clone());
     let credentials = Arc::new(OnceLock::<DeliveryAuthorization>::new());
     let writer_credentials = credentials.clone();
     let revoked = Arc::new(AtomicBool::new(false));
     let writer_revoked = revoked.clone();
-    let kick = Arc::new(Notify::new());
     let writer_kick = kick.clone();
     let delivery_auth = st.delivery_auth.clone();
     let writer = tokio::spawn(async move {
@@ -133,10 +140,11 @@ pub async fn run(socket: WebSocket, st: Shared, ip: String) {
             };
             let sent = tokio::time::timeout(
                 Duration::from_secs(5),
-                sink.send(Message::Binary(frame.encode().into())),
+                sink.send(Message::Binary(frame.bytes.clone())),
             )
             .await;
             drop(authorization);
+            drop(frame);
             if !matches!(sent, Ok(Ok(()))) {
                 writer_kick.notify_one();
                 break;
@@ -301,7 +309,7 @@ pub async fn run(socket: WebSocket, st: Shared, ip: String) {
     }
 }
 
-async fn finish(mut writer: tokio::task::JoinHandle<()>, tx: mpsc::Sender<ServerFrame>) {
+async fn finish(mut writer: tokio::task::JoinHandle<()>, tx: Outbox) {
     drop(tx);
     if tokio::time::timeout(Duration::from_secs(2), &mut writer)
         .await
