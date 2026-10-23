@@ -398,15 +398,13 @@ test('cold provider restoration recovers each selected preset and its own saved 
     f.draw();
     f.reads.get('appearance')!.resolve(profile);
     for (const other of THEME_PROFILES)
-      f.reads
-        .get(`theme-customization-${other}`)!
-        .resolve(
-          JSON.stringify({
-            ...defaults,
-            textSize: other === profile ? 23 : 17,
-            outgoing: other === profile ? '#123456' : null,
-          }),
-        );
+      f.reads.get(`theme-customization-${other}`)!.resolve(
+        JSON.stringify({
+          ...defaults,
+          textSize: other === profile ? 23 : 17,
+          outgoing: other === profile ? '#123456' : null,
+        }),
+      );
     const restored = await f.settle();
     assert.equal(restored.appearanceReady, true);
     assert.equal(restored.profile, profile);
