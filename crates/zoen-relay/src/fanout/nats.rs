@@ -1,4 +1,6 @@
+use super::outbound::{self, Outbound};
 use super::*;
+use tokio::sync::Semaphore;
 
 /// Subjects are `zoen.<cell>.to.<sha256("zoen-subject-v1" ‖ identity)[..16] hex>`: NATS sees a
 /// pseudonym, never an identity, and a cell never hears another cell. Presence is the same
@@ -11,14 +13,8 @@ pub struct NatsBus {
     recent: Arc<crate::recent::RecentAuthors>,
     subs: Mutex<HashMap<String, (usize, JoinHandle<()>)>>,
     out: mpsc::Sender<Outbound>,
+    outbound_bytes: Arc<Semaphore>,
     stats: Arc<Counters>,
-}
-
-/// A frame for other nodes: its recipients, its bytes, and the publisher's trace context.
-struct Outbound {
-    to: Vec<String>,
-    bytes: Bytes,
-    trace: Vec<(String, String)>,
 }
 
 #[derive(Default)]
@@ -60,6 +56,7 @@ impl NatsBus {
             recent,
             subs: Mutex::new(HashMap::new()),
             out,
+            outbound_bytes: Arc::new(Semaphore::new(outbound::MAX_BYTES)),
             stats,
         })
     }
@@ -158,17 +155,15 @@ impl Bus for NatsBus {
         if to.is_empty() {
             return;
         }
-        // Reserve before cloning recipients or encoding a potentially large frame.
-        // Overload must not add allocation/serialization work to the producer.
-        let Ok(permit) = self.out.try_reserve() else {
+        if !outbound::enqueue(
+            &self.out,
+            &self.outbound_bytes,
+            to,
+            frame,
+            crate::telemetry::current_context_headers,
+        ) {
             self.stats.dropped.fetch_add(1, Relaxed);
-            return;
-        };
-        permit.send(Outbound {
-            to: to.to_vec(),
-            bytes: Bytes::from(frame.encode()),
-            trace: crate::telemetry::current_context_headers(),
-        });
+        }
     }
 
     async fn revoke_device(&self, identity: &str, device: &str) -> anyhow::Result<()> {
@@ -208,6 +203,7 @@ impl Bus for NatsBus {
             published: self.stats.published.load(Relaxed),
             received: self.stats.received.load(Relaxed),
             dropped: self.stats.dropped.load(Relaxed),
+            outbound_bytes: (outbound::MAX_BYTES - self.outbound_bytes.available_permits()) as u64,
         }
     }
 }
@@ -232,7 +228,13 @@ async fn publisher(
     mut rx: mpsc::Receiver<Outbound>,
     stats: Arc<Counters>,
 ) {
-    while let Some(Outbound { to, bytes, trace }) = rx.recv().await {
+    while let Some(Outbound {
+        to,
+        bytes,
+        trace,
+        credits,
+    }) = rx.recv().await
+    {
         for id in to {
             let mut h = HeaderMap::new();
             h.insert(ORIGIN, node.as_str());
@@ -251,6 +253,12 @@ async fn publisher(
                 }
             }
         }
+        // Keep this item's payload charged while SDK commands may still retain
+        // it. Flush drains the local client buffer, not a remote delivery ACK.
+        if client.flush().await.is_err() {
+            stats.dropped.fetch_add(1, Relaxed);
+        }
+        drop(credits);
     }
 }
 
