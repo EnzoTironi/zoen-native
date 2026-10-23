@@ -36,7 +36,10 @@ def classify(base, head, event):
     try:
         base = git("rev-parse", "--verify", base + "^{commit}").decode().strip()
         head = git("rev-parse", "--verify", head + "^{commit}").decode().strip()
-        ancestor = git("merge-base", base, head).decode().strip()
+        ancestors = git("merge-base", "--all", base, head).decode().splitlines()
+        if len(ancestors) != 1:
+            raise ValueError("Ambiguous merge bases require the full suite")
+        ancestor = ancestors[0]
         entries = git("diff", "--raw", "--no-abbrev", "--no-renames", "-z",
                       ancestor, head, "--").split(b"\0")
         changes = []
