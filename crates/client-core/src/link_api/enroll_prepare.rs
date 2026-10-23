@@ -7,7 +7,7 @@ pub(super) struct PreparedEnrollment {
     pub(super) certificate: String,
 }
 
-fn peers(vault: &Arc<dyn SecretVault>) -> Result<Vec<Peer>, CoreError> {
+pub(super) fn peers(vault: &Arc<dyn SecretVault>) -> Result<Vec<Peer>, CoreError> {
     let Some(bytes) = vault.load(VAULT_PEERS.into()).map(Zeroizing::new) else {
         return Ok(Vec::new());
     };

@@ -69,6 +69,7 @@ impl Engine {
         identity: &Signer,
         device: Signer,
         relay_url: &str,
+        persist: impl FnOnce(&mut Self) -> R<()>,
     ) -> R<()> {
         if self.net.account.is_some() {
             return Err(CoreError::Invalid {
@@ -133,6 +134,9 @@ impl Engine {
                 META_ACTIVE,
                 &serde_json::to_string(&active).unwrap_or_default(),
             )?;
+            // Profile preparation and the caller's vault-write group complete
+            // before this account's existing SQLite bootstrap becomes durable.
+            persist(self)?;
             self.store
                 .conn()
                 .execute_batch("RELEASE linked_account_setup")

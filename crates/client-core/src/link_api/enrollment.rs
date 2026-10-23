@@ -141,49 +141,6 @@ impl Client {
         vault: Arc<dyn SecretVault>,
         expected: &ExpectedIdentity,
     ) -> Result<AccountDto, CoreError> {
-        let identity = Signer::from_secret(
-            &secret32(hex::decode(&b.identity_secret).ok()).ok_or_else(|| invalid("identity"))?,
-        );
-        expected.check(&identity.id())?;
-        // The certificate must be the account's, for this device.
-        if !event_log::verify_sig(
-            &identity.id(),
-            &event_log::device_cert_message(&device.id()),
-            &b.cert,
-        ) {
-            return Err(invalid(t(
-                "O certificado deste aparelho não confere.",
-                "This device's certificate doesn't match.",
-            )));
-        }
-        let agreement = hex::decode(&b.agreement_secret).unwrap_or_default();
-        {
-            let mut e = self.lock();
-            e.create_linked_account(&b, &identity, device.clone(), &pending.relay)?;
-            let peer = Peer {
-                device: b.primary.clone(),
-                their_hpke: b.primary_hpke.clone(),
-                my_hpke_secret: pending.hpke_secret.clone(),
-                secret: pending.secret.clone(),
-            };
-            let mut peers = load_peers(&vault);
-            peers.push(peer.clone());
-            if !vault.save(VAULT_IDENTITY.into(), identity.secret().to_vec())
-                || !vault.save(VAULT_DEVICE.into(), device.secret().to_vec())
-                || !vault.save(VAULT_AGREEMENT.into(), agreement.clone())
-                || !save_peers(&vault, &peers)
-            {
-                let _ = e.wipe();
-                let _ = e.store.meta_delete("account");
-                return Err(invalid(t(
-                    "Não deu para guardar a chave no Keychain.",
-                    "Couldn't store the key in the Keychain.",
-                )));
-            }
-            e.add_peer(peer);
-            e.unlock_profile(Some(agreement))?;
-        }
-        vault.delete(link::VAULT_PENDING.into());
-        self.account_dto_pub().ok_or_else(|| invalid("account"))
+        install::finish(self, pending, device, b, vault, expected)
     }
 }
