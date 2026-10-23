@@ -33,6 +33,7 @@ impl NativeCustody {
         gateway: &ModelGateway,
         capability: &dyn ImageOutputAuthority,
     ) -> Result<ImageOutputInspection, RuntimeError> {
+        runtime.check_image_checkpoint().await?;
         runtime.image_continuity()?;
         // A lost activation acknowledgement is an observation of retained
         // output, never another signing, provider attempt or current grant.
@@ -179,6 +180,40 @@ impl NativeCustody {
             .await?;
         let mut scope = staged.scope(&runtime.execution, &step.device_fence);
         scope.effects = hash(&publication_bytes);
+        if let Some(transition) = &transition {
+            let transaction = runtime.execution.transaction().await?;
+            capability
+                .check_in(&runtime.execution, &transaction)
+                .await?;
+            step.scope_in(&runtime.execution, &transaction, &runtime.custody)
+                .await?;
+            let record = super::super::image_activation::ImageActivationRecord {
+                effect: super::super::image_activation::ImageActivationEffect::Output {
+                    run: run.clone(),
+                },
+                prior: None,
+                bytes: &publication_bytes,
+                envelope: prepared.envelope(),
+                head: types::Seen {
+                    seq: step.facts.frontier().seq(),
+                    hash: step.facts.frontier().hash().into(),
+                },
+                expires: step.deadline(),
+            };
+            runtime
+                .retain_image_activation(
+                    &transaction,
+                    transition.annotation(),
+                    &staged,
+                    &step.device_fence,
+                    record,
+                )
+                .await?;
+            transaction
+                .commit()
+                .await
+                .map_err(|_| RuntimeError::Unavailable)?;
+        }
         let admission = runtime
             .finance
             .native_directory(
@@ -192,6 +227,11 @@ impl NativeCustody {
             .await?
             .authorize_before(scope.clone(), step.deadline())
             .await?;
+        #[cfg(test)]
+        if transition.is_some() && runtime.fault.load(std::sync::atomic::Ordering::SeqCst) == 67 {
+            // Real known SQL commit; suppress the subsequent FDB activation.
+            return Err(RuntimeError::Unavailable);
+        }
         admission.check(&scope)?;
         let trx = runtime.execution.transaction().await?;
         capability.check_in(&runtime.execution, &trx).await?;
@@ -217,6 +257,7 @@ impl NativeCustody {
                 .annotation()
                 .write_fdb(&runtime.execution, &trx)
                 .await?;
+            runtime.clear_image_activation(&trx, transition.annotation());
         }
         admission.consume(&scope)?;
         runtime.image_continuity()?;

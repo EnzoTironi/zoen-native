@@ -16,6 +16,32 @@ pub(in crate::tests::retained::image_tasks) async fn run(
     )
     .unwrap();
     let before = head(f).await;
+    f.world.runtime.fault.store(66, Ordering::SeqCst);
+    assert_eq!(
+        proof::review::stage(&f.world.runtime, &intent, &unavailable)
+            .await
+            .unwrap_err(),
+        RuntimeError::Unavailable
+    );
+    f.world.runtime.fault.store(0, Ordering::SeqCst);
+    let activation = f.world.runtime.pending_image_activation().await;
+    f.world.runtime.refuse_unproven_image_activation().await;
+    assert_eq!(head(f).await, before);
+    output::cold(f).await;
+    f.world
+        .runtime
+        .assert_image_activation_recovered(&activation)
+        .await;
+    assert_eq!(
+        proof::review::original(&f.world.runtime, &intent).await.2,
+        activation.envelope
+    );
+    assert_eq!(
+        f.world.count("SELECT count(*) FROM runtime_claims").await,
+        0
+    );
+    assert_eq!(f.world.http.sends.load(Ordering::SeqCst), 0);
+    println!("native image review activation: known SQL commit before FDB, cold current-directory reauthorization, exact original capsule/record/wire and zero provider/claim PASS");
     assert_eq!(
         proof::review::stage(&f.world.runtime, &intent, &unavailable)
             .await

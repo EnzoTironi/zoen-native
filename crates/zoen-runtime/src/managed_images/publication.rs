@@ -100,3 +100,18 @@ impl PublishTransition {
         Ok(())
     }
 }
+
+impl PublishCheckpoint {
+    pub(crate) fn from_activation(deployment: Deployment, prepared: Prepared) -> Self {
+        Self {
+            deployment,
+            prepared,
+        }
+    }
+    pub(crate) fn prepared(&self) -> &Prepared {
+        &self.prepared
+    }
+    pub(crate) fn deployment(&self) -> &Deployment {
+        &self.deployment
+    }
+}

@@ -140,6 +140,7 @@ impl NativeCustody {
             source,
             input,
         } = intent;
+        runtime.check_image_checkpoint().await?;
         runtime.image_continuity()?;
         capability.check_device(agent, device)?;
         capability.check_target(target)?;
