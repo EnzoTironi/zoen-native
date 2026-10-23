@@ -378,5 +378,14 @@ mod initial_history_tests;
 
 mod directory;
 mod enrollment;
+mod enroll_prepare;
+mod owner;
+#[cfg(test)]
+mod test_transport;
+#[cfg(test)]
+mod enrollment_owner_tests;
+#[cfg(test)]
+mod history_owner_tests;
 mod history_state;
+mod history_commit;
 mod transfer;
