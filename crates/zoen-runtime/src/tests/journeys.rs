@@ -1,5 +1,12 @@
 use super::*;
 pub(super) async fn run() {
+    // Independent fixture phases must not retain each other's debug-mode poll
+    // temporaries while their nested SQL/FDB/HTTP operations are executing.
+    Box::pin(native()).await;
+    Box::pin(authority()).await;
+}
+
+async fn native() {
     owner_policy_controls::run().await;
     Box::pin(image_tasks::run()).await;
     Box::pin(managed_image_recovery::run()).await;
@@ -14,6 +21,9 @@ pub(super) async fn run() {
     Box::pin(retained::output::run()).await;
     stores::native_device_custody().await;
     println!("native custody journey: test-provisioned real directory, retained OpenMLS packages, cold restore and device revocation PASS");
+}
+
+async fn authority() {
     failure_cuts::other_namespace_cannot_refund_dispatched_hold().await;
     println!("authority journey: another FDB namespace cannot refund an in-flight paid hold PASS");
     deployment::matching_workers_and_immutable_pairing().await;
