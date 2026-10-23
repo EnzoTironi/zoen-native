@@ -1,0 +1,213 @@
+{
+  "before": {
+    "account": {
+      "identity_id": "identity-synthetic",
+      "device_id": "device-synthetic",
+      "unlocked": true,
+      "setup_pending": false
+    },
+    "connection": {
+      "synced": true
+    },
+    "conversations": [
+      {
+        "id": "old",
+        "kind": "Direct",
+        "title": "Synthetic chat",
+        "muted": false,
+        "archived": false,
+        "unread": 2,
+        "event_count": "18446744073709551615",
+        "last_author": {
+          "name": "Synthetic sender",
+          "is_me": false
+        },
+        "last_preview": "Olá 🌤️ — texto sintético",
+        "members": [
+          {
+            "id": "identity-synthetic"
+          }
+        ]
+      }
+    ]
+  },
+  "after": {
+    "account": {
+      "identity_id": "identity-synthetic",
+      "device_id": "device-synthetic",
+      "unlocked": true,
+      "setup_pending": false
+    },
+    "connection": {
+      "synced": true
+    },
+    "conversations": [
+      {
+        "id": "direct",
+        "kind": "Direct",
+        "title": "Synthetic chat",
+        "muted": false,
+        "archived": false,
+        "unread": 1,
+        "event_count": "18446744073709551615",
+        "last_author": {
+          "name": "Synthetic sender",
+          "is_me": false
+        },
+        "last_preview": "Olá 🌤️ — texto sintético",
+        "members": [
+          {
+            "id": "identity-synthetic"
+          }
+        ]
+      },
+      {
+        "id": "group",
+        "kind": "Group",
+        "title": "Synthetic group",
+        "muted": false,
+        "archived": false,
+        "unread": 1,
+        "event_count": "18446744073709551615",
+        "last_author": {
+          "name": "Synthetic sender",
+          "is_me": false
+        },
+        "last_preview": "Olá 🌤️ — texto sintético",
+        "members": [
+          {
+            "id": "identity-synthetic"
+          }
+        ]
+      },
+      {
+        "id": "muted",
+        "kind": "Direct",
+        "title": "Synthetic chat",
+        "muted": true,
+        "archived": false,
+        "unread": 1,
+        "event_count": "18446744073709551615",
+        "last_author": {
+          "name": "Synthetic sender",
+          "is_me": false
+        },
+        "last_preview": "Olá 🌤️ — texto sintético",
+        "members": [
+          {
+            "id": "identity-synthetic"
+          }
+        ]
+      },
+      {
+        "id": "archived",
+        "kind": "Direct",
+        "title": "Synthetic chat",
+        "muted": false,
+        "archived": true,
+        "unread": 1,
+        "event_count": "18446744073709551615",
+        "last_author": {
+          "name": "Synthetic sender",
+          "is_me": false
+        },
+        "last_preview": "Olá 🌤️ — texto sintético",
+        "members": [
+          {
+            "id": "identity-synthetic"
+          }
+        ]
+      },
+      {
+        "id": "own",
+        "kind": "Direct",
+        "title": "Synthetic chat",
+        "muted": false,
+        "archived": false,
+        "unread": 1,
+        "event_count": "18446744073709551615",
+        "last_author": {
+          "name": "Me",
+          "is_me": true
+        },
+        "last_preview": "Olá 🌤️ — texto sintético",
+        "members": [
+          {
+            "id": "identity-synthetic"
+          }
+        ]
+      },
+      {
+        "id": "removed",
+        "kind": "Direct",
+        "title": "Synthetic chat",
+        "muted": false,
+        "archived": false,
+        "unread": 1,
+        "event_count": "18446744073709551615",
+        "last_author": {
+          "name": "Synthetic sender",
+          "is_me": false
+        },
+        "last_preview": "Olá 🌤️ — texto sintético",
+        "members": []
+      },
+      {
+        "id": "old",
+        "kind": "Direct",
+        "title": "Synthetic chat",
+        "muted": false,
+        "archived": false,
+        "unread": 2,
+        "event_count": "18446744073709551615",
+        "last_author": {
+          "name": "Synthetic sender",
+          "is_me": false
+        },
+        "last_preview": "Olá 🌤️ — texto sintético",
+        "members": [
+          {
+            "id": "identity-synthetic"
+          }
+        ]
+      },
+      {
+        "id": "overflow",
+        "kind": "Direct",
+        "title": "Synthetic chat",
+        "muted": false,
+        "archived": false,
+        "unread": 1,
+        "event_count": "18446744073709551616",
+        "last_author": {
+          "name": "Synthetic sender",
+          "is_me": false
+        },
+        "last_preview": "Olá 🌤️ — texto sintético",
+        "members": [
+          {
+            "id": "identity-synthetic"
+          }
+        ]
+      }
+    ]
+  },
+  "expected": [
+    {
+      "identifier": "zoen-local-device-synthetic-direct-18446744073709551615",
+      "title": "Synthetic sender",
+      "body": "Olá 🌤️ — texto sintético",
+      "spaceId": "direct",
+      "deviceId": "device-synthetic",
+      "sequence": "18446744073709551615"
+    },
+    {
+      "identifier": "zoen-local-device-synthetic-group-18446744073709551615",
+      "title": "Synthetic group",
+      "body": "Synthetic sender: Olá 🌤️ — texto sintético",
+      "spaceId": "group",
+      "deviceId": "device-synthetic",
+      "sequence": "18446744073709551615"
+    }
+  ]
+}

@@ -37,6 +37,7 @@ impl Client {
             return Ok(result);
         }
         if proposal.expires_at_ms <= crate::engine::now_ms()
+            || !e.state.tool_review_current(&e.state.requests[request])
             || !e
                 .state
                 .tool_request_matches(&e.state.requests[request].req, &turn.snapshot.space_id)

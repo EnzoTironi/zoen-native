@@ -14,6 +14,8 @@ declare class ZoenCoreModule extends NativeModule<{
   onPageInputStatus: (event: { json: string }) => void;
 }> {
   readonly failedMediaRecoveryVersion?: number;
+  readonly nativePushPresentationVersion?: number;
+  notificationWake?(identityId: string, deviceId: string): Promise<void>;
   attachmentMosaicLayout?(
     width: number,
     height: number,

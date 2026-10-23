@@ -157,6 +157,19 @@ impl Runtime {
             .map_err(HostError::ToolContinuation)
     }
 
+    /// Validate an inert renewed review against the exact current runtime policy
+    /// and hard rules. This does not call a model, execute a tool or approve it.
+    pub fn validate_tool_review(
+        &self,
+        cx: TurnContext<'_>,
+        inbound: &Turn,
+        host: &dyn ToolHost,
+        ask: &ToolAsk,
+    ) -> Result<bool, HostError> {
+        self.resume_context(cx, inbound, host, ask)?;
+        Ok(Self::resume_block(inbound, host, ask).is_none())
+    }
+
     pub(super) fn resume_context(
         &self,
         cx: TurnContext<'_>,

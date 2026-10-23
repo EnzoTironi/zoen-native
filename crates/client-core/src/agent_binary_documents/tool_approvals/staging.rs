@@ -47,18 +47,31 @@ impl Client {
             continuation_json: input.continuation_json,
             expires_at_ms: crate::engine::now_ms() + REQUEST_LIFETIME_MS,
             gate_rule: input.gate_rule,
+            review: None,
         };
         parsed(&p)?;
         // A stable source/step cannot mint a second intent after approval or restart.
-        if let Some(r) = e.state.requests.values().find(|r| {
-            r.req.agent == turn.document.actor_id
-                && r.req
-                    .tool_proposal
-                    .as_ref()
-                    .is_some_and(|old| old.task_sha256 == p.task_sha256 && old.step == p.step)
-        }) {
+        if let Some(r) =
+            e.state
+                .requests
+                .values()
+                .filter(|r| {
+                    r.req.agent == turn.document.actor_id
+                        && r.req.tool_proposal.as_ref().is_some_and(|old| {
+                            old.task_sha256 == p.task_sha256 && old.step == p.step
+                        })
+                })
+                .max_by_key(|r| {
+                    r.req
+                        .tool_proposal
+                        .as_ref()
+                        .and_then(|p| p.review.as_ref())
+                        .map_or(0, |r| r.generation)
+                })
+        {
             let mut same = p.clone();
             same.expires_at_ms = r.req.tool_proposal.as_ref().unwrap().expires_at_ms;
+            same.review = r.req.tool_proposal.as_ref().unwrap().review.clone();
             if r.req.tool_proposal.as_deref() != Some(&same) {
                 return Err(stale());
             }

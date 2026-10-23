@@ -250,6 +250,8 @@ pub(crate) struct RequestState {
     pub status: ReqStatus,
     pub resolved_ms: Option<i64>,
     pub resolution: Option<RequestResolution>,
+    /// Inert owner intent derived from the same signed conversation log.
+    pub review: Option<crate::agent_binary_documents::tool_approvals::renewal::ReviewIntent>,
 }
 
 #[derive(Clone, Debug)]

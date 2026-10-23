@@ -2,7 +2,15 @@
 
 use super::*;
 
-/// One message. `true` once it is handled: replied, or deliberately silent or blocked.
+/// A deferred turn has performed no admission, journal reservation or effect.
+/// It is scheduling, not an unknown provider/executor result or a retry attempt.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Outcome {
+    Handled,
+    Retry,
+    Deferred,
+}
+
 pub(super) async fn turn(
     e: &Arc<Client>,
     cx: &Ctx,
@@ -10,8 +18,8 @@ pub(super) async fn turn(
     space: &str,
     before: &[TimelineEntry],
     t: &TimelineEntry,
-) -> bool {
-    checked(e, cx, def, space, before, t, None, &mut None).await
+) -> Outcome {
+    evaluate(e, cx, def, space, before, t, None).await.outcome
 }
 
 pub(super) async fn selected(
@@ -25,13 +33,35 @@ pub(super) async fn selected(
 ) -> source_mode::Attempt {
     if selection.dispatch(e, cx, space, t).is_err() {
         return source_mode::Attempt {
-            handled: false,
+            outcome: Outcome::Retry,
             observed: None,
         };
     }
-    let mut observed = None;
-    let handled = checked(e, cx, def, space, before, t, Some(selection), &mut observed).await;
-    source_mode::Attempt { handled, observed }
+    evaluate(e, cx, def, space, before, t, Some(selection)).await
+}
+
+async fn evaluate(
+    e: &Arc<Client>,
+    cx: &Ctx,
+    def: &Definition,
+    space: &str,
+    before: &[TimelineEntry],
+    t: &TimelineEntry,
+    selection: Option<&source_mode::Bound>,
+) -> source_mode::Attempt {
+    let mut attempt = source_mode::Attempt {
+        outcome: Outcome::Retry,
+        observed: None,
+    };
+    let handled = checked(e, cx, def, space, before, t, selection, &mut attempt).await;
+    if attempt.outcome != Outcome::Deferred {
+        attempt.outcome = if handled {
+            Outcome::Handled
+        } else {
+            Outcome::Retry
+        };
+    }
+    attempt
 }
 
 #[expect(
@@ -46,7 +76,7 @@ async fn checked(
     before: &[TimelineEntry],
     t: &TimelineEntry,
     selection: Option<&source_mode::Bound>,
-    observed: &mut Option<source_mode::Head>,
+    attempt: &mut source_mode::Attempt,
 ) -> bool {
     if selection.is_some_and(|selection| selection.check(e).is_err()) {
         return false;
@@ -117,7 +147,7 @@ async fn checked(
     let pending = e.tool_approval_requests(space, &t.id);
     let resumed = pending.last();
     if selection.is_some() && resumed.is_none() {
-        *observed = Some(None);
+        attempt.observed = Some(None);
     }
     let result = if let Some(request) = resumed {
         let stop = |category| trace::stop(space, &t.id, category, Some(&request.id));
@@ -126,7 +156,11 @@ async fn checked(
             return true;
         };
         if selection.is_some() {
-            *observed = Some(Some((dto.id.clone(), dto.status)));
+            attempt.observed = Some(Some((
+                dto.id.clone(),
+                dto.status,
+                e.tool_review_pending_intent(&dto.id),
+            )));
         }
         if let Some(category) = trace::Stop::request_status(dto.status) {
             stop(category);
@@ -147,6 +181,30 @@ async fn checked(
                 return true;
             }
         };
+        match tools.prepare_review(cx, tc, &inbound, request, &ask).await {
+            Ok(
+                space_tools::renewal::Preparation::Unrequested
+                | space_tools::renewal::Preparation::Recovered,
+            ) => {}
+            Ok(space_tools::renewal::Preparation::Deferred) => {
+                // Only the known pre-IO readiness gate may clear a scheduling
+                // observation. No model/IO/attempt has started on this path.
+                attempt.outcome = Outcome::Deferred;
+                return false;
+            }
+            Ok(space_tools::renewal::Preparation::Pending) => {
+                stop(trace::Stop::Pending);
+                return true;
+            }
+            Ok(space_tools::renewal::Preparation::Reconcile) | Err(_) => {
+                // This is an explanation of a refused continuation, never a receipt
+                // or an implicit permission to repeat an ambiguous operation.
+                stop(trace::Stop::RecoveryRefused);
+                return selected_reply(e, space,
+                    "I cannot safely renew this action. Reconcile its result and request a new proposal if needed; I have not repeated it.",
+                    &t.id, selection);
+            }
+        }
         let checkpoint = match tools.recovery_checkpoint(&request.id, &request.content_hash) {
             Ok(checkpoint) => checkpoint,
             Err(error) => {
@@ -242,7 +300,8 @@ async fn checked(
             let permit =
                 match page_tools::CanonicalPermit::new(&tools, &request.id, proposal.schema) {
                     Ok(permit) => permit,
-                    Err(_) => {
+                    Err(refusal) => {
+                        trace::admission::refused(space, &t.id, &request.id, refusal);
                         say("reviewed action is stale or no longer authorized");
                         stop(trace::Stop::ApprovalRefused);
                         return true;

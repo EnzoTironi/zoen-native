@@ -153,6 +153,19 @@ pub struct ToolProposal {
     pub continuation_json: String,
     pub expires_at_ms: i64,
     pub gate_rule: String,
+    /// An explicitly requested successor review, not new execution authority.
+    /// Absent on legacy schema1/schema2 proposals, preserving their exact bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review: Option<ToolReviewLineage>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ToolReviewLineage {
+    pub root: RequestId,
+    pub predecessor: RequestId,
+    pub intent: String,
+    pub generation: u32,
 }
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ToolDecision {

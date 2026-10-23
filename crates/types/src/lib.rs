@@ -38,7 +38,7 @@ pub use items::{
 mod authority;
 pub use authority::{
     ActionClass, AgentRequest, Capability, ConsentMode, Grant, GrantScope, ItemProposal,
-    RequestResolution, ToolDecision, ToolProposal, TrustLevel,
+    RequestResolution, ToolDecision, ToolProposal, ToolReviewLineage, TrustLevel,
 };
 mod events;
 pub use events::{

@@ -1,4 +1,5 @@
 //! Native Pages share the normal host, Gate, signed review and continuation.
+use super::trace::admission::{Phase, Refusal};
 use super::*;
 use client_core::agent_page_tools as page;
 
@@ -7,8 +8,10 @@ pub(super) enum CanonicalPermit {
     Page(client_core::ApprovedPageTurn),
 }
 impl CanonicalPermit {
-    pub(super) fn new(tools: &SpaceTools<'_>, request: &str, schema: u8) -> Result<Self, String> {
-        tools.check_selection()?;
+    pub(super) fn new(tools: &SpaceTools<'_>, request: &str, schema: u8) -> Result<Self, Refusal> {
+        tools
+            .check_selection()
+            .map_err(|_| Refusal::selection(Phase::SelectionBefore))?;
         let result = match schema {
             1 => tools
                 .e
@@ -16,15 +19,21 @@ impl CanonicalPermit {
                     request,
                     tools
                         .deckcraft
-                        .ok_or("The presentation executor is unavailable")?
+                        .ok_or_else(Refusal::executor)?
                         .binding_sha256(),
                 )
-                .map(Self::Deck),
-            2 => tools.e.approved_page_tool_turn(request).map(Self::Page),
-            _ => return Err("Unsupported canonical tool family".into()),
-        }
-        .map_err(|e| e.to_string());
-        tools.check_selection()?;
+                .map(Self::Deck)
+                .map_err(|error| Refusal::core(Phase::DeckPermit, error)),
+            2 => tools
+                .e
+                .approved_page_tool_turn(request)
+                .map(Self::Page)
+                .map_err(|error| Refusal::core(Phase::PagePermit, error)),
+            _ => return Err(Refusal::family()),
+        };
+        tools
+            .check_selection()
+            .map_err(|_| Refusal::selection(Phase::SelectionAfter))?;
         result
     }
     pub(super) fn proposal(&self) -> (&str, &str) {

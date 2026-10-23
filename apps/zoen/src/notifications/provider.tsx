@@ -15,7 +15,7 @@ import { PushCoordinator } from './coordinator';
 import { validLocalNotification } from './links';
 import { nativeNotificationPlatform } from './native-adapter';
 import { pushPlatform } from './configuration';
-import { localNotes } from './local';
+import { backgroundPresentationJobs } from './presentation';
 import { NotificationJobs } from './jobs';
 import {
   clearDeviceNotifications,
@@ -26,6 +26,8 @@ import {
   nativePushToken,
   notificationPermission,
   showLocalNote,
+  nativeNotificationPresentation,
+  requestNativeNotes,
   updateBadge,
 } from './system';
 
@@ -128,7 +130,16 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         AppState.currentState !== 'active' &&
         coordinator.getSnapshot().permission === 'allowed'
       ) {
-        for (const note of localNotes(before, after)) jobs.track(showLocalNote(note));
+        for (const task of backgroundPresentationJobs(
+          before,
+          after,
+          nativeNotificationPresentation(),
+          {
+            native: requestNativeNotes,
+            local: showLocalNote,
+          },
+        ))
+          jobs.track(task);
       }
       before = after;
       jobs.track(
@@ -142,7 +153,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     const foreground = AppState.addEventListener('change', (state) => {
       if (state === 'active') void coordinator.foreground();
     });
-    void coordinator.foreground();
+    // A background-launched React tree must not start token registration work.
+    if (AppState.currentState === 'active') void coordinator.foreground();
     return () => {
       stopStore();
       stopEvents();

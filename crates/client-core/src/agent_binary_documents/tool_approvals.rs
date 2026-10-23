@@ -202,4 +202,5 @@ mod tests;
 mod authorization;
 mod projection;
 mod recovery;
+pub(crate) mod renewal;
 mod staging;

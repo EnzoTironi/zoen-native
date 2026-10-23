@@ -1,6 +1,7 @@
 import { attachmentTabs } from './catalogs/attachment-tabs.ts';
 import { access } from './catalogs/access.ts';
 import { activity } from './catalogs/activity.ts';
+import { reviewRenewal } from './catalogs/review-renewal.ts';
 import { agents } from './catalogs/agents.ts';
 import { agentEnrollment } from './catalogs/agent-enrollment.ts';
 import { agentDefinition } from './catalogs/agent-definition.ts';
@@ -10,6 +11,7 @@ import { chat } from './catalogs/chat.ts';
 import { common } from './catalogs/common.ts';
 import { composerKeyboard } from './catalogs/composer-keyboard.ts';
 import { documents } from './catalogs/documents.ts';
+import { workspace } from './catalogs/workspace.ts';
 import { decks } from './catalogs/decks.ts';
 import { drawing } from './catalogs/drawing.ts';
 import { home } from './catalogs/home.ts';
@@ -41,6 +43,7 @@ const catalogs = {
   access,
   activity,
   agents,
+  reviewRenewal,
   agentEnrollment,
   agentDefinition,
   auth,
@@ -49,6 +52,7 @@ const catalogs = {
   common,
   composerKeyboard,
   documents,
+  workspace,
   drawing,
   decks,
   home,

@@ -195,6 +195,9 @@ pub(crate) fn event_label(b: &EventBody) -> String {
         },
         EventBody::GrantRevoked { .. } => t("Concessão revogada", "Grant revoked"),
         EventBody::RequestOpened { request } => tr!("Pedido: {}", "Request: {}", request.title),
+        EventBody::ToolReviewRequested { .. } => {
+            t("Nova revisão solicitada", "New review requested")
+        }
         EventBody::RequestResolved { approved, .. } => {
             if *approved {
                 t("Pedido aprovado", "Request approved")
