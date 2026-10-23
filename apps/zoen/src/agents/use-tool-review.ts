@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
 import { useFocusEffect } from 'expo-router';
+import { toolApprovalValid } from '../core/tool-request-decision';
 import { useClient } from '../core/provider';
 import {
   createReviewPort,
@@ -17,6 +18,38 @@ export function useToolReview(id: string) {
   useFocusEffect(
     useCallback(() => {
       let foreground = AppState.currentState === 'active';
+      let expiryTimer: ReturnType<typeof setTimeout> | undefined;
+      const clearExpiry = () => {
+        clearTimeout(expiryTimer);
+        expiryTimer = undefined;
+      };
+      const scheduleExpiry = () => {
+        clearExpiry();
+        const current = session.getSnapshot();
+        const tool = current.request?.tool_approval;
+        if (
+          !foreground ||
+          reviewScopeKey(port.scope()) !== key ||
+          current.phase !== 'ready' ||
+          current.request?.status !== 'Approved' ||
+          !tool ||
+          !toolApprovalValid(tool)
+        )
+          return;
+        const expiry = Number(tool.expires_ms);
+        const remaining = expiry - Date.now();
+        if (!Number.isSafeInteger(expiry) || remaining <= 0) return;
+        expiryTimer = setTimeout(
+          () => {
+            expiryTimer = undefined;
+            if (!foreground || reviewScopeKey(port.scope()) !== key) return;
+            if (Date.now() >= expiry) void session.refresh();
+            else scheduleExpiry();
+          },
+          Math.min(remaining, 2_147_483_647),
+        );
+      };
+      const expiry = session.subscribe(scheduleExpiry);
       const activate = () => {
         const scope = port.scope();
         session.activate(foreground && reviewScopeKey(scope) === key ? scope : null);
@@ -42,6 +75,8 @@ export function useToolReview(id: string) {
         owner();
         canonical();
         preflight();
+        expiry();
+        clearExpiry();
         session.retire();
       };
     }, [store, port, session, key]),

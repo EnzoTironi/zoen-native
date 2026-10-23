@@ -150,7 +150,8 @@ export class ToolReviewSession {
       if (this.current(revision)) this.publish({ phase: 'failed', request: null });
     }
   }
-  ticket(): ReviewTicket | null {
+  ticket(snapshot: ReviewState = this.state): ReviewTicket | null {
+    if (snapshot !== this.state) return null;
     const request = this.state.request;
     return this.current() &&
       this.state.phase === 'ready' &&
@@ -166,7 +167,8 @@ export class ToolReviewSession {
         })
       : null;
   }
-  successor(): string | null {
+  successor(snapshot: ReviewState = this.state): string | null {
+    if (snapshot !== this.state) return null;
     const request = this.state.request;
     return this.current() &&
       this.state.phase === 'ready' &&

@@ -45,6 +45,7 @@ export function RequestCard({
   const toolValid = tool == null || toolApprovalValid(tool);
   const toolExpired = tool != null && toolApprovalExpired(tool);
   const itemId = tool == null ? request.item_id : toolValid ? tool.artifact_id : null;
+  const historicalToolApproval = tool != null && toolValid && request.status === 'Approved';
   const pending = request.status === 'Pending' || request.status === 'Stale';
   const canDecide = pending && toolValid && request.agent.is_mine && !busy && !disabled;
   async function decide(decision: RequestCardDecision) {
@@ -188,9 +189,11 @@ export function RequestCard({
           fontWeight: '600',
         }}
       >
-        {tool == null && request.by_standing
-          ? t('agents.standingDecisionStatus', { status: statuses[request.status] })
-          : statuses[request.status]}
+        {historicalToolApproval
+          ? t('reviewRenewal.historicalApproval')
+          : tool == null && request.by_standing
+            ? t('agents.standingDecisionStatus', { status: statuses[request.status] })
+            : statuses[request.status]}
       </Text>
       {!toolValid ? (
         <Text accessibilityRole="alert" style={{ color: colors.danger, lineHeight: 21 }}>
@@ -209,7 +212,7 @@ export function RequestCard({
           {t('agents.permissionAppliesToTheExactContentOfThis')}
         </Text>
       ) : null}
-      {tool != null && toolValid && request.status === 'Approved' && toolExpired ? (
+      {historicalToolApproval ? (
         <ToolReviewRecovery
           requestId={request.id}
           onResolved={onResolved}
@@ -221,7 +224,7 @@ export function RequestCard({
           {failure}
         </Text>
       ) : null}
-      {result ? (
+      {result && !historicalToolApproval ? (
         <Text accessibilityLiveRegion="polite" selectable style={{ color: colors.accent }}>
           {result}
         </Text>

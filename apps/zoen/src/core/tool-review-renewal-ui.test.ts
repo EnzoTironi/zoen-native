@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
@@ -12,11 +14,36 @@ const files = {
   hook: '../agents/use-tool-review.ts',
   card: '../agents/request-card.tsx',
 };
+const require = createRequire(import.meta.url);
+const { transformSync } = require('@babel/core');
 const compiled = new Map(
   await Promise.all(
     Object.entries(files).map(async ([name, path]) => {
+      const source = readFileSync(
+        name === 'view' && process.env.ZOEN_RENEWAL_VIEW_SOURCE
+          ? process.env.ZOEN_RENEWAL_VIEW_SOURCE
+          : new URL(path, import.meta.url),
+        'utf8',
+      );
+      const transformed =
+        name === 'view'
+          ? transformSync(source, {
+              filename: fileURLToPath(new URL(path, import.meta.url)),
+              configFile: false,
+              babelrc: false,
+              presets: [require.resolve('babel-preset-expo')],
+              caller: {
+                name: 'metro',
+                platform: 'ios',
+                engine: 'hermes',
+                isDev: false,
+                supportsReactCompiler: true,
+              },
+            }).code
+          : source;
+      if (name === 'view') assert.match(transformed, /react\/compiler-runtime/);
       const result = await build({
-        stdin: { contents: readFileSync(new URL(path, import.meta.url), 'utf8'), loader: 'tsx' },
+        stdin: { contents: transformed, loader: name === 'view' ? 'js' : 'tsx' },
         bundle: true,
         format: 'cjs',
         platform: 'node',
@@ -56,6 +83,13 @@ async function settle() {
 }
 function fixture(locale: 'en' | 'pt-BR' = 'en') {
   const localization = createLocalization({ reviewRenewal }, [locale]);
+  let now = Date.now();
+  let nextTimer = 0;
+  const timers = new Map<number, { at: number; fn: () => void }>();
+  const compilerCaches: unknown[][] = [];
+  let cacheCursor = 0,
+    stateCursor = 0;
+  let resultMessage: string | null = null;
   const state: any = {
     phase: 'ready',
     mode: 'account',
@@ -126,6 +160,7 @@ function fixture(locale: 'en' | 'pt-BR' = 'en') {
   const port = flow.createReviewPort(store as never);
   const session = new flow.ToolReviewSession(port, 'old-request');
   session.activate(port.scope());
+  let displayedSession = session;
   function load(name: keyof typeof files) {
     const module = { exports: {} as any };
     const require = (path: string): any => {
@@ -135,8 +170,18 @@ function fixture(locale: 'en' | 'pt-BR' = 'en') {
           jsxs: (type: unknown, props: unknown) => ({ type, props }),
           Fragment: 'Fragment',
         };
+      if (path === 'react/compiler-runtime')
+        return {
+          c(size: number) {
+            return (compilerCaches[cacheCursor++] ??= Array(size).fill(
+              Symbol.for('react.memo_cache_sentinel'),
+            ));
+          },
+        };
       if (path === 'react')
         return {
+          useRef: (value: unknown) => ({ current: value }),
+          useState: (value: unknown) => [stateCursor++ === 2 ? resultMessage : value, () => {}],
           useMemo: (fn: () => unknown) => fn(),
           useCallback: (fn: unknown) => fn,
           useSyncExternalStore: (_s: unknown, get: () => unknown) => get(),
@@ -159,16 +204,58 @@ function fixture(locale: 'en' | 'pt-BR' = 'en') {
           router: { push: (route: unknown) => routes.push(route) },
           useFocusEffect: (fn: () => () => void) => cleanups.push(fn()),
         };
-      if (path.includes('i18n/index')) return { t: localization.t };
-      if (path.endsWith('/primitives')) return { NativeButton: 'NativeButton' };
+      if (path.includes('i18n/index'))
+        return {
+          t: (key: string, params: any) =>
+            key.startsWith('reviewRenewal.') ? localization.t(key as never, params) : key,
+          formatLocale: 'en',
+        };
+      if (path.endsWith('/primitives'))
+        return { NativeButton: 'NativeButton', Avatar: 'Avatar', Surface: 'Surface' };
+      if (path.endsWith('/dialogs'))
+        return {
+          useDialogs: () => ({
+            confirm: () => {
+              throw new Error('Renewal must not add a confirmation dialog');
+            },
+          }),
+        };
+      if (path.endsWith('/presentation')) return { money: () => '' };
+      if (path.endsWith('/tool-request-decision'))
+        return {
+          toolApprovalExpired: (tool: any) => Number(tool.expires_ms) <= now,
+          toolApprovalValid: () => true,
+        };
+      if (path.endsWith('/tool-review-recovery'))
+        return { ToolReviewRecovery: 'ToolReviewRecovery' };
       if (path.endsWith('/theme')) return { useTheme: () => ({ colors: { secondary: '#888' } }) };
       if (path.endsWith('/use-tool-review'))
-        return { useToolReview: () => ({ session, state: session.getSnapshot() }) };
+        return {
+          useToolReview: () => ({
+            session: displayedSession,
+            state: displayedSession.getSnapshot(),
+          }),
+        };
       if (path.endsWith('/core/provider')) return { useClient: () => ({ store }) };
       if (path.endsWith('/tool-review-renewal.ts')) return flow;
       throw new Error(`Unexpected fixture import ${path}`);
     };
-    runInNewContext(compiled.get(name)!, { module, exports: module.exports, require });
+    runInNewContext(compiled.get(name)!, {
+      module,
+      exports: module.exports,
+      require,
+      Date: class extends Date {
+        static now() {
+          return now;
+        }
+      },
+      setTimeout: (fn: () => void, ms: number) => {
+        const id = ++nextTimer;
+        timers.set(id, { at: now + ms, fn });
+        return id;
+      },
+      clearTimeout: (id: number) => timers.delete(id),
+    });
     return module.exports;
   }
   return {
@@ -188,8 +275,31 @@ function fixture(locale: 'en' | 'pt-BR' = 'en') {
     reads: (fn: typeof read) => {
       read = fn;
     },
-    view: () => load('view').ToolReviewRecovery({ requestId: 'old-request' }),
-    hook: () => load('hook').useToolReview('old-request'),
+    view: () => {
+      cacheCursor = 0;
+      return load('view').ToolReviewRecovery({ requestId: 'old-request' });
+    },
+    card: (request: any, result: string | null = null) => {
+      stateCursor = 0;
+      resultMessage = result;
+      return load('card').RequestCard({ request });
+    },
+    clock: () => now,
+    timerCount: () => timers.size,
+    advance: async (ms: number) => {
+      now += ms;
+      for (const [id, timer] of timers)
+        if (timer.at <= now) {
+          timers.delete(id);
+          timer.fn();
+        }
+      await settle();
+    },
+    hook: () => {
+      const hook = load('hook').useToolReview('old-request');
+      displayedSession = hook.session;
+      return hook;
+    },
     close: () => cleanups.forEach((fn) => fn()),
   };
 }
@@ -270,4 +380,74 @@ test('actual compiled hook retires preflight reads on background/account and rel
   assert.equal(f.listeners.size, 0);
   assert.equal(f.canonical.size, 0);
   assert.equal(f.preflight.size, 0);
+});
+
+test('actual React compiler updates a stable session from cold null through eligibility and successor', async () => {
+  const f = fixture();
+  assert.ok(nodes(f.view()).every((n) => n.props.label !== 'Request a new review'));
+  await f.session.refresh();
+  assert.ok(nodes(f.view()).some((n) => n.props.label === 'Request a new review'));
+  const prior = f.session.getSnapshot();
+  const rows = f.base();
+  rows[0].tool_approval.review.state = 'Superseded';
+  rows[0].tool_approval.review.successor_request_id = 'next';
+  f.rows(rows);
+  await f.session.refresh();
+  assert.equal(f.session.ticket(prior), null);
+  assert.equal(f.session.successor(prior), null);
+  assert.ok(nodes(f.view()).some((n) => n.props.label === 'Open the new request'));
+  assert.ok(nodes(f.view()).every((n) => n.props.label !== 'Request a new review'));
+});
+
+test('focused foreground expiry performs one read-only metadata refresh; inactive or swapped scope cancels it', async (t) => {
+  for (const retire of ['none', 'background', 'account', 'blur']) {
+    t.mock.restoreAll();
+    const f = fixture();
+    t.mock.method(Date, 'now', () => f.clock());
+    const rows = f.base();
+    rows[0].tool_approval.expires_ms = String(f.clock() + 1000);
+    rows[0].tool_approval.review.state = 'Unavailable';
+    f.rows(rows);
+    let reads = 0;
+    f.reads(async () => {
+      ++reads;
+      const current = structuredClone(rows);
+      if (f.clock() >= Number(current[0].tool_approval.expires_ms))
+        current[0].tool_approval.review.state = 'Available';
+      return current;
+    });
+    f.hook();
+    await settle();
+    assert.equal(reads, 1);
+    assert.equal(f.timerCount(), 1);
+    assert.equal(f.view(), null);
+    if (retire === 'background') for (const fn of f.foreground) fn('background');
+    if (retire === 'account') {
+      f.state.snapshot.account.device_id = 'replacement';
+      for (const fn of f.listeners) fn();
+    }
+    if (retire === 'blur') f.close();
+    await f.advance(1001);
+    assert.equal(reads, retire === 'none' ? 2 : 1);
+    assert.equal(f.writes.length, 0);
+    assert.equal(f.timerCount(), 0);
+    if (retire === 'none')
+      assert.ok(nodes(f.view()).some((n) => n.props.label === 'Request a new review'));
+    f.close();
+  }
+});
+
+test('compiled approved card distinguishes historical approval from expired/requested/superseded/reconcile state', async () => {
+  for (const state of ['Available', 'Requested', 'Superseded', 'Reconcile']) {
+    const f = fixture();
+    const rows = f.base();
+    rows[0].tool_approval.review.state = state;
+    if (state === 'Superseded') rows[0].tool_approval.review.successor_request_id = 'next';
+    f.rows(rows);
+    await f.session.refresh();
+    const tree = f.card(rows[0], 'Approved once. Waiting for the reviewed action.');
+    assert.ok(text(tree).includes('Previous decision: approved once.'));
+    assert.ok(!text(tree).includes('Waiting for the reviewed action.'));
+    assert.ok(nodes(tree).some((n) => n.type === 'ToolReviewRecovery'));
+  }
 });

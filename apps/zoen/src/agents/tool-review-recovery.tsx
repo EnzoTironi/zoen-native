@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { t } from '../i18n/index.ts';
 import { NativeButton } from '../components/primitives';
 import { useTheme } from '../theme';
+import { toolApprovalExpired, toolApprovalValid } from '../core/tool-request-decision';
 import { useToolReview } from './use-tool-review';
 
 export function ToolReviewRecovery({
@@ -17,8 +18,11 @@ export function ToolReviewRecovery({
   const { state, session } = useToolReview(requestId);
   const { colors } = useTheme();
   const review = state.request?.tool_approval?.review;
-  const ticket = disabled ? null : session.ticket();
-  const successor = disabled ? null : session.successor();
+  const ticket = disabled ? null : session.ticket(state);
+  const successor = disabled ? null : session.successor(state);
+  const tool = state.request?.tool_approval;
+  if (state.phase === 'ready' && tool && toolApprovalValid(tool) && !toolApprovalExpired(tool))
+    return null;
   const message = state.unknown
     ? t('reviewRenewal.unknown')
     : state.phase === 'failed'

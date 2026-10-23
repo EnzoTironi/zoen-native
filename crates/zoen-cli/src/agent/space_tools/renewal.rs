@@ -9,7 +9,7 @@ pub(in crate::agent) enum Preparation {
 }
 
 impl SpaceTools<'_> {
-    fn register_staged(
+    pub(super) fn register_staged(
         &self,
         dto: client_core::AgentRequestDto,
         prior: &[types::AgentRequest],
