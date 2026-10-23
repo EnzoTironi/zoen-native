@@ -395,7 +395,8 @@ fn image_price_refuses_a_spec_that_its_response_budget_cannot_represent() {
     let mut p = profile();
     p.max_response_bytes = zoen_models::image_response_budget(p.image.max_image_bytes).unwrap();
     assert!(p.validate().is_ok());
-    let d = dispatch(&p);
+    let mut d = dispatch(&p);
+    d.descriptor.max_response_bytes = p.max_response_bytes;
     assert!(p.quote(&d).is_ok());
     let digest = p.digest().unwrap();
     let mut incompatible = d.clone();
