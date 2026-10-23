@@ -45,6 +45,7 @@ pub struct Pending {
     pub env: Envelope,
     pub target_known: bool,
     pub fence: Fence,
+    pub managed: Option<Arc<relay_admission::managed_images::ManagedPublishPermit>>,
 }
 
 /// What a batch did: one result per envelope, in order, and how many attempts it took.
@@ -81,6 +82,7 @@ struct Job {
     reply: oneshot::Sender<Reply>,
     _count: OwnedSemaphorePermit,
     _bytes: OwnedSemaphorePermit,
+    _generation: Option<Arc<relay_admission::managed_images::GenerationGuard>>,
 }
 
 type Queues = Arc<Mutex<HashMap<String, mpsc::Sender<Job>>>>;
@@ -106,6 +108,40 @@ impl<B: Batcher> Sequencer<B> {
 
     /// Queues `env` behind its Space's earlier envelopes and waits for its result.
     pub async fn append(&self, env: Envelope, target_known: bool, fence: Fence) -> Reply {
+        self.append_guarded(env, target_known, fence, None).await
+    }
+
+    /// The queue owns this guard after admission, even if its caller disconnects.
+    pub(crate) async fn append_guarded(
+        &self,
+        env: Envelope,
+        target_known: bool,
+        fence: Fence,
+        generation: Option<Arc<relay_admission::managed_images::GenerationGuard>>,
+    ) -> Reply {
+        self.append_authorized(env, target_known, fence, generation, None)
+            .await
+    }
+
+    pub(crate) async fn append_managed_publish(
+        &self,
+        env: Envelope,
+        target_known: bool,
+        fence: Fence,
+        permit: relay_admission::managed_images::ManagedPublishPermit,
+    ) -> Reply {
+        self.append_authorized(env, target_known, fence, None, Some(Arc::new(permit)))
+            .await
+    }
+
+    async fn append_authorized(
+        &self,
+        env: Envelope,
+        target_known: bool,
+        fence: Fence,
+        generation: Option<Arc<relay_admission::managed_images::GenerationGuard>>,
+        managed: Option<Arc<relay_admission::managed_images::ManagedPublishPermit>>,
+    ) -> Reply {
         let busy = || {
             (
                 Err(Reject::retry("sequencer capacity reached")),
@@ -133,10 +169,12 @@ impl<B: Batcher> Sequencer<B> {
                 env,
                 target_known,
                 fence,
+                managed,
             },
             reply,
             _count: count,
             _bytes: bytes,
+            _generation: generation,
         };
         // A send fails only when the worker just exited (idle, or a panic). It is already
         // gone from the map or is removed here, so the retry starts a fresh worker.
@@ -280,7 +318,7 @@ async fn run<B: Batcher>(batcher: &B, space: &str, batch: Vec<Job>, state: &mut 
     for job in batch {
         pending.push(job.pending);
         replies.push(job.reply);
-        permits.push((job._count, job._bytes));
+        permits.push((job._count, job._bytes, job._generation));
     }
     let applied = batcher.append_batch(space, &pending, state).await;
     #[cfg(debug_assertions)]
@@ -313,3 +351,6 @@ pub(crate) mod fork_histories;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod managed_generation_tests;

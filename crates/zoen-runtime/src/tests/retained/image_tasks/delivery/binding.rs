@@ -14,6 +14,7 @@ fn expected(f: &Fixture, nonce: u8) -> Expectation {
         Request {
             namespace: f.world.config_namespace.clone(),
             nonce: vec![nonce; 32],
+            managed: None,
         },
         f.world.relay_cell.as_deref().unwrap(),
         "image-output-real-relay-355",

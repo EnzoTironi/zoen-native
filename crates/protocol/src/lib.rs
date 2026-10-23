@@ -83,6 +83,7 @@ pub const CAPABILITIES: &[&str] = &[
     AGENT_OWNER_PROOF,
     KEY_PACKAGE_CLAIM_CAPABILITY,
     runtime_binding::CAPABILITY,
+    runtime_binding::MANAGED_CAPABILITY,
 ];
 
 /// A database-clock sample from the authenticated, receipt-capable relay connection.

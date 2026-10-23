@@ -2,6 +2,25 @@ use super::*;
 
 #[async_trait]
 impl LogStore for FdbLog {
+    async fn append_managed_publish(
+        &self,
+        env: &Envelope,
+        target_known: bool,
+        permit: relay_admission::managed_images::ManagedPublishPermit,
+    ) -> Result<Sequencing, Reject> {
+        self.append_consumed_local(env, target_known, permit).await
+    }
+
+    async fn append_managed(
+        &self,
+        env: &Envelope,
+        target_known: bool,
+        generation: relay_admission::managed_images::GenerationGuard,
+    ) -> Result<Sequencing, Reject> {
+        self.append_managed_local(env, target_known, generation)
+            .await
+    }
+
     async fn runtime_cell(
         &self,
         namespace: &str,

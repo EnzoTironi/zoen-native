@@ -53,6 +53,7 @@ struct Delivery<'a> {
 }
 pub(super) fn transport_error(error: RelayOutputError) -> RuntimeError {
     match error {
+        RelayOutputError::Unknown => RuntimeError::RestoreUnreconciled,
         RelayOutputError::Invalid
         | RelayOutputError::Blob(client_core::blob_transport::BlobUploadError::Invalid) => {
             RuntimeError::InvalidBinding
@@ -231,7 +232,13 @@ impl Delivery<'_> {
         );
         let mut transport = self
             .runtime
-            .connect_bound_output(&target.url, &target.relay, actor)
+            .connect_bound_image_output(
+                &target.url,
+                &target.relay,
+                actor,
+                &self.envelope,
+                self.publication.checkpoint.as_ref(),
+            )
             .await?;
         for index in 0..self.publication.blobs.len() {
             let blob = self.publication.blobs[index].chunk.blob.clone();
@@ -272,10 +279,19 @@ impl Delivery<'_> {
                 self.runtime.finance.reply_clock().await?,
             )
             .map_err(|_| RuntimeError::Denied)?;
-        let seq = transport
-            .publish(&self.envelope)
-            .await
-            .map_err(transport_error)?;
+        let expected = self
+            .runtime
+            .image_publish_expectation(
+                &target.relay,
+                &self.envelope,
+                self.publication.checkpoint.as_ref(),
+            )
+            .await?;
+        let seq = match expected {
+            Some(expected) => transport.publish_managed(&self.envelope, expected).await,
+            None => transport.publish(&self.envelope).await,
+        }
+        .map_err(transport_error)?;
         let position = self
             .runtime
             .execution

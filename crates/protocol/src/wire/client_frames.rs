@@ -98,6 +98,11 @@ impl ClientFrame {
                     Op::RuntimeBinding(r) => pb_req::Op::RuntimeBinding(PbRuntimeBindingRequest {
                         namespace: r.namespace.clone(),
                         nonce: r.nonce.clone(),
+                        managed: r.managed.as_ref().map(|checkpoint| PbManagedCheckpoint {
+                            generation: checkpoint.generation,
+                            sequence: checkpoint.sequence,
+                            digest: checkpoint.digest.clone(),
+                        }),
                     }),
                 }),
             }),
@@ -196,6 +201,13 @@ impl ClientFrame {
                         let request = crate::runtime_binding::Request {
                             namespace: r.namespace,
                             nonce: r.nonce,
+                            managed: r.managed.map(|checkpoint| {
+                                crate::runtime_binding::ManagedCheckpoint {
+                                    generation: checkpoint.generation,
+                                    sequence: checkpoint.sequence,
+                                    digest: checkpoint.digest,
+                                }
+                            }),
                         };
                         if !request.valid() {
                             return Err(bad("runtime binding request"));

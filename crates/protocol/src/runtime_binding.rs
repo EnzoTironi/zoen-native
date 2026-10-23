@@ -4,13 +4,34 @@ use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
 pub const CAPABILITY: &str = "runtime-relay-binding-v1";
+pub const MANAGED_CAPABILITY: &str = "managed-image-effects-v1";
 pub const BLOB_HEADER: &str = "x-zoen-runtime-binding";
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ManagedCheckpoint {
+    pub generation: u64,
+    pub sequence: u64,
+    pub digest: String,
+}
+
+impl ManagedCheckpoint {
+    pub fn valid(&self) -> bool {
+        self.generation > 0
+            && self.generation <= i64::MAX as u64
+            && self.sequence > 0
+            && self.sequence <= i64::MAX as u64
+            && hex32(&self.digest)
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Request {
     pub namespace: String,
     pub nonce: Vec<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub managed: Option<ManagedCheckpoint>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -30,7 +51,9 @@ pub fn valid_namespace(value: &str) -> bool {
 
 impl Request {
     pub fn valid(&self) -> bool {
-        valid_namespace(&self.namespace) && self.nonce.len() == 32
+        valid_namespace(&self.namespace)
+            && self.nonce.len() == 32
+            && self.managed.as_ref().is_none_or(ManagedCheckpoint::valid)
     }
 }
 
@@ -76,6 +99,11 @@ impl Expectation {
         ))
         .ok()?;
         mac.update(&message);
+        // Preserve the existing unconfigured binding's exact MAC. Managed
+        // effects add an explicit domain and checkpoint to the same pairing.
+        if let Some(checkpoint) = &request.managed {
+            mac.update(&serde_json::to_vec(&(MANAGED_CAPABILITY, checkpoint)).ok()?);
+        }
         Some(Self {
             request,
             cell: cell.into(),

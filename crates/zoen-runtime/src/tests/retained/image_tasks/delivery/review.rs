@@ -22,6 +22,16 @@ pub(in crate::tests::retained::image_tasks) async fn run(
         RuntimeError::Unavailable
     );
     let original = proof::review::original(&f.world.runtime, &intent).await;
+    let checkpoint = proof::review::checkpoint(&f.world.runtime, &intent)
+        .await
+        .unwrap();
+    crate::tests::managed_images::assert_publish_checkpoint(
+        &f.world.runtime,
+        f.managed_directory.as_ref().unwrap(),
+        &original.2,
+        &checkpoint,
+    )
+    .await;
     assert_eq!(head(f).await, before);
     output::cold(f).await;
     assert_eq!(

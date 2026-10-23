@@ -5,6 +5,50 @@ fn request() -> Request {
     Request {
         namespace: "runtime-a".into(),
         nonce: vec![19; 32],
+        managed: None,
+    }
+}
+
+#[test]
+fn managed_checkpoint_roundtrip_binds_every_field_and_cannot_be_stripped() {
+    let checkpoint = ManagedCheckpoint {
+        generation: 2,
+        sequence: 17,
+        digest: "ab".repeat(32),
+    };
+    let mut managed = request();
+    managed.managed = Some(checkpoint.clone());
+    let device = "34".repeat(32);
+    let proof = expectation(managed.clone(), "cell-a", "relay-a", "agent-a", &device).proof();
+    assert!(!expectation(request(), "cell-a", "relay-a", "agent-a", &device).verify(&proof));
+    let frame = ClientFrame::Req {
+        id: 7,
+        op: Op::RuntimeBinding(managed.clone()),
+    };
+    assert_eq!(ClientFrame::decode(&frame.encode()), Ok(frame));
+    let mut changed = vec![checkpoint.clone(); 3];
+    changed[0].generation += 1;
+    changed[1].sequence += 1;
+    changed[2].digest = "cd".repeat(32);
+    for checkpoint in changed {
+        let mut candidate = managed.clone();
+        candidate.managed = Some(checkpoint);
+        assert!(!expectation(candidate, "cell-a", "relay-a", "agent-a", &device).verify(&proof));
+    }
+    let mut invalid = vec![checkpoint; 5];
+    invalid[0].generation = 0;
+    invalid[1].sequence = 0;
+    invalid[2].generation = u64::MAX;
+    invalid[3].sequence = u64::MAX;
+    invalid[4].digest = "AB".repeat(32);
+    for checkpoint in invalid {
+        let mut candidate = managed.clone();
+        candidate.managed = Some(checkpoint);
+        let frame = ClientFrame::Req {
+            id: 7,
+            op: Op::RuntimeBinding(candidate),
+        };
+        assert!(ClientFrame::decode(&frame.encode()).is_err());
     }
 }
 

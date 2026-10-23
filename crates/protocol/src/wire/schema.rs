@@ -555,6 +555,18 @@ pub struct PbRuntimeBindingRequest {
     pub namespace: String,
     #[prost(bytes = "vec", tag = "2")]
     pub nonce: Vec<u8>,
+    #[prost(message, optional, tag = "3")]
+    pub managed: Option<PbManagedCheckpoint>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct PbManagedCheckpoint {
+    #[prost(uint64, tag = "1")]
+    pub generation: u64,
+    #[prost(uint64, tag = "2")]
+    pub sequence: u64,
+    #[prost(string, tag = "3")]
+    pub digest: String,
 }
 
 #[derive(Clone, PartialEq, Message)]
