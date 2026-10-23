@@ -79,8 +79,7 @@ async fn fixture() -> (Fixture, Arc<Vault>) {
     )
 }
 
-pub(super) async fn run() {
-    let (mut f, vault) = fixture().await;
+async fn publication(f: &mut Fixture, vault: Arc<Vault>) -> Vec<u8> {
     let actor = f.world.agents[0].clone();
     let agent = &actor.identity;
     let device = actor.device.as_deref().unwrap();
@@ -227,6 +226,13 @@ pub(super) async fn run() {
         published
     );
 
+    package.data
+}
+
+async fn join_and_recover(f: &mut Fixture, vault: Arc<Vault>, package: Vec<u8>) {
+    let actor = f.world.agents[0].clone();
+    let agent = &actor.identity;
+    let device = actor.device.as_deref().unwrap();
     f.clear(EventBody::SpaceCreated {
         title: "Managed MLS ingress".into(),
         kind: SpaceKind::Direct,
@@ -241,11 +247,7 @@ pub(super) async fn run() {
     let owner = f.device();
     owner.create_group(&f.space).unwrap();
     let commit = owner
-        .commit(
-            &f.space,
-            &[package.data],
-            &std::collections::BTreeSet::new(),
-        )
+        .commit(&f.space, &[package], &std::collections::BTreeSet::new())
         .unwrap();
     let roster = std::collections::BTreeSet::from([f.owner.id.clone(), f.agent.id.clone()]);
     assert_eq!(
@@ -301,6 +303,12 @@ pub(super) async fn run() {
         0
     );
     assert_eq!(f.world.http.sends.load(Ordering::SeqCst), 0);
+}
+
+async fn revoke(f: &Fixture) {
+    let actor = &f.world.agents[0];
+    let agent = &actor.identity;
+    let device = actor.device.as_deref().unwrap();
     let other = &f.world.agents[1];
     assert_eq!(
         f.world
@@ -332,6 +340,16 @@ pub(super) async fn run() {
         RuntimeError::Denied
     );
     assert_eq!(f.world.count("SELECT count(*) FROM key_packages").await, 0);
+}
+
+pub(super) async fn run() {
+    let (mut f, vault) = Box::pin(fixture()).await;
+    println!("managed MLS ingress: fresh managed fixture opened");
+    let package = Box::pin(publication(&mut f, vault.clone())).await;
+    println!("managed MLS ingress: retained publication and recoverable claim verified");
+    Box::pin(join_and_recover(&mut f, vault.clone(), package)).await;
+    println!("managed MLS ingress: actual join and cold discovery verified");
+    Box::pin(revoke(&f)).await;
     f.world.finish().await;
     drop(vault);
     println!("managed MLS ingress: public custody, retained initial packages, real SQL ACK loss/claim/replay, actual Welcome/Commit/Application through RuntimeSource, cold discovery, revocation PASS; continuity/model/output remain closed");
