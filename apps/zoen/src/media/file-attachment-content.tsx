@@ -1,4 +1,5 @@
-import { Image } from 'expo-image';
+import { InlineFileImage } from './inline-file-image';
+import { materializeObservedFile } from './observed-file';
 import * as Sharing from 'expo-sharing';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
@@ -36,6 +37,7 @@ function FileAttachmentContent({
   galleryEntries,
   tile,
   onInlineUnavailable,
+  isCurrent,
 }: FileAttachmentProps) {
   const { store, snapshot, mode } = useClient();
   const driver = store.driver.media;
@@ -69,6 +71,7 @@ function FileAttachmentContent({
   const generation = useRef(0);
   const owned = useRef<LocalMediaFile | null>(null);
   const actionBusy = useRef(false);
+  const current = useCallback(() => mounted.current && (isCurrent?.() ?? true), [isCurrent]);
   useEffect(() => {
     mounted.current = true;
     const startedGeneration = generation.current;
@@ -83,14 +86,14 @@ function FileAttachmentContent({
   // Readiness is canonical. Looking at a thumbnail never restores an old version.
   useEffect(() => {
     let active = true;
-    if (driver && !received)
+    if (driver && !received && current())
       void driver
         .fileInfo(itemId, version)
         .then((value) => {
-          if (active) setInfo(value);
+          if (active && current()) setInfo(value);
         })
         .catch((reason: unknown) => {
-          if (active) {
+          if (active && current()) {
             setInlineFailed(true);
             setError(
               reason instanceof Error ? reason.message : t('media.thisFileCouldNotBeOpened'),
@@ -100,18 +103,11 @@ function FileAttachmentContent({
     return () => {
       active = false;
     };
-  }, [driver, itemId, version, expectedHash, snapshot, received]);
+  }, [driver, itemId, version, expectedHash, snapshot, received, current]);
   const materialize = useCallback(
-    async (media: MediaDriver) => {
-      const file = await media.materializeFile(itemId, version);
-      if (!file) throw new Error(t('media.thisFileIsStillArrivingTryAgainWhen'));
-      if (expectedHash && file.info.sha256 !== expectedHash) {
-        await media.releaseLocalFile(file.uri);
-        throw new Error(t('media.theAudioHasBeenUpdatedOpenTheMessage'));
-      }
-      return file;
-    },
-    [itemId, version, expectedHash],
+    (media: MediaDriver) =>
+      materializeObservedFile(media, { itemId, version, expectedHash }, current),
+    [itemId, version, expectedHash, current],
   );
 
   // Only already-arrived, modest visual files become inline previews. Large files
@@ -121,19 +117,24 @@ function FileAttachmentContent({
   useEffect(() => {
     // A signed media group can contain a generic/large file. Retain its ordinary
     // canonical row rather than squeezing a file action into a visual mosaic.
-    if (
-      mounted.current &&
-      (inlineFailed || (info && (!visual || Number(info.bytes) > 16 * 1048576)))
-    )
+    if (current() && (inlineFailed || (info && (!visual || Number(info.bytes) > 16 * 1048576))))
       onInlineUnavailable?.();
-  }, [info, visual, inlineFailed, onInlineUnavailable]);
+  }, [info, visual, inlineFailed, onInlineUnavailable, current]);
   useEffect(() => {
-    if (!driver || !message || !info?.ready || !visual || Number(info.bytes) > 16 * 1048576) return;
+    if (
+      !current() ||
+      !driver ||
+      !message ||
+      !info?.ready ||
+      !visual ||
+      Number(info.bytes) > 16 * 1048576
+    )
+      return;
     let active = true;
     const expectedGeneration = generation.current;
     void materialize(driver)
       .then(async (file) => {
-        if (!active || !mounted.current || expectedGeneration !== generation.current) {
+        if (!active || !current() || expectedGeneration !== generation.current) {
           await driver.releaseLocalFile(file.uri);
           return;
         }
@@ -143,7 +144,7 @@ function FileAttachmentContent({
         if (previous) await driver.releaseLocalFile(previous.uri);
       })
       .catch((reason: unknown) => {
-        if (active && mounted.current && expectedGeneration === generation.current) {
+        if (active && current() && expectedGeneration === generation.current) {
           setInlineFailed(true);
           setError(reason instanceof Error ? reason.message : t('media.thisFileCouldNotBeOpened'));
         }
@@ -151,10 +152,10 @@ function FileAttachmentContent({
     return () => {
       active = false;
     };
-  }, [driver, message, info?.ready, info?.bytes, info?.sha256, visual, materialize]);
+  }, [driver, message, info?.ready, info?.bytes, info?.sha256, visual, materialize, current]);
 
   async function action(kind: 'open' | 'share') {
-    if (!driver || actionBusy.current) return;
+    if (!driver || !current() || actionBusy.current) return;
     if (kind === 'open' && openSiteFile(info, itemId, version)) return;
     actionBusy.current = true;
     const expectedGeneration = generation.current;
@@ -163,7 +164,7 @@ function FileAttachmentContent({
     let file: LocalMediaFile | null = null;
     try {
       file = await materialize(driver);
-      if (!mounted.current || expectedGeneration !== generation.current) return;
+      if (!current() || expectedGeneration !== generation.current) return;
       if (kind === 'open' && (voice || (message && visual))) {
         const previous = owned.current;
         owned.current = file;
@@ -175,7 +176,7 @@ function FileAttachmentContent({
       }
       if (kind === 'share') {
         const available = await Sharing.isAvailableAsync();
-        if (!mounted.current || expectedGeneration !== generation.current) return;
+        if (!current() || expectedGeneration !== generation.current) return;
         if (!available) throw new Error(t('media.sharingIsNotAvailableOnThisDevice'));
         await Sharing.shareAsync(file.uri, {
           mimeType: file.info.mime,
@@ -187,22 +188,22 @@ function FileAttachmentContent({
         await previewMediaFile(driver, preview);
       }
     } catch (reason) {
-      if (mounted.current && expectedGeneration === generation.current)
+      if (current() && expectedGeneration === generation.current)
         setError(reason instanceof Error ? reason.message : t('media.thisFileCouldNotBeOpened'));
     } finally {
       try {
         if (file) await driver.releaseLocalFile(file.uri);
       } catch (reason) {
-        if (mounted.current && expectedGeneration === generation.current)
+        if (current() && expectedGeneration === generation.current)
           setError(reason instanceof Error ? reason.message : t('media.thisFileCouldNotBeOpened'));
       } finally {
         actionBusy.current = false;
-        if (mounted.current) setBusy(false);
+        if (current()) setBusy(false);
       }
     }
   }
   async function previewImage() {
-    if (!driver || actionBusy.current) return;
+    if (!driver || !current() || actionBusy.current) return;
     actionBusy.current = true;
     const expectedGeneration = generation.current;
     setError(null);
@@ -225,18 +226,18 @@ function FileAttachmentContent({
       }
       // A separate native-viewer lease outlives the virtualized message row.
       file = await materialize(driver);
-      if (!mounted.current || expectedGeneration !== generation.current) return;
+      if (!current() || expectedGeneration !== generation.current) return;
       const preview = file;
       file = null;
       await previewMediaFile(driver, preview);
     } catch (reason) {
-      if (mounted.current && expectedGeneration === generation.current)
+      if (current() && expectedGeneration === generation.current)
         setError(reason instanceof Error ? reason.message : t('media.thisFileCouldNotBeOpened'));
     } finally {
       try {
         if (file) await driver.releaseLocalFile(file.uri);
       } catch (reason) {
-        if (mounted.current && expectedGeneration === generation.current)
+        if (current() && expectedGeneration === generation.current)
           setError(reason instanceof Error ? reason.message : t('media.thisFileCouldNotBeOpened'));
       } finally {
         actionBusy.current = false;
@@ -285,66 +286,33 @@ function FileAttachmentContent({
           />
         </View>
       ) : local && image && message ? (
-        <Pressable
-          onLongPress={onActions}
-          delayLongPress={350}
-          accessibilityRole="button"
-          accessibilityLabel={t('media.openFileLabel', { name: label })}
-          onPress={() => {
+        <InlineFileImage
+          local={local}
+          label={label}
+          mine={mine}
+          tile={tile}
+          frame={imageFrame}
+          outline={outline}
+          onActions={onActions}
+          onOpen={() => {
             void previewImage();
           }}
-          style={({ pressed }) => ({
-            alignSelf: mine ? 'flex-end' : 'flex-start',
-            width: tile?.width ?? (imageFrame.width || '100%'),
-            height: tile?.height ?? (imageFrame.height || undefined),
-            aspectRatio: tile || imageFrame.width ? undefined : 1,
-            borderRadius: tile ? 0 : 24,
-            borderCurve: 'continuous',
-            overflow: 'hidden',
-            opacity: pressed ? 0.8 : 1,
-          })}
-        >
-          <Image
-            cachePolicy="none"
-            recyclingKey={`${itemId}:${local.info.sha256}`}
-            source={{ uri: local.uri }}
-            accessible={false}
-            contentFit={tile ? 'cover' : 'contain'}
-            onLoad={(event) => {
-              if (!mounted.current || owned.current !== local || event.source.url !== local.uri)
-                return;
-              const { width, height } = event.source;
-              if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
-                setRatio(width / height);
-                onImageDecoded?.({
-                  itemId: local.itemId,
-                  version: local.version,
-                  sha256: local.info.sha256,
-                  width,
-                  height,
-                });
-              }
-            }}
-            onError={() => {
-              if (mounted.current && owned.current === local) {
-                setInlineFailed(true);
-                setError(t('media.thisFileCouldNotBeOpened'));
-              }
-            }}
-            style={{ position: 'absolute', inset: 0 }}
-          />
-          <View
-            pointerEvents="none"
-            style={{
-              position: 'absolute',
-              inset: 0,
-              borderWidth: tile ? 0 : 1,
-              borderColor: outline,
-              borderRadius: tile ? 0 : 24,
-              borderCurve: 'continuous',
-            }}
-          />
-        </Pressable>
+          isCurrent={() => current() && owned.current === local}
+          onDecoded={(width, height) => {
+            setRatio(width / height);
+            onImageDecoded?.({
+              itemId: local.itemId,
+              version: local.version,
+              sha256: local.info.sha256,
+              width,
+              height,
+            });
+          }}
+          onFailure={() => {
+            setInlineFailed(true);
+            setError(t('media.thisFileCouldNotBeOpened'));
+          }}
+        />
       ) : local && video && message ? (
         <View>
           <VideoClip
@@ -355,7 +323,7 @@ function FileAttachmentContent({
             onDimensions={
               tile
                 ? (size) => {
-                    if (!mounted.current || owned.current !== local) return;
+                    if (!current() || owned.current !== local) return;
                     onImageDecoded?.({
                       itemId: local.itemId,
                       version: local.version,

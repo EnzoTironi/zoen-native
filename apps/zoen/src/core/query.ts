@@ -4,10 +4,10 @@ import { useClient } from './provider';
 import type { Command, CommandResult } from './types';
 
 /** Focus-scoped projections; old routes and accounts cannot publish late results. */
-export function useCoreQuery<C extends Command>(command: C | null) {
+export function useCoreQuery<C extends Command>(command: C | null, freshness = '') {
   const { store, snapshot, mode } = useClient();
   const encoded = JSON.stringify(command);
-  const scope = `${mode}:${snapshot?.account?.identity_id ?? ''}:${encoded}`;
+  const scope = `${mode}:${snapshot?.account?.identity_id ?? ''}:${encoded}:${freshness}`;
   const [revision, setRevision] = useState(0);
   const [state, setState] = useState<{
     scope: string;
