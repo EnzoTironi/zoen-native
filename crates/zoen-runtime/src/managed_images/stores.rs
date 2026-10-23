@@ -30,7 +30,7 @@ impl RuntimeAuthority {
     }
 }
 
-impl DispatchCheckpoint {
+impl PublishCheckpoint {
     pub(crate) async fn write_fdb(
         &self,
         execution: &crate::execution::Execution,
@@ -57,8 +57,16 @@ impl DispatchCheckpoint {
         if old != self.prepared.previous {
             return Err(RuntimeError::RestoreUnreconciled);
         }
-        self.write_dispatch_reference(execution, transaction)
-            .await?;
+        let history = execution
+            .root
+            .pack(&("managed-images/effect/1", self.prepared.next.sequence));
+        if transaction.get(&history, false).await?.is_some() {
+            return Err(RuntimeError::RestoreUnreconciled);
+        }
+        transaction.set(
+            &history,
+            &serde_json::to_vec(&self.prepared).map_err(|_| RuntimeError::InvalidBinding)?,
+        );
         transaction.set(
             &key,
             &serde_json::to_vec(&self.prepared.next).map_err(|_| RuntimeError::InvalidBinding)?,
@@ -84,5 +92,31 @@ impl DispatchCheckpoint {
             return Err(RuntimeError::RestoreUnreconciled);
         }
         Ok(())
+    }
+}
+
+impl DispatchCheckpoint {
+    fn effect_checkpoint(&self) -> PublishCheckpoint {
+        PublishCheckpoint {
+            deployment: self.deployment.clone(),
+            prepared: self.prepared.clone(),
+        }
+    }
+    pub(crate) async fn write_fdb(
+        &self,
+        execution: &crate::execution::Execution,
+        transaction: &FdbTransaction,
+    ) -> Result<(), RuntimeError> {
+        self.write_dispatch_reference(execution, transaction)
+            .await?;
+        self.effect_checkpoint()
+            .write_fdb(execution, transaction)
+            .await
+    }
+    pub(crate) async fn write_sql(
+        &self,
+        transaction: &mut Transaction<'_, Postgres>,
+    ) -> Result<(), RuntimeError> {
+        self.effect_checkpoint().write_sql(transaction).await
     }
 }

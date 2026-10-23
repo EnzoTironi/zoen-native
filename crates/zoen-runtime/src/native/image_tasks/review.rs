@@ -61,6 +61,8 @@ struct Review {
     content_hash: String,
     wire: String,
     accepted: Option<Seen>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    checkpoint: Option<relay_admission::managed_images::Checkpoint>,
 }
 impl Review {
     fn envelope(
@@ -232,6 +234,7 @@ impl NativeCustody {
                         .content_hash,
                     wire,
                     accepted: None,
+                    checkpoint: None,
                 });
                 staging.envelope = Some(envelope);
                 staging.activate().await?;

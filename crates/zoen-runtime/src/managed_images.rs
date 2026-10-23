@@ -1,5 +1,6 @@
 //! Images restore checkpoint orchestration. External state never grants a send
 //! permit: existing one-shot claims and native output authority remain required.
+mod publication;
 mod recovery;
 mod setup;
 mod stores;
@@ -55,6 +56,12 @@ impl DispatchReference {
             .map_err(|_| RuntimeError::InvalidBinding)?,
         ))
     }
+}
+
+#[derive(Clone)]
+pub(crate) struct PublishCheckpoint {
+    pub(super) deployment: Deployment,
+    pub(super) prepared: Prepared,
 }
 
 pub(crate) struct Transition {

@@ -64,7 +64,10 @@ pub(super) async fn assert_dispatch_checkpoint(
     let reader = AnchorReader::open(&directory.0, deployment.clone()).unwrap();
     let committed = reader.checkpoint().unwrap();
     assert_eq!(committed.generation, 1);
-    assert_eq!(committed.sequence, 1);
+    assert_eq!(
+        committed.sequence, 2,
+        "original review publication precedes original dispatch"
+    );
     let observed = runtime.image_checkpoints(&deployment).await.unwrap();
     assert_eq!(observed, (committed.clone(), committed.clone()));
     let rows: i64 = sqlx::query_scalar("SELECT count(*) FROM runtime_admission_witnesses w JOIN runtime_claims c ON c.attempt=w.attempt AND c.nonce=w.nonce")
@@ -73,6 +76,26 @@ pub(super) async fn assert_dispatch_checkpoint(
         rows, 1,
         "checkpoint shares the original financial admission witness"
     );
+    let transaction = runtime.execution.transaction().await.unwrap();
+    for sequence in 1..=committed.sequence {
+        let bytes = transaction
+            .get(
+                &runtime
+                    .execution
+                    .root
+                    .pack(&("managed-images/effect/1", sequence)),
+                false,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        let prepared: relay_admission::managed_images::Prepared =
+            serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(prepared.next.sequence, sequence);
+        if sequence == committed.sequence {
+            assert_eq!(prepared.next, committed);
+        }
+    }
     runtime.check_image_checkpoint().await.unwrap();
     println!("managed image dispatch: actual SQL witness/FDB original admission and independent durable effect checkpoint agree; no extra claim PASS");
 }
