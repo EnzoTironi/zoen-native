@@ -42,7 +42,7 @@ for raw in sys.stdin:
   if MODE=='overtake':send({'method':'item/started','params':{'threadId':'thread-fixture','item':{'type':'userMessage'}}})
   send({'id':i,'result':{'turn':{'id':'turn-fixture'}}})
   tool='unknown'if MODE=='unknown-tool'else'edit_deck'
-  text=json.dumps({'kind':'review'if MODE=='review'else'call','text':'','calls':[{'id':'call1','name':tool,'arguments_json':json.dumps({'shapeId':42,'text':'Real proposal'})}]})
+  text=json.dumps({'outcome':{'kind':'review'if MODE=='review'else'call','calls':[{'id':'call1','name':tool,'arguments_json':json.dumps({'shapeId':42,'text':'Real proposal'})}]}})
   if MODE=='nested-contract':
    context=json.loads(m['params']['input'][0]['text'])
    offered=context['offered_tools']
@@ -56,7 +56,7 @@ for raw in sys.stdin:
    assert read==EXPECTED['read']and read['slides']and read['slides'][0]['shapes']
    assert read['scope']==EXPECTED['scope']and read['head']==EXPECTED['head']
    arguments={'shapeId':read['slides'][0]['shapes'][0]['id'],'text':'Synthetic next step'}
-   text=json.dumps({'kind':'call','text':'','calls':[{'id':'after-read','name':'edit_deck','arguments_json':json.dumps(arguments)}]})
+   text=json.dumps({'outcome':{'kind':'call','calls':[{'id':'after-read','name':'edit_deck','arguments_json':json.dumps(arguments)}]}})
   send({'method':'item/completed','params':{'threadId':'thread-fixture','turnId':'turn-fixture','item':{'type':'agentMessage','text':text}}})
   send({'method':'turn/completed','params':{'threadId':'thread-fixture','turn':{'id':'turn-fixture','status':MODE if MODE in ['failed','interrupted']else'completed'}}})
   continue
@@ -204,15 +204,15 @@ async fn timeout_retires_an_actual_stalled_child_process() {
 #[test]
 fn malformed_ambiguous_unoffered_and_duplicate_calls_are_refused() {
     for output in [
-        json!({"kind":"call","text":"speak and call","calls":[]}),
-        json!({"kind":"call","text":"","calls":[{"id":"same","name":"edit_deck","arguments_json":"{}"},{"id":"same","name":"edit_deck","arguments_json":"{}"}]}),
-        json!({"kind":"call","text":"","calls":[{"id":"one","name":"edit_deck","arguments_json":"[]"}]}),
-        json!({"kind":"say","text":"ok","calls":[],"extra":true}),
+        json!({"outcome":{"kind":"call","text":"speak and call","calls":[]}}),
+        json!({"outcome":{"kind":"call","calls":[{"id":"same","name":"edit_deck","arguments_json":"{}"},{"id":"same","name":"edit_deck","arguments_json":"{}"}]}}),
+        json!({"outcome":{"kind":"call","calls":[{"id":"one","name":"edit_deck","arguments_json":"[]"}]}}),
+        json!({"outcome":{"kind":"say","text":"ok"},"extra":true}),
     ] {
         assert!(parse_output(&output.to_string(), &[tool()]).is_err());
     }
     assert_eq!(
-        parse_output(r#"{"kind":"quiet","text":"","calls":[]}"#, &[]).unwrap(),
+        parse_output(r#"{"outcome":{"kind":"quiet"}}"#, &[]).unwrap(),
         BrainOut::Silence
     );
 }
