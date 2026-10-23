@@ -146,7 +146,7 @@ final class ZoenCallCoordinator: NSObject {
 
   func presentationSnapshot() -> ZoenCallPresentationSnapshot {
     ZoenCallPresentationSnapshot(identityID: port.scope.identity, deviceID: port.scope.device,
-      spaceID: port.scope.space, callID: port.scope.call, state: currentPhase,
+      spaceID: port.scope.space, callID: port.scope.call, state: presentation.snapshotState(currentPhase),
       minimized: !retired && currentPhase != "incoming" && presentation.minimized,
       connectedAtMs: connectedAtMs)
   }
@@ -179,7 +179,7 @@ final class ZoenCallCoordinator: NSObject {
 
   func stop(writeEnd: Bool, reason: CXCallEndedReason = .remoteEnded) async {
     guard !retired else { return }
-    guard installed else { retired = true; status("ended"); return }
+    guard installed else { retired = true; presentation.retire(); status("ended"); return }
     let releaseAudio = port.releaseAudio
     let retirement = ZoenCallSystem.shared.retire(self) { await releaseAudio() }
     retired = true; presentation.retire(); deadline?.cancel(); deadline = nil; watchdog?.cancel(); watchdog = nil

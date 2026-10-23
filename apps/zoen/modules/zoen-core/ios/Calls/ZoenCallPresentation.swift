@@ -12,6 +12,8 @@ final class ZoenCallPresentation {
   private var returnOffered = false
   var minimized: Bool { returnOffered && phase != .visible && phase != .retired }
 
+  func snapshotState(_ active: String) -> String { phase == .retired ? "ended" : active }
+
   func beginShow() -> UUID? {
     if phase == .hiding { showRequested = true; return nil }
     guard phase == .hidden else { return nil }

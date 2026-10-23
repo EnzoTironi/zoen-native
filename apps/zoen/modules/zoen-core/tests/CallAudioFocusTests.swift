@@ -38,6 +38,18 @@ struct CallAudioFocusTests {
   }
   @MainActor
   static func main() async throws {
+    // A failed begin has not installed any system/media owner or shown a view.
+    // Its terminal projection must still release the session's call slot.
+    var pending: ZoenCallPresentation? = ZoenCallPresentation()
+    precondition(pending!.snapshotState("calling") == "calling")
+    pending!.retire()
+    precondition(pending!.snapshotState("calling") == "ended")
+    precondition(!pending!.minimized && pending!.beginShow() == nil)
+    if pending!.snapshotState("calling") == "ended" { pending = nil }
+    precondition(pending == nil)
+    pending = ZoenCallPresentation()
+    precondition(pending!.snapshotState("calling") == "calling" && pending!.beginShow() != nil)
+
     let presentation = ZoenCallPresentation()
     let opening = presentation.beginShow()!
     precondition(!presentation.minimized) // no startup banner behind the first call screen
