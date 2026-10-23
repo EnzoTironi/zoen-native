@@ -5,11 +5,20 @@ import { useClient } from '../core/provider';
 import { createOwnerPolicyPort, policyAvailability } from './core-port';
 import { OwnerPolicySession, emptyPolicyState, policyScopeKey, type PolicyTarget } from './session';
 
-export function useOwnerPolicy({ spaceId, agentId, requestId, expectedHash }: PolicyTarget) {
+export function useOwnerPolicy({
+  spaceId,
+  agentId,
+  requestId,
+  expectedHash,
+  purpose,
+}: PolicyTarget) {
   const { store } = useClient();
   const target = useMemo(
-    () => ({ spaceId, agentId, requestId, expectedHash }),
-    [spaceId, agentId, requestId, expectedHash],
+    (): PolicyTarget =>
+      purpose === 'account'
+        ? { spaceId, agentId, purpose }
+        : { spaceId, agentId, requestId: requestId ?? '', expectedHash: expectedHash ?? '' },
+    [spaceId, agentId, requestId, expectedHash, purpose],
   );
   const port = useMemo(() => createOwnerPolicyPort(store, target), [store, target]);
   const session = useMemo(() => new OwnerPolicySession(port), [port]);

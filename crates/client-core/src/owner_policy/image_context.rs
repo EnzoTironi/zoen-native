@@ -4,20 +4,14 @@ use crate::image_tasks::ImageTaskInput;
 use types::owner_policy_context::OwnerPolicyInquiry;
 
 impl Engine {
-    pub(crate) fn owner_policy_image_input(
+    pub(crate) fn owner_policy_inquiry_scope(
         &self,
         inquiry: &OwnerPolicyInquiry,
         at_ms: i64,
-    ) -> R<ImageTaskInput> {
+    ) -> R<()> {
         let agent = self.identities.get(&inquiry.agent).ok_or_else(denied)?;
         let owner = self.identities.get(&inquiry.owner).ok_or_else(denied)?;
         let space = self.space_state(&inquiry.space)?;
-        let record = self
-            .state
-            .requests
-            .get(&inquiry.request)
-            .ok_or_else(denied)?;
-        let proposal = record.req.tool_proposal.as_ref().ok_or_else(denied)?;
         if !inquiry.fresh_at(at_ms)
             || owner.kind != IdentityKind::Person
             || agent.kind != IdentityKind::Agent
@@ -30,7 +24,45 @@ impl Engine {
             || !self.is_member(&inquiry.space, &inquiry.owner)
             || !self.is_member(&inquiry.space, &inquiry.agent)
             || self.ready_epoch(&inquiry.space).is_none()
-            || record.status != crate::engine::ReqStatus::Pending
+        {
+            return Err(denied());
+        }
+        Ok(())
+    }
+
+    pub(crate) fn owner_policy_context_input(
+        &self,
+        inquiry: &OwnerPolicyInquiry,
+        at_ms: i64,
+    ) -> R<Option<ImageTaskInput>> {
+        if inquiry.purpose.is_some() {
+            self.owner_policy_inquiry_scope(inquiry, at_ms)?;
+            if !self.state.writer(&inquiry.space, &inquiry.owner)
+                || !self.state.writer(&inquiry.space, &inquiry.agent)
+            {
+                return Err(denied());
+            }
+            return Ok(None);
+        }
+        self.owner_policy_image_input(inquiry, at_ms).map(Some)
+    }
+
+    pub(crate) fn owner_policy_image_input(
+        &self,
+        inquiry: &OwnerPolicyInquiry,
+        at_ms: i64,
+    ) -> R<ImageTaskInput> {
+        if inquiry.purpose.is_some() {
+            return Err(denied());
+        }
+        self.owner_policy_inquiry_scope(inquiry, at_ms)?;
+        let record = self
+            .state
+            .requests
+            .get(&inquiry.request)
+            .ok_or_else(denied)?;
+        let proposal = record.req.tool_proposal.as_ref().ok_or_else(denied)?;
+        if record.status != crate::engine::ReqStatus::Pending
             || record.space != inquiry.space
             || record.req.agent != inquiry.agent
             || record.req.content_hash != inquiry.content_hash

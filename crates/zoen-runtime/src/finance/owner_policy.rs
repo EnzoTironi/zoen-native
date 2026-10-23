@@ -91,7 +91,7 @@ impl NativeDirectoryGuard {
         let profile_digest = price.digest()?;
         if inquiry.owner != self.owner
             || inquiry.agent != self.agent
-            || inquiry.price_digest != profile_digest
+            || (inquiry.purpose.is_none() && inquiry.price_digest != profile_digest)
             || !event_log::owner_policy_inquiry::verify(signed)
         {
             return Err(RuntimeError::Denied);
@@ -133,6 +133,20 @@ impl NativeDirectoryGuard {
             } else {
                 (None, None)
             };
+        fn image_setting(value: impl serde::Serialize) -> Result<String, RuntimeError> {
+            serde_json::to_value(value)
+                .ok()
+                .and_then(|value| value.as_str().map(str::to_owned))
+                .ok_or(RuntimeError::InvalidProfile)
+        }
+        let image_spec = if inquiry.purpose.is_some() {
+            Some(types::owner_policy_context::OwnerPolicyImageSpec {
+                size: image_setting(price.image.size)?,
+                quality: image_setting(price.image.quality)?,
+            })
+        } else {
+            None
+        };
         let options = OwnerPolicyOptions {
             inquiry_digest: event_log::owner_policy_inquiry::digest(inquiry)
                 .ok_or(RuntimeError::InvalidBinding)?,
@@ -145,6 +159,7 @@ impl NativeDirectoryGuard {
             month,
             current_policy,
             current_policy_digest,
+            image_spec,
         };
         if !options.valid_shape() {
             return Err(RuntimeError::InvalidBinding);

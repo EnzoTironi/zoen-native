@@ -28,6 +28,11 @@ export function policyAvailability(
     !space.members.some((value) => value.id === owner.identity)
   )
     return { scope: null, reason: 'private-conversation-required' };
+  if (target.purpose === 'account') {
+    return target.requestId !== undefined || target.expectedHash !== undefined
+      ? { scope: null, reason: 'request-changed' }
+      : { scope: { ...owner, ...target }, reason: null };
+  }
   const request = snapshot.requests.find((value) => value.id === target.requestId);
   if (
     !request ||
@@ -59,23 +64,37 @@ export function createOwnerPolicyPort(store: ClientStore, target: PolicyTarget):
     scope,
     async inquire(observed) {
       current(observed);
-      const value = await store.driver.request({
-        op: 'request_owner_policy_options',
-        scope: expected(observed),
-        request_id: observed.requestId,
-        expected_hash: observed.expectedHash,
-      });
+      const value = await store.driver.request(
+        observed.purpose === 'account'
+          ? {
+              op: 'request_account_policy_options',
+              scope: expected(observed),
+            }
+          : {
+              op: 'request_owner_policy_options',
+              scope: expected(observed),
+              request_id: observed.requestId,
+              expected_hash: observed.expectedHash,
+            },
+      );
       current(observed);
       return value;
     },
     async findOptions(observed) {
       current(observed);
-      const value = await store.driver.request({
-        op: 'find_owner_policy_options',
-        scope: expected(observed),
-        request_id: observed.requestId,
-        expected_hash: observed.expectedHash,
-      });
+      const value = await store.driver.request(
+        observed.purpose === 'account'
+          ? {
+              op: 'find_account_policy_options',
+              scope: expected(observed),
+            }
+          : {
+              op: 'find_owner_policy_options',
+              scope: expected(observed),
+              request_id: observed.requestId,
+              expected_hash: observed.expectedHash,
+            },
+      );
       current(observed);
       return value;
     },

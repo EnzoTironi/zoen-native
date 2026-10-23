@@ -1,7 +1,7 @@
 //! Actual SQL scope/observation only; the separate IPC journey proves native MLS.
 use super::*;
 
-async fn guard(
+pub(super) async fn guard(
     w: &World,
     runtime: &RuntimeAuthority,
 ) -> Result<crate::finance::NativeDirectoryGuard, RuntimeError> {
@@ -31,6 +31,7 @@ async fn guard(
 
 pub(super) async fn run() {
     let w = World::new().await;
+    account_policy_context::run(&w).await;
     let now = w.runtime.finance.reply_clock().await.unwrap();
     let mut expiring = w.signed.policy.clone();
     expiring.version = 2;

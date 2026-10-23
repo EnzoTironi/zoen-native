@@ -207,12 +207,14 @@ const bundles = await Promise.all(
     }),
   ),
 );
-export function screen(f: Fixture) {
+export function screen(f: Fixture, mode: 'image' | 'account' = 'image') {
   const slots = new Map<string, any[]>();
   let activeSlots: any[] = [],
     cursor = 0;
   const components: Record<string, any> = {};
   let routeRows: AgentRequestDto[] = [request];
+  let routeSpaces: { id: string; kind: string }[] = [];
+  const accountTarget = { purpose: 'account', spaceId: scope.spaceId, agentId: scope.agentId };
   const require = (name: string) => {
     if (name === 'react/jsx-runtime')
       return {
@@ -241,6 +243,11 @@ export function screen(f: Fixture) {
       };
     if (name === 'react-native') return { ScrollView: 'ScrollView', Text: 'Text', View: 'View' };
     if (name === '@expo/ui') return { Host: 'Host', Switch: 'Switch' };
+    if (name === '../../core/provider')
+      return { useClient: () => ({ snapshot: { conversations: routeSpaces } }) };
+    // The alternative account selector is qualified by its own real component/port cases.
+    if (name === '../../agents/account-budget-screen')
+      return { AccountBudgetScreen: 'AccountBudgetScreen' };
     if (name === '../../core/query') return { useCoreQuery: () => ({ data: routeRows }) };
     if (name === '../../core/image-tool-review') return { imageToolReviewValid };
     if (name === '../../agents/owner-policy-screen') return components.screen;
@@ -258,12 +265,17 @@ export function screen(f: Fixture) {
     if (name === '../owner-policy/use-owner-policy')
       return {
         useOwnerPolicy: (target: unknown) => {
-          assert.deepEqual(JSON.parse(JSON.stringify(target)), {
-            spaceId: scope.spaceId,
-            agentId: scope.agentId,
-            requestId: scope.requestId,
-            expectedHash: scope.expectedHash,
-          });
+          assert.deepEqual(
+            JSON.parse(JSON.stringify(target)),
+            mode === 'account'
+              ? accountTarget
+              : {
+                  spaceId: scope.spaceId,
+                  agentId: scope.agentId,
+                  requestId: scope.requestId,
+                  expectedHash: scope.expectedHash,
+                },
+          );
           return { session: f.session, state: f.session.getSnapshot(), unavailableReason: null };
         },
       };
@@ -292,10 +304,16 @@ export function screen(f: Fixture) {
     return [value, ...expand(value.props.children, path)];
   }
   const render = () =>
-    expand({ type: components.screen.OwnerPolicyScreen, props: { request } }, 'root');
+    expand(
+      mode === 'account'
+        ? { type: components.screen.OwnerPolicyControllerScreen, props: { target: accountTarget } }
+        : { type: components.screen.OwnerPolicyScreen, props: { request } },
+      'root',
+    );
   return Object.assign(render, {
-    route(rows: AgentRequestDto[]) {
+    route(rows: AgentRequestDto[], spaces: { id: string; kind: string }[] = []) {
       routeRows = rows;
+      routeSpaces = spaces;
       return expand({ type: components.route.default, props: {} }, 'route');
     },
   });

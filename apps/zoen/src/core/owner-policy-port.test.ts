@@ -3,6 +3,8 @@ import { test } from 'node:test';
 import { ClientStore } from './store.ts';
 import { Driver, deferred, draftSession, tick } from './store.fixtures.ts';
 import type { Snapshot } from './types.ts';
+import { openAccountBudget, ownedBudgetAgents } from '../owner-policy/account-port.ts';
+import { accountScope } from './account-scope.ts';
 import { createOwnerPolicyPort, policyAvailability } from '../owner-policy/core-port.ts';
 const target = {
   spaceId: 'private-dm',
@@ -154,5 +156,104 @@ test('store preflight/epoch replacement fences held native work before another a
   gate.resolve(null);
   await assert.rejects(pending);
   assert.equal(f.port.scope(), null);
+  await f.store.close();
+});
+
+test('account policy discovery uses private owned-agent context without a pending image', async () => {
+  const f = await fixture();
+  f.replace({ ...f.snapshot(), requests: [] });
+  await f.store.refresh();
+  const account = createOwnerPolicyPort(f.store, {
+    purpose: 'account',
+    spaceId: target.spaceId,
+    agentId: target.agentId,
+  });
+  const scope = account.scope();
+  assert.ok(scope);
+  await account.inquire(scope);
+  await account.findOptions(scope);
+  assert.deepEqual(f.calls.slice(-2), [
+    'request_account_policy_options',
+    'find_account_policy_options',
+  ]);
+  assert.equal(f.port.scope(), null, 'original image mode still requires the exact pending review');
+  const grouped = {
+    ...f.snapshot(),
+    conversations: f
+      .snapshot()
+      .conversations.map((space) => ({ ...space, kind: 'Group' as const, counterpart: null })),
+  };
+  f.replace(grouped);
+  await f.store.refresh();
+  const before = f.calls.length;
+  await assert.rejects(account.inquire(scope));
+  assert.equal(f.calls.length, before, 'no group fallback or private budget post');
+  await f.store.close();
+});
+
+function withOwnedAgent(value: Snapshot): Snapshot {
+  const persona = value.conversations[0]?.counterpart;
+  assert.ok(persona);
+  return {
+    ...value,
+    requests: [],
+    agents: [
+      {
+        persona,
+        budget_limit_cents: null,
+        budget_spent_cents: null,
+        near_limit: false,
+        spaces: [],
+        pending_requests: 0,
+        approvals_streak: 0,
+        runs_on: '',
+        owner_notes_pending: 0,
+      },
+    ],
+  };
+}
+test('account entry opens only scoped private owned-agent control and never legacy or group budget', async () => {
+  const f = await fixture();
+  f.replace(withOwnedAgent(f.snapshot()));
+  await f.store.refresh();
+  const owner = accountScope(f.store);
+  assert.ok(owner);
+  assert.equal(ownedBudgetAgents(f.store).length, 1);
+  f.driver.operation = async (command) => {
+    f.calls.push(command.op);
+    if (command.op === 'snapshot') return f.snapshot();
+    assert.deepEqual(command, {
+      op: 'start_owner_policy_direct',
+      expected_identity_id: owner.identity,
+      expected_device_id: owner.device,
+      agent_id: 'agent',
+    });
+    return 'private-dm';
+  };
+  const target = await openAccountBudget(f.store, owner, 'agent');
+  assert.deepEqual(target, { purpose: 'account', agentId: 'agent', spaceId: 'private-dm' });
+  assert.equal(f.calls.filter((op) => op === 'start_owner_policy_direct').length, 1);
+  assert.equal(
+    f.calls.some((op) => op === 'raise_budget' || op === 'send_message'),
+    false,
+  );
+  await f.store.close();
+});
+test('foreign budget service and late private-context response cannot cross an account epoch', async () => {
+  const f = await fixture();
+  f.replace(withOwnedAgent(f.snapshot()));
+  await f.store.refresh();
+  const owner = accountScope(f.store);
+  assert.ok(owner);
+  const before = f.calls.length;
+  await assert.rejects(openAccountBudget(f.store, owner, 'foreign-agent'));
+  assert.equal(f.calls.length, before);
+  const gate = deferred<unknown>();
+  f.driver.operation = async (command) => (command.op === 'snapshot' ? f.snapshot() : gate.promise);
+  const pending = openAccountBudget(f.store, owner, 'agent');
+  await f.store.open('demo');
+  gate.resolve('private-dm');
+  await assert.rejects(pending);
+  assert.equal(ownedBudgetAgents(f.store).length, 0);
   await f.store.close();
 });

@@ -74,6 +74,9 @@ fn decode(json: &str) -> R<OwnerPeriodPolicy> {
 
 impl Engine {
     fn owner_policy_conversation(&self, scope: &OwnerPolicyScope) -> R<()> {
+        self.owner_policy_private_conversation(scope, true)
+    }
+    fn owner_policy_private_conversation(&self, scope: &OwnerPolicyScope, ready: bool) -> R<()> {
         self.native_surface_owner(&scope.expected_identity_id, &scope.expected_device_id)?;
         let account = self.account().ok_or_else(denied)?;
         let owner = self
@@ -94,7 +97,7 @@ impl Engine {
             || !self.is_member(&scope.space_id, &owner.id)
             || !self.is_member(&scope.space_id, &agent.id)
             || !self.state.writer(&scope.space_id, &owner.id)
-            || self.ready_epoch(&scope.space_id).is_none()
+            || (ready && self.ready_epoch(&scope.space_id).is_none())
         {
             return Err(denied());
         }

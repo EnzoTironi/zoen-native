@@ -3,6 +3,7 @@ import { defineFeature } from '../catalog.ts';
 export const ownerPolicy = defineFeature(
   {
     title: 'Account budget',
+    noOwnedAgents: 'No agents available',
     ownerScope: 'Shared by all your agents for the selected services.',
     monthlyLimit: 'Monthly limit',
     perAttempt: 'Maximum per attempt',
@@ -40,6 +41,7 @@ export const ownerPolicy = defineFeature(
   },
   {
     title: 'Orçamento da conta',
+    noOwnedAgents: 'Nenhum agente disponível',
     ownerScope: 'Compartilhado por todos os seus agentes para os serviços selecionados.',
     monthlyLimit: 'Limite mensal',
     perAttempt: 'Máximo por tentativa',

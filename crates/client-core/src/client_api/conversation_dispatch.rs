@@ -9,6 +9,19 @@ impl Client {
     ) -> Result<String, CoreError> {
         use Command::*;
         match command {
+            StartOwnerPolicyDirect {
+                expected_identity_id,
+                expected_device_id,
+                agent_id,
+            } => encode(&self.start_owner_policy_direct(
+                expected_identity_id,
+                expected_device_id,
+                agent_id,
+            )?),
+            RequestAccountPolicyOptions { scope } => {
+                encode(&self.request_account_policy_options(scope)?)
+            }
+            FindAccountPolicyOptions { scope } => encode(&self.find_account_policy_options(scope)?),
             FindOwnerPolicyOptions {
                 scope,
                 request_id,

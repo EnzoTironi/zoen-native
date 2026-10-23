@@ -82,6 +82,9 @@ export type CoreEvent =
   | { kind: 'ephemeral'; spaceId: string; fromId: string; type: string; detail: string }
   | { kind: 'error'; message?: string };
 type Results = {
+  start_owner_policy_direct: string;
+  request_account_policy_options: OwnerPolicyOptionsStatus;
+  find_account_policy_options: OwnerPolicyOptionsStatus | null;
   request_owner_policy_options: OwnerPolicyOptionsStatus;
   find_owner_policy_options: OwnerPolicyOptionsStatus | null;
   owner_policy_options: OwnerPolicyOptionsStatus;

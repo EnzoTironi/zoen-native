@@ -5,6 +5,17 @@ use super::*;
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub(super) enum Command {
+    StartOwnerPolicyDirect {
+        expected_identity_id: String,
+        expected_device_id: String,
+        agent_id: String,
+    },
+    RequestAccountPolicyOptions {
+        scope: crate::owner_policy::OwnerPolicyScope,
+    },
+    FindAccountPolicyOptions {
+        scope: crate::owner_policy::OwnerPolicyScope,
+    },
     FindOwnerPolicyOptions {
         scope: crate::owner_policy::OwnerPolicyScope,
         request_id: String,
