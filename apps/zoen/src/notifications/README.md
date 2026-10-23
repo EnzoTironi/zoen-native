@@ -24,6 +24,92 @@ The environment must match the signed entitlement; it is never inferred from
 `__DEV__`. The CNG notifications plugin, valid signing and provider credentials
 are separate requirements. No token or key is printed or returned by this UI.
 
+## iOS configuration and native wake
+
+The same explicit `extra.zoenPush` opt-in configures the SDK58 notifications
+plugin with `enableRemoteNotifications` and
+`enableBackgroundRemoteNotifications`. The topic must equal the iOS bundle ID.
+Sandbox maps to the `development` entitlement; production maps to `production`.
+A conflicting existing entitlement is refused. iOS configuration does not depend
+on Android FCM configuration. Public Info.plist flags independently gate the
+native subscriber; disabling the opt-in clears those flags on the next CNG build.
+
+The dynamic app config also accepts this complete public build-time tuple:
+
+```text
+ZOEN_IOS_PUSH_ENABLED=true
+ZOEN_IOS_PUSH_ENVIRONMENT=sandbox
+ZOEN_IOS_PUSH_TOPIC=xyz.tironi.zoen
+```
+
+Use `production` for the production environment. An explicit tuple overrides the
+iOS fields in `extra.zoenPush`; the topic must still match the bundle and any
+existing signed-environment pin must agree. Partial tuples, whitespace/coerced
+values and invalid environments are refused. With all three variables absent,
+the existing app configuration is unchanged. `ZOEN_IOS_PUSH_ENABLED=false` alone
+explicitly disables it; supplying an environment/topic alongside `false` is an
+error. These inputs contain no token, key or provisioning material and do not
+themselves register with APNs. CNG and a new native binary are required.
+
+An enabled running JavaScript client with already-granted notification permission
+can call the SDK's device-token API on foreground, which invokes native APNs
+registration even on Simulator. A simulator wake injected locally is separate
+from that registration and from provider delivery. Do not assume that enabling
+the native configuration makes a foreground QA launch network-free.
+
+The provider starts its initial permission/token refresh only when the app is
+active. A React tree mounted by a background launch waits for the existing
+AppState activation listener; it does not start device-token registration from
+that mount. Normal foreground registration and native rotation handling retain
+their existing coordinator and account-invalidation checks.
+
+`ZoenPushDelegate` receives the content-free OS callback without starting a
+TaskManager/headless JavaScript runtime. A process transition gate borrows the
+existing module's `ZoenSession`, or opens one temporary session only after the
+previous owner has closed. A cold wake requires an existing account database,
+existing vault keys and a registered account. It never creates an identity,
+resumes provider setup or imports an owner's keys. An unreadable/locked keychain
+after boot is a refusal; AfterFirstUnlockThisDeviceOnly remains unchanged.
+
+The latest foreground module keeps its lease after an ordinary Core close, so
+its existing erasure recovery can still finish. Replacement retires that lease:
+old closes become no-ops, old opens/destructive completions are refused, and
+transfer waits for accepted recovery work. Same-session close/closeForce/erase
+reach the existing actor's coalesced closeTask instead of queuing force or erase
+behind a graceful seal they need to release. No durable custody state is added.
+
+The callback has an eight-second whole-work ceiling, shortened by OS expiry.
+Duplicates receive no new engine or extended budget. Foreground open, module
+destruction, account replacement and cancellation retire late work. A failed
+cold retirement quarantines the sole owner rather than opening a second Client
+against the same journal. Existing foreground graceful-close recovery stays in
+its own actor. System completion and background-task cleanup each occur once.
+The OS can deny or terminate the window; completion is not delivery assurance.
+
+Sync uses the existing strict `wait_until_settled` predicate and only the time
+remaining from callback admission. It does not treat online/empty outbox as MLS
+completion. A cold baseline is captured after unlocking and before sync; a warm
+baseline comes from the last authenticated snapshot observed by the foreground
+session. The same current-account, membership, mute and archive checks produce
+the same local identifiers as JavaScript. The native adapter rechecks scope and
+the projection around asynchronous OS writes and removes its note if retired.
+These checks are observations, not an atomic transaction with Notification Center.
+
+In the matching opt-in iOS binary, JavaScript background snapshot events delegate
+to that native presenter through `notificationWake`. The bridge receives only
+expected public identity/device IDs; the module lease and native engine/generation
+must still match at execution. It cannot select another account or pass content.
+WS and APNs share the same in-flight admission/baseline, while JavaScript retains
+token handling, taps, badges and cleanup. Android, native-off and older bridge
+versions retain the existing JavaScript presenter. A matching JS/native build is
+required. Identifiers replace pending requests; reusing an already-delivered ID
+alone is not proof of exactly-once visual alerts. No such device claim is made.
+
+This source requires genuine regenerated UniFFI bindings/checksums and a new
+native build. Model/config/backend tests are distinct from physical-device
+APNs registration, locked/background/cold delivery and navigation acceptance.
+No provider credentials or device delivery are established by this change.
+
 ## Android configuration
 
 Android has its own build opt-in. Download the public Firebase client
@@ -69,10 +155,10 @@ or show untrusted remote message text. `decodeWake` bounds the input and keeps
 the entire UInt64 cursor exact. JavaScript object input has already lost lexical
 JSON integer-vs-float information; strict raw APNs type validation still belongs
 at the native boundary. Rust sync remains responsible for account, membership,
-log and decryption validation. Currently the running app refreshes its existing
-Rust projection on a valid wake. Headless background delivery still needs a safe
-native single-session sync entry point and TaskManager integration; starting a
-second JS-owned engine is deliberately avoided.
+log and decryption validation. The running JavaScript adapter refreshes its
+existing Rust projection on a valid wake. The iOS native subscriber above uses
+the same session ownership boundary when React is absent; Android background
+execution remains a separate qualification boundary.
 
 The native FCM sender's complete data payload is `{wake:"1"}`; it has no APNs
 `aps` object, content or cursor. Expo58 exposes Android data in
@@ -99,6 +185,26 @@ invalidation, bounded retries and safe navigation; they do not prove APNs delive
 Android-specific cases in `src/core/notifications-android.test.ts` cover the
 explicit build opt-in, actual SDK event shape, backend token bounds, channel order,
 serialized rotations and stale callbacks. They do not prove FCM delivery.
+`native-push-wake.test.ts` prepares shared JavaScript/native presentation vectors
+and a Foundation-only Swift ownership/payload model harness;
+`notifications-ios-build.test.ts` exercises actual CNG configuration. Neither
+harness compiles the UIKit/Core adapter or establishes physical push delivery.
+`notification-presentation.test.ts` checks the single-presenter port and actual
+SDK adapter opt-in/version gate without invoking an OS notification service.
+`notification-provider-lifecycle.test.ts` compiles the actual provider with its
+real registration coordinator and controlled React/OS/client ports. It checks
+unknown/background/inactive mount, active transition, active mount, cleanup, account
+replacement and the existing web path without making token or relay calls.
+
+The relay attempts content-free wakes for all currently authorized recipient
+devices except the author, including an identity whose sibling has a live WS.
+Presence does not prove another device executed the event. Existing whole-job
+admission remains capped at 32 concurrent jobs, including lookup and provider
+work; overload still drops best-effort wakes before allocation/spawn. No new
+retry or delivery queue is added. Provider attempts can increase from only
+offline identities to every registered recipient device; throughput and cost
+must be measured with deployment traffic. Aggregate attempt counts omit device
+IDs, tokens and provider error strings, and are not APNs/FCM delivery receipts.
 
 References: [Expo SDK58 Notifications](https://docs.expo.dev/versions/v58.0.0/sdk/notifications/),
 [Firebase client configuration](https://docs.expo.dev/push-notifications/fcm-credentials/).

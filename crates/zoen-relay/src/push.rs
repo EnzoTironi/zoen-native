@@ -24,6 +24,9 @@ use ring::{
 use serde_json::{json, Value};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
+mod wake;
+pub(crate) use wake::wake_registered_devices;
+
 /// Bound whole wake jobs, including their audience clones and database/provider work.
 const MAX_WAKE_TASKS: usize = 32;
 

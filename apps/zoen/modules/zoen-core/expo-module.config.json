@@ -2,7 +2,11 @@
   "platforms": ["apple", "android"],
   "apple": {
     "modules": ["ZoenCoreModule"],
-    "appDelegateSubscribers": ["ZoenGoogleSignInDelegate", "ZoenPresentationOrientationDelegate"],
+    "appDelegateSubscribers": [
+      "ZoenGoogleSignInDelegate",
+      "ZoenPresentationOrientationDelegate",
+      "ZoenPushDelegate"
+    ],
     "reactDelegateHandlers": ["ZoenPresentationRootDelegate"]
   },
   "android": {

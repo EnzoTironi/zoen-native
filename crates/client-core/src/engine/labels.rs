@@ -136,6 +136,7 @@ pub(crate) fn event_label(b: &EventBody) -> String {
             attaches: Some(_), ..
         } => t("Mensagem com Item", "Message with Item"),
         EventBody::MessagePosted { .. } => t("Mensagem", "Message"),
+        EventBody::CallV1 { .. } => t("Chamada", "Call"),
         EventBody::ChatPrefsSet { .. } => t("Preferências da conversa", "Chat preferences"),
         EventBody::MessageAnnotated { note, .. } => match note {
             types::Annotation::Edit { .. } => t("Mensagem editada", "Message edited"),

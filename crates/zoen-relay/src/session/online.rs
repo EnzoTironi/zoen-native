@@ -132,7 +132,8 @@ impl Session {
         }
     }
 
-    /// Wakes the devices of every member with no live session. The push carries nothing;
+    /// Wakes authorized recipient devices independently of sibling WS presence.
+    /// A live session does not prove that an iPhone is executing. The push carries nothing;
     /// the app syncs, decrypts and decides itself whether to notify. Under overload,
     /// best-effort wakes are dropped before allocation/spawn, not queued.
     pub(super) fn wake_away(&self, audience: &[String]) {
@@ -144,32 +145,10 @@ impl Session {
         };
         let st = self.st.clone();
         let me = self.identity.clone();
-        let audience: Vec<String> = audience.iter().filter(|a| **a != me).cloned().collect();
+        let audience = audience.to_vec();
         tokio::spawn(async move {
             let _permit = permit;
-            let online: std::collections::HashSet<String> =
-                st.fanout.online(&audience).await.into_iter().collect();
-            let away: Vec<String> = audience
-                .into_iter()
-                .filter(|a| !online.contains(a))
-                .collect();
-            if away.is_empty() {
-                return;
-            }
-            let Ok(targets) = db::push_targets(&st.pool, &away).await else {
-                return;
-            };
-            for t in targets {
-                match st.push.wake(&t).await {
-                    crate::push::Outcome::Gone => {
-                        let _ = db::drop_push_token(&st.pool, &t.token).await;
-                    }
-                    crate::push::Outcome::Failed(error) => {
-                        tracing::warn!(platform = %t.platform, %error, "wake push failed")
-                    }
-                    _ => {}
-                }
-            }
+            crate::push::wake_registered_devices(&st.pool, &st.push, &me, &audience).await;
         });
     }
 }

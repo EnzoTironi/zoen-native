@@ -160,19 +160,6 @@ pub fn normalize_code(raw: &str) -> String {
 }
 
 impl Client {
-    /// Rust CLI contract; no new exported ABI. A deadline is not completion, including
-    /// a scheduled MLS retry with an empty event outbox.
-    pub async fn wait_until_settled(&self, timeout_ms: u64) -> Result<ConnectionDto, CoreError> {
-        let (connection, observed) = self.wait_sync_completion(timeout_ms).await;
-        if observed.satisfied() {
-            Ok(connection)
-        } else {
-            Err(invalid(connection.error.unwrap_or_else(|| {
-                "Sync did not finish before the deadline; queued work is saved for retry.".into()
-            })))
-        }
-    }
-
     pub(crate) fn account_dto_pub(&self) -> Option<AccountDto> {
         self.account_dto()
     }
@@ -481,5 +468,20 @@ impl Client {
     /// Waits (up to `timeout_ms`) until online, caught up and with nothing left to send.
     pub async fn wait_until_idle(&self, timeout_ms: u64) -> ConnectionDto {
         self.wait_sync_completion(timeout_ms).await.0
+    }
+
+    /// Strict completion for CLI and native bounded sync borrowers. A deadline is
+    /// not completion, including a scheduled MLS retry with an empty outbox.
+    /// This returns the observation ending the same wait, not a later recheck or
+    /// an atomic projection snapshot. Callers retain their original whole budget.
+    pub async fn wait_until_settled(&self, timeout_ms: u64) -> Result<ConnectionDto, CoreError> {
+        let (connection, observed) = self.wait_sync_completion(timeout_ms).await;
+        if observed.satisfied() {
+            Ok(connection)
+        } else {
+            Err(invalid(connection.error.unwrap_or_else(|| {
+                "Sync did not finish before the deadline; queued work is saved for retry.".into()
+            })))
+        }
     }
 }
