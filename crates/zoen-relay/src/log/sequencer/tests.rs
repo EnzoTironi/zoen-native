@@ -76,6 +76,32 @@ fn ids(n: u64) -> Vec<String> {
 }
 
 #[tokio::test]
+async fn poisoned_queue_refuses_without_dispatch_or_retaining_admission_permits() {
+    let rec = Arc::new(Recorder::default());
+    let seq = Sequencer::new(rec.clone());
+    let queues = seq.queues.clone();
+    assert!(std::thread::spawn(move || {
+        let _held = queues.lock().unwrap();
+        panic!("controlled queue poison");
+    })
+    .join()
+    .is_err());
+    assert!(seq.active().is_err());
+    let author = Author::root(Signer::generate());
+    let (result, stats) = seq
+        .append(envelope(&author, "poisoned", 0), true, fence("poisoned"))
+        .await;
+    let rejection = result.unwrap_err();
+    assert!(!rejection.permanent);
+    assert_eq!(rejection.reason, "log store unavailable");
+    assert_eq!((stats.size, stats.attempts), (0, 0));
+    assert_eq!(rec.entered.load(std::sync::atomic::Ordering::Relaxed), 0);
+    assert!(rec.batches.lock().unwrap().is_empty());
+    assert_eq!(seq.count.available_permits(), MAX_PENDING);
+    assert_eq!(seq.bytes.available_permits(), MAX_PENDING_BYTES);
+}
+
+#[tokio::test]
 async fn backlog_commits_in_order_in_capped_batches() {
     let rec = Arc::new(Recorder::default());
     let seq = Arc::new(Sequencer::new(rec.clone()));
@@ -85,7 +111,7 @@ async fn backlog_commits_in_order_in_capped_batches() {
         let (seq, env) = (seq.clone(), envelope(&a, "s1", 0));
         async move { seq.append(env, true, fence("s1")).await }
     });
-    while seq.active() == 0 {
+    while seq.active().unwrap() == 0 {
         tokio::task::yield_now().await;
     }
     tokio::task::yield_now().await;
@@ -126,7 +152,7 @@ async fn spaces_have_their_own_workers_and_idle_ones_exit() {
         seq.append(envelope(&a, "s1", 0), true, fence("s1")),
         seq.append(envelope(&a, "s2", 1), true, fence("s2"))
     );
-    assert_eq!(seq.active(), 2);
+    assert_eq!(seq.active().unwrap(), 2);
     assert_eq!(
         (one.1.attempts, two.1.attempts),
         (1, 1),
@@ -134,10 +160,10 @@ async fn spaces_have_their_own_workers_and_idle_ones_exit() {
     );
 
     tokio::time::sleep(Duration::from_millis(200)).await;
-    assert_eq!(seq.active(), 0, "idle workers leave");
+    assert_eq!(seq.active().unwrap(), 0, "idle workers leave");
     let (_, again) = seq.append(envelope(&a, "s1", 2), true, fence("s1")).await;
     assert_eq!(again.attempts, 1, "a new worker starts from fresh state");
-    assert_eq!(seq.active(), 1);
+    assert_eq!(seq.active().unwrap(), 1);
 }
 #[tokio::test]
 async fn slow_space_rejects_excess_and_keeps_capacity_until_commit() {
@@ -257,7 +283,7 @@ async fn routing_across_spaces_still_obeys_process_count_and_byte_limits() {
         .0
         .unwrap_err();
     assert!(!r.permanent);
-    assert_eq!(seq.active(), 2);
+    assert_eq!(seq.active().unwrap(), 2);
     let seq = Sequencer {
         bytes: Arc::new(Semaphore::new(1)),
         ..Sequencer::new(rec.clone())
@@ -269,7 +295,7 @@ async fn routing_across_spaces_still_obeys_process_count_and_byte_limits() {
         .0
         .unwrap_err();
     assert!(!r.permanent);
-    assert_eq!(seq.active(), 0);
+    assert_eq!(seq.active().unwrap(), 0);
     assert_eq!(seq.count.available_permits(), MAX_PENDING);
     rec.gate.add_permits(100);
 }
