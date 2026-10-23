@@ -6,6 +6,14 @@ use std::fs::{self, File};
 use std::io::{Read, Write};
 
 impl AnchorReader {
+    /// Read-only original commitment for transport binding. It proves neither
+    /// that an envelope matches nor that an effect may be consumed or appended.
+    pub fn retained_checkpoint(&self, expected: &Checkpoint) -> Result<Prepared, AnchorError> {
+        let _generation = self.effect_generation_guard(expected)?;
+        self.checkpoint_effect(expected)?
+            .ok_or(AnchorError::Unreconciled)
+    }
+
     pub(super) fn checkpoint_effect(
         &self,
         checkpoint: &Checkpoint,

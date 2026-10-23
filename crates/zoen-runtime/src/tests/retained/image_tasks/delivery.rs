@@ -2,6 +2,7 @@
 mod binding;
 mod proxy;
 mod relay;
+mod restore;
 mod review;
 use super::*;
 use object_store::ObjectStoreExt;
@@ -21,7 +22,7 @@ async fn head(f: &Fixture) -> Seen {
 
 pub(super) async fn run(f: &mut Fixture, run: &str, output: &crate::ImageOutputInspection) {
     let relay = relay::Relay::start(f).await;
-    Box::pin(binding::run(f, &relay)).await;
+    Box::pin(binding::run(f, run, &relay)).await;
     let proxy = proxy::Proxy::start(relay.address).await;
     let target = relay.target(f, proxy.address);
     assert_eq!(
