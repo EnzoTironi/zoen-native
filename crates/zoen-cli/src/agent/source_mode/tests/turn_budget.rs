@@ -49,6 +49,9 @@ async fn cold_host_restarts_cannot_reset_normal_source_model_attempts() {
     let encoded = std::fs::read_to_string(journal).unwrap();
     assert!(!encoded.contains("Inspect only the selected source."));
     assert!(!encoded.contains("synthetic unknown outcome"));
+    let cx = context(&f, &calls, true);
+    JournalState::retire_turn(&cx.journal, &cx, &f.space, &f.source).unwrap();
+    assert_eq!(std::fs::read_to_string(&cx.journal).unwrap(), encoded);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -115,4 +118,70 @@ async fn source_binding_change_cannot_reset_budget_but_another_source_has_its_ow
         2
     );
     assert_eq!(calls.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn acknowledged_source_retirement_preserves_other_sources_and_review_budgets() {
+    let f = Fixture::new("http://127.0.0.1:1");
+    let calls = Arc::new(AtomicUsize::new(0));
+    let cx = context(&f, &calls, true);
+    let timeline = f.client.timeline(f.space.clone()).unwrap();
+    let source = timeline.iter().find(|t| t.id == f.source).unwrap();
+    let other = timeline.iter().find(|t| t.id == f.other).unwrap();
+    assert!(JournalState::begin_turn(&cx.journal, &cx, &f.space, source).unwrap());
+    assert!(JournalState::begin_turn(&cx.journal, &cx, &f.space, other).unwrap());
+    JournalState::register_hold(&cx.journal, "signed-review", &"ab".repeat(32), &f.source).unwrap();
+    JournalState::retire_turn(&cx.journal, &cx, &f.space, &f.source).unwrap();
+    let state = JournalState::load(&cx.journal).unwrap();
+    assert_eq!(state.continuations.len(), 2);
+    assert_eq!(state.continuations["signed-review"].attempts, 0);
+    assert!(state.continuations["signed-review"].registered);
+    assert!(state.continuations.iter().any(|(key, entry)| {
+        key.starts_with("turn_") && entry.source.as_deref() == Some(f.other.as_str())
+    }));
+    let before = std::fs::read(&cx.journal).unwrap();
+    JournalState::retire_turn(&cx.journal, &cx, &f.space, &f.source).unwrap();
+    assert_eq!(std::fs::read(&cx.journal).unwrap(), before);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn account_retirement_during_inference_prevents_result_delivery() {
+    let server = relay(Mode::Normal).await;
+    let f = Fixture::new(&server.url);
+    online(&f.client, true).await;
+    let mut run = Run::prepare(&f.client, source(&f.source)).unwrap();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let mut cx = context(&f, &calls, false);
+    let client = f.client.clone();
+    let observed = calls.clone();
+    let before_retirement = Arc::new(Mutex::new(None));
+    let captured = before_retirement.clone();
+    let journal = cx.journal.clone();
+    cx.runtime = Runtime::new(
+        Gate::default(),
+        Box::new(ControlledToolBrain {
+            evaluate: Box::new(move |_| {
+                observed.fetch_add(1, Ordering::SeqCst);
+                *captured.lock().unwrap() = Some(std::fs::read(&journal).unwrap());
+                client.reset_demo().unwrap(); // own synthetic account only
+                Ok(BrainOut::Say(
+                    "Must never be sent after account retirement.".into(),
+                ))
+            }),
+        }),
+    );
+    assert_eq!(
+        run.tick(&f.client, &cx, &definition(), deadline()).await,
+        Err("agent_host_source_account_unavailable".into())
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        std::fs::read(&cx.journal).unwrap(),
+        before_retirement.lock().unwrap().as_ref().unwrap().clone(),
+        "account retirement cannot checkpoint or replace the pre-inference reservation"
+    );
+    let state = JournalState::load(&cx.journal).unwrap();
+    assert!(state.steps.is_empty());
+    assert_eq!(state.continuations.len(), 1);
+    assert_eq!(state.continuations.values().next().unwrap().attempts, 1);
 }

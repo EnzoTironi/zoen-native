@@ -262,36 +262,6 @@ async fn unknown_outcome_is_not_automatically_retried_on_a_wake() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn account_retirement_during_inference_prevents_result_delivery() {
-    let server = relay(Mode::Normal).await;
-    let f = Fixture::new(&server.url);
-    online(&f.client, true).await;
-    let mut run = Run::prepare(&f.client, source(&f.source)).unwrap();
-    let calls = Arc::new(AtomicUsize::new(0));
-    let mut cx = context(&f, &calls, false);
-    let client = f.client.clone();
-    let observed = calls.clone();
-    cx.runtime = Runtime::new(
-        Gate::default(),
-        Box::new(ControlledToolBrain {
-            evaluate: Box::new(move |_| {
-                observed.fetch_add(1, Ordering::SeqCst);
-                client.reset_demo().unwrap(); // own synthetic account only
-                Ok(BrainOut::Say(
-                    "Must never be sent after account retirement.".into(),
-                ))
-            }),
-        }),
-    );
-    assert_eq!(
-        run.tick(&f.client, &cx, &definition(), deadline()).await,
-        Err("agent_host_source_account_unavailable".into())
-    );
-    assert_eq!(calls.load(Ordering::SeqCst), 1);
-    assert!(!f.path.join("source-steps.json").exists());
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_existing_accepted_own_reply_completes_without_model_or_cursor_effects() {
     let server = relay(Mode::Normal).await;
     let mut f = Fixture::new(&server.url);

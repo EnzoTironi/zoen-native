@@ -424,6 +424,9 @@ pub async fn host(
                     break;
                 }
                 cursors.insert(s.id.clone(), t.seq);
+                if JournalState::retire_turn(&cx.journal, &cx, &s.id, &t.id).is_err() {
+                    say("completed source budget could not be retired");
+                }
             }
             // An agent is a member like any other: once it has processed the chat it says
             // so with the same "read up to" watermark, so groups with agents reach ✓✓ read.
