@@ -55,7 +55,7 @@ impl LogStore for FdbLog {
                     result => return result,
                 }
             }
-            unreachable!("bounded attempts return")
+            Err(Reject::retry("partition ownership is changing"))
         })
         .await
         .unwrap_or_else(|_| Err(Reject::retry("relay routing deadline exceeded")))
@@ -80,6 +80,62 @@ impl LogStore for FdbLog {
                         .map(|(_, v)| Sequenced::decode(&v).map_err(|e| custom(e.to_string())))
                         .collect::<Result<Vec<_>, _>>()
                 }
+            })
+            .await
+            .map_err(store_err)
+    }
+
+    async fn read_visible(
+        &self,
+        space: &str,
+        who: &str,
+        from: u64,
+        limit: usize,
+    ) -> Result<Option<VisiblePage>, StoreError> {
+        let from = i64::try_from(from).map_err(|_| StoreError("invalid history cursor".into()))?;
+        self.cell
+            .db
+            .run(|trx, _| async move {
+                // Snapshot reads share one FDB read version: a removal committed
+                // before this version clamps the range, while an earlier admitted
+                // page cannot include events committed after that read version.
+                let through = if self.cell.role_in(&trx, space, who).await?.is_some() {
+                    None
+                } else {
+                    let Some(value) = trx
+                        .get(&self.cell.space_key(space, ("gone", who)), true)
+                        .await?
+                    else {
+                        return Ok(None);
+                    };
+                    let last = unpack::<i64>(&value).map_err(|error| custom(error.to_string()))?;
+                    if last < 0 {
+                        return Err(custom("invalid removal boundary"));
+                    }
+                    Some(last)
+                };
+                if through.is_some_and(|last| from > last) {
+                    return Ok(Some(VisiblePage {
+                        events: Vec::new(),
+                        through: through.map(|v| v as u64),
+                    }));
+                }
+                let begin = self.cell.space_key(space, ("log", from));
+                let end = match through.and_then(|last| last.checked_add(1)) {
+                    Some(after) => self.cell.space_key(space, ("log", after)),
+                    None => self.cell.space_range(space, "log").range().1,
+                };
+                let events = Cell::scan(&trx, (begin, end), limit, true)
+                    .await?
+                    .into_iter()
+                    .map(|(_, bytes)| {
+                        Sequenced::decode(&bytes).map_err(|error| custom(error.to_string()))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(Some(VisiblePage {
+                    events,
+                    through: through.map(|v| v as u64),
+                }))
             })
             .await
             .map_err(store_err)
@@ -221,7 +277,7 @@ impl LogStore for FdbLog {
             .map_err(|_| "relay routing capacity reached".to_string())?;
         let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(6);
         tokio::time::timeout_at(deadline, async {
-            let code = random_code();
+            let code = random_code().map_err(|error| error.to_string())?;
             for attempt in 0..2 {
                 let fence = invite_routing::resolve(
                     deadline,
@@ -250,7 +306,7 @@ impl LogStore for FdbLog {
                     result => return result,
                 }
             }
-            unreachable!("bounded attempts return")
+            Err("partition ownership is changing".into())
         })
         .await
         .unwrap_or_else(|_| Err("relay routing deadline exceeded".into()))
@@ -291,7 +347,7 @@ impl LogStore for FdbLog {
                             trx.clear_range(&b, &e);
                         }
                     }
-                    let code = random_code();
+                    let code = random_code().map_err(|error| custom(error.to_string()))?;
                     let key = root.pack(&("ainv", code_hash(&code)));
                     if trx.get(&key, false).await?.is_some() {
                         return Ok(Err("invite code collision"));

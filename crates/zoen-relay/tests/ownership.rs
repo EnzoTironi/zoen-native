@@ -310,7 +310,7 @@ async fn wait_owner(db: &Database, root: &Subspace, space: &str, owner: &str) ->
     .expect("ownership converged")
 }
 fn choose_space(preferred: &str, live: &[String]) -> String {
-    let owned = ownership::owned_partitions(preferred, live);
+    let owned = ownership::owned_partitions(preferred, live).unwrap();
     loop {
         let space = types::new_id("sp");
         if owned.contains(&ownership::partition_of(&space)) {
@@ -346,13 +346,15 @@ async fn transaction_conflict() {
         root.clone(),
         "alpha".into(),
         Duration::from_secs(30),
-    );
+    )
+    .unwrap();
     let b = ownership::NodeOwner::new(
         db.clone(),
         root.clone(),
         "beta".into(),
         Duration::from_secs(30),
-    );
+    )
+    .unwrap();
     let space = choose_space("beta", &["alpha".into(), "beta".into()]);
     a.maintain().await.unwrap();
     let initial = current(&db, &root, &space).await;

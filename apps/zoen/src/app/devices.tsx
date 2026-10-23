@@ -1,5 +1,5 @@
 import { BottomSheet, RNHostView } from '@expo/ui';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { useDialogs } from '../components/dialogs';
 import { SettingsScreen } from '../components/settings-screen';
@@ -17,6 +17,13 @@ export default function Devices() {
   const { confirm } = useDialogs();
   const { presentation: p } = useTheme();
   const [linkOwner, setLinkOwner] = useState<string | null>(null);
+  useEffect(
+    () =>
+      session.subscribe(() => {
+        if (session.getSnapshot().phase === 'inactive') setLinkOwner(null);
+      }),
+    [session],
+  );
   const ticket = session.ticket();
   const selected = state.devices.find((device) => device.device_id === state.selected) ?? null;
   return (

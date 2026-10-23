@@ -51,6 +51,14 @@ impl std::fmt::Display for StoreError {
 
 impl std::error::Error for StoreError {}
 
+/// One history page and its membership boundary from the SAME store snapshot.
+/// A current member has no removal ceiling; a former member may receive their
+/// removal itself. None from read_visible means this reader has no history grant.
+pub struct VisiblePage {
+    pub events: Vec<Sequenced>,
+    pub through: Option<u64>,
+}
+
 /// Every call names its Space or identity, so cells and regions route above the trait.
 #[async_trait::async_trait]
 pub trait LogStore: Send + Sync {
@@ -68,6 +76,15 @@ pub trait LogStore: Send + Sync {
         from: u64,
         limit: usize,
     ) -> Result<Vec<Sequenced>, StoreError>;
+    /// Atomically admit this reader and scan the bounded history page. Separate
+    /// role/removed_at/read calls are insufficient during concurrent removal.
+    async fn read_visible(
+        &self,
+        space: &str,
+        who: &str,
+        from: u64,
+        limit: usize,
+    ) -> Result<Option<VisiblePage>, StoreError>;
     async fn role(&self, space: &str, who: &str) -> Result<Option<Role>, StoreError>;
     /// Where `who` was removed from `space`, if they were and haven't been added back.
     async fn removed_at(&self, space: &str, who: &str) -> Result<Option<u64>, StoreError>;

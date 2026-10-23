@@ -3,6 +3,10 @@ import type { ToolReviewDto } from "./ToolReviewDto";
 
 export type ToolApprovalDto = { content_hash: string, artifact_id: string, artifact_title: string, version: number, operation: string, expires_ms: string, 
 /**
+ * Native read-only preview kind; never an execution permit.
+ */
+preview_kind?: string, 
+/**
  * Presentation of the signed review lineage, never a permit or effect receipt.
  */
 review?: ToolReviewDto, };

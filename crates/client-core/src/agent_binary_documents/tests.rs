@@ -35,6 +35,9 @@ pub(crate) struct Fixture {
     pub(crate) base: AppBinaryDocumentDto,
 }
 pub(crate) fn fixture() -> Fixture {
+    fixture_with_privacy(Privacy::Closed)
+}
+pub(crate) fn fixture_with_privacy(privacy: Privacy) -> Fixture {
     let owner = Client::open(":memory:".into(), "en".into()).unwrap();
     let vault = Arc::new(Vault::default());
     let owner_id = owner
@@ -90,7 +93,7 @@ pub(crate) fn fixture() -> Fixture {
             EventBody::SpaceCreated {
                 title: "Worker contract".into(),
                 kind: SpaceKind::Group,
-                privacy: Privacy::Closed,
+                privacy,
             },
         )
         .unwrap();

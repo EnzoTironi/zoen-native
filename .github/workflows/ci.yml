@@ -271,6 +271,7 @@ jobs:
           (cd packages/zoen-ui && node web/server.mjs > ../../web.log 2>&1 &)
           for _ in $(seq 1 60); do curl -sf http://127.0.0.1:4174/ >/dev/null && curl -s http://127.0.0.1:8790/ >/dev/null && break; sleep 1; done
           cd packages/zoen-ui/web/e2e && npm i --no-save playwright-core@1.64.1
+          CHROME="$(command -v google-chrome)" node --test delete-message.test.mjs
           RELAY=http://127.0.0.1:8790 ZOEN_CLI="$GITHUB_WORKSPACE/target/debug/zoen" CHROME="$(command -v google-chrome)" node two-people.mjs
 
       - name: Logs and screenshots

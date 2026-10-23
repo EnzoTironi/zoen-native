@@ -247,7 +247,11 @@ impl Net {
 
 impl Drop for Net {
     fn drop(&mut self) {
-        self.engine.with(|engine| engine.net.file_demands.clear());
+        self.engine.with(|engine| {
+            if engine.net.file_demands.clear().is_err() {
+                tracing_like("media: historical demand state unavailable at shutdown");
+            }
+        });
         let _ = self.cmd.send(Cmd::Stop);
         if let Some(rt) = self.rt.take() {
             // Safe from inside another async runtime too.
