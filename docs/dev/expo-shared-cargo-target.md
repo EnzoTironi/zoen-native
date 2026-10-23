@@ -1,6 +1,6 @@
 # Expo Core with an explicit shared Cargo target
 
-`scripts/build-expo-core.mjs types|ios` routes builds through the existing
+`scripts/build-expo-core.mjs types|ios|android` routes builds through the existing
 `cargo-source-guard.py` when `CARGO_TARGET_DIR` is explicitly set. Python 3.11+
 is required; select it with `ZOEN_CARGO_GUARD_PYTHON` if `python3` is older.
 The default, unset-target path retains its existing isolated Cargo behavior.
@@ -56,11 +56,55 @@ accepting an older generated-output stamp. On success the existing platform
 stamp references `qualification.json`; on failure it is not replaced. Initial
 guard/build failure leaves the previous generated iOS framework intact.
 
-Android still delegates to the existing `build-android-core.sh` pipeline, including
-`cargo-ndk`/`cargo rustc`, which the existing guard does not support. Explicit shared
-Android targets retain their prior behavior and are **not** source-qualified by
-this integration. #192 remains open for that path. This slice is not a native app
-build, runtime, signing or device-acceptance claim.
+Android's explicit shared-target path also guards the host library and binding
+generator, using their actual metadata-derived manifests and private copies.
+Its `cargo-ndk 4.1.2` adapter admits only the pinned tool's exact metadata/version
+queries followed by one `build --lib` with the requested package, profile and ABI.
+The Core manifest already declares `cdylib`; this emits the required `.so` through
+ordinary Cargo's artifact stream without changing Core's crate types. The
+unchanged guard itself does not execute `cargo ndk` or `cargo rustc`.
+
+The proxy is installed as private `CARGO` **inside** cargo-ndk's completed build
+environment. It delegates to the real Cargo executable, never recursively through
+itself. Only the exact NDK-added manifest/target/message-format suffix and the
+fixed `--locked` duplicate already supplied by the guard are normalized. Unknown flags, argument overrides, duplicate builds, post-build
+queries, unsupported cargo-ndk versions and mismatched API/ABI fail closed. The
+current API remains 28 and supported ABIs remain arm64-v8a and x86_64. The unset
+`CARGO_TARGET_DIR` shell pipeline keeps its previous commands and behavior.
+
+Effective NDK compiler/linker/runner selections, target flags, API, sysroot paths
+and related environment are declared to the canonical guard. Receipts contain
+environment hashes rather than an environment dump. Tool input hashes include
+real Cargo, cargo-ndk, the private proxy, Node, selected compiler/binutils and
+`source.properties`/CMake toolchain selection. The **pinned SDK/NDK installation
+must remain immutable during qualification**. This does not hash the whole SDK or
+attest manual, unversioned sysroot edits; the analogous Rust standard-library and
+Apple SDK installation assumptions also remain. Configuring tool wrappers which
+cannot be resolved to existing absolute executables is refused in this scoped
+path rather than silently leaving an effective tool unbound.
+
+There is no NDK `-o` output, and `CARGO_NDK_OUTPUT_PATH` is refused even if empty:
+that environment variable would otherwise enable shared-artifact copying. Only
+receipt-validated private `.so` copies enter a staged Android tree; copied bytes
+are checked again before promotion. Existing Kotlin/JNI metadata and checksum
+validation still runs. On success `core-contract.json` references the private
+Android qualification and its hash; verification refuses a missing/changed
+referenced qualification. Failure does not replace the previous generated tree.
+These receipts are evidence, not another target ownership stamp or durable cache
+authority. Do not delete referenced proof directories while using their outputs.
+
+SIGINT/SIGTERM or the owned outer control pipe's EOF retires the proxy, which
+signals and awaits the existing guard. If NDK exits early, the outer builder
+checks the proxy's private cleanup acknowledgement and disappearance before
+returning its failure. Its 10-second observation bound is not a Cargo build or
+product timeout; expiry fails without promotion or a claim of successful reap.
+A direct **SIGKILL of the proxy cannot be propagated** by this unchanged guard:
+the inherited canonical lease continues to exclude another cooperating build
+until the owned Cargo process exits, but immediate descendant cleanup is not
+claimed. No private result from a failed outer invocation is promoted. The
+cooperative guard is not a sandbox against uncooperative target writers.
+
+This integration is not an Android app, signing, device, runtime or parity claim.
 
 Entrypoint checks (tiny Rust fixture only, no Core/native build):
 
@@ -72,3 +116,28 @@ ZOEN_CARGO_GUARD_PYTHON=/path/to/python3.12 \
 
 The Rust CI job runs both files with Node 24 after the guard's Python tests. Its
 locked metadata preparation handles a cold registry cache without compiling Core.
+
+The adapter and orchestration port checks need no NDK (the latter queries real
+repository Cargo metadata, but fakes compiler/generator ports):
+
+```sh
+node --test scripts/tests/expo-android-proxy.test.mjs \
+  scripts/tests/expo-android-orchestration.test.mjs
+```
+
+The dependency-free real Android fixture requires explicit admission, pinned
+cargo-ndk 4.1.2, an installed NDK and matching Rust targets. It compiles synthetic
+ELF libraries, not Core, and never executes an Android binary:
+
+```sh
+ZOEN_TEST_ANDROID_SHARED_CARGO=1 ZOEN_TEST_ANDROID_ABIS=both \
+  node --test --test-concurrency=1 scripts/tests/expo-android-real.test.mjs
+```
+
+The Expo Android job supplies those prerequisites at its existing pinned versions.
+It exercises A→B worktree switching with old mtimes, restored-mtime source edits,
+environment drift, API refusal, both ELF machine identities, unknown nonempty
+cache/held-lease refusal, private-copy survival and owned cancellation. Without
+explicit admission the real fixture is visibly skipped, which is not Android
+qualification. Source-only preparation and tests actually executed must be
+reported separately.

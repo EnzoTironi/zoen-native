@@ -15,6 +15,11 @@ on:
         'Cargo.lock',
         'scripts/build-expo-*.mjs',
         'scripts/build-android-core.sh',
+        'scripts/expo-android-*.mjs',
+        'scripts/expo-cargo-artifacts.mjs',
+        'scripts/cargo-source-guard.py',
+        'scripts/cargo_guard_configuration.py',
+        'scripts/tests/expo-android-*.test.mjs',
         'scripts/android-core-contract.py',
         'scripts/fix-android-uniffi-callbacks.py',
         'scripts/deploy-expo-web.mjs',
@@ -39,6 +44,11 @@ on:
         'Cargo.lock',
         'scripts/build-expo-*.mjs',
         'scripts/build-android-core.sh',
+        'scripts/expo-android-*.mjs',
+        'scripts/expo-cargo-artifacts.mjs',
+        'scripts/cargo-source-guard.py',
+        'scripts/cargo_guard_configuration.py',
+        'scripts/tests/expo-android-*.test.mjs',
         'scripts/android-core-contract.py',
         'scripts/fix-android-uniffi-callbacks.py',
         'scripts/deploy-expo-web.mjs',
@@ -87,7 +97,7 @@ jobs:
       - name: Expo Android SDK, NDK and Rust toolchain
         run: |
           sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0' 'ndk;27.1.12297006'
-          rustup toolchain install 1.99.1 --profile minimal --target aarch64-linux-android
+          rustup toolchain install 1.99.1 --profile minimal --target aarch64-linux-android,x86_64-linux-android
           rustup default 1.99.1
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
@@ -101,6 +111,12 @@ jobs:
         run: |
           python3 scripts/test-android-core-contract.py
           python3 scripts/test-android-uniffi-callbacks.py
+      - name: Android shared Cargo source qualification fixtures
+        env:
+          ZOEN_TEST_ANDROID_SHARED_CARGO: '1'
+          ZOEN_TEST_ANDROID_ABIS: both
+          CARGO_BUILD_JOBS: '1'
+        run: node --test --test-concurrency=1 scripts/tests/expo-android-proxy.test.mjs scripts/tests/expo-android-orchestration.test.mjs scripts/tests/expo-android-real.test.mjs
       - name: Build shared Rust core and generate Expo Android project
         run: |
           node scripts/build-expo-core.mjs android --release
