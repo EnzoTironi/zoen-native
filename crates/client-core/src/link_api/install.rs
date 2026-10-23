@@ -84,15 +84,18 @@ pub(super) fn finish(
         if !peers.is_empty() && vault.load(VAULT_IDENTITY.into()).is_none() {
             return Err(invalid_box());
         }
-        if let Some(retained) = peers.iter().find(|value| value.device == peer.device) {
-            if retained.their_hpke != peer.their_hpke
-                || retained.my_hpke_secret != peer.my_hpke_secret
-                || retained.secret != peer.secret
+        if let Some(retained) = peers.iter().find(|value| value.peer.device == peer.device) {
+            if retained.peer.their_hpke != peer.their_hpke
+                || retained.peer.my_hpke_secret != peer.my_hpke_secret
+                || retained.peer.secret != peer.secret
             {
                 return Err(invalid_box());
             }
         } else {
-            peers.push(peer.clone());
+            peers.push(enroll_delivery::RetainedPeer {
+                peer: peer.clone(),
+                enrollment: None,
+            });
         }
         let peer_bytes =
             Zeroizing::new(serde_json::to_vec(&peers).map_err(|error| invalid(error.to_string()))?);

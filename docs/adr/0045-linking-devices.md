@@ -32,6 +32,25 @@ plaintext, and pruning (ADR 0026) must not take away history a new device still 
 5. Once the new device is in every group, the existing one sends the **first history
    bundle** (below).
 
+### Sender retry after an ambiguous response
+
+The native sender retains the exact original sealed identity box in its existing
+`link.peers` Vault entry before dispatch. Its device signs the owner, certified
+sender, relay, pairing-code digest, sender HPKE public key, target certificate and
+canonical ciphertext. A cold retry verifies that record against the current owner
+and original code and sends the same bytes; it does not reseal from a newer profile.
+A legacy peer without an authenticated original remains ambiguous and requires a
+new pairing code. Separate Vault writes and relay SQL are not one atomic commit.
+
+The existing mailbox row records publisher identity/device and optional certified
+target. Under active sponsor admission, `DeliverLink` reruns target enrollment and
+acknowledges a live original only when that provenance and ciphertext match exactly.
+It does not refresh expiry or overwrite a live box. A history box cannot become an
+enrollment through payload equality, and a legacy row without provenance cannot
+manufacture a successful original receipt. Current revocation still wins. An
+expired id can be republished under current admission as new work, as before;
+that is a new publication with a new TTL, not evidence of an old delivery.
+
 ### Enrollment and upgrades
 - A registered account accepts only devices already enrolled and active in the relay's
   directory. A valid root certificate alone cannot create a device row. First account

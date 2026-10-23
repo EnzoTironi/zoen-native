@@ -370,8 +370,11 @@ mod pin_tests;
 mod initial_history_tests;
 
 mod directory;
+mod enroll_delivery;
 mod enroll_prepare;
 mod enrollment;
+#[cfg(test)]
+mod enrollment_delivery_tests;
 #[cfg(test)]
 mod enrollment_owner_tests;
 mod history_commit;

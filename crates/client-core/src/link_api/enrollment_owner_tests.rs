@@ -1,7 +1,7 @@
 use super::*;
 use test_transport::{next_call, Call, Fixture};
 
-fn code() -> (LinkCode, Vec<u8>) {
+pub(super) fn code() -> (LinkCode, Vec<u8>) {
     let device = Signer::generate();
     let (secret, public) = link::key_pair();
     (
@@ -13,7 +13,7 @@ fn code() -> (LinkCode, Vec<u8>) {
         secret,
     )
 }
-fn opened(call: &Call, code: &LinkCode, recipient: &[u8]) -> IdentityBox {
+pub(super) fn opened(call: &Call, code: &LinkCode, recipient: &[u8]) -> IdentityBox {
     let Op::DeliverLink {
         id,
         sealed,
@@ -36,7 +36,10 @@ fn opened(call: &Call, code: &LinkCode, recipient: &[u8]) -> IdentityBox {
     ));
     boxed
 }
-fn enroll(f: &Fixture, code: &LinkCode) -> tokio::task::JoinHandle<Result<LinkedDto, CoreError>> {
+pub(super) fn enroll(
+    f: &Fixture,
+    code: &LinkCode,
+) -> tokio::task::JoinHandle<Result<LinkedDto, CoreError>> {
     let client = f.client().clone();
     let vault: Arc<dyn SecretVault> = f.vault.clone();
     let encoded = code.encode();
@@ -73,6 +76,7 @@ async fn ambiguous_delivery_reuses_same_peer_key_across_cold_reopen_and_explicit
     let first = enroll(&f, &code);
     let accepted = next_call(&mut f.relay.calls).await;
     let original = opened(&accepted, &code, &recipient);
+    let original_wire = serde_json::to_vec(&accepted.op).unwrap();
     let retained = f.vault.load(VAULT_PEERS.into()).unwrap();
     // The fixture accepts delivery, then loses its response by closing the socket.
     drop(accepted.result);
@@ -87,9 +91,13 @@ async fn ambiguous_delivery_reuses_same_peer_key_across_cold_reopen_and_explicit
     let second = enroll(&f, &code);
     let still_pending = next_call(&mut f.relay.calls).await;
     let retried = opened(&still_pending, &code, &recipient);
+    assert_eq!(
+        serde_json::to_vec(&still_pending.op).unwrap(),
+        original_wire
+    );
     assert_eq!(retried.primary_hpke, original.primary_hpke);
     assert_eq!(retried.cert, original.cert);
-    // An occupied one-time box remains an error, never fabricated delivery success.
+    // An unreconciled relay conflict remains an error, never fabricated success.
     still_pending
         .result
         .send(Err("a link box is already there".into()))
@@ -98,6 +106,7 @@ async fn ambiguous_delivery_reuses_same_peer_key_across_cold_reopen_and_explicit
     assert_eq!(f.vault.load(VAULT_PEERS.into()).unwrap(), retained);
     let third = enroll(&f, &code);
     let redelivery = next_call(&mut f.relay.calls).await;
+    assert_eq!(serde_json::to_vec(&redelivery.op).unwrap(), original_wire);
     assert_eq!(
         opened(&redelivery, &code, &recipient).primary_hpke,
         original.primary_hpke

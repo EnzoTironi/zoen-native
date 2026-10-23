@@ -379,11 +379,15 @@ pub async fn device_revoked(pool: &PgPool, device: &str) -> Result<bool, sqlx::E
     .is_some())
 }
 
-/// Publishes one immutable pairing box; a live id cannot be overwritten.
+/// Publishes one immutable pairing box or acknowledges an exact original replay.
+/// A live id cannot be overwritten; replay never refreshes publication expiry.
 pub async fn put_link_box(
     tx: &mut Transaction<'_, Postgres>,
     id: &str,
     sealed: &[u8],
+    publisher_identity: &str,
+    publisher_device: &str,
+    target: Option<&protocol::DeviceCertificate>,
 ) -> Result<bool, sqlx::Error> {
     // Bound maintenance work per publication, and skip cleanup rows held by other
     // publishers. Include this id separately so an expired box can always be reused
@@ -404,13 +408,40 @@ pub async fn put_link_box(
     .bind(id)
     .execute(&mut **tx)
     .await?;
-    let r =
-        sqlx::query("INSERT INTO link_boxes (id, sealed) VALUES ($1, $2) ON CONFLICT DO NOTHING")
-            .bind(id)
-            .bind(sealed)
-            .execute(&mut **tx)
-            .await?;
-    Ok(r.rows_affected() == 1)
+    let inserted = sqlx::query(
+        "INSERT INTO link_boxes (id, sealed, publisher_identity, publisher_device, target_device, target_certificate)
+         VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING",
+    )
+    .bind(id)
+    .bind(sealed)
+    .bind(publisher_identity)
+    .bind(publisher_device)
+    .bind(target.map(|value| value.device.as_str()))
+    .bind(target.map(|value| value.cert.as_str()))
+    .execute(&mut **tx)
+    .await?;
+    if inserted.rows_affected() == 1 {
+        return Ok(true);
+    }
+    // Caller still holds active sponsor admission and has rerun any certified
+    // target enrollment in this transaction. Equality alone cannot turn an old
+    // history/legacy box into enrollment, nor revive a revoked directory row.
+    Ok(sqlx::query_scalar::<_, i32>(
+        "SELECT 1 FROM link_boxes WHERE id = $1 AND sealed = $2
+         AND publisher_identity = $3 AND publisher_device = $4
+         AND target_device IS NOT DISTINCT FROM $5
+         AND target_certificate IS NOT DISTINCT FROM $6
+         AND created_at > now() - interval '15 minutes' FOR SHARE",
+    )
+    .bind(id)
+    .bind(sealed)
+    .bind(publisher_identity)
+    .bind(publisher_device)
+    .bind(target.map(|value| value.device.as_str()))
+    .bind(target.map(|value| value.cert.as_str()))
+    .fetch_optional(&mut **tx)
+    .await?
+    .is_some())
 }
 
 /// Reads the original sealed bytes until expiry. A lost response must not consume
