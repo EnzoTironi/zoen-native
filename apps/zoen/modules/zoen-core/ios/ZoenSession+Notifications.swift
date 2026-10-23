@@ -63,6 +63,16 @@ extension ZoenSession {
     _ = try await engine.waitUntilSettled(timeoutMs: UInt64(milliseconds))
     try Task.checkCancellation()
     guard ContinuousClock.now < deadline, notificationIsCurrent(engine, expected, owner, lease) else { throw SessionError.closed }
+    if cold {
+      // Background sync is best effort, not an urgent PushKit guarantee. Only an
+      // authenticated canonical invitation may keep this sole cold Client alive.
+      if hasNotificationCallCandidate() {
+        guard await ZoenNativePushSessions.gate.preserveWakeForCall(session: self, lease: lease) else { throw SessionError.closed }
+      }
+      await bindCalls(lease: lease.parent, changed: { _ in }, audio: { _ in })
+      guard ContinuousClock.now < deadline, notificationIsCurrent(engine, expected, owner, lease) else { throw SessionError.closed }
+      if retainsNotificationCall() { return .newData }
+    }
     let afterJSON = try await engine.clientRequest(request: #"{"op":"snapshot"}"#)
     let after = try ZoenPushSnapshot(json: afterJSON)
     let center = UNUserNotificationCenter.current()

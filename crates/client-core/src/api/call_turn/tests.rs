@@ -88,3 +88,22 @@ async fn stale_native_owner_fails_before_network_and_credentials_debug_is_redact
     let debug = format!("{credentials:?}");
     assert!(!debug.contains("PRIVATE_") && !debug.contains("turn.example.test"));
 }
+
+#[tokio::test]
+async fn blocked_peer_refuses_turn_before_network_and_unblock_restores_scope() {
+    let (client, identity, device, space, peer) = fixture();
+    client.lock().block_person(&peer).unwrap();
+    assert!(matches!(
+        scope(&client, &identity, &device, &space, &peer),
+        Err(CoreError::Forbidden { .. })
+    ));
+    assert!(
+        matches!(client.call_turn(identity.clone(), device.clone(), space.clone(), peer.clone()).await,
+        Err(CoreError::Forbidden { reason }) if reason == "Call participant is blocked on this device")
+    );
+    client.lock().unblock_person(&peer).unwrap();
+    assert_eq!(
+        scope(&client, &identity, &device, &space, &peer).unwrap(),
+        "http://127.0.0.1:1"
+    );
+}

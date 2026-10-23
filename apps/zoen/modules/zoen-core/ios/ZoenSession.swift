@@ -8,8 +8,8 @@ import FoundationModels
 
 actor ZoenSession {
   // A close returns its exact native UI epoch; a stale open cannot resume a newer retirement.
-  private var keyboardAdmissionTicket: UUID?
-  private var galleryAdmissionTicket: UUID?
+  var keyboardAdmissionTicket: UUID?
+  var galleryAdmissionTicket: UUID?
   nonisolated let pickupLifetime = ZoenModulePickupLifetime()
   private var pickupBinding: UUID?
   var core: Client?
@@ -17,6 +17,7 @@ actor ZoenSession {
   var sessionLocale = "en"
   var notificationBaseline: String?
   var notificationActive = true
+  var notificationOnly = false
   var callsRecovering: Set<String> = []
   var callPresenting = false
   var callStarting = false
@@ -196,6 +197,7 @@ actor ZoenSession {
       self.core = engine
       self.listener = bridge
       self.mode = mode
+      notificationOnly = forNotification
       syncStarted = started
       notificationBaseline = snapshot
       if !forNotification { scheduleInitialHistory() }

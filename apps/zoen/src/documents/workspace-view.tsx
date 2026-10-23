@@ -151,7 +151,6 @@ export function WorkspaceBrowser() {
         ) : (
           <EmptyState
             title={t(filtered ? 'workspace.noResults' : 'workspace.empty')}
-            detail={t(filtered ? 'workspace.noResultsDetail' : 'workspace.emptyDetail')}
             icon={{ ios: 'folder', android: 'folder', web: 'folder' }}
           >
             {filtered ? (

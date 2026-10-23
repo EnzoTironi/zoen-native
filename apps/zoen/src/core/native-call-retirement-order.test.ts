@@ -49,3 +49,41 @@ test('native RTC retirement disables capture and closes the peer before waiting 
     before(stop, command, 'await withCheckedContinuation');
   }
 });
+
+test('CallKit presentation revalidates canonical contact policy after actor and audio handoff awaits', () => {
+  const begin = source('Calls/ZoenCallCoordinator.swift')
+    .split('  func begin(outgoing: Bool) async throws {')[1]!
+    .split('  private func watchCanonicalLease()')[0]!;
+  before(begin, 'port.presentationRecord()', 'ZoenCallSystem.shared.install(self)');
+  before(begin, 'port.presentationRecord()', 'provider.reportNewIncomingCall');
+  const outgoing = begin.split('try await port.prepareAudio()')[1]!;
+  before(outgoing, 'port.presentationRecord()', 'controller.request(');
+});
+
+test('failure before system installation projects terminal presentation and clears the scoped session slot', () => {
+  const coordinator = source('Calls/ZoenCallCoordinator.swift');
+  const stop = coordinator.split('  func stop(writeEnd:')[1]!.split('    let releaseAudio')[0]!;
+  assert.match(
+    stop,
+    /guard installed else \{ retired = true; presentation\.retire\(\); status\("ended"\); return \}/,
+  );
+  const snapshot = coordinator
+    .split('  func presentationSnapshot()')[1]!
+    .split('  private func phase')[0]!;
+  assert.match(snapshot, /state: presentation\.snapshotState\(currentPhase\)/);
+  const sessionCalls = source('ZoenSession+Calls.swift');
+  const changed = sessionCalls
+    .split('  private func callPresentationChanged(')[1]!
+    .split('  func currentCallPresentation(')[0]!;
+  assert.match(
+    changed,
+    /if snapshot\.state == "ended" \{\s*callCoordinator = nil; callsScope = nil/,
+  );
+  const begin = sessionCalls
+    .split('  private func presentCall(')[1]!
+    .split('  private func callPresentationChanged(')[0]!;
+  assert.match(
+    begin,
+    /catch \{ await coordinator\.stop\(writeEnd: true, reason: \.failed\); throw error \}/,
+  );
+});
