@@ -109,7 +109,7 @@ jobs:
       - name: Shared Rust lint policy
         run: |
           python3 scripts/check-rust-lint-policy.py
-          python3 -m unittest discover -s scripts/tests -p 'test_rust_lint_policy.py' -v
+          python3 -m unittest discover -s scripts/tests -p 'test_rust_lint*.py' -v
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
