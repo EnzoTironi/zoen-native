@@ -133,198 +133,23 @@ Excalidraw proofs and whole-app v85 baseline are unchanged.
 
 ## Drawings owned by a Zoen chat
 
-The native catalog creates an Excalidraw App Item in the selected Space. The same
-compact Rust projection supplies its chat and Home cards. The scene belongs to
-that Item's version history; its full JSON, application state and embedded image
-bytes use the existing encrypted, content-defined file chunks. The App envelope
-contains the owned file manifest and small counts, without putting the scene or
-encryption keys in `view_json` or a card snapshot.
-
-The bundled editor uses the official MCP Apps bridge with an item-bound
-`canonicalScene` capability. Six `app_scene_*` tools transfer a maximum 16 MiB
-scene in 192 KiB chunks. The host checks the exact Item, order, UTF-8, size and
-SHA before admitting a typed `app_document_save`. Rust independently validates
-the scene and images, current membership/writer authority, app grant and observed
-version/SHA. A checked save atomically publishes the owned chunks and one App
-version. Its bounded durable receipts let a lost acknowledgment retry the exact
-mutation; they do not adopt an unrelated newer scene as the editor's base.
-
-The renderer captures all three Excalidraw `onChange` arguments. It retains the
-unacknowledged attempt and newer edits, serializes writes, and reports only small
-save-state metadata through `ui/update-model-context`. Back and Details freeze
-editing and await the final acknowledged flush before retiring the frame.
-Ordinary Save resumes editing. Failed saves leave the drawing open. An explicit
-native Save Copy asks the app-side `prepare_scene_copy` tool for the current
-canvas, verifies the staged chunks, and creates one new App Item/card atomically.
-The original Item remains intact. An ambiguous copy retries the same mutation
-with editing paused. Account replacement and external navigation cannot bypass
-the active editor; owner retirement and explicit device erasure still fence its
-authority immediately.
-
-The canonical resource is self-contained and has no connection origins. Canvas
-editing, images and bundled normal fonts do not need a CDN or a public provider
-checkpoint. Native system fonts cover the optional CJK fallback. The unused
-provider AI/Mermaid path is disabled through the public AI policy with two
-explicit pinned library guards; provenance and bundled licenses record that
-change. Provider export and unsupported browser file actions are absent from
-this native editor. This is not a claim of every Excalidraw feature or platform
-being accepted.
-
-The older browser core retains received App-owned document manifests but rejects
-creation and generic execution of this drawing until its typed document host is
-implemented. The iPhone implementation's current source tests cover exact scene
-and image bytes, cold reopen, stale saves, lost acknowledgments, copy rollback,
-cross-chat fresh keys and current/historical blob demand. The signed v89 native
-proof below covers the canonical editor; the v87 proof remains separate evidence
-for the remote-provider viewer.
+See the [complete section](mcp-apps-drawings.md#drawings-owned-by-a-zoen-chat).
 
 ### Bounded canonical native proof (v89)
 
-The preserving update on the isolated iOS Simulator opened a rectangle saved under
-v88. Touch added a second horizontal rectangle, the iOS keyboard entered `Zoen`
-and `MCP Apps`, and touch connected them with an arrow. Native saved status and
-guarded Back returned a Home card showing `5 elementos`. After a full process
-restart, the same card retained its count and opened the same five-element drawing.
-No Metro or runtime JavaScript injection was used; native instrumentation supplied
-accessibility inspection.
-
-One uninterrupted four-step cold-reopen path passed once: restart, Home count,
-same-card open and editor readiness. The recorded first take supplies the visible
-diagram proof. The 32-step authoring recording retains two failed automation waits
-and cross-tree warnings; it is not a successful full editing replay or two-pass QA.
-The two trimmed recordings are 44.067 and 18.233 seconds. A
-[combined 62.3-second proof](../../.argent/recordings/excalidraw-canonical-iphone-v89-proof.mp4)
-joins them without new app actions or overlays.
-
-Evidence: `acceptance.json` → `evidence.nativeCanonicalExcalidrawV89` and
-`/private/tmp/zoen-excalidraw-canonical-iphone-qa-v89/native-proof.json`. The screenshot
-is `.argent/screenshots/excalidraw-canonical-iphone-v89.png`. App 775/775,
-TypeScript/Oxlint/Oxfmt, 15 renderer tests and all three exact-source Expo CI jobs
-pass separately. Prior v88 full FFI and browser image-byte tests keep their own
-attribution. This native take does not certify image insertion, an independent
-recipient, conflict/copy-failure UI, physical iPhone, native surfaces or full parity.
-The human preserving update retained four Home cards, recipe 6/8 and larger text;
-public executable, JavaScript and strict signature checks passed. This is bounded
-Home inspection, not full-app reacceptance. The accepted whole-app v85 artifacts
-and the v87 remote readback remain unchanged.
+See the [original proof and limits](mcp-apps-drawings.md#bounded-canonical-native-proof-v89).
 
 ### Native image import and linked-device readback (v90)
 
-The native Photos picker imported a synthetic JPEG into the original five-element
-drawing. Guarded Back saved it as six elements; after a full process restart, the
-same Home card opened the drawing with its image still rendered. The previous
-recovery copy also retained its six elements. Both simulators received preserving
-signed Release updates, with executable, bundled JavaScript and strict signatures
-verified. The main simulator retained its four Home cards, recipe 6/8 and larger
-text in a bounded smoke check.
-
-This walkthrough found a real image-save race: upstream Excalidraw emits an image
-placeholder before its file bytes are ready. The editor now waits for the complete
-scene before autosave, Copy or final flush. A bounded timeout keeps the editable
-canvas; it never drops the image or claims an incomplete save succeeded. Rust's
-strict scene validation is unchanged. Native request failures also present their
-human-readable reason instead of a reflected Swift error type.
-
-A fresh memory-only device linked through the normal six-digit native approval
-and received 146 encrypted history events. Typed document reads verified both
-owned scene manifests and embedded image bytes. Each drawing contained six live
-elements and one 21,025-byte JPEG; the two JPEG hashes matched. A second check
-retained both version/scene/image pins. This is another device of the same
-synthetic identity, not a separate recipient or a cryptographic author-device
-proof. The helper was stopped, its owned volatile vault cleared and its exact
-temporary device revoked through native Devices UI. The chat retained both
-six-element pinned cards and the copy's six-element inline card.
-
-The [47.23-second native recording](../../.argent/recordings/excalidraw-photo-iphone-v90-proof.mp4)
-joins the import and restart takes without recoding their video packets. The
-originals retain their automatic static-frame trimming (122.042 seconds of wall
-time). These are recorded walkthroughs; system-picker/DOM target warnings prevent
-a claim of a full import replay or a two-pass regression.
-
-Evidence: `acceptance.json` → `evidence.nativeExcalidrawImageV90` and
-`/private/tmp/zoen-excalidraw-native-image-v90/`. Runtime commit `db626dce` has a
-904-file signed-build input receipt; `6902ce6a` only fixes Linux admission of the
-macOS Swift test. The macOS app check passed 776 tests and the renderer passed
-24 tests, including delayed image preparation. All three Expo CI jobs passed on
-`6902ce6a`. This does not promote the whole-app baseline or certify physical
-iPhone behavior, all MCP providers or the later builtin-renderer integration.
+See the [original proof and limits](mcp-apps-drawings.md#native-image-import-and-linked-device-readback-v90).
 
 ## Current remote-session authority
 
-The registry currently allows only `https://mcp.excalidraw.com/mcp`. Redirects,
-credentials and unsupported authorization are rejected. This public connection
-has no OAuth implementation or token storage. The viewer explicitly uses Expo's
-streaming fetch; bounded response readers preserve the original response because
-React Native's global `Response` constructor cannot wrap a stream.
-
-The session binds requests and late responses to the unlocked account, device
-and frame lifetime. Blur, account changes and disposal close the frame and abort
-the connection. Initial launch requires the user's action and calls the
-discovered UI tool. App-originated calls must be declared by that same server and
-app-visible; resource reads are restricted to the bound UI resource.
-
-For Excalidraw, starting a drawing grants checkpoint reads and autosaves only for
-the exact checkpoint returned by that launch. Another checkpoint ID is rejected.
-Destructive or otherwise unknown writes require confirmation. Export has a
-separate explicit publication confirmation because it uploads the drawing and
-returns a shareable URL. Server hints alone do not authorize publication.
-
-The external app receives presentation context such as theme, dimensions, locale
-and time zone. Zoen does not automatically send account identifiers, chat history,
-members or keys. Model-context updates remain local to this session, with no AI
-submission. The drawing is a provider-backed session draft, not a canonical Zoen
-chat item. Sharing into chat and native device capabilities are unavailable on
-this remote viewer. Closing the session does not claim to delete the provider's
-checkpoint or provide durable reopen history in Zoen.
+See the [complete section](mcp-apps-drawings.md#current-remote-session-authority).
 
 ## Actual Excalidraw proof
 
-The [official Excalidraw MCP App](https://github.com/excalidraw/excalidraw-mcp)
-exposed `read_me`, `create_view`, `export_to_excalidraw`, `save_checkpoint` and
-`read_checkpoint`. Discovery returned `ui://excalidraw/mcp-app.html`, the standard
-App MIME type, and a 450,212-byte HTML resource with SHA-256
-`441650e7bc844a43511b906281d11589e8d24a34a83d657c1d7a56f907c21a63`.
-Its declared connection and asset origin was `https://esm.sh`; clipboard-write
-was requested, not granted.
-
-The live proof created one identifiable synthetic rectangle, read its checkpoint,
-moved its x-coordinate from 120 to 160, saved and reread the same checkpoint.
-Both reads contained exactly that one element. It invoked no export, created no
-public share link and used no Zoen content. The session closed; the server exposes
-no deletion tool, so the synthetic checkpoint remains subject to provider
-retention. This was Node HTTPS execution, including a discovery pass with the
-installed React Native `Response` constructor, rather than native UI execution.
-
-Local evidence is under `/private/tmp/zoen-remote-mcp-excalidraw-v86/`:
-`discovery.json`, `checkpoint-roundtrip.json`, `final-discovery.json` and
-`source-freeze.json`. The session's nine focused tests include actual official SDK
-JSON/SSE handling with the installed React Native response constructor, tool
-binding, owner teardown, bounds and unsupported authentication.
-
-The v87 native walkthrough opened the catalog and Excalidraw, started the actual
-editor, drew a second rectangle, typed `Zoen + MCP` with the iOS keyboard and drew
-a connecting arrow. The native status received the real server save ACK. The
-53.4-second H.264 recording used an ordinary fresh Release opening, without Metro,
-a debugger or runtime JavaScript injection. The app's 748 tests, four compiled
-upstream UI regressions and all three exact-source Expo CI jobs passed.
-
-A later observational native breakpoint identified the real `save_checkpoint`
-request's checkpoint. A fresh connection then called only `read_checkpoint` and
-verified all five element IDs, both labels, the newly drawn rectangle's geometry
-and both arrow bindings. It did not create, save or export a diagram. This
-independent server read is the persistence proof; leaving and reentering the
-editor alone would only demonstrate local state retention.
-
-Evidence: `/private/tmp/zoen-excalidraw-iphone-qa-v87/`, notably
-`native-server-readback-proof.json`, the raw server response and signed-product
-receipts. The recording is
-`.argent/recordings/screen-recording-388CA707-A103-4845-B5FE-BAA9526D3D57-1792358439976.mp4`;
-the saved screenshot is `.argent/screenshots/excalidraw-iphone-v87.png`.
-The original live authoring flow retains selector warnings and is not claimed as
-a two-pass replay regression. Both simulators received the exact signed v87 app
-through preserving installs. The human simulator's Home cards and larger text
-were smoke-checked; prior PDF/voice/history acceptance remains the separate v85
-record rather than a new v87 acceptance claim.
+See the [complete section](mcp-apps-drawings.md#actual-excalidraw-proof).
 
 ## Provider boundaries and native cards
 
