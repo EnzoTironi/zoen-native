@@ -7,6 +7,7 @@ import { ClientStore } from './store.ts';
 import type { Command, CommandResult, CoreDriver, CoreEvent, Snapshot } from './types.ts';
 import { validLocalNotification } from '../notifications/links.ts';
 import { NotificationJobs } from '../notifications/jobs.ts';
+import { backgroundPresentationJobs } from '../notifications/presentation.ts';
 import { nativeNotificationPlatform } from '../notifications/native-adapter.ts';
 import { pushPlatform } from '../notifications/configuration.ts';
 import { openSurfaceInvocation, type SurfaceInvocation } from '../native-surfaces/intents.ts';
@@ -200,7 +201,7 @@ for (const platform of ['ios', 'android'])
       './links': { validLocalNotification },
       './native-adapter': { nativeNotificationPlatform },
       './configuration': { pushPlatform },
-      './local': { localNotes: () => [] },
+      './presentation': { backgroundPresentationJobs },
       './jobs': { NotificationJobs },
       './system': {
         clearDeviceNotifications: async () => {},
@@ -212,6 +213,8 @@ for (const platform of ['ios', 'android'])
         listenPushToken: () => () => {},
         nativePushConfiguration: () => null,
         nativePushToken: async () => '',
+        nativeNotificationPresentation: () => false,
+        requestNativeNotes: async () => assert.fail('unexpected background presentation'),
         notificationPermission: async () => 'denied',
         showLocalNote: async () => {},
         updateBadge: async () => {},

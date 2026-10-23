@@ -1,6 +1,7 @@
 import { t } from '../i18n/index.ts';
 import type { LocalNote } from './local';
 import type { PushWake } from './wake';
+import type { NativeNoteScope } from './presentation';
 
 export const nativePushConfiguration = () => null;
 export const notificationPermission = async (_request: boolean) => 'denied' as const;
@@ -12,5 +13,7 @@ export const installNotificationHandler = (_allowLocal: (data: unknown) => boole
 export const listenNotificationEvents =
   (_wake: (payload: PushWake) => void, _tap: (data: unknown) => void) => () => {};
 export const showLocalNote = async (_note: LocalNote) => {};
+export const nativeNotificationPresentation = () => false;
+export const requestNativeNotes = async (_scope: NativeNoteScope) => {};
 export const updateBadge = async (_count: number) => {};
 export const clearDeviceNotifications = async (_deviceId: string) => {};

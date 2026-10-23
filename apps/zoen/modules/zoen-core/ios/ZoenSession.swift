@@ -15,11 +15,13 @@ actor ZoenSession {
   var core: Client?
   var mode = "account"
   var sessionLocale = "en"
+  var notificationBaseline: String?
+  var notificationActive = true
   private let vault = ZoenVault()
   var listener: ZoenListener?
-  private var syncStarted = false
-  private var historyTask: Task<Void, Never>?
-  private var historyRearmRequested = false
+  var syncStarted = false
+  var historyTask: Task<Void, Never>?
+  var historyRearmRequested = false
   var generation: UInt64 = 0
   private var openingAttempt: UUID?
   var closing = false
@@ -109,7 +111,7 @@ actor ZoenSession {
   }
 
 
-  func open(mode: String, locale: String, changed: @escaping @Sendable ([String: Any]) -> Void) async throws -> String {
+  func open(mode: String, locale: String, forNotification: Bool = false, changed: @escaping @Sendable ([String: Any]) -> Void) async throws -> String {
     guard ["account", "demo"].contains(mode) else { throw SessionError.invalidMode }
     guard ["en", "pt-BR"].contains(locale) else { throw SessionError.invalidLocale }
     let attempt = UUID()
@@ -117,6 +119,7 @@ actor ZoenSession {
     if erasureTask != nil { throw ZoenDeviceErasure.Failure.incomplete }
     sessionLocale = locale
     if let pending = try erasure.pending() {
+      if forNotification { throw SessionError.closed }
       self.mode = "account"
       try await eraseDevice(expected: pending, preservingOpening: attempt)
     }
@@ -135,26 +138,42 @@ actor ZoenSession {
     try directory.setResourceValues(excluded)
     let engine = try Client.open(path: root.appending(path: "client.sqlite").path, locale: sessionLocale)
     let bridge = ZoenListener(changed, sourceChanged: { [weak self] spaces in
+      guard !forNotification else { return }
       Task { await self?.validateConversationGalleryChanges(spaces) }
     }) { [weak self] in
+      guard !forNotification else { return }
       Task { await self?.resumePendingHistory() }
     }
     do {
       var started = false
-      if mode == "account" { _ = try engine.resumeProviderSetup(vault: vault) }
+      if mode == "account", !forNotification { _ = try engine.resumeProviderSetup(vault: vault) }
+      var beforeSync: String?
       if mode == "demo" { _ = try engine.seedDemoIfEmpty() }
       else if engine.account() != nil {
         guard try engine.unlock(vault: vault) else { throw SessionError.locked }
+        if forNotification {
+          guard engine.account()?.registered == true, engine.account()?.setupPending == false else { throw SessionError.closed }
+          beforeSync = try await engine.clientRequest(request: #"{"op":"snapshot"}"#)
+        }
         if engine.account()?.setupPending != true {
           try engine.startSync(listener: bridge)
           started = true
         }
-      } else if vault.hasAccountMaterial() { throw SessionError.orphanedKeys }
-      let snapshot = try await engine.clientRequest(request: #"{"op":"snapshot"}"#)
+      } else {
+        if forNotification { throw SessionError.closed }
+        if vault.hasAccountMaterial() { throw SessionError.orphanedKeys }
+      }
+      let snapshot: String
+      if let beforeSync { snapshot = beforeSync }
+      else { snapshot = try await engine.clientRequest(request: #"{"op":"snapshot"}"#) }
       guard generation == openingGeneration, openingAttempt == attempt else { throw SessionError.closed }
-      let resumed = await MainActor.run {
-        ZoenKeyboardPanelHost.resumeAdmissions(expected: keyboardTicket)
-          && ZoenAttachmentGalleryHost.resumeAdmissions(expected: galleryTicket)
+      let resumed: Bool
+      if forNotification { resumed = true }
+      else {
+        resumed = await MainActor.run {
+          ZoenKeyboardPanelHost.resumeAdmissions(expected: keyboardTicket)
+            && ZoenAttachmentGalleryHost.resumeAdmissions(expected: galleryTicket)
+        }
       }
       guard resumed else { throw SessionError.closed }
       guard generation == openingGeneration, openingAttempt == attempt, !erasing, !closing else { throw SessionError.closed }
@@ -168,7 +187,8 @@ actor ZoenSession {
       self.listener = bridge
       self.mode = mode
       syncStarted = started
-      scheduleInitialHistory()
+      notificationBaseline = snapshot
+      if !forNotification { scheduleInitialHistory() }
       return snapshot
     } catch {
       engine.stopSync()
@@ -184,6 +204,7 @@ actor ZoenSession {
       ? try await core.clientRequest(request: request)
       : try await core.clientVaultRequest(request: request, vault: vault)
     guard !erasing, !closing, self.core === core else { throw SessionError.closed }
+    if notificationActive, request == #"{"op":"snapshot"}"#, mode == "account" { notificationBaseline = result }
     // A linking/recovery command can install the first account. Its secrets stay
     // inside this actor/vault boundary and sync starts only after unlock succeeds.
     if !syncStarted, core.account()?.unlocked == true, core.account()?.setupPending != true, let listener {
@@ -204,63 +225,6 @@ actor ZoenSession {
     return try await core.clientRequest(request: #"{"op":"snapshot"}"#)
   }
 
-
-  func resumePendingHistory() {
-    if historyTask != nil {
-      // Coalesce an external wake that raced the last attempt/defer. It must
-      // not disappear merely because the previous bounded pump is finishing.
-      historyRearmRequested = true
-    } else {
-      scheduleInitialHistory()
-    }
-  }
-
-  private func scheduleInitialHistory() {
-    guard !erasing, !closing, mode == "account", syncStarted, historyTask == nil, let engine = core,
-          let bridge = listener, (try? engine.historyStatus())?.initialPending == true else { return }
-    let expectedGeneration = generation
-    historyRearmRequested = false
-    let progress = ZoenHistoryListener(bridge)
-    historyTask = Task { [weak self] in
-      guard let self else { return }
-      await self.resumeInitialHistory(engine: engine, expectedGeneration: expectedGeneration, progress: progress)
-    }
-  }
-
-  private func resumeInitialHistory(engine: Client, expectedGeneration: UInt64, progress: ZoenHistoryListener) async {
-    defer {
-      if generation == expectedGeneration, core === engine {
-        historyTask = nil
-        if historyRearmRequested {
-          historyRearmRequested = false
-          scheduleInitialHistory()
-        }
-      }
-    }
-    // A bounded foreground resume. The canonical marker survives all failures;
-    // devices UI offers explicit retry after these attempts or a later cold launch.
-    for delay in [0, 2, 5, 15] {
-      guard !Task.isCancelled, generation == expectedGeneration, core === engine else { return }
-      if delay > 0 {
-        do { try await Task.sleep(for: .seconds(delay)) } catch { return }
-      }
-      guard !Task.isCancelled, generation == expectedGeneration, core === engine else { return }
-      do {
-        let status = try engine.historyStatus()
-        if !status.initialPending { return }
-        if status.receiveActive { continue }
-        _ = try await engine.receiveHistory(timeoutMs: 15_000, listener: progress)
-        guard !Task.isCancelled, generation == expectedGeneration, core === engine else { return }
-        listener?.onChange(spaceIds: [])
-        if (try engine.historyStatus()).initialPending == false { return }
-      } catch {
-        guard !Task.isCancelled, generation == expectedGeneration, core === engine else { return }
-        // Keep pending visible without leaking native transport diagnostics or
-        // replacing the account with an empty/failed transfer projection.
-        listener?.onChange(spaceIds: [])
-      }
-    }
-  }
 
   func retireRequest() {
     requests -= 1
@@ -416,6 +380,7 @@ actor ZoenSession {
   }
 
   private func finishClose() async throws {
+    notificationBaseline = nil
     pageInputTicket = UUID().uuidString
     pageInputReservations.removeAll()
     pageInputChanged = nil
