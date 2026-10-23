@@ -509,6 +509,9 @@ mod canonical_tool_approval_tests;
 #[cfg(test)]
 #[path = "agent/app_creation_tests.rs"]
 mod app_creation_tests;
+#[cfg(test)]
+#[path = "agent/site_tool_tests.rs"]
+mod site_tool_tests;
 
 #[cfg(test)]
 #[path = "agent/continuation_journal_tests.rs"]
