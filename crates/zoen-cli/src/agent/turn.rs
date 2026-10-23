@@ -242,7 +242,8 @@ async fn checked(
             let permit =
                 match page_tools::CanonicalPermit::new(&tools, &request.id, proposal.schema) {
                     Ok(permit) => permit,
-                    Err(_) => {
+                    Err(refusal) => {
+                        trace::admission::refused(space, &t.id, &request.id, refusal);
                         say("reviewed action is stale or no longer authorized");
                         stop(trace::Stop::ApprovalRefused);
                         return true;
