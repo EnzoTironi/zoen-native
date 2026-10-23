@@ -52,13 +52,16 @@ async fn bound_put(
     if let Some(binding) = binding {
         request = request.header(BLOB_HEADER, serde_json::to_string(binding).unwrap());
     }
-    request
-        .body(bytes.to_vec())
-        .send()
-        .await
-        .unwrap()
-        .status()
-        .as_u16()
+    let response = request.body(bytes.to_vec()).send().await.unwrap();
+    let status = response.status().as_u16();
+    if binding.is_none() {
+        assert_eq!(
+            response.text().await.unwrap(),
+            "managed runtime binding required",
+            "registered managed devices must be refused before legacy signature admission"
+        );
+    }
+    status
 }
 
 pub(super) async fn run(f: &Fixture, run: &str, relay: &relay::Relay) {
@@ -115,11 +118,27 @@ pub(super) async fn run(f: &Fixture, run: &str, relay: &relay::Relay) {
         bound_put(relay, &actor(f), Some(&binding), &signature, ts, &bytes).await,
         200
     );
-    // Removing the header cannot convert a bound signature to a legacy PUT.
-    assert_eq!(
-        bound_put(relay, &actor(f), None, &signature, ts, &bytes).await,
-        401
+    // A registered managed device is refused before legacy signature admission.
+    // Use new content so the denial also proves no object was created.
+    let downgrade = vec![94; 49];
+    let downgrade_signature = actor(f).key.sign(
+        &binding
+            .message(&hash(&downgrade), ts, &relay.state.relay_name)
+            .unwrap(),
     );
+    assert_eq!(
+        bound_put(relay, &actor(f), None, &downgrade_signature, ts, &downgrade).await,
+        403
+    );
+    let downgrade_key = object_store::path::Path::from(format!(
+        "blobs/{}/{}",
+        &hash(&downgrade)[..2],
+        hash(&downgrade)
+    ));
+    assert!(matches!(
+        relay.state.blobs.get(&downgrade_key).await,
+        Err(object_store::Error::NotFound { .. })
+    ));
     let mut replayed = binding.clone();
     replayed.request.nonce[0] ^= 1;
     let signature = actor(f).key.sign(
