@@ -7,6 +7,7 @@ use crate::{
 use std::result::Result as StdResult;
 use types::owner_budget::OwnerPeriodPolicy;
 type TestResult = StdResult<(), Box<dyn std::error::Error>>;
+mod publication_cases;
 
 fn setup() -> StdResult<(Fixture, OwnerPolicyScope, String), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new();
@@ -155,7 +156,17 @@ fn owner_policy_stays_pending_until_exact_confirmed_host_receipt_and_replays_one
             outcome: types::OwnerPolicyOutcome::Refused,
         },
     )?;
-    deliver_agent(&mut f)?;
+    // This deliberately bypasses the typed producer to model an authentic
+    // contradictory report. The owner must retain installation evidence, while
+    // the native publisher must refuse its unprepared own echo.
+    f.core.engine.mls_seal_outbox()?;
+    let envelope = f.core.engine.outbox_envelopes().remove(0);
+    let frame = ordered(&f.owner, envelope);
+    assert_eq!(f.owner.ingest(frame.clone()), Ingest::Applied);
+    assert!(matches!(
+        f.core.ingest(vec![frame]),
+        Err(NativeError::History)
+    ));
     assert_eq!(
         f.owner.owner_policy_status(&scope, &pending.source)?.state,
         "installed"
