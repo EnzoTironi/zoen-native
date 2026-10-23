@@ -1,5 +1,5 @@
 use super::*;
-use relay_admission::managed_images::Checkpoint;
+use relay_admission::managed_images::{AnchorError, Checkpoint};
 
 pub(crate) struct ImageActivationProof {
     key: Vec<u8>,
@@ -12,7 +12,8 @@ pub(crate) struct ImageActivationProof {
 impl RuntimeAuthority {
     pub(crate) async fn pending_image_activation(&self) -> ImageActivationProof {
         let guard = self.managed_images.as_ref().unwrap().lock().await;
-        let (deployment, pending, _) = guard.activation_evidence();
+        let (deployment, pending, clean) = guard.activation_evidence();
+        assert_eq!(clean.unwrap_err(), AnchorError::Unreconciled);
         let deployment = &deployment;
         let credential = self
             .native
@@ -176,7 +177,7 @@ impl RuntimeAuthority {
             self.image_checkpoints(&deployment).await.unwrap(),
             (proof.checkpoint.clone(), proof.checkpoint.clone())
         );
-        assert_eq!(checkpoint, proof.checkpoint);
+        assert_eq!(checkpoint.unwrap(), proof.checkpoint);
         assert!(pending.is_none());
     }
 }

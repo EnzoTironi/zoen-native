@@ -46,12 +46,13 @@ pub(in crate::tests::retained::image_tasks::delivery) async fn run(
         Some(&before),
         protocol::Sealed::new(protocol::SealedKind::Application, 1, vec![1, 2, 3]),
     );
-    assert!(matches!(
-        transport
-            .publish_managed(&envelope, expected(f, 62, &sql))
-            .await,
-        Err(RelayOutputError::Refused)
-    ));
+    let result = transport
+        .publish_managed(&envelope, expected(f, 62, &sql))
+        .await;
+    assert!(
+        matches!(result, Err(RelayOutputError::Refused)),
+        "read-only bootstrap Publish must refuse before any effect: {result:?}"
+    );
     assert_eq!(head(f).await, before);
     assert!(relay
         .state
