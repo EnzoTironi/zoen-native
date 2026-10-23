@@ -40,10 +40,13 @@ and customization files, are in
 - Revision: `f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838`.
 - License: `GPL-2.0-or-later`; GPLv3 is selected for this integration, as above.
 - Changes: Swift/UIKit presentation values are expressed as typed TypeScript
-  roles, bounded local preferences, two Zoen sky families, and native color
+  roles, bounded local preferences, two Zoen sky families plus all four built-in
+  Telegram theme families, and native color
   controls. Static emoji retain Zoen's real text and receipt authority; no
   Telegram emoji/sound/font asset or messaging service is included.
-- Inspection of the Tinted factory does not add a shipped Tinted preset.
+- The theme picker translates ThemeSettingsThemeItem geometry; the Tinted
+  palette translates the upstream HSB multipliers. Cloud theme/account services
+  and downloadable wallpaper pattern files are not included.
 
 The new sky contrast constraints, preference persistence, native gradient mask,
 and React Native screen adapters are Zoen implementations. This attribution

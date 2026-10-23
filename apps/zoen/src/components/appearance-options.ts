@@ -5,6 +5,10 @@ export function skyLabels(): Record<ThemePreference, string> {
     auto: t('settings.skyAuto'),
     day: t('settings.skyDay'),
     night: t('settings.skyNight'),
+    'telegram-classic': t('settings.themeClassic'),
+    'telegram-day': t('settings.themeDay'),
+    'telegram-night': t('settings.themeNight'),
+    'telegram-tinted': t('settings.themeTinted'),
   };
 }
 export function currentSkyLabel(preference: ThemePreference, phase: SkyPhase): string {
