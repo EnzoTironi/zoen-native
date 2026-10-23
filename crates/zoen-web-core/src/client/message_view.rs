@@ -26,6 +26,11 @@ impl<S: Signer> Client<S> {
                     content: types::ItemContent::File(doc),
                     ..
                 } => Some(doc.voice.as_ref().and_then(|v| v.reply.clone())),
+                EventBody::ItemCreated {
+                    kind: types::ItemKind::Page,
+                    content: types::ItemContent::Page(_),
+                    ..
+                } => Some(None),
                 _ => None,
             })
     }
@@ -241,6 +246,21 @@ impl<S: Signer> Client<S> {
                 doc.voice.as_ref().is_some_and(|v| v.forwarded),
                 Some(doc.clone()),
             ),
+            EventBody::ItemCreated {
+                item,
+                kind: types::ItemKind::Page,
+                content: types::ItemContent::Page(_),
+                ..
+            } if delivery != "failed" => {
+                let source = self.document_item(item).ok()?;
+                if source.space != event.space
+                    || event_log::content_hash_of(&source.versions[0].event)
+                        != event_log::content_hash_of(event)
+                {
+                    return None;
+                }
+                (String::new(), None, false, None)
+            }
             EventBody::ItemVersioned { .. } | EventBody::ItemReverted { .. } => {
                 let edit = item_edit.as_ref()?;
                 (edit.note.clone(), None, false, None)
@@ -304,6 +324,12 @@ impl<S: Signer> Client<S> {
                 attaches: Some(item),
                 ..
             } if file.is_none() => self.item_card_value(&event.space, item).ok().flatten(),
+            EventBody::ItemCreated {
+                item,
+                kind: types::ItemKind::Page,
+                content: types::ItemContent::Page(_),
+                ..
+            } => self.item_card_value(&event.space, item).ok().flatten(),
             _ => None,
         };
         Some(MessageView {

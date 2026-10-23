@@ -1,6 +1,8 @@
 use super::*;
 #[path = "client_tests/app_documents.rs"]
 mod app_documents;
+#[path = "client_tests/artifact_discussions.rs"]
+mod artifact_discussions;
 #[path = "client_tests/attachments.rs"]
 mod attachments;
 #[path = "client_tests/crypto_interop.rs"]
