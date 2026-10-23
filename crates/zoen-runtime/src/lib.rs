@@ -1,5 +1,9 @@
 //! Postgres finance and fenced native FDB execution. Production work remains
-//! closed until managed custody and external restore continuity are available.
+//! closed until external restore continuity and output admission are available.
+mod admission;
+#[cfg(test)]
+use admission::FixtureStep;
+use admission::{Binding, Capture, Session, VerifiedStep};
 mod custody;
 mod execution;
 mod finance;
@@ -8,7 +12,6 @@ mod pricing;
 pub use pricing::PriceProfile;
 pub use types::owner_budget::{OwnerPeriodPolicy, SignedOwnerPolicy};
 
-use async_trait::async_trait;
 use foundationdb::{tuple::Subspace, Database};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -163,8 +166,8 @@ pub struct RuntimeAuthority {
     finance: finance::Finance,
     execution: execution::Execution,
     custody: custody::Custody,
-    // No production key or credential constructor exists yet. Test provisioning
-    // exercises the storage protocol without claiming a deployed managed vault.
+    // Native managed construction resolves a certified device from SQL and the
+    // existing vault contract; it does not grant continuity or output authority.
     native: Option<native::NativeCustody>,
     gateway: ModelGateway,
     price: PriceProfile,
@@ -519,201 +522,6 @@ impl RuntimeAuthority {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
-struct Binding {
-    context: AttemptContext,
-    device_cert: String,
-    frontier: String,
-    period_start: i64,
-    policy_digest: String,
-    request_digest: String,
-    requested_output_tokens: u64,
-    hold_units: i64,
-    price: PriceProfile,
-}
-impl Binding {
-    fn digest(&self) -> Result<String, RuntimeError> {
-        Ok(hash(
-            &serde_json::to_vec(self).map_err(|_| RuntimeError::InvalidBinding)?,
-        ))
-    }
-}
-// Private and deliberately lacks Deserialize/general-purpose constructor.
-// Only actual core extraction may create one in production; fixtures live in cfg(test).
-enum VerifiedStep {
-    Native(Box<native::ReplyStep>),
-    #[cfg(test)]
-    Fixture(Box<FixtureStep>),
-}
-
-#[cfg(test)]
-struct FixtureStep {
-    request: ModelRequest,
-    device_cert: String,
-    frontier: String,
-    policy_digest: String,
-    period_start: i64,
-    run_fence: execution::Fence,
-    device_fence: execution::Fence,
-}
-
-impl VerifiedStep {
-    fn request(&self) -> &ModelRequest {
-        match self {
-            Self::Native(step) => step.request(),
-            #[cfg(test)]
-            Self::Fixture(step) => &step.request,
-        }
-    }
-
-    fn binding(
-        &self,
-        request: &DispatchRequest,
-        _price: &PriceProfile,
-    ) -> Result<Binding, RuntimeError> {
-        if request.context != self.request().context {
-            return Err(RuntimeError::InvalidBinding);
-        }
-        match self {
-            Self::Native(step) => step.binding(request),
-            #[cfg(test)]
-            Self::Fixture(step) => Ok(Binding {
-                context: request.context.clone(),
-                device_cert: step.device_cert.clone(),
-                frontier: step.frontier.clone(),
-                period_start: step.period_start,
-                policy_digest: step.policy_digest.clone(),
-                request_digest: request.request_digest.clone(),
-                requested_output_tokens: request.descriptor.requested_output_tokens,
-                hold_units: _price.quote(request)?,
-                price: _price.clone(),
-            }),
-        }
-    }
-
-    fn grant_deadline(&self) -> Option<i64> {
-        match self {
-            Self::Native(step) => step.grant_deadline(),
-            #[cfg(test)]
-            Self::Fixture(_) => None,
-        }
-    }
-
-    async fn release(&self, execution: &execution::Execution) -> Result<(), RuntimeError> {
-        match self {
-            Self::Native(step) => step.release(execution).await,
-            #[cfg(test)]
-            Self::Fixture(_) => Ok(()),
-        }
-    }
-
-    #[cfg(test)]
-    fn fixture(&self) -> &FixtureStep {
-        match self {
-            Self::Fixture(step) => step,
-            Self::Native(_) => panic!("native authority is not a seeded financial fixture"),
-        }
-    }
-}
-#[derive(Serialize, Deserialize)]
-struct Capture {
-    binding: Binding,
-    result: ModelAttemptResult,
-}
-struct Session<'a> {
-    runtime: &'a RuntimeAuthority,
-    step: &'a VerifiedStep,
-    admitted: Mutex<Option<AdmittedBinding>>,
-}
-
-struct AdmittedBinding {
-    binding: Binding,
-    nonce: String,
-}
-
-#[async_trait]
-impl DispatchAuthority for Session<'_> {
-    async fn admit(&self, request: &DispatchRequest) -> Result<Admission, AdmissionError> {
-        let result: Result<Admission, RuntimeError> = async {
-            self.runtime.continuity()?;
-            let binding = self.step.binding(request, &self.runtime.price)?;
-            self.runtime
-                .execution
-                .prepare(self.step, &binding, &self.runtime.custody)
-                .await?;
-            #[cfg(test)]
-            if self.runtime.fault.load(Ordering::SeqCst) == 21 {
-                self.runtime.native_cut_entered.notify_one();
-                self.runtime.native_cut_resume.notified().await;
-            }
-            self.runtime.finance.reserve(&binding).await?;
-            #[cfg(test)]
-            if self.runtime.fault.load(Ordering::SeqCst) == 4 {
-                return Err(RuntimeError::Unavailable);
-            }
-            let Some(claim) = self.runtime.finance.claim(&binding).await? else {
-                return Ok(Admission::AlreadyKnown);
-            };
-            #[cfg(test)]
-            if self.runtime.fault.load(Ordering::SeqCst) == 1 {
-                return Err(RuntimeError::Unavailable);
-            }
-            let guard = self.runtime.finance.guard(&binding, self.step).await?;
-            let admission = self
-                .runtime
-                .execution
-                .admit_once(
-                    self.step,
-                    claim,
-                    &binding,
-                    &self.runtime.custody,
-                    self.runtime,
-                )
-                .await?;
-            #[cfg(test)]
-            if self.runtime.fault.load(Ordering::SeqCst) == 2 {
-                return Err(RuntimeError::Unavailable);
-            }
-            #[cfg(test)]
-            if self.runtime.fault.load(Ordering::SeqCst) == 3 {
-                guard.rollback().await?;
-                return Err(RuntimeError::Unavailable);
-            }
-            #[cfg(test)]
-            if self.runtime.fault.load(Ordering::SeqCst) == 24 {
-                self.runtime.native_cut_entered.notify_one();
-                self.runtime.native_cut_resume.notified().await;
-            }
-            let nonce = admission.nonce().to_string();
-            let permit = guard.finish(admission).await?;
-            #[cfg(test)]
-            if self.runtime.fault.load(Ordering::SeqCst) == 23 {
-                return Err(RuntimeError::Unavailable);
-            }
-            #[cfg(test)]
-            if self.runtime.fault.load(Ordering::SeqCst) == 25 {
-                self.runtime.native_cut_entered.notify_one();
-                self.runtime.native_cut_resume.notified().await;
-            }
-            self.runtime.continuity()?;
-            *self
-                .admitted
-                .lock()
-                .map_err(|_| RuntimeError::Unavailable)? = Some(AdmittedBinding { binding, nonce });
-            permit.consume()
-        }
-        .await;
-        result.map_err(|e| match e {
-            RuntimeError::Denied
-            | RuntimeError::OverBudget
-            | RuntimeError::InvalidBinding
-            | RuntimeError::DeploymentMismatch
-            | RuntimeError::InvalidPolicy
-            | RuntimeError::InvalidProfile => AdmissionError::Denied,
-            _ => AdmissionError::Unavailable,
-        })
-    }
-}
 fn hash(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }

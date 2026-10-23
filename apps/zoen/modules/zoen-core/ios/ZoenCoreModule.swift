@@ -7,12 +7,14 @@ import FoundationModels
 #endif
 
 public class ZoenCoreModule: Module {
-  private let session = ZoenSession()
-  private let pushLease = ZoenModuleSessionLease()
+  private let sessionOwner = ZoenModuleSessionOwner(session: ZoenSession())
+  private var session: ZoenSession { sessionOwner.current.session }
 
   public func definition() -> ModuleDefinition {
     Name("ZoenCore")
-    Events("onChange", "onPageInputStatus")
+    Events("onChange", "onPageInputStatus", "onCallState", "onCallAudio")
+    Constant("sitePreviewVersion") { 1 }
+    zoenSitePreviewDefinition()
 
     // Reuse the exact pinned Telegram mosaic already used by selected previews.
     // Pure, bounded geometry only: no media bytes, authority or persistent state.
@@ -26,12 +28,23 @@ public class ZoenCoreModule: Module {
         return ZoenComposerSizing.measure(root: root, tag: tag, expectedText: expectedText, expectedLabel: expectedLabel, expectedPlaceholder: expectedPlaceholder, width: width, expectedFontSize: expectedFontSize, nonce: nonce)
       }
     }
-    AsyncFunction("open") { [session, pushLease, weak self] (mode: String, locale: String) async throws -> String in
-      try await ZoenNativePushSessions.gate.open(session: session, lease: pushLease) {
-        try await session.open(mode: mode, locale: locale) { [weak self] event in
-          self?.sendEvent("onChange", event)
-        }
-      }
+    let emitChange: @Sendable ([String: Any]) -> Void = { [weak self] event in self?.sendEvent("onChange", event) }
+    let emitCall: @Sendable (String) -> Void = { [weak self] json in self?.sendEvent("onCallState", ["json": json]) }
+    let emitAudio: @Sendable (String) -> Void = { [weak self] json in self?.sendEvent("onCallAudio", ["json": json]) }
+    AsyncFunction("open") { [sessionOwner, emitChange, emitCall, emitAudio] (mode: String, locale: String) async throws -> String in
+      try await ZoenNativePushSessions.open(owner: sessionOwner, mode: mode, locale: locale,
+        changed: emitChange, call: emitCall, audio: emitAudio)
+    }
+    AsyncFunction("startCall") { (spaceId: String, video: Bool) async throws in
+      do { try await self.session.startCall(space: spaceId, video: video) }
+      catch { throw Exception(name: "CallUnavailable", description: "The call could not start. Check permissions and try again.", code: "ERR_ZOEN_CALL_UNAVAILABLE") }
+    }
+    AsyncFunction("callAudioReply") { (ticket: String, success: Bool) async in
+      await self.session.callAudioReply(ticket: ticket, success: success)
+    }
+    AsyncFunction("callPresentation") { () async -> String in await self.session.currentCallPresentation() }
+    AsyncFunction("showCurrentCall") { (identityId: String, deviceId: String, callId: String) async throws in
+      try await self.session.showCurrentCall(identity: identityId, device: deviceId, call: callId)
     }
     AsyncFunction("request") { (request: String) async throws -> String in
       do {
@@ -44,8 +57,8 @@ public class ZoenCoreModule: Module {
         throw Exception(name: "CoreRequestFailed", description: ZoenCoreErrorMessage.message(error), code: "ERR_ZOEN_REQUEST_FAILED")
       }
     }
-    AsyncFunction("pageInputSession") { [session, weak self] () async throws -> String in
-      try await session.pageInputSession { [weak self] json in
+    AsyncFunction("pageInputSession") { [sessionOwner, weak self] () async throws -> String in
+      try await sessionOwner.current.session.pageInputSession { [weak self] json in
         self?.sendEvent("onPageInputStatus", ["json": json])
       }
     }
@@ -259,30 +272,36 @@ public class ZoenCoreModule: Module {
       try await self.session.materializeProfilePhoto(ownerId: ownerId, deviceId: deviceId, identityId: identityId, expectedSha256: expectedSha256)
     }
     AsyncFunction("releaseProfilePhoto") { (uri: String) async in await self.session.releaseProfilePhoto(uri) }
-    AsyncFunction("notificationWake") { [session, pushLease] (identityId: String, deviceId: String) async in
-      await ZoenNativePushSessions.wake(session: session, lease: pushLease, identityID: identityId, deviceID: deviceId)
+    AsyncFunction("notificationWake") { [sessionOwner] (identityId: String, deviceId: String) async in
+      let owner = sessionOwner.current
+      await ZoenNativePushSessions.wake(session: owner.session, lease: owner.lease, identityID: identityId, deviceID: deviceId)
     }
-    AsyncFunction("eraseDevice") { [session, pushLease] (identityId: String, deviceId: String) async throws in
-      try await ZoenNativePushSessions.gate.finishOwned(session: session, lease: pushLease) {
-        try await session.eraseDevice(expected: ZoenDeviceScope(identityId: identityId, deviceId: deviceId))
+    AsyncFunction("eraseDevice") { [sessionOwner] (identityId: String, deviceId: String) async throws in
+      let owner = sessionOwner.current
+      try await ZoenNativePushSessions.gate.finishOwned(session: owner.session, lease: owner.lease) {
+        try await owner.session.eraseDevice(expected: ZoenDeviceScope(identityId: identityId, deviceId: deviceId))
       }
     }
     AsyncFunction("close") { () async throws in
-      try await ZoenNativePushSessions.gate.close(session: self.session) { try await self.session.close() }
+      let session = self.session
+      try await ZoenNativePushSessions.gate.close(session: session) { try await session.close() }
     }
     AsyncFunction("closeForce") { () async throws in
-      try await ZoenNativePushSessions.gate.close(session: self.session) { try await self.session.close(discardEdits: true) }
+      let session = self.session
+      try await ZoenNativePushSessions.gate.close(session: session) { try await session.close(discardEdits: true) }
     }
-    OnAppBecomesActive { [session] in
+    OnAppBecomesActive { [sessionOwner] in
+      let session = sessionOwner.current.session
       session.activateDraftMediaEdits()
       Task { await session.setNotificationForeground(true); await session.resumePendingHistory() }
     }
-    OnAppEntersBackground { [session] in
+    OnAppEntersBackground { [sessionOwner] in
+      let session = sessionOwner.current.session
       session.retireDraftMediaEdits()
       Task { await session.setNotificationForeground(false) }
     }
-    OnDestroy { [session, pushLease] in
-      pushLease.retire()
+    OnDestroy { [sessionOwner] in
+      let session = sessionOwner.retire().session
       session.retireDraftMediaEdits()
       session.retireForModuleDestruction()
       Task {

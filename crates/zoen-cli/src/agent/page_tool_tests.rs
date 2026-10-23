@@ -4,7 +4,7 @@ use client_core::{agent_page_tools as page, AgentPageSnapshot};
 use gate::{Answer, DecisionProvider, DecisionRequest, DecisionResponse, GateError, Question};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-struct Allow;
+pub(super) struct Allow;
 impl DecisionProvider for Allow {
     fn name(&self) -> String {
         "page-agent-offline-fixture".into()

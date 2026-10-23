@@ -7,6 +7,9 @@ impl Engine {
         if action.is_none() {
             return Ok(false);
         }
+        if p.schema == 3 {
+            return self.creation_result(p).map(|result| result.is_some());
+        }
         if p.schema == 2 {
             let intent = crate::agent_pages::approvals::intent(p)?;
             return self
@@ -48,8 +51,11 @@ impl Client {
         }
         // Existing authority is checked before even revealing acceptance metadata.
         e.tool_resolution(predecessor, &r.req.content_hash)?;
-        let (device, owner, space, source) =
-            e.agent_binary_authority(&old.artifact, &old.source, &old.serving, false)?;
+        let (device, owner, space, source) = if old.schema == 3 {
+            e.creation_proposal_authority(old)?
+        } else {
+            e.agent_binary_authority(&old.artifact, &old.source, &old.serving, false)?
+        };
         if device != old.device
             || owner != old.owner
             || space != r.space

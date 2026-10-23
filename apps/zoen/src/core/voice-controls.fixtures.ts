@@ -394,6 +394,7 @@ export function recording(editable = false, platform: 'ios' | 'web' = 'ios') {
     },
     'expo-document-picker': {},
     'expo-audio': {
+      setIsAudioActiveAsync: async (_active: boolean) => {},
       AudioModule: {
         requestRecordingPermissionsAsync: () => {
           ++permissionCalls;

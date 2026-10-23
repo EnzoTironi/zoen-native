@@ -9,6 +9,40 @@ impl Client {
     ) -> Result<String, CoreError> {
         use Command::*;
         match command {
+            SiteRead {
+                scope,
+                item_id,
+                version,
+                expected_sha256,
+            } => encode_site(&self.lock().site_source(
+                &scope,
+                &item_id,
+                version,
+                &expected_sha256,
+            )?),
+            SiteCreate {
+                scope,
+                name,
+                html,
+                mutation_id,
+            } => encode_site(
+                &self
+                    .lock()
+                    .site_create(&scope, &name, &html, &mutation_id)?,
+            ),
+            SiteSave {
+                scope,
+                source,
+                html,
+            } => encode_site(&self.lock().site_save(&scope, &source, &html)?),
+            SiteReview {
+                scope,
+                source,
+                unpublish,
+            } => encode_site(&self.site_review(scope, source, unpublish).await?),
+            SiteStatus { scope, source } => encode_site(&self.site_status(scope, source).await?),
+            SitePrepare { review } => encode_site(&self.site_prepare(review).await?),
+            SitePublish { review } => encode_site(&self.site_publish(review).await?),
             Search { query } => encode(&self.search(query)),
             SearchMessages {
                 space_id,
@@ -62,6 +96,17 @@ impl Client {
                 encode(&self.page_apply_from(item_id, mutation_id, edit_context, order, changed)?)
             }
             PageCommit { item_id, note } => encode(&self.page_commit(item_id, note)?),
+            PageExportVersion {
+                space_id,
+                item_id,
+                version,
+                observed_hash,
+            } => encode(&self.lock().page_export_version(
+                &space_id,
+                &item_id,
+                version,
+                &observed_hash,
+            )?),
             PageMarkdown { item_id } => encode(&self.page_markdown(item_id)?),
             TogglePlanLine {
                 item_id,

@@ -1,7 +1,5 @@
 use super::super::profile::{AgentKind, Definition, ModelTier};
 use super::*;
-#[cfg(target_os = "linux")]
-use std::os::unix::fs::PermissionsExt;
 
 const FIXTURE: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -101,42 +99,40 @@ async fn immutable_fixture_executes_with_open_case_data_and_keeps_concurrent_cas
 #[cfg(target_os = "linux")]
 #[tokio::test]
 async fn linux_write_open_executable_control_is_busy_until_its_writer_is_closed() {
-    let (dir, mut brain, _) = fixture("version");
-    let control = dir.path().join("write-open-control");
-    std::fs::copy(FIXTURE, &control).unwrap();
-    std::fs::copy(
-        brain.binary.with_extension("json"),
-        control.with_extension("json"),
-    )
-    .unwrap();
-    std::fs::set_permissions(&control, std::fs::Permissions::from_mode(0o700)).unwrap();
-    let writer = std::fs::OpenOptions::new()
-        .write(true)
-        .open(&control)
-        .unwrap();
-    brain.binary = control;
-    let mut c = command(&brain.binary);
-    c.arg("--version")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    let error = match tokio::time::timeout(Duration::from_secs(5), c.output())
-        .await
-        .expect("write-open control exceeded its setup budget")
-    {
-        Err(error) => error,
-        Ok(_) => panic!("Linux must refuse an executable with an open writer"),
-    };
-    // Linux ETXTBSY. This controlled boundary does not identify the historical
-    // CI spawn error, whose kind and errno were not recorded.
-    assert_eq!(
-        error.raw_os_error(),
-        Some(26),
-        "unexpected spawn kind={:?}, errno={:?}",
-        error.kind(),
-        error.raw_os_error()
-    );
-    drop(writer);
-    assert_eq!(fixture_version(&brain).await, "codex-cli 0.162.0\n");
+    async fn isolated_control(directory: &std::path::Path) -> Value {
+        // The test pool never owns an executable writer: unrelated parallel
+        // process spawns cannot inherit one between fork and exec.
+        let mut child = tokio::process::Command::new("python3");
+        child
+            .arg(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tests/fixtures/executable_write_control.py"
+            ))
+            .arg(FIXTURE)
+            .arg(directory)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .kill_on_drop(true);
+        let output = tokio::time::timeout(Duration::from_secs(5), child.output())
+            .await
+            .expect("isolated Linux control exceeded its setup budget")
+            .expect("isolated Linux control failed to spawn");
+        assert!(output.status.success(), "isolated Linux control failed");
+        serde_json::from_slice(&output.stdout).expect("invalid Linux control result")
+    }
+    let a = tempfile::tempdir().unwrap();
+    let b = tempfile::tempdir().unwrap();
+    let original = std::fs::read(FIXTURE).unwrap();
+    let (a_result, b_result) = tokio::join!(isolated_control(a.path()), isolated_control(b.path()));
+    let expected = json!({
+        "busy_errno": 26,
+        "inherited_errno": 26,
+        "version": "codex-cli 0.162.0\n"
+    });
+    assert_eq!(a_result, expected);
+    assert_eq!(b_result, expected);
+    assert_eq!(std::fs::read(FIXTURE).unwrap(), original);
 }
 
 fn definition() -> Definition {

@@ -4,6 +4,7 @@ mod failure_cuts;
 mod financial;
 mod http;
 mod journeys;
+mod managed_custody;
 mod retained;
 mod stores;
 use super::*;

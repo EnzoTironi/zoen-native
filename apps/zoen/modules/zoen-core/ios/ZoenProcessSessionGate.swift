@@ -27,6 +27,7 @@ actor ZoenProcessSessionGate<Session: AnyObject & Sendable> {
     let background: Bool
     var ready: Bool
     var quarantined = false
+    var retained = false
   }
   private struct Selection: Sendable {
     let id: UUID
@@ -41,6 +42,7 @@ actor ZoenProcessSessionGate<Session: AnyObject & Sendable> {
   private var wake: Task<ZoenPushResult, Error>?
   private var wakeID: UUID?
   private var wakeCancellation: ZoenModuleSessionLease?
+  private var wakePinnedForCall = false
   private var finishes: [UUID: Int] = [:]
   private var finishWaiters: [UUID: [CheckedContinuation<Void, Never>]] = [:]
 
@@ -145,15 +147,78 @@ actor ZoenProcessSessionGate<Session: AnyObject & Sendable> {
     else { current = nil }
   }
 
-  private func cancelWake() { wakeCancellation?.retire(); wake?.cancel() }
-  func becameActive() { cancelWake() }
+  private func cancelWake(preservingCall: Bool = false) {
+    if preservingCall && wakePinnedForCall { return }
+    wakeCancellation?.retire(); wake?.cancel()
+  }
+  func becameActive() { cancelWake(preservingCall: true) }
+
+  /// Called only after a canonical incoming invitation has been found, before
+  /// system presentation. It preserves the existing OS deadline, not a new budget.
+  func preserveWakeForCall(session: Session, lease: ZoenPushWakeLease) -> Bool {
+    guard let entry = current, entry.background, entry.session === session,
+          entry.lease === lease.parent, lease.isLive, wake != nil,
+          wakeCancellation === lease.work else { return false }
+    wakePinnedForCall = true
+    return true
+  }
+
+  /// A foreground module may adopt a cold native call's exact session and lease.
+  /// It must not reopen the database or retire the live media port. Other module
+  /// replacement and failed-retirement rules remain on the ordinary open path.
+  func openAdoptingRetained<T: Sendable>(
+    owner: ZoenModuleSessionOwner<Session>, allowed: Bool,
+    operation: @escaping @Sendable (Session, ZoenModuleSessionLease, Bool) async throws -> T
+  ) async throws -> T {
+    cancelWake(preservingCall: allowed)
+    return try await serialized {
+      let original = owner.current
+      guard original.lease.isLive else { throw ZoenPushGateError.retired }
+      if allowed, let entry = await self.retainedEntry(),
+         owner.adopt(.init(session: entry.session, lease: entry.lease), replacing: original) {
+        guard await self.adopted(entry.id) else { throw ZoenPushGateError.retired }
+        return try await operation(entry.session, entry.lease, true)
+      }
+      return try await self.openNow(session: original.session, lease: original.lease) {
+        try await operation(original.session, original.lease, false)
+      }
+    }
+  }
+
+  private func retainedEntry() -> Entry? {
+    guard let entry = current, entry.background, entry.retained, entry.ready,
+          !entry.quarantined, entry.lease.isLive else { return nil }
+    return entry
+  }
+  private func adopted(_ id: UUID) -> Bool {
+    guard current?.id == id, current?.lease.isLive == true, current?.retained == true else { return false }
+    current = current.map { entry in
+      var next = Entry(id: entry.id, session: entry.session, lease: entry.lease, background: false, ready: true)
+      next.quarantined = entry.quarantined
+      return next
+    }
+    return true
+  }
+
+  /// Completion is ignored after foreground adoption. An old native completion
+  /// cannot close a module that now owns the call or a replacement account.
+  func releaseRetained(session: Session, lease: ZoenModuleSessionLease) async {
+    _ = try? await serialized {
+      try await self.releaseRetainedNow(session: session, lease: lease)
+    }
+  }
+  private func releaseRetainedNow(session: Session, lease: ZoenModuleSessionLease) async throws {
+    guard let entry = retainedEntry(), entry.session === session, entry.lease === lease else { return }
+    try await retireCold(entry)
+  }
 
   /// A duplicate shares no new budget or engine and needs no pending callback queue.
   func runWake(
     make: @escaping @Sendable () -> Session,
+    retain: @escaping @Sendable (Session) async -> Bool = { _ in false },
     operation: @escaping @Sendable (Session, Bool, ZoenPushWakeLease) async throws -> ZoenPushResult
   ) async -> ZoenPushResult {
-    await admitWake(expected: nil, make: make, operation: operation)
+    await admitWake(expected: nil, make: make, retain: retain, operation: operation)
   }
 
   /// A bridge callback borrows only its own already-open module generation. It
@@ -164,7 +229,7 @@ actor ZoenProcessSessionGate<Session: AnyObject & Sendable> {
   ) async -> ZoenPushResult {
     guard let entry = current, entry.session === session, entry.lease === lease,
           lease.isLive, entry.ready, !entry.background, !entry.quarantined else { return .noData }
-    return await admitWake(expected: Selection(id: entry.id, session: session, lease: lease), make: { session }, operation: operation)
+    return await admitWake(expected: Selection(id: entry.id, session: session, lease: lease), make: { session }, retain: { _ in false }, operation: operation)
   }
 
   private func matches(_ expected: Selection) -> Bool {
@@ -174,18 +239,20 @@ actor ZoenProcessSessionGate<Session: AnyObject & Sendable> {
 
   private func admitWake(
     expected: Selection?, make: @escaping @Sendable () -> Session,
+    retain: @escaping @Sendable (Session) async -> Bool,
     operation: @escaping @Sendable (Session, Bool, ZoenPushWakeLease) async throws -> ZoenPushResult
   ) async -> ZoenPushResult {
-    guard wake == nil else { return .noData }
+    guard wake == nil, current?.retained != true else { return .noData }
     let id = UUID()
     let admission = ZoenModuleSessionLease()
-    let task = Task { try await self.serialized { try await self.wakeNow(expected: expected, make: make, admission: admission, operation: operation) } }
+    let task = Task { try await self.serialized { try await self.wakeNow(expected: expected, make: make, admission: admission, retain: retain, operation: operation) } }
     wakeID = id
     wakeCancellation = admission
+    wakePinnedForCall = false
     wake = task
     let result = await withTaskCancellationHandler { await task.result } onCancel: { admission.retire(); task.cancel() }
     admission.retire()
-    if wakeID == id { wake = nil; wakeID = nil; wakeCancellation = nil }
+    if wakeID == id { wake = nil; wakeID = nil; wakeCancellation = nil; wakePinnedForCall = false }
     switch result { case .success(let value): return value; case .failure: return .failed }
   }
 
@@ -204,6 +271,7 @@ actor ZoenProcessSessionGate<Session: AnyObject & Sendable> {
   private func wakeNow(
     expected: Selection?, make: @Sendable () -> Session,
     admission: ZoenModuleSessionLease,
+    retain: @Sendable (Session) async -> Bool,
     operation: @Sendable (Session, Bool, ZoenPushWakeLease) async throws -> ZoenPushResult
   ) async throws -> ZoenPushResult {
     try Task.checkCancellation()
@@ -223,7 +291,13 @@ actor ZoenProcessSessionGate<Session: AnyObject & Sendable> {
       let value = try await operation(entry.session, cold, ZoenPushWakeLease(parent: entry.lease, work: admission))
       try Task.checkCancellation()
       guard entry.lease.isLive, admission.isLive else { throw ZoenPushGateError.retired }
-      if cold { try await retireCold(entry) }
+      if cold {
+        let keep = await retain(entry.session)
+        try Task.checkCancellation()
+        guard entry.lease.isLive, admission.isLive, current?.id == entry.id else { throw ZoenPushGateError.retired }
+        if keep, entry.background { current?.ready = true; current?.retained = true }
+        else { try await retireCold(entry) }
+      }
       return value
     } catch {
       if cold, current?.id == entry.id, current?.quarantined != true {

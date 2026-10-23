@@ -174,3 +174,5 @@ mod admission;
 mod collaborative_edits;
 mod journal_recovery;
 mod publication;
+
+mod version_exports;
