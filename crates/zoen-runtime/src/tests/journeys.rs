@@ -1,5 +1,6 @@
 use super::*;
 pub(super) async fn run() {
+    managed_custody::run().await;
     Box::pin(retained::run()).await;
     Box::pin(retained::output::run()).await;
     stores::native_device_custody().await;
