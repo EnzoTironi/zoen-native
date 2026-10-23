@@ -45,7 +45,7 @@ async fn world() -> World {
     w.policy_digest = w.runtime.install_policy(w.signed.clone()).await.unwrap();
     w
 }
-async fn task(w: &World) -> (VerifiedStep, ImageTask) {
+async fn image_task(w: &World) -> (VerifiedStep, ImageTask) {
     let mut step = w.step(0).await;
     let VerifiedStep::Fixture(fixture) = &mut step else {
         panic!("controlled scope only")
@@ -173,7 +173,7 @@ impl ImageAttemptAdapter for Provider {
 }
 pub(super) async fn run() {
     let mut w = world().await;
-    let (step, task) = task(&w).await;
+    let (step, task) = image_task(&w).await;
     native::testing::seed_association_fixture(&w.runtime, &task).await;
     w.runtime.fault.store(40, Ordering::SeqCst); // suppress association before evidence succeeds
     let provider = Provider {
@@ -303,7 +303,7 @@ pub(super) async fn run() {
     w.finish().await;
 
     let w = world().await;
-    let (step, task) = task(&w).await;
+    let (step, task) = image_task(&w).await;
     let provider = Provider {
         result: result(&task, false),
         task: task.clone(),
