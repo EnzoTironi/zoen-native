@@ -247,6 +247,7 @@ impl Finance {
         Ok(())
     }
     pub async fn claim(&self, b: &Binding) -> Result<Option<FreshClaim>, RuntimeError> {
+        let digest = b.digest()?;
         let mut tx = self.begin().await?;
         Self::directory(&mut tx, b).await?;
         let balance = Self::lock_period(&mut tx, b, false).await?;
@@ -263,7 +264,7 @@ impl Finance {
             "SELECT 1 FROM runtime_attempts WHERE attempt=$1 AND binding_digest=$2",
         )
         .bind(&b.context.attempt_id)
-        .bind(b.digest()?)
+        .bind(&digest)
         .fetch_optional(&mut *tx)
         .await?;
         if exact.is_none() {
@@ -295,7 +296,7 @@ impl Finance {
         Ok(new.then(|| FreshClaim {
             attempt: b.context.attempt_id.clone(),
             nonce,
-            binding: b.digest().expect("validated binding"),
+            binding: digest,
         }))
     }
     pub async fn guard(

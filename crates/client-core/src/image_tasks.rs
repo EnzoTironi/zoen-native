@@ -132,6 +132,9 @@ pub(crate) fn matches(state: &State, req: &AgentRequest, space: &str) -> bool {
     else {
         return false;
     };
+    let Ok(task_bytes) = serde_json::to_vec(&(REVISION, space, &req.agent, &p.source)) else {
+        return false;
+    };
     req.proposal.is_none()
         && req.item.is_none()
         && req.line.is_none()
@@ -143,10 +146,7 @@ pub(crate) fn matches(state: &State, req: &AgentRequest, space: &str) -> bool {
         && !state.items.contains_key(&p.artifact)
         && source_sha == p.source_sha256
         && req.tool_proposal_hash(space).as_deref() == Some(req.content_hash.as_str())
-        && p.task_sha256
-            == sha(
-                &serde_json::to_vec(&(REVISION, space, &req.agent, &p.source)).unwrap_or_default(),
-            )
+        && p.task_sha256 == sha(&task_bytes)
         && ask
             == json!({"version":1,"operation":"generate_image","agent":req.agent,"device":p.device,
             "owner":p.owner,"space":space,"source":p.source,"inbound_sha256":inbound_sha})
@@ -274,13 +274,11 @@ impl Engine {
             &json!({"version":1,"operation":"generate_image","agent":actor,
             "device":proposal.device,"owner":proposal.owner,"space":space,"source":source,"inbound_sha256":inbound_sha}),
         )?;
-        if let Some(old) = e.state.requests.values().find(|r| {
-            r.req
-                .tool_proposal
-                .as_ref()
-                .is_some_and(|p| p.schema == SCHEMA && p.task_sha256 == task)
+        if let Some((old, signed)) = e.state.requests.values().find_map(|r| {
+            let signed = r.req.tool_proposal.as_ref()?;
+            (signed.schema == SCHEMA && signed.task_sha256 == task).then_some((r, signed))
         }) {
-            proposal.expires_at_ms = old.req.tool_proposal.as_ref().unwrap().expires_at_ms;
+            proposal.expires_at_ms = signed.expires_at_ms;
             if old.req.tool_proposal.as_deref() != Some(&proposal) {
                 return Err(denied());
             }
