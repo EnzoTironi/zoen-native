@@ -229,7 +229,7 @@ pub fn metrics_router(state: Shared) -> Router {
 }
 
 pub async fn build(cfg: &Config) -> anyhow::Result<(Router, Shared)> {
-    build_with_managed(cfg, managed_devices::ManagedDevices::default()).await
+    build_with_managed(cfg, managed_devices::ManagedDevices::from_env()?).await
 }
 
 /// Operator-only configured registry, retained outside SQL/FDB restore state.
@@ -331,7 +331,7 @@ const SOCKET_BUFFER: usize = 8 * 1024;
 
 /// Runs until Ctrl-C / SIGTERM.
 pub async fn serve(cfg: Config) -> anyhow::Result<()> {
-    serve_with_managed(cfg, managed_devices::ManagedDevices::default()).await
+    serve_with_managed(cfg, managed_devices::ManagedDevices::from_env()?).await
 }
 
 /// The operator supplies private locators; no environment or caller path adoption.

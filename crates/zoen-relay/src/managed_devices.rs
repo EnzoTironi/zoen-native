@@ -1,5 +1,8 @@
 //! Operator-only single-host managed device bindings, outside restored SQL/FDB.
 //! Nothing in a client request can select a directory, witness or deployment.
+mod config;
+pub use config::CONFIG_ENV;
+
 use relay_admission::managed_images::{AnchorReader, Checkpoint, Deployment, GenerationGuard};
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
@@ -23,7 +26,8 @@ impl ManagedDevices {
         let mut namespaces = std::collections::BTreeSet::new();
         for (deployment, directory) in configured {
             anyhow::ensure!(
-                protocol::runtime_binding::valid_namespace(&deployment.namespace)
+                directory.is_absolute()
+                    && protocol::runtime_binding::valid_namespace(&deployment.namespace)
                     && protocol::runtime_binding::valid_namespace(&deployment.source)
                     && deployment.device.len() == 64
                     && deployment
