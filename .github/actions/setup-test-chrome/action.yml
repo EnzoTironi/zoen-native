@@ -1,0 +1,21 @@
+name: Pinned Chrome for Testing
+description: Install one verified Linux browser and qualify its owned startup before renderer tests.
+runs:
+  using: composite
+  steps:
+    - name: Verify browser selection and setup contracts
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: |
+        python3 -m unittest discover -s "$GITHUB_ACTION_PATH" -p 'test_*.py' -v
+        node --test "$GITHUB_ACTION_PATH/preflight.test.mjs" miniapps/excalidraw-ui/test/browser-discovery.test.mjs
+    - name: Install the pinned browser and its scoped namespace policy
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: python3 "$GITHUB_ACTION_PATH/install.py"
+    - name: Verify browser version and an owned DevTools startup
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      # 2s version + 10s startup/protocol + bounded diagnostics/cleanup. This wall
+      # also fails a wedged Node/stdio/filesystem teardown; it never admits an App.
+      run: timeout --signal=TERM --kill-after=2s 20s node "$GITHUB_ACTION_PATH/preflight.mjs"

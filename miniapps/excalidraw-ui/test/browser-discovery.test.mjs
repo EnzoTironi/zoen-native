@@ -124,7 +124,7 @@ test("missing browsers fail in CI but permit an explicit local skip", async () =
   for (const env of [{ CI: "true" }, { CI: "1" }, { GITHUB_ACTIONS: "true", CI: "false" }]) {
     await assert.rejects(
       findBrowserExecutable({ platform: "linux", env, canExecute: available() }),
-      /required for CI renderer tests/,
+      /CI renderer tests require an absolute CHROME_BIN/,
     );
   }
   for (const env of [{}, { CI: "false" }, { CI: "0" }]) {
@@ -133,4 +133,36 @@ test("missing browsers fail in CI but permit an explicit local skip", async () =
       null,
     );
   }
+});
+
+test("CI cannot fall back to an installed or PATH browser when the pin is absent", async () => {
+  for (const CHROME_BIN of [undefined, "", "google-chrome"]) {
+    await assert.rejects(
+      findBrowserExecutable({
+        platform: "linux",
+        env: { CI: "true", CHROME_BIN, PATH: "/synthetic/bin" },
+        canExecute: available("/usr/bin/google-chrome", "/synthetic/bin/google-chrome"),
+      }),
+      /CI renderer tests require an absolute CHROME_BIN/,
+    );
+  }
+});
+
+test("CI uses the explicit executable and refuses a missing pin without fallback", async () => {
+  assert.equal(
+    await findBrowserExecutable({
+      platform: "linux",
+      env: { CI: "true", CHROME_BIN: "/owned/chrome" },
+      canExecute: available("/owned/chrome", "/usr/bin/google-chrome"),
+    }),
+    "/owned/chrome",
+  );
+  await assert.rejects(
+    findBrowserExecutable({
+      platform: "linux",
+      env: { CI: "true", CHROME_BIN: "/missing/chrome" },
+      canExecute: available("/usr/bin/google-chrome"),
+    }),
+    /CHROME_BIN is not an executable browser file/,
+  );
 });
