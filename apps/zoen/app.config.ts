@@ -4,9 +4,19 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { androidFcmBuildConfiguration } from './src/notifications/build-config.ts';
 import { ANDROID_MESSAGE_CHANNEL } from './src/notifications/configuration.ts';
+import {
+  iosPushBuildConfiguration,
+  notificationPluginOptions,
+} from './src/notifications/ios-build-config.ts';
 
 /** Public provider identifiers only. Provider secrets belong to the relay. */
 export default ({ config, projectRoot }: ConfigContext): ExpoConfig => {
+  const iosPush = iosPushBuildConfiguration(
+    config.extra?.zoenPush?.enabled === true,
+    config.extra?.zoenPush,
+    config.ios?.bundleIdentifier,
+    config.ios?.entitlements?.['aps-environment'],
+  );
   const androidFcmEnabled = process.env.ZOEN_ANDROID_FCM_ENABLED === 'true';
   const googleServicesFile =
     process.env.ZOEN_ANDROID_GOOGLE_SERVICES_FILE?.trim() || config.android?.googleServicesFile;
@@ -41,24 +51,51 @@ export default ({ config, projectRoot }: ConfigContext): ExpoConfig => {
       { iosUrlScheme: `com.googleusercontent.apps.${googleIosClientId.slice(0, -suffix.length)}` },
     ]);
   }
-  if (
-    androidPush &&
-    !plugins.some((plugin) => (Array.isArray(plugin) ? plugin[0] : plugin) === 'expo-notifications')
-  ) {
-    plugins.push([
+  const notificationPlugins = plugins.filter(
+    (plugin) => (Array.isArray(plugin) ? plugin[0] : plugin) === 'expo-notifications',
+  );
+  if (notificationPlugins.length > 1) throw new Error('Duplicate notifications build plugin.');
+  if (iosPush || androidPush || notificationPlugins.length) {
+    const existing = notificationPlugins[0];
+    const options = Array.isArray(existing) ? existing[1] : {};
+    if (
+      options !== undefined &&
+      (options === null || typeof options !== 'object' || Array.isArray(options))
+    )
+      throw new Error('Invalid notifications build plugin options.');
+    const configured = [
       'expo-notifications',
-      {
-        defaultChannel: ANDROID_MESSAGE_CHANNEL,
-        enableRemoteNotifications: config.extra?.zoenPush?.enabled === true,
-        enableBackgroundRemoteNotifications: false,
-      },
-    ]);
+      notificationPluginOptions(
+        options ?? {},
+        iosPush,
+        androidPush ? ANDROID_MESSAGE_CHANNEL : undefined,
+      ),
+    ] as [string, Record<string, unknown>];
+    if (existing) plugins.splice(plugins.indexOf(existing), 1, configured);
+    else plugins.push(configured);
   }
   return {
     ...config,
     name: config.name ?? 'Zoen',
     slug: config.slug ?? 'zoen',
     plugins,
+    ios: {
+      ...config.ios,
+      ...(iosPush
+        ? {
+            entitlements: {
+              ...config.ios?.entitlements,
+              'aps-environment': iosPush.environment === 'sandbox' ? 'development' : 'production',
+            },
+          }
+        : {}),
+      infoPlist: {
+        ...config.ios?.infoPlist,
+        ZoenRemoteNotificationsEnabled: iosPush !== null,
+        ZoenPushEnvironment: iosPush?.environment ?? '',
+        ZoenPushTopic: iosPush?.topic ?? '',
+      },
+    },
     ...(androidPush ? { android: { ...config.android, googleServicesFile } } : {}),
     extra: {
       ...config.extra,

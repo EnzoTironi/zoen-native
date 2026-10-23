@@ -80,8 +80,13 @@ The online CLI group command now requires actual settled sync before printing su
 Explicit `--offline` still creates and queues a local group for later synchronization. An
 empty event outbox is insufficient while a claim, scheduled MLS retry, commit/Welcome,
 recovery upload, or queued recovery check is unfinished. The default CLI deadline remains eight seconds;
-expiration returns a failure and preserves local work. Public Apple/Android idle-wait
-ABI behavior is unchanged; the stricter CLI method is Rust-only.
+expiration returns a failure and preserves local work. The existing public idle-wait
+behavior remains unchanged. The iOS content-free wake adapter also needs the same
+strict completion contract: `wait_until_settled` is exposed through the existing
+async UniFFI implementation without a second predicate or completion DTO. This
+adds a binding/checksum change; matching generated bindings and a new native build
+are required before that adapter can be qualified. It is not an atomic projection
+snapshot or a guarantee that iOS grants background execution.
 
 Recovery checks now use a separate set of groups awaiting work. An idle maintenance tick
 returns before reading group storage. Startup and changes to group state, claim results,

@@ -24,6 +24,45 @@ The environment must match the signed entitlement; it is never inferred from
 `__DEV__`. The CNG notifications plugin, valid signing and provider credentials
 are separate requirements. No token or key is printed or returned by this UI.
 
+## iOS configuration and native wake
+
+The same explicit `extra.zoenPush` opt-in configures the SDK58 notifications
+plugin with `enableRemoteNotifications` and
+`enableBackgroundRemoteNotifications`. The topic must equal the iOS bundle ID.
+Sandbox maps to the `development` entitlement; production maps to `production`.
+A conflicting existing entitlement is refused. iOS configuration does not depend
+on Android FCM configuration. Public Info.plist flags independently gate the
+native subscriber; disabling the opt-in clears those flags on the next CNG build.
+
+`ZoenPushDelegate` receives the content-free OS callback without starting a
+TaskManager/headless JavaScript runtime. A process transition gate borrows the
+existing module's `ZoenSession`, or opens one temporary session only after the
+previous owner has closed. A cold wake requires an existing account database,
+existing vault keys and a registered account. It never creates an identity,
+resumes provider setup or imports an owner's keys. An unreadable/locked keychain
+after boot is a refusal; AfterFirstUnlockThisDeviceOnly remains unchanged.
+
+The callback has an eight-second whole-work ceiling, shortened by OS expiry.
+Duplicates receive no new engine or extended budget. Foreground open, module
+destruction, account replacement and cancellation retire late work. A failed
+close quarantines the sole owner rather than opening a second Client against the
+same journal. System completion and background-task cleanup each occur once.
+The OS can deny or terminate the window; completion is not delivery assurance.
+
+Sync uses the existing strict `wait_until_settled` predicate and only the time
+remaining from callback admission. It does not treat online/empty outbox as MLS
+completion. A cold baseline is captured after unlocking and before sync; a warm
+baseline comes from the last authenticated snapshot observed by the foreground
+session. The same current-account, membership, mute and archive checks produce
+the same local identifiers as JavaScript. The native adapter rechecks scope and
+the projection around asynchronous OS writes and removes its note if retired.
+These checks are observations, not an atomic transaction with Notification Center.
+
+This source requires genuine regenerated UniFFI bindings/checksums and a new
+native build. Model/config/backend tests are distinct from physical-device
+APNs registration, locked/background/cold delivery and navigation acceptance.
+No provider credentials or device delivery are established by this change.
+
 ## Android configuration
 
 Android has its own build opt-in. Download the public Firebase client
@@ -69,10 +108,10 @@ or show untrusted remote message text. `decodeWake` bounds the input and keeps
 the entire UInt64 cursor exact. JavaScript object input has already lost lexical
 JSON integer-vs-float information; strict raw APNs type validation still belongs
 at the native boundary. Rust sync remains responsible for account, membership,
-log and decryption validation. Currently the running app refreshes its existing
-Rust projection on a valid wake. Headless background delivery still needs a safe
-native single-session sync entry point and TaskManager integration; starting a
-second JS-owned engine is deliberately avoided.
+log and decryption validation. The running JavaScript adapter refreshes its
+existing Rust projection on a valid wake. The iOS native subscriber above uses
+the same session ownership boundary when React is absent; Android background
+execution remains a separate qualification boundary.
 
 The native FCM sender's complete data payload is `{wake:"1"}`; it has no APNs
 `aps` object, content or cursor. Expo58 exposes Android data in
@@ -99,6 +138,20 @@ invalidation, bounded retries and safe navigation; they do not prove APNs delive
 Android-specific cases in `src/core/notifications-android.test.ts` cover the
 explicit build opt-in, actual SDK event shape, backend token bounds, channel order,
 serialized rotations and stale callbacks. They do not prove FCM delivery.
+`native-push-wake.test.ts` prepares shared JavaScript/native presentation vectors
+and a Foundation-only Swift ownership/payload model harness;
+`notifications-ios-build.test.ts` exercises actual CNG configuration. Neither
+harness compiles the UIKit/Core adapter or establishes physical push delivery.
+
+The relay attempts content-free wakes for all currently authorized recipient
+devices except the author, including an identity whose sibling has a live WS.
+Presence does not prove another device executed the event. Existing whole-job
+admission remains capped at 32 concurrent jobs, including lookup and provider
+work; overload still drops best-effort wakes before allocation/spawn. No new
+retry or delivery queue is added. Provider attempts can increase from only
+offline identities to every registered recipient device; throughput and cost
+must be measured with deployment traffic. Aggregate attempt counts omit device
+IDs, tokens and provider error strings, and are not APNs/FCM delivery receipts.
 
 References: [Expo SDK58 Notifications](https://docs.expo.dev/versions/v58.0.0/sdk/notifications/),
 [Firebase client configuration](https://docs.expo.dev/push-notifications/fcm-credentials/).
