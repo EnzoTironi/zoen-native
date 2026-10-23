@@ -95,8 +95,10 @@ def compiler_inputs(root, directories):
             continue
         seen.add(path)
         text = path.read_text(encoding="utf-8")
-        for match in re.finditer(r"\binclude(?:_str|_bytes)?!\s*\(", text):
-            argument = re.match(r'\s*("(?:\\.|[^"\\])*")\s*\)', text[match.end():])
+        for match in re.finditer(r"\binclude(?:_str|_bytes)?\b(?=\s*(?:!|/\*|//))", text):
+            # Whitespace before ! is valid Rust. Unrecognised delimiters or
+            # comments are conservative fallback, never an invisible input.
+            argument = re.match(r'\s*!\s*\(\s*("(?:\\.|[^"\\])*")\s*\)', text[match.end():])
             if not argument:
                 raise ValueError("Dynamic or unknown compiler include")
             target = inside(root, path.parent / json.loads(argument[1]))

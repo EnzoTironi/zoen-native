@@ -177,11 +177,15 @@ class ScopeTests(unittest.TestCase):
         self.assertTrue(result["run_client"] and result["run_release_web"], result)
 
     def test_literal_foreign_compiler_or_js_reader_cannot_be_hidden_by_metadata(self):
-        self.repo.write(PACKAGES["client-core"] + "/src/lib.rs",
-                        'const SOURCE: &str = include_str!("../../../services/relay/src/lib.rs");\n')
-        self.repo.base = self.repo.commit("compiler consumer baseline")
-        self.repo.change()
-        self.verified_full(self.repo.classify())
+        for index, spacing in enumerate(["", " ", "\n  "]):
+            with self.subTest(spacing=spacing):
+                self.repo.write(PACKAGES["client-core"] + "/src/lib.rs",
+                                'const SOURCE: &str = include_str' + spacing +
+                                '!("../../../services/relay/src/lib.rs");\n')
+                self.repo.base = self.repo.commit("compiler consumer baseline")
+                self.repo.write(PACKAGES["zoen-relay"] + "/src/lib.rs", f"pub fn changed_{index}() {{}}\n")
+                self.repo.commit("Relay change")
+                self.verified_full(self.repo.classify())
         self.repo.write(PACKAGES["client-core"] + "/src/lib.rs", "pub fn original() {}\n")
         self.repo.write("apps/zoen/src/reader.ts", "readFile('services/relay/src/lib.rs');\n")
         self.repo.base = self.repo.commit("JS consumer baseline")
@@ -190,7 +194,8 @@ class ScopeTests(unittest.TestCase):
         self.verified_full(self.repo.classify())
 
     def test_dynamic_include_and_missing_input_fall_back_without_compilation(self):
-        for text in ['include_str!(concat!("a", "b"));', 'include_str!("missing.rs");']:
+        for text in ['include_str!(concat!("a", "b"));', 'include_str!("missing.rs");',
+                     'include_str /* comment */ !("file.rs");', 'include_str!["file.rs"];']:
             with self.subTest(text=text):
                 self.repo.write(PACKAGES["client-core"] + "/src/lib.rs", text)
                 self.repo.base = self.repo.commit("unmodelled input baseline")
