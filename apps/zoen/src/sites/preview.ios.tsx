@@ -3,9 +3,9 @@ import { Text, type ViewProps } from 'react-native';
 import ZoenCore from '../../modules/zoen-core/src/ZoenCoreModule';
 import { t } from '../i18n/index.ts';
 import { useTheme } from '../theme';
-type Props = { html: string; ownerKey: string; active: boolean };
+import type { SitePreviewProps as Props } from './preview';
 const Preview =
-  ZoenCore?.sitePreviewVersion === 1
+  (ZoenCore?.sitePreviewVersion ?? 0) >= 1
     ? requireNativeView<Props & ViewProps>('ZoenCore', 'SitePreview')
     : null;
 export function SitePreview(props: Props) {

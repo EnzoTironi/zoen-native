@@ -261,11 +261,16 @@ impl Drop for Net {
     }
 }
 
+#[derive(Clone)]
 pub struct RequestHandle {
     cmd: mpsc::UnboundedSender<Cmd>,
 }
 
 impl RequestHandle {
+    pub(crate) fn same_channel(&self, other: &Self) -> bool {
+        self.cmd.same_channel(&other.cmd)
+    }
+
     pub async fn send(self, op: Op) -> Result<Reply, String> {
         let (tx, rx) = oneshot::channel();
         self.cmd
