@@ -286,7 +286,7 @@ fn absent_invalid_incomplete_or_differential_usage_keeps_cost_unknown_and_reserv
             11 => r.evidence.body = vec![b'x'; 65537],
             20 => raw(&mut r, |v| v["usage"] = Value::Null),
             21 => raw(&mut r, |v| v["usage"]["input_tokens"] = 6.into()),
-            12 | 13 | 14 | 15 => {
+            12..=15 => {
                 let UsageEvidence::Reported(ref mut u) = r.receipt.usage else {
                     unreachable!()
                 };
