@@ -119,6 +119,19 @@ impl Fixture {
             )
             .unwrap(),
         );
+        if let Some(directory) = &managed_directory {
+            let deployment = world
+                .runtime
+                .configured_image_deployment(&actor.identity, &device)
+                .await
+                .unwrap();
+            let registry = zoen_relay::managed_devices::ManagedDevices::open([(
+                deployment,
+                directory.0.clone(),
+            )])
+            .unwrap();
+            log.configure_managed_devices(registry).unwrap();
+        }
         let mut store = Store::open(":memory:").unwrap();
         mls::migrate(store.conn_mut()).unwrap();
         let mut fixture = Self {

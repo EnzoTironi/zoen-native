@@ -12,12 +12,12 @@ pub(super) struct Snapshot {
 
 async fn sql_digest(f: &Fixture) -> String {
     let mut transaction = f.world.runtime.finance.pool.begin().await.unwrap();
-    sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+    sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
         .execute(&mut *transaction)
         .await
         .unwrap();
     let tables: Vec<String> = sqlx::query_scalar(
-        "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename",
+        "SELECT tablename::TEXT FROM pg_tables WHERE schemaname='public' ORDER BY tablename",
     )
     .fetch_all(&mut *transaction)
     .await
