@@ -1,7 +1,7 @@
 //! Actual certified directory, OpenMLS leaves and relay-owned FDB log. Fixture
 //! custody is explicit; this does not provision a production vault or WS host.
 mod admission;
-mod image_tasks;
+pub(super) mod image_tasks;
 mod managed;
 pub(super) mod output;
 use super::*;
