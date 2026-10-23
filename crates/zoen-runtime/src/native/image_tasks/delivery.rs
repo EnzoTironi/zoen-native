@@ -10,11 +10,11 @@ use types::Seen;
 
 /// Operator routing, not a permission. The source cell and authenticated
 /// Challenge must match it before any artifact bytes leave custody.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ImageDeliveryTarget {
-    pub(super) url: String,
-    pub(super) relay: String,
-    pub(super) source: String,
+    pub(crate) url: String,
+    pub(crate) relay: String,
+    pub(crate) source: String,
 }
 impl ImageDeliveryTarget {
     pub fn configured(url: String, relay: String, source: String) -> Result<Self, RuntimeError> {
@@ -39,7 +39,7 @@ pub enum ImageDeliveryProgress {
 struct Delivery<'a> {
     runtime: &'a RuntimeAuthority,
     custody: &'a NativeCustody,
-    capability: &'a FreshOutputNamespace,
+    capability: &'a dyn ImageOutputAuthority,
     credential: &'a Credential,
     fence: &'a Fence,
     run: &'a str,
@@ -72,9 +72,10 @@ impl NativeCustody {
         runtime: &RuntimeAuthority,
         run: &str,
         target: &ImageDeliveryTarget,
-        capability: &FreshOutputNamespace,
+        capability: &dyn ImageOutputAuthority,
     ) -> Result<ImageDeliveryProgress, RuntimeError> {
-        runtime.continuity()?;
+        runtime.image_continuity()?;
+        capability.check_target(target)?;
         let source = runtime.execution.reply_source()?;
         if source.cell() != target.source {
             return Err(RuntimeError::InvalidBinding);
@@ -87,6 +88,7 @@ impl NativeCustody {
             .read_image_task(run, &runtime.custody)
             .await?;
         let principal = record.original.context.principal.clone();
+        capability.check_device(&principal.agent, &principal.device)?;
         let credential = self.credential(&principal.agent, &principal.device)?;
         runtime.execution.collect_native_stage(&principal).await?;
         runtime.execution.collect_native_retired(&principal).await?;

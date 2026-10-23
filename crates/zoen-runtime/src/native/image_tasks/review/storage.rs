@@ -4,7 +4,7 @@ use crate::execution::Execution;
 
 impl Staging<'_> {
     pub(super) async fn snapshot(&self) -> Result<foundationdb::Transaction, RuntimeError> {
-        self.runtime.continuity()?;
+        self.runtime.image_continuity()?;
         let execution = &self.runtime.execution;
         let trx = execution.transaction().await?;
         self.capability.check_in(execution, &trx).await?;
@@ -131,7 +131,7 @@ impl Staging<'_> {
                 .await?;
         }
         admission.consume(&scope)?;
-        self.runtime.continuity()?;
+        self.runtime.image_continuity()?;
         trx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
         if let Some(transition) = transition {
             transition.finish(self.runtime).await?;

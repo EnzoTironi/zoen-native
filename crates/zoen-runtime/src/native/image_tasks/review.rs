@@ -42,8 +42,8 @@ impl RuntimeAuthority {
         {
             return Err(RuntimeError::InvalidBinding);
         }
-        self.continuity()?;
-        let capability = self.production_output_scope()?;
+        self.image_continuity()?;
+        let capability = self.production_image_output_scope()?;
         self.native
             .as_ref()
             .ok_or(RuntimeError::CoreAuthorityUnavailable)?
@@ -113,7 +113,7 @@ impl Review {
 struct Staging<'a> {
     runtime: &'a RuntimeAuthority,
     custody: &'a NativeCustody,
-    capability: &'a FreshOutputNamespace,
+    capability: &'a dyn ImageOutputAuthority,
     credential: &'a Credential,
     fence: &'a crate::execution::Fence,
     key: Vec<u8>,
@@ -131,7 +131,7 @@ impl NativeCustody {
         runtime: &RuntimeAuthority,
         intent: &ImageReviewIntent,
         target: &super::delivery::ImageDeliveryTarget,
-        capability: &FreshOutputNamespace,
+        capability: &dyn ImageOutputAuthority,
     ) -> Result<ImageReviewProgress, RuntimeError> {
         let ImageReviewIntent {
             agent,
@@ -140,7 +140,9 @@ impl NativeCustody {
             source,
             input,
         } = intent;
-        runtime.continuity()?;
+        runtime.image_continuity()?;
+        capability.check_device(agent, device)?;
+        capability.check_target(target)?;
         if runtime.execution.reply_source()?.cell() != target.source {
             return Err(RuntimeError::InvalidBinding);
         }
