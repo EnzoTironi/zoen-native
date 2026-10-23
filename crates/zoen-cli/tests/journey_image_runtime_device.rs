@@ -5,10 +5,12 @@ mod common;
 mod config;
 #[path = "../src/file_vault.rs"]
 mod file_vault;
+#[path = "image_runtime/host_journey.rs"]
+mod host_journey;
 #[path = "../src/image_host/provision.rs"]
 mod provision;
 
-use client_core::SecretVault;
+use client_core::{Client, SecretVault, TrustLevelDto};
 use common::World;
 use std::{path::Path, process::Command, sync::Arc};
 use zoen_runtime::RuntimeAuthority;
@@ -68,7 +70,12 @@ fn dedicated_runtime_and_citizen_open_the_same_source_from_their_own_welcome() {
         let owner = account(&w, "owner")["identity"].as_str().unwrap().to_owned();
         w.zoen("citizen", &["agent-init","--name","Image citizen","--handle","image_citizen","--owner",&owner,"--proof",&proof,"--definition",definition.to_str().unwrap()]);
         let citizen_device = account(&w, "citizen")["device"].as_str().unwrap().to_owned();
+        let provider = host_journey::Provider::start().await;
         let mut value = configuration(&w, &agent);
+        value["image_price"]["endpoint"] = provider.endpoint.clone().into();
+        value["image_price"]["endpoint_policy"] = serde_json::to_value(zoen_runtime::ImageEndpointPolicy::LoopbackFixture).unwrap();
+        value["image_price"]["image"]["max_image_bytes"] = 1_000_000.into();
+        value["image_price"]["max_response_bytes"] = 2_000_000.into();
         let original_config: config::Config = serde_json::from_value(value.clone()).unwrap();
         std::fs::create_dir(&original_config.home).unwrap();
         let vault = Arc::new(file_vault::FileVault { dir: original_config.home.join("vault") });
@@ -95,6 +102,7 @@ fn dedicated_runtime_and_citizen_open_the_same_source_from_their_own_welcome() {
         assert!(vault.save("pg".into(), w.db_url.as_bytes().to_vec()));
         assert!(vault.save("evidence".into(), vec![73;32]));
         assert!(vault.save("chat".into(), b"unpaid-unused-chat-fixture".to_vec()));
+        assert!(vault.save("image".into(), b"unpaid-local-image-fixture".to_vec()));
         let initialize = || Command::new(env!("CARGO_BIN_EXE_zoen-image-host")).arg("--config").arg(&path).arg("initialize").output().unwrap();
         let output = initialize();
         assert!(output.status.success(), "initialize: {}", String::from_utf8_lossy(&output.stderr));
@@ -109,10 +117,27 @@ fn dedicated_runtime_and_citizen_open_the_same_source_from_their_own_welcome() {
         let runtime = RuntimeAuthority::open_with_native_device(config.runtime(&vault).unwrap(), secrets, &agent, &pairing.device, 1).await.unwrap();
         let scan = runtime.sync_reply_runs(&agent, &pairing.device, &space).await.unwrap();
         assert!(scan.caught_up && scan.discovery_complete, "native source did not converge: {scan:?}");
-        assert!(!scan.runs.is_empty(), "Runtime could not decrypt/discover the owner's actual source with its own MLS leaf");
+        assert!(scan.runs.is_empty(), "a source without the owner's grant became executable");
+        // Publish the permission through the actual owner Client and encrypted
+        // conversation. The independent Runtime leaf must open this grant and
+        // a subsequent source; test setup never writes authority rows directly.
+        let owner_client = Client::open(w.dir.join("owner").join("zoen.sqlite").to_string_lossy().into_owned(), "en".into()).unwrap();
+        assert!(owner_client.unlock(Arc::new(file_vault::FileVault { dir: w.dir.join("owner").join("vault") })).unwrap());
+        owner_client.start_sync(None).unwrap();
+        owner_client.wait_until_settled(20_000).await.unwrap();
+        owner_client.set_trust(agent.clone(), space.clone(), TrustLevelDto::Listen).unwrap();
+        owner_client.send_message(space.clone(), "The authorized shared source is a calm sea".into()).unwrap();
+        owner_client.wait_until_settled(20_000).await.unwrap();
+        owner_client.stop_sync();
+        drop(owner_client);
+        assert!(w.zoen("citizen", &["read", "@owner"]).contains("The authorized shared source is a calm sea"));
+        let granted = runtime.sync_reply_runs(&agent, &pairing.device, &space).await.unwrap();
+        assert!(granted.caught_up && granted.discovery_complete, "authorized native source did not converge: {granted:?}");
+        assert!(!granted.runs.is_empty(), "Runtime could not decrypt/discover the owner's actual granted source with its own MLS leaf");
         assert!(!original_config.home.join("zoen.sqlite").exists());
         assert!(!vault.dir.join("zoen.identity.v1").exists());
         assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 0);
+        host_journey::run(&w, &path, &config, runtime, &space, &provider).await;
     });
     drop(executor);
     drop(network);

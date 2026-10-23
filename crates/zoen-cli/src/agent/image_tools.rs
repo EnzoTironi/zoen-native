@@ -68,8 +68,10 @@ async fn execute(command: Command) -> Result<Progress, String> {
         .stderr(Stdio::null())
         .kill_on_drop(true);
     // Local dylib lookup is infrastructure, not content or a provider credential.
-    if let Some(path) = std::env::var_os("DYLD_LIBRARY_PATH") {
-        process.env("DYLD_LIBRARY_PATH", path);
+    for name in ["DYLD_LIBRARY_PATH", "LD_LIBRARY_PATH"] {
+        if let Some(path) = std::env::var_os(name) {
+            process.env(name, path);
+        }
     }
     let mut child = process.spawn().map_err(|_| "image host could not start")?;
     let operation = async {
