@@ -12,6 +12,7 @@ pub mod agent_page_tools;
 mod agent_pages;
 pub use agent_pages::approvals::ApprovedPageTurn;
 pub use agent_pages::{AgentPageDelivery, AgentPageResult, AgentPageSnapshot, AgentPageTurn};
+pub mod agent_app_creation;
 mod agent_definition;
 pub use agent_definition::{
     AgentDefinitionDto, AgentDefinitionPreviewDto, AgentDefinitionUpdateDto,
@@ -151,25 +152,6 @@ impl Client {
         // whichever thread Swift calls from.
         i18n::set(self.lang);
         self.inner.lock().unwrap_or_else(|p| p.into_inner())
-    }
-
-    /// The agent host's `tools/call`, made while answering `serving` (the author of the
-    /// message being replied to). Not exported: only the agent runtime calls it.
-    pub fn agent_call_tool(
-        &self,
-        item_id: &str,
-        tool: &str,
-        args_json: &str,
-        serving: &str,
-    ) -> Result<AppCallOutcome, CoreError> {
-        self.lock()
-            .agent_call_tool(item_id, tool, args_json, serving)
-    }
-
-    /// The mini-app tools the agent host may call in `space` (through
-    /// [`Self::agent_call_tool`]). Not exported.
-    pub fn agent_tools(&self, space: &str) -> Vec<engine::AgentTool> {
-        self.lock().agent_tools(space)
     }
 }
 

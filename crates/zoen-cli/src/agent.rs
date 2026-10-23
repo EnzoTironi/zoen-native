@@ -505,6 +505,10 @@ pub(crate) use codex_brain_tests::exercise_codex_deckcraft;
 mod canonical_tool_approval_tests;
 
 #[cfg(test)]
+#[path = "agent/app_creation_tests.rs"]
+mod app_creation_tests;
+
+#[cfg(test)]
 #[path = "agent/continuation_journal_tests.rs"]
 mod continuation_journal_tests;
 

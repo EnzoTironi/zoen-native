@@ -63,6 +63,9 @@ pub(super) struct ApprovalBinding {
 }
 
 fn parsed(p: &ToolProposal) -> R<(Value, Option<Value>)> {
+    if p.schema == 3 {
+        return crate::agent_app_creation::parsed(p);
+    }
     if p.schema == 2 {
         return crate::agent_pages::approvals::parsed(p);
     }
@@ -144,7 +147,7 @@ pub(crate) fn source_hash(
     Some((sha(&bytes), sha(text.as_bytes())))
 }
 
-fn command_intent(p: &ToolProposal, action: Option<&Value>) -> R<String> {
+pub(crate) fn command_intent(p: &ToolProposal, action: Option<&Value>) -> R<String> {
     Ok(sha(&serde_json::to_vec(&(
         &p.artifact,
         &p.source,
@@ -163,6 +166,7 @@ pub(crate) fn operation(tool: &str) -> String {
     use crate::i18n::t;
     match tool {
         "read_page" => t("Ler página", "Read Page"),
+        "create_deckcraft" => t("Criar apresentação", "Create presentation"),
         "replace_page_block" => t("Substituir bloco da página", "Replace Page block"),
         "read_deckcraft" => t("Ler apresentação", "Read presentation"),
         "deckcraft_text_set" => t("Substituir texto", "Replace shape text"),
