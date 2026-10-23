@@ -9,6 +9,7 @@ import { EmptyState, Loading, NativeButton, Surface } from '../../components/pri
 import { useDialogs } from '../../components/dialogs';
 import { PlanBlocks, PlanVersion } from '../../documents/plan-blocks';
 import { ArtifactDiscussion } from '../../documents/artifact-discussion';
+import { PageVersionExportAction } from '../../documents/page-version-export-action';
 import { PageBlocks } from '../../documents/page-blocks';
 import { clearPlanUndo, rememberPlanUndo, usePlanUndo } from '../../documents/plan-undo';
 import { FileAttachment } from '../../media/MediaAttachment';
@@ -47,6 +48,8 @@ export default function Item() {
     return <Redirect href={{ pathname: '/page/[id]', params: { id } }} />;
   if (item.app && !history)
     return <Redirect href={{ pathname: '/miniapp/[id]', params: { id } }} />;
+  if (item.kind_id === 'file' && item.file?.mime === 'text/html' && !history)
+    return <Redirect href={{ pathname: '/site/[id]', params: { id } }} />;
   const observedItem = item;
   const plan = planRead.data;
   const page = pageRead.data;
@@ -169,6 +172,9 @@ export default function Item() {
                 disabled={busy}
                 onPress={() => setSelected(null)}
               />
+              {pastPage.data && pastPage.data.version === selected && !oldError ? (
+                <PageVersionExportAction page={pastPage.data} />
+              ) : null}
               {canRestore && oldReady ? (
                 <NativeButton
                   label={busy ? t('documents.restoring') : t('documents.restoreThisVersion')}
@@ -196,6 +202,13 @@ export default function Item() {
             <PageBlocks blocks={pastPage.data.blocks} />
           ) : past.data?.plan ? (
             <PlanVersion plan={past.data.plan} />
+          ) : past.data?.file?.mime === 'text/html' ? (
+            <NativeButton
+              label={t('sites.openVersion', { version: selected! })}
+              onPress={() =>
+                router.push({ pathname: '/site/[id]', params: { id, version: String(selected) } })
+              }
+            />
           ) : past.data?.file ? (
             <FileAttachment
               itemId={id}
@@ -288,6 +301,16 @@ export default function Item() {
                 onPress={() => router.push({ pathname: '/miniapp/[id]', params: { id } })}
               />
             </>
+          ) : item.file?.mime === 'text/html' ? (
+            <NativeButton
+              label={t('sites.openVersion', { version: item.version })}
+              onPress={() =>
+                router.push({
+                  pathname: '/site/[id]',
+                  params: { id, version: String(item.version) },
+                })
+              }
+            />
           ) : item.file ? (
             <FileAttachment
               itemId={id}

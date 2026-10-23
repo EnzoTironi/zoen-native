@@ -22,20 +22,35 @@ enum SessionError: Error, LocalizedError {
 }
 
 final class ZoenListener: CoreListener, @unchecked Sendable {
-  private let changed: @Sendable ([String: Any]) -> Void
-  private let resumeHistory: @Sendable () -> Void
-  private let sourceChanged: @Sendable ([String]) -> Void
+  private struct Sinks: Sendable {
+    let changed: @Sendable ([String: Any]) -> Void
+    let sourceChanged: @Sendable ([String]) -> Void
+    let resumeHistory: @Sendable () -> Void
+  }
+  private var sinks: Sinks
   private let connectionLock = NSLock()
   private var wasReady = false
   init(_ changed: @escaping @Sendable ([String: Any]) -> Void, sourceChanged: @escaping @Sendable ([String]) -> Void = { _ in }, resumeHistory: @escaping @Sendable () -> Void = {}) {
-    self.changed = changed
-    self.resumeHistory = resumeHistory
-    self.sourceChanged = sourceChanged
+    sinks = Sinks(changed: changed, sourceChanged: sourceChanged, resumeHistory: resumeHistory)
   }
-  func onChange(spaceIds: [String]) { sourceChanged(spaceIds); changed(["kind": "change", "spaceIds": spaceIds]) }
+  func rebind(_ changed: @escaping @Sendable ([String: Any]) -> Void,
+              sourceChanged: @escaping @Sendable ([String]) -> Void,
+              resumeHistory: @escaping @Sendable () -> Void) {
+    connectionLock.lock(); defer { connectionLock.unlock() }
+    sinks = Sinks(changed: changed, sourceChanged: sourceChanged, resumeHistory: resumeHistory)
+  }
+  private func callbacks() -> Sinks {
+    connectionLock.lock(); defer { connectionLock.unlock() }
+    return sinks
+  }
+  private func changed(_ event: [String: Any]) { callbacks().changed(event) }
+  func onChange(spaceIds: [String]) {
+    let sinks = callbacks()
+    sinks.sourceChanged(spaceIds); sinks.changed(["kind": "change", "spaceIds": spaceIds])
+  }
   func onEphemeral(spaceId: String, fromId: String, kind: String, detail: String) {
     changed(["kind": "ephemeral", "spaceId": spaceId, "fromId": fromId, "type": kind, "detail": detail])
-    if kind == "history_ready", spaceId.isEmpty, detail.isEmpty { resumeHistory() }
+    if kind == "history_ready", spaceId.isEmpty, detail.isEmpty { callbacks().resumeHistory() }
   }
   func onPresence(identityId: String, online: Bool) { changed(["kind": "presence", "identityId": identityId, "online": online]) }
   func onConnection(status: ConnectionDto) {
@@ -45,7 +60,7 @@ final class ZoenListener: CoreListener, @unchecked Sendable {
     wasReady = ready
     connectionLock.unlock()
     changed(["kind": "connection"])
-    if becameReady { resumeHistory() }
+    if becameReady { callbacks().resumeHistory() }
   }
   func onError(message: String) { changed(["kind": "error", "message": message]) }
   func onProfileChanged(identityId: String) { changed(["kind": "profile", "identityId": identityId]) }

@@ -8,6 +8,7 @@ import { workspaceKind, type WorkspaceRow } from './workspace-index';
 const symbols = {
   pages: { ios: 'doc.text', android: 'description', web: 'description' },
   slides: { ios: 'rectangle.on.rectangle', android: 'slideshow', web: 'slideshow' },
+  sites: { ios: 'globe', android: 'language', web: 'language' },
   images: { ios: 'photo', android: 'image', web: 'image' },
   files: { ios: 'doc', android: 'draft', web: 'draft' },
   apps: { ios: 'square.grid.2x2', android: 'apps', web: 'apps' },

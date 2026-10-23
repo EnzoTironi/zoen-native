@@ -63,11 +63,23 @@ impl ToolHost for SpaceTools<'_> {
         trace::tool_observation::tool_outcome(self, call, outcome);
     }
     fn requires_native_review(&self, call: &ToolCall) -> bool {
-        self.page_binding(call)
+        let current = self.fresh();
+        current
+            .page_binding(call)
             .is_some_and(|(_, tool)| tool == "replace_page_block")
+            || current.names.iter().any(|(definition, _, tool)| {
+                definition.name == call.name && tool == client_core::agent_app_creation::TOOL
+            })
     }
     fn tools(&self) -> Vec<ToolDef> {
-        self.names.iter().map(|(d, _, _)| d.clone()).collect()
+        self.fresh()
+            .names
+            .into_iter()
+            .map(|(definition, _, _)| definition)
+            .collect()
+    }
+    fn refreshed_tools(&self) -> Option<Vec<ToolDef>> {
+        Some(self.tools())
     }
 
     fn prepare(&self, prepared: &ToolAsk) -> Result<(), String> {
@@ -80,6 +92,18 @@ impl ToolHost for SpaceTools<'_> {
     }
 
     fn gate_public_references(
+        &self,
+        call: &ToolCall,
+    ) -> Option<zoen_agentd::PublicArtifactReferences> {
+        self.fresh().current_gate_public_references(call)
+    }
+    fn call(&self, call: &ToolCall) -> Result<String, String> {
+        self.fresh().current_call(call)
+    }
+}
+
+impl SpaceTools<'_> {
+    fn current_gate_public_references(
         &self,
         call: &ToolCall,
     ) -> Option<zoen_agentd::PublicArtifactReferences> {
@@ -135,8 +159,14 @@ impl ToolHost for SpaceTools<'_> {
         self.check_selection().ok()?;
         references
     }
-    fn call(&self, call: &ToolCall) -> Result<String, String> {
+    fn current_call(&self, call: &ToolCall) -> Result<String, String> {
         self.check_selection()?;
+        if client_core::agent_app_creation::is_model_name(&call.name) {
+            return Err("Presentation creation requires its exact native approval".into());
+        }
+        if call.name.starts_with("app_binary_") {
+            return Err("Binary App transport is not a model tool".into());
+        }
         if let Some((item, tool)) = self.page_binding(call) {
             let result = self.page_call(item, tool, &call.arguments);
             self.check_selection()?;

@@ -1,7 +1,9 @@
-//! Complete image custody. Deployment construction stays private and absent
-//! until a managed key/credential backend is implemented. A fixture key is not
+//! Complete image custody; managed construction uses the existing vault and
+//! registered SQL directory. A fixture key is not
 //! enrollment, relay currentness, restore continuity or dispatch authority.
 mod image_tasks;
+mod managed;
+mod packages;
 mod runs;
 pub use image_tasks::ImageOutputInspection;
 pub(crate) use image_tasks::ImageStep;
@@ -127,8 +129,8 @@ impl Credential {
 pub(super) struct NativeCustody {
     cipher: Custody,
     key_version: u32,
-    // Only test provisioning currently constructs this private owner. No
-    // public configuration accepts credential maps, images or signer secrets.
+    // Managed construction resolves these profiles from SQL and device secrets
+    // from a vault. No public configuration accepts credential maps or images.
     credentials: BTreeMap<(String, String), Credential>,
 }
 

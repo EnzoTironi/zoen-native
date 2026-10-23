@@ -29,6 +29,7 @@ pub mod push;
 pub mod receipts;
 pub mod recent;
 pub mod session;
+pub mod sites;
 pub mod telemetry;
 pub mod transfer;
 pub mod turn;
@@ -123,6 +124,7 @@ pub async fn connect(cfg: &Config) -> anyhow::Result<PgPool> {
 }
 
 pub fn router(state: Shared) -> Router {
+    let site_announcement = sites::announcement(&state.relay_name);
     let auth = auth::router(&state.auth);
     let backups = Router::new()
         .route("/v1/backup/oprf", post(backup::oprf))
@@ -183,6 +185,7 @@ pub fn router(state: Shared) -> Router {
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
         .with_state(state)
+        .merge(site_announcement)
         .layer(
             tower_http::trace::TraceLayer::new_for_http()
                 .make_span_with(http_span)

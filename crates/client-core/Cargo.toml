@@ -11,7 +11,7 @@ crate-type = ["lib", "staticlib", "cdylib"]
 name = "client_core"
 
 [features]
-client-types = ["dep:ts-rs"]
+client-types = ["dep:ts-rs", "protocol/client-types"]
 
 [dependencies]
 types.workspace = true

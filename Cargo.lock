@@ -4599,6 +4599,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "ts-rs",
  "types",
 ]
 
@@ -8088,6 +8089,7 @@ dependencies = [
  "mls",
  "png",
  "protocol",
+ "relay-admission",
  "serde",
  "serde_json",
  "sha2 0.10.9",

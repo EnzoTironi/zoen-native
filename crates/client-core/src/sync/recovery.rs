@@ -88,6 +88,8 @@ impl Engine {
             || matches!(
                 e.body,
                 EventBody::RequestOpened { .. }
+                    | EventBody::CallV1 { .. }
+                    | EventBody::CallTransportV1 { .. }
                     | EventBody::ToolReviewRequested { .. }
                     | EventBody::RequestResolved { .. }
                     | EventBody::MemberAdded { .. }

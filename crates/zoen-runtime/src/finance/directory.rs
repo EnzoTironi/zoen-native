@@ -230,3 +230,50 @@ impl Finance {
         })
     }
 }
+
+impl NativeDirectoryGuard {
+    /// Publication uses the same current profile/certificate/device locks as
+    /// maintenance, and the existing relay receipts in this very transaction.
+    pub(crate) async fn publish_key_packages(
+        mut self,
+        packages: &[Vec<u8>],
+    ) -> Result<(), RuntimeError> {
+        let validated = relay_admission::directory::key_packages::validate_publications(
+            &self.agent,
+            &self.device,
+            packages,
+            None,
+        )
+        .map_err(|_| RuntimeError::Denied)?;
+        // Receipt retention uses the SQL clock. A package valid on the host's
+        // clock must not outlive its receipt according to this database.
+        let expires_ms = validated
+            .iter()
+            .map(|(_, expiry)| expiry.checked_mul(1000).ok_or(RuntimeError::InvalidBinding))
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .min()
+            .ok_or(RuntimeError::Denied)?;
+        if Finance::clock(&mut self.tx).await? >= expires_ms {
+            return Err(RuntimeError::Denied);
+        }
+        if !zoen_relay::db::put_key_packages_in(
+            &mut self.tx,
+            &self.agent,
+            &self.device,
+            &validated,
+            None,
+        )
+        .await?
+        {
+            return Err(RuntimeError::Denied);
+        }
+        // If expiry crossed during SQL work, rollback receipts and stock
+        // together rather than accepting an already expired publication.
+        if Finance::clock(&mut self.tx).await? >= expires_ms {
+            return Err(RuntimeError::Denied);
+        }
+        self.tx.commit().await?;
+        Ok(())
+    }
+}

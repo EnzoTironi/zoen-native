@@ -19,6 +19,7 @@ import { useReceivedMessageAudio } from './message-audio-provider';
 import { previewMediaFile } from './preview-file';
 import type { LocalMediaFile, MediaDriver } from './types';
 import { VoiceTranscript } from './voice-transcript';
+import { openSiteFile } from '../sites/open-file';
 
 function FileAttachmentContent({
   itemId,
@@ -154,6 +155,7 @@ function FileAttachmentContent({
 
   async function action(kind: 'open' | 'share') {
     if (!driver || actionBusy.current) return;
+    if (kind === 'open' && openSiteFile(info, itemId, version)) return;
     actionBusy.current = true;
     const expectedGeneration = generation.current;
     setBusy(true);

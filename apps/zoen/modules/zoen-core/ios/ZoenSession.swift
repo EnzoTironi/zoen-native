@@ -8,8 +8,8 @@ import FoundationModels
 
 actor ZoenSession {
   // A close returns its exact native UI epoch; a stale open cannot resume a newer retirement.
-  private var keyboardAdmissionTicket: UUID?
-  private var galleryAdmissionTicket: UUID?
+  var keyboardAdmissionTicket: UUID?
+  var galleryAdmissionTicket: UUID?
   nonisolated let pickupLifetime = ZoenModulePickupLifetime()
   private var pickupBinding: UUID?
   var core: Client?
@@ -17,6 +17,17 @@ actor ZoenSession {
   var sessionLocale = "en"
   var notificationBaseline: String?
   var notificationActive = true
+  var notificationOnly = false
+  var callsRecovering: Set<String> = []
+  var callPresenting = false
+  var callStarting = false
+  var callsBorrow: CallBorrow?
+  var callsModuleLease: ZoenModuleSessionLease?
+  var callCoordinator: ZoenCallCoordinator?
+  var callsScope: ZoenCallScope?
+  var callsChanged: (@Sendable (String) -> Void)?
+  var callsAudioChanged: (@Sendable (String) -> Void)?
+  let callAudioFocus = ZoenCallAudioFocus()
   private let vault = ZoenVault()
   var listener: ZoenListener?
   var syncStarted = false
@@ -139,7 +150,7 @@ actor ZoenSession {
     let engine = try Client.open(path: root.appending(path: "client.sqlite").path, locale: sessionLocale)
     let bridge = ZoenListener(changed, sourceChanged: { [weak self] spaces in
       guard !forNotification else { return }
-      Task { await self?.validateConversationGalleryChanges(spaces) }
+      Task { await self?.validateConversationGalleryChanges(spaces); await self?.callCanonicalChanges(spaces) }
     }) { [weak self] in
       guard !forNotification else { return }
       Task { await self?.resumePendingHistory() }
@@ -186,6 +197,7 @@ actor ZoenSession {
       self.core = engine
       self.listener = bridge
       self.mode = mode
+      notificationOnly = forNotification
       syncStarted = started
       notificationBaseline = snapshot
       if !forNotification { scheduleInitialHistory() }
@@ -276,6 +288,8 @@ actor ZoenSession {
     engine.stopSync()
     syncStarted = false
     let task = Task {
+      // Media stops before any preview/editor drain can suspend or throw.
+      await stopCallsForClose()
       await ZoenKeyboardPanelHost.retireAll()
       await ZoenAttachmentGalleryHost.retireAll()
       await pageDrain.value
@@ -318,6 +332,7 @@ actor ZoenSession {
         // Its admission fence is in place before this suspension.
         generation &+= 1
         filePreview.invalidate(before: generation)
+        await stopCallsForClose()
         try await filePreview.clear(before: generation)
         await pageDrain.value
       }
@@ -334,6 +349,7 @@ actor ZoenSession {
     let closeGeneration = generation
     let task = Task {
       defer { self.closing = false; self.forceClosing = false; self.closeTask = nil }
+      await self.stopCallsForClose()
       let keyboardTicket = await ZoenKeyboardPanelHost.retireAll()
       self.keyboardAdmissionTicket = keyboardTicket
       let galleryTicket = await ZoenAttachmentGalleryHost.retireAll()

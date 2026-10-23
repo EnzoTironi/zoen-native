@@ -150,3 +150,141 @@ fn native_review_cannot_override_block_or_rewrite_gate_ask() {
     assert_ne!(ask.rule, "native:review-required");
     assert!(steps.is_empty() && ran.is_empty());
 }
+
+#[derive(Default)]
+struct DynamicTools(Mutex<Vec<String>>);
+impl ToolHost for DynamicTools {
+    fn tools(&self) -> Vec<ToolDef> {
+        let mut names = vec!["create_document"];
+        if !self.0.lock().unwrap().is_empty() {
+            names.push("edit_created_document");
+        }
+        names
+            .into_iter()
+            .map(|name| ToolDef {
+                name: name.into(),
+                description: "Synthetic native document operation".into(),
+                parameters: serde_json::json!({"type":"object"}),
+            })
+            .collect()
+    }
+    fn refreshed_tools(&self) -> Option<Vec<ToolDef>> {
+        Some(self.tools())
+    }
+    fn call(&self, call: &ToolCall) -> Result<String, String> {
+        self.0.lock().unwrap().push(call.name.clone());
+        Ok("accepted".into())
+    }
+}
+struct DiscoveryBrain;
+#[async_trait]
+impl Brain for DiscoveryBrain {
+    async fn think(&self, _: TurnContext<'_>, _: &[Turn], _: &Turn) -> Result<BrainOut, String> {
+        panic!("tool boundary required")
+    }
+    async fn think_with_tools(
+        &self,
+        _: TurnContext<'_>,
+        _: &[Turn],
+        _: &Turn,
+        tools: &[ToolDef],
+        steps: &[ToolStep],
+    ) -> Result<BrainOut, String> {
+        let name = match steps.len() {
+            0 => {
+                assert_eq!(tools.len(), 1);
+                "create_document"
+            }
+            1 => {
+                assert!(tools
+                    .iter()
+                    .any(|tool| tool.name == "edit_created_document"));
+                "edit_created_document"
+            }
+            2 => return Ok(BrainOut::Say("Created and edited".into())),
+            _ => panic!("unexpected progress"),
+        };
+        Ok(BrainOut::CallTools(vec![ToolCall {
+            id: format!("call-{}", steps.len()),
+            name: name.into(),
+            arguments: serde_json::json!({}),
+            requires_review: false,
+        }]))
+    }
+}
+#[tokio::test]
+async fn native_discovery_refresh_offers_created_artifact_only_to_the_next_model_round() {
+    let runtime = Runtime::new(
+        Gate {
+            on_device: Some(Box::new(Judge)),
+            ..Gate::default()
+        },
+        Box::new(DiscoveryBrain),
+    );
+    let definition:Definition=serde_json::from_value(serde_json::json!({"version":1,"kind":"user","persona":"Create and edit","rules":[],"state":{}})).unwrap();
+    let context = TurnContext {
+        agent: "agent",
+        device: "device",
+        owner: "owner",
+        definition: &definition,
+    };
+    let inbound = Turn {
+        space: "space".into(),
+        from: "owner".into(),
+        text: "Create and edit a document".into(),
+    };
+    let host = DynamicTools::default();
+    assert!(matches!(
+        runtime
+            .turn_with_tools(context, &[], &inbound, &host, vec![])
+            .await
+            .unwrap(),
+        TurnOutcome::Say { .. }
+    ));
+    assert_eq!(
+        *host.0.lock().unwrap(),
+        ["create_document", "edit_created_document"]
+    );
+}
+
+#[tokio::test]
+async fn a_future_tool_cannot_execute_in_the_original_frozen_batch() {
+    let runtime = Runtime::new(
+        Gate {
+            on_device: Some(Box::new(Judge)),
+            ..Gate::default()
+        },
+        Box::new(NoBrain),
+    );
+    let definition:Definition=serde_json::from_value(serde_json::json!({"version":1,"kind":"user","persona":"Create and edit","rules":[],"state":{}})).unwrap();
+    let context = TurnContext {
+        agent: "agent",
+        device: "device",
+        owner: "owner",
+        definition: &definition,
+    };
+    let inbound = Turn {
+        space: "space".into(),
+        from: "owner".into(),
+        text: "Create and edit a document".into(),
+    };
+    let host = DynamicTools::default();
+    let original = host.tools();
+    let mut steps = vec![];
+    let calls = ["create_document", "edit_created_document"]
+        .into_iter()
+        .enumerate()
+        .map(|(index, name)| ToolCall {
+            id: index.to_string(),
+            name: name.into(),
+            arguments: serde_json::json!({}),
+            requires_review: false,
+        })
+        .collect();
+    assert!(runtime
+        .run_tool_calls(context, &inbound, &host, &original, &mut steps, calls, 0)
+        .unwrap()
+        .is_none());
+    assert_eq!(*host.0.lock().unwrap(), ["create_document"]);
+    assert!(!steps[0].is_error && steps[1].is_error);
+}

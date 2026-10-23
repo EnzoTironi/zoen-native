@@ -5,6 +5,21 @@ import { elements, fixture, style, tick } from './inline-image-frame.fixtures.ts
 import { type MediaAlbum } from './media-albums.ts';
 import type { TimelineEntry } from './types';
 
+test('actual HTML attachment opens its selected Site version without generic materialization or preview', async () => {
+  const f = fixture(false, { info: { name: 'site.html', mime: 'text/html', bytes: '20' } });
+  await f.ready();
+  const button = elements(f.render()).find((node) => node.type === 'MessagePressable')!;
+  assert.ok(button);
+  (button.props.onPress as () => void)();
+  await tick();
+  assert.deepEqual(JSON.parse(JSON.stringify(f.navigationRequests)), [
+    { pathname: '/site/[id]', params: { id: 'item', version: '3' } },
+  ]);
+  assert.equal(f.materialized.length, 0);
+  assert.equal(f.legacyPreviews.length, 0);
+  f.unmount();
+});
+
 test('actual image/video Open preserves the exact single-file preview for forwarded visual messages with gallery capability present', async () => {
   for (const mime of ['image/jpeg', 'video/mp4']) {
     const entry = { id: 'forwarded-message', forwarded: true, voice: null } as TimelineEntry;

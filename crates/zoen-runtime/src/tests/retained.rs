@@ -2,6 +2,7 @@
 //! custody is explicit; this does not provision a production vault or WS host.
 mod admission;
 mod image_tasks;
+mod managed;
 pub(super) mod output;
 use super::*;
 use event_log::content::{InnerEvent, Sealed, SealedKind};
@@ -304,6 +305,7 @@ impl Fixture {
 
 pub(super) async fn run() {
     Box::pin(image_tasks::run()).await;
+    Box::pin(managed::run()).await;
     let mut fixture = Fixture::new().await;
     fixture.grant("retained-owner-trust").await;
     let trigger = fixture.message(ORIGINAL).await;

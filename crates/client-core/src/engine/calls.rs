@@ -22,7 +22,10 @@ impl State {
             || space.members.len() != 2
             || !public_key(device)
             || !space.members.iter().any(|(id, _)| id == &event.author)
-            || !space.members.iter().all(|(id, _)| {
+            || !space.members.iter().all(|(id, role)| {
+                if *role == Role::Reader {
+                    return false;
+                }
                 identities
                     .get(id)
                     .is_some_and(|p| p.kind == IdentityKind::Person)
@@ -126,6 +129,12 @@ impl State {
                         old.invalidated = true;
                     }
                 }
+                space.call_transport.retain(|record| {
+                    space
+                        .calls
+                        .iter()
+                        .any(|call| call.call_id == record.signal.call_id && !call.terminal())
+                });
                 space.calls.push(CallRecord {
                     call_id: call_id.clone(),
                     invitation: event_log::content_hash_of(event),
@@ -168,6 +177,9 @@ impl State {
                     call.ended_at_ms = Some(event.at_ms);
                     call.end_reason = Some(*reason);
                 }
+                space
+                    .call_transport
+                    .retain(|record| record.signal.call_id != *call_id);
             }
         }
     }
@@ -181,7 +193,18 @@ fn public_key(value: &str) -> bool {
 }
 
 impl Engine {
-    fn assert_call_owner(&self, identity: &str, device: &str) -> R<()> {
+    /// Device-local contact policy gates effects, never the canonical call fold.
+    /// Ending/declining and reading history remain possible after blocking.
+    pub(crate) fn assert_call_peer_allowed(&self, peer: &str) -> R<()> {
+        if self.store.blocked()?.iter().any(|id| id == peer) {
+            return Err(CoreError::Forbidden {
+                reason: "Call participant is blocked on this device".into(),
+            });
+        }
+        Ok(())
+    }
+
+    pub(crate) fn assert_call_owner(&self, identity: &str, device: &str) -> R<()> {
         if !self.is_unlocked()
             || !self
                 .account()
@@ -210,6 +233,11 @@ impl Engine {
     ) -> R<CallRecord> {
         self.assert_call_owner(identity, device)?;
         let me = self.me_id()?;
+        if !self.net.synced.contains(space) {
+            return Err(CoreError::Forbidden {
+                reason: "Calls need a relay-synchronized encrypted conversation".into(),
+            });
+        }
         let state = self.space_state(space)?;
         let callee = state
             .members
@@ -218,6 +246,7 @@ impl Engine {
             .ok_or_else(|| not_found("Call participant"))?
             .0
             .clone();
+        self.assert_call_peer_allowed(&callee)?;
         let id = new_secret_id("call");
         let at = now_ms();
         self.append_at(
@@ -254,6 +283,19 @@ impl Engine {
     ) -> R<CallRecord> {
         self.assert_call_owner(identity, device)?;
         let me = self.me_id()?;
+        if action == "accept" {
+            let call = self
+                .space_state(space)?
+                .calls
+                .iter()
+                .find(|call| call.call_id == id)
+                .ok_or_else(|| not_found("Call"))?;
+            self.assert_call_peer_allowed(if call.caller == me {
+                &call.callee
+            } else {
+                &call.caller
+            })?;
+        }
         let signal = match action {
             "accept" => CallSignal::Accept {
                 call_id: id.into(),

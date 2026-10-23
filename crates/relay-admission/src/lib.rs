@@ -9,6 +9,7 @@ pub mod mls_projection;
 pub mod portable;
 pub mod receipts;
 mod rules;
+pub mod sites;
 pub mod sync;
 pub mod transfer;
 

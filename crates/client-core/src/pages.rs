@@ -17,6 +17,9 @@ use crate::i18n::t;
 use crate::CoreError;
 
 mod drafts;
+mod exports;
+#[cfg(any(test, feature = "client-types"))]
+pub(crate) use exports::PageVersionExport;
 mod input;
 pub use input::{
     PageInputAck, PageInputApplyResult, PageInputBindingDto, PageInputCaptureDto, PageInputDto,
