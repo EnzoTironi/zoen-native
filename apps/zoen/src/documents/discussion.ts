@@ -1,11 +1,8 @@
 import type { ItemDiscussionDto } from '../core/generated/ItemDiscussionDto';
-import { homeOwnerFor, homeSpacesFor } from '../home/access.ts';
-
-type Session = Parameters<typeof homeOwnerFor>[0];
-export function discussionScope(state: Session, epoch: number): string | null {
-  const owner = homeOwnerFor(state);
-  return owner ? JSON.stringify([owner.mode, owner.identityId, owner.deviceId, epoch]) : null;
-}
+import { homeSpacesFor } from '../home/access.ts';
+import { documentScope as discussionScope } from './document-authority.ts';
+export { documentScope as discussionScope } from './document-authority.ts';
+type Session = Parameters<typeof homeSpacesFor>[0];
 
 /** Recheck current authority before navigating with a previously loaded root. */
 export function discussionTarget(

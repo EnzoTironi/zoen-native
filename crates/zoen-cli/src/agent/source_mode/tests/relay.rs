@@ -26,6 +26,7 @@ impl SecretVault for Vault {
 #[derive(Clone, Copy)]
 pub(super) enum Mode {
     Normal,
+    CursorAck,
     Unsynced,
     InvalidStatus,
     InvalidKind,
@@ -231,6 +232,24 @@ pub(super) async fn relay(mode: Mode) -> Relay {
                                 cursors: positions.lock().unwrap().clone(),
                             }));
                             ServerFrame::Res { id, result }
+                        }
+                        ClientFrame::Req {
+                            id,
+                            op: Op::Agent(AgentRequest::Advance { space, seq }),
+                        } if matches!(mode, Mode::CursorAck) => {
+                            seen.lock().unwrap().push("agent_advance");
+                            let mut cursors = positions.lock().unwrap();
+                            if let Some((_, prior)) =
+                                cursors.iter_mut().find(|(id, _)| id == &space)
+                            {
+                                *prior = (*prior).max(seq);
+                            } else {
+                                cursors.push((space, seq));
+                            }
+                            ServerFrame::Res {
+                                id,
+                                result: Ok(Reply::Done),
+                            }
                         }
                         ClientFrame::Req {
                             id,

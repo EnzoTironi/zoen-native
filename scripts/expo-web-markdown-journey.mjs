@@ -141,4 +141,26 @@ export async function acceptMarkdownJourney({
     bytes: Buffer.byteLength(browserMarkdown),
     sha256: createHash("sha256").update(browserMarkdown).digest("hex"),
   });
+
+  await page.goto(`${origin}/item/${encodeURIComponent(itemId)}?history=1`, {
+    waitUntil: "domcontentloaded",
+  });
+  await page.getByRole("button").filter({ has: page.getByText("v1", { exact: true }) }).click();
+  await page.getByText(original, { exact: true }).waitFor();
+  const historicalDownload = page.waitForEvent("download");
+  await page.getByTestId("page-version-export").click();
+  const historical = await historicalDownload;
+  assert.equal(historical.suggestedFilename(), `${title} v1.md`);
+  const historicalPath = join(privateRoot, "browser-version-1.md");
+  await historical.saveAs(historicalPath);
+  const historicalBytes = await readFile(historicalPath, "utf8");
+  assert.equal(historicalBytes, await readFile(source, "utf8"),
+    "history must export the exact selected version, not the current document");
+  assert.equal(historicalBytes.includes(edited), false);
+  await screenshot("markdown-selected-version-export.png");
+  step("markdown-history-download-preserves-selected-version", {
+    version: 1,
+    bytes: Buffer.byteLength(historicalBytes),
+    sha256: createHash("sha256").update(historicalBytes).digest("hex"),
+  });
 }
