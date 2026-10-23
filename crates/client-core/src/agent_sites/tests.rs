@@ -114,6 +114,18 @@ fn proposal_is_inert_then_one_approved_file_survives_projection_reload() {
     let accepted = execute(&f, &r);
     assert_eq!(accepted["version"], 1);
     assert_eq!(f.agent.items().len(), before + 1);
+    let timeline = f.agent.timeline(f.space.clone()).unwrap();
+    let card = timeline
+        .iter()
+        .find(|entry| {
+            matches!(&entry.kind, crate::EntryKind::Message { card: Some(card), .. }
+            if card.item_id == accepted["itemId"])
+        })
+        .unwrap();
+    assert!(
+        card.reply_to.is_none(),
+        "an intermediate artifact cannot complete its source turn"
+    );
     f.agent.lock().reload().unwrap();
     let p = f.agent.approved_site_tool(&r.id).unwrap();
     let again: Value = serde_json::from_str(&f.agent.execute_site_tool(&p).unwrap()).unwrap();
