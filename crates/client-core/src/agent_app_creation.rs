@@ -68,7 +68,7 @@ pub fn definition(space: &str) -> Option<Value> {
 }
 fn definition_unchecked(space: &str) -> Option<Value> {
     Some(
-        json!({"name":model_name(space)?,"description":"Create one shared editable presentation in this conversation. Requires the owner's exact review; does not replace an existing document.","parameters":{"type":"object","properties":{"title":{"type":"string","minLength":1,"maxLength":160}},"required":["title"],"additionalProperties":false}}),
+        json!({"name":model_name(space)?,"description":"Create one shared editable presentation in this conversation. Call alone and wait for the owner's exact review before requesting its document tools. Does not replace an existing document.","parameters":{"type":"object","properties":{"title":{"type":"string","minLength":1,"maxLength":160}},"required":["title"],"additionalProperties":false}}),
     )
 }
 fn title(arguments: &Value) -> R<String> {
@@ -135,7 +135,7 @@ pub(crate) fn parsed(p: &ToolProposal) -> R<(Value, Option<Value>)> {
             .is_none_or(|steps| steps.len() != p.step as usize)
         || ask["remaining"]
             .as_array()
-            .is_none_or(|calls| calls.len() > 3)
+            .is_none_or(|calls| !calls.is_empty())
         || ask["round"].as_u64().is_none_or(|round| round >= 4)
         || call["name"].as_str() != model_name(space).as_deref()
         || call["id"]

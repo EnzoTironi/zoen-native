@@ -173,7 +173,7 @@ fn denial_cancellation_and_modified_source_never_create_a_document() {
 #[test]
 fn unexpected_fields_different_executor_or_owner_binding_cannot_stage_a_creation() {
     let f = setup();
-    for change in 0..4 {
+    for change in 0..5 {
         let mut ask = input(&f, "Reviewed presentation");
         match change {
             0 => ask.arguments["url"] = json!("https://untrusted.invalid/code"),
@@ -183,9 +183,16 @@ fn unexpected_fields_different_executor_or_owner_binding_cannot_stage_a_creation
                 continuation["envelope"]["owner"] = json!("foreign");
                 ask.continuation_json = continuation.to_string();
             }
-            _ => {
+            3 => {
                 let mut continuation: Value = serde_json::from_str(&ask.continuation_json).unwrap();
                 continuation["definition"]["parameters"] = json!({"type":"object"});
+                ask.continuation_json = continuation.to_string();
+            }
+            _ => {
+                // A future artifact must not become callable through the old
+                // held batch after an effect-before-journal crash/reconstruction.
+                let mut continuation: Value = serde_json::from_str(&ask.continuation_json).unwrap();
+                continuation["remaining"] = json!([{"id":"guessed-future-call","name":"read_deckcraft__future","arguments":{},"requires_review":false}]);
                 ask.continuation_json = continuation.to_string();
             }
         }
@@ -268,4 +275,53 @@ fn revoked_writer_and_expired_signed_request_cannot_create_or_reauthorize() {
     assert!(decide(&f, &id, &observed, ToolRequestDecision::ApproveOnce).is_err());
     assert!(f.agent.approved_app_creation(&id).is_err());
     assert_eq!(f.agent.items().len(), before);
+}
+
+#[test]
+fn renewed_creation_keeps_the_future_item_but_requires_its_own_signed_decision() {
+    use crate::agent_binary_documents::tests::renewal_history::{
+        confirm_pending, expired_approved,
+    };
+    let f = setup();
+    let live = stage(&f);
+    let old = expired_approved(&f, live);
+    let old_permit = f.agent.approved_app_creation(&old.id).unwrap();
+    assert!(f.agent.execute_app_creation(&old_permit).is_err());
+    decide(
+        &f,
+        &old.id,
+        &old.content_hash,
+        ToolRequestDecision::RequestReview,
+    )
+    .unwrap();
+    let intent = f.agent.tool_review_pending_intent(&old.id).unwrap();
+    let next = f
+        .agent
+        .stage_tool_review_successor(&old.id, &intent)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        next.tool_proposal.as_ref().unwrap().artifact,
+        old.tool_proposal.as_ref().unwrap().artifact
+    );
+    assert!(f.agent.approved_app_creation(&next.id).is_err());
+    assert_eq!(
+        f.agent
+            .stage_tool_review_successor(&old.id, &intent)
+            .unwrap(),
+        Some(next.clone())
+    );
+    confirm_pending(&f);
+    approve(&f, &next);
+    let permit = f.agent.approved_app_creation(&next.id).unwrap();
+    let before = f.agent.items().len();
+    let created: Value =
+        serde_json::from_str(&f.agent.execute_app_creation(&permit).unwrap()).unwrap();
+    assert_eq!(
+        created["itemId"],
+        old.tool_proposal.as_ref().unwrap().artifact
+    );
+    assert_eq!(f.agent.items().len(), before + 1);
+    assert!(f.agent.approved_app_creation(&old.id).is_err());
+    assert!(f.agent.verify_all().iter().all(|result| result.valid));
 }
