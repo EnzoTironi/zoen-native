@@ -17,7 +17,7 @@ export async function materializeObservedFile(
     (source.expectedHash && file.info.sha256 !== source.expectedHash)
   ) {
     await media.releaseLocalFile(file.uri);
-    throw new Error(t('media.theAudioHasBeenUpdatedOpenTheMessage'));
+    throw new Error(t('media.thisFileCouldNotBeOpened'));
   }
   return file;
 }

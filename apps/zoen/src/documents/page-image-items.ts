@@ -50,6 +50,7 @@ export function usePageImageItems(page: PageDto | undefined, enabled: boolean) {
     useCallback(() => {
       setRetired(false);
       setRevision((value) => value + 1);
+      if (!scope) return;
       const unregister = store.registerSessionPreflight(() => {
         committed.current = null;
         setRetired(true);
@@ -72,7 +73,7 @@ export function usePageImageItems(page: PageDto | undefined, enabled: boolean) {
     homeSpacesFor(state).has(page.space_id);
   const key = JSON.stringify([scope, page?.item_id, page?.version, page?.content_hash, revision]);
   const read = useCoreQuery(active ? { op: 'items' } : null, key);
-  const lease = useMemo(() => ({ key, items: read.data }), [key, read.data, active]);
+  const lease = useMemo(() => ({ key, items: read.data, active }), [key, read.data, active]);
   useLayoutEffect(() => {
     committed.current = active && read.data ? lease : null;
     return () => {
