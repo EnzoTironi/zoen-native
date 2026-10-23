@@ -8,7 +8,7 @@
       "ZoenPushDelegate"
     ],
     "reactDelegateHandlers": ["ZoenPresentationRootDelegate"],
-    "podspecPath": ["ios/ZoenCore.podspec", "ios/ZoenWebRTC.podspec"],
+    "podspecPath": "ios/ZoenCore.podspec",
     "swiftModuleName": ["ZoenCore"]
   },
   "android": {

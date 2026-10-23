@@ -39,8 +39,9 @@ The native adapter uses the official Jitsi build used by React Native WebRTC:
   252,220,535 bytes; SHA-256
   `5189cc5864d917400174f5bcee3a62f27c55524a28bccec783575d5efbda2ae5`,
   also published in the tag's `Package.swift`.
-- `ZoenWebRTC.podspec` pins URL and SHA-256; the module manifest lists both local
-  podspecs. Its BSD-3-Clause notice is retained in the spec. Distribution must also
+- `ZoenWebRTC.podspec` pins URL and SHA-256. The Expo plugin adds it as a
+  CocoaPods `:podspec` source, while autolinking lists only the source module.
+  Autolinking a local binary spec as `:path` would ignore its download source. Its BSD-3-Clause notice is retained in the spec. Distribution must also
   include the notices of the compiled upstream artifact's bundled dependencies.
 - No React Native WebRTC wrapper, engine fork, Signal app fork or LiveKit SFU is
   installed. The adapter owns one native peer and reuses the existing Core session.
@@ -58,7 +59,8 @@ transport callbacks revalidate that scope; it never opens another Client or vaul
 Mic starts only after authenticated acceptance, OS permission and CallKit activation.
 A system accepted action does not mark media connected: only WebRTC's combined
 ICE/DTLS connected callback does. End stops capture and the peer before awaiting a
-canonical terminal write. Retired callbacks cannot alter a replacement call.
+canonical terminal write. Its audio-only release closure does not retain the Core
+Client while waiting for CallKit deactivation. Retired callbacks cannot alter a replacement call.
 
 The media implementation includes relay-only ICE, authenticated SDP exchange,
 remote video, mute/speaker/camera controls, bounded caller ICE restarts, and native
@@ -121,3 +123,14 @@ build the integrated app once; prove real two-client TURN
 media, reconnection and revocation; then test the physical-device matrix in #266.
 No simulator camera or standalone typecheck can close that matrix. Manual broad QA
 is reserved for the user's next test session.
+
+
+## Native packaging evidence
+
+The first local pod install exposed an empty aggregate target from a local `:path`
+WebRTC spec; it was not accepted as engine installation. The corrected Expo Podfile
+plugin uses standard `:podspec` resolution and installed the real checksum-pinned
+`Pods/ZoenWebRTC/WebRTC.xcframework`. The lock diff added only ZoenWebRTC and the
+changed local ZoenCore spec; all existing dependency versions stayed fixed. The
+plugin also discloses microphone/camera call usage and preserves audio/background
+notification modes. It does not advertise VoIP wake before PushKit is implemented.

@@ -144,7 +144,8 @@ final class ZoenCallCoordinator: NSObject {
   func stop(writeEnd: Bool, reason: CXCallEndedReason = .remoteEnded) async {
     guard !retired else { return }
     guard installed else { retired = true; status("ended"); return }
-    let retirement = ZoenCallSystem.shared.retire(self) { [port] in await port.releaseAudio() }
+    let releaseAudio = port.releaseAudio
+    let retirement = ZoenCallSystem.shared.retire(self) { await releaseAudio() }
     retired = true; deadline?.cancel(); deadline = nil; watchdog?.cancel(); watchdog = nil
     await rtc?.stop(); rtc = nil
     retirement.mediaDidStop()
