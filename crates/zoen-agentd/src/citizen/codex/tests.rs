@@ -1,68 +1,12 @@
 use super::super::profile::{AgentKind, Definition, ModelTier};
 use super::*;
+#[cfg(target_os = "linux")]
 use std::os::unix::fs::PermissionsExt;
 
-const CHILD: &str = r#"#!/usr/bin/python3
-import sys,json,time,os
-MODE=__MODE__
-MARKER=__MARKER__
-EXPECTED=json.loads(__EXPECTED__)
-if '--version' in sys.argv:
- print('codex-cli '+('0.162.0' if MODE=='version' else '0.163.0'));sys.exit(0)
-settings=[sys.argv[i+1]for i,a in enumerate(sys.argv[:-1])if a=='-c']
-flags={s.split('=',1)[0].replace('features.',''):False for s in settings if s.startswith('features.')and s.endswith('=false')}
-assert 'features.shell_tool=false'in settings and 'features.unified_exec=false'in settings
-assert 'features.apps=false'in settings and 'features.plugins=false'in settings
-assert not any(k in os.environ for k in ['OPENAI_API_KEY','CLOUDFLARE_WORKERS_AI_TOKEN'])
-with open(MARKER+'.pid','w')as f:f.write(str(os.getpid()))
-for raw in sys.stdin:
- m=json.loads(raw);method=m.get('method');i=m.get('id')
- def send(v):print(json.dumps(v),flush=True)
- if method=='initialized':continue
- if method=='initialize':result={'userAgent':'fixture/0.163.0'}
- elif method=='config/read':
-  denied=any(s.startswith('mcp_servers={')and'enabled=false'in s for s in settings)
-  result={'config':{'features':flags,'web_search':'disabled','project_doc_max_bytes':0,'mcp_servers':{'existing':{'enabled':False if denied and MODE!='mcp'else True}},'notify':['forbidden-callback']if MODE=='notify'else[]}}
- elif method=='account/read':result={'account':{'type':'apiKey'if MODE=='api-key'else'chatgpt'}}
- elif method=='model/list':result={'data':[{'id':'fixture-model','isDefault':True}],'nextCursor':None}
- elif method=='thread/start':
-  p=m['params'];assert p['environments']==[]and p['dynamicTools']==[]and p['ephemeral']is True
-  assert p['approvalPolicy']=='never'and p['runtimeWorkspaceRoots']==[]
-  assert 'review proposes the same tools'in p['developerInstructions']
-  assert 'say is an answer or clarification and cannot create a canonical approval request'in p['developerInstructions']
-  assert 'without a successful tool result'in p['developerInstructions']
-  result={'thread':{'id':'thread-fixture','ephemeral':True},'modelProvider':'openai','model':'fixture-model','sandbox':{'type':'readOnly','networkAccess':False},'instructionSources':[]}
- elif method=='turn/start':
-  assert m['params']['environments']==[]
-  with open(MARKER,'a')as f:f.write('turn\n')
-  with open(MARKER+'.schema','w')as f:json.dump(m['params']['outputSchema'],f)
-  if MODE=='oversize':print('x'*(1024*1024+1),flush=True);time.sleep(10)
-  if MODE=='hang':time.sleep(10)
-  if MODE=='request':send({'id':99,'method':'item/commandExecution/requestApproval','params':{'command':'must-not-run'}});time.sleep(10)
-  if MODE=='overtake':send({'method':'item/started','params':{'threadId':'thread-fixture','item':{'type':'userMessage'}}})
-  send({'id':i,'result':{'turn':{'id':'turn-fixture'}}})
-  tool='unknown'if MODE=='unknown-tool'else'edit_deck'
-  text=json.dumps({'outcome':{'kind':'review'if MODE=='review'else'call','calls':[{'id':'call1','name':tool,'arguments_json':json.dumps({'shapeId':42,'text':'Real proposal'})}]}})
-  if MODE=='nested-contract':
-   context=json.loads(m['params']['input'][0]['text'])
-   offered=context['offered_tools']
-   text=json.dumps({'outcome':{'kind':'call','calls':[{'id':'nested1','name':offered[0]['name'],'arguments_json':'{}'}]}}if offered else{'outcome':{'kind':'quiet'}})
-  if MODE=='after-tools':
-   context=json.loads(m['params']['input'][0]['text'])
-   assert context['completed_tool_steps']==EXPECTED['steps']
-   step=context['completed_tool_steps'][0]
-   assert step['is_error']is False
-   read=json.loads(step['result'])
-   assert read==EXPECTED['read']and read['slides']and read['slides'][0]['shapes']
-   assert read['scope']==EXPECTED['scope']and read['head']==EXPECTED['head']
-   arguments={'shapeId':read['slides'][0]['shapes'][0]['id'],'text':'Synthetic next step'}
-   text=json.dumps({'outcome':{'kind':'call','calls':[{'id':'after-read','name':'edit_deck','arguments_json':json.dumps(arguments)}]}})
-  send({'method':'item/completed','params':{'threadId':'thread-fixture','turnId':'turn-fixture','item':{'type':'agentMessage','text':text}}})
-  send({'method':'turn/completed','params':{'threadId':'thread-fixture','turn':{'id':'turn-fixture','status':MODE if MODE in ['failed','interrupted']else'completed'}}})
-  continue
- else:raise RuntimeError('Unexpected RPC method')
- send({'id':i,'result':result})
-"#;
+const FIXTURE: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/fixtures/codex_app_server.py"
+);
 
 fn fixture(mode: &str) -> (tempfile::TempDir, CodexBrain, PathBuf) {
     fixture_with_expected(mode, Value::Null)
@@ -71,18 +15,14 @@ fn fixture_with_expected(mode: &str, expected: Value) -> (tempfile::TempDir, Cod
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("fake-codex");
     let marker = dir.path().join("turns");
-    let source = CHILD
-        .replace("__MODE__", &serde_json::to_string(mode).unwrap())
-        .replace(
-            "__MARKER__",
-            &serde_json::to_string(marker.to_str().unwrap()).unwrap(),
-        )
-        .replace(
-            "__EXPECTED__",
-            &serde_json::to_string(&expected.to_string()).unwrap(),
-        );
-    std::fs::write(&path, source).unwrap();
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+    // Only per-case data is written. The shared executable is checked in and
+    // never opened for writing/chmod by concurrent fixture users.
+    std::fs::write(
+        path.with_extension("json"),
+        serde_json::to_vec(&json!({"mode":mode,"marker":marker,"expected":expected})).unwrap(),
+    )
+    .unwrap();
+    std::os::unix::fs::symlink(FIXTURE, &path).unwrap();
     (
         dir,
         CodexBrain {
@@ -93,6 +33,112 @@ fn fixture_with_expected(mode: &str, expected: Value) -> (tempfile::TempDir, Cod
         marker,
     )
 }
+
+async fn fixture_version(brain: &CodexBrain) -> String {
+    let mut c = command(&brain.binary);
+    c.arg("--version")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    let output = tokio::time::timeout(Duration::from_secs(5), c.output())
+        .await
+        .expect("fixture version exceeded its setup budget")
+        .unwrap_or_else(|error| {
+            panic!(
+                "fixture spawn failed: kind={:?}, errno={:?}",
+                error.kind(),
+                error.raw_os_error()
+            )
+        });
+    assert!(
+        output.status.success(),
+        "fixture version exited unsuccessfully"
+    );
+    String::from_utf8(output.stdout).unwrap()
+}
+
+#[tokio::test]
+async fn immutable_fixture_executes_with_open_case_data_and_keeps_concurrent_cases_isolated() {
+    let (_a, a, marker_a) = fixture("version");
+    let (_b, b, marker_b) = fixture("success");
+    let original = std::fs::read(FIXTURE).unwrap();
+    assert_eq!(
+        original.as_slice(),
+        &include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/codex_app_server.py"
+        ))[..]
+    );
+    for brain in [&a, &b] {
+        assert!(std::fs::symlink_metadata(&brain.binary)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(
+            std::fs::canonicalize(&brain.binary).unwrap(),
+            std::fs::canonicalize(FIXTURE).unwrap()
+        );
+    }
+    // Open-for-write case data is distinct from the immutable executable inode.
+    // The handles stay live while both real children execute; no data is changed.
+    let _open_a = std::fs::OpenOptions::new()
+        .write(true)
+        .open(a.binary.with_extension("json"))
+        .unwrap();
+    let _open_b = std::fs::OpenOptions::new()
+        .write(true)
+        .open(b.binary.with_extension("json"))
+        .unwrap();
+    let (version_a, version_b) = tokio::join!(fixture_version(&a), fixture_version(&b));
+    assert_eq!(version_a, "codex-cli 0.162.0\n");
+    assert_eq!(version_b, "codex-cli 0.163.0\n");
+    assert_eq!(std::fs::read(FIXTURE).unwrap(), original);
+    for marker in [marker_a, marker_b] {
+        assert!(!marker.exists());
+        assert!(!marker.with_extension("pid").exists());
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn linux_write_open_executable_control_is_busy_until_its_writer_is_closed() {
+    let (dir, mut brain, _) = fixture("version");
+    let control = dir.path().join("write-open-control");
+    std::fs::copy(FIXTURE, &control).unwrap();
+    std::fs::copy(
+        brain.binary.with_extension("json"),
+        control.with_extension("json"),
+    )
+    .unwrap();
+    std::fs::set_permissions(&control, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let writer = std::fs::OpenOptions::new()
+        .write(true)
+        .open(&control)
+        .unwrap();
+    brain.binary = control;
+    let mut c = command(&brain.binary);
+    c.arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    let error = match tokio::time::timeout(Duration::from_secs(5), c.output())
+        .await
+        .expect("write-open control exceeded its setup budget")
+    {
+        Err(error) => error,
+        Ok(_) => panic!("Linux must refuse an executable with an open writer"),
+    };
+    // Linux ETXTBSY. This controlled boundary does not identify the historical
+    // CI spawn error, whose kind and errno were not recorded.
+    assert_eq!(
+        error.raw_os_error(),
+        Some(26),
+        "unexpected spawn kind={:?}, errno={:?}",
+        error.kind(),
+        error.raw_os_error()
+    );
+    drop(writer);
+    assert_eq!(fixture_version(&brain).await, "codex-cli 0.162.0\n");
+}
+
 fn definition() -> Definition {
     Definition {
         version: 1,
