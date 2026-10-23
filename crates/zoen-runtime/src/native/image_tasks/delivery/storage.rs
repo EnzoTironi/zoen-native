@@ -3,7 +3,7 @@ use super::*;
 use crate::execution::Execution;
 
 impl Delivery<'_> {
-    async fn snapshot(&self) -> Result<foundationdb::Transaction, RuntimeError> {
+    pub(super) async fn snapshot(&self) -> Result<foundationdb::Transaction, RuntimeError> {
         self.runtime.continuity()?;
         let execution = &self.runtime.execution;
         let trx = execution.transaction().await?;
@@ -38,7 +38,7 @@ impl Delivery<'_> {
         Ok(trx)
     }
 
-    async fn authorize(&self) -> Result<(), RuntimeError> {
+    pub(super) async fn authorize(&self) -> Result<(), RuntimeError> {
         self.core
             .image_output_file(
                 &self.record.task.request_id,
@@ -62,7 +62,7 @@ impl Delivery<'_> {
         Ok(())
     }
 
-    async fn activate(&mut self) -> Result<(), RuntimeError> {
+    pub(super) async fn activate(&mut self) -> Result<(), RuntimeError> {
         let principal = &self.record.original.context.principal;
         let image = self
             .core
