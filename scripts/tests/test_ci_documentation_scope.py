@@ -100,6 +100,7 @@ class DocumentationScopeTests(unittest.TestCase):
             # A status function overrides GitHub's implicit success() predicate.
             # Empty outputs after a failed selector must keep the full job selected.
             self.assertIn("!cancelled()", condition)
+            self.assertIn("needs.change-scope.result != 'success' ||", condition)
             self.assertIn("needs.change-scope.outputs.documentation_only != 'true'", condition)
 
     def test_delete_rename_and_symlink_never_skip(self):
