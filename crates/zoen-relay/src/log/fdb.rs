@@ -464,16 +464,7 @@ impl Batcher for Cell {
         APPEND_RETRIES.fetch_add(u64::from(attempts.saturating_sub(1)), Ordering::Relaxed);
         APPEND_BATCHES.fetch_add(1, Ordering::Relaxed);
         #[cfg(debug_assertions)]
-        {
-            let counts = hooks.counts();
-            if counts.commits > 0 || counts.closure_errors > 0 {
-                tracing::debug!(target: "zoen_relay::log::fdb::conflicts", attempts, elapsed_ms = started.elapsed().as_millis() as u64,
-                    commit_errors = counts.commits, head_conflicts = counts.head, lease_conflicts = counts.lease,
-                    other_conflicts = counts.other, unreported_conflicts = counts.unreported,
-                    closure_errors = counts.closure_errors, report_errors = counts.report_errors,
-                    failed = r.is_err(), "append transaction conflict diagnosis");
-            }
-        }
+        hooks.report(attempts, started.elapsed(), r.is_err());
         let results = match r {
             Ok((results, fresh)) => {
                 *state = Some(fresh);
