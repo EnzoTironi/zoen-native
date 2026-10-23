@@ -304,7 +304,6 @@ impl Fixture {
 }
 
 pub(super) async fn run() {
-    Box::pin(image_tasks::run()).await;
     Box::pin(managed::run()).await;
     let mut fixture = Fixture::new().await;
     fixture.grant("retained-owner-trust").await;
