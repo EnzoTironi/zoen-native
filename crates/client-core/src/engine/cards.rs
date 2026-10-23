@@ -18,7 +18,7 @@ impl Engine {
         self.item_card(it, plan)
     }
 
-    pub(super) fn card_in_space(&self, space: &str, item: &str) -> Option<ItemCard> {
+    pub(crate) fn card_in_space(&self, space: &str, item: &str) -> Option<ItemCard> {
         if self
             .state
             .items

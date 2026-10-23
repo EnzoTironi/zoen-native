@@ -469,6 +469,14 @@ impl<S: Signer> Client<S> {
 fn is_post(body: &EventBody) -> bool {
     matches!(body, EventBody::MessagePosted { .. })
         || matches!(body,EventBody::ItemCreated{content:types::ItemContent::File(doc),..} if doc.is_voice())
+        || matches!(
+            body,
+            EventBody::ItemCreated {
+                kind: types::ItemKind::Page,
+                content: types::ItemContent::Page(_),
+                ..
+            }
+        )
 }
 
 fn inner_event(sequenced: &Sequenced, plaintext: &[u8], from: &Leaf) -> Option<Event> {

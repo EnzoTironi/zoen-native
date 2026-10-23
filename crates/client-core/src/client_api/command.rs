@@ -269,6 +269,10 @@ pub(super) enum Command {
     Item {
         item_id: String,
     },
+    ItemDiscussion {
+        space_id: String,
+        item_id: String,
+    },
     ItemAt {
         item_id: String,
         version: u32,

@@ -93,6 +93,25 @@ export async function acceptMarkdownJourney({
     "valid committed Markdown page must have no errors",
   );
 
+  await page.getByRole("button", { name: ui.artifactDiscussion, exact: true }).click();
+  await page.waitForURL((url) => url.pathname.startsWith(`/thread/${encodeURIComponent(space)}/`));
+  const rootId = decodeURIComponent(new URL(page.url()).pathname.split("/").at(-1));
+  assert.ok(rootId, "the artifact opens its original canonical post");
+  await page.getByTestId(`message-row-${rootId}`).waitFor();
+  const comment = `Artifact discussion ${tag}`;
+  await page.locator('[data-testid="message-input"]:visible').fill(comment);
+  await page.locator('[data-testid="send-message"]:visible').click();
+  await page.locator('[data-testid^="message-body-"]:visible').filter({ hasText: comment }).waitFor();
+  await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: ui.artifactDiscussionCount(1), exact: true }).click();
+  await page.waitForURL((url) => url.pathname.startsWith(`/thread/${encodeURIComponent(space)}/`));
+  assert.equal(decodeURIComponent(new URL(page.url()).pathname.split("/").at(-1)), rootId,
+    "cold route reload keeps the same discussion root");
+  await page.locator('[data-testid^="message-body-"]:visible').filter({ hasText: comment }).waitFor();
+  await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: ui.exportMarkdown, exact: true }).waitFor();
+  step("markdown-discussion-keeps-original-post-and-comment-after-cold-route-reload", { rootId });
+
   const downloading = page.waitForEvent("download");
   await page.getByRole("button", { name: ui.exportMarkdown, exact: true }).click();
   const download = await downloading;
