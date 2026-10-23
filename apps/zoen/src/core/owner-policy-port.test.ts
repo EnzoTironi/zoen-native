@@ -128,14 +128,12 @@ test('native read completing after request hash change is discarded by the real 
   const pending = f.port.inquire(scope);
   const changed = {
     ...f.snapshot(),
-    requests: f
-      .snapshot()
-      .requests.map((request) => ({
-        ...request,
-        tool_approval: request.tool_approval
-          ? { ...request.tool_approval, content_hash: 'replacement' }
-          : null,
-      })),
+    requests: f.snapshot().requests.map((request) => ({
+      ...request,
+      tool_approval: request.tool_approval
+        ? { ...request.tool_approval, content_hash: 'replacement' }
+        : null,
+    })),
   };
   f.replace(changed);
   await f.store.refresh();
