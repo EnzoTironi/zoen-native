@@ -59,7 +59,7 @@ pub struct PbReq {
     pub id: u64,
     #[prost(
         oneof = "pb_req::Op",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22"
     )]
     pub op: Option<pb_req::Op>,
 }
@@ -109,6 +109,8 @@ pub mod pb_req {
         Agent(PbAgentReq),
         #[prost(message, tag = "21")]
         RegisterPush(PbPushToken),
+        #[prost(message, tag = "22")]
+        CallTurn(PbCallTurnRequest),
     }
 }
 
@@ -502,7 +504,10 @@ pub struct PbReady {
 pub struct PbRes {
     #[prost(uint64, tag = "1")]
     pub id: u64,
-    #[prost(oneof = "pb_res::R", tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13")]
+    #[prost(
+        oneof = "pb_res::R",
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14"
+    )]
     pub r: Option<pb_res::R>,
 }
 
@@ -535,7 +540,29 @@ pub mod pb_res {
         Devices(PbDevices),
         #[prost(message, tag = "13")]
         AgentState(PbAgentState),
+        #[prost(message, tag = "14")]
+        CallTurn(PbCallTurnReply),
     }
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct PbCallTurnRequest {
+    #[prost(string, tag = "1")]
+    pub space: String,
+    #[prost(string, tag = "2")]
+    pub peer: String,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct PbCallTurnReply {
+    #[prost(string, repeated, tag = "1")]
+    pub urls: Vec<String>,
+    #[prost(string, tag = "2")]
+    pub username: String,
+    #[prost(string, tag = "3")]
+    pub credential: String,
+    #[prost(int64, tag = "4")]
+    pub expires_at_ms: i64,
 }
 
 #[derive(Clone, PartialEq, Message)]

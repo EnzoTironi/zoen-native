@@ -46,6 +46,12 @@ impl ServerFrame {
                         agent: p.agent.as_deref().map(profile_to).map(Box::new),
                     }),
                     Ok(Reply::Done) => pb_res::R::Done(PbEmpty {}),
+                    Ok(Reply::CallTurn(c)) => pb_res::R::CallTurn(PbCallTurnReply {
+                        urls: c.urls.clone(),
+                        username: c.username.clone(),
+                        credential: c.credential.clone(),
+                        expires_at_ms: c.expires_at_ms,
+                    }),
                     Ok(Reply::AgreementKeys(ks)) => pb_res::R::AgreementKeys(PbAgreementKeys {
                         keys: ks.iter().map(agreement_to).collect(),
                     }),
@@ -205,6 +211,18 @@ impl ServerFrame {
                         agent: p.agent.map(|a| profile_from(*a)).transpose()?.map(Box::new),
                     })),
                     pb_res::R::Done(_) => Ok(Reply::Done),
+                    pb_res::R::CallTurn(c) => {
+                        let credentials = crate::turn::TurnCredentials {
+                            urls: c.urls,
+                            username: c.username,
+                            credential: c.credential,
+                            expires_at_ms: c.expires_at_ms,
+                        };
+                        if !credentials.valid() {
+                            return Err(bad("invalid TURN credentials"));
+                        }
+                        Ok(Reply::CallTurn(credentials))
+                    }
                     pb_res::R::AgreementKeys(ks) => Ok(Reply::AgreementKeys(
                         ks.keys
                             .into_iter()

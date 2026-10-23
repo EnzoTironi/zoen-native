@@ -91,6 +91,10 @@ impl ClientFrame {
                         sealed: sealed.clone(),
                     }),
                     Op::Agent(a) => pb_req::Op::Agent(agent_req_to(a)),
+                    Op::CallTurn { space, peer } => pb_req::Op::CallTurn(PbCallTurnRequest {
+                        space: space.clone(),
+                        peer: peer.clone(),
+                    }),
                 }),
             }),
             ClientFrame::Publish { env } => F::Publish(envelope_to(env)),
@@ -180,6 +184,10 @@ impl ClientFrame {
                         sealed: m.sealed,
                     },
                     pb_req::Op::Agent(a) => Op::Agent(agent_req_from(a)?),
+                    pb_req::Op::CallTurn(r) => Op::CallTurn {
+                        space: r.space,
+                        peer: r.peer,
+                    },
                 },
             },
             // Only the relay prunes: a device can't hand it a stub.
