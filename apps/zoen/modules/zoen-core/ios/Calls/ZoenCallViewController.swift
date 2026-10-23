@@ -14,6 +14,8 @@ final class ZoenCallViewController: UIViewController {
   private let status = UILabel()
   private let remote = RTCMTLVideoView()
   private weak var track: RTCVideoTrack?
+  private var cameraButton: UIButton?
+  private var speakerButton: UIButton?
   private var muteButton: UIButton?
   private var muted = false
   private var speakerOn = false
@@ -48,14 +50,16 @@ final class ZoenCallViewController: UIViewController {
       guard let self else { return }; self.speakerOn.toggle(); self.speaker?(self.speakerOn)
       button.isSelected = self.speakerOn; button.accessibilityValue = self.speakerOn ? self.text("Ativado", "On") : self.text("Desativado", "Off")
     }
+    speakerButton = speaker
     let hangup = button("phone.down.fill", label: text("Encerrar chamada", "End call"), destructive: true) { [weak self] _ in self?.end?() }
     var buttons = [mute, speaker]
     if video {
-      buttons.append(button("video.slash.fill", label: text("Desativar câmera", "Turn camera off")) { [weak self] button in
+      let camera = button("video.slash.fill", label: text("Desativar câmera", "Turn camera off")) { [weak self] button in
         guard let self else { return }; self.cameraOn.toggle(); self.camera?(self.cameraOn)
         button.isSelected = !self.cameraOn
         button.accessibilityLabel = self.cameraOn ? self.text("Desativar câmera", "Turn camera off") : self.text("Ativar câmera", "Turn camera on")
-      })
+      }
+      cameraButton = camera; buttons.append(camera)
     }
     buttons.append(hangup)
     let controls = UIStackView(arrangedSubviews: buttons); controls.spacing = 16; controls.distribution = .fillEqually
@@ -90,6 +94,13 @@ final class ZoenCallViewController: UIViewController {
   private func text(_ pt: String, _ en: String) -> String { portuguese ? pt : en }
   func setPhase(_ phase: String) {
     status.text = phase == "connected" ? (video ? text("Chamada de vídeo", "Video call") : text("Chamada de voz", "Voice call")) : phase == "reconnecting" ? text("Reconectando…", "Reconnecting…") : text("Conectando…", "Connecting…")
+  }
+  func setIntent(_ intent: ZoenCallMediaIntent) {
+    loadViewIfNeeded()
+    setMuted(intent.muted)
+    cameraOn = intent.cameraEnabled; speakerOn = intent.speaker
+    cameraButton?.isSelected = !cameraOn; speakerButton?.isSelected = speakerOn
+    cameraButton?.accessibilityLabel = cameraOn ? text("Desativar câmera", "Turn camera off") : text("Ativar câmera", "Turn camera on")
   }
   func setMuted(_ value: Bool) {
     muted = value; muteButton?.isSelected = value

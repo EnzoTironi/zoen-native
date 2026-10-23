@@ -20,7 +20,65 @@ private actor HandoffEvents {
 
 @main
 struct CallAudioFocusTests {
+  @MainActor
+  static func until(_ condition: () -> Bool) async {
+    for _ in 0..<10_000 { if condition() { return }; await Task.yield() }
+    preconditionFailure("Asynchronous resource completion did not run")
+  }
+  @MainActor
   static func main() async throws {
+    var released = 0
+    var completed: [UUID] = []
+    let firstOwner = UUID()
+    let retiring = ZoenCallRetirement(owner: firstOwner, systemActive: true,
+      release: { released += 1 }, completion: { completed.append($0) })
+    retiring.systemDidDeactivate() // arrives while RTC stop/terminal action is retained
+    precondition(released == 0)
+    retiring.mediaDidStop()
+    await until { completed.count == 1 }
+    precondition(released == 1 && completed == [firstOwner])
+    retiring.systemDidReset(); retiring.mediaDidStop(); retiring.systemDidDeactivate()
+    precondition(released == 1 && completed.count == 1)
+
+    var heldRelease: CheckedContinuation<Void, Never>?
+    var releaseReturned = false
+    let secondOwner = UUID()
+    let overlapping = ZoenCallRetirement(owner: secondOwner, systemActive: false,
+      release: { await withCheckedContinuation { heldRelease = $0 }; releaseReturned = true },
+      completion: { completed.append($0) })
+    overlapping.mediaDidStop()
+    await until { heldRelease != nil }
+    overlapping.systemDidActivate() // late activation cannot clear the owner fence
+    heldRelease?.resume(); heldRelease = nil
+    await until { releaseReturned }
+    precondition(completed == [firstOwner])
+    overlapping.systemDidDeactivate()
+    await until { completed.count == 2 }
+    precondition(completed.last == secondOwner)
+
+    let resetOwner = UUID()
+    let reset = ZoenCallRetirement(owner: resetOwner, systemActive: true,
+      release: { released += 1 }, completion: { completed.append($0) })
+    reset.mediaDidStop(); reset.systemDidReset() // no future didDeactivate is required
+    await until { completed.count == 3 }
+    precondition(released == 2 && completed.last == resetOwner)
+
+    var beforeRTC = ZoenCallMediaIntent()
+    beforeRTC.muted = true; beforeRTC.cameraEnabled = false; beforeRTC.speaker = true
+    var rtc = beforeRTC // The exact snapshot lent to a newly created native peer.
+    precondition(!rtc.microphoneLive(allowed: true, activated: true, live: true))
+    precondition(rtc.speaker)
+    precondition(!rtc.cameraLive(allowed: true, started: true, live: true))
+    rtc.cameraEnabled = true
+    precondition(!rtc.cameraLive(allowed: false, started: false, live: true))
+    rtc.cameraEnabled = false // user turns it off while permission is pending
+    precondition(!rtc.cameraLive(allowed: true, started: false, live: true))
+    precondition(!rtc.cameraLive(allowed: true, started: true, live: true)) // late capture completion
+    let replacement = ZoenCallMediaIntent()
+    precondition(replacement.microphoneLive(allowed: true, activated: true, live: true))
+    precondition(!rtc.microphoneLive(allowed: true, activated: true, live: true))
+    precondition(!replacement.cameraLive(allowed: true, started: true, live: false))
+
     let focus = ZoenCallAudioFocus()
     let events = HandoffEvents()
     let emit: @Sendable (String) -> Void = { json in Task { await events.emit(json) } }

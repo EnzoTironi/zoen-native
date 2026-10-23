@@ -26,11 +26,12 @@ final class ZoenCallRTC: NSObject {
   private var audioActive = false
   private var microphoneAllowed = false
   private var cameraAllowed = false
-  private var muted = false
+  private var intent: ZoenCallMediaIntent
+  private var cameraStarted = false
 
-  init(port: ZoenCallPort, changed: @escaping @MainActor (String) -> Void,
+  init(port: ZoenCallPort, intent: ZoenCallMediaIntent, changed: @escaping @MainActor (String) -> Void,
        failed: @escaping @MainActor () -> Void, remoteVideo: @escaping @MainActor (RTCVideoTrack?) -> Void) {
-    self.port = port; self.changed = changed; self.failed = failed; self.remoteVideo = remoteVideo
+    self.intent = intent; self.port = port; self.changed = changed; self.failed = failed; self.remoteVideo = remoteVideo
     super.init()
   }
 
@@ -93,9 +94,9 @@ final class ZoenCallRTC: NSObject {
     microphoneAllowed = await AVAudioApplication.requestRecordPermission()
     _ = try await current()
     guard microphoneAllowed else { throw ZoenCallFailure.denied }
-    if call.video { cameraAllowed = await AVCaptureDevice.requestAccess(for: .video); _ = try await current() }
+    if call.video && intent.cameraEnabled { cameraAllowed = await AVCaptureDevice.requestAccess(for: .video); _ = try await current() }
     updateAudio()
-    if cameraAllowed { try await startCamera() }
+    if cameraAllowed && intent.cameraEnabled { try await startCamera() }
     if call.callerDevice == port.scope.device { try await offer() }
     try await receive()
   }
@@ -197,12 +198,29 @@ final class ZoenCallRTC: NSObject {
   }
   private func updateAudio() {
     let enabled = live && audioActive && microphoneAllowed
-    microphone?.isEnabled = enabled && !muted
+    microphone?.isEnabled = intent.microphoneLive(allowed: microphoneAllowed, activated: audioActive, live: live)
     RTCAudioSession.sharedInstance().isAudioEnabled = enabled
+    if enabled { try? AVAudioSession.sharedInstance().overrideOutputAudioPort(intent.speaker ? .speaker : .none) }
   }
-  func setCameraEnabled(_ value: Bool) { cameraTrack?.isEnabled = live && cameraAllowed && value }
-  func setMuted(_ value: Bool) { muted = value; updateAudio() }
-  func setSpeaker(_ value: Bool) throws { try AVAudioSession.sharedInstance().overrideOutputAudioPort(value ? .speaker : .none) }
+  func setCameraEnabled(_ value: Bool) {
+    intent.cameraEnabled = value
+    cameraTrack?.isEnabled = intent.cameraLive(allowed: cameraAllowed, started: cameraStarted, live: live)
+    guard didStart else { return }
+    if !value { Task { await stopCamera() }; return }
+    enqueue { rtc in try await rtc.startCamera() }
+  }
+  func setMuted(_ value: Bool) { intent.muted = value; updateAudio() }
+  func setSpeaker(_ value: Bool) throws {
+    intent.speaker = value
+    if audioActive { try AVAudioSession.sharedInstance().overrideOutputAudioPort(value ? .speaker : .none) }
+  }
+
+  private func stopCamera() async {
+    cameraTrack?.isEnabled = false
+    guard cameraStarted, let camera else { return }
+    cameraStarted = false
+    await withCheckedContinuation { continuation in camera.stopCapture { continuation.resume() } }
+  }
 
   private func boundRecovery() {
     guard recoveryDeadline == nil else { return }
@@ -216,6 +234,12 @@ final class ZoenCallRTC: NSObject {
   }
 
   private func startCamera() async throws {
+    guard live, intent.cameraEnabled, !cameraStarted else { return }
+    if !cameraAllowed {
+      cameraAllowed = await AVCaptureDevice.requestAccess(for: .video)
+      _ = try await current()
+    }
+    guard cameraAllowed, intent.cameraEnabled else { return }
     guard let camera, let device = RTCCameraVideoCapturer.captureDevices().first(where: { $0.position == .front }) ?? RTCCameraVideoCapturer.captureDevices().first,
           let format = RTCCameraVideoCapturer.supportedFormats(for: device).filter({ CMVideoFormatDescriptionGetDimensions($0.formatDescription).width <= 1280 }).max(by: { CMVideoFormatDescriptionGetDimensions($0.formatDescription).width < CMVideoFormatDescriptionGetDimensions($1.formatDescription).width }) else { return }
     try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -224,7 +248,9 @@ final class ZoenCallRTC: NSObject {
       }
     }
     _ = try await current()
-    cameraTrack?.isEnabled = true
+    cameraStarted = true
+    cameraTrack?.isEnabled = intent.cameraLive(allowed: cameraAllowed, started: cameraStarted, live: live)
+    if !intent.cameraEnabled { await stopCamera() }
   }
 
   func stop() async {
@@ -234,7 +260,7 @@ final class ZoenCallRTC: NSObject {
     RTCAudioSession.sharedInstance().isAudioEnabled = false
     peer?.delegate = nil; peer?.close(); peer = nil
     if let camera { await withCheckedContinuation { continuation in camera.stopCapture { continuation.resume() } } }
-    self.camera = nil; cameraTrack = nil; microphone = nil
+    self.camera = nil; cameraTrack = nil; microphone = nil; cameraStarted = false
     pendingICE.removeAll(); received.removeAll(); remoteVideo(nil)
     // A retired delegate cannot disable a newer call when deactivation arrives late.
   }

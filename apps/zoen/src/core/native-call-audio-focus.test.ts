@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 test(
-  'actual Swift call audio handoff rejects stale/failed acknowledgments and expires safely',
+  'actual Swift call privacy intent, retirement races and audio handoff preserve ownership',
   { skip: process.platform !== 'darwin', timeout: 60_000 },
   () => {
     const directory = mkdtempSync(join(tmpdir(), 'zoen-call-audio-'));
@@ -19,6 +19,8 @@ test(
       }).trim();
       const files = [
         'ios/Calls/ZoenCallModel.swift',
+        'ios/Calls/ZoenCallMediaIntent.swift',
+        'ios/Calls/ZoenCallRetirement.swift',
         'ios/Calls/ZoenCallAudioFocus.swift',
         'tests/CallAudioFocusTests.swift',
       ].map((file) => fileURLToPath(new URL(`../../modules/zoen-core/${file}`, import.meta.url)));

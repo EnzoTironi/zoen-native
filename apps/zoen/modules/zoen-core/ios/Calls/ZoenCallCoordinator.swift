@@ -11,6 +11,7 @@ final class ZoenCallCoordinator: NSObject {
   let port: ZoenCallPort
   private let provider: CXProvider
   private let controller = CXCallController()
+  private var mediaIntent = ZoenCallMediaIntent()
   private var rtc: ZoenCallRTC?
   private var call: ZoenCallRecord
   private var screen: ZoenCallViewController?
@@ -92,7 +93,7 @@ final class ZoenCallCoordinator: NSObject {
     if record.acceptanceConfirmed, record.invitationConfirmed, record.acceptedDevice != nil {
       deadline?.cancel(); deadline = nil
       if rtc == nil {
-        let rtc = ZoenCallRTC(port: port, changed: { [weak self] phase in self?.phase(phase) },
+        let rtc = ZoenCallRTC(port: port, intent: mediaIntent, changed: { [weak self] phase in self?.phase(phase) },
           failed: { [weak self] in Task { await self?.stop(writeEnd: true, reason: .failed) } },
           remoteVideo: { [weak self] track in self?.screen?.showVideo(track) })
         self.rtc = rtc
@@ -108,11 +109,12 @@ final class ZoenCallCoordinator: NSObject {
     if let screen { screen.presentIfNeeded(); return }
     let view = ZoenCallViewController(name: name, video: call.video, locale: port.locale)
     view.end = { [weak self] in Task { await self?.requestEnd() } }
-    view.camera = { [weak self] value in self?.rtc?.setCameraEnabled(value) }
-    view.mute = { [weak self] value in Task { await self?.requestMute(value) } }
-    view.speaker = { [weak self] value in try? self?.rtc?.setSpeaker(value) }
+    view.camera = { [weak self] value in self?.mediaIntent.cameraEnabled = value; self?.rtc?.setCameraEnabled(value) }
+    view.mute = { [weak self] value in self?.requestMute(value) }
+    view.speaker = { [weak self] value in self?.mediaIntent.speaker = value; try? self?.rtc?.setSpeaker(value) }
     screen = view
     view.presentIfNeeded()
+    view.setIntent(mediaIntent)
   }
 
   private func phase(_ phase: String) {
@@ -123,10 +125,14 @@ final class ZoenCallCoordinator: NSObject {
     }
   }
 
-  private func requestMute(_ value: Bool) async {
+  private func requestMute(_ value: Bool) {
     guard !retired else { return }
-    do { try await controller.request(CXTransaction(action: CXSetMutedCallAction(call: id, muted: value))) }
-    catch { screen?.setMuted(false) }
+    // Apply privacy intent synchronously; CallKit transaction latency or failure
+    // must not let a pending permission callback briefly enable the microphone.
+    mediaIntent.muted = value; rtc?.setMuted(value)
+    Task {
+      try? await controller.request(CXTransaction(action: CXSetMutedCallAction(call: id, muted: value)))
+    }
   }
 
   func requestEnd() async {
@@ -138,9 +144,10 @@ final class ZoenCallCoordinator: NSObject {
   func stop(writeEnd: Bool, reason: CXCallEndedReason = .remoteEnded) async {
     guard !retired else { return }
     guard installed else { retired = true; status("ended"); return }
-    ZoenCallSystem.shared.retiring = true
+    let retirement = ZoenCallSystem.shared.retire(self) { [port] in await port.releaseAudio() }
     retired = true; deadline?.cancel(); deadline = nil; watchdog?.cancel(); watchdog = nil
     await rtc?.stop(); rtc = nil
+    retirement.mediaDidStop()
     // Stop all capture before an awaited write. Failure stays in the canonical
     // outbox/recovery path; no SDK callback may revive this resource lifetime.
     if writeEnd {
@@ -150,11 +157,6 @@ final class ZoenCallCoordinator: NSObject {
     provider.reportCall(with: id, endedAt: Date(), reason: reason)
     ZoenCallSystem.shared.remove(self)
     screen?.dismiss(animated: true); screen = nil
-    let release: @MainActor () -> Void = { [port] in
-      Task { await port.releaseAudio(); ZoenCallSystem.shared.retiring = false }
-    }
-    if audio == nil { await port.releaseAudio(); ZoenCallSystem.shared.retiring = false }
-    else { ZoenCallSystem.shared.afterDeactivation = release }
     audio = nil; status("ended")
   }
 
@@ -193,11 +195,12 @@ final class ZoenCallCoordinator: NSObject {
     } catch { Task { await stop(writeEnd: true, reason: .failed) } }
   }
   func deactivate(_ session: AVAudioSession) {
-    guard !retired else { return }
-    rtc?.audioDeactivated(session); audio = nil
+    audio = nil
+    rtc?.audioDeactivated(session)
   }
   func muteAction(_ action: CXSetMutedCallAction) {
     guard !retired, action.callUUID == id else { action.fail(); return }
+    mediaIntent.muted = action.isMuted
     rtc?.setMuted(action.isMuted); screen?.setMuted(action.isMuted); action.fulfill()
   }
 }
