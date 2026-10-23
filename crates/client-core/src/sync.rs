@@ -241,6 +241,8 @@ mod profiles;
 mod receipts;
 mod recovery;
 mod rejections;
+#[cfg(test)]
+pub(crate) mod replay_probe;
 mod spaces;
 
 impl Engine {

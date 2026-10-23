@@ -11,6 +11,7 @@ const FORK: &str = "Members see different groups in this chat (the server may ha
 mod support;
 use support::*;
 mod authorization_cases;
+mod catchup_projection;
 mod outbox_cases;
 mod prefix_admission_cases;
 mod prefix_settlement_cases;

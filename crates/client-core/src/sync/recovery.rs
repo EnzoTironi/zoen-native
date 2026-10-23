@@ -77,6 +77,9 @@ impl Engine {
     }
 
     pub(crate) fn approval_projection_needs_replay(&self, e: &Event) -> bool {
+        if self.can_append_ordinary_page(e) {
+            return false;
+        }
         self.approval_replay_needed
             || self.state.waiting_spaces.contains(&e.space)
             || matches!(
@@ -91,6 +94,26 @@ impl Engine {
                     | EventBody::ItemVersioned { .. }
                     | EventBody::ItemReverted { .. }
             )
+    }
+
+    /// A fresh ordinary page cannot invalidate a previous decision when there is
+    /// no decision or optimistic/recovery overlay. Fold only its authenticated
+    /// frontier through the SAME checked projector, as other incremental events do.
+    /// A missing/corrupt outbox read must retain the original replay/failure path.
+    fn can_append_ordinary_page(&self, event: &Event) -> bool {
+        matches!(&event.body, EventBody::ItemCreated {
+            item,
+            kind: ItemKind::Page,
+            content: ItemContent::Page(PageContent { manifest: None, .. }),
+            ..
+        } if !self.state.items.contains_key(item))
+            && !self.approval_replay_needed
+            && self.state.waiting_spaces.is_empty()
+            && self.state.requests.is_empty()
+            && self.net.optimistic_approvals.is_empty()
+            // Include failed rows: they can reserve visible recovery state even
+            // though the transport's pending count intentionally excludes them.
+            && self.store.outbox().is_ok_and(|rows| rows.is_empty())
     }
 
     pub(crate) fn apply_confirmed_event(&mut self, event: &Event) -> R<Projection> {
@@ -175,6 +198,8 @@ impl Engine {
             }
             if let Some(log) = self.logs.get(space) {
                 for (end, e) in log.events().iter().enumerate() {
+                    #[cfg(test)]
+                    super::replay_probe::folded();
                     confirmed.insert(PendingCommitment::of(e));
                     let context = plans.before(&scoped, &self.identities, e, end)?;
                     scoped.apply_checked(e, &self.identities, &context);
