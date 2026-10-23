@@ -30,6 +30,7 @@ import { presentation } from './catalogs/presentation.ts';
 import { profile } from './catalogs/profile.ts';
 import { peerInfo } from './catalogs/peer-info.ts';
 import { settings } from './catalogs/settings.ts';
+import { deviceDirectory } from './catalogs/device-directory.ts';
 import { createLocalization } from './runtime.ts';
 import {
   formatLocale as resolveFormatLocale,
@@ -72,6 +73,7 @@ const catalogs = {
   profile,
   peerInfo,
   settings,
+  deviceDirectory,
 };
 function createAppLocalization(locale: AppLocale) {
   return createLocalization(catalogs, [locale]);
