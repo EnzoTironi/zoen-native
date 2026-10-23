@@ -1,5 +1,6 @@
 import { Host, Slider, Switch } from '@expo/ui';
 import {
+  accessibilityHint,
   accessibilityLabel,
   accessibilityValue,
   foregroundStyle,
@@ -135,15 +136,7 @@ function themeLabels(): Record<ThemeProfile, string> {
   };
 }
 
-function Block({
-  title,
-  children,
-  footer,
-}: {
-  title?: string;
-  children: ReactNode;
-  footer?: string;
-}) {
+function Block({ title, children }: { title?: string; children: ReactNode }) {
   const { presentation: p } = useTheme();
   return (
     <View style={{ gap: 7 }}>
@@ -163,20 +156,17 @@ function Block({
       <View style={{ backgroundColor: p.list.block, borderRadius: 10, overflow: 'hidden' }}>
         {children}
       </View>
-      {footer ? (
-        <Text style={{ fontSize: 13, lineHeight: 18, color: p.list.section, marginHorizontal: 16 }}>
-          {footer}
-        </Text>
-      ) : null}
     </View>
   );
 }
 function Toggle({
   label,
+  hint,
   value,
   onChange,
 }: {
   label: string;
+  hint?: string;
   value: boolean;
   onChange(value: boolean): void;
 }) {
@@ -196,7 +186,11 @@ function Toggle({
           onValueChange={onChange}
           modifiers={
             process.env.EXPO_OS === 'ios'
-              ? [frame({ minHeight: 50, maxWidth: Infinity }), foregroundStyle(p.list.text)]
+              ? [
+                  frame({ minHeight: 50, maxWidth: Infinity }),
+                  foregroundStyle(p.list.text),
+                  ...(hint ? [accessibilityHint(hint)] : []),
+                ]
               : undefined
           }
         />
@@ -279,7 +273,7 @@ export function ThemeSettings() {
   }
   return (
     <SettingsScreen title={t('settings.appearance')} testID="theme-settings-screen">
-      <Block title={t('settings.themeChoose')}>
+      <Block>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -328,9 +322,10 @@ export function ThemeSettings() {
           </Text>
         </View>
       </View>
-      <Block footer={t('settings.skyFollowsLocalTime')}>
+      <Block>
         <Toggle
           label={t('settings.themeAutomatic')}
+          hint={t('settings.skyFollowsLocalTime')}
           value={preference === 'auto'}
           onChange={(enabled) => setPreference(enabled ? 'auto' : editing)}
         />
@@ -400,17 +395,6 @@ export function ThemeSettings() {
               }
             />
           </Host>
-          <Text
-            style={{
-              color: preview.chat.incoming.text,
-              backgroundColor: preview.chat.incoming.fill,
-              fontSize: settings.textSize,
-              padding: 12,
-              borderRadius: 12,
-            }}
-          >
-            {t('settings.themePreviewReceived')}
-          </Text>
         </View>
       </Block>
       <Block>
