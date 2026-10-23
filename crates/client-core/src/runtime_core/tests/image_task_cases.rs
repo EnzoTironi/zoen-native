@@ -296,7 +296,7 @@ fn referenced_image_exceeds_capsule_limit_without_inline_media_or_upload_ack() {
         actual.extend(plain);
     }
     assert_eq!(actual, bytes);
-    let mut cold = DeviceCore::restore(
+    let cold = DeviceCore::restore(
         NativeImage::decode_bounded(prepared.image().as_bytes().to_vec()).unwrap(),
         f.credential(),
     )
