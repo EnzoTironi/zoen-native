@@ -1,9 +1,13 @@
 # Runtime-owned Image host
 
 `ImageRuntimeHost` composes the existing native custody, review, model gateway,
-finance and original-output transport. It is a Rust host boundary, not a running
-MCP server or an enrolled agent daemon. The production continuity and output
-admission guards remain closed.
+finance and original-output transport. The normal host must first call
+`RuntimeAuthority::qualify_managed_images_output` on its exact configured route.
+That constructor can establish Images-only authority from existing certified
+custody, live external continuity and mandatory relay proof. General reply
+output and global continuity remain closed; no fixture or Boolean opens them.
+See [Images output scope](managed-image-output-scope.md) for the source contract
+and current qualification boundary.
 
 ## Trusted configuration and requested content
 
@@ -34,7 +38,7 @@ device, expiry and original pending outbox are checked before sending it.
 A lost connection retains that original. A lost real relay `Accepted` is
 recovered from the actual source, matching the exact envelope and position;
 reopening does not create another review. Review and output connections both use
-Runtime's private `connect_bound_output`, described in
+Runtime's private checkpoint-bound Image transport, described in
 [runtime-relay-binding.md](runtime-relay-binding.md).
 
 `advance(space, request)` first applies bounded actual source history to the
@@ -50,7 +54,7 @@ existing common one-shot admission still decides any dispatch.
 Output remains the same canonical FileDoc, retained ciphertext references and
 original publication. No result, upload receipt or relay ACK is manufactured.
 
-## Executed scope
+## Earlier executed host increment
 
 Combined executable source: `70e14aec48aef76589646ec11bba308c6806ad48`.
 
@@ -76,11 +80,13 @@ The final owned PG/FDB services were removed/stopped with no cleanup errors.
 
 ## Remaining acceptance
 
-Issue #366 remains open. The real MCP/native daemon adapter must consume this
-host with retained custody of its own enrolled device; sharing another Client's
-live device/MLS state would duplicate authority. Production also needs an
-independent restore/old-writer fencing primitive: matching SQL/FDB pair markers
-can both roll back, and a vault load/save contract provides no monotonic CAS.
-No readable marker or operator boolean opens the current guard. The final user
-journey must prove review, restart, revocation, one bill and reopenable output on
-iPhone after those prerequisites are implemented.
+Issue #366 remains open. The normal CLI/ToolHost owns a separately enrolled
+Runtime device and retained custody; it must not share another Client's active
+MLS state. Managed external checkpoints, mandatory relay registration and the
+Images-only constructor now have source implementations, tracked by #380,
+#386/#394 and #399. Their combined actual host/restart/approval/output journey is
+still under qualification. Earlier fixture results above do not qualify these
+successors. Neither an advertised capability alone nor a readable marker grants
+Images output: qualification requires the paired live proof and refusal of
+legacy binding. The final user journey must also prove one bill and reopenable
+output on iPhone. No paid provider or native acceptance is claimed here.
