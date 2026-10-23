@@ -29,6 +29,7 @@ async fn historical_page_export_keeps_the_observed_version_and_private_draft_aft
     let shared_markdown = client.page_markdown(item.id.clone()).unwrap();
     let mut private = second.blocks.clone();
     private[1].text = "PRIVATE DRAFT must never be exported here".into();
+    private[1].spans.clear();
     apply(&client, &second, "private-revision", &private).unwrap();
     let before = journal_rows(&client);
     let count = client.lock().logs[&fixture.space_id].events().len();
@@ -70,6 +71,7 @@ async fn historical_page_export_keeps_the_observed_version_and_private_draft_aft
     .unwrap();
     assert_eq!(export.markdown, original);
     assert_eq!(journal_rows(&reopened), before);
+    assert_eq!(reopened.page(item.id.clone()).unwrap().blocks, private);
     assert!(reopened
         .page_markdown(item.id)
         .unwrap()
