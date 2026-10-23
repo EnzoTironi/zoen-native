@@ -42,7 +42,7 @@ fn png() -> Vec<u8> {
 }
 
 pub(in crate::tests) async fn run() {
-    let mut f = Fixture::with_output().await;
+    let mut f = Fixture::with_managed_output().await;
     let original_bytes = png();
     assert!(original_bytes.len() > 4 * 1024 * 1024);
     let provider = provider::Provider::start(&original_bytes).await;
@@ -205,6 +205,21 @@ pub(in crate::tests) async fn run() {
         proof::run(runtime, &run, &model, &model).await,
         FinancialState::Settled { units: 15 }
     );
+    assert_eq!(provider.sends.load(Ordering::SeqCst), 1);
+    crate::tests::managed_images::assert_dispatch_checkpoint(
+        runtime,
+        f.managed_directory.as_ref().unwrap(),
+        &actor.identity,
+        device,
+    )
+    .await;
+    crate::tests::managed_images::matching_checkpoint_rollback(
+        runtime,
+        f.managed_directory.as_ref().unwrap(),
+        &actor.identity,
+        device,
+    )
+    .await;
     assert_eq!(provider.sends.load(Ordering::SeqCst), 1);
     let output = proof::output(runtime, &run, &model).await;
     assert_eq!(output.sha256, sha256);

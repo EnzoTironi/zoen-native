@@ -10,6 +10,7 @@ pub(super) struct Fixture {
     pub(super) owner: Identity,
     pub(super) space: String,
     pub(super) head: Option<Seen>,
+    pub(super) managed_directory: Option<crate::tests::managed_images::Directory>,
 }
 
 impl Fixture {
@@ -22,6 +23,14 @@ impl Fixture {
     }
 
     pub(super) async fn build(output: bool) -> Self {
+        Self::build_managed(output, false).await
+    }
+
+    pub(super) async fn with_managed_output() -> Self {
+        Self::build_managed(true, true).await
+    }
+
+    async fn build_managed(output: bool, managed: bool) -> Self {
         let mut world = World::with_relay().await;
         if output {
             let capability = native::testing::output::provision(&world.runtime).await;
@@ -75,6 +84,23 @@ impl Fixture {
             second.key.secret(),
         );
         Arc::get_mut(&mut world.runtime).unwrap().native = Some(custody);
+        let managed_directory = managed.then(crate::tests::managed_images::Directory::new);
+        if let Some(directory) = &managed_directory {
+            let runtime = match Arc::try_unwrap(world.runtime) {
+                Ok(runtime) => runtime,
+                Err(_) => panic!("fresh fixture runtime unexpectedly shared"),
+            };
+            world.runtime = Arc::new(
+                runtime
+                    .initialize_managed_image_continuity(&directory.0, &actor.identity, &device)
+                    .await
+                    .unwrap(),
+            );
+            assert_eq!(
+                world.runtime.production_output_scope().err(),
+                Some(RuntimeError::CoreAuthorityUnavailable)
+            );
+        }
         let first_package =
             native::testing::provision_packages(&world.runtime, &actor.identity, &device)
                 .await
@@ -104,6 +130,7 @@ impl Fixture {
             owner,
             space: new_id("retained-direct"),
             head: None,
+            managed_directory,
         };
         fixture
             .clear(EventBody::SpaceCreated {

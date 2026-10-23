@@ -124,6 +124,7 @@ pub(super) struct Session<'a> {
 pub(super) struct AdmittedBinding {
     pub(super) binding: Binding,
     pub(super) nonce: String,
+    _generation: Option<relay_admission::managed_images::GenerationGuard>,
 }
 
 #[async_trait]
@@ -162,6 +163,9 @@ impl DispatchAuthority for Session<'_> {
             } else {
                 self.step.binding(request, &self.runtime.price)?
             };
+            if self.image.is_some() {
+                self.runtime.check_image_checkpoint().await?;
+            }
             self.runtime
                 .execution
                 .prepare(self.step, &binding, &self.runtime.custody)
@@ -179,6 +183,15 @@ impl DispatchAuthority for Session<'_> {
             let Some(claim) = self.runtime.finance.claim(&binding).await? else {
                 return Ok(Admission::AlreadyKnown);
             };
+            let checkpoint = if self.image.is_some() {
+                self.runtime
+                    .begin_image_dispatch_checkpoint(&binding, &claim)
+                    .await?
+            } else {
+                None
+            };
+            let claim =
+                claim.with_checkpoint(checkpoint.as_ref().map(|value| value.annotation()))?;
             #[cfg(test)]
             if self.runtime.fault.load(Ordering::SeqCst) == 1 {
                 return Err(RuntimeError::Unavailable);
@@ -211,6 +224,10 @@ impl DispatchAuthority for Session<'_> {
             }
             let nonce = admission.nonce().to_string();
             let permit = guard.finish(admission).await?;
+            let generation = match checkpoint {
+                Some(checkpoint) => Some(checkpoint.finish(self.runtime).await?),
+                None => None,
+            };
             #[cfg(test)]
             if self.runtime.fault.load(Ordering::SeqCst) == 23 {
                 return Err(RuntimeError::Unavailable);
@@ -224,7 +241,11 @@ impl DispatchAuthority for Session<'_> {
             *self
                 .admitted
                 .lock()
-                .map_err(|_| RuntimeError::Unavailable)? = Some(AdmittedBinding { binding, nonce });
+                .map_err(|_| RuntimeError::Unavailable)? = Some(AdmittedBinding {
+                binding,
+                nonce,
+                _generation: generation,
+            });
             permit.consume()
         }
         .await;

@@ -9,6 +9,7 @@ mod execution;
 mod finance;
 mod image_host;
 mod image_tasks;
+mod managed_images;
 pub use image_host::{ImageHostConfig, ImageHostProgress, ImageRuntimeHost};
 mod native;
 pub use native::{
@@ -189,6 +190,7 @@ pub struct RuntimeAuthority {
     price: PriceProfile,
     // No production setter: an incarnation UUID does not prove absence after restore.
     continuity: Arc<AtomicBool>,
+    managed_images: Option<Arc<tokio::sync::Mutex<managed_images::ManagedImages>>>,
     #[cfg(test)]
     fault: std::sync::atomic::AtomicU8,
     #[cfg(test)]
@@ -233,6 +235,7 @@ impl RuntimeAuthority {
             gateway,
             price: config.price,
             continuity: Arc::new(AtomicBool::new(false)),
+            managed_images: None,
             #[cfg(test)]
             fault: std::sync::atomic::AtomicU8::new(0),
             #[cfg(test)]
