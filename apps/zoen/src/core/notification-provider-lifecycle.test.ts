@@ -3,7 +3,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { build } from 'esbuild';
 
-type State = 'active' | 'background' | 'inactive';
+type State = 'active' | 'background' | 'inactive' | 'unknown' | null;
 type Call = { kind: string; value?: unknown };
 
 // Compile the actual provider and real registration coordinator. Only React's
@@ -155,8 +155,8 @@ function fixture(initial: State, platform = 'ios') {
   };
 }
 
-test('background and inactive provider mounts do not start registration; active transitions retain the normal path', async () => {
-  for (const initial of ['background', 'inactive'] as const) {
+test('unknown, background and inactive provider mounts wait for activation before registration', async () => {
+  for (const initial of [null, 'unknown', 'background', 'inactive'] as const) {
     const f = fixture(initial);
     try {
       await f.flush();

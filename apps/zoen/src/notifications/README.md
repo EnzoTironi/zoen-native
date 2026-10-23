@@ -193,7 +193,7 @@ harness compiles the UIKit/Core adapter or establishes physical push delivery.
 SDK adapter opt-in/version gate without invoking an OS notification service.
 `notification-provider-lifecycle.test.ts` compiles the actual provider with its
 real registration coordinator and controlled React/OS/client ports. It checks
-background/inactive mount, active transition, active mount, cleanup, account
+unknown/background/inactive mount, active transition, active mount, cleanup, account
 replacement and the existing web path without making token or relay calls.
 
 The relay attempts content-free wakes for all currently authorized recipient
