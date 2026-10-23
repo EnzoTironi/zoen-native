@@ -135,11 +135,33 @@ async function ownedSidecar(target) {
   for (const name of await readdir(dirname(target))) {
     if (!name.startsWith('.cargo-source-guard-')) continue;
     const directory = join(dirname(target), name);
-    const state = JSON.parse(await readFile(join(directory, 'state.json'), 'utf8'));
+    let state;
+    try { state = JSON.parse(await readFile(join(directory, 'state.json'), 'utf8')); }
+    catch (error) {
+      // A refused unknown cache owns a lease sidecar but has never earned a
+      // source stamp. Its presence must not hide a different qualified target.
+      if (error.code === 'ENOENT') continue;
+      throw error;
+    }
     if (state.target === actual) return directory;
   }
   throw new Error('No canonical source stamp for this fixture target');
 }
+
+test('fixture sidecar discovery ignores unstamped refusals but requires an exact valid target stamp', async (t) => {
+  const path = await fixture(t), target = join(path, 'shared');
+  await mkdir(target);
+  const refused = join(path, '.cargo-source-guard-a-refused');
+  const qualified = join(path, '.cargo-source-guard-z-qualified');
+  await mkdir(refused);
+  await assert.rejects(ownedSidecar(target), /No canonical source stamp/);
+  await write(join(qualified, 'state.json'), JSON.stringify({ target: await realpath(target) }));
+  assert.equal(await ownedSidecar(target), qualified);
+  await write(join(qualified, 'state.json'), JSON.stringify({ target: join(path, 'foreign') }));
+  await assert.rejects(ownedSidecar(target), /No canonical source stamp/);
+  await write(join(qualified, 'state.json'), 'not-json');
+  await assert.rejects(ownedSidecar(target), SyntaxError);
+});
 async function waitFor(path, predicate = () => true) {
   const deadline = performance.now() + 20_000;
   while (performance.now() < deadline) {
