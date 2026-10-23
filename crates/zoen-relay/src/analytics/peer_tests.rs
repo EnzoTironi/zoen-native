@@ -32,37 +32,34 @@ fn first_week_counts(people: [&str; 3], expected_slots: [u8; 3]) -> [u32; 2] {
     }
     analytics.with(|pending| pending.merge(retained));
     analytics.with(|pending| {
-        assert_eq!(pending.accounts.len(), 3);
+        // Calls may straddle midnight; the report ORs peer bits over all days.
+        // Aggregate that same way instead of depending on one wall-clock bucket.
         let account = |who: &str| {
             pending
                 .accounts
                 .iter()
-                .find_map(|((_, id), activity)| (id == who).then_some(activity))
-                .expect("recorded sender")
+                .filter(|((_, id), _)| id == who)
+                .fold((0, 0u64), |(sent, peers), (_, activity)| {
+                    (sent + activity.sent, peers | activity.peers)
+                })
         };
-        let ana_count = account(ana);
-        let bruno_count = account(bruno);
-        let carla_count = account(carla);
+        let (ana_sent, ana_peers) = account(ana);
+        let (bruno_sent, bruno_peers) = account(bruno);
+        let (carla_sent, carla_peers) = account(carla);
+        assert_eq!((ana_sent, bruno_sent, carla_sent), (3, 1, 1));
+        assert_eq!(pending.accounts.values().map(|a| a.sent).sum::<i32>(), 5);
+        assert_eq!(bruno_peers, analytics.peer_bit(ana), "self is excluded");
         assert_eq!(
-            (ana_count.sent, bruno_count.sent, carla_count.sent),
-            (3, 1, 1)
-        );
-        assert_eq!(
-            bruno_count.peers,
-            analytics.peer_bit(ana),
-            "self is excluded"
-        );
-        assert_eq!(
-            ana_count.peers,
+            ana_peers,
             analytics.peer_bit(bruno) | analytics.peer_bit(carla)
         );
         assert_eq!(
-            carla_count.peers,
+            carla_peers,
             analytics.peer_bit(ana) | analytics.peer_bit(bruno)
         );
-        let space = pending.spaces.values().next().expect("recorded trip");
-        assert_eq!((space.messages, space.members), (5, 3));
-        [ana_count.peers.count_ones(), carla_count.peers.count_ones()]
+        assert_eq!(pending.spaces.values().map(|s| s.messages).sum::<i32>(), 5);
+        assert_eq!(pending.spaces.values().map(|s| s.members).max(), Some(3));
+        [ana_peers.count_ones(), carla_peers.count_ones()]
     })
 }
 
