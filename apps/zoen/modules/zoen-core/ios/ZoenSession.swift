@@ -285,11 +285,12 @@ actor ZoenSession {
     engine.stopSync()
     syncStarted = false
     let task = Task {
+      // Media stops before any preview/editor drain can suspend or throw.
+      await stopCallsForClose()
       await ZoenKeyboardPanelHost.retireAll()
       await ZoenAttachmentGalleryHost.retireAll()
       await pageDrain.value
       try await filePreview.clear(before: clearingGeneration)
-      await stopCallsForClose()
       await closeAssistants()
       await engine.drainLinkPickup()
       if requests > 0 { await withCheckedContinuation { requestDrain.append($0) } }
@@ -328,6 +329,7 @@ actor ZoenSession {
         // Its admission fence is in place before this suspension.
         generation &+= 1
         filePreview.invalidate(before: generation)
+        await stopCallsForClose()
         try await filePreview.clear(before: generation)
         await pageDrain.value
       }
@@ -344,6 +346,7 @@ actor ZoenSession {
     let closeGeneration = generation
     let task = Task {
       defer { self.closing = false; self.forceClosing = false; self.closeTask = nil }
+      await self.stopCallsForClose()
       let keyboardTicket = await ZoenKeyboardPanelHost.retireAll()
       self.keyboardAdmissionTicket = keyboardTicket
       let galleryTicket = await ZoenAttachmentGalleryHost.retireAll()
@@ -357,7 +360,6 @@ actor ZoenSession {
           try await self.filePreview.clear(before: self.generation)
         }
         if let erasureTask = self.erasureTask { try await erasureTask.value }
-        await self.stopCallsForClose()
         await self.closeAssistants()
         // Keep the exact engine/account live for already admitted edited copies.
         // New bridge operations are fenced by `closing`; a save failure stays
