@@ -42,3 +42,49 @@ and #266 acceptance items.
 
 References: [coturn's maintained server documentation](https://github.com/coturn/coturn/blob/master/README.turnserver)
 and [TURN URI standard](https://www.rfc-editor.org/rfc/rfc7065.html).
+
+## Disposable real-server proof
+
+The explicitly ignored Rust test
+`production_credentials_relay_over_real_tls_coturn_and_invalid_auth_is_refused`
+uses the production issuer with fresh synthetic credentials. It invokes
+`scripts/call-turn-proof.py`, which owns an internal Docker network, TLS server,
+upstream UDP echo peer and upstream clients. It publishes no host ports and never
+changes the existing local relay stack. Documentation-only addresses preserve the
+template's private-peer deny rules. The official coturn 4.18.0-r0 image is pinned
+by manifest digest; pull it explicitly before running the test:
+
+```sh
+docker pull coturn/coturn@sha256:bbefd3e1fdfdc0d58770fe01b581fd8b00d9f3a5580d00acb77cf719a6bc78e3
+```
+
+Set `ZOEN_TURN_DOCKER_PROOF=1`, `ZOEN_TURN_PROOF_PYTHON` to an absolute Python 3
+executable and `ZOEN_TURN_PROOF_DIR` to a new, empty absolute evidence directory.
+Use the normal Cargo source guard, qualifying those three input variables, to run:
+
+```sh
+cargo test -p zoen-relay --lib turn::tests::docker::production_credentials_relay_over_real_tls_coturn_and_invalid_auth_is_refused -- --ignored --exact --nocapture
+```
+
+The proof requires verified TLS/hostname, echoed packets through an actual
+allocation, and explicit TURN authentication rejection for wrong MAC and expired
+production credentials. Timeout or unrelated failure cannot count as rejection.
+Private issuer input, secret and certificate key are removed; logs redact the
+ephemeral usernames/passwords. `report.json` records the pinned image, template,
+case results, owned resource IDs and cleanup. This remains a transport proof;
+it cannot certify real iPhone calls, carrier NAT, active-allocation revocation,
+load capacity or the authenticated relay admission journey by itself.
+
+TLS attribution is precise: upstream `turnutils_uclient -E` loads the chosen CA
+and enables `SSL_VERIFY_PEER` in
+[mainuclient.c](https://github.com/coturn/coturn/blob/4.18.0/src/apps/uclient/mainuclient.c#L672-L684).
+Its [TLS connection path](https://github.com/coturn/coturn/blob/4.18.0/src/apps/uclient/startuclient.c#L104-L122)
+sets SNI but does not configure expected-hostname verification. The separate
+OpenSSL preflight verifies CA and hostname against the same isolated server.
+Hostname verification is not attributed to every relay client or to iOS.
+
+The harness reserves UUID resource names before creation can time out. Cleanup
+checks ownership and attempts each resource independently, even if logs or a
+different removal fail; an unconfirmed outcome stays FAIL. Fault tests in
+`infra/local/test_call_turn_proof.py` drive this actual harness through a stateful
+Docker adapter without running Docker or Cargo.
