@@ -68,6 +68,18 @@ struct ZoenCallPort: Sendable {
   let releaseAudio: @Sendable () async -> Void
   let turn: @Sendable () async throws -> ZoenCallTurn
   let action: @Sendable (String) async throws -> Void
+
+  /// Re-read policy/canonical state after crossing to system presentation. The
+  /// snapshot used to construct a coordinator cannot authorize a later report.
+  func presentationRecord() async throws -> ZoenCallRecord {
+    let record = try await current()
+    let caller = record.caller == scope.identity && record.callerDevice == scope.device
+    let callee = record.callee == scope.identity && record.invitationConfirmed
+      && (record.acceptedDevice == nil || record.acceptedDevice == scope.device)
+    guard !record.terminal, record.callId == scope.call, record.invitation == scope.invitation,
+          caller || callee else { throw ZoenCallFailure.retired }
+    return record
+  }
 }
 
 enum ZoenCallFailure: Error { case retired, denied, unavailable, negotiation, exhausted }

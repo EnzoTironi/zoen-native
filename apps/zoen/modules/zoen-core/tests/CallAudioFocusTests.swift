@@ -18,6 +18,17 @@ private actor HandoffEvents {
   }
 }
 
+@MainActor
+private final class PresentationPolicy {
+  var blocked = false
+  var waiting: CheckedContinuation<Void, Never>?
+  func current() async throws -> ZoenCallRecord {
+    await withCheckedContinuation { waiting = $0 }
+    guard !blocked else { throw ZoenCallFailure.denied }
+    return try zoenCallDecode(ZoenCallRecord.self, #"{"call_id":"call_a","invitation":"signed","caller":"alice","caller_device":"a1","callee":"bob","media":"audio","invited_at_ms":1,"expires_at_ms":100,"invitation_confirmed":true,"acceptance_confirmed":false,"invalidated":false}"#)
+  }
+}
+
 @main
 struct CallAudioFocusTests {
   @MainActor
@@ -78,6 +89,24 @@ struct CallAudioFocusTests {
     precondition(replacement.microphoneLive(allowed: true, activated: true, live: true))
     precondition(!rtc.microphoneLive(allowed: true, activated: true, live: true))
     precondition(!replacement.cameraLive(allowed: true, started: true, live: false))
+
+    // Re-read after the presentation hop; an earlier coordinator snapshot must
+    // not admit a peer blocked while that callback was retained.
+    let policy = PresentationPolicy()
+    let port = ZoenCallPort(scope: .init(identity: "bob", device: "b1", space: "dm", call: "call_a", invitation: "signed"),
+      locale: "en", relayReady: { true }, current: { try await policy.current() }, transport: { [] },
+      send: { _, _ in }, prepareAudio: {}, releaseAudio: {}, turn: { throw ZoenCallFailure.unavailable }, action: { _ in })
+    var reports = 0
+    let presenting = Task { @MainActor in
+      do { _ = try await port.presentationRecord(); reports += 1 }
+      catch ZoenCallFailure.denied { return }
+      catch { preconditionFailure("Unexpected presentation failure") }
+    }
+    await until { policy.waiting != nil }
+    policy.blocked = true
+    policy.waiting?.resume(); policy.waiting = nil
+    await presenting.value
+    precondition(reports == 0)
 
     let focus = ZoenCallAudioFocus()
     let events = HandoffEvents()

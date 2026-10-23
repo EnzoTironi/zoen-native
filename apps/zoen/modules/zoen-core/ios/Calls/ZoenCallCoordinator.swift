@@ -30,10 +30,13 @@ final class ZoenCallCoordinator: NSObject {
   }
 
   func begin(outgoing: Bool) async throws {
+    call = try await port.presentationRecord()
     guard !retired, !call.terminal, ZoenCallSystem.shared.install(self) else { throw ZoenCallFailure.retired }
     installed = true
     if outgoing {
       try await port.prepareAudio()
+      call = try await port.presentationRecord()
+      guard !retired else { throw ZoenCallFailure.retired }
       let action = CXStartCallAction(call: id, handle: CXHandle(type: .generic, value: name))
       action.isVideo = call.video
       try await controller.request(CXTransaction(action: action))
@@ -165,7 +168,7 @@ final class ZoenCallCoordinator: NSObject {
   func startAction(_ action: CXStartCallAction) async {
     guard !retired, action.callUUID == id else { action.fail(); return }
     do {
-      call = try await port.current()
+      call = try await port.presentationRecord()
       guard !retired, !call.terminal else { throw ZoenCallFailure.retired }
       provider.reportOutgoingCall(with: id, startedConnectingAt: Date())
       action.fulfill(); show()
