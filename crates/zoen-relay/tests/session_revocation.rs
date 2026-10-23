@@ -31,6 +31,7 @@ use zoen_relay::{
 };
 
 struct BlockedLog {
+    managed_registry: std::sync::OnceLock<zoen_relay::managed_devices::ManagedDevices>,
     sync_spaces: std::sync::Mutex<Option<Vec<String>>>,
     sync_history: std::sync::Mutex<Option<Arc<sync_membership::History>>>,
     sync_members: std::sync::Mutex<std::collections::BTreeSet<(String, String)>>,
@@ -84,6 +85,14 @@ impl Drop for Reading<'_> {
 
 #[async_trait]
 impl LogStore for BlockedLog {
+    fn managed_device(
+        &self,
+        device: &str,
+    ) -> Option<Arc<zoen_relay::managed_devices::ManagedDevice>> {
+        self.managed_registry
+            .get()
+            .and_then(|registry| registry.get(device))
+    }
     async fn append(&self, env: &Envelope, _: bool) -> Result<Sequencing, Reject> {
         self.reading.store(true, Ordering::Release);
         let _reading = Reading(&self.reading, &self.cancelled);
@@ -330,6 +339,7 @@ impl TestRelay {
                 .unwrap()
         };
         let log = Arc::new(BlockedLog {
+            managed_registry: Default::default(),
             sync_spaces: Default::default(),
             sync_history: Default::default(),
             sync_members: Default::default(),
@@ -457,6 +467,8 @@ mod concurrent_revocation;
 mod enrollment;
 #[path = "session_revocation/mailbox.rs"]
 mod mailbox;
+#[path = "session_revocation/managed_admission.rs"]
+mod managed_admission;
 #[path = "session_revocation/presence.rs"]
 mod presence;
 #[path = "session_revocation/profiles.rs"]

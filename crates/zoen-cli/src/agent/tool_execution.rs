@@ -188,6 +188,9 @@ impl SpaceTools<'_> {
     }
     fn current_call(&self, call: &ToolCall) -> Result<String, String> {
         self.check_selection()?;
+        if call.name == image_tools::TOOL {
+            return self.image_stage(call);
+        }
         if client_core::agent_sites::is_model_name(&call.name) {
             return self.site_call(call);
         }

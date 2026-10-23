@@ -129,10 +129,20 @@ impl Session {
             }
             Op::Agent(req) => self.agent(req).await,
             Op::RuntimeBinding(request) => {
-                crate::runtime_binding::prove(&self.st, &self.identity, &self.device, request)
-                    .await
-                    .map(Reply::RuntimeBinding)
-                    .map_err(str::to_owned)
+                // A failed/replaced challenge must not retain the old checkpoint.
+                self.managed_binding = None;
+                let proof = crate::runtime_binding::prove(
+                    &self.st,
+                    &self.identity,
+                    &self.device,
+                    request.clone(),
+                )
+                .await
+                .map_err(str::to_owned)?;
+                if self.st.log.managed_device(&self.device).is_some() {
+                    self.managed_binding = Some(request);
+                }
+                Ok(Reply::RuntimeBinding(proof))
             }
             Op::CallTurn { space, peer } => self.call_turn(&space, &peer).await,
             Op::Devices => Ok(Reply::Devices(

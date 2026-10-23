@@ -62,6 +62,20 @@ pub struct VisiblePage {
 /// Every call names its Space or identity, so cells and regions route above the trait.
 #[async_trait::async_trait]
 pub trait LogStore: Send + Sync {
+    /// Trusted host registry; absent devices retain ordinary messaging behavior.
+    fn managed_device(
+        &self,
+        _device: &str,
+    ) -> Option<std::sync::Arc<crate::managed_devices::ManagedDevice>> {
+        None
+    }
+    /// Read actual paired deployment/current checkpoint. Unsupported stores refuse.
+    async fn managed_checkpoint(
+        &self,
+        _deployment: &relay_admission::managed_images::Deployment,
+    ) -> Result<Option<relay_admission::managed_images::Checkpoint>, StoreError> {
+        Ok(None)
+    }
     /// Read-only transport proof. An unsupported store cannot claim a runtime
     /// deployment. The expected witness is read by the host from its own SQL.
     async fn runtime_cell(

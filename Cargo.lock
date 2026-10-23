@@ -7917,9 +7917,11 @@ dependencies = [
  "async-nats",
  "base64 0.22.1",
  "client-core",
+ "device-link",
  "documents",
  "ed25519-dalek",
  "event-log",
+ "foundationdb",
  "futures-util",
  "gate",
  "getrandom 0.2.17",
@@ -7941,6 +7943,8 @@ dependencies = [
  "types",
  "zeroize",
  "zoen-agentd",
+ "zoen-models",
+ "zoen-runtime",
 ]
 
 [[package]]

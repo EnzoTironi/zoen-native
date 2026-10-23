@@ -200,9 +200,13 @@ async fn checked(
                 // This is an explanation of a refused continuation, never a receipt
                 // or an implicit permission to repeat an ambiguous operation.
                 stop(trace::Stop::RecoveryRefused);
-                return selected_reply(e, space,
+                return selected_reply(
+                    e,
+                    space,
                     "I cannot safely renew this action. Reconcile its result and request a new proposal if needed; I have not repeated it.",
-                    &t.id, selection);
+                    &t.id,
+                    selection,
+                );
             }
         }
         let checkpoint = match tools.recovery_checkpoint(&request.id, &request.content_hash) {
@@ -359,6 +363,9 @@ async fn checked(
             true
         }
         TurnOutcome::Say { text } => selected_reply(e, space, &text, &t.id, selection),
+        TurnOutcome::ToolAsk { ask } if ask.call.name == image_tools::TOOL => {
+            tools.image_stage(&ask.call).is_ok()
+        }
         TurnOutcome::ToolAsk { ask } => match tools.stage_approval(&ask) {
             Ok(dto) => {
                 trace::staged(space, &t.id, &ask, &dto);

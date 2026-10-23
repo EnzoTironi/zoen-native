@@ -2,19 +2,29 @@
 use super::*;
 use client_core::relay_output_transport::{RelayOutputError, RelayOutputTransport};
 use futures_util::TryStreamExt;
-use protocol::runtime_binding::{BlobBinding, Expectation, Request, BLOB_HEADER};
+use protocol::runtime_binding::{
+    BlobBinding, Expectation, ManagedCheckpoint, Request, BLOB_HEADER,
+};
 
 fn actor(f: &Fixture) -> Author {
     f.world.agents[0].clone()
 }
 
-fn expected(f: &Fixture, nonce: u8) -> Expectation {
+fn expected(
+    f: &Fixture,
+    nonce: u8,
+    checkpoint: &relay_admission::managed_images::Checkpoint,
+) -> Expectation {
     Expectation::new(
         &f.world.runtime.execution.deployment,
         Request {
             namespace: f.world.config_namespace.clone(),
             nonce: vec![nonce; 32],
-            managed: None,
+            managed: Some(ManagedCheckpoint {
+                generation: checkpoint.generation,
+                sequence: checkpoint.sequence,
+                digest: checkpoint.digest.clone(),
+            }),
         },
         f.world.relay_cell.as_deref().unwrap(),
         "image-output-real-relay-355",
@@ -49,12 +59,32 @@ async fn bound_put(
         .as_u16()
 }
 
-pub(super) async fn run(f: &Fixture, relay: &relay::Relay) {
+pub(super) async fn run(f: &Fixture, run: &str, relay: &relay::Relay) {
     let url = format!("http://{}", relay.address);
+    let (envelope, _) = proof::transport_original(&f.world.runtime, run).await;
+    let checkpoint = proof::output_checkpoint(&f.world.runtime, run)
+        .await
+        .unwrap();
+    assert!(
+        matches!(
+            f.world
+                .runtime
+                .connect_bound_output(&url, &relay.state.relay_name, actor(f))
+                .await,
+            Err(RuntimeError::Denied)
+        ),
+        "registered managed device cannot bind legacy None"
+    );
     let transport = f
         .world
         .runtime
-        .connect_bound_output(&url, &relay.state.relay_name, actor(f))
+        .connect_bound_image_output(
+            &url,
+            &relay.state.relay_name,
+            actor(f),
+            &envelope,
+            Some(&checkpoint),
+        )
         .await
         .unwrap();
     // A real bound upload, through the production handler and object store.
@@ -68,7 +98,7 @@ pub(super) async fn run(f: &Fixture, relay: &relay::Relay) {
             .blob(),
         hash(&bytes)
     );
-    let scope = expected(f, 41);
+    let scope = expected(f, 41, &checkpoint);
     let binding = BlobBinding {
         request: scope.request().clone(),
         proof: scope.proof(),
@@ -129,7 +159,7 @@ pub(super) async fn run(f: &Fixture, relay: &relay::Relay) {
             &format!("http://{}", other_cell.address),
             &other_cell.state.relay_name,
             actor(f),
-            expected(f, 42)
+            expected(f, 42, &checkpoint)
         )
         .await,
         Err(RelayOutputError::Refused)

@@ -16,6 +16,7 @@ mod cli;
 mod commands;
 mod deckcraft;
 mod file_vault;
+mod image_protocol;
 mod terminal;
 
 use std::{
@@ -31,20 +32,6 @@ use client_core::{
 };
 use file_vault::FileVault;
 use terminal::{line, receive_history, Printer, Progress};
-
-impl SecretVault for FileVault {
-    fn load(&self, key: String) -> Option<Vec<u8>> {
-        self.read_bytes(&key).ok()
-    }
-    fn save(&self, key: String, value: Vec<u8>) -> bool {
-        self.write_bytes(&key, &value).is_ok()
-    }
-    fn delete(&self, key: String) {
-        // SecretVault cannot report deletion errors. Callers needing confirmed
-        // removal must still reconcile with the retained enrollment/setup state.
-        let _ = self.remove(&key);
-    }
-}
 
 /// `@ana  Ana  bio=…  photo=<sha>|pending|none  v3`, or `(hidden)` without their key.
 fn profile_line(p: &ProfileDto) -> String {
