@@ -1,4 +1,25 @@
 use super::*;
+
+#[test]
+fn managed_genesis_is_binding_only_and_has_no_later_generation_alias() {
+    let mut request = request();
+    request.managed = Some(ManagedCheckpoint {
+        generation: 1,
+        sequence: 0,
+        digest: "ab".repeat(32),
+    });
+    let frame = crate::ClientFrame::Req {
+        id: 9,
+        op: crate::Op::RuntimeBinding(request.clone()),
+    };
+    assert!(request.valid());
+    assert_eq!(crate::ClientFrame::decode(&frame.encode()), Ok(frame));
+    request.managed.as_mut().unwrap().generation = 2;
+    assert!(
+        !request.valid(),
+        "only original genesis can bootstrap read-only binding"
+    );
+}
 use crate::{ClientFrame, Op, Reply, ServerFrame};
 
 fn request() -> Request {
