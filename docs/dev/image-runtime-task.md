@@ -73,6 +73,11 @@ or substituted physical chunk fails without a provider claim or financial change
 The existing evidence retention currently has no orphan-collection proof; this
 increment does not claim one or a real HTTP upload receipt.
 
-#346 tracks this follow-up to #325. Directed and full automated qualification is
-pending for the new increment. Production continuity/output authority, provider
-HTTP, upload/delivery and device-memory qualification remain open.
+#346 tracks this follow-up to #325. Directed Store, Models, native Image and
+pricing tests exercise the bounds, repeated identical output with independent
+keys, cold recovery and upload barrier. The real SQL/FDB controlled-adapter
+journey also exercises retained-chunk refusal without another claim or charge.
+Per-source results, initial failures and compiler corrections are recorded in
+#346; no single full-suite pass is implied by combining those runs. Production
+continuity/output authority, provider HTTP, upload/delivery, iPhone UI and
+device-memory qualification remain open.
