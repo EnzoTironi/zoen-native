@@ -100,10 +100,26 @@ pub async fn put_key_packages(
     last_resort: Option<&[u8]>,
 ) -> Result<bool, sqlx::Error> {
     let mut tx = pool.begin().await?;
+    let stored = put_key_packages_in(&mut tx, identity, device, packages, last_resort).await?;
+    if stored {
+        tx.commit().await?;
+    }
+    Ok(stored)
+}
+
+/// Same publication/deduplication in an existing transaction. The caller must
+/// retain its actual device/directory authorization through this commit.
+pub async fn put_key_packages_in(
+    tx: &mut Transaction<'_, Postgres>,
+    identity: &str,
+    device: &str,
+    packages: &[(Vec<u8>, i64)],
+    last_resort: Option<&[u8]>,
+) -> Result<bool, sqlx::Error> {
     // One publisher per device at a time, so the count below holds when we insert.
     sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
         .bind(format!("kp:{identity}:{device}"))
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
     sqlx::query(
         "DELETE FROM key_package_publications WHERE identity = $1 AND device = $2
@@ -111,7 +127,7 @@ pub async fn put_key_packages(
     )
     .bind(identity)
     .bind(device)
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await?;
     let (data, expires): (Vec<_>, Vec<_>) = packages.iter().cloned().unzip();
     let fresh: Vec<Vec<u8>> = sqlx::query_scalar(
@@ -124,14 +140,14 @@ pub async fn put_key_packages(
     .bind(device)
     .bind(&data)
     .bind(&expires)
-    .fetch_all(&mut *tx)
+    .fetch_all(&mut **tx)
     .await?;
     let (stored,): (i64,) = sqlx::query_as(
         "SELECT count(*) FROM key_packages WHERE identity = $1 AND device = $2 AND NOT last_resort",
     )
     .bind(identity)
     .bind(device)
-    .fetch_one(&mut *tx)
+    .fetch_one(&mut **tx)
     .await?;
     if stored + fresh.len() as i64 > MAX_KEY_PACKAGES {
         return Ok(false);
@@ -145,7 +161,7 @@ pub async fn put_key_packages(
     .bind(device)
     .bind(&data)
     .bind(&fresh)
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await?;
     if let Some(data) = last_resort {
         sqlx::query(
@@ -155,10 +171,9 @@ pub async fn put_key_packages(
         .bind(identity)
         .bind(device)
         .bind(data)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
     }
-    tx.commit().await?;
     Ok(true)
 }
 

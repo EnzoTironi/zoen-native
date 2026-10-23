@@ -371,3 +371,5 @@ mod receipt_recovery_cases;
 mod reply_authority_cases;
 mod support;
 use support::*;
+
+mod initial_key_packages;
