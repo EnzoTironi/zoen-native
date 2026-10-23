@@ -108,6 +108,7 @@ test('camera selection serializes capture and hides preview during switching, of
   const capture = rtc.split('  private func startCamera()')[1]!.split('  func stop()')[0]!;
   before(capture, 'capturingFront = device.position == .front', 'camera.startCapture');
   before(capture, '_ = try await current()', 'publishLocalPreview()');
+  before(capture, 'guard selection == cameraSwitch', 'cameraTrack?.isEnabled = intent.cameraLive');
   const screen = source('Calls/ZoenCallViewController.swift');
   assert.match(
     screen,

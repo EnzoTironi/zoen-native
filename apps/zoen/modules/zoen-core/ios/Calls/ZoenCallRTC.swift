@@ -273,6 +273,7 @@ final class ZoenCallRTC: NSObject {
     guard cameraAllowed, intent.cameraEnabled else { return }
     guard let camera, let device = RTCCameraVideoCapturer.captureDevices().first(where: { $0.position == (intent.frontCamera ? .front : .back) }) ?? RTCCameraVideoCapturer.captureDevices().first,
           let format = RTCCameraVideoCapturer.supportedFormats(for: device).filter({ CMVideoFormatDescriptionGetDimensions($0.formatDescription).width <= 1280 }).max(by: { CMVideoFormatDescriptionGetDimensions($0.formatDescription).width < CMVideoFormatDescriptionGetDimensions($1.formatDescription).width }) else { return }
+    let selection = cameraSwitch
     capturingFront = device.position == .front
     try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
       camera.startCapture(with: device, format: format, fps: 30) { error in
@@ -281,6 +282,7 @@ final class ZoenCallRTC: NSObject {
     }
     _ = try await current()
     cameraStarted = true
+    guard selection == cameraSwitch else { await stopCamera(); return }
     cameraTrack?.isEnabled = intent.cameraLive(allowed: cameraAllowed, started: cameraStarted, live: live)
     publishLocalPreview()
     if !intent.cameraEnabled { await stopCamera() }
