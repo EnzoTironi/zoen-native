@@ -49,6 +49,24 @@ impl RuntimeAuthority {
         deployment: &Deployment,
     ) -> Result<(), RuntimeError> {
         let (sql, fdb) = self.image_checkpoints(deployment).await?;
+        // Publication activation commits SQL first. A retained inert intent can
+        // be reauthorized as maintenance; dispatch recovery below is separate.
+        if let Some(prepared) = anchor.pending().map_err(error)? {
+            if !prepared.retirement
+                && fdb == prepared.previous
+                && (sql == prepared.previous || sql == prepared.next)
+                && Box::pin(self.recover_image_activation(deployment, &prepared)).await?
+            {
+                let (sql, fdb) = self.image_checkpoints(deployment).await?;
+                if sql != prepared.next
+                    || fdb != prepared.next
+                    || anchor.reconcile(&sql, &fdb).map_err(error)? != Recovery::BothAfter
+                {
+                    return Err(RuntimeError::RestoreUnreconciled);
+                }
+                return Ok(());
+            }
+        }
         match anchor.reconcile(&sql, &fdb).map_err(error)? {
             Recovery::Clean | Recovery::BothBefore | Recovery::BothAfter => return Ok(()),
             Recovery::FdbBefore => return Err(RuntimeError::RestoreUnreconciled),

@@ -1,8 +1,11 @@
 # Managed Images continuity
 
-Tracked by #380, under #366/#325. This increment checkpoints Images provider
-dispatch. Production continuity and output admission remain closed. It does not
-yet qualify a running host, mandatory relay generations, or output checkpoints.
+Tracked by #380, under #366/#325. Images provider dispatch and original
+publication use independent checkpoints. General reply output and global
+continuity remain closed. The separate [Images-only output constructor](managed-image-output-scope.md)
+can qualify a fixed certified managed device and route; its combined actual
+host journey is not yet accepted. Construction of an anchor alone grants no
+output authority.
 
 The deployment is initially one cooperating host on a local Unix filesystem.
 The owned anchor directory must be explicitly excluded from PostgreSQL/FDB

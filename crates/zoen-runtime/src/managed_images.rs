@@ -17,6 +17,17 @@ pub(crate) struct ManagedImages {
     deployment: Deployment,
 }
 
+#[cfg(test)]
+impl ManagedImages {
+    pub(crate) fn activation_evidence(&self) -> (Deployment, Option<Prepared>, Checkpoint) {
+        (
+            self.deployment.clone(),
+            self.anchor.pending().unwrap(),
+            self.anchor.reader().checkpoint().unwrap(),
+        )
+    }
+}
+
 /// An annotation of an existing linear claim, not a financial capability.
 #[derive(Clone)]
 pub(crate) struct DispatchCheckpoint {
