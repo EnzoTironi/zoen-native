@@ -38,6 +38,7 @@ export function SitePublicationAction({
       const ticket = activity.begin()!;
       setBusy(true);
       setStatus(null);
+      setError(null);
       void store.driver
         .request({ op: 'site_status', scope, source: saved.source })
         .then((result) => {
