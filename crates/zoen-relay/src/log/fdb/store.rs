@@ -85,6 +85,62 @@ impl LogStore for FdbLog {
             .map_err(store_err)
     }
 
+    async fn read_visible(
+        &self,
+        space: &str,
+        who: &str,
+        from: u64,
+        limit: usize,
+    ) -> Result<Option<VisiblePage>, StoreError> {
+        let from = i64::try_from(from).map_err(|_| StoreError("invalid history cursor".into()))?;
+        self.cell
+            .db
+            .run(|trx, _| async move {
+                // Snapshot reads share one FDB read version: a removal committed
+                // before this version clamps the range, while an earlier admitted
+                // page cannot include events committed after that read version.
+                let through = if self.cell.role_in(&trx, space, who).await?.is_some() {
+                    None
+                } else {
+                    let Some(value) = trx
+                        .get(&self.cell.space_key(space, ("gone", who)), true)
+                        .await?
+                    else {
+                        return Ok(None);
+                    };
+                    let last = unpack::<i64>(&value).map_err(|error| custom(error.to_string()))?;
+                    if last < 0 {
+                        return Err(custom("invalid removal boundary"));
+                    }
+                    Some(last)
+                };
+                if through.is_some_and(|last| from > last) {
+                    return Ok(Some(VisiblePage {
+                        events: Vec::new(),
+                        through: through.map(|v| v as u64),
+                    }));
+                }
+                let begin = self.cell.space_key(space, ("log", from));
+                let end = match through.and_then(|last| last.checked_add(1)) {
+                    Some(after) => self.cell.space_key(space, ("log", after)),
+                    None => self.cell.space_range(space, "log").range().1,
+                };
+                let events = Cell::scan(&trx, (begin, end), limit, true)
+                    .await?
+                    .into_iter()
+                    .map(|(_, bytes)| {
+                        Sequenced::decode(&bytes).map_err(|error| custom(error.to_string()))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(Some(VisiblePage {
+                    events,
+                    through: through.map(|v| v as u64),
+                }))
+            })
+            .await
+            .map_err(store_err)
+    }
+
     async fn role(&self, space: &str, who: &str) -> Result<Option<Role>, StoreError> {
         self.cell
             .db

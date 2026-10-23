@@ -10,6 +10,9 @@ use protocol::{Envelope, Sequenced};
 use types::{EventBody, Privacy, Role, Seen, SpaceKind, GENESIS_PREV};
 use zoen_relay::log::{fdb::FdbLog, LogStore, Sequencing};
 
+#[path = "log_store/history_visibility.rs"]
+mod history_visibility;
+
 #[path = "log_store/mls_contracts.rs"]
 mod mls_contracts;
 #[path = "log_store/turn_admission.rs"]
@@ -192,6 +195,11 @@ fn main() {
         run(
             "membership changes commit with the event that makes them",
             membership_changes_commit_with_the_event_that_makes_them(),
+        )
+        .await;
+        run(
+            "history pages clamp concurrent removal and preserve rejoin",
+            history_visibility::removal_clamps_each_history_page_and_rejoin_restores_access(),
         )
         .await;
         run(
