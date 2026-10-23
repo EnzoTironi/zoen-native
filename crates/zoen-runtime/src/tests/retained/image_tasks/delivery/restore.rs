@@ -1,45 +1,17 @@
 //! Restore actual source/dedupe AND original Runtime capsule/Review after a
-//! consumed Publish. SQL is proven byte-equivalent over this read-only effect;
+//! consumed Publish. Registered WS reconnects legitimately touch last_seen;
 //! operational partition ownership remains live and is never rewound. This is
 //! scoped logical-state rollback, not pg_dump/full-cluster deployment restore.
 use super::*;
 mod ownership;
+mod sql;
 use foundationdb::{options::StreamingMode, tuple::Subspace, KeySelector, RangeOption};
 
 pub(super) struct Snapshot {
     ranges: Vec<(Vec<u8>, Vec<u8>)>,
     values: Vec<(Vec<u8>, Vec<u8>)>,
-    sql_digest: String,
+    sql: sql::Snapshot,
     ownership: (Vec<u8>, Vec<u8>),
-}
-
-async fn sql_digest(f: &Fixture) -> String {
-    let mut transaction = f.world.runtime.finance.pool.begin().await.unwrap();
-    sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
-        .execute(&mut *transaction)
-        .await
-        .unwrap();
-    let tables: Vec<String> = sqlx::query_scalar(
-        "SELECT tablename::TEXT FROM pg_tables WHERE schemaname='public' ORDER BY tablename",
-    )
-    .fetch_all(&mut *transaction)
-    .await
-    .unwrap();
-    let mut snapshot = Vec::new();
-    for table in tables {
-        // Names come from this isolated fixture database's actual catalog.
-        let quoted = table.replace('"', "\"\"");
-        let rows: Vec<String> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
-            "SELECT row_to_json(r)::TEXT FROM public.\"{quoted}\" r ORDER BY row_to_json(r)::TEXT",
-        )))
-        .fetch_all(&mut *transaction)
-        .await
-        .unwrap();
-        snapshot.push((table, rows));
-    }
-    transaction.commit().await.unwrap();
-    // Failure evidence contains the digest, never private pairing/credential rows.
-    hash(&serde_json::to_vec(&snapshot).unwrap())
 }
 
 impl Snapshot {
@@ -136,17 +108,13 @@ impl Snapshot {
         Self {
             ranges,
             values,
-            sql_digest: sql_digest(f).await,
+            sql: sql::Snapshot::capture(f).await,
             ownership,
         }
     }
 
-    pub(super) async fn restore(&self, f: &Fixture) {
-        assert_eq!(
-            sql_digest(f).await,
-            self.sql_digest,
-            "SQL did not change between snapshot and this read-only relay publication"
-        );
+    pub(super) async fn restore(&self, f: &Fixture, current_sql: &sql::Snapshot) {
+        current_sql.assert_exact(&sql::Snapshot::capture(f).await);
         let transaction = f.world.runtime.execution.transaction().await.unwrap();
         // Compare current full ownership bytes in the same actual transaction;
         // heartbeats outside this operation may legitimately renew those leases.
@@ -170,7 +138,7 @@ impl Snapshot {
             actual.values == self.values,
             "all captured source/Runtime bytes must be restored"
         );
-        assert_eq!(actual.sql_digest, self.sql_digest);
+        current_sql.assert_exact(&actual.sql);
     }
 }
 
@@ -182,8 +150,10 @@ pub(super) async fn refuses_consumed_original(
     original: &(String, String, Envelope),
 ) {
     let after = Snapshot::capture(f).await;
-    assert_eq!(before.sql_digest, after.sql_digest);
-    before.restore(f).await;
+    before
+        .sql
+        .assert_only_authenticated_ws_touch(&after.sql, &f.world.agents[0]);
+    before.restore(f, &after.sql).await;
     output::cold(f).await;
     let restored_head = head(f).await;
     assert_eq!(
@@ -210,10 +180,10 @@ pub(super) async fn refuses_consumed_original(
         0
     );
     assert_eq!(f.world.http.sends.load(Ordering::SeqCst), 0);
-    assert_eq!(sql_digest(f).await, before.sql_digest);
+    after.sql.assert_exact(&sql::Snapshot::capture(f).await);
     // Restore exact known post-Accepted bytes to continue this same fixture;
     // neither restore touches or recreates the independently consumed record.
-    after.restore(f).await;
+    after.restore(f, &after.sql).await;
     output::cold(f).await;
-    println!("managed image publication restore: actual source/log/dedupe and original Runtime capsule/Review restored after CP/before append; unchanged actual SQL snapshot; consumed original refused without new append/provider/claim PASS (not full deployment backup/restore)");
+    println!("managed image publication restore: actual source/log/dedupe and original Runtime capsule/Review restored after CP/before append; current complete SQL preserved including authoritative checkpoint and monotonic authenticated reconnect timestamp; consumed original refused without new append/provider/claim PASS (not full deployment backup/restore)");
 }
