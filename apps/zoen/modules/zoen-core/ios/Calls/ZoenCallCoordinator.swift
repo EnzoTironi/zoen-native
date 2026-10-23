@@ -20,11 +20,15 @@ final class ZoenCallCoordinator: NSObject {
   private var retired = false
   private var installed = false
   private var audio: AVAudioSession?
+  private let presentation = ZoenCallPresentation()
+  private var currentPhase: String
+  private var connectedAtMs: Int64?
   private let name: String
   private let status: @MainActor (String) -> Void
 
   init(port: ZoenCallPort, record: ZoenCallRecord, name: String, status: @escaping @MainActor (String) -> Void) {
     self.port = port; self.call = record; self.name = name; self.status = status
+    currentPhase = record.caller == port.scope.identity ? "calling" : "incoming"
     provider = ZoenCallSystem.shared.provider
     super.init()
   }
@@ -33,6 +37,8 @@ final class ZoenCallCoordinator: NSObject {
     call = try await port.presentationRecord()
     guard !retired, !call.terminal, ZoenCallSystem.shared.install(self) else { throw ZoenCallFailure.retired }
     installed = true
+    currentPhase = outgoing ? "calling" : "incoming"
+    status(currentPhase)
     if outgoing {
       try await port.prepareAudio()
       call = try await port.presentationRecord()
@@ -53,7 +59,6 @@ final class ZoenCallCoordinator: NSObject {
       update.supportsDTMF = false; update.supportsGrouping = false; update.supportsUngrouping = false
       try await provider.reportNewIncomingCall(with: id, update: update)
     }
-    status(outgoing ? "calling" : "incoming")
     let remaining = max(0, call.expiresAtMs - Int64(Date().timeIntervalSince1970 * 1000))
     deadline = Task { [weak self] in
       do { try await Task.sleep(for: .milliseconds(remaining)) } catch { return }
@@ -107,22 +112,50 @@ final class ZoenCallCoordinator: NSObject {
     }
   }
 
-  func show() {
+  func show() async throws {
+    call = try await port.presentationRecord()
     guard !retired else { return }
-    if let screen { screen.presentIfNeeded(); return }
-    let view = ZoenCallViewController(name: name, video: call.video, locale: port.locale)
+    guard call.caller == port.scope.identity || call.acceptedDevice == port.scope.device,
+          let ticket = presentation.beginShow() else { return }
+    let view = screen ?? ZoenCallViewController(name: name, video: call.video, locale: port.locale)
     view.end = { [weak self] in Task { await self?.requestEnd() } }
     view.camera = { [weak self] value in self?.mediaIntent.cameraEnabled = value; self?.rtc?.setCameraEnabled(value) }
     view.mute = { [weak self] value in self?.requestMute(value) }
     view.speaker = { [weak self] value in self?.mediaIntent.speaker = value; try? self?.rtc?.setSpeaker(value) }
+    view.minimize = { [weak self] in self?.minimize() }
     screen = view
-    view.presentIfNeeded()
     view.setIntent(mediaIntent)
+    view.setPhase(currentPhase)
+    let accepted = view.presentIfNeeded { [weak self] in
+      guard let self, !self.retired, self.presentation.shown(ticket) else { return }
+      self.status(self.currentPhase)
+      if self.presentation.consumeHideRequest() { self.minimize() }
+    }
+    if !accepted { presentation.showFailed(ticket); status(currentPhase) }
+  }
+
+  private func minimize() {
+    guard !retired, let ticket = presentation.beginHide() else { return }
+    status(currentPhase)
+    screen?.dismiss(animated: true) { [weak self] in
+      guard let self, !self.retired, self.presentation.hidden(ticket) else { return }
+      self.status(self.currentPhase)
+      if self.presentation.consumeShowRequest() { Task { try? await self.show() } }
+    }
+  }
+
+  func presentationSnapshot() -> ZoenCallPresentationSnapshot {
+    ZoenCallPresentationSnapshot(identityID: port.scope.identity, deviceID: port.scope.device,
+      spaceID: port.scope.space, callID: port.scope.call, state: presentation.snapshotState(currentPhase),
+      minimized: !retired && currentPhase != "incoming" && presentation.minimized,
+      connectedAtMs: connectedAtMs)
   }
 
   private func phase(_ phase: String) {
     guard !retired else { return }
-    status(phase); screen?.setPhase(phase)
+    currentPhase = phase == "reconnecting" && connectedAtMs == nil ? "connecting" : phase
+    if phase == "connected", connectedAtMs == nil { connectedAtMs = Int64(Date().timeIntervalSince1970 * 1000) }
+    status(currentPhase); screen?.setPhase(currentPhase)
     if phase == "connected", call.callerDevice == port.scope.device {
       provider.reportOutgoingCall(with: id, connectedAt: Date())
     }
@@ -146,10 +179,10 @@ final class ZoenCallCoordinator: NSObject {
 
   func stop(writeEnd: Bool, reason: CXCallEndedReason = .remoteEnded) async {
     guard !retired else { return }
-    guard installed else { retired = true; status("ended"); return }
+    guard installed else { retired = true; presentation.retire(); status("ended"); return }
     let releaseAudio = port.releaseAudio
     let retirement = ZoenCallSystem.shared.retire(self) { await releaseAudio() }
-    retired = true; deadline?.cancel(); deadline = nil; watchdog?.cancel(); watchdog = nil
+    retired = true; presentation.retire(); deadline?.cancel(); deadline = nil; watchdog?.cancel(); watchdog = nil
     await rtc?.stop(); rtc = nil
     retirement.mediaDidStop()
     // Stop all capture before an awaited write. Failure stays in the canonical
@@ -162,7 +195,7 @@ final class ZoenCallCoordinator: NSObject {
     provider.reportCall(with: id, endedAt: Date(), reason: reason)
     ZoenCallSystem.shared.remove(self)
     screen?.dismiss(animated: true); screen = nil
-    audio = nil; status("ended")
+    audio = nil; currentPhase = "ended"; status("ended")
   }
 
   func startAction(_ action: CXStartCallAction) async {
@@ -171,7 +204,7 @@ final class ZoenCallCoordinator: NSObject {
       call = try await port.presentationRecord()
       guard !retired, !call.terminal else { throw ZoenCallFailure.retired }
       provider.reportOutgoingCall(with: id, startedConnectingAt: Date())
-      action.fulfill(); show()
+      action.fulfill(); try await show()
     } catch { action.fail(); await stop(writeEnd: true, reason: .failed) }
   }
 
@@ -181,7 +214,8 @@ final class ZoenCallCoordinator: NSObject {
       try await port.prepareAudio()
       try await port.action("accept")
       guard !retired else { action.fail(); return }
-      action.fulfill(); show()
+      phase("connecting")
+      action.fulfill(); try await show()
       // A queued local accept is not media permission: refresh waits for its ACK.
       try await refresh()
     } catch { action.fail(); await stop(writeEnd: true, reason: .failed) }

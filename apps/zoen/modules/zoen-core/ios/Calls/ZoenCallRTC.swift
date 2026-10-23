@@ -132,7 +132,15 @@ final class ZoenCallRTC: NSObject {
         if let error { continuation.resume(throwing: error) } else { continuation.resume() }
       }
     }
-    _ = try await current()
+    let call = try await current()
+    if !call.video {
+      for transceiver in peer.transceivers where transceiver.mediaType == .video {
+        transceiver.receiver.track?.isEnabled = false
+        var failure: NSError?
+        transceiver.setDirection(.inactive, error: &failure)
+        if let failure { throw failure }
+      }
+    }
     remoteGeneration = generation
     let waiting = pendingICE; pendingICE.removeAll()
     for candidate in waiting { try await add(candidate) }
@@ -307,6 +315,10 @@ extension ZoenCallRTC {
 
   func receivedVideo(_ track: RTCVideoTrack, from connection: RTCPeerConnection) {
     guard live, peer === connection else { return }
-    enqueue { rtc in _ = try await rtc.current(); rtc.remoteVideo(track) }
+    enqueue { rtc in
+      let call = try await rtc.current()
+      guard call.video else { track.isEnabled = false; rtc.remoteVideo(nil); return }
+      rtc.remoteVideo(track)
+    }
   }
 }

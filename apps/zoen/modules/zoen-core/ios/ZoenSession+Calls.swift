@@ -183,16 +183,32 @@ extension ZoenSession {
     catch { await coordinator.stop(writeEnd: true, reason: .failed); throw error }
   }
 
-  private func callPresentationChanged(scope: ZoenCallScope, state: String) {
-    guard callsScope == scope else { return }
-    let value: [String: String] = ["space_id": scope.space, "call_id": scope.call, "state": state]
-    if let data = try? JSONSerialization.data(withJSONObject: value) { callsChanged?(String(decoding: data, as: UTF8.self)) }
-    if state == "ended" {
+  private func callPresentationChanged(scope: ZoenCallScope, state: String) async {
+    guard callsScope == scope, let coordinator = callCoordinator else { return }
+    let snapshot = await coordinator.presentationSnapshot()
+    guard callsScope == scope, callCoordinator === coordinator else { return }
+    callsChanged?(snapshot.json())
+    if snapshot.state == "ended" {
       callCoordinator = nil; callsScope = nil
       if notificationOnly, let lease = callsModuleLease {
         Task { await ZoenNativePushSessions.gate.releaseRetained(session: self, lease: lease) }
       }
     }
+  }
+
+  func currentCallPresentation() async -> String {
+    guard let borrow = callsBorrow, callBorrowIsCurrent(borrow), let scope = callsScope,
+          let coordinator = callCoordinator, (try? currentCall(borrow, scope: scope)) != nil else { return "null" }
+    let value = await coordinator.presentationSnapshot()
+    guard callsScope == scope, callCoordinator === coordinator, callBorrowIsCurrent(borrow) else { return "null" }
+    return value.json()
+  }
+
+  func showCurrentCall(identity: String, device: String, call: String) async throws {
+    guard let borrow = callsBorrow, callBorrowIsCurrent(borrow), borrow.identity == identity, borrow.device == device,
+          let scope = callsScope, scope.call == call, let coordinator = callCoordinator else { throw SessionError.closed }
+    do { _ = try currentCall(borrow, scope: scope); try await coordinator.show() }
+    catch { await coordinator.stop(writeEnd: false, reason: .failed); throw error }
   }
 
   func callCanonicalChanges(_ spaces: [String]) async {

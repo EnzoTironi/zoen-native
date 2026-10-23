@@ -19,6 +19,7 @@ test(
       }).trim();
       const files = [
         'ios/Calls/ZoenCallModel.swift',
+        'ios/Calls/ZoenCallPresentation.swift',
         'ios/Calls/ZoenCallMediaIntent.swift',
         'ios/Calls/ZoenCallRetirement.swift',
         'ios/Calls/ZoenCallAudioFocus.swift',

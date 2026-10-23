@@ -40,6 +40,10 @@ public class ZoenCoreModule: Module {
     AsyncFunction("callAudioReply") { (ticket: String, success: Bool) async in
       await self.session.callAudioReply(ticket: ticket, success: success)
     }
+    AsyncFunction("callPresentation") { () async -> String in await self.session.currentCallPresentation() }
+    AsyncFunction("showCurrentCall") { (identityId: String, deviceId: String, callId: String) async throws in
+      try await self.session.showCurrentCall(identity: identityId, device: deviceId, call: callId)
+    }
     AsyncFunction("request") { (request: String) async throws -> String in
       do {
         return try await self.session.request(request)

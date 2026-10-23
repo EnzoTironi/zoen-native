@@ -127,12 +127,41 @@ intent is installed before RTC creation and gates delayed permission/capture res
 The owner-specific retirement fence is installed before cleanup awaits; deactivation
 and reset cannot be lost while stop or terminal publication is suspended.
 
-Still open: implement PushKit registration/report/cold handover with the same process gate;
-prove real two-client TURN
-media, reconnection and revocation; then test the physical-device matrix in #266.
+Still open: complete policy-safe PushKit reporting/emission and prove real two-client
+TURN media, reconnection and revocation; then test the physical-device matrix in #266.
+Purpose-scoped server token registration/provider preparation is implemented in #300,
+without a wake RPC or automatic emission. Existing background notification work can
+retain the same cold session and hand it to the foreground module (#303), preserving
+its process gate and account/device lease. That path remains best effort, not urgent
+VoIP delivery. Device-local contact policy is revalidated before presenting CallKit.
 No simulator camera or standalone typecheck can close that matrix. Manual broad QA
 is reserved for the user's next test session.
 
+## Minimize and return
+
+The native call controller can be dismissed while preserving the exact same RTC,
+CallKit and audio owner. Returning revalidates the session, account/device, call and
+contact policy. UUID presentation tickets retain rapid minimize/return intent and
+reject stale UIKit completions after retirement. Failed setup retires the same
+presentation model before system installation too, so its terminal snapshot clears
+the session slot rather than keeping a failed outgoing call around.
+
+The Expo root reserves measured space for the compact return bar. Its nested safe
+area provider describes the actual remaining frame; no overlay window or global
+safe-area mutation is installed. JavaScript receives presentation metadata only.
+Elapsed time starts at the real WebRTC connected callback. The hidden controller
+releases its renderer, without ending legitimate capture or media. Audio-only
+calls disable unsolicited video transceivers before answering; unused data channels
+are closed. These are not an application transport.
+
+At `54b8315c`, TypeScript/lint/format and all 1,854 app tests passed; all 138 real
+native sources passed typecheck against genuine UniFFI and the pinned SDK. Twelve
+directed regressions cover presentation interruption, stale owners/query results,
+audio lifetime and the compiled return layout. The subsequent pre-install failure
+regression is recorded separately on #309. Source wiring/model tests do not prove
+UIKit layout, native animation feel, keyboard behavior or physical media. Those
+remain in the next manual batch. The earlier app artifact at `24db0777` does not
+contain this cohort.
 
 ## Native packaging evidence
 
