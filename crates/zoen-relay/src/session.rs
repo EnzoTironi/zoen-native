@@ -81,12 +81,6 @@ struct DeliveryAuthorization {
     require_device: Arc<AtomicBool>,
 }
 
-fn nonce() -> String {
-    let mut b = [0u8; 32];
-    getrandom::getrandom(&mut b).expect("entropy");
-    hex::encode(b)
-}
-
 async fn recv_frame(
     stream: &mut futures_util::stream::SplitStream<WebSocket>,
 ) -> Option<ClientFrame> {

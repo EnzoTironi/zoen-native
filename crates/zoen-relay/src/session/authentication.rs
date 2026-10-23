@@ -92,7 +92,16 @@ pub(super) async fn handshake(
     } else {
         None
     };
-    let n = nonce();
+    let n = match challenge_nonce(getrandom::getrandom) {
+        Ok(nonce) => nonce,
+        Err(()) => {
+            return refuse(
+                "entropy_unavailable",
+                ServerFrame::error(ErrorCode::Unavailable, "login challenge unavailable"),
+            )
+            .await;
+        }
+    };
     let _ = tx
         .send(ServerFrame::Challenge {
             nonce: n.clone(),
@@ -174,4 +183,40 @@ pub(super) async fn handshake(
         registered,
         claim_receipts,
     })
+}
+
+// Never return partially filled or fallback challenge bytes after an OS failure.
+fn challenge_nonce(
+    entropy: impl FnOnce(&mut [u8]) -> Result<(), getrandom::Error>,
+) -> Result<String, ()> {
+    let mut bytes = [0u8; 32];
+    entropy(&mut bytes).map_err(|_| ())?;
+    Ok(hex::encode(bytes))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::challenge_nonce;
+
+    #[test]
+    fn failed_or_partial_entropy_cannot_issue_a_login_challenge() {
+        assert!(challenge_nonce(|_| Err(getrandom::Error::UNSUPPORTED)).is_err());
+        assert!(challenge_nonce(|bytes| {
+            bytes[..16].fill(0x7f);
+            Err(getrandom::Error::UNSUPPORTED)
+        })
+        .is_err());
+    }
+
+    #[test]
+    fn successful_challenge_preserves_all_32_random_bytes() {
+        let expected = std::array::from_fn::<_, 32, _>(|index| index as u8);
+        let nonce = challenge_nonce(|bytes| {
+            bytes.copy_from_slice(&expected);
+            Ok(())
+        })
+        .expect("fixture entropy supplied");
+        assert_eq!(nonce.len(), 64);
+        assert_eq!(hex::decode(nonce).expect("hex challenge"), expected);
+    }
 }
