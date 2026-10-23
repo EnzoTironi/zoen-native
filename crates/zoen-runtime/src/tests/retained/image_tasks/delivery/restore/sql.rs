@@ -58,6 +58,7 @@ impl Snapshot {
                     .is_some_and(|other| table.rows == other.rows)
             })
     }
+    #[track_caller]
     pub(super) fn assert_exact(&self, after: &Self) {
         assert!(
             self.same(after),
