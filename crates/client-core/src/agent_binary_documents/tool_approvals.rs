@@ -201,7 +201,7 @@ pub(crate) fn review_detail(p: &ToolProposal, title: &str) -> String {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 mod authorization;
 mod projection;

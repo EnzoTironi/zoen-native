@@ -255,7 +255,7 @@ fn revoked_writer_and_expired_signed_request_cannot_create_or_reauthorize() {
 
     let f = setup();
     let request = stage(&f);
-    let mut e = f.agent.lock();
+    let e = f.agent.lock();
     let mut expired = e.state.requests[&request.id].req.clone();
     expired.id = types::new_id("expired_creation");
     expired.tool_proposal.as_mut().unwrap().expires_at_ms = crate::engine::now_ms() - 1;
