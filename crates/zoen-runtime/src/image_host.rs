@@ -36,7 +36,7 @@ pub enum ImageHostProgress {
     /// output. This cannot be interpreted as zero cost or permission to retry.
     AwaitingRecovery {
         run: String,
-        financial: Option<FinancialState>,
+        financial: FinancialState,
     },
     Output {
         run: String,
@@ -120,7 +120,7 @@ impl ImageRuntimeHost {
                     .runtime
                     .image_host_financial(&self.config.agent, &self.config.device, &run)
                     .await?;
-                if financial.is_some() {
+                if let Some(financial) = financial {
                     return Ok(ImageHostProgress::AwaitingRecovery { run, financial });
                 }
                 // SQL absence is only an observation. run_image_task still
