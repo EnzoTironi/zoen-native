@@ -84,6 +84,7 @@ async fn publish(core: &Client, review: &Value) -> Value {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn selected_site_version_survives_reply_loss_reopen_unpublish_and_explicit_rollback() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
     let (ports, management, public_origin) = service::Sites::reserve();
     let w = World::with_env(
         "sites_core",
