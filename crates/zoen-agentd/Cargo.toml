@@ -39,3 +39,6 @@ scripted = []
 [dev-dependencies]
 tempfile = "3"
 zoen-agentd = { path = ".", features = ["scripted"] }
+
+[lints]
+workspace = true

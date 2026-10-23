@@ -43,3 +43,6 @@ futures-util = { version = "0.3", default-features = false, features = ["sink", 
 getrandom = "0.2"
 opentelemetry-proto = { version = "0.33", default-features = false, features = ["gen-tonic-messages", "trace", "logs"] }
 prost = "0.14"
+
+[lints]
+workspace = true

@@ -26,3 +26,6 @@ time = "0.3"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "io-util"] }
+
+[lints]
+workspace = true
