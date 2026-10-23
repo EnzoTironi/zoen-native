@@ -149,7 +149,8 @@ impl Client {
         };
         let response = http()?
             .post(format!("{}/v1/sites/inspect", config.management_origin))
-            .json(&signed)
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(serde_json::to_vec(&signed).map_err(|_| invalid())?)
             .send()
             .await
             .map_err(|_| unavailable())?;
@@ -268,10 +269,14 @@ impl Client {
                 "{}/v1/sites/publications",
                 prepared.configuration.management_origin
             ))
-            .json(&Body {
-                signed: &prepared.signed,
-                html: &prepared.html,
-            })
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(
+                serde_json::to_vec(&Body {
+                    signed: &prepared.signed,
+                    html: &prepared.html,
+                })
+                .map_err(|_| invalid())?,
+            )
             .send()
             .await
             .map_err(|_| unavailable())?;
