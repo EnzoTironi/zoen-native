@@ -55,26 +55,6 @@ impl DirectoryOwner {
 }
 
 impl Client {
-    pub(super) fn signed_headers(
-        &self,
-        msg: impl Fn(i64) -> Vec<u8>,
-    ) -> Result<(String, String, String), CoreError> {
-        let e = self.lock();
-        let author = e
-            .net
-            .author
-            .as_ref()
-            .ok_or_else(|| invalid(t("Entre na sua conta primeiro.", "Sign in first.")))?;
-        let ts = crate::engine::now_ms();
-        Ok((author.key.id(), ts.to_string(), author.key.sign(&msg(ts))))
-    }
-
-    pub(super) fn relay_base(&self) -> Result<String, CoreError> {
-        let e = self.lock();
-        let a = e.account().ok_or_else(|| invalid("account"))?;
-        Ok(http_base(&a.relay_url))
-    }
-
     pub(super) async fn unlink_device_impl(&self, device_id: String) -> Result<(), CoreError> {
         let (owner, channel, reply) = self
             .device_directory_request(Op::Unlink {
