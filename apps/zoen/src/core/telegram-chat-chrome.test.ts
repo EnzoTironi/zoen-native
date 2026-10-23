@@ -166,10 +166,12 @@ test('native bar keeps the inbox backdrop and Back while title, Details and Sear
   assert.equal(options.headerBackground, undefined);
   assert.equal(options.headerRight, undefined);
   assert.equal(options.unstable_headerRightItems()[0].hidesSharedBackground, true);
-  assert.equal(options.scrollEdgeEffects.top, 'hidden');
+  assert.equal(options.scrollEdgeEffects.top, 'automatic');
   assert.equal(options.scrollEdgeEffects.bottom, 'hidden');
   assert.equal(options.gestureEnabled, undefined);
-  const title = options.headerTitle();
+  const container = options.headerTitle();
+  assert.equal(container.props.scrollViewTag, 1234);
+  const title = container.props.children;
   assert.equal(title.type, 'ChatTitle');
   assert.equal(title.props.activityLabel, 'typing');
   assert.equal(title.props.id, 'space-one');

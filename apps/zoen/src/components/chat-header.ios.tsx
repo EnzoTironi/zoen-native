@@ -7,6 +7,7 @@ import { ChatTitle, type ChatHeaderProps } from './chat-title';
 import { Icon } from './primitives';
 import { NavigationGlass } from './navigation-glass';
 import { navigationGlassAppearance } from './navigation-appearance';
+import { NavigationContainer } from './navigation-container';
 
 export function ChatHeader(props: ChatHeaderProps) {
   return (
@@ -17,7 +18,11 @@ export function ChatHeader(props: ChatHeaderProps) {
         headerShown: true,
         headerBackButtonDisplayMode: 'minimal',
         headerBackground: undefined,
-        headerTitle: () => <ChatTitle {...props} />,
+        headerTitle: () => (
+          <NavigationContainer scrollViewTag={props.scrollViewTag ?? 0}>
+            <ChatTitle {...props} />
+          </NavigationContainer>
+        ),
         unstable_headerRightItems: () => [
           {
             type: 'custom',

@@ -76,8 +76,8 @@ export function SkyScene({
 }) {
   return (
     <View style={{ flex: 1 }}>
-      {(!tabScene || process.env.EXPO_OS !== 'android') && <SkyBackground />}
       {children}
+      {(!tabScene || process.env.EXPO_OS !== 'android') && <SkyBackground />}
     </View>
   );
 }
@@ -155,7 +155,9 @@ export function SkyBackground() {
       pointerEvents="none"
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
-      style={StyleSheet.absoluteFill}
+      // Keep the content first in UIKit's descendant chain so native navigation
+      // can discover its ScrollView; the decorative layer still paints behind it.
+      style={[StyleSheet.absoluteFill, { zIndex: -1 }]}
     >
       {snap ? (
         <SkyLayer sky={sky} />
