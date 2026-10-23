@@ -45,3 +45,13 @@ tools/dev-relay/blobs/
 
 # Local Telegram port QA captures, raw upstream extracts and build receipts
 /output/telegram-attachment-port-v242/
+
+# Historical conversation QA receipts: archived externally with a hash manifest.
+# Keep this directory's README and the separate Telegram reference catalog tracked.
+/output/telegram-ios-conversation-2026-10-20/app-check.json
+/output/telegram-ios-conversation-2026-10-20/configured-core-build.json
+/output/telegram-ios-conversation-2026-10-20/configured-core-proof.json
+/output/telegram-ios-conversation-2026-10-20/header-source-integration.json
+/output/telegram-ios-conversation-2026-10-20/native-model-fixtures.json
+/output/telegram-ios-conversation-2026-10-20/pods-build.json
+/output/telegram-ios-conversation-2026-10-20/source-integration.json
