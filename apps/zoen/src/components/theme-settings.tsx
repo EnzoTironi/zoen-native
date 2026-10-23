@@ -58,17 +58,15 @@ function Preview({
       <View
         style={{
           position: 'absolute',
-          left: 9,
-          top: 13,
-          width: 100,
-          height: 64,
-          borderRadius: 17,
-          padding: 1,
-          borderWidth: selected ? 2 : 1,
-          borderColor: selected ? p.accent : p.list.disclosure,
+          left: 10,
+          top: 14,
+          width: 98,
+          height: 62,
+          borderRadius: 16,
+          overflow: 'hidden',
         }}
       >
-        <View style={{ flex: 1, borderRadius: 14, overflow: 'hidden' }}>
+        <View style={{ flex: 1 }}>
           <SkyLayer sky={resolved.sky} />
           <View style={{ height: 10, backgroundColor: preview.navigation.background }} />
           <View style={{ margin: 6, gap: 5 }}>
@@ -96,6 +94,19 @@ function Preview({
           </View>
         </View>
       </View>
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          left: 9,
+          top: 13,
+          width: 100,
+          height: 64,
+          borderRadius: 17,
+          borderWidth: selected ? 2 : 1,
+          borderColor: selected ? p.accent : p.list.disclosure,
+        }}
+      />
       <Text
         numberOfLines={1}
         style={{
