@@ -32,7 +32,7 @@ impl OwnerPolicySubmission {
     }
 }
 
-fn original(event: &Event, agent: &str) -> Option<(SignedOwnerPolicy, String)> {
+pub(super) fn original(event: &Event, agent: &str) -> Option<(SignedOwnerPolicy, String)> {
     let EventBody::OwnerPolicySubmitted {
         agent: target,
         signed,
@@ -272,10 +272,9 @@ impl Engine {
             .net
             .account_author(current.agent())
             .ok_or_else(denied)?;
-        self.append_synced(
+        self.append_owner_policy_report(
             current.space(),
             &author,
-            crate::engine::now_ms(),
             EventBody::OwnerPolicyReported {
                 source: current.source().into(),
                 policy_digest: current.digest().into(),

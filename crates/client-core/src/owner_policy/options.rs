@@ -41,7 +41,7 @@ fn options_digest(options: &OwnerPolicyOptions) -> R<String> {
         &serde_json::to_vec(&("zoen-owner-policy-options/1", options)).map_err(|_| invalid())?,
     ))
 }
-fn validate_options(
+pub(super) fn validate_options(
     signed: &SignedOwnerPolicyInquiry,
     options: &OwnerPolicyOptions,
     at_ms: i64,
