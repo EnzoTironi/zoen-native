@@ -1,5 +1,6 @@
 //! Opt-in, closed metadata from the actual model/host boundaries. Never payloads.
 use super::correlate;
+use crate::agent::SpaceTools;
 use serde_json::{json, Value};
 use std::io::{self, Write};
 use zoen_agentd::{ToolCall, ToolDef, ToolObservation, ToolStep};
@@ -22,27 +23,24 @@ fn opt_in() -> bool {
     enabled(std::env::var("ZOEN_AGENT_OBSERVE_TOOLS").ok().as_deref())
 }
 
-fn public_kind(name: &str) -> Option<Value> {
-    for kind in KINDS {
-        if name == kind {
-            return Some(json!({"kind":kind}));
-        }
-        let (separator, width) = if matches!(kind, "read_page" | "replace_page_block") {
-            ("_", 16)
-        } else {
-            ("__", 40)
-        };
-        if let Some(alias) = name.strip_prefix(&format!("{kind}{separator}")) {
-            if alias.len() == width
-                && alias
-                    .bytes()
-                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-            {
-                return Some(json!({"kind":kind,"artifactAlias":alias}));
-            }
-        }
+fn public_kind(host: &SpaceTools<'_>, name: &str) -> Option<Value> {
+    // A model/user-controlled name is never evidence of a native artifact.
+    // Discovery records native item membership separately from generic App tools.
+    let (_, item, kind) = host.names.iter().find(|(def, _, _)| def.name == name)?;
+    let (expected, separator) = if host.deckcraft_items.contains(item)
+        && crate::deckcraft::recognizes(kind)
+    {
+        (crate::deckcraft::model_name(kind, item)?, "__")
+    } else if host.page_items.contains(item) && client_core::agent_page_tools::recognizes(kind) {
+        (client_core::agent_page_tools::model_name(kind, item)?, "_")
+    } else {
+        return None;
+    };
+    if expected != name || !KINDS.contains(&kind.as_str()) {
+        return None;
     }
-    None // Unknown/user-authored names are counted, never retained.
+    let alias = expected.strip_prefix(&format!("{kind}{separator}"))?;
+    Some(json!({"kind":kind,"artifactAlias":alias}))
 }
 
 fn input_record(
@@ -52,6 +50,7 @@ fn input_record(
     tools: &[ToolDef],
     steps: &[ToolStep],
     round: usize,
+    host: &SpaceTools<'_>,
 ) -> Option<Value> {
     if !on
         || tools.len() > 128
@@ -60,7 +59,10 @@ fn input_record(
     {
         return None;
     }
-    let recognized: Vec<_> = tools.iter().filter_map(|t| public_kind(&t.name)).collect();
+    let recognized: Vec<_> = tools
+        .iter()
+        .filter_map(|t| public_kind(host, &t.name))
+        .collect();
     Some(
         json!({"event":EVENT,"correlation":correlate(space,source),"phase":"model_input",
         "roundIndex":round,"offeredCount":tools.len(),"unclassifiedCount":tools.len()-recognized.len(),
@@ -73,6 +75,7 @@ fn result_record(
     source: &str,
     call: &ToolCall,
     outcome: ToolObservation,
+    host: &SpaceTools<'_>,
 ) -> Option<Value> {
     if !on {
         return None;
@@ -88,7 +91,7 @@ fn result_record(
     };
     Some(
         json!({"event":EVENT,"correlation":correlate(space,source),"phase":"tool_outcome",
-        "resultClass":class,"requiresReview":call.requires_review,"tool":public_kind(&call.name).unwrap_or(json!({"kind":"other"}))}),
+        "resultClass":class,"requiresReview":call.requires_review,"tool":if outcome == ToolObservation::UnknownTool { json!({"kind":"other"}) } else { public_kind(host, &call.name).unwrap_or(json!({"kind":"other"})) }}),
     )
 }
 fn emit_to(record: &Value, writer: &mut impl Write) {
@@ -97,23 +100,29 @@ fn emit_to(record: &Value, writer: &mut impl Write) {
     }
 }
 pub(in crate::agent) fn model_input(
-    space: &str,
-    source: &str,
+    host: &SpaceTools<'_>,
     tools: &[ToolDef],
     steps: &[ToolStep],
     round: usize,
 ) {
-    if let Some(record) = input_record(opt_in(), space, source, tools, steps, round) {
+    if let Some(record) = input_record(
+        opt_in(),
+        &host.space,
+        host.source,
+        tools,
+        steps,
+        round,
+        host,
+    ) {
         emit_to(&record, &mut io::stdout().lock());
     }
 }
 pub(in crate::agent) fn tool_outcome(
-    space: &str,
-    source: &str,
+    host: &SpaceTools<'_>,
     call: &ToolCall,
     outcome: ToolObservation,
 ) {
-    if let Some(record) = result_record(opt_in(), space, source, call, outcome) {
+    if let Some(record) = result_record(opt_in(), &host.space, host.source, call, outcome, host) {
         emit_to(&record, &mut io::stdout().lock());
     }
 }

@@ -36,8 +36,10 @@ diagnostics remain unchanged; other CLI stdout can still contain private data.
 
 `model_input` occurs at each actual Runtime-to-Brain boundary and reports the
 round, offered count, completed/failed context counts, and recognized canonical
-tool kinds with compact public artifact aliases. Unknown tool names are counted
-but omitted. The catalog is bounded to 128 entries and a line below 16 KiB.
+tool kinds with compact public artifact aliases. Classification requires the
+normal host's native item binding and its exact generated model name. Generic App
+names that imitate that syntax remain unclassified; UnknownTool always emits
+`other`. Unknown tool names are counted but omitted. The catalog is bounded to 128 entries and a line below 16 KiB.
 This observes the supplied context, not provider admission, dispatch or billing.
 
 `tool_outcome` reports only a known tool kind/alias, the review boolean and one

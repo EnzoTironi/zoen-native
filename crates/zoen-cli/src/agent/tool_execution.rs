@@ -56,10 +56,10 @@ impl ApprovedToolAdmission for CanonicalToolAdmission<'_, '_> {
 
 impl ToolHost for SpaceTools<'_> {
     fn observe_model_input(&self, tools: &[ToolDef], steps: &[ToolStep], round: usize) {
-        trace::tool_observation::model_input(&self.space, self.source, tools, steps, round);
+        trace::tool_observation::model_input(self, tools, steps, round);
     }
     fn observe_tool_outcome(&self, call: &ToolCall, outcome: zoen_agentd::ToolObservation) {
-        trace::tool_observation::tool_outcome(&self.space, self.source, call, outcome);
+        trace::tool_observation::tool_outcome(self, call, outcome);
     }
     fn requires_native_review(&self, call: &ToolCall) -> bool {
         self.page_binding(call)
