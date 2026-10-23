@@ -26,17 +26,14 @@ function ExportAction({ binding }: { binding: PageExportBinding }) {
   const [activity] = useState(() => new DocumentExportActivity());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useFocusEffect(useCallback(() => {
-    setBusy(false);
-    setError(null);
-    return activity.focus();
-  }, [activity]));
+  useFocusEffect(
+    useCallback(() => {
+      setBusy(false);
+      setError(null);
+      return activity.focus();
+    }, [activity]),
+  );
   const current = () => currentPageExport(store, binding);
-  return () => {
-      active.current = false;
-    };
-  }, []);
-  const current = activation.current && currentPageExport(store, binding);
   return (
     <View style={{ gap: 6 }}>
       <NativeButton
