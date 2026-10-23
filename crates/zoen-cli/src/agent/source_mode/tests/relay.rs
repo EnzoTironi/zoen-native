@@ -292,7 +292,7 @@ pub(super) async fn relay(mode: Mode) -> Relay {
                             continue;
                         }
                         ClientFrame::Ping => ServerFrame::Pong {
-                            server_time_ms: None,
+                            server_time_ms: Some(now_ms()),
                         },
                         _ => {
                             seen.lock().unwrap().push("other_frame");
