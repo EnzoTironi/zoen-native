@@ -17,7 +17,7 @@ fn message(policy: &OwnerPeriodPolicy) -> Option<Vec<u8>> {
     Some(message)
 }
 
-fn strict(id: &str, message: &[u8], signature: &str) -> bool {
+pub(crate) fn strict(id: &str, message: &[u8], signature: &str) -> bool {
     if !digest_id(id) || signature.len() != 128 {
         return false;
     }

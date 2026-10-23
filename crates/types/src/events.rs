@@ -97,6 +97,15 @@ pub enum EventBody {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         resolution: Option<RequestResolution>,
     },
+    /// Explicit read-only discovery, bound to one canonical pending image review.
+    OwnerPolicyOptionsRequested {
+        agent: IdentityId,
+        signed: crate::owner_policy_context::SignedOwnerPolicyInquiry,
+    },
+    OwnerPolicyOptionsReported {
+        source: String,
+        options: crate::owner_policy_context::OwnerPolicyOptions,
+    },
     /// Dedicated owner control, never detected from ordinary message text.
     OwnerPolicySubmitted {
         agent: IdentityId,

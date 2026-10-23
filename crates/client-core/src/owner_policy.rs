@@ -1,6 +1,7 @@
 //! Explicit owner-wide spending policy, sent through the existing encrypted DM.
 //! A queued submission never proves installation in the Runtime authority.
 mod control;
+mod image_context;
 use crate::{
     engine::{Engine, R},
     Client, CoreError,

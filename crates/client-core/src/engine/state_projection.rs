@@ -359,7 +359,9 @@ impl State {
             EventBody::UsageRecorded { agent, cents, .. } => {
                 self.usage.push((agent.clone(), *cents, e.at_ms));
             }
-            EventBody::OwnerPolicySubmitted { .. }
+            EventBody::OwnerPolicyOptionsRequested { .. }
+            | EventBody::OwnerPolicyOptionsReported { .. }
+            | EventBody::OwnerPolicySubmitted { .. }
             | EventBody::OwnerPolicyReported { .. }
             | EventBody::ProfileKeyShared { .. }
             | EventBody::Checkpoint { .. }
