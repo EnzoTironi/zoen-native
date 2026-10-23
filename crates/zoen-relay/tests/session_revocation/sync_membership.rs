@@ -180,12 +180,13 @@ async fn removal_between_sync_pages_hides_the_final_plaintext_tail() {
         }
     }
     assert_eq!(seen.len(), PAGE + 1);
-    let rows = history.rows.lock().unwrap();
-    assert_eq!(rows.0.len(), PAGE + 2, "private tail really exists");
-    for (actual, canonical) in seen.iter().zip(&rows.0) {
-        assert_eq!(actual.encode(), canonical.encode());
+    {
+        let rows = history.rows.lock().unwrap();
+        assert_eq!(rows.0.len(), PAGE + 2, "private tail really exists");
+        for (actual, canonical) in seen.iter().zip(&rows.0) {
+            assert_eq!(actual.encode(), canonical.encode());
+        }
     }
-    drop(rows);
     socket.close(None).await.unwrap();
     test.close().await;
 }
