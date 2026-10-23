@@ -146,6 +146,27 @@ impl Engine {
         let me = actor_id.to_string();
         let actor = self.persona(&me).name;
         let now = now_ms();
+        let denied = |msg: String| AppCallOutcome {
+            status: AppCallStatus::Denied,
+            result_json: apps::call_tool_result(&msg, &Value::Null, true).to_string(),
+            message: msg,
+            confirm_title: None,
+            confirm_detail: None,
+            item: None,
+        };
+        // A revoked caller must not read App state through the read-only fast
+        // path. A valid Listen baseline and human reads retain their behavior.
+        if self
+            .identities
+            .get(&me)
+            .is_some_and(|i| i.kind == IdentityKind::Agent)
+            && !self.trust_available(&me, &it.space)
+        {
+            return Ok(denied(t(
+                "A confiança foi revogada ou expirou.",
+                "Trust was revoked or expired.",
+            )));
+        }
         let state: Value = serde_json::from_str(&doc.state_json).unwrap_or(Value::Null);
         if tool.read_only {
             let view = apps::view_for(&doc.app, &state, now, &me);
@@ -169,14 +190,6 @@ impl Engine {
             spent_cents: 0,
         };
         let decision = evaluate(level, &tool.action, 0, &unlimited, &self.policy);
-        let denied = |msg: String| AppCallOutcome {
-            status: AppCallStatus::Denied,
-            result_json: apps::call_tool_result(&msg, &Value::Null, true).to_string(),
-            message: msg,
-            confirm_title: None,
-            confirm_detail: None,
-            item: None,
-        };
         if !self.app_trust_available(item) {
             return Ok(denied(t(
                 "A confiança foi revogada ou expirou.",

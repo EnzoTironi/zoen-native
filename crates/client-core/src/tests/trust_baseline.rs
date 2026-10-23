@@ -357,3 +357,60 @@ fn app_grant_cannot_replace_the_calling_agents_revoked_authority() {
     assert_eq!(refused.status, AppCallStatus::Denied);
     assert_eq!(c.item(item.id).unwrap().version, before);
 }
+
+#[test]
+fn revoked_agent_cannot_read_app_state_but_humans_and_valid_listen_can() {
+    let c = seeded();
+    let (agent, space) = context(&c);
+    let item = c
+        .install_app(
+            space.clone(),
+            "pet".into(),
+            r#"{"name":"Read authority"}"#.into(),
+        )
+        .unwrap();
+    let owner = c.me().unwrap().id;
+    let grant = issue(
+        &c,
+        &agent,
+        &space,
+        Capability::Trust(TrustLevel::Listen),
+        None,
+    );
+    assert_eq!(
+        c.lock()
+            .app_call_as(&item.id, &agent, "pet_get_state", "{}", false, Some(&owner))
+            .unwrap()
+            .status,
+        AppCallStatus::Done
+    );
+    revoke(&c, &space, &grant);
+    let before = c.stats().events;
+    let refused = c
+        .lock()
+        .app_call_as(&item.id, &agent, "pet_get_state", "{}", false, Some(&owner))
+        .unwrap();
+    assert_eq!(refused.status, AppCallStatus::Denied);
+    assert!(refused.item.is_none());
+    assert_eq!(c.stats().events, before);
+    assert_eq!(
+        c.app_call_tool(item.id.clone(), "pet_get_state".into(), "{}".into(), false)
+            .unwrap()
+            .status,
+        AppCallStatus::Done
+    );
+    issue(
+        &c,
+        &agent,
+        &space,
+        Capability::Trust(TrustLevel::Listen),
+        None,
+    );
+    assert_eq!(
+        c.lock()
+            .app_call_as(&item.id, &agent, "pet_get_state", "{}", false, Some(&owner))
+            .unwrap()
+            .status,
+        AppCallStatus::Done
+    );
+}
