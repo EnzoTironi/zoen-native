@@ -12,7 +12,7 @@ public class ZoenCoreModule: Module {
 
   public func definition() -> ModuleDefinition {
     Name("ZoenCore")
-    Events("onChange", "onPageInputStatus")
+    Events("onChange", "onPageInputStatus", "onCallState", "onCallAudio")
 
     // Reuse the exact pinned Telegram mosaic already used by selected previews.
     // Pure, bounded geometry only: no media bytes, authority or persistent state.
@@ -26,12 +26,22 @@ public class ZoenCoreModule: Module {
         return ZoenComposerSizing.measure(root: root, tag: tag, expectedText: expectedText, expectedLabel: expectedLabel, expectedPlaceholder: expectedPlaceholder, width: width, expectedFontSize: expectedFontSize, nonce: nonce)
       }
     }
-    AsyncFunction("open") { [session, pushLease, weak self] (mode: String, locale: String) async throws -> String in
+    let emitChange: @Sendable ([String: Any]) -> Void = { [weak self] event in self?.sendEvent("onChange", event) }
+    let emitCall: @Sendable (String) -> Void = { [weak self] json in self?.sendEvent("onCallState", ["json": json]) }
+    let emitAudio: @Sendable (String) -> Void = { [weak self] json in self?.sendEvent("onCallAudio", ["json": json]) }
+    AsyncFunction("open") { [session, pushLease, emitChange, emitCall, emitAudio] (mode: String, locale: String) async throws -> String in
       try await ZoenNativePushSessions.gate.open(session: session, lease: pushLease) {
-        try await session.open(mode: mode, locale: locale) { [weak self] event in
-          self?.sendEvent("onChange", event)
-        }
+        let result = try await session.open(mode: mode, locale: locale, changed: emitChange)
+        await session.bindCalls(lease: pushLease, changed: emitCall, audio: emitAudio)
+        return result
       }
+    }
+    AsyncFunction("startCall") { (spaceId: String, video: Bool) async throws in
+      do { try await self.session.startCall(space: spaceId, video: video) }
+      catch { throw Exception(name: "CallUnavailable", description: "The call could not start. Check permissions and try again.", code: "ERR_ZOEN_CALL_UNAVAILABLE") }
+    }
+    AsyncFunction("callAudioReply") { (ticket: String, success: Bool) async in
+      await self.session.callAudioReply(ticket: ticket, success: success)
     }
     AsyncFunction("request") { (request: String) async throws -> String in
       do {

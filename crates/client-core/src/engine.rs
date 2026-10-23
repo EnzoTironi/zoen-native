@@ -25,6 +25,7 @@ mod agent_views;
 mod app_execution;
 mod app_installation;
 mod app_permissions;
+mod call_transport;
 mod calls;
 mod cards;
 mod inspection;
@@ -195,6 +196,7 @@ impl Entry {
 #[derive(Clone, Debug)]
 pub(crate) struct SpaceState {
     pub calls: Vec<types::calls::CallRecord>,
+    pub call_transport: Vec<types::call_transport::CallTransportRecord>,
     pub id: SpaceId,
     pub title: String,
     pub kind: SpaceKind,

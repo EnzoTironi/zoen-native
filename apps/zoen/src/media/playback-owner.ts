@@ -1,3 +1,4 @@
+import { callAudioFocus } from './call-audio-focus.ts';
 /** One mounted player's revocable playback intent; owns no files or native lifetime. */
 export type PlaybackIntent = Readonly<{ owner: PlaybackOwner }>;
 export class PlaybackCoordinator {
@@ -10,7 +11,10 @@ export class PlaybackCoordinator {
     return owner;
   }
   claim(owner: PlaybackOwner): PlaybackIntent | null {
-    if (!this.owners.has(owner)) return null;
+    if (!this.owners.has(owner) || !callAudioFocus.available) {
+      owner.interrupt();
+      return null;
+    }
     const intent = Object.freeze({ owner });
     this.current = intent;
     // Native controls may already be playing before their event reaches JS.
@@ -90,7 +94,7 @@ export class PlaybackOwner {
       this.interrupt();
       return;
     }
-    if (!this.isCurrent(this.intent)) this.begin();
+    if (!this.isCurrent(this.intent) && !this.begin()) this.interrupt();
   }
   /** Audio has explicit JS Play intents: SDK auto-resume must never acquire one. */
   observeExplicitPlayback(): void {

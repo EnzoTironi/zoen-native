@@ -1,4 +1,6 @@
-import { AudioModule, setAudioModeAsync } from 'expo-audio';
+import { AudioModule } from 'expo-audio';
+import { setMediaAudioMode } from './audio-mode.ts';
+import { callAudioFocus } from './call-audio-focus.ts';
 import { randomUUID } from 'expo-crypto';
 import { t } from '../i18n/index.ts';
 import type { useAttachmentComposer } from './attachment-composer';
@@ -178,7 +180,7 @@ export function stopCapture(
       failed = true;
     }
     try {
-      await setAudioModeAsync({ allowsRecording: false });
+      await setMediaAudioMode({ allowsRecording: false });
       audioModeNeedsRestore.current = false;
     } catch (reason) {
       if (!failed) failure = reason;
@@ -280,6 +282,7 @@ export function startCapture(
   } = context;
 
   if (
+    !callAudioFocus.available ||
     !controlIsCurrent(voiceControl) ||
     busy ||
     startTask.current ||
@@ -304,7 +307,13 @@ export function startCapture(
   const task = sensitiveCacheWork.run(() =>
     Promise.resolve().then(async () => {
       await recovery;
-      if (epoch !== startEpoch.current.value || !mounted.current || getCaptureLease()) return;
+      if (
+        !callAudioFocus.available ||
+        epoch !== startEpoch.current.value ||
+        !mounted.current ||
+        getCaptureLease()
+      )
+        return;
       setCaptureLease({ owner: captureOwner, recover: stop });
       await startRecording(epoch);
     }),
@@ -401,6 +410,7 @@ export async function prepareCapture(
   } = context;
 
   const current = () =>
+    callAudioFocus.available &&
     epoch === startEpoch.current.value &&
     getCaptureLease()?.owner === captureOwner &&
     mounted.current &&
@@ -432,7 +442,7 @@ export async function prepareCapture(
     }
     pauseAudioPlayback();
     audioModeNeedsRestore.current = true;
-    await setAudioModeAsync({
+    await setMediaAudioMode({
       playsInSilentMode: true,
       allowsRecording: true,
       shouldPlayInBackground: false,
@@ -470,7 +480,7 @@ export async function prepareCapture(
         prepared.current = false;
         preparedUri.current = undefined;
       }
-      await setAudioModeAsync({ allowsRecording: false });
+      await setMediaAudioMode({ allowsRecording: false });
       audioModeNeedsRestore.current = false;
     }
   }

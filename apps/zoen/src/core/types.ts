@@ -6,6 +6,7 @@ import type { TimelinePage } from './generated/TimelinePage';
 import type { TimelineEntry } from './generated/TimelineEntry';
 import type { ItemDiscussionDto } from './generated/ItemDiscussionDto';
 import type { ItemDetail } from './generated/ItemDetail';
+import type { PageVersionExport } from './generated/PageVersionExport';
 import type { PageDto } from './generated/PageDto';
 import type { PlanPageDto } from './generated/PlanPageDto';
 import type { SearchHit } from './generated/SearchHit';
@@ -93,6 +94,7 @@ type Results = {
   page_create: ItemDetail;
   page_import_markdown: ItemDetail;
   page_markdown: string;
+  page_export_version: PageVersionExport;
   requests: AgentRequestDto[];
   agents: AgentProfile[];
   agent_profile: AgentProfile;

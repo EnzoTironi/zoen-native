@@ -1,4 +1,5 @@
-import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
+import { createAudioPlayer } from 'expo-audio';
+import { setMediaAudioMode } from './audio-mode.ts';
 import { AudioClipController } from './audio-clip-controller.ts';
 import { mediaPlayback } from './playback-owner.ts';
 import type { MessageAudioRuntime, MessageAudioSource } from './message-audio-session.ts';
@@ -55,7 +56,7 @@ export function createMessageAudioRuntime(
       preparePlayback: () =>
         live
           ? track(
-              setAudioModeAsync({
+              setMediaAudioMode({
                 playsInSilentMode: true,
                 allowsRecording: false,
                 shouldPlayInBackground: false,
