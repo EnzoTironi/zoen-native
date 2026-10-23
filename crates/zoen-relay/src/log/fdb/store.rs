@@ -55,7 +55,7 @@ impl LogStore for FdbLog {
                     result => return result,
                 }
             }
-            unreachable!("bounded attempts return")
+            Err(Reject::retry("partition ownership is changing"))
         })
         .await
         .unwrap_or_else(|_| Err(Reject::retry("relay routing deadline exceeded")))
@@ -221,7 +221,7 @@ impl LogStore for FdbLog {
             .map_err(|_| "relay routing capacity reached".to_string())?;
         let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(6);
         tokio::time::timeout_at(deadline, async {
-            let code = random_code();
+            let code = random_code().map_err(|error| error.to_string())?;
             for attempt in 0..2 {
                 let fence = invite_routing::resolve(
                     deadline,
@@ -250,7 +250,7 @@ impl LogStore for FdbLog {
                     result => return result,
                 }
             }
-            unreachable!("bounded attempts return")
+            Err("partition ownership is changing".into())
         })
         .await
         .unwrap_or_else(|_| Err("relay routing deadline exceeded".into()))
@@ -291,7 +291,7 @@ impl LogStore for FdbLog {
                             trx.clear_range(&b, &e);
                         }
                     }
-                    let code = random_code();
+                    let code = random_code().map_err(|error| custom(error.to_string()))?;
                     let key = root.pack(&("ainv", code_hash(&code)));
                     if trx.get(&key, false).await?.is_some() {
                         return Ok(Err("invite code collision"));
