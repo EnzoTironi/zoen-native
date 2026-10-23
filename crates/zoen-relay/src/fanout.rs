@@ -27,6 +27,7 @@ use tokio::{sync::mpsc, task::JoinHandle};
 use crate::hub::{Hub, Mailbox};
 
 mod nats;
+mod outbound;
 mod presence;
 pub use nats::NatsBus;
 use presence::collect_presence;
@@ -63,6 +64,7 @@ pub struct BusStats {
     pub published: u64,
     pub received: u64,
     pub dropped: u64,
+    pub outbound_bytes: u64,
 }
 
 pub struct Fanout {
@@ -181,6 +183,10 @@ impl Fanout {
                 "# HELP {name} {help}\n# TYPE {name} counter\n{name} {v}\n"
             ));
         }
+        out.push_str(&format!(
+            "# HELP zoen_relay_bus_outbound_retained_bytes Logical queued and active payload audience and trace bytes\n# TYPE zoen_relay_bus_outbound_retained_bytes gauge\nzoen_relay_bus_outbound_retained_bytes {}\n",
+            s.outbound_bytes,
+        ));
         out
     }
 }
