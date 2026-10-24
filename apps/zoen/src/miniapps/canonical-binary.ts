@@ -234,7 +234,7 @@ export class CanonicalBinaryHost {
       !digest(args.sha256) ||
       !integer(args.bytes) ||
       args.bytes < 1 ||
-      args.bytes > MAX_BINARY_DOCUMENT_BYTES ||
+      args.bytes > binaryEditorFormat(this.options.editor).maxDocumentBytes ||
       !digest(args.documentSha256) ||
       !digest(args.intentSha256)
     )

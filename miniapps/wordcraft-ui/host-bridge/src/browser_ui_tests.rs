@@ -117,7 +117,10 @@ fn actual_composition_and_pointer_gesture_are_visible_to_host_without_text_paylo
     click_canvas(&mut h)?;
     h.input_mut()
         .events
-        .push(Event::Ime(egui::ImeEvent::Preedit("日本".into())));
+        .push(Event::Ime(egui::ImeEvent::Preedit {
+            text: "日本".into(),
+            active_range_chars: None,
+        }));
     h.run_steps(2);
     assert!(h.state().canvas.host_interaction());
     assert_eq!(h.state().session.doc.plain_text(StoryRef::Body), "Original");

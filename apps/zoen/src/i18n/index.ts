@@ -17,6 +17,7 @@ import { composerKeyboard } from './catalogs/composer-keyboard.ts';
 import { documents } from './catalogs/documents.ts';
 import { workspace } from './catalogs/workspace.ts';
 import { decks } from './catalogs/decks.ts';
+import { wordDocuments } from './catalogs/word-documents.ts';
 import { workbooks } from './catalogs/workbooks.ts';
 import { drawing } from './catalogs/drawing.ts';
 import { home } from './catalogs/home.ts';
@@ -66,6 +67,7 @@ const catalogs = {
   drawing,
   decks,
   workbooks,
+  wordDocuments,
   home,
   conversationCards,
   connectedApps,
