@@ -17,14 +17,14 @@ pub const MANIFEST: &str = match option_env!("ZOEN_DECKCRAFT_RESOURCE_MANIFEST_J
     Some(manifest) => manifest,
     None => include_str!("../../resources/deckcraft.manifest.json"),
 };
-// Candidate 06 admits a genuine Notes click before the DOM viewport gains focus.
-// Native keyboard, edit/save and export acceptance remain separate.
-const MODULE_FILE: &str = "deckcraft-web-4576e715d9c77da4.js";
+// Current text ownership and geometry are applied in the same pointer callback.
+// Runtime asset identity is pinned independently of the document engine ABI.
+const MODULE_FILE: &str = "deckcraft-web-d912af1a03055ffe.js";
 const MODULE_BYTES: u64 = 157_851;
-const MODULE_SHA: &str = "7144d8766ed42db97e9f8366515328c7ef353a04d80d66c213ae107619c12ead";
-const WASM_FILE: &str = "deckcraft-web-b023d45fa5023a1a_bg.wasm";
-const WASM_BYTES: u64 = 36_382_474;
-const WASM_SHA: &str = "c9ff98889b779e3c11661e290c1c74317fd6aa9eecbe7705c085f7ff74cd4c0e";
+const MODULE_SHA: &str = "5b943f9b5e13bc8dce876193f2ced1b608efc74fc5643ca2b272bdffd22dedde";
+const WASM_FILE: &str = "deckcraft-web-92fbceced94572b6_bg.wasm";
+const WASM_BYTES: u64 = 36_382_433;
+const WASM_SHA: &str = "7dc44c1c30356964b737cff936900f949ceadc4082db19555435eeea9b29def1";
 fn exact_keys(value: &Value, expected: &[&str]) -> bool {
     value.as_object().is_some_and(|object| {
         object.len() == expected.len() && expected.iter().all(|key| object.contains_key(*key))
@@ -340,22 +340,34 @@ mod tests {
         }
     }
     #[test]
-    fn unfocused_notes_candidate_requires_its_exact_pair_and_rejects_retired_or_mixed_assets() {
-        let directory = format!("https://runtime.invalid/deckcraft/{ENGINE_REVISION}/");
+    fn notes_owner_handoff_requires_its_exact_pair_and_rejects_retired_or_mixed_assets() {
+        let directory = format!("https://runtime.invalid/deckcraft/notes555/{ENGINE_REVISION}/");
         let mut candidate = fixture(HTML);
         candidate["runtimePackage"]["module"] = json!({
+            "url":format!("{directory}deckcraft-web-d912af1a03055ffe.js"),
+            "bytes":157851,
+            "sha256":"5b943f9b5e13bc8dce876193f2ced1b608efc74fc5643ca2b272bdffd22dedde",
+            "mime":"text/javascript"
+        });
+        candidate["runtimePackage"]["wasm"] = json!({
+            "url":format!("{directory}deckcraft-web-92fbceced94572b6_bg.wasm"),
+            "bytes":36382433,
+            "sha256":"7dc44c1c30356964b737cff936900f949ceadc4082db19555435eeea9b29def1",
+            "mime":"application/wasm"
+        });
+        assert!(valid_resource(HTML, &candidate.to_string()));
+        let previous_notes_module = json!({
             "url":format!("{directory}deckcraft-web-4576e715d9c77da4.js"),
             "bytes":157851,
             "sha256":"7144d8766ed42db97e9f8366515328c7ef353a04d80d66c213ae107619c12ead",
             "mime":"text/javascript"
         });
-        candidate["runtimePackage"]["wasm"] = json!({
+        let previous_notes_wasm = json!({
             "url":format!("{directory}deckcraft-web-b023d45fa5023a1a_bg.wasm"),
             "bytes":36382474,
             "sha256":"c9ff98889b779e3c11661e290c1c74317fd6aa9eecbe7705c085f7ff74cd4c0e",
             "mime":"application/wasm"
         });
-        assert!(valid_resource(HTML, &candidate.to_string()));
         let previous_touch_module = json!({
             "url":format!("{directory}deckcraft-web-9848d4c343e786ef.js"),
             "bytes":157851,
@@ -387,6 +399,7 @@ mod tests {
             "mime":"application/wasm"
         });
         for (previous_module, previous_wasm) in [
+            (previous_notes_module, previous_notes_wasm),
             (previous_touch_module, previous_touch_wasm),
             (previous_module.clone(), reproduced_wasm),
             (previous_module, missing_original_wasm),
