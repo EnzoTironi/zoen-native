@@ -1,4 +1,5 @@
 mod checkpoint;
+mod content;
 mod fixture;
 mod render;
 #[cfg(feature = "ui")]
@@ -33,6 +34,8 @@ fn main() -> Result<()> {
     let (final_bytes, checkpoint) = checkpoint::delayed_ack(original.clone())?;
     fs::write(out.join("reviewed.pdf"), final_bytes.as_slice())?;
     let final_render = render::page(final_bytes.clone(), &out.join("reviewed-page-1.png"))?;
+    let paragraph = content::paragraph(original.clone(), &out)?;
+    let cases = content::cases(&out)?;
     #[cfg(feature = "ui")]
     let app = ui::actual_app(original.clone(), &out)?;
     #[cfg(not(feature = "ui"))]
@@ -42,7 +45,8 @@ fn main() -> Result<()> {
         "finalBytes":final_bytes.len(),"finalSha256":format!("{:x}",Sha256::digest(final_bytes.as_slice())),
         "pages":2,"unchangedSourceExact":true,"documentJavascript":false,
         "baselineRender":baseline,"reviewedRender":final_render,"checkpoint":checkpoint,
-        "actualApp":app,"elapsedMillis":started.elapsed().as_millis(),
+        "actualApp":app,"paragraphEdit":paragraph,"largerCases":cases,
+        "elapsedMillis":started.elapsed().as_millis(),
         "browserExecuted":false,"wasiExecuted":false,"canonicalIntegrated":false,"nativeIphoneAccepted":false});
     fs::write(out.join("result.json"), serde_json::to_vec_pretty(&result)?)?;
     println!("{}", serde_json::to_string(&result)?);

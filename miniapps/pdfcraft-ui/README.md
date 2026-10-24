@@ -1,47 +1,67 @@
-# PdfCraft integration — preparation
+# PdfCraft managed integration
 
-Tracks #581 under #180/#170. The current source is fixed in
-[upstream.json](upstream.json): PdfCraft 0.13.0,
-`d445410807e7eefbe5b96f9662ab963ae8dd2a3a`. This differs from the older
-2026-10-20 survey pin. No App is registered or available yet; no runtime or
-performance acceptance is claimed by this preparation.
+Tracks #581 under #180/#170. Upstream is fixed to PdfCraft 0.13.0,
+`d445410807e7eefbe5b96f9662ab963ae8dd2a3a`; source/dependency hashes are in
+[upstream.json](upstream.json). No PdfCraft App is available in Zoen yet.
 
-The source contains a real eframe/WebGL2 application, `PdfCraftApp`, a document
-`Session`, bounded low-level COS parsing, incremental/full save, renderer and
-Undo/Redo. The PDF object graph is the format model; unknown data should be
-preserved rather than flattened into a custom Zoen representation. The adapter
-must reuse these implementations, not replace the parser or renderer.
+The actual upstream `PdfCraftApp`, Session, COS model, paragraph editor, PDF
+writer, renderer and Undo are retained. The standalone parent-message bridge is
+not used: posting a save message is not a durable Core ACK. No upstream URL
+loader, account, collaboration service or document storage is imported.
 
-The standalone Web app has a same-origin parent-message bridge. It is not the
-Zoen MCP App contract: its save callback considers a successfully posted message
-saved, while Zoen must wait for durable Core acceptance. Its storage, URL loader,
-downloads, accounts and unconstrained automation are not imported into the host.
+The original engine/App have executed on original contributor-authored A4 PDFs:
+paragraph replacement, real pixel renders, Undo/Redo, a delayed-save ACK,
+stable-save Undo, cold reopen, 32 pages and 1600×1200 PNG/JPEG image PDFs.
+Independent pypdf checks confirmed exact replacement text, an unknown catalog
+value, page count/rotation and JPEG encoded bytes preserved through rotation and
+reopen. The expanded native Mac probe took 1.18 s / 88.6 MB peak RSS. These are
+specific fixture measurements, not an iPhone or worst-case memory guarantee.
 
-Consumer contracts requiring actual runtime proof before profile selection:
+The first native host qualification passed three real tests: exact proposal/
+receipt/retry and accepted-version export; stale paragraph/forged artifact
+refusal; malformed source and disabled document JavaScript. Browser source,
+WASIp2 execution, canonical end-to-end integration and native iPhone acceptance
+remain distinct pending steps. GitHub #581 is the current status authority.
 
-- `Session::mark_saved` keeps Undo but replaces the current editable COS model.
-  An asynchronous ACK must preserve edits made after the accepted snapshot.
-- Document JavaScript is enabled by default. The managed Session must disable it
-  before opening and keep it disabled; raw PDF actions do not grant capabilities.
-- `save_bytes` appends incremental updates and can preserve original bytes when
-  unchanged. Reconstructed files, XFA and full-rewrite operations have different
-  behavior; repairs and representation loss must not be silently accepted.
-- Time and authorship can affect PDF data. Do not rerun a committed command in
-  another runtime expecting identical bytes; persist/replay the accepted result.
-- The COS crate exposes a tighter structural inspection stream bound without a
-  renderer. Its actual bounds and graph behavior must be qualified before adding
-  any Core dependency or choosing document limits.
-- The source already vendors renderer/platform patches. Browser preparation must
-  preserve those exact inputs while adding the common managed input foundation.
+The initial structural limits are 8 MiB, 32 declared pages, 8,192 current objects,
+64 internal PDF revisions and image dimensions ≤2,048 / 2,000,000 pixels. The
+shared Core helper uses the pinned upstream COS parser with a 1 MiB object/xref
+stream inspection limit. It checks headers, exact xref locations, repair/
+encryption refusal, declared page Count and image scalars. It does not walk the
+complete page semantics, render, decode image pixels, edit or normalize bytes.
+The engine bridge independently checks actual page count, geometry, warnings,
+representation preservation and bounded stream/JPEG admission. Internal revision
+compaction through the real full writer is being qualified; Core retains exact
+chosen versions independently of PDF's internal revision chain.
 
-Source is MIT OR Apache-2.0. Fonts, icons, CMaps, substitute fonts and other data
-have separate notices in NOTICE/ATTRIBUTION. ArtCraft trademark assets have an
-explicit fork-removal condition in `docs/brand/LICENSE-brand.txt`; the managed
-package must exclude those marks and retain plain-text source attribution. This
-is a license requirement verified from source, not a speculative rebrand.
+An older manual ACK must not rebase newer COS edits or a newer unfinished UI
+draft. Refused reviewed edits restore the real native Editor/Undo/Redo. JavaScript
+is disabled before open and cannot be re-enabled by the managed Session. Time and
+authorship are content: retain exact accepted output rather than expecting a
+fresh execution on another runtime to produce the same bytes.
 
-Next: execute the original engine and editor on contributor-authored realistic
-PDFs, then choose and measure a lossless profile. Integrate the shared MCP/binary
-host, scoped Core ownership/CAS/receipts, full-screen touch/orientation, human and
-reviewed agent edits, save/ACK/Undo recovery and selected-version export. Browser,
-WASIp2, canonical and native iPhone evidence remain separate acceptance steps.
+Preparation refuses changed pins/manifests, dirty or symlinked source and generated
+adapter inputs. The input foundation replay compared all 1,564 original tracked
+files; only Cargo.toml changed and every existing renderer/platform vendor patch
+remained intact. Use `prepare-engine.py --upstream OWNED_CLEAN_PIN` for inspection,
+or `--managed` for the native binary adapter. Preparation never means execution.
+
+After a source-qualified inspection build, generate an original JPEG with
+`test/generate-jpeg.py NEW_JPEG_PATH`, then run:
+
+```sh
+python3 test/native-probe.py --binary QUALIFIED_INSPECTION_BINARY \
+  --receipt SUCCESSFUL_CARGO_GUARD_JSON --jpeg GENERATED_JPEG \
+  --output NEW_RUNTIME_DIRECTORY
+```
+
+The verifier requires pypdf and the generator requires Pillow (both are available
+in the bundled workspace Python). It checks the binary's successful source receipt,
+runs the actual engine/editor, retains results outside the repository and reads
+the generated PDFs independently. It does not skip failed or unavailable paths.
+
+Source is MIT OR Apache-2.0. Retain source/dependency/font notices. The actual
+`docs/brand/LICENSE-brand.txt` requires forks to remove ArtCraft trademark
+artwork; the managed patch excludes those graphics and retains source attribution.
+See [NOTICE.md](NOTICE.md). No optional OCR models or external document/media assets
+have been imported.

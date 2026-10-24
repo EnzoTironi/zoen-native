@@ -49,13 +49,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "aes"
+version = "0.9.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "35f0f96ce78e38c3dc6d8948aa8163d06385be74000f3c7a95bf1eef35d3ea32"
+dependencies = [
+ "cipher 0.5.2",
+ "cpubits",
+ "cpufeatures 0.3.1",
+]
+
+[[package]]
 name = "aes-gcm"
 version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "831010a0f742e1209b3bcea8fab6a8e149051ba6099432c8cb2cc117dec3ead1"
 dependencies = [
  "aead 0.5.2",
- "aes",
+ "aes 0.8.4",
  "cipher 0.4.4",
  "ctr",
  "ghash",
@@ -976,6 +987,12 @@ checksum = "0667304c32ea56cb4cd6d2d7c0cfe9a2f8041229db8c033af7f8d69492429def"
 dependencies = [
  "cfg-if",
 ]
+
+[[package]]
+name = "cpubits"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "15b85f9c39137c3a891689859392b1bd49812121d0d61c9caf00d46ed5ce06ae"
 
 [[package]]
 name = "cpufeatures"
@@ -3597,6 +3614,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "localization",
+ "pdfcraft-cos",
  "quick-xml",
  "serde",
  "serde_json",
@@ -4201,6 +4219,38 @@ name = "pastey"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2ee67f1008b1ba2321834326597b8e186293b049a023cdef258527550b9935b4"
+
+[[package]]
+name = "pdfcraft-cos"
+version = "0.13.0"
+source = "git+https://github.com/storytold/pdfcraft?rev=d445410807e7eefbe5b96f9662ab963ae8dd2a3a#d445410807e7eefbe5b96f9662ab963ae8dd2a3a"
+dependencies = [
+ "chrono",
+ "pdfcraft-crypt",
+ "pdfcraft-filters",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "pdfcraft-crypt"
+version = "0.13.0"
+source = "git+https://github.com/storytold/pdfcraft?rev=d445410807e7eefbe5b96f9662ab963ae8dd2a3a#d445410807e7eefbe5b96f9662ab963ae8dd2a3a"
+dependencies = [
+ "aes 0.9.3",
+ "md-5 0.11.0",
+ "sha2 0.11.0",
+ "stringprep",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "pdfcraft-filters"
+version = "0.13.0"
+source = "git+https://github.com/storytold/pdfcraft?rev=d445410807e7eefbe5b96f9662ab963ae8dd2a3a#d445410807e7eefbe5b96f9662ab963ae8dd2a3a"
+dependencies = [
+ "flate2",
+ "thiserror 2.0.21",
+]
 
 [[package]]
 name = "pem"
