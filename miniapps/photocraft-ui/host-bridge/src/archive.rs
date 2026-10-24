@@ -13,7 +13,7 @@ pub(super) fn check(bytes: &[u8]) -> Result<Checked, Error> {
     if bytes.len() > MAX_DOCUMENT_BYTES {
         return Err(Error::Limit);
     }
-    let zip = ZipReader::new(bytes).map_err(format_error)?;
+    let zip = ZipReader::new(bytes).map_err(|error| format_error(&error))?;
     if zip.entries.len() > 128 {
         return Err(Error::Limit);
     }
@@ -34,7 +34,7 @@ pub(super) fn check(bytes: &[u8]) -> Result<Checked, Error> {
     }
     let raw = zip
         .read_by_name("manifest.json", MAX_MANIFEST_BYTES)
-        .map_err(format_error)?;
+        .map_err(|error| format_error(&error))?;
     let value: Value = serde_json::from_slice(&raw).map_err(|_| Error::InvalidDocument)?;
     let model: Manifest = serde_json::from_slice(&raw).map_err(|_| Error::InvalidDocument)?;
     let doc = &model.document;

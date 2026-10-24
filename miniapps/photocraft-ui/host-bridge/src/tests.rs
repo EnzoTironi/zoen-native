@@ -159,7 +159,7 @@ fn archive_duplicates_and_unreferenced_entries_refuse() -> TestResult {
 fn bounded_archive_and_canvas_fail_before_decode_or_command() -> TestResult {
     let source = seed()?;
     let oversized = changed_manifest(&source, |m| {
-        m["document"]["size"]["width"] = serde_json::json!(1025)
+        m["document"]["size"]["width"] = serde_json::json!(1025);
     })?;
     assert_eq!(inspect(&oversized, &sha(&oversized)), Err(Error::Limit));
     let mut writer = ZipWriter::new();

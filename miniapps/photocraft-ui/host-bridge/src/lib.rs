@@ -62,7 +62,7 @@ pub struct Metadata {
     pub engine_revision: &'static str,
 }
 
-fn format_error(error: photocraft_format::FormatError) -> Error {
+fn format_error(error: &photocraft_format::FormatError) -> Error {
     match error {
         photocraft_format::FormatError::LimitExceeded(_) => Error::Limit,
         photocraft_format::FormatError::TooNew { .. }
@@ -93,19 +93,19 @@ fn open(bytes: &[u8]) -> Result<Document, Error> {
         bytes,
         &LoadOptions {
             max_manifest_bytes: MAX_MANIFEST_BYTES,
-            max_blob_bytes: MAX_DECODED_BYTES as usize,
+            max_blob_bytes: usize::try_from(MAX_DECODED_BYTES).map_err(|_| Error::Limit)?,
             max_total_bytes: MAX_DECODED_BYTES,
             preserve_ids: true,
             max_canvas_side: MAX_CANVAS_SIDE,
             max_canvas_pixels: MAX_CANVAS_PIXELS,
         },
     )
-    .map_err(format_error)?;
+    .map_err(|error| format_error(&error))?;
     profile(&doc)?;
     // The pinned reader may normalize old/invalid state. Do not silently adopt
     // a repair or drop fields/entries from the selected immutable source.
-    let saved =
-        photocraft_format::save_to_bytes(&doc, &SaveOptions::default()).map_err(format_error)?;
+    let saved = photocraft_format::save_to_bytes(&doc, &SaveOptions::default())
+        .map_err(|error| format_error(&error))?;
     let reopened = archive::check(&saved)?;
     if original.document != reopened.document || original.entries != reopened.entries {
         return Err(Error::UnsupportedProfile);
