@@ -74,7 +74,7 @@ fn binary_approval_refuses_cross_format_tools_without_creating_requests() {
     }
 }
 #[test]
-fn grid_approved_turn_cannot_outlive_current_actor_device_or_source_authority() {
+fn grid_approved_turn_cannot_outlive_current_app_grant() {
     let f = grid_fixture();
     signed_trust(&f, TrustLevel::Act);
     let request = stage(&f, "gridcraft_cell_set");
@@ -91,7 +91,28 @@ fn grid_approved_turn_cannot_outlive_current_actor_device_or_source_authority() 
         .expect("permit");
     let (_, action) = parsed(permit.proposal()).expect("parsed");
     let intent = command_intent(permit.proposal(), action.as_ref()).expect("intent");
-    signed_trust(&f, TrustLevel::Suggest);
+    {
+        let mut engine = f.agent.lock();
+        let grant = engine
+            .state
+            .grants
+            .iter()
+            .rev()
+            .find(|grant| {
+                grant.grant.scope == GrantScope::Item(f.base.item_id.clone())
+                    && matches!(grant.grant.capability, Capability::Trust(TrustLevel::Act))
+            })
+            .expect("original item Act grant")
+            .grant
+            .clone();
+        engine
+            .append(
+                &f.space,
+                &grant.grantor,
+                EventBody::GrantRevoked { grant: grant.id },
+            )
+            .expect("revoke original app grant");
+    }
     let before = counts(&f);
     assert!(f
         .agent

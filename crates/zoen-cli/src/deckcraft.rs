@@ -80,9 +80,16 @@ fn configured_for(app: &str, names: [&str; 3]) -> Result<Option<DeckcraftWorker>
     )?))
 }
 pub fn tools() -> Vec<ToolDef> {
-    tools_for("deckcraft")
+    tools_for_format("deckcraft")
 }
 pub fn tools_for(app: &str) -> Vec<ToolDef> {
+    if app == "deckcraft" {
+        tools()
+    } else {
+        tools_for_format(app)
+    }
+}
+fn tools_for_format(app: &str) -> Vec<ToolDef> {
     client_core::binary_agent_tools::tools()
         .into_iter()
         .filter(|tool| {
