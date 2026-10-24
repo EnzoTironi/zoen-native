@@ -18,7 +18,7 @@ from expo_artifact_dependencies import compiler_inputs, graph
 # Drift disables optimization, never a build or test. It does not require an ACK.
 CONTRACTS = {
     ".github/workflows/expo.yml": "085e800264619bcc17f43b676a40b9ee682cb8e7dff845058b9ff4247e1bf7e7",
-    "scripts/build-expo-core.mjs": "8b58f32e98077ac464faafb9d7d7d61816b892d71c22418e02bb4170c291204f",
+    "scripts/build-expo-core.mjs": "af2c2f49e2c754b6d5d8be46bf9dd09fc4460b1b8b2613bc657251a6c57c2a64",
     "scripts/build-expo-web-core.mjs": "9504ad593e1413ed9b8e36c4b79032df1336e7ad740adbac18b5e9361fa8dfd2",
     "apps/zoen/package.json": "d58538007aec677d34171d4a09f883973c1c8bf9440b141d5bc72f33b2dba14b",
 }
