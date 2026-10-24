@@ -13,11 +13,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDialogs } from '../../components/dialogs';
 import { useClient } from '../../core/provider';
 import { EmptyState } from '../../components/primitives';
+import { useMemberActions } from '../../communities/use-member-actions';
+import { MemberActionsSheet } from '../../communities/member-actions-sheet';
 import { useTheme } from '../../theme';
 
 export default function Space() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { snapshot, store } = useClient();
+  const members = useMemberActions(id);
   const { presentation: p, scheme } = useTheme();
   const insets = useSafeAreaInsets();
   const { confirm } = useDialogs();
@@ -106,194 +109,222 @@ export default function Space() {
         ? t('chat.closedChatReadableByTheServer')
         : t('chat.publicChat');
   return (
-    <ScrollView
-      testID="conversation-details-screen"
-      contentInsetAdjustmentBehavior="never"
-      scrollEventThrottle={16}
-      onScroll={(event) =>
-        setCollapsed(
-          event.nativeEvent.contentOffset.y > profileTitleCollapseOffset(Boolean(subtitle)),
-        )
-      }
-      contentContainerStyle={{
-        paddingHorizontal: 16,
-        paddingTop: insets.top + peerInfo.avatarTop,
-        paddingBottom: Math.max(insets.bottom, 16) + 24,
-        gap: 24,
-        maxWidth: 640,
-        width: '100%',
-        alignSelf: 'center',
-      }}
-    >
-      <Stack.Screen
-        options={{
-          title: collapsed ? chat.title : '',
-          headerTransparent: true,
-          headerShadowVisible: false,
+    <>
+      <ScrollView
+        testID="conversation-details-screen"
+        contentInsetAdjustmentBehavior="never"
+        scrollEventThrottle={16}
+        onScroll={(event) =>
+          setCollapsed(
+            event.nativeEvent.contentOffset.y > profileTitleCollapseOffset(Boolean(subtitle)),
+          )
+        }
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingTop: insets.top + peerInfo.avatarTop,
+          paddingBottom: Math.max(insets.bottom, 16) + 24,
+          gap: 24,
+          maxWidth: 640,
+          width: '100%',
+          alignSelf: 'center',
         }}
-      />
-      <ProfileHeader
-        name={chat.title}
-        photo={photo}
-        tint={chat.counterpart?.tint_hex}
-        agent={chat.counterpart?.kind === 'Agent'}
-        subtitle={subtitle}
-        actions={[
-          {
-            id: 'details-message',
-            label: t('peerInfo.backToChat'),
-            icon: { ios: 'bubble.left.fill', android: 'chat', web: 'chat' },
-            onPress: () => router.dismissTo({ pathname: '/chat/[id]', params: { id } }),
-          },
-          {
-            id: 'details-mute',
-            label: t(chat.muted ? 'peerInfo.unmute' : 'peerInfo.mute'),
-            icon: chat.muted
-              ? { ios: 'bell.slash.fill', android: 'notifications_off', web: 'notifications_off' }
-              : { ios: 'bell.fill', android: 'notifications', web: 'notifications' },
-            disabled: busy,
-            onPress: () => preference('muted', !chat.muted),
-          },
-          {
-            id: 'details-search',
-            label: t('peerInfo.search'),
-            icon: { ios: 'magnifyingglass', android: 'search', web: 'search' },
-            onPress: () => router.push({ pathname: '/search', params: { space: id } }),
-          },
-        ]}
-      />
-      <IntegrityWarning spaceId={id} />
-      {error ? (
-        <Text accessibilityRole="alert" selectable style={{ color: p.destructive }}>
-          {error}
-        </Text>
-      ) : null}
-      <ProfileSection>
-        <ProfileInfoRow label={t('peerInfo.privacy')} value={privacy} />
-      </ProfileSection>
-      <ProfileSection>
-        <ProfileInfoRow
-          testID="details-shared-media"
-          label={t('peerInfo.shared')}
-          onPress={() => router.push({ pathname: '/shared-media/[id]', params: { id } })}
+      >
+        <Stack.Screen
+          options={{
+            title: collapsed ? chat.title : '',
+            headerTransparent: true,
+            headerShadowVisible: false,
+          }}
         />
-      </ProfileSection>
-      <ProfileSection title={t('peerInfo.preferences')}>
-        <Host matchContents colorScheme={scheme} seedColor={p.list.accent}>
-          <Column spacing={0}>
-            <Switch
-              label={t('chat.pinChat')}
-              value={chat.pinned}
-              onValueChange={(value) => preference('pinned', value)}
-              disabled={busy}
-            />
-            <Switch
-              label={t('chat.muteNotifications')}
-              value={chat.muted}
-              onValueChange={(value) => preference('muted', value)}
-              disabled={busy}
-            />
-            <Switch
-              label={t('chat.archiveChat')}
-              value={chat.archived}
-              onValueChange={(value) => preference('archived', value)}
-              disabled={busy}
-            />
-          </Column>
-        </Host>
-      </ProfileSection>
-      <ProfileSection title={t('peerInfo.actions')}>
-        <ProfileInfoRow
-          label={t('conversationCards.manage')}
-          onPress={() => router.push({ pathname: '/conversation-cards/[id]', params: { id } })}
+        <ProfileHeader
+          name={chat.title}
+          photo={photo}
+          tint={chat.counterpart?.tint_hex}
+          agent={chat.counterpart?.kind === 'Agent'}
+          subtitle={subtitle}
+          actions={[
+            {
+              id: 'details-message',
+              label: t('peerInfo.backToChat'),
+              icon: { ios: 'bubble.left.fill', android: 'chat', web: 'chat' },
+              onPress: () => router.dismissTo({ pathname: '/chat/[id]', params: { id } }),
+            },
+            {
+              id: 'details-mute',
+              label: t(chat.muted ? 'peerInfo.unmute' : 'peerInfo.mute'),
+              icon: chat.muted
+                ? { ios: 'bell.slash.fill', android: 'notifications_off', web: 'notifications_off' }
+                : { ios: 'bell.fill', android: 'notifications', web: 'notifications' },
+              disabled: busy,
+              onPress: () => preference('muted', !chat.muted),
+            },
+            {
+              id: 'details-search',
+              label: t('peerInfo.search'),
+              icon: { ios: 'magnifyingglass', android: 'search', web: 'search' },
+              onPress: () => router.push({ pathname: '/search', params: { space: id } }),
+            },
+          ]}
         />
-        <ProfileInfoRow
-          label={t('chat.checkHistoryIntegrity')}
-          onPress={() => router.push({ pathname: '/integrity/[id]', params: { id } })}
-        />
-        <ProfileInfoRow
-          label={t('chat.createAPage')}
-          onPress={() => router.push({ pathname: '/new-page', params: { space: id } })}
-        />
-      </ProfileSection>
-      {chat.members.length ? (
-        <ProfileSection title={t('chat.participantCount', { count: chat.members.length })}>
-          {chat.members.map((person) => (
-            <Pressable
-              key={person.id}
-              testID={`details-member-${person.id}`}
-              accessibilityRole="button"
-              accessibilityLabel={t('chat.viewPerson', { name: person.name })}
-              onPress={() => router.push({ pathname: '/person/[id]', params: { id: person.id } })}
-              style={({ pressed }) => ({
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 13,
-                paddingHorizontal: 16,
-                paddingVertical: 9,
-                minHeight: 58,
-                backgroundColor: pressed ? p.list.highlighted : 'transparent',
-              })}
-            >
-              <ProfileAvatar
-                person={person}
-                name={person.name}
-                color={person.tint_hex}
-                agent={person.kind === 'Agent'}
-                size={38}
-              />
-              <View style={{ flex: 1, gap: 3 }}>
-                <Text style={{ color: p.list.text, fontSize: 17 }}>
-                  {person.is_me ? t('chat.personIsYou', { name: person.name }) : person.name}
-                </Text>
-                <Text style={{ color: p.list.secondary, fontSize: 13 }}>
-                  {person.handle
-                    ? `@${person.handle}`
-                    : person.kind === 'Agent'
-                      ? t('chat.agentLabel')
-                      : t('chat.person')}
-                </Text>
-              </View>
-            </Pressable>
-          ))}
+        <IntegrityWarning spaceId={id} />
+        {error ? (
+          <Text accessibilityRole="alert" selectable style={{ color: p.destructive }}>
+            {error}
+          </Text>
+        ) : null}
+        <ProfileSection>
+          <ProfileInfoRow label={t('peerInfo.privacy')} value={privacy} />
         </ProfileSection>
-      ) : null}
-      {chat.kind !== 'Direct' ? (
         <ProfileSection>
           <ProfileInfoRow
-            label={t('chat.inviteSomeone')}
-            disabled={busy}
-            onPress={() => {
-              void perform(async () => {
-                const invite = await store.driver.request({ op: 'create_invite', space_id: id });
-                if (currentOwner()) await Share.share({ message: invite.link });
-              });
-            }}
-          />
-          <ProfileInfoRow
-            destructive
-            label={t('chat.leaveChat')}
-            disabled={busy}
-            onPress={() => {
-              void confirm({
-                title: t('chat.leaveNamedChat', { title: chat.title }),
-                message: t('chat.youWillNeedANewInviteToReturn'),
-                confirmLabel: t('chat.leave'),
-                destructive: true,
-              }).then((accepted) => {
-                if (accepted)
-                  void perform(async () => {
-                    await store.request({ op: 'leave_space', space_id: id });
-                    if (currentOwner()) router.dismissTo('/');
-                  });
-              });
-            }}
+            testID="details-shared-media"
+            label={t('peerInfo.shared')}
+            onPress={() => router.push({ pathname: '/shared-media/[id]', params: { id } })}
           />
         </ProfileSection>
+        <ProfileSection title={t('peerInfo.preferences')}>
+          <Host matchContents colorScheme={scheme} seedColor={p.list.accent}>
+            <Column spacing={0}>
+              <Switch
+                label={t('chat.pinChat')}
+                value={chat.pinned}
+                onValueChange={(value) => preference('pinned', value)}
+                disabled={busy}
+              />
+              <Switch
+                label={t('chat.muteNotifications')}
+                value={chat.muted}
+                onValueChange={(value) => preference('muted', value)}
+                disabled={busy}
+              />
+              <Switch
+                label={t('chat.archiveChat')}
+                value={chat.archived}
+                onValueChange={(value) => preference('archived', value)}
+                disabled={busy}
+              />
+            </Column>
+          </Host>
+        </ProfileSection>
+        <ProfileSection title={t('peerInfo.actions')}>
+          <ProfileInfoRow
+            label={t('conversationCards.manage')}
+            onPress={() => router.push({ pathname: '/conversation-cards/[id]', params: { id } })}
+          />
+          <ProfileInfoRow
+            label={t('chat.checkHistoryIntegrity')}
+            onPress={() => router.push({ pathname: '/integrity/[id]', params: { id } })}
+          />
+          <ProfileInfoRow
+            label={t('chat.createAPage')}
+            onPress={() => router.push({ pathname: '/new-page', params: { space: id } })}
+          />
+        </ProfileSection>
+        {chat.members.length ? (
+          <ProfileSection title={t('chat.participantCount', { count: chat.members.length })}>
+            {chat.members.map((person) => (
+              <Pressable
+                key={person.id}
+                testID={`details-member-${person.id}`}
+                accessibilityRole="button"
+                accessibilityLabel={t('chat.viewPerson', { name: person.name })}
+                accessibilityHint={
+                  chat.kind !== 'Direct' && members.available && !person.is_me
+                    ? t('community.actionsHint')
+                    : undefined
+                }
+                accessibilityActions={
+                  chat.kind !== 'Direct' && members.available && !person.is_me
+                    ? [{ name: 'showMenu', label: t('community.actions') }]
+                    : undefined
+                }
+                onAccessibilityAction={(event) => {
+                  if (
+                    event.nativeEvent.actionName === 'showMenu' &&
+                    chat.kind !== 'Direct' &&
+                    !person.is_me
+                  )
+                    members.session.open(person.id);
+                }}
+                onLongPress={
+                  chat.kind !== 'Direct' && members.available && !person.is_me
+                    ? () => members.session.open(person.id)
+                    : undefined
+                }
+                onPress={() => router.push({ pathname: '/person/[id]', params: { id: person.id } })}
+                style={({ pressed }) => ({
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 13,
+                  paddingHorizontal: 16,
+                  paddingVertical: 9,
+                  minHeight: 58,
+                  backgroundColor: pressed ? p.list.highlighted : 'transparent',
+                })}
+              >
+                <ProfileAvatar
+                  person={person}
+                  name={person.name}
+                  color={person.tint_hex}
+                  agent={person.kind === 'Agent'}
+                  size={38}
+                />
+                <View style={{ flex: 1, gap: 3 }}>
+                  <Text style={{ color: p.list.text, fontSize: 17 }}>
+                    {person.is_me ? t('chat.personIsYou', { name: person.name }) : person.name}
+                  </Text>
+                  <Text style={{ color: p.list.secondary, fontSize: 13 }}>
+                    {person.handle
+                      ? `@${person.handle}`
+                      : person.kind === 'Agent'
+                        ? t('chat.agentLabel')
+                        : t('chat.person')}
+                  </Text>
+                </View>
+              </Pressable>
+            ))}
+          </ProfileSection>
+        ) : null}
+        {chat.kind !== 'Direct' ? (
+          <ProfileSection>
+            <ProfileInfoRow
+              label={t('chat.inviteSomeone')}
+              disabled={busy}
+              onPress={() => {
+                void perform(async () => {
+                  const invite = await store.driver.request({ op: 'create_invite', space_id: id });
+                  if (currentOwner()) await Share.share({ message: invite.link });
+                });
+              }}
+            />
+            <ProfileInfoRow
+              destructive
+              label={t('chat.leaveChat')}
+              disabled={busy}
+              onPress={() => {
+                void confirm({
+                  title: t('chat.leaveNamedChat', { title: chat.title }),
+                  message: t('chat.youWillNeedANewInviteToReturn'),
+                  confirmLabel: t('chat.leave'),
+                  destructive: true,
+                }).then((accepted) => {
+                  if (accepted)
+                    void perform(async () => {
+                      await store.request({ op: 'leave_space', space_id: id });
+                      if (currentOwner()) router.dismissTo('/');
+                    });
+                });
+              }}
+            />
+          </ProfileSection>
+        ) : null}
+        <Text selectable style={{ color: p.list.secondary, fontSize: 13, textAlign: 'center' }}>
+          {t('chat.historyEventTotal', { total: selected.event_count })}
+        </Text>
+      </ScrollView>
+      {chat.kind !== 'Direct' && members.available ? (
+        <MemberActionsSheet session={members.session} state={members.state} />
       ) : null}
-      <Text selectable style={{ color: p.list.secondary, fontSize: 13, textAlign: 'center' }}>
-        {t('chat.historyEventTotal', { total: selected.event_count })}
-      </Text>
-    </ScrollView>
+    </>
   );
 }

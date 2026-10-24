@@ -76,6 +76,7 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
     crate::sites::SiteStatus::export_all(&config)?;
     protocol::sites::Receipt::export_all(&config)?;
     Snapshot::export_all(&config)?;
+    crate::SpaceMemberContext::export_all(&config)?;
     crate::MessageDraftDto::export_all(&config)?;
     crate::MessageDraftSendResult::export_all(&config)?;
     TimelinePage::export_all(&config)?;

@@ -1,3 +1,4 @@
+import type { SpaceMemberContext } from './generated/SpaceMemberContext';
 import type { PageInputPort } from '../documents/page-input';
 import type { LogEventsPage } from './generated/LogEventsPage';
 import type { Command } from './generated/Command';
@@ -82,6 +83,8 @@ export type CoreEvent =
   | { kind: 'ephemeral'; spaceId: string; fromId: string; type: string; detail: string }
   | { kind: 'error'; message?: string };
 type Results = {
+  space_member_context: SpaceMemberContext;
+  remove_member_reviewed: SpaceMemberContext;
   start_owner_policy_direct: string;
   request_account_policy_options: OwnerPolicyOptionsStatus;
   find_account_policy_options: OwnerPolicyOptionsStatus | null;

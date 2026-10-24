@@ -309,6 +309,11 @@ export function fixture(kind: keyof typeof sources, overrides: Record<string, un
     if (/\/i18n(?:\/index.ts)?$/.test(path)) return { t, formatLocale: () => 'en-US' };
     if (path.endsWith('core/provider')) return { useClient: () => ({ ...state, store }) };
     if (path.endsWith('core/query')) return { useCoreQuery: () => query };
+    // This fixture tests the existing profile surface; member controls have their own real-port suite.
+    if (path.endsWith('communities/use-member-actions'))
+      return { useMemberActions: () => ({ available: false, session: {}, state: {} }) };
+    if (path.endsWith('communities/member-actions-sheet'))
+      return { MemberActionsSheet: 'MemberActionsSheet' };
     if (path.endsWith('components/primitives')) return primitives;
     if (path.endsWith('components/dialogs'))
       return { useDialogs: () => ({ confirm: async () => true }) };
