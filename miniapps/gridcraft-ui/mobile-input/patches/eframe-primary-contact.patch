@@ -91,7 +91,7 @@
                  let modifiers = runner.input.modifiers;
                  let egui_event = egui::Event::PointerButton {
                      pos,
-@@ -595,18 +635,11 @@
+@@ -595,18 +635,16 @@
                      (runner.web_options.should_prevent_default)(&egui_event);
                  runner.input.raw.events.push(egui_event);
  
@@ -107,11 +107,16 @@
                  // on user action, such as a click.
                  // So we need to run the app logic here and now:
 -                runner.logic();
++                // Retry press-time focus only within this admitted trusted tap.
++                // Keep current text-agent/composition ownership intact.
++                if event.pointer_type() == "touch" && allow_text_activation {
++                    focus_canvas_for_primary_touch(runner, event.is_trusted());
++                }
 +                runner.logic_from_pointer(allow_text_activation);
  
                  // Make sure we paint the output of the above logic call asap:
                  runner.needs_repaint.repaint_asap();
-@@ -619,6 +652,24 @@
+@@ -619,6 +657,24 @@
                  if should_stop_propagation {
                      event.stop_propagation();
                  }
@@ -136,7 +141,7 @@
              }
          },
      )
-@@ -701,7 +752,8 @@
+@@ -701,7 +757,8 @@
          |event: web_sys::TouchEvent, runner| {
              let mut should_stop_propagation = true;
              let mut should_prevent_default = true;
@@ -146,7 +151,7 @@
                  let egui_event = egui::Event::PointerButton {
                      pos,
                      button: egui::PointerButton::Primary,
-@@ -710,10 +762,21 @@
+@@ -710,10 +767,21 @@
                  };
                  should_stop_propagation = (runner.web_options.should_stop_propagation)(&egui_event);
                  should_prevent_default = (runner.web_options.should_prevent_default)(&egui_event);
@@ -169,7 +174,7 @@
              runner.needs_repaint.repaint_asap();
  
              // Use web options to tell if the web event should be propagated to parent elements based on the egui event.
-@@ -730,6 +793,12 @@
+@@ -730,6 +798,12 @@
  
  fn install_touchmove(runner_ref: &WebRunner, target: &EventTarget) -> Result<(), JsValue> {
      runner_ref.add_event_listener(target, "touchmove", |event: web_sys::TouchEvent, runner| {
@@ -182,7 +187,7 @@
          if let Some((pos, touch)) = primary_touch_pos(runner, &event)
              && is_interested_in_pointer_event(
                  runner,
-@@ -758,50 +827,62 @@
+@@ -758,50 +832,65 @@
  
  fn install_touchend(runner_ref: &WebRunner, target: &EventTarget) -> Result<(), JsValue> {
      runner_ref.add_event_listener(target, "touchend", |event: web_sys::TouchEvent, runner| {
@@ -274,6 +279,9 @@
 +        }
 +        push_touches(runner, egui::TouchPhase::End, &event);
 +        if let Some(allow_text_activation) = release.filter(|_| interested) {
++            if allow_text_activation {
++                focus_canvas_for_primary_touch(runner, event.is_trusted());
++            }
 +            runner.logic_from_pointer(allow_text_activation);
 +        }
 +        runner.needs_repaint.repaint_asap();
@@ -289,7 +297,7 @@
          }
      })
  }
-@@ -811,6 +892,16 @@
+@@ -811,6 +900,16 @@
          target,
          "touchcancel",
          |event: web_sys::TouchEvent, runner| {
