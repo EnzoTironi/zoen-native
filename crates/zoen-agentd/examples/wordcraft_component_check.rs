@@ -16,7 +16,7 @@ use std::{
     path::{Path, PathBuf},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
-use zoen_agentd::wasm::{WasmLimits, WasmTier, WasmTool};
+use zoen_agentd::wasm::{Stopped, WasmLimits, WasmOutput, WasmTier, WasmTool};
 use zoen_agentd::{Needs, ToolManifest};
 
 type Result<T> = std::result::Result<T, String>;
@@ -96,6 +96,15 @@ fn limits() -> WasmLimits {
         memory_bytes: 256 * 1024 * 1024,
     }
 }
+fn completed(output: &WasmOutput) -> Result<()> {
+    match output.stopped.as_ref() {
+        None => Ok(()),
+        Some(Stopped::OutOfFuel) => Err("component exhausted fuel".into()),
+        Some(Stopped::OutOfTime) => Err("component exceeded execution deadline".into()),
+        Some(Stopped::OutOfMemory) => Err("component exceeded memory limit".into()),
+        Some(Stopped::Failed(_)) => Err("component failed during execution".into()),
+    }
+}
 async fn call(
     tier: &WasmTier,
     tool: &WasmTool,
@@ -108,7 +117,7 @@ async fn call(
         .run(tool, frame(request, bytes)?, limits())
         .await
         .map_err(|_| "runtime error")?;
-    require(output.stopped.is_none(), "component stopped")?;
+    completed(&output)?;
     let (envelope, body) = decode(&output.stdout)?;
     require(
         envelope.as_object().is_some_and(|o| o.len() == 2),
@@ -140,7 +149,7 @@ fn load(component: &[u8], probe: &[u8]) -> Result<Loaded> {
     let tier = WasmTier::new(vec![key.verifying_key()], 1, 256 * 1024 * 1024)
         .map_err(|_| "tier unavailable")?;
     let signed = manifest("wordcraft-qualification", component).sign(&key);
-    let mut swapped = component.clone();
+    let mut swapped = component.to_vec();
     *swapped.first_mut().ok_or("empty component")? ^= 1;
     require(
         tier.load(&signed, &swapped).is_err(),
@@ -176,7 +185,7 @@ async fn run_clock(tier: &WasmTier, tool: &WasmTool) -> Result<(Value, u64)> {
         .run(tool, Bytes::new(), limits())
         .await
         .map_err(|_| "clock probe runtime error")?;
-    require(clock_output.stopped.is_none(), "clock probe stopped")?;
+    completed(&clock_output)?;
     let after = now()?;
     let clock: Value =
         serde_json::from_slice(&clock_output.stdout).map_err(|_| "invalid clock output")?;
