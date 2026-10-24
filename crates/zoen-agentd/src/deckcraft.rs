@@ -58,6 +58,11 @@ impl DeckcraftWorker {
                 "wordcraft-canonical-v1",
                 "d1b0bfc3f9dd83126b162a42b667facecb003b7f",
             ),
+            "photocraft" => (
+                "photocraft",
+                "photocraft-canonical-v1",
+                "9b9643764f3fb77d9f0e48d7510983ae50621e11",
+            ),
             _ => return Err("Unsupported binary App worker".into()),
         };
         let spec = manifest.verify(&trusted).map_err(|e| e.to_string())?;
@@ -90,7 +95,7 @@ impl DeckcraftWorker {
     }
     pub fn combine(mut self, other: Self) -> Result<Self, String> {
         let incoming = std::iter::once(&other.primary).chain(&other.companions);
-        if self.companions.len() + other.companions.len() + 2 > 3
+        if self.companions.len() + other.companions.len() + 2 > 4
             || incoming
                 .clone()
                 .any(|worker| self.select(worker.app).is_ok())
