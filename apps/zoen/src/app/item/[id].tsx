@@ -1,3 +1,4 @@
+import { isBinaryEditorId } from '../../miniapps/binary-formats';
 import { t, formatLocale } from '../../i18n/index.ts';
 import { useState } from 'react';
 import { Redirect, Stack, router, useLocalSearchParams } from 'expo-router';
@@ -177,7 +178,7 @@ export default function Item() {
                 <PageVersionExportAction page={pastPage.data} />
               ) : null}
               {past.data?.version === selected &&
-              (past.data.app?.app_id === 'deckcraft' || past.data.app?.app_id === 'gridcraft') &&
+              isBinaryEditorId(past.data.app?.app_id) &&
               !oldError ? (
                 <DeckVersionAction item={past.data} />
               ) : null}

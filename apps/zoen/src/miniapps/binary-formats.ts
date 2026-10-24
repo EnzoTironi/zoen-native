@@ -30,9 +30,11 @@ const formats = Object.freeze({
     exports: Object.freeze(['xlsx'] as const),
   }),
 });
+export function isBinaryEditorId(id: unknown): id is BinaryEditorId {
+  return id === 'deckcraft' || id === 'gridcraft' || id === 'wordcraft';
+}
 export function binaryEditorFormat(id: unknown = 'deckcraft') {
-  if (id !== 'deckcraft' && id !== 'gridcraft' && id !== 'wordcraft')
-    throw Error('Unsupported binary App format.');
+  if (!isBinaryEditorId(id)) throw Error('Unsupported binary App format.');
   return formats[id];
 }
 export function binaryExportAllowed(

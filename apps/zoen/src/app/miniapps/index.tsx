@@ -1,3 +1,4 @@
+import { binaryEditorFormat, isBinaryEditorId } from '../../miniapps/binary-formats';
 import { t } from '../../i18n/index.ts';
 import { Host, Picker } from '@expo/ui';
 import { useRef, useState } from 'react';
@@ -105,14 +106,12 @@ function Install({
           setError(null);
           void (async () => {
             let args_json = exactJson(formValue(schema, draft)!);
-            if (spec.id === 'deckcraft' || spec.id === 'gridcraft') {
+            if (isBinaryEditorId(spec.id)) {
               const epoch = store.sessionEpoch;
               const key = JSON.stringify([epoch, target.id, spec.id, args_json]);
               const mutationId = await intent(key, () => store.request({ op: 'new_mutation_id' }));
               if (store.sessionEpoch !== epoch)
-                throw Error(
-                  t(spec.id === 'gridcraft' ? 'workbooks.accountChanged' : 'decks.accountChanged'),
-                );
+                throw Error(t(`${binaryEditorFormat(spec.id).messages}.accountChanged`));
               args_json = exactJson({ ...JSON.parse(args_json), mutationId });
             }
             const item = await store.request({

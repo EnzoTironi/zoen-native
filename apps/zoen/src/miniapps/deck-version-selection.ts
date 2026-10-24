@@ -2,7 +2,7 @@ import type { ClientStore } from '../core/store';
 import type { ItemDetail } from '../core/types';
 import { homeSpacesFor } from '../home/access.ts';
 import { documentScope } from '../documents/document-authority.ts';
-import { binaryEditorFormat, type BinaryEditorId } from './binary-formats.ts';
+import { binaryEditorFormat, isBinaryEditorId, type BinaryEditorId } from './binary-formats.ts';
 import type { DeckcraftExportHead } from './deckcraft-export';
 
 type Store = Pick<ClientStore, 'getSnapshot' | 'sessionEpoch' | 'driver'>;
@@ -17,7 +17,7 @@ export function deckVersionBinding(store: Store, item: ItemDetail): DeckVersionB
   const state = store.getSnapshot();
   const scope = documentScope(state, store.sessionEpoch);
   return scope &&
-    (item.app?.app_id === 'deckcraft' || item.app?.app_id === 'gridcraft') &&
+    isBinaryEditorId(item.app?.app_id) &&
     Number.isSafeInteger(item.version) &&
     item.version > 0 &&
     homeSpacesFor(state).has(item.space_id)

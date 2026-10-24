@@ -6,6 +6,7 @@ import { CanonicalDrawingView } from './canonical-view';
 import { DeckcraftView } from './deckcraft-view';
 import type { MiniappDocumentController } from './document-controller';
 import { BuiltinMiniappView } from './view-host-builtin';
+import { isBinaryEditorId } from './binary-formats';
 
 export function MiniappView({
   selectedHead,
@@ -22,24 +23,23 @@ export function MiniappView({
   onDocumentCopied?: (itemId: string) => void;
   onDocumentDiscard?: () => void;
 }) {
-  const content =
-    props.spec.id === 'deckcraft' || props.spec.id === 'gridcraft' ? (
-      <DeckcraftView
-        {...props}
-        selectedHead={selectedHead}
-        onDocumentController={onDocumentController}
-        onDocumentDiscard={onDocumentDiscard}
-      />
-    ) : props.spec.id === 'excalidraw' ? (
-      <CanonicalDrawingView
-        {...props}
-        onDocumentController={onDocumentController}
-        onDocumentCopied={onDocumentCopied}
-        onDocumentDiscard={onDocumentDiscard}
-      />
-    ) : (
-      <BuiltinMiniappView {...props} />
-    );
+  const content = isBinaryEditorId(props.spec.id) ? (
+    <DeckcraftView
+      {...props}
+      selectedHead={selectedHead}
+      onDocumentController={onDocumentController}
+      onDocumentDiscard={onDocumentDiscard}
+    />
+  ) : props.spec.id === 'excalidraw' ? (
+    <CanonicalDrawingView
+      {...props}
+      onDocumentController={onDocumentController}
+      onDocumentCopied={onDocumentCopied}
+      onDocumentDiscard={onDocumentDiscard}
+    />
+  ) : (
+    <BuiltinMiniappView {...props} />
+  );
   return (
     <AppKeyboardViewport
       enabled={!!props.fill}
