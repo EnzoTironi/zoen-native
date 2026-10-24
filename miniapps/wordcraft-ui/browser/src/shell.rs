@@ -53,7 +53,7 @@ impl eframe::App for Shell {
             }
             return;
         }
-        api::drain(&mut self.bridge, &mut self.app);
+        api::drain(&mut self.bridge, &mut self.app, api::Phase::BeforeInput);
         if let Some(theme) = api::layout().and_then(|l| l.theme) {
             self.app.ui.theme = match theme {
                 Theme::Dark => wordcraft_ui_egui::theme::Appearance::Dark,
@@ -81,6 +81,7 @@ impl eframe::App for Shell {
             return;
         }
         crate::viewport::show(&mut self.app, ui);
+        api::drain(&mut self.bridge, &mut self.app, api::Phase::AfterInput);
         if self.app.session.managed_frozen {
             // History, explicit host pause and a pending agent proposal cannot accept typing.
             ui.ctx().output_mut(|o| {

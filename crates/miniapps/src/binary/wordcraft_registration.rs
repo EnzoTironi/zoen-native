@@ -23,8 +23,8 @@ const PINS: RuntimePins = RuntimePins {
     module_bytes: 80_480,
     module_sha: "da14faca74ed3ffae283ffdac1c40674ac049ccae80e631ed9be60502d360016",
     wasm_file: "wordcraft_bg.wasm",
-    wasm_bytes: 46_355_404,
-    wasm_sha: "4aefe20f62636e7f725f6877feaf71cf7901e077fa53c9ccd04ffd16623d6e5f",
+    wasm_bytes: 46_351_299,
+    wasm_sha: "e3144f368ba317d2e565a8cd258f11ad0f4d92995c7b3911b219604a7e8edb8b",
 };
 pub fn valid_resource(html: &str, manifest: &str) -> bool {
     resource::valid_resource(Format::Wordcraft, &PINS, html, manifest)
