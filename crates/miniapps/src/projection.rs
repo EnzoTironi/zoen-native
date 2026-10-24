@@ -67,6 +67,11 @@ pub(super) fn pet_mood(v: &Value) -> &'static str {
 pub fn headline(app: &str, state: &Value, now: i64) -> (String, Vec<(String, f64)>) {
     let v = view(app, state, now);
     match app {
+        "photocraft" => {
+            let width = state["width"].as_u64().unwrap_or(0);
+            let height = state["height"].as_u64().unwrap_or(0);
+            (format!("{width} × {height}"), vec![])
+        }
         "gridcraft" => {
             let sheets = state["sheets"].as_u64().unwrap_or(0);
             let label = if sheets == 1 {
@@ -277,6 +282,9 @@ pub fn snapshot(app: &str, state: &Value, item_id: &str, now: i64) -> Option<Val
     let v = view(app, state, now);
     let link = format!("zoen://app/{item_id}");
     let snap = match app {
+        "photocraft" => {
+            json!({"template":"caption","title":state["title"],"eyebrow":t("Imagem", "Image"),"detail":headline(app,state,now).0,"accentHex":"#447B83","symbol":"photo"})
+        }
         "gridcraft" => {
             json!({"template":"caption","title":state["title"],"eyebrow":t("Planilha", "Spreadsheet"),"detail":headline(app,state,now).0,"accentHex":"#3F7B63","symbol":"tablecells"})
         }

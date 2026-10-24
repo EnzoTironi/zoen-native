@@ -2,6 +2,7 @@ import { t } from '../i18n/index.ts';
 import type { AppResourceDto } from '../core/generated/AppResourceDto';
 import { parseRuntimePackage, type RuntimePackage } from './runtime-package.ts';
 import { runtimeSupportScript } from './vendor/runtime-support.ts';
+import { isBinaryEditorId } from './binary-formats.ts';
 
 export type MiniappManifest = Readonly<{
   id: string;
@@ -111,7 +112,7 @@ export async function verifyMiniappResource(
     input.runtimePackage === undefined ? undefined : parseRuntimePackage(input.runtimePackage);
   if (
     runtimePackage &&
-    ((appId !== 'deckcraft' && appId !== 'gridcraft' && appId !== 'wordcraft') ||
+    (!isBinaryEditorId(appId) ||
       runtimePackage.engine !== appId ||
       uri !== `ui://zoen/${appId}/index.html` ||
       capabilities.length ||
