@@ -1,9 +1,9 @@
 //! App edit requests are ordinary signed replies with an exact artifact reference.
 //! No model, budget, grant or independent task database is created here.
 use crate::{
-    CoreError, TimelineEntry,
     engine::{Engine, EntryBody, R},
     i18n::t,
+    CoreError, TimelineEntry,
 };
 use sha2::{Digest, Sha256};
 use types::{ArtifactRequest, EventBody, ItemContent, ReplyRef};
@@ -78,29 +78,33 @@ impl Engine {
         // The signed reply itself is the durable receipt. A retry cannot enqueue
         // another task, even after that task has already advanced the document.
         for entry in &self.space_state(&input.space_id)?.entries {
-            if let EntryBody::Message {
+            let EntryBody::Message {
                 text: prior,
                 reply: Some(reference),
                 marks,
                 ..
             } = &entry.body
-                && reference
-                    .artifact
-                    .as_ref()
-                    .is_some_and(|a| a.request_id == binding.request_id)
+            else {
+                continue;
+            };
+            if !reference
+                .artifact
+                .as_ref()
+                .is_some_and(|a| a.request_id == binding.request_id)
             {
-                if entry.author != input.expected_identity_id
-                    || marks.deleted
-                    || marks.forwarded
-                    || prior != text
-                    || !reference.thread
-                    || reference.to != root.id
-                    || reference.artifact.as_ref() != Some(&binding)
-                {
-                    return Err(stale());
-                }
-                return Ok(self.entry_dto(entry));
+                continue;
             }
+            if entry.author != input.expected_identity_id
+                || marks.deleted
+                || marks.forwarded
+                || prior != text
+                || !reference.thread
+                || reference.to != root.id
+                || reference.artifact.as_ref() != Some(&binding)
+            {
+                return Err(stale());
+            }
+            return Ok(self.entry_dto(entry));
         }
         let item = self.item_state(&input.item_id)?;
         let current = item.current();

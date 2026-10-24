@@ -1,6 +1,6 @@
 import type { ClientStore } from '../core/store';
-import { accountScope, accountScopeKey } from '../core/account-scope';
-import { homeSpacesFor } from '../home/access';
+import { accountScope, accountScopeKey } from '../core/account-scope.ts';
+import { homeSpacesFor } from '../home/access.ts';
 import type { MiniappDocumentController } from './document-controller';
 import type { EditorAgentPort } from './editor-agent-session';
 
@@ -32,6 +32,16 @@ export function editorAgentPort(
     },
     head: async () => {
       check();
+      if (!document.observedHead) throw Error('editor_agent_head_unavailable');
+      const observed = await document.observedHead();
+      check();
+      if (
+        observed.itemId !== itemId ||
+        !Number.isSafeInteger(observed.version) ||
+        observed.version < 1 ||
+        !/^[a-f0-9]{64}$/.test(observed.sha256)
+      )
+        throw Error('editor_agent_head_changed');
       const value = await store.driver.request({
         op: 'app_binary_read',
         item_id: itemId,
@@ -42,6 +52,8 @@ export function editorAgentPort(
       if (
         value.item_id !== itemId ||
         value.version !== value.current_version ||
+        value.version !== observed.version ||
+        value.sha256 !== observed.sha256 ||
         !Number.isSafeInteger(value.version) ||
         value.version < 1 ||
         !/^[a-f0-9]{64}$/.test(value.sha256)

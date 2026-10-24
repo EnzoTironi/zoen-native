@@ -9,6 +9,7 @@ import { ComposerTextField } from '../components/composer-text-field';
 import { useClient } from '../core/provider';
 import { t } from '../i18n';
 import { useTheme } from '../theme';
+import { useAppSheetCloseButton } from './app-sheet-context';
 import type { MiniappDocumentController } from './document-controller';
 import { editorAgentPort, editorAgentScope } from './editor-agent-port';
 import { EditorAgentSession } from './editor-agent-session';
@@ -26,6 +27,7 @@ export function EditorAgentAccess({
   const { store } = useClient();
   const { scheme, colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const chrome = useAppSheetCloseButton();
   const owner = editorAgentScope(store, spaceId);
   const session = useMemo(
     () =>
@@ -61,8 +63,8 @@ export function EditorAgentAccess({
       <View
         style={{
           position: 'absolute',
-          bottom: insets.bottom + 12,
-          right: insets.right + 12,
+          top: chrome?.top ?? insets.top + 8,
+          right: (chrome?.right ?? insets.right + 12) + (chrome?.width ?? 44) + 8,
           borderRadius: 24,
           backgroundColor: colors.surface,
         }}
@@ -71,7 +73,7 @@ export function EditorAgentAccess({
           testID="editor-agent-open"
           name={{ ios: 'sparkles', android: 'auto_awesome', web: 'auto_awesome' }}
           label={t('miniapps.askAgent')}
-          disabled={!owner}
+          disabled={!owner || state.visible}
           onPress={session.open}
         />
       </View>
@@ -91,6 +93,7 @@ export function EditorAgentAccess({
           <RNHostView>
             <ScrollView
               contentInsetAdjustmentBehavior="automatic"
+              onAccessibilityEscape={session.close}
               keyboardShouldPersistTaps="handled"
               automaticallyAdjustKeyboardInsets
               contentContainerStyle={{ padding: 20, gap: 16, paddingBottom: 32 }}

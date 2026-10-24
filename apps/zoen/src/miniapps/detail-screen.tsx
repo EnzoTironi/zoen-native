@@ -231,7 +231,10 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
           onDocumentCopied={openCopy}
           onDocumentDiscard={discardDocument}
         />
-        {!historical && isBinaryEditorId(spec.id) && document ? (
+        {!historical &&
+        isBinaryEditorId(spec.id) &&
+        spec.id === 'wordcraft' &&
+        document?.observedHead ? (
           <EditorAgentAccess itemId={item.id} spaceId={item.space_id} document={document} />
         ) : null}
       </View>

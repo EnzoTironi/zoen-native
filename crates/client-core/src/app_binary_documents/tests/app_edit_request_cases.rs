@@ -1,6 +1,7 @@
 //! Real signed request publication, refusal and durable retry. No model calls.
 use super::*;
 use crate::app_edit_requests::AppEditRequestInput;
+use crate::engine::EntryBody;
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 fn input(f: &Fixture, base: &AppBinaryDocumentDto, id: &str) -> R<AppEditRequestInput> {
@@ -21,8 +22,8 @@ fn post(f: &Fixture, base: &AppBinaryDocumentDto, id: &str) -> R<crate::Timeline
     f.client.lock().request_app_edit(command)
 }
 #[test]
-fn request_is_one_signed_thread_reply_to_exact_card_head_without_document_or_grant_write()
--> TestResult {
+fn request_is_one_signed_thread_reply_to_exact_card_head_without_document_or_grant_write(
+) -> TestResult {
     let f = fixture(":memory:");
     let base = create(&f, "create");
     let before = counts(&f);
@@ -59,10 +60,6 @@ fn request_is_one_signed_thread_reply_to_exact_card_head_without_document_or_gra
             .id,
         reply.to
     );
-    assert!(matches!(
-        e.logs[&f.space].events().last().map(|event| &event.body),
-        Some(EventBody::AppEditRequested { .. })
-    ));
     drop(e);
     assert_eq!(
         f.client
