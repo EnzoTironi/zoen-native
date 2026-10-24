@@ -17,7 +17,10 @@ fn failed_download_keeps_candidate_until_valid_bytes_arrive() {
     let reference = engine.wanted_recovery_contexts().remove(0);
     assert!(!engine.recovery_context_arrived(&reference, b"invalid bytes"));
     assert!(!engine.mls_recovery_pass().unwrap());
-    assert_eq!(engine.wanted_recovery_contexts(), [reference.clone()]);
+    assert_eq!(
+        engine.wanted_recovery_contexts(),
+        std::slice::from_ref(&reference)
+    );
     assert!(engine.wants_recovery_context(&reference));
     assert!(engine.recovery_context_arrived(&reference, &staged.context_blob));
     assert!(engine.wanted_recovery_contexts().is_empty());
