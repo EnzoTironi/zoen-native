@@ -244,6 +244,7 @@ mod rejections;
 #[cfg(test)]
 pub(crate) mod replay_probe;
 mod spaces;
+mod member_controls;
 
 impl Engine {
     /// OpenMLS `SenderRatchetConfiguration` default `out_of_order_tolerance`.

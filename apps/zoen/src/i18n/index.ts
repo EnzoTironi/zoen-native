@@ -11,6 +11,7 @@ import { agentDefinition } from './catalogs/agent-definition.ts';
 import { auth } from './catalogs/auth.ts';
 import { authProviders } from './catalogs/authProviders.ts';
 import { chat } from './catalogs/chat.ts';
+import { community } from './catalogs/community.ts';
 import { common } from './catalogs/common.ts';
 import { composerKeyboard } from './catalogs/composer-keyboard.ts';
 import { documents } from './catalogs/documents.ts';
@@ -44,6 +45,7 @@ import {
 
 // Feature owners only add their catalog import and assembly entry here.
 const catalogs = {
+  community,
   ownerPolicy,
   imageReview,
   sites,

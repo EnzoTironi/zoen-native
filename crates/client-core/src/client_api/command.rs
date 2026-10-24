@@ -265,6 +265,19 @@ pub(super) enum Command {
         space_id: String,
         identity_id: String,
     },
+    SpaceMemberContext {
+        space_id: String,
+        identity_id: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+    },
+    RemoveMemberReviewed {
+        space_id: String,
+        identity_id: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+        observed_revision: String,
+    },
     RemoveMember {
         space_id: String,
         identity_id: String,
