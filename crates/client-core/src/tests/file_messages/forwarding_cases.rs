@@ -107,13 +107,14 @@ pub(super) fn destination_only_receiver_decrypts_forwarded_media_and_thumbnail(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use crate::sync::Ingest;
     use protocol::{Envelope, Sequenced};
-    let sender = seeded();
-    let source = find_space(&sender, "Paraty com a Marina").id;
-    let destination = find_space(&sender, "Zoen").id;
+    let sender = media_peer("forward_author");
+    let receiver = media_peer("forward_reader");
+    let source = media_space(&sender, None, "Private source");
+    let destination = media_space(&sender, Some(&receiver), "Forward destination");
     let sent = send(&sender, &source, "video/mp4", None, false, "original").unwrap();
     let source_item = card(&sent).item_id.clone();
+    confirm_media_outbox(&sender, &source);
     let mut relay = sender.lock().logs[&destination].clone();
-    sender.lock().net.synced.insert(destination.clone());
     let forwarded = sender
         .forward_message(source.clone(), sent.id, destination.clone())
         .unwrap();
@@ -123,7 +124,6 @@ pub(super) fn destination_only_receiver_decrypts_forwarded_media_and_thumbnail(
     for event in pending {
         relay.sequence(event.event)?;
     }
-    let receiver = Client::open(":memory:".into(), "en".into()).unwrap();
     for event in relay.events() {
         assert!(matches!(
             receiver.lock().ingest(Sequenced {
