@@ -134,6 +134,10 @@ async fn complete_state_preserves_every_existing_cursor_before_host_readiness() 
     let lock = HostLock::acquire(&home.0).unwrap();
     let readiness = Readiness::reset(&home.0, &lock).unwrap();
     online(&citizen.0).await;
+    // Establish this positive fixture's actual sync precondition before testing
+    // complete-state preservation with the original short readiness budget.
+    // Separate cases retain the unsettled/MLS-refused readiness negatives.
+    citizen.0.wait_until_settled(3000).await.unwrap();
     let result = prepared(&citizen.0, &readiness).await.unwrap();
     assert_eq!(result, before);
     assert_eq!(*relay.cursors.lock().unwrap(), before);

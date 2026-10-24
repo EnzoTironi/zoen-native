@@ -301,7 +301,11 @@ async fn connect(url: &str, author: &Author) -> Socket {
     socket
 }
 
+#[path = "session_revocation/snapshot_test_lease.rs"]
+mod snapshot_test_lease;
+
 struct TestRelay {
+    _snapshot_test_lease: snapshot_test_lease::Lease,
     state: Arc<AppState>,
     log: Arc<BlockedLog>,
     ws_url: String,
@@ -313,6 +317,14 @@ struct TestRelay {
 
 impl TestRelay {
     async fn new() -> Self {
+        Self::with_snapshot_test_lease(snapshot_test_lease::shared().await).await
+    }
+
+    async fn exclusive_snapshots() -> Self {
+        Self::with_snapshot_test_lease(snapshot_test_lease::exclusive().await).await
+    }
+
+    async fn with_snapshot_test_lease(lease: snapshot_test_lease::Lease) -> Self {
         let admin_url = std::env::var("ZOEN_TEST_PG").expect("set ZOEN_TEST_PG");
         let database = format!(
             "zoen_t_read_revoke_{}",
@@ -388,6 +400,7 @@ impl TestRelay {
             .unwrap();
         });
         Self {
+            _snapshot_test_lease: lease,
             state,
             log,
             ws_url: format!("ws://{address}/v1/sync"),
