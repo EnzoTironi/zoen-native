@@ -44,9 +44,8 @@ fn real_writer_and_wasip2_exports_have_the_same_closed_profile_without_exposing_
         crate::binary::Format::for_id(APP),
         Some(crate::binary::Format::Wordcraft)
     );
-    assert!(!crate::binary::Format::Wordcraft.available());
-    assert!(crate::spec(APP).is_none());
-    assert!(crate::binary::agent_tools::tools_for(crate::binary::Format::Wordcraft).is_empty());
+    assert_eq!(crate::spec(APP).is_some(), crate::binary::Format::Wordcraft.available());
+    assert_eq!(crate::binary::agent_tools::tools_for(crate::binary::Format::Wordcraft).len(),2);
 }
 #[test]
 fn opaque_parts_macro_metadata_relationship_and_body_changes_are_refused_without_normalization() {

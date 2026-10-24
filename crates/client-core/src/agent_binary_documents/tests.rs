@@ -47,7 +47,7 @@ pub(crate) fn grid_fixture() -> Fixture {
         include_bytes!("../../../miniapps/resources/gridcraft-empty.xlsx"),
     )
 }
-fn fixture_binary(privacy: Privacy, app: &str, bytes: &[u8]) -> Fixture {
+pub(crate) fn fixture_binary(privacy: Privacy, app: &str, bytes: &[u8]) -> Fixture {
     let owner = Client::open(":memory:".into(), "en".into()).unwrap();
     let vault = Arc::new(Vault::default());
     let owner_id = owner

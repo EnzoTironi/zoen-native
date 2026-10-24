@@ -142,3 +142,20 @@ in [BROWSER-EVIDENCE.md](BROWSER-EVIDENCE.md). Browser resource registration,
 canonical creation/certified-agent action approval, native
 open/edit/save/cold recovery/export, accessibility and orientation. Keep #502 and
 #180 open until their actual journey criteria pass.
+
+## Creation and reviewed agent operations
+
+The normal binary factory/agent consumer now recognizes `create_wordcraft`,
+`read_wordcraft` and `wordcraft_text_replace`. Creation uses the existing signed
+review of the exact title/seed and editing binds the observed version/hash to the
+existing approved-turn worker and FileDoc CAS. Replacement text is capped at
+16 KiB UTF-8 to stay within the original signed tool argument envelope; the
+managed DOCX profile still permits up to 32 KiB of text for ordinary host saves.
+No native availability is implied: the default manifest has no runtime package.
+An explicit `ZOEN_WORDCRAFT_RESOURCE_MANIFEST_JSON` must match package03's exact
+engine/ABI/JS/WASM and generated HTML. `build-resource-manifest.mjs` verifies
+actual sealed local assets independently of Rust pins. It does not deploy them.
+
+Qualification for this consumer is pending. PDF export remains unfinished
+product work: the upstream PDF crate exists but this closed worker/browser API
+does not yet expose or qualify it. DOCX is the only currently offered export.

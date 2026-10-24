@@ -4,6 +4,7 @@ use crate::{deckcraft, gridcraft, wordcraft};
 
 pub mod agent_tools;
 pub mod gridcraft_registration;
+pub mod wordcraft_registration;
 pub(crate) mod resource;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -67,8 +68,7 @@ impl Format {
         match self {
             Self::Deckcraft => deckcraft::registration::available(),
             Self::Gridcraft => gridcraft_registration::available(),
-            // No qualified browser resource exists yet; canonical storage is separate.
-            Self::Wordcraft => false,
+            Self::Wordcraft => wordcraft_registration::available(),
         }
     }
     pub fn filename(self) -> &'static str {

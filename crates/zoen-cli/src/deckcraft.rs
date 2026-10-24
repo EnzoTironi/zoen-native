@@ -244,10 +244,11 @@ async fn execute_turn(
         ))
         .map_err(|_| "Invalid command intent")?,
     );
-    let prefix = if format.id() == "deckcraft" {
-        "deckcmd"
-    } else {
-        "gridcmd"
+    let prefix = match format.id() {
+        "deckcraft" => "deckcmd",
+        "gridcraft" => "gridcmd",
+        "wordcraft" => "wordcmd",
+        _ => return Err("Unsupported binary App executor".into()),
     };
     let mutation = format!("{prefix}_{intent}");
     if action.is_some() {

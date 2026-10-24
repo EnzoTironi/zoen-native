@@ -209,8 +209,9 @@ impl Engine {
             _ => return Err(invalid()),
         };
         let (title, _) = match format {
-            // Reserved canonical format is not an installable App without real UI assets.
-            apps::binary::Format::Wordcraft => return Err(invalid()),
+            apps::binary::Format::Wordcraft => {
+                apps::binary::wordcraft_registration::create(&json!({"title":title}))
+            }
             apps::binary::Format::Deckcraft => {
                 apps::deckcraft::registration::create(&json!({"title":title}))
             }

@@ -172,10 +172,10 @@ pub(crate) fn command_intent(p: &ToolProposal, action: Option<&Value>) -> R<Stri
 }
 
 pub(crate) fn mutation_id(p: &ToolProposal, intent: &str) -> String {
-    let prefix = if agent_tools::format(&p.canonical_tool) == Some(binary::Format::Gridcraft) {
-        "gridcmd"
-    } else {
-        "deckcmd"
+    let prefix = match agent_tools::format(&p.canonical_tool) {
+        Some(binary::Format::Gridcraft) => "gridcmd",
+        Some(binary::Format::Wordcraft) => "wordcmd",
+        _ => "deckcmd",
     };
     format!("{prefix}_{intent}")
 }
@@ -188,6 +188,9 @@ pub(crate) fn operation(tool: &str) -> String {
         "generate_image" => t("Criar imagem", "Create image"),
         "read_page" => t("Ler página", "Read Page"),
         "create_gridcraft" => t("Criar planilha", "Create spreadsheet"),
+        "create_wordcraft" => t("Criar documento", "Create document"),
+        "read_wordcraft" => t("Ler documento", "Read document"),
+        "wordcraft_text_replace" => t("Substituir texto", "Replace text"),
         "create_deckcraft" => t("Criar apresentação", "Create presentation"),
         "replace_page_block" => t("Substituir bloco da página", "Replace Page block"),
         "read_gridcraft" => t("Ler planilha", "Read spreadsheet"),
@@ -213,7 +216,7 @@ pub(crate) fn review_detail(p: &ToolProposal, title: &str) -> String {
             crate::i18n::t("Depois", "After"),
             args["after"]["text"].as_str().unwrap_or_default()
         ),
-        "read_deckcraft" | "read_gridcraft" => heading,
+        "read_deckcraft" | "read_gridcraft" | "read_wordcraft" => heading,
         "gridcraft_cell_set" => format!(
             "{}\n{}!{}\n{}",
             heading,
