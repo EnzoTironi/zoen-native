@@ -19,12 +19,12 @@ async fn open(
     .await
 }
 
-pub(super) async fn run() {
-    let w = World::new().await;
+pub(super) async fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let w = World::new().await?;
     let actor = w.agents[0].clone();
     let agent = &actor.identity;
     let device = actor.device.as_deref().unwrap();
-    let vault = Vault::new();
+    let vault = Vault::new()?;
     let capsule_key = RuntimeAuthority::native_capsule_vault_key(&w.config_namespace, 1).unwrap();
     let device_key =
         RuntimeAuthority::native_device_vault_key(&w.config_namespace, agent, device).unwrap();
@@ -40,13 +40,13 @@ pub(super) async fn run() {
         open(&w, vault.clone(), &actor).await,
         Err(RuntimeError::InvalidBinding)
     ));
-    assert!(vault.save(device_key.clone(), Signer::generate().secret().to_vec()));
+    assert!(vault.save(device_key.clone(), Signer::generate()?.secret().to_vec()));
     assert!(matches!(
         open(&w, vault.clone(), &actor).await,
         Err(RuntimeError::Denied)
     ));
     assert!(vault.save(device_key.clone(), actor.key.secret().to_vec()));
-    let foreign_namespace = types::new_id("foreign-custody");
+    let foreign_namespace = types::new_id("foreign-custody")?;
     assert!(matches!(
         RuntimeAuthority::open_with_native_device(
             config(&w.db_url, &foreign_namespace, &w.http.base),
@@ -234,4 +234,5 @@ pub(super) async fn run() {
     drop(vault);
     w.finish().await;
     println!("managed native constructor: real directory and fresh file-vault, empty sealed capsule, lost-ACK/cold retry, wrong/missing key and revoked device PASS; continuity/model/output remain closed");
+    Ok(())
 }

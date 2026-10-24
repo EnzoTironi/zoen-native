@@ -1,9 +1,10 @@
 use super::*;
 
 #[tokio::test]
-async fn login_handles_ping_while_presence_is_stalled() {
-    let test = TestRelay::new().await;
-    let primary = Author::device(&Signer::generate(), Signer::generate());
+async fn login_handles_ping_while_presence_is_stalled(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let test = TestRelay::new().await?;
+    let primary = Author::device(&Signer::generate()?, Signer::generate()?);
     let mut first = connect(&test.ws_url, &primary).await;
     request(
         &mut first,
@@ -42,17 +43,19 @@ async fn login_handles_ping_while_presence_is_stalled() {
     .expect("presence must not block login frame handling");
     socket.close(None).await.unwrap();
     test.close().await;
+    Ok(())
 }
 
 /// Learn Signal's cancellation/late-result contract without importing its watch
 /// objects: Zoen's pending presence lookup belongs to the real socket Session.
 #[tokio::test]
-async fn closed_session_cancels_presence_lookup_before_late_result_and_reconnect() {
+async fn closed_session_cancels_presence_lookup_before_late_result_and_reconnect(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     // This fixture budget starts at the probe's first poll, not at client Close.
     // It is deliberately shorter than the production two-second lookup deadline.
     const CANCEL_WITHIN: Duration = Duration::from_secs(1);
-    let test = TestRelay::new().await;
-    let primary = Author::device(&Signer::generate(), Signer::generate());
+    let test = TestRelay::new().await?;
+    let primary = Author::device(&Signer::generate()?, Signer::generate()?);
     let mut socket = connect(&test.ws_url, &primary).await;
     let (result, result_rx) = oneshot::channel();
     let (entered_tx, entered) = oneshot::channel();
@@ -131,4 +134,5 @@ async fn closed_session_cancels_presence_lookup_before_late_result_and_reconnect
     assert_eq!(continuations.load(Ordering::SeqCst), 0);
     replacement.close(None).await.unwrap();
     test.close().await;
+    Ok(())
 }

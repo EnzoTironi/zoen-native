@@ -162,7 +162,8 @@ const CLIENT_IP: &str = "203.0.113.77";
 const IP_HEADER: &str = "x-zoen-test-client-ip";
 
 #[tokio::test]
-async fn relays_trace_the_work_and_export_nothing_identifying() {
+async fn relays_trace_the_work_and_export_nothing_identifying(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let collector = Collector::start();
     let endpoint = format!("http://127.0.0.1:{}", collector.port);
     let nats = std::env::var("ZOEN_NATS_URL").expect("eval \"$(scripts/nats.sh env)\"");
@@ -208,7 +209,7 @@ async fn relays_trace_the_work_and_export_nothing_identifying() {
     assert_eq!(code.len(), 10);
     let (_carla, registered) =
         RawClient::connect_registering_with(&w.relay_url(), "carlapii", &[(IP_HEADER, CLIENT_IP)])
-            .await;
+            .await?;
     registered.expect("carla registers");
 
     // Both relays' batch exporters flush every 200 ms.
@@ -322,6 +323,7 @@ async fn relays_trace_the_work_and_export_nothing_identifying() {
         stdout.len(),
         secrets.len()
     );
+    Ok(())
 }
 
 fn contains(hay: &[u8], needle: &[u8]) -> bool {

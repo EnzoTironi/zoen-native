@@ -27,7 +27,10 @@ async fn refused_or_closed(client: &mut RawClient) {
     }
 }
 
-async fn revoke_live_sockets(two_nodes: bool, miss_bus_invalidation: bool) {
+async fn revoke_live_sockets(
+    two_nodes: bool,
+    miss_bus_invalidation: bool,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let nats = two_nodes.then(|| std::env::var("ZOEN_NATS_URL").expect("set ZOEN_NATS_URL"));
     // One connection in each bounded pool exposes nested-acquisition deadlocks.
     let mut w = World::new_with("revoke_live", nats, &[("ZOEN_DB_POOL", "1")]).await;
@@ -41,7 +44,7 @@ async fn revoke_live_sockets(two_nodes: bool, miss_bus_invalidation: bool) {
     };
     let root = read_key("zoen.identity.v1");
     let first = Author::device(&root, read_key("zoen.device.v1"));
-    let lost = Author::device(&root, Signer::generate());
+    let lost = Author::device(&root, Signer::generate()?);
     let other_url = if two_nodes {
         format!("http://127.0.0.1:{}", w.start_node())
     } else {
@@ -50,7 +53,7 @@ async fn revoke_live_sockets(two_nodes: bool, miss_bus_invalidation: bool) {
     let mut controller = RawClient::reconnect(&w.relay_url(), first).await;
     controller
         .request(Op::DeliverLink {
-            id: Signer::generate().id(),
+            id: Signer::generate()?.id(),
             sealed: vec![1],
             device: Some(DeviceCertificate {
                 device: lost.device.clone().unwrap(),
@@ -66,7 +69,7 @@ async fn revoke_live_sockets(two_nodes: bool, miss_bus_invalidation: bool) {
     barrier(&mut syncing).await;
     barrier(&mut publishing).await;
     barrier(&mut receiving).await;
-    let space = types::new_id("readable");
+    let space = types::new_id("readable")?;
     let created = syncing
         .publish_body(
             &space,
@@ -123,7 +126,7 @@ async fn revoke_live_sockets(two_nodes: bool, miss_bus_invalidation: bool) {
             media: None,
             forwarded: false,
         },
-    );
+    )?;
     syncing
         .send_if_open(&ClientFrame::Sync {
             cursors: Vec::new(),
@@ -163,27 +166,35 @@ async fn revoke_live_sockets(two_nodes: bool, miss_bus_invalidation: bool) {
     assert!(events
         .iter()
         .all(|ev| ev.env.client_id() != "revoked-write"));
+    Ok(())
 }
 
 #[tokio::test]
-async fn unlink_closes_already_online_sync_and_publish_sockets() {
-    revoke_live_sockets(false, false).await;
+async fn unlink_closes_already_online_sync_and_publish_sockets(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    revoke_live_sockets(false, false).await?;
+    Ok(())
 }
 
 #[tokio::test]
-async fn unlink_closes_already_online_sockets_on_another_node() {
-    revoke_live_sockets(true, false).await;
+async fn unlink_closes_already_online_sockets_on_another_node(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    revoke_live_sockets(true, false).await?;
+    Ok(())
 }
 
 #[tokio::test]
-async fn missed_bus_invalidation_cannot_deliver_or_authorize_on_another_node() {
-    revoke_live_sockets(true, true).await;
+async fn missed_bus_invalidation_cannot_deliver_or_authorize_on_another_node(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    revoke_live_sockets(true, true).await?;
+    Ok(())
 }
 
 #[tokio::test]
-async fn a_device_can_unlink_its_own_online_session_with_a_single_connection() {
+async fn a_device_can_unlink_its_own_online_session_with_a_single_connection(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let w = World::with_env("revoke_self", &[("ZOEN_DB_POOL", "1")]).await;
-    let mut client = RawClient::connect(&w.relay_url(), "self_revoke").await;
+    let mut client = RawClient::connect(&w.relay_url(), "self_revoke").await?;
     barrier(&mut client).await;
     let device = client.author.device.clone().unwrap();
     assert!(
@@ -205,4 +216,5 @@ async fn a_device_can_unlink_its_own_online_session_with_a_single_connection() {
             .await
             .unwrap();
     assert!(revoked);
+    Ok(())
 }

@@ -2,7 +2,7 @@ use super::*;
 use crate::client::tests::{account, clear, sequence, HostSigner};
 use event_log::{Author, Signer as NativeSigner};
 
-fn fixture() -> (Client<HostSigner>, SpaceLog) {
+fn fixture() -> std::result::Result<(Client<HostSigner>, SpaceLog), Box<dyn std::error::Error>> {
     let identity = NativeSigner::from_secret(&[81; 32]);
     let signer = HostSigner(NativeSigner::from_secret(&[82; 32]));
     let author = Author::device(&identity, signer.0.clone());
@@ -17,10 +17,10 @@ fn fixture() -> (Client<HostSigner>, SpaceLog) {
             privacy: Privacy::Closed,
         },
         1,
-    );
+    )?;
     client.receive(&frame, 2).unwrap();
     client.receive(&ServerFrame::SyncDone.encode(), 3).unwrap();
-    (client, log)
+    Ok((client, log))
 }
 
 fn frame(sealed: &crate::media::Sealed) -> Vec<u8> {
@@ -86,8 +86,9 @@ fn snapshot(client: &Client<HostSigner>) -> String {
 }
 
 #[test]
-fn media_contract_batch_media_group_survives_saved_reload_and_shares_one_upload_barrier() {
-    let (mut client, mut log) = fixture();
+fn media_contract_batch_media_group_survives_saved_reload_and_shares_one_upload_barrier(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, mut log) = fixture()?;
     let files = files(2);
     let mut request = request(&mut client, log.space(), 2);
     request["options"] = serde_json::json!({"presentation":"file","grouping":"grouped"});
@@ -143,7 +144,7 @@ fn media_contract_batch_media_group_survives_saved_reload_and_shares_one_upload_
                     posts.push(media.clone());
                 }
             }
-            let confirmed = sequence(&mut log, env);
+            let confirmed = sequence(&mut log, env)?;
             restored.receive(&confirmed, 13).unwrap();
         }
     }
@@ -180,12 +181,13 @@ fn media_contract_batch_media_group_survives_saved_reload_and_shares_one_upload_
             serde_json::to_value(&posts[index]).unwrap()
         );
     }
+    Ok(())
 }
 
 #[test]
 fn media_contract_batch_replay_authenticates_new_ciphertext_but_freezes_order_options_captions_and_bytes(
-) {
-    let (mut client, log) = fixture();
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, log) = fixture()?;
     let mut request = request(&mut client, log.space(), 2);
     request["options"] = serde_json::json!({"presentation":"media","grouping":"grouped"});
     let original = files(2);
@@ -226,11 +228,13 @@ fn media_contract_batch_replay_authenticates_new_ciphertext_but_freezes_order_op
         .queue_attachment_batch(&request.to_string(), &framed(&changed), 12)
         .is_err());
     assert_eq!(snapshot(&client), baseline);
+    Ok(())
 }
 
 #[test]
-fn media_contract_batch_invalid_last_frame_target_options_or_lease_preserve_every_issued_intent() {
-    let (mut client, log) = fixture();
+fn media_contract_batch_invalid_last_frame_target_options_or_lease_preserve_every_issued_intent(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, log) = fixture()?;
     let request = request(&mut client, log.space(), 2);
     let valid = framed(&files(2));
     let baseline = snapshot(&client);
@@ -295,12 +299,14 @@ fn media_contract_batch_invalid_last_frame_target_options_or_lease_preserve_ever
             .len(),
         2
     );
+    Ok(())
 }
 
 #[test]
-fn media_contract_batch_group_count_limits_and_partial_receipts_never_create_partial_albums() {
+fn media_contract_batch_group_count_limits_and_partial_receipts_never_create_partial_albums(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for count in [0, 1, 2, 10, 11] {
-        let (mut client, log) = fixture();
+        let (mut client, log) = fixture()?;
         let mut request = request(&mut client, log.space(), count);
         request["options"] = serde_json::json!({"presentation":"media","grouping":"grouped"});
         let baseline = snapshot(&client);
@@ -313,7 +319,7 @@ fn media_contract_batch_group_count_limits_and_partial_receipts_never_create_par
             assert_eq!(snapshot(&client), baseline);
         }
     }
-    let (mut client, log) = fixture();
+    let (mut client, log) = fixture()?;
     let request = request(&mut client, log.space(), 2);
     let files = files(2);
     let single = serde_json::json!({"space_id":log.space(),"reply_to":null,"thread":false,
@@ -331,12 +337,13 @@ fn media_contract_batch_group_count_limits_and_partial_receipts_never_create_par
     client
         .queue_attachment(&second.to_string(), &frame(&files[1]), 12)
         .unwrap();
+    Ok(())
 }
 
 #[test]
-fn media_contract_single_legacy_receipts_keep_the_exact_fingerprint_and_file_mode_keeps_real_mime()
-{
-    let (mut client, log) = fixture();
+fn media_contract_single_legacy_receipts_keep_the_exact_fingerprint_and_file_mode_keeps_real_mime(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, log) = fixture()?;
     let batch = request(&mut client, log.space(), 1);
     let mut request = serde_json::json!({"space_id":log.space(),"reply_to":null,"thread":false,
         "mutation_id":batch["items"][0]["mutation_id"],"caption":batch["items"][0]["caption"]});
@@ -394,16 +401,18 @@ fn media_contract_single_legacy_receipts_keep_the_exact_fingerprint_and_file_mod
     assert!(client
         .queue_attachment(&request.to_string(), &frame(&files[0]), 14)
         .is_err());
+    Ok(())
 }
 
 #[test]
-fn media_contract_received_ordered_fixtures_match_native_projection() {
+fn media_contract_received_ordered_fixtures_match_native_projection(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let fixtures: Vec<serde_json::Value> = serde_json::from_str(include_str!(
         "../../../../types/src/media-received-fixtures.json"
     ))
     .unwrap();
     for scenario in fixtures {
-        let (mut client, mut log) = fixture();
+        let (mut client, mut log) = fixture()?;
         let identity = NativeSigner::from_secret(&[81; 32]);
         let device = NativeSigner::from_secret(&[82; 32]);
         let author = Author::device(&identity, device);
@@ -420,7 +429,7 @@ fn media_contract_received_ordered_fixtures_match_native_projection() {
                     origin: "Fixture".into(),
                 },
                 4 + index as i64,
-            );
+            )?;
             client.receive(&raw, 10).unwrap();
         }
         for (index, member) in members.iter().enumerate() {
@@ -451,7 +460,7 @@ fn media_contract_received_ordered_fixtures_match_native_projection() {
                     forwarded: member["forwarded"].as_bool().unwrap_or(false),
                 },
                 20 + index as i64,
-            );
+            )?;
             client.receive(&raw, 30).unwrap();
         }
         let conversations = client.conversations();
@@ -477,4 +486,5 @@ fn media_contract_received_ordered_fixtures_match_native_projection() {
             scenario["name"]
         );
     }
+    Ok(())
 }

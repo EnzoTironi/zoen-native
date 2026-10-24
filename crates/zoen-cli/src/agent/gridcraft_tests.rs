@@ -42,10 +42,11 @@ fn worker() -> Arc<zoen_agentd::deckcraft::DeckcraftWorker> {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[ignore = "explicit actual GridCraft WASI-p2 component, synthetic Gate/brain, no provider or services"]
-async fn actual_grid_owner_review_worker_cas_and_lost_receipt_cold_recovery() {
+async fn actual_grid_owner_review_worker_cas_and_lost_receipt_cold_recovery(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let worker = worker();
-    let mut f = fixture();
+    let mut f = fixture()?;
     let space = f
         .client
         .item(f.base.item_id.clone())
@@ -132,7 +133,7 @@ async fn actual_grid_owner_review_worker_cas_and_lost_receipt_cold_recovery() {
     } = f;
     drop(cx);
     drop(client);
-    canonical_tool_approval_tests::signed_owner_resolution(&path, &space, &request, &owner);
+    canonical_tool_approval_tests::signed_owner_resolution(&path, &space, &request, &owner)?;
     let client = canonical_tool_approval_tests::reopen(&path, vault.clone());
     let cx = canonical_tool_approval_tests::context(
         &client,
@@ -233,4 +234,5 @@ async fn actual_grid_owner_review_worker_cas_and_lost_receipt_cold_recovery() {
     drop(cx);
     drop(client);
     std::fs::remove_dir_all(path).expect("owned fixture cleanup");
+    Ok(())
 }

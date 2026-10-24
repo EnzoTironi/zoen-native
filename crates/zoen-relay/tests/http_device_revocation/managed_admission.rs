@@ -13,10 +13,10 @@ impl Drop for Home {
 #[tokio::test]
 async fn registry_refuses_ordinary_signed_put_and_header_stripping_without_touching_storage(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let root = Signer::generate();
-    let author = Author::device(&root, Signer::generate());
+    let root = Signer::generate()?;
+    let author = Author::device(&root, Signer::generate()?);
     let device = author.device.as_deref().ok_or("missing fixture device")?;
-    let home = Home(std::env::temp_dir().join(types::new_id("managed-http")));
+    let home = Home(std::env::temp_dir().join(types::new_id("managed-http")?));
     let deployment = Deployment {
         namespace: "managed-http".into(),
         witness: "a".repeat(64),
@@ -32,7 +32,7 @@ async fn registry_refuses_ordinary_signed_put_and_header_stripping_without_touch
         "",
         Arc::new(UnusedLog { registry }),
     )
-    .await;
+    .await?;
     let profile = Identity {
         owner_proof: None,
         id: author.identity.clone(),

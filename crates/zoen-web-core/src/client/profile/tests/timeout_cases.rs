@@ -1,8 +1,9 @@
 use super::*;
 
 #[test]
-fn profile_lookup_timeout_ignores_late_replies_across_retry_and_cold_reopen() {
-    let (mut client, _, _) = client();
+fn profile_lookup_timeout_ignores_late_replies_across_retry_and_cold_reopen(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, _, _) = client()?;
     client.saved.profile.own_sync = Some(OwnProfileSync::clean(1));
     client.receive(&ServerFrame::SyncDone.encode(), 10).unwrap();
     let first = client.profile_net.profiles_request.unwrap();
@@ -11,7 +12,7 @@ fn profile_lookup_timeout_ignores_late_replies_across_retry_and_cold_reopen() {
     let second_update = client.update(Vec::new()).unwrap();
     let second = client.profile_net.profiles_request.unwrap();
     assert_ne!(first, second);
-    let old = remote_profile(&client, 2, "Stale query result", false);
+    let old = remote_profile(&client, 2, "Stale query result", false)?;
     client
         .receive(
             &ServerFrame::Res {
@@ -54,7 +55,7 @@ fn profile_lookup_timeout_ignores_late_replies_across_retry_and_cold_reopen() {
         .profile_net
         .fetched
         .contains(&reload.account.identity));
-    let fresh = remote_profile(&reload, 3, "Current query result", false);
+    let fresh = remote_profile(&reload, 3, "Current query result", false)?;
     reload
         .receive(
             &ServerFrame::Res {
@@ -78,13 +79,15 @@ fn profile_lookup_timeout_ignores_late_replies_across_retry_and_cold_reopen() {
         .unwrap()
         .pending
         .is_none());
+    Ok(())
 }
 
 #[test]
-fn upload_timeout_retries_exact_bytes_and_late_ack_cannot_confirm_a_new_edit() {
-    let (mut client, _, _) = client();
+fn upload_timeout_retries_exact_bytes_and_late_ack_cannot_confirm_a_new_edit(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, _, _) = client()?;
     client.saved.profile.own_sync = Some(OwnProfileSync::clean(1));
-    synced(&mut client);
+    synced(&mut client)?;
     let update = request(
         &mut client,
         json!({"op":"update_profile","name":"Pending two","bio":"bio"}),
@@ -198,4 +201,5 @@ fn upload_timeout_retries_exact_bytes_and_late_ack_cannot_confirm_a_new_edit() {
         .pending
         .is_none());
     assert_eq!(client.saved.profile.own_sync.as_ref().unwrap().published, 3);
+    Ok(())
 }

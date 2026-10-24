@@ -79,19 +79,21 @@ fn context(client: &Arc<Client>, journal: &Path, starts: &Arc<AtomicUsize>, reve
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn site_create_approve_lost_ack_cold_read_review_edit_reopen_exact_v2() {
+async fn site_create_approve_lost_ack_cold_read_review_edit_reopen_exact_v2(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for reversed in [false, true] {
-        site_journey(reversed).await;
+        site_journey(reversed).await?;
     }
+    Ok(())
 }
-async fn site_journey(reversed: bool) {
-    let path = std::env::temp_dir().join(types::new_id("site-agent-journey"));
+async fn site_journey(reversed: bool) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let path = std::env::temp_dir().join(types::new_id("site-agent-journey")?);
     std::fs::create_dir_all(&path).unwrap();
     let fixture = crate::deckcraft::tests::fixture_with_privacy_at(
         path.clone(),
         [81; 32],
         types::Privacy::EndToEnd,
-    );
+    )?;
     let space = fixture
         .client
         .item(fixture.base.item_id.clone())
@@ -116,7 +118,7 @@ async fn site_journey(reversed: bool) {
     assert_eq!(client.items().len(), before, "staging must not create");
     drop(cx);
     drop(client);
-    canonical_tool_approval_tests::signed_owner_resolution(&path, &space, &create, &owner);
+    canonical_tool_approval_tests::signed_owner_resolution(&path, &space, &create, &owner)?;
     client = canonical_tool_approval_tests::reopen(&path, vault.clone());
     let cx = context(&client, &journal, &starts, reversed);
     let host = SpaceTools::new(&client, &cx, &space, &owner, &source);
@@ -166,7 +168,7 @@ async fn site_journey(reversed: bool) {
     assert_eq!(client.items().len(), before + 1);
     drop(cx);
     drop(client);
-    canonical_tool_approval_tests::signed_owner_resolution(&path, &space, &edit, &owner);
+    canonical_tool_approval_tests::signed_owner_resolution(&path, &space, &edit, &owner)?;
     client = canonical_tool_approval_tests::reopen(&path, vault.clone());
     let cx = context(&client, &journal, &starts, reversed);
     canonical_tool_approval_tests::handle(&client, &cx, &space, &source).await;
@@ -214,4 +216,5 @@ async fn site_journey(reversed: bool) {
     assert!(cold.verify_all().iter().all(|r| r.valid));
     drop(cold);
     std::fs::remove_dir_all(path).unwrap();
+    Ok(())
 }

@@ -106,28 +106,33 @@ struct TestRelay {
 }
 
 impl TestRelay {
-    async fn new() -> Self {
+    async fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
         Self::with_store(Arc::new(object_store::memory::InMemory::new())).await
     }
 
-    async fn with_store(blobs: Arc<dyn object_store::ObjectStore>) -> Self {
+    async fn with_store(
+        blobs: Arc<dyn object_store::ObjectStore>,
+    ) -> std::result::Result<Self, Box<dyn std::error::Error>> {
         Self::configured(blobs, "").await
     }
 
-    async fn configured(blobs: Arc<dyn object_store::ObjectStore>, limit_spec: &str) -> Self {
-        Self::configured_log(blobs, limit_spec, Arc::new(UnusedLog::default())).await
+    async fn configured(
+        blobs: Arc<dyn object_store::ObjectStore>,
+        limit_spec: &str,
+    ) -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        Ok(Self::configured_log(blobs, limit_spec, Arc::new(UnusedLog::default())).await?)
     }
 
     async fn configured_log(
         blobs: Arc<dyn object_store::ObjectStore>,
         limit_spec: &str,
         log: Arc<dyn LogStore>,
-    ) -> Self {
+    ) -> std::result::Result<Self, Box<dyn std::error::Error>> {
         let _ = rustls::crypto::ring::default_provider().install_default();
         let admin_url = std::env::var("ZOEN_TEST_PG").expect("set ZOEN_TEST_PG");
         let database = format!(
             "zoen_t_http_revoke_{}",
-            &hex::encode(Signer::generate().secret())[..12]
+            &hex::encode(Signer::generate()?.secret())[..12]
         );
         let mut admin = PgConnection::connect(&admin_url).await.unwrap();
         sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {database}")))
@@ -183,7 +188,7 @@ impl TestRelay {
             .await
             .unwrap();
         });
-        Self {
+        Ok(Self {
             state,
             url: format!("http://{address}"),
             client: reqwest::Client::builder()
@@ -194,12 +199,12 @@ impl TestRelay {
             server,
             database,
             admin,
-        }
+        })
     }
 
-    async fn register(&self) -> Author {
-        let root = Signer::generate();
-        let author = Author::device(&root, Signer::generate());
+    async fn register(&self) -> std::result::Result<Author, Box<dyn std::error::Error>> {
+        let root = Signer::generate()?;
+        let author = Author::device(&root, Signer::generate()?);
         let profile = Identity {
             owner_proof: None,
             id: root.id(),
@@ -223,7 +228,7 @@ impl TestRelay {
         .await
         .unwrap();
         tx.commit().await.unwrap();
-        author
+        Ok(author)
     }
 
     async fn signed(
@@ -274,8 +279,9 @@ mod media_fixture;
 mod transfer_fixture;
 
 #[tokio::test]
-async fn provider_auth_failures_keep_wire_contract_and_retry_policy() {
-    let test = TestRelay::new().await;
+async fn provider_auth_failures_keep_wire_contract_and_retry_policy(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let test = TestRelay::new().await?;
     // No provider is configured in this fixture. The HTTP boundary still applies
     // privacy headers and admission limits before any provider or database work.
     for attempt in 0..11 {
@@ -322,13 +328,15 @@ async fn provider_auth_failures_keep_wire_contract_and_retry_policy() {
         serde_json::json!({"error":"invalid_authentication"})
     );
     test.close().await;
+    Ok(())
 }
 
 #[tokio::test]
-async fn revoked_device_cannot_upload_or_delete_or_report_with_valid_signatures() {
-    let test = TestRelay::new().await;
-    let author = test.register().await;
-    let transfer = Signer::generate().id();
+async fn revoked_device_cannot_upload_or_delete_or_report_with_valid_signatures(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let test = TestRelay::new().await?;
+    let author = test.register().await?;
+    let transfer = Signer::generate()?.id();
 
     for (path, method) in [
         (format!("/v1/transfer/{transfer}/0"), "PUT"),
@@ -417,7 +425,7 @@ async fn revoked_device_cannot_upload_or_delete_or_report_with_valid_signatures(
         let delete_id = if revoked {
             transfer.clone()
         } else {
-            Signer::generate().id()
+            Signer::generate()?.id()
         };
         let delete = test
             .signed(
@@ -465,4 +473,5 @@ async fn revoked_device_cannot_upload_or_delete_or_report_with_valid_signatures(
         b"ciphertext before revocation"
     );
     test.close().await;
+    Ok(())
 }

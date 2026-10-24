@@ -24,13 +24,14 @@ fn bounded_local_keyset_includes_pending_without_cross_space_rows() {
         &format!("{:064x}", PAGE_ROWS)
     );
 }
-async fn owned_database() -> (PgPool, String, String) {
+async fn owned_database(
+) -> std::result::Result<(PgPool, String, String), Box<dyn std::error::Error>> {
     use sqlx::{Connection, PgConnection};
     let admin =
         std::env::var("ZOEN_TEST_PG").expect("set ZOEN_TEST_PG for actual receipt race tests");
     let name = format!(
         "zoen_receipt_race_{}",
-        &event_log::Signer::generate().id()[..16]
+        &event_log::Signer::generate()?.id()[..16]
     );
     let mut connection = PgConnection::connect(&admin).await.unwrap();
     sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {name}")))
@@ -46,7 +47,7 @@ async fn owned_database() -> (PgPool, String, String) {
         .execute(&pool)
         .await
         .unwrap();
-    (pool, admin, name)
+    Ok((pool, admin, name))
 }
 async fn dispose_database(pool: PgPool, admin: &str, name: &str) {
     use sqlx::{Connection, PgConnection};
@@ -60,8 +61,9 @@ async fn dispose_database(pool: PgPool, admin: &str, name: &str) {
     .unwrap();
 }
 #[tokio::test]
-async fn local_prequery_capture_survives_actual_sql_snapshot_then_flush_and_clear() {
-    let (pool, admin, name) = owned_database().await;
+async fn local_prequery_capture_survives_actual_sql_snapshot_then_flush_and_clear(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (pool, admin, name) = owned_database().await?;
     let receipts = std::sync::Arc::new(Receipts::default());
     let who = "ab".repeat(32);
     receipts.raise("sp", &who, 7, 5);
@@ -87,10 +89,12 @@ async fn local_prequery_capture_survives_actual_sql_snapshot_then_flush_and_clea
     let actual = task.await.unwrap();
     dispose_database(pool, &admin, &name).await;
     assert_eq!(actual.rows, vec![(who, 7, 5)]); // Previously lost between SELECT and postquery merge.
+    Ok(())
 }
 #[tokio::test]
-async fn actual_blocked_upsert_retains_concurrent_higher_mark_for_next_flush() {
-    let (pool, admin, name) = owned_database().await;
+async fn actual_blocked_upsert_retains_concurrent_higher_mark_for_next_flush(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (pool, admin, name) = owned_database().await?;
     let who = "cd".repeat(32);
     crate::db::raise_receipts(&pool, &[(("sp".into(), who.clone()), (0, 0))])
         .await
@@ -132,6 +136,7 @@ async fn actual_blocked_upsert_retains_concurrent_higher_mark_for_next_flush() {
     dispose_database(pool, &admin, &name).await;
     assert_eq!(actual.rows, vec![(who.clone(), u64::MAX, u64::MAX)]);
     assert_eq!(stored.rows, actual.rows);
+    Ok(())
 }
 
 #[test]
@@ -170,8 +175,9 @@ fn default_admission_never_exceeds_row_budget() {
 }
 
 #[tokio::test]
-async fn concurrent_flushes_serialize_actual_sql_and_keep_latest_watermark() {
-    let (pool, admin, name) = owned_database().await;
+async fn concurrent_flushes_serialize_actual_sql_and_keep_latest_watermark(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (pool, admin, name) = owned_database().await?;
     let who = "ef".repeat(32);
     crate::db::raise_receipts(&pool, &[(("sp".into(), who.clone()), (0, 0))])
         .await
@@ -223,4 +229,5 @@ async fn concurrent_flushes_serialize_actual_sql_and_keep_latest_watermark() {
         .unwrap();
     dispose_database(pool, &admin, &name).await;
     assert_eq!(stored.rows, vec![(who, 100, 99)]);
+    Ok(())
 }

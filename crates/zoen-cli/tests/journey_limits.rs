@@ -50,14 +50,18 @@ async fn a_fast_sender_is_slowed_down_and_loses_nothing() {
 /// An attacker's own client flooding publishes gets "slow down" with a usable retry hint,
 /// before the relay spends anything on signatures or storage.
 #[tokio::test]
-async fn a_publish_flood_is_refused_with_a_retry_hint() {
+async fn a_publish_flood_is_refused_with_a_retry_hint(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     // A refill slow enough that no token comes back during the burst, however slow the
     // machine: exactly the first five publishes reach the space check, the rest are refused.
     let w = World::with_env("limits_flood", &[("ZOEN_LIMITS", "publish_device=5/m:5")]).await;
-    let mut m = RawClient::connect(&w.relay_url(), "mallory").await;
+    let mut m = RawClient::connect(&w.relay_url(), "mallory").await?;
     let mut answers = Vec::new();
     for i in 0..12 {
-        answers.push(m.publish_message("sp_nowhere", &format!("spam {i}")).await);
+        answers.push(
+            m.publish_message("sp_nowhere", &format!("spam {i}"))
+                .await?,
+        );
     }
     let slowed: Vec<&String> = answers
         .iter()
@@ -71,11 +75,13 @@ async fn a_publish_flood_is_refused_with_a_retry_hint() {
     // One token per 12 s: the hint must point at the next refill, not now and not later.
     let hint = retry_hint(slowed[0]).expect("a retry hint");
     assert!(hint.as_millis() > 0 && hint.as_secs() <= 12, "{hint:?}");
+    Ok(())
 }
 
 /// Accounts per address, handle lookups per account, and handshakes per address.
 #[tokio::test]
-async fn registrations_lookups_and_handshakes_are_capped() {
+async fn registrations_lookups_and_handshakes_are_capped(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let w = World::with_env(
         "limits_caps",
         &[(
@@ -86,9 +92,9 @@ async fn registrations_lookups_and_handshakes_are_capped() {
     .await;
     w.init("ana", "Ana");
     w.init("bruno", "Bruno");
-    let (_, third) = RawClient::connect_registering(&w.relay_url(), "mallory1").await;
+    let (_, third) = RawClient::connect_registering(&w.relay_url(), "mallory1").await?;
     assert!(third.is_ok(), "{third:?}");
-    let (_, fourth) = RawClient::connect_registering(&w.relay_url(), "mallory2").await;
+    let (_, fourth) = RawClient::connect_registering(&w.relay_url(), "mallory2").await?;
     let err = fourth.expect_err("a fourth account from one address");
     assert!(err.starts_with("slow down"), "{err}");
 
@@ -109,7 +115,7 @@ async fn registrations_lookups_and_handshakes_are_capped() {
     let mut refused = None;
     for _ in 0..20 {
         if let ServerFrame::Error { code, message } =
-            hello_only(&w.relay_url(), PROTOCOL_VERSION).await
+            hello_only(&w.relay_url(), PROTOCOL_VERSION).await?
         {
             if code == ErrorCode::RateLimited {
                 refused = Some(message);
@@ -123,4 +129,5 @@ async fn registrations_lookups_and_handshakes_are_capped() {
     for scope in ["register_ip", "lookup_account", "connect_ip"] {
         assert!(refused_by(&m, scope) > 0, "{scope}:\n{m}");
     }
+    Ok(())
 }

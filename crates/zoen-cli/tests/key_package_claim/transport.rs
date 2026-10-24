@@ -356,7 +356,8 @@ async fn protocol_four_without_the_connected_relay_capability_refuses_claims() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn receipt_claims_progress_with_a_sixty_second_device_event_clock_skew() {
+async fn receipt_claims_progress_with_a_sixty_second_device_event_clock_skew(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     const CHILD: &str = "ZOEN_CLAIM_CLOCK_SKEW_CHILD";
     if std::env::var_os(CHILD).is_none() {
         // new_ulid's monotonic event clock is process-wide. Isolate the skew so
@@ -376,7 +377,7 @@ async fn receipt_claims_progress_with_a_sixty_second_device_event_clock_skew() {
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
-        return;
+        return Ok(());
     }
     let w = World::new("kp_claim_clock_skew").await;
     let bruno = Device::new(&w, "bruno", &w.relay_url());
@@ -385,7 +386,7 @@ async fn receipt_claims_progress_with_a_sixty_second_device_event_clock_skew() {
     let mut proxy = ClaimProxy::new(w.port, Boundary::Reply).await;
     let ana = Device::new(&w, "ana", &proxy.url);
     ana.start().await;
-    let skewed = types::new_ulid(now_ms() + 60_000);
+    let skewed = types::new_ulid(now_ms() + 60_000)?;
     let space = ana
         .core
         .create_group_with(
@@ -406,16 +407,18 @@ async fn receipt_claims_progress_with_a_sixty_second_device_event_clock_skew() {
     ana.core.wait_until_settled(8000).await.unwrap();
     assert_eq!(bruno.stock(&w).await, 31);
     readable(&w, &ana, &bruno, &space).await;
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn legacy_claim_reply_loss_causally_spends_an_extra_package() {
+async fn legacy_claim_reply_loss_causally_spends_an_extra_package(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let w = World::new("kp_claim_legacy_loss").await;
     let bruno = Device::new(&w, "bruno", &w.relay_url());
     bruno.start().await;
     bruno.core.stop_sync();
     let mut proxy = ClaimProxy::new(w.port, Boundary::Reply).await;
-    let mut first_client = RawClient::connect(&proxy.url, "ana").await;
+    let mut first_client = RawClient::connect(&proxy.url, "ana").await?;
     let author = first_client.author.clone();
     assert!(
         first_client
@@ -486,4 +489,5 @@ async fn legacy_claim_reply_loss_causally_spends_an_extra_package() {
         0
     );
     eprintln!("legacy causal reproduction: committed31 -> retried30; different signed package bytes; this does not identify a historical CI reply loss");
+    Ok(())
 }

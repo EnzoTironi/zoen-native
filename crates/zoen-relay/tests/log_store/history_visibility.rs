@@ -1,7 +1,12 @@
 //! Real FDB membership and history must use one read version per page.
 use super::*;
 
-async fn append(log: &FdbLog, owner: &Author, space: &str, body: EventBody) -> Sequenced {
+async fn append(
+    log: &FdbLog,
+    owner: &Author,
+    space: &str,
+    body: EventBody,
+) -> std::result::Result<Sequenced, Box<dyn std::error::Error>> {
     let previous = log.read(space, 0, 100).await.unwrap().pop().unwrap();
     match log
         .append(
@@ -13,22 +18,23 @@ async fn append(log: &FdbLog, owner: &Author, space: &str, body: EventBody) -> S
                     hash: previous.hash,
                 }),
                 body,
-            ),
+            )?,
             true,
         )
         .await
         .unwrap()
     {
-        Sequencing::New { ev, .. } => ev,
+        Sequencing::New { ev, .. } => Ok(ev),
         _ => panic!("new canonical history event"),
     }
 }
 
-pub(super) async fn removal_clamps_each_history_page_and_rejoin_restores_access() {
-    let log = store();
-    let owner = Author::root(Signer::generate());
-    let reader = Author::root(Signer::generate());
-    let (space, _) = create(&log, &owner).await;
+pub(super) async fn removal_clamps_each_history_page_and_rejoin_restores_access(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let log = store()?;
+    let owner = Author::root(Signer::generate()?);
+    let reader = Author::root(Signer::generate()?);
+    let (space, _) = create(&log, &owner).await?;
     assert!(log
         .read_visible(&space, &reader.identity, 0, 3)
         .await
@@ -43,9 +49,9 @@ pub(super) async fn removal_clamps_each_history_page_and_rejoin_restores_access(
             role: Role::Member,
         },
     )
-    .await;
+    .await?;
     for i in 0..4 {
-        append(&log, &owner, &space, message(i)).await;
+        append(&log, &owner, &space, message(i)).await?;
     }
     let first = log
         .read_visible(&space, &reader.identity, 0, 3)
@@ -65,8 +71,8 @@ pub(super) async fn removal_clamps_each_history_page_and_rejoin_restores_access(
             identity: reader.identity.clone(),
         },
     )
-    .await;
-    let private = append(&log, &owner, &space, message(99)).await;
+    .await?;
+    let private = append(&log, &owner, &space, message(99)).await?;
     assert_eq!(removed.seq, 6);
     assert_eq!(private.seq, 7);
     // The old unqualified read contains the tail. A stale Session plan must
@@ -116,7 +122,7 @@ pub(super) async fn removal_clamps_each_history_page_and_rejoin_restores_access(
             role: Role::Member,
         },
     )
-    .await;
+    .await?;
     let rejoined = log
         .read_visible(&space, &reader.identity, 7, 3)
         .await
@@ -133,4 +139,5 @@ pub(super) async fn removal_clamps_each_history_page_and_rejoin_restores_access(
         .await
         .is_err());
     log.drop_cell().await.unwrap();
+    Ok(())
 }

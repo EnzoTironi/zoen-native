@@ -5,7 +5,8 @@ mod relay;
 use relay::{citizen, online, relay, Mode, PRIVATE};
 
 #[test]
-fn arguments_and_home_preflight_fail_without_creating_a_store() {
+fn arguments_and_home_preflight_fail_without_creating_a_store(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let argv = |parts: &[&str]| {
         parts
             .iter()
@@ -34,7 +35,7 @@ fn arguments_and_home_preflight_fail_without_creating_a_store() {
         assert!(validate_args(&argv(&parts)).is_err());
     }
     assert!(crate::agent_enrollment::requires_home_lock("agent-inspect"));
-    let missing = std::env::temp_dir().join(types::new_id("zoen-inspect-missing"));
+    let missing = std::env::temp_dir().join(types::new_id("zoen-inspect-missing")?);
     assert_eq!(
         existing_home(&missing),
         Err("agent_inspect_existing_home_required")
@@ -45,6 +46,7 @@ fn arguments_and_home_preflight_fail_without_creating_a_store() {
         Some("agent_inspect_existing_home_required")
     );
     assert!(!missing.exists());
+    Ok(())
 }
 
 #[tokio::test]

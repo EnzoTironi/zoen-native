@@ -1,7 +1,8 @@
 use super::*;
 
-pub(super) async fn matching_workers_and_immutable_pairing() {
-    let w = World::with_initial_workers(4, false).await;
+pub(super) async fn matching_workers_and_immutable_pairing(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let w = World::with_initial_workers(4, false).await?;
     let mut workers = Vec::new();
     for _ in 0..4 {
         let (url, namespace, base) = (
@@ -47,7 +48,7 @@ pub(super) async fn matching_workers_and_immutable_pairing() {
     );
     assert_eq!(w.http.sends.load(Ordering::SeqCst), 0);
     w.finish().await;
-    let w = World::with_initial_workers(4, true).await;
+    let w = World::with_initial_workers(4, true).await?;
     assert_eq!(
         w.count("SELECT count(*) FROM runtime_deployment_binding")
             .await,
@@ -55,10 +56,12 @@ pub(super) async fn matching_workers_and_immutable_pairing() {
     );
     assert_eq!(w.http.sends.load(Ordering::SeqCst), 0);
     w.finish().await;
+    Ok(())
 }
 
-pub(super) async fn failed_initial_sql_commit_keeps_orphan_closed() {
-    let w = World::new().await;
+pub(super) async fn failed_initial_sql_commit_keeps_orphan_closed(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let w = World::new().await?;
     // Reset only the initial store pairing in this empty-attempt fixture. All
     // owner profiles and signed policies remain; no financial obligation is lost.
     sqlx::query("ALTER TABLE runtime_deployment_binding DISABLE TRIGGER immutable_deployment")
@@ -106,11 +109,13 @@ pub(super) async fn failed_initial_sql_commit_keeps_orphan_closed() {
     assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 0);
     assert_eq!(w.http.sends.load(Ordering::SeqCst), 0);
     w.finish().await;
+    Ok(())
 }
 
-pub(super) async fn changed_marker_closes_open_and_execution() {
-    let w = World::new().await;
-    let step = w.step(0).await;
+pub(super) async fn changed_marker_closes_open_and_execution(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let w = World::new().await?;
+    let step = w.step(0).await?;
     w.runtime.fault.store(4, Ordering::SeqCst);
     assert!(w.runtime.complete_verified(&step).await.is_err());
     w.runtime.fault.store(0, Ordering::SeqCst);
@@ -155,10 +160,12 @@ pub(super) async fn changed_marker_closes_open_and_execution() {
         trx.commit().await.unwrap();
     }
     w.finish().await;
+    Ok(())
 }
 
-pub(super) async fn orphaned_marker_is_not_adopted() {
-    let w = World::new().await;
+pub(super) async fn orphaned_marker_is_not_adopted(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let w = World::new().await?;
     // Explicitly remove the SQL side in this isolated fixture. This is an
     // orphan/restore cut, not a production repair operation or wire ACK fault.
     sqlx::query("ALTER TABLE runtime_deployment_binding DISABLE TRIGGER immutable_deployment")
@@ -185,11 +192,13 @@ pub(super) async fn orphaned_marker_is_not_adopted() {
     assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 0);
     assert_eq!(w.http.sends.load(Ordering::SeqCst), 0);
     w.finish().await;
+    Ok(())
 }
 
-pub(super) async fn unbound_attempts_cannot_be_reassigned() {
-    let w = World::new().await;
-    let step = w.step(0).await;
+pub(super) async fn unbound_attempts_cannot_be_reassigned(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let w = World::new().await?;
+    let step = w.step(0).await?;
     w.runtime.fault.store(4, Ordering::SeqCst);
     assert!(w.runtime.complete_verified(&step).await.is_err());
     // Model a retained attempt from the original unbound SQL format. Do not
@@ -213,7 +222,7 @@ pub(super) async fn unbound_attempts_cannot_be_reassigned() {
     assert!(matches!(
         RuntimeAuthority::open(config(
             &w.db_url,
-            &types::new_id("replacement"),
+            &types::new_id("replacement")?,
             &w.http.base
         ))
         .await,
@@ -228,4 +237,5 @@ pub(super) async fn unbound_attempts_cannot_be_reassigned() {
     assert_eq!(w.balance().await.held_units, 13);
     assert_eq!(w.http.sends.load(Ordering::SeqCst), 0);
     w.finish().await;
+    Ok(())
 }

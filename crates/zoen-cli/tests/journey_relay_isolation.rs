@@ -6,7 +6,8 @@ use common::{RawClient, World};
 use std::process::Command;
 
 #[tokio::test]
-async fn a_competing_world_is_not_the_restarted_relays_readiness() {
+async fn a_competing_world_is_not_the_restarted_relays_readiness(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut own = World::with_env("startup_ownership", &[("LOG_FORMAT", "json")]).await;
     own.init("bruno", "Bruno");
     let original_identity = own.id_of("bruno").await;
@@ -22,7 +23,8 @@ async fn a_competing_world_is_not_the_restarted_relays_readiness() {
     // The original World still owns the lifetime reservation for this port.
     competing.port = port;
     competing.start_relay();
-    let (_stranger, registration) = RawClient::connect_registering(&own.relay_url(), "bruno").await;
+    let (_stranger, registration) =
+        RawClient::connect_registering(&own.relay_url(), "bruno").await?;
     assert_eq!(registration, Err("handle_taken".into()));
 
     // relay.log also contains the original child's successful listening record.
@@ -47,6 +49,7 @@ async fn a_competing_world_is_not_the_restarted_relays_readiness() {
         "{status}"
     );
     assert_eq!(own.id_of("bruno").await, original_identity);
+    Ok(())
 }
 
 fn reservation_process(port: u16, expected: &str) {

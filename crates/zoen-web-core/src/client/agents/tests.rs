@@ -21,13 +21,13 @@ struct Fixture {
     now: i64,
 }
 impl Fixture {
-    fn new() -> Self {
-        let identity = NativeSigner::generate();
-        let device = NativeSigner::generate();
-        let owner = Author::device(&identity, NativeSigner::generate());
-        let agent_key = NativeSigner::generate();
+    fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        let identity = NativeSigner::generate()?;
+        let device = NativeSigner::generate()?;
+        let owner = Author::device(&identity, NativeSigner::generate()?);
+        let agent_key = NativeSigner::generate()?;
         let agent = Author::root(agent_key);
-        let stranger = Author::root(NativeSigner::generate());
+        let stranger = Author::root(NativeSigner::generate()?);
         let account = LinkedAccount {
             identity: identity.id(),
             device: device.id(),
@@ -80,7 +80,7 @@ impl Fixture {
                     kind,
                     privacy: Privacy::Closed,
                 },
-            );
+            )?;
         }
         fixture.append(
             "sp_chat",
@@ -89,7 +89,7 @@ impl Fixture {
                 identity: fixture.agent.identity.clone(),
                 role: Role::Member,
             },
-        );
+        )?;
         fixture.append(
             "sp_chat",
             "owner",
@@ -97,7 +97,7 @@ impl Fixture {
                 identity: fixture.stranger.identity.clone(),
                 role: Role::Member,
             },
-        );
+        )?;
         fixture.grant(
             "sp_personal",
             "budget",
@@ -105,16 +105,21 @@ impl Fixture {
             Capability::MonthlyBudget {
                 cents: 9_007_199_254_740_993,
             },
-        );
+        )?;
         fixture.grant(
             "sp_chat",
             "trust",
             GrantScope::Space("sp_chat".into()),
             Capability::Trust(TrustLevel::Suggest),
-        );
-        fixture
+        )?;
+        Ok(fixture)
     }
-    fn append(&mut self, space: &str, who: &str, body: EventBody) {
+    fn append(
+        &mut self,
+        space: &str,
+        who: &str,
+        body: EventBody,
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         self.now += 1;
         let author = match who {
             "agent" => &self.agent,
@@ -128,14 +133,21 @@ impl Fixture {
             .or_insert_with(|| SpaceLog::new(space));
         let event = author.sign_event(
             space,
-            &types::new_ulid(self.now),
+            &types::new_ulid(self.now)?,
             self.now,
             log.head(),
             body,
-        );
-        log.sequence(event);
+        )?;
+        log.sequence(event)?;
+        Ok(())
     }
-    fn grant(&mut self, space: &str, id: &str, scope: GrantScope, capability: Capability) {
+    fn grant(
+        &mut self,
+        space: &str,
+        id: &str,
+        scope: GrantScope,
+        capability: Capability,
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         self.append(
             space,
             "owner",
@@ -149,7 +161,8 @@ impl Fixture {
                     expires_at_ms: None,
                 },
             },
-        );
+        )?;
+        Ok(())
     }
     fn command(&mut self, command: Value) -> Result<documents::DocumentResponse, String> {
         self.now += 1;
@@ -196,8 +209,9 @@ impl Fixture {
 }
 
 #[test]
-fn exact_budgets_ignore_another_members_forged_grant_and_reject_overflow_without_writes() {
-    let mut fixture = Fixture::new();
+fn exact_budgets_ignore_another_members_forged_grant_and_reject_overflow_without_writes(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = Fixture::new()?;
     let id = fixture.agent.identity.clone();
     let profile = fixture
         .command(json!({"op":"agent_profile","agent_id":id}))
@@ -217,7 +231,7 @@ fn exact_budgets_ignore_another_members_forged_grant_and_reject_overflow_without
                 expires_at_ms: None,
             },
         },
-    );
+    )?;
     let state = fixture.client.agent_projection().unwrap();
     assert_eq!(
         fixture
@@ -230,10 +244,12 @@ fn exact_budgets_ignore_another_members_forged_grant_and_reject_overflow_without
         .command(json!({"op":"raise_budget","agent_id":id,"extra_cents":"9223372036854775807"}))
         .is_err());
     assert_eq!(fixture.client.saved.outbox.len(), before);
+    Ok(())
 }
 #[test]
-fn retained_proposal_approval_creates_the_exact_item_and_charges_usage_only_once_after_reload() {
-    let mut fixture = Fixture::new();
+fn retained_proposal_approval_creates_the_exact_item_and_charges_usage_only_once_after_reload(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = Fixture::new()?;
     let request = fixture.proposal();
     fixture.append(
         "sp_chat",
@@ -241,7 +257,7 @@ fn retained_proposal_approval_creates_the_exact_item_and_charges_usage_only_once
         EventBody::RequestOpened {
             request: request.clone(),
         },
-    );
+    )?;
     let decision = fixture
         .command(json!({"op":"decide_request","request_id":request.id,"decision":"AlwaysApprove"}))
         .unwrap();
@@ -282,10 +298,12 @@ fn retained_proposal_approval_creates_the_exact_item_and_charges_usage_only_once
         "9007199254740993"
     );
     assert_eq!(item["created_by"]["id"], fixture.agent.identity);
+    Ok(())
 }
 #[test]
-fn red_lines_cannot_be_always_approved_and_another_member_cannot_resolve_a_request() {
-    let mut fixture = Fixture::new();
+fn red_lines_cannot_be_always_approved_and_another_member_cannot_resolve_a_request(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = Fixture::new()?;
     let request = AgentRequest {
         tool_proposal: None,
         id: "rq_money".into(),
@@ -305,7 +323,7 @@ fn red_lines_cannot_be_always_approved_and_another_member_cannot_resolve_a_reque
         EventBody::RequestOpened {
             request: request.clone(),
         },
-    );
+    )?;
     fixture.append(
         "sp_chat",
         "stranger",
@@ -315,7 +333,7 @@ fn red_lines_cannot_be_always_approved_and_another_member_cannot_resolve_a_reque
             content_hash: request.content_hash.clone(),
             resolution: None,
         },
-    );
+    )?;
     let read = fixture.command(json!({"op":"requests"})).unwrap().result;
     assert_eq!(read[0]["status"], "Pending");
     assert_eq!(read[0]["can_always_approve"], false);
@@ -330,10 +348,12 @@ fn red_lines_cannot_be_always_approved_and_another_member_cannot_resolve_a_reque
         .result;
     assert_eq!(accepted["request"]["status"], "Approved");
     assert!(accepted["message"].as_str().unwrap().contains("Aguardando"));
+    Ok(())
 }
 #[test]
-fn editing_a_line_invalidates_the_exact_content_approval() {
-    let mut fixture = Fixture::new();
+fn editing_a_line_invalidates_the_exact_content_approval(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = Fixture::new()?;
     let request = fixture.proposal();
     let proposal = request.proposal.unwrap();
     let ItemContent::Plan(mut plan) = proposal.content else {
@@ -348,7 +368,7 @@ fn editing_a_line_invalidates_the_exact_content_approval() {
             content: ItemContent::Plan(plan.clone()),
             origin: "Fixture".into(),
         },
-    );
+    )?;
     let line = &plan.sections[0].lines[0];
     let request = AgentRequest {
         tool_proposal: None,
@@ -360,7 +380,7 @@ fn editing_a_line_invalidates_the_exact_content_approval() {
         action: ActionClass::Money {
             cents: line.cost_cents,
         },
-        content_hash: event_log::content_hash(&(&line.text, line.cost_cents)),
+        content_hash: event_log::content_hash(&(&line.text, line.cost_cents))?,
         item: Some(proposal.item.clone()),
         line: Some(line.id.clone()),
         proposal: None,
@@ -371,7 +391,7 @@ fn editing_a_line_invalidates_the_exact_content_approval() {
         EventBody::RequestOpened {
             request: request.clone(),
         },
-    );
+    )?;
     plan.sections[0].lines[0].text = "Edited".into();
     fixture.append(
         "sp_chat",
@@ -381,7 +401,7 @@ fn editing_a_line_invalidates_the_exact_content_approval() {
             content: ItemContent::Plan(plan),
             note: "Changed".into(),
         },
-    );
+    )?;
     assert_eq!(
         fixture.command(json!({"op":"requests"})).unwrap().result[0]["status"],
         "Stale"
@@ -392,11 +412,13 @@ fn editing_a_line_invalidates_the_exact_content_approval() {
     assert!(fixture
         .command(json!({"op":"decide_request","request_id":request.id,"decision":"Deny"}))
         .is_ok());
+    Ok(())
 }
 
 #[test]
-fn revocation_controls_cannot_revoke_another_kind_of_grant() {
-    let mut fixture = Fixture::new();
+fn revocation_controls_cannot_revoke_another_kind_of_grant(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = Fixture::new()?;
     let request = fixture.proposal();
     fixture.append(
         "sp_chat",
@@ -404,7 +426,7 @@ fn revocation_controls_cannot_revoke_another_kind_of_grant() {
         EventBody::RequestOpened {
             request: request.clone(),
         },
-    );
+    )?;
     fixture
         .command(json!({"op":"decide_request","request_id":request.id,"decision":"AlwaysApprove"}))
         .unwrap();
@@ -448,4 +470,5 @@ fn revocation_controls_cannot_revoke_another_kind_of_grant() {
         .unwrap()
         .iter()
         .any(|value| value.id == grant));
+    Ok(())
 }
