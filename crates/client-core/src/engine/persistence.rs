@@ -263,7 +263,7 @@ impl Engine {
         if is_new && !matches!(body, EventBody::SpaceCreated { .. }) {
             return Err(not_found(&t("Espaço", "Space")));
         }
-        let client_id = new_ulid(at_ms);
+        let client_id = new_ulid(at_ms)?;
         let seen = self.logs.get(space).and_then(SpaceLog::head);
         let signed = signer.sign_event(space, &client_id, at_ms, seen, body);
         let empty = State::default();

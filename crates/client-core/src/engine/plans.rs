@@ -27,7 +27,7 @@ impl Engine {
                 reason: t("custo de IA negativo", "negative AI cost"),
             });
         }
-        let doc = plan_from_dto(plan);
+        let doc = plan_from_dto(plan)?;
         if doc.sections.iter().all(|s| s.lines.is_empty()) {
             return Err(CoreError::Invalid {
                 reason: t("plano vazio", "empty plan"),
@@ -62,7 +62,7 @@ impl Engine {
             ),
         };
         let proposal = ItemProposal {
-            item: new_id("it"),
+            item: new_id("it")?,
             kind: ItemKind::Plan,
             content: ItemContent::Plan(doc),
             origin: tr!(
@@ -104,7 +104,7 @@ impl Engine {
         if let Some(personal) = self.personal_space() {
             return Ok(personal);
         }
-        let personal = new_id("sp");
+        let personal = new_id("sp")?;
         self.append(
             &personal,
             &me,
@@ -365,7 +365,7 @@ impl Engine {
                 .get_mut(section as usize)
                 .ok_or_else(|| not_found(&t("seção", "section")))?;
             s.lines.push(PlanLine {
-                id: new_id("ln"),
+                id: new_id("ln")?,
                 text,
                 cost_cents,
                 done: false,

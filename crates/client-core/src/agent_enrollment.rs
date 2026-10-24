@@ -400,7 +400,7 @@ impl Client {
             status: AgentEnrollmentStatusDto {
                 preview: review,
                 delivery: AgentEnrollmentDeliveryDto {
-                    receipt_id: types::new_id("enrollment"),
+                    receipt_id: types::new_id("enrollment")?,
                     agent_id: code.offer.agent_id.clone(),
                     offer_digest: digest.into(),
                     outcome: AgentEnrollmentDeliveryOutcome::Unknown,

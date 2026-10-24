@@ -318,6 +318,14 @@ impl From<store::StoreError> for CoreError {
     }
 }
 
+impl From<types::IdError> for CoreError {
+    fn from(error: types::IdError) -> Self {
+        Self::Storage {
+            message: error.to_string(),
+        }
+    }
+}
+
 fn not_found(what: &str) -> CoreError {
     CoreError::NotFound {
         what: what.to_string(),

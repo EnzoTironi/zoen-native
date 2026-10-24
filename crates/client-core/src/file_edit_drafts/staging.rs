@@ -99,7 +99,7 @@ impl Engine {
             }
         }
         record.pending.push(capture.clone());
-        record.revision = types::new_id("file_edit_draft");
+        record.revision = types::new_id("file_edit_draft")?;
         record.stages.push(StageReceipt {
             input_revision: expected.into(),
             fingerprint,

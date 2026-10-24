@@ -60,7 +60,7 @@ impl Engine {
         }
         let me = self.me_id()?;
         let grant = Grant {
-            id: new_id("gr"),
+            id: new_id("gr")?,
             grantor: me.clone(),
             grantee: Some(format!("app:{item}")),
             scope: GrantScope::Item(item.into()),

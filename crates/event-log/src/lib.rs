@@ -491,8 +491,16 @@ impl SpaceLog {
     }
 
     /// Signs and sequences locally in one step (local-only Spaces and tests).
-    pub fn append(&mut self, signer: &Signer, at_ms: i64, body: EventBody) -> &Event {
-        let client_id = types::new_ulid(at_ms);
+    ///
+    /// # Errors
+    /// Returns identifier generation failures before signing or changing the log.
+    pub fn append(
+        &mut self,
+        signer: &Signer,
+        at_ms: i64,
+        body: EventBody,
+    ) -> Result<&Event, types::IdError> {
+        let client_id = types::new_ulid(at_ms)?;
         let e = Author::root(signer.clone()).sign_event(
             &self.space,
             &client_id,
@@ -500,7 +508,7 @@ impl SpaceLog {
             self.head(),
             body,
         );
-        self.sequence(e)
+        Ok(self.sequence(e))
     }
 
     /// Accepts an event sequenced elsewhere (the relay): it must be the next one, link

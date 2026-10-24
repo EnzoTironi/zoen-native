@@ -40,7 +40,7 @@ impl Engine {
                 what: t("Espaço", "Space"),
             });
         }
-        let client_id = new_ulid(at_ms);
+        let client_id = new_ulid(at_ms)?;
         let seen = if creating {
             None
         } else {

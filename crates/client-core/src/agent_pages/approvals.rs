@@ -250,7 +250,7 @@ impl Client {
             );
         }
         let mut req = AgentRequest {
-            id: types::new_id("rq"),
+            id: types::new_id("rq")?,
             agent: current.actor_id.clone(),
             title: operation,
             detail,

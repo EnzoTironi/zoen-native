@@ -148,7 +148,7 @@ impl Engine {
                 _ => return Err(invalid()),
             };
             let cleared = Record {
-                revision: types::new_id("media_draft"),
+                revision: types::new_id("media_draft")?,
                 content: None,
                 assets: Vec::new(),
                 attempted: false,

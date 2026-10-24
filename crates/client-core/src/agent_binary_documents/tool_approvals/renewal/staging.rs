@@ -95,7 +95,7 @@ impl Client {
             .map_or(Some(1), |r| r.generation.checked_add(1))
             .ok_or_else(stale)?;
         let mut request = r.req.clone();
-        request.id = types::new_id("rq");
+        request.id = types::new_id("rq")?;
         let proposal = request.tool_proposal.as_mut().unwrap();
         proposal.expires_at_ms = crate::engine::now_ms()
             .checked_add(REQUEST_LIFETIME_MS)

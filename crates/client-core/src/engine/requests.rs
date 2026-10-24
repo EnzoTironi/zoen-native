@@ -207,7 +207,7 @@ impl Engine {
                 };
                 let req = AgentRequest {
                     tool_proposal: None,
-                    id: new_id("rq"),
+                    id: new_id("rq")?,
                     agent: agent.into(),
                     title: title.into(),
                     detail: detail.into(),

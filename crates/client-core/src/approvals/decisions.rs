@@ -38,7 +38,7 @@ impl Engine {
             grants::Decision::Request(reason) => {
                 let mut request = AgentRequest {
                     tool_proposal: None,
-                    id: new_id("rq"),
+                    id: new_id("rq")?,
                     agent: agent.into(),
                     title,
                     detail: prompt.into(),
@@ -79,7 +79,7 @@ impl Engine {
                         &me,
                         EventBody::GrantIssued {
                             grant: Grant {
-                                id: new_id("gr"),
+                                id: new_id("gr")?,
                                 grantor: me.clone(),
                                 grantee: Some(format!("app:{}", proposal.item)),
                                 scope: GrantScope::Item(proposal.item.clone()),

@@ -216,7 +216,7 @@ impl Engine {
         let dm = match partial {
             Some(id) => id,
             None => {
-                let id = new_id("sp");
+                let id = new_id("sp")?;
                 self.append_at(
                     &id,
                     me,

@@ -42,7 +42,7 @@ impl Engine {
         self.queue_owner_policy_inquiry(
             scope,
             OwnerPolicyInquiry {
-                id: types::new_id("account_policy_inquiry"),
+                id: types::new_id("account_policy_inquiry")?,
                 owner: scope.expected_identity_id.clone(),
                 agent: scope.agent_id.clone(),
                 space: scope.space_id.clone(),

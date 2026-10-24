@@ -74,7 +74,7 @@ impl Client {
             return Ok(e.request_dto(existing));
         }
         let mut request = AgentRequest {
-            id: types::new_id("rq"),
+            id: types::new_id("rq")?,
             agent: actor.clone(),
             title: shared::operation(TOOL),
             detail: format!(

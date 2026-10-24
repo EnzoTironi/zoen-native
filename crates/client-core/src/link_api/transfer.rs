@@ -259,7 +259,7 @@ impl Client {
         space_id: String,
         timeout_ms: u64,
     ) -> Result<OlderDto, CoreError> {
-        let Some(req) = self.lock().request_page(&space_id) else {
+        let Some(req) = self.lock().request_page(&space_id)? else {
             return Ok(OlderDto {
                 loaded: 0,
                 more: false,

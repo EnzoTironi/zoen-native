@@ -91,7 +91,7 @@ impl DeviceCore {
                 .author
                 .clone()
                 .ok_or(NativeError::Credential)?;
-            let message = new_id("msg");
+            let message = new_id("msg")?;
             let event = self
                 .engine
                 .append_synced(

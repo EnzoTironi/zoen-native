@@ -217,7 +217,7 @@ impl Engine {
                 space,
                 &me,
                 EventBody::MessagePosted {
-                    message: new_id("msg"),
+                    message: new_id("msg")?,
                     text: caption.to_string(),
                     attaches: Some(item),
                     reply,
@@ -369,7 +369,7 @@ impl Engine {
                 to_space,
                 &me,
                 EventBody::MessagePosted {
-                    message: new_id("msg"),
+                    message: new_id("msg")?,
                     text: caption.to_string(),
                     attaches: Some(item),
                     reply: None,

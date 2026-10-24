@@ -279,7 +279,7 @@ impl Engine {
             return Ok(record.draft);
         }
         record.draft = MessageDraftDto {
-            revision: types::new_id("draft"),
+            revision: types::new_id("draft")?,
             text,
             reply_to,
         };
@@ -361,7 +361,7 @@ impl Engine {
             };
             let cleared = Record {
                 draft: MessageDraftDto {
-                    revision: types::new_id("draft"),
+                    revision: types::new_id("draft")?,
                     text: String::new(),
                     reply_to: None,
                 },

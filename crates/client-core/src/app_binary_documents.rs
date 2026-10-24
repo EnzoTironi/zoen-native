@@ -303,7 +303,7 @@ impl Engine {
                 &me,
                 EventBody::GrantIssued {
                     grant: Grant {
-                        id: new_id("gr"),
+                        id: new_id("gr")?,
                         grantor: me.clone(),
                         grantee: Some(format!("app:{item}")),
                         scope: GrantScope::Item(item.clone()),

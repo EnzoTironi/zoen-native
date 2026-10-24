@@ -246,7 +246,7 @@ impl Client {
             return e.create_synced_space(title, SpaceKind::Community, Privacy::Closed, &[]);
         }
         let me = e.me_id()?;
-        let space = new_id("sp");
+        let space = new_id("sp")?;
         e.append(
             &space,
             &me,

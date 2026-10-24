@@ -192,7 +192,7 @@ impl Engine {
             });
         }
         let grant = Grant {
-            id: new_id("gr"),
+            id: new_id("gr")?,
             grantor: me.clone(),
             grantee: Some(agent.into()),
             scope: GrantScope::Space(space.into()),
@@ -224,7 +224,7 @@ impl Engine {
             .personal_space()
             .ok_or_else(|| not_found(&t("Espaço pessoal", "Personal space")))?;
         let grant = Grant {
-            id: new_id("gr"),
+            id: new_id("gr")?,
             grantor: me.clone(),
             grantee: Some(agent.into()),
             scope: GrantScope::Everywhere,

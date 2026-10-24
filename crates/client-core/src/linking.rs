@@ -363,30 +363,30 @@ impl Engine {
 
     /// Asks the device that linked us for an older page of `space`. `None` when there is
     /// no such device.
-    pub(crate) fn request_page(&mut self, space: &str) -> Option<String> {
-        let primary = self.store.meta(META_PRIMARY).ok().flatten()?;
+    pub(crate) fn request_page(&mut self, space: &str) -> R<Option<String>> {
+        let Some(primary) = self.store.meta(META_PRIMARY)? else {
+            return Ok(None);
+        };
         // The other device said there is nothing older.
-        if self
-            .store
-            .meta(&complete_meta(space))
-            .ok()
-            .flatten()
-            .is_some()
-        {
-            return None;
+        if self.store.meta(&complete_meta(space))?.is_some() {
+            return Ok(None);
         }
-        let peer = self.net.link.peers.get(&primary)?.clone();
-        let req = new_id("pg");
+        let Some(peer) = self.net.link.peers.get(&primary).cloned() else {
+            return Ok(None);
+        };
+        let req = new_id("pg")?;
         let msg = DeviceMsg::PageRequest {
             req: req.clone(),
             space: space.to_string(),
             before: self.oldest_opened(space),
             limit: history_page(),
         };
-        let sealed = peer.seal(&msg)?;
+        let sealed = peer.seal(&msg).ok_or_else(|| CoreError::Storage {
+            message: "Could not seal the history page request".into(),
+        })?;
         self.net.link.outbox.push((primary, sealed));
         self.net.wake();
-        Some(req)
+        Ok(Some(req))
     }
 
     pub(crate) fn page_answer(&mut self, req: &str) -> Option<(u32, bool)> {

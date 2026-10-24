@@ -317,7 +317,7 @@ impl Receipt {
             );
         let receipt = Self {
             schema: 1,
-            id: types::new_id("adu"),
+            id: types::new_id("adu")?,
             scope,
             before,
             after,
