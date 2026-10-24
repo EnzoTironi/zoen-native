@@ -97,7 +97,7 @@ impl PageSession {
         // The stronger exact-source semantic fence belongs only to the new Plan tag.
         if blocked.is_none()
             && journal.has_draft
-            && live.editor_content_eq(shadow)
+            && live.editor_content_eq(&shadow)
             && self.write_author(engine).is_ok()
         {
             let acknowledged = journal.commit.as_ref().is_some_and(|id| {
