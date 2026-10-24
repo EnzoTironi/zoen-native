@@ -122,38 +122,40 @@ pub(crate) fn validate_file(file: &FileDoc, max_bytes: u64) -> R<usize> {
 }
 
 /// Key and nonce for one chunk: HKDF-SHA256(file key, salt = chunk hash).
-fn chunk_secret(file_key: &[u8; 32], chunk_sha: &[u8]) -> ([u8; 32], [u8; 24]) {
+fn chunk_secret(file_key: &[u8; 32], chunk_sha: &[u8]) -> R<([u8; 32], [u8; 24])> {
     let hk = Hkdf::<Sha256>::new(Some(chunk_sha), file_key);
     let mut okm = [0u8; 56];
     hk.expand(b"zoen-file-chunk/1", &mut okm)
-        .expect("56 bytes is a valid HKDF length");
+        .map_err(|_| invalid_file())?;
     let mut key = [0u8; 32];
     let mut nonce = [0u8; 24];
     key.copy_from_slice(&okm[..32]);
     nonce.copy_from_slice(&okm[32..]);
-    (key, nonce)
+    Ok((key, nonce))
 }
 
 /// `nonce ‖ ciphertext+tag`, the same layout `media::open` reads.
-fn seal_chunk(file_key: &[u8; 32], plain: &[u8]) -> (String, [u8; 32], Vec<u8>) {
+fn seal_chunk(file_key: &[u8; 32], plain: &[u8]) -> R<(String, [u8; 32], Vec<u8>)> {
     let sha = Sha256::digest(plain);
-    let (key, nonce) = chunk_secret(file_key, &sha);
-    let cipher = XChaCha20Poly1305::new_from_slice(&key).expect("32-byte key");
+    let (key, nonce) = chunk_secret(file_key, &sha)?;
+    let cipher = XChaCha20Poly1305::new_from_slice(&key).map_err(|_| invalid_file())?;
     let ct = cipher
         .encrypt(&XNonce::from(nonce), plain)
-        .expect("encrypt");
+        .map_err(|_| invalid_file())?;
     let mut out = Vec::with_capacity(24 + ct.len());
     out.extend_from_slice(&nonce);
     out.extend_from_slice(&ct);
-    (hex::encode(sha), key, out)
+    Ok((hex::encode(sha), key, out))
 }
 
-fn random_key() -> [u8; 32] {
+fn random_key() -> R<[u8; 32]> {
     let mut k = [0u8; 32];
-    getrandom::getrandom(&mut k).expect("system randomness");
-    k
+    getrandom::getrandom(&mut k).map_err(|_| invalid_file())?;
+    Ok(k)
 }
 
+mod native;
+pub use native::NativeFileBlob;
 mod demand;
 mod editing;
 mod publication;

@@ -13,6 +13,17 @@ impl Finance {
         {
             return Err(RuntimeError::InvalidBinding);
         }
+        let charge = b.price.chat()?.charge(&capture.result)?;
+        self.settle_capture(b, charge, digest, sealed).await
+    }
+
+    pub(crate) async fn settle_capture(
+        &self,
+        b: &Binding,
+        charge: Option<i64>,
+        digest: &str,
+        sealed: &[u8],
+    ) -> Result<FinancialState, RuntimeError> {
         let mut tx = self.begin().await?;
         let balance = Self::lock_period(&mut tx, b, false).await?;
         let exact: Option<i32> = sqlx::query_scalar("SELECT 1 FROM runtime_attempts a JOIN runtime_claims c USING (attempt) WHERE a.attempt=$1 AND a.binding_digest=$2")
@@ -36,7 +47,7 @@ impl Finance {
             tx.commit().await?;
             return Ok(FinancialState::Settled { units });
         }
-        let Some(charge) = b.price.charge(&capture.result)? else {
+        let Some(charge) = charge else {
             tx.commit().await?;
             return Ok(FinancialState::Claimed);
         };
@@ -186,8 +197,40 @@ impl Finance {
         &self,
         limit: u16,
     ) -> Result<Vec<(String, String, String, Option<Vec<u8>>)>, RuntimeError> {
-        Ok(sqlx::query_as("SELECT o.attempt,o.kind,o.digest,e.sealed FROM runtime_financial_outbox o LEFT JOIN runtime_evidence e USING(attempt,digest) WHERE NOT EXISTS (SELECT 1 FROM runtime_financial_acks a WHERE (a.attempt,a.kind,a.digest)=(o.attempt,o.kind,o.digest)) ORDER BY o.attempt,o.kind,o.digest LIMIT $1")
-            .bind(i64::from(limit)).fetch_all(&self.pool).await?)
+        let metadata:Vec<(String,String,String,Option<i32>)>=sqlx::query_as("SELECT o.attempt,o.kind,o.digest,octet_length(e.sealed) FROM runtime_financial_outbox o LEFT JOIN runtime_evidence e USING(attempt,digest) WHERE NOT EXISTS (SELECT 1 FROM runtime_financial_acks a WHERE (a.attempt,a.kind,a.digest)=(o.attempt,o.kind,o.digest)) ORDER BY o.attempt,o.kind,o.digest LIMIT $1")
+            .bind(i64::from(limit)).fetch_all(&self.pool).await?;
+        let mut records = Vec::new();
+        let mut total = 0usize;
+        for (attempt, kind, digest, length) in metadata {
+            let length =
+                usize::try_from(length.unwrap_or(0)).map_err(|_| RuntimeError::InvalidBinding)?;
+            if length > 32 * 1024 * 1024 {
+                return Err(RuntimeError::EvidenceTooLarge);
+            }
+            let next = total
+                .checked_add(length)
+                .ok_or(RuntimeError::EvidenceTooLarge)?;
+            if next > 32 * 1024 * 1024 {
+                break;
+            }
+            let sealed: Option<Vec<u8>> = if length == 0 {
+                None
+            } else {
+                sqlx::query_scalar(
+                    "SELECT sealed FROM runtime_evidence WHERE attempt=$1 AND digest=$2",
+                )
+                .bind(&attempt)
+                .bind(&digest)
+                .fetch_optional(&self.pool)
+                .await?
+            };
+            if sealed.as_ref().map_or(0, Vec::len) != length {
+                return Err(RuntimeError::Unavailable);
+            }
+            total = next;
+            records.push((attempt, kind, digest, sealed));
+        }
+        Ok(records)
     }
     pub async fn ack_outbox(
         &self,

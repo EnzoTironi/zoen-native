@@ -20,6 +20,17 @@ impl Client {
                 &request_id,
                 &expected_hash,
             )?),
+            StageImageGeneration {
+                scope,
+                source_id,
+                serving_id,
+                input,
+            } => encode(&self.lock().stage_scoped_image_generation(
+                &scope,
+                &source_id,
+                &serving_id,
+                input,
+            )?),
             SiteRead {
                 scope,
                 item_id,

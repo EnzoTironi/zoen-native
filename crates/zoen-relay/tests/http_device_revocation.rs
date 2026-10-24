@@ -22,10 +22,19 @@ use zoen_relay::{
 };
 
 // These HTTP endpoints must not touch the event log or need a FoundationDB server.
-struct UnusedLog;
+#[derive(Default)]
+struct UnusedLog {
+    registry: zoen_relay::managed_devices::ManagedDevices,
+}
 
 #[async_trait]
 impl LogStore for UnusedLog {
+    fn managed_device(
+        &self,
+        device: &str,
+    ) -> Option<Arc<zoen_relay::managed_devices::ManagedDevice>> {
+        self.registry.get(device)
+    }
     async fn append(&self, _: &Envelope, _: bool) -> Result<Sequencing, Reject> {
         unreachable!("HTTP device admission does not use the log")
     }
@@ -106,6 +115,14 @@ impl TestRelay {
     }
 
     async fn configured(blobs: Arc<dyn object_store::ObjectStore>, limit_spec: &str) -> Self {
+        Self::configured_log(blobs, limit_spec, Arc::new(UnusedLog::default())).await
+    }
+
+    async fn configured_log(
+        blobs: Arc<dyn object_store::ObjectStore>,
+        limit_spec: &str,
+        log: Arc<dyn LogStore>,
+    ) -> Self {
         let _ = rustls::crypto::ring::default_provider().install_default();
         let admin_url = std::env::var("ZOEN_TEST_PG").expect("set ZOEN_TEST_PG");
         let database = format!(
@@ -139,7 +156,7 @@ impl TestRelay {
             pool,
             session_auth: auth_pool(),
             delivery_auth: auth_pool(),
-            log: Arc::new(UnusedLog),
+            log,
             fanout: fanout::Fanout::local("http-revocation".into()),
             limits: limits::Limits::from_spec(limit_spec).unwrap(),
             client_ip_header: None,
@@ -248,6 +265,8 @@ impl TestRelay {
     }
 }
 
+#[path = "http_device_revocation/managed_admission.rs"]
+mod managed_admission;
 #[path = "http_device_revocation/media_fixture.rs"]
 mod media_fixture;
 #[path = "http_device_revocation/transfer_fixture.rs"]

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { fixture, nodes, text, settle } from './tool-review-ui.fixture.ts';
+import { imageReview } from '../i18n/catalogs/image-review.ts';
 
 test('compiled native review button directly requests one inert intent, never approval or action', async () => {
   for (const locale of ['en', 'pt-BR'] as const) {
@@ -148,4 +149,50 @@ test('compiled approved card distinguishes historical approval from expired/requ
     assert.ok(!text(tree).includes('Waiting for the reviewed action.'));
     assert.ok(nodes(tree).some((n) => n.type === 'ToolReviewRecovery'));
   }
+});
+
+test('compiled image card shows the signed prompt and specification without a premature open-item action', () => {
+  for (const language of ['en', 'pt-BR'] as const) {
+    const f = fixture(language);
+    const row = f.base()[0];
+    row.status = 'Pending';
+    row.detail = 'Unrelated request description';
+    row.tool_approval.canonical_tool = 'generate_image';
+    row.tool_approval.expires_ms = String(f.clock() + 60_000);
+    row.tool_approval.image = {
+      prompt: 'A quiet blue sky',
+      size: '1536x1024',
+      quality: 'high',
+      background: 'transparent',
+      definition_version: 'image/1',
+      price_digest: 'ab'.repeat(32),
+      max_image_bytes: '12582912',
+      source_id: 'source',
+      source_sha256: 'cd'.repeat(32),
+    };
+    const tree = f.card(row);
+    assert.ok(text(tree).includes('A quiet blue sky'));
+    assert.ok(!text(tree).includes('Unrelated request description'));
+    assert.ok(text(tree).includes('1536 × 1024'));
+    assert.ok(text(tree).includes(imageReview[language].high));
+    assert.ok(text(tree).includes(imageReview[language].transparent));
+    assert.ok(nodes(tree).every((n) => n.props.label !== 'agents.openItem'));
+    assert.equal(
+      nodes(tree).find((n) => n.props.label === 'agents.allowOnce')?.props.disabled,
+      false,
+    );
+  }
+});
+
+test('compiled incomplete image review disables approval while cancel and deny remain reachable', () => {
+  const f = fixture();
+  const row = f.base()[0];
+  row.status = 'Pending';
+  row.tool_approval.canonical_tool = 'generate_image';
+  row.tool_approval.expires_ms = String(f.clock() + 60_000);
+  const tree = f.card(row);
+  assert.ok(text(tree).includes(imageReview.en.unavailable));
+  assert.equal(nodes(tree).find((n) => n.props.label === 'agents.allowOnce')?.props.disabled, true);
+  for (const label of ['agents.cancelRequest', 'agents.doNotAllow'])
+    assert.equal(nodes(tree).find((n) => n.props.label === label)?.props.disabled, false);
 });

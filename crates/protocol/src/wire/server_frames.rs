@@ -46,6 +46,12 @@ impl ServerFrame {
                         agent: p.agent.as_deref().map(profile_to).map(Box::new),
                     }),
                     Ok(Reply::Done) => pb_res::R::Done(PbEmpty {}),
+                    Ok(Reply::RuntimeBinding(p)) => {
+                        pb_res::R::RuntimeBinding(PbRuntimeBindingProof {
+                            cell: p.cell.clone(),
+                            tag: p.tag.clone(),
+                        })
+                    }
                     Ok(Reply::CallTurn(c)) => pb_res::R::CallTurn(PbCallTurnReply {
                         urls: c.urls.clone(),
                         username: c.username.clone(),
@@ -211,6 +217,15 @@ impl ServerFrame {
                         agent: p.agent.map(|a| profile_from(*a)).transpose()?.map(Box::new),
                     })),
                     pb_res::R::Done(_) => Ok(Reply::Done),
+                    pb_res::R::RuntimeBinding(p) => {
+                        if !crate::runtime_binding::valid_namespace(&p.cell) || p.tag.len() != 32 {
+                            return Err(bad("runtime binding proof"));
+                        }
+                        Ok(Reply::RuntimeBinding(crate::runtime_binding::Proof {
+                            cell: p.cell,
+                            tag: p.tag,
+                        }))
+                    }
                     pb_res::R::CallTurn(c) => {
                         let credentials = crate::turn::TurnCredentials {
                             urls: c.urls,

@@ -8,6 +8,8 @@ import * as flow from './tool-review-renewal.ts';
 import * as siteSource from '../sites/source.ts';
 import { createLocalization } from '../i18n/runtime.ts';
 import { reviewRenewal } from '../i18n/catalogs/review-renewal.ts';
+import { imageToolReviewValid } from './image-tool-review.ts';
+import { imageReview } from '../i18n/catalogs/image-review.ts';
 
 const files = {
   view: '../agents/tool-review-recovery.tsx',
@@ -83,7 +85,7 @@ export async function settle() {
   for (let n = 0; n < 16; ++n) await Promise.resolve();
 }
 export function fixture(locale: 'en' | 'pt-BR' = 'en') {
-  const localization = createLocalization({ reviewRenewal }, [locale]);
+  const localization = createLocalization({ reviewRenewal, imageReview }, [locale]);
   let now = Date.now();
   let nextTimer = 0;
   const timers = new Map<number, { at: number; fn: () => void }>();
@@ -235,7 +237,9 @@ export function fixture(locale: 'en' | 'pt-BR' = 'en') {
           t: (key: string) =>
             key.startsWith('reviewRenewal.')
               ? localization.t(key as `reviewRenewal.${keyof typeof reviewRenewal.en}`)
-              : key,
+              : key.startsWith('imageReview.')
+                ? localization.t(key as `imageReview.${keyof typeof imageReview.en}`)
+                : key,
           formatLocale: 'en',
         };
       if (path.endsWith('/primitives'))
@@ -249,6 +253,7 @@ export function fixture(locale: 'en' | 'pt-BR' = 'en') {
           }),
         };
       if (path.endsWith('/presentation')) return { money: () => '' };
+      if (path.endsWith('/image-tool-review')) return { imageToolReviewValid };
       if (path.endsWith('/tool-request-decision'))
         return {
           toolApprovalExpired: (tool: any) => Number(tool.expires_ms) <= now,

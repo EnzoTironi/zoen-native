@@ -47,6 +47,41 @@ fn store_error(_: foundationdb::FdbError) -> StoreError {
     StoreError("runtime source unavailable".into())
 }
 
+impl super::FdbLog {
+    pub(super) async fn bound_runtime_cell(
+        &self,
+        namespace: &str,
+        witness: &str,
+    ) -> Result<Option<String>, StoreError> {
+        if !protocol::runtime_binding::valid_namespace(namespace) || witness.len() != 64 {
+            return Err(invalid());
+        }
+        let (prefix, cell): (String, String) =
+            unpack(self.cell.root.bytes()).map_err(|_| invalid())?;
+        if prefix != "zoen" || !protocol::runtime_binding::valid_namespace(&cell) {
+            return Err(invalid());
+        }
+        let root = Subspace::from_bytes(foundationdb::tuple::pack(&("zoen-runtime-v1", namespace)));
+        let trx = self.cell.db.create_trx().map_err(store_error)?;
+        trx.set_option(foundationdb::options::TransactionOption::Timeout(2000))
+            .map_err(store_error)?;
+        let marker = trx
+            .get(&root.pack(&("deployment",)), false)
+            .await
+            .map_err(store_error)?;
+        let source = trx
+            .get(&root.pack(&("relay-source/1",)), false)
+            .await
+            .map_err(store_error)?;
+        if marker.as_deref() != Some(witness.as_bytes())
+            || source.as_deref() != Some(cell.as_bytes())
+        {
+            return Ok(None);
+        }
+        Ok(Some(cell))
+    }
+}
+
 impl RuntimeSource {
     /// Host configuration identifies the relay's actual cell. No arbitrary
     /// subspace, caller frontier, callback or writer is accepted here.

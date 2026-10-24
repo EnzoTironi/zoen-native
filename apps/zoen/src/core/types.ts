@@ -62,6 +62,9 @@ import type { AppResourceDto } from './generated/AppResourceDto';
 import type { MessageDraftDto } from './generated/MessageDraftDto';
 import type { MessageDraftSendResult } from './generated/MessageDraftSendResult';
 import type { NativeSurfaceItemDto } from './generated/NativeSurfaceItemDto';
+import type { OwnerPolicyOptionsStatus } from './generated/OwnerPolicyOptionsStatus';
+import type { OwnerPolicyReview } from './generated/OwnerPolicyReview';
+import type { OwnerPolicyStatus } from './generated/OwnerPolicyStatus';
 import type { MediaDraftDto } from '../media/media-draft-types';
 
 export type { Command, Snapshot, TimelinePage, TimelineEntry, ItemDetail, PageDto, PlanPageDto };
@@ -79,6 +82,17 @@ export type CoreEvent =
   | { kind: 'ephemeral'; spaceId: string; fromId: string; type: string; detail: string }
   | { kind: 'error'; message?: string };
 type Results = {
+  start_owner_policy_direct: string;
+  request_account_policy_options: OwnerPolicyOptionsStatus;
+  find_account_policy_options: OwnerPolicyOptionsStatus | null;
+  request_owner_policy_options: OwnerPolicyOptionsStatus;
+  find_owner_policy_options: OwnerPolicyOptionsStatus | null;
+  owner_policy_options: OwnerPolicyOptionsStatus;
+  prepare_owner_policy: OwnerPolicyReview;
+  review_owner_policy: OwnerPolicyReview;
+  submit_owner_policy: OwnerPolicyStatus;
+  owner_policy_status: OwnerPolicyStatus;
+  find_owner_policy_submission: OwnerPolicyStatus | null;
   site_tool_review: SiteToolReview;
   site_read: SiteSource;
   site_create: SiteSource;

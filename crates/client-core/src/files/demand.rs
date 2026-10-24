@@ -216,7 +216,7 @@ impl Engine {
 
     /// Seals a page payload too big for an event as an encrypted blob.
     pub(crate) fn page_blob(&mut self, space: &str, bytes: &[u8]) -> R<ChunkRef> {
-        let key = random_key();
+        let key = random_key()?;
         self.put_chunk(
             space,
             &key,

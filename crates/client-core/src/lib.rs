@@ -28,6 +28,8 @@ pub use agent_enrollment::{
 /// Closed, shared schema validation only; this module grants no execution authority.
 pub use miniapps::deckcraft::agent_tools as deckcraft_agent_tools;
 mod agent_notes;
+pub mod image_tasks;
+pub mod owner_policy;
 pub use agent_binary_documents::{
     AgentBinaryTurn, AgentToolApprovalInput, ApprovedToolTurn, AGENT_BINARY_DOCUMENT_LIMIT,
 };
@@ -39,8 +41,10 @@ mod api;
 pub use api::call_turn::CallTurnDto;
 mod backup;
 mod backup_api;
+pub mod blob_transport;
 mod call_transport_api;
 mod client_api;
+pub mod relay_output_transport;
 pub use backup_api::BackupStatusDto;
 #[cfg(feature = "client-types")]
 pub use client_api::export_typescript;

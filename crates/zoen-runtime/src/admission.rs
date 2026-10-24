@@ -13,7 +13,7 @@ pub(super) struct Binding {
     pub(super) request_digest: String,
     pub(super) requested_output_tokens: u64,
     pub(super) hold_units: i64,
-    pub(super) price: PriceProfile,
+    pub(super) price: crate::pricing::BoundPrice,
 }
 impl Binding {
     pub(super) fn digest(&self) -> Result<String, RuntimeError> {
@@ -26,6 +26,7 @@ impl Binding {
 // Only actual core extraction may create one in production; fixtures live in cfg(test).
 pub(super) enum VerifiedStep {
     Native(Box<native::ReplyStep>),
+    NativeImage(Box<native::ImageStep>),
     #[cfg(test)]
     Fixture(Box<FixtureStep>),
 }
@@ -45,6 +46,7 @@ impl VerifiedStep {
     pub(super) fn request(&self) -> &ModelRequest {
         match self {
             Self::Native(step) => step.request(),
+            Self::NativeImage(step) => step.request(),
             #[cfg(test)]
             Self::Fixture(step) => &step.request,
         }
@@ -60,6 +62,7 @@ impl VerifiedStep {
         }
         match self {
             Self::Native(step) => step.binding(request),
+            Self::NativeImage(step) => step.binding(request),
             #[cfg(test)]
             Self::Fixture(step) => Ok(Binding {
                 context: request.context.clone(),
@@ -70,7 +73,7 @@ impl VerifiedStep {
                 request_digest: request.request_digest.clone(),
                 requested_output_tokens: request.descriptor.requested_output_tokens,
                 hold_units: _price.quote(request)?,
-                price: _price.clone(),
+                price: _price.clone().into(),
             }),
         }
     }
@@ -78,6 +81,7 @@ impl VerifiedStep {
     pub(super) fn grant_deadline(&self) -> Option<i64> {
         match self {
             Self::Native(step) => step.grant_deadline(),
+            Self::NativeImage(step) => step.deadline(),
             #[cfg(test)]
             Self::Fixture(_) => None,
         }
@@ -89,6 +93,7 @@ impl VerifiedStep {
     ) -> Result<(), RuntimeError> {
         match self {
             Self::Native(step) => step.release(execution).await,
+            Self::NativeImage(step) => step.release(execution).await,
             #[cfg(test)]
             Self::Fixture(_) => Ok(()),
         }
@@ -98,7 +103,9 @@ impl VerifiedStep {
     pub(super) fn fixture(&self) -> &FixtureStep {
         match self {
             Self::Fixture(step) => step,
-            Self::Native(_) => panic!("native authority is not a seeded financial fixture"),
+            Self::Native(_) | Self::NativeImage(_) => {
+                panic!("native authority is not a seeded financial fixture")
+            }
         }
     }
 }
@@ -111,19 +118,59 @@ pub(super) struct Session<'a> {
     pub(super) runtime: &'a RuntimeAuthority,
     pub(super) step: &'a VerifiedStep,
     pub(super) admitted: Mutex<Option<AdmittedBinding>>,
+    pub(super) image: Option<&'a crate::image_tasks::ImageTask>,
 }
 
 pub(super) struct AdmittedBinding {
     pub(super) binding: Binding,
     pub(super) nonce: String,
+    _generation: Option<relay_admission::managed_images::GenerationGuard>,
 }
 
 #[async_trait]
 impl DispatchAuthority for Session<'_> {
     async fn admit(&self, request: &DispatchRequest) -> Result<Admission, AdmissionError> {
         let result: Result<Admission, RuntimeError> = async {
-            self.runtime.continuity()?;
-            let binding = self.step.binding(request, &self.runtime.price)?;
+            if self.image.is_some() {
+                self.runtime.image_continuity()?;
+            } else {
+                self.runtime.continuity()?;
+            }
+            if self.image.is_some() {
+                let capability = self.runtime.image_output_scope()?;
+                capability.check_device(&request.context.agent, &request.context.device)?;
+                capability
+                    .check_in(
+                        &self.runtime.execution,
+                        &self.runtime.execution.transaction().await?,
+                    )
+                    .await?;
+            }
+            let binding = if let Some(task) = self.image {
+                task.validate()?;
+                if request.context != task.binding.context
+                    || request.request_digest != task.binding.request_digest
+                    || request.descriptor != task.dispatch
+                    || request.profile != zoen_models::IMAGE_PROFILE
+                {
+                    return Err(RuntimeError::InvalidBinding);
+                }
+                match self.step {
+                    VerifiedStep::NativeImage(step) => step.binding(request)?,
+                    #[cfg(test)]
+                    VerifiedStep::Fixture(step)
+                        if step.request.operation == zoen_models::Operation::ImageGeneration =>
+                    {
+                        task.binding.clone()
+                    }
+                    _ => return Err(RuntimeError::InvalidBinding),
+                }
+            } else {
+                self.step.binding(request, &self.runtime.price)?
+            };
+            if self.image.is_some() {
+                self.runtime.check_image_checkpoint().await?;
+            }
             self.runtime
                 .execution
                 .prepare(self.step, &binding, &self.runtime.custody)
@@ -141,6 +188,15 @@ impl DispatchAuthority for Session<'_> {
             let Some(claim) = self.runtime.finance.claim(&binding).await? else {
                 return Ok(Admission::AlreadyKnown);
             };
+            let checkpoint = if self.image.is_some() {
+                self.runtime
+                    .begin_image_dispatch_checkpoint(&binding, &claim)
+                    .await?
+            } else {
+                None
+            };
+            let claim =
+                claim.with_checkpoint(checkpoint.as_ref().map(|value| value.annotation()))?;
             #[cfg(test)]
             if self.runtime.fault.load(Ordering::SeqCst) == 1 {
                 return Err(RuntimeError::Unavailable);
@@ -173,6 +229,10 @@ impl DispatchAuthority for Session<'_> {
             }
             let nonce = admission.nonce().to_string();
             let permit = guard.finish(admission).await?;
+            let generation = match checkpoint {
+                Some(checkpoint) => Some(checkpoint.finish(self.runtime).await?),
+                None => None,
+            };
             #[cfg(test)]
             if self.runtime.fault.load(Ordering::SeqCst) == 23 {
                 return Err(RuntimeError::Unavailable);
@@ -182,11 +242,19 @@ impl DispatchAuthority for Session<'_> {
                 self.runtime.native_cut_entered.notify_one();
                 self.runtime.native_cut_resume.notified().await;
             }
-            self.runtime.continuity()?;
+            if self.image.is_some() {
+                self.runtime.image_continuity()?;
+            } else {
+                self.runtime.continuity()?;
+            }
             *self
                 .admitted
                 .lock()
-                .map_err(|_| RuntimeError::Unavailable)? = Some(AdmittedBinding { binding, nonce });
+                .map_err(|_| RuntimeError::Unavailable)? = Some(AdmittedBinding {
+                binding,
+                nonce,
+                _generation: generation,
+            });
             permit.consume()
         }
         .await;

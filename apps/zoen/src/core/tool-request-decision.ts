@@ -2,6 +2,7 @@ import type { AgentRequestDto } from './generated/AgentRequestDto';
 import type { Command } from './generated/Command';
 import type { RequestDecision } from './generated/RequestDecision';
 import type { ToolApprovalDto } from './generated/ToolApprovalDto';
+import { imageToolReviewValid } from './image-tool-review.ts';
 
 export type RequestCardDecision = RequestDecision | 'ApproveOnce' | 'Cancel';
 type DecisionCommand = Extract<Command, { op: 'decide_request' | 'decide_tool_request' }>;
@@ -49,7 +50,9 @@ export function requestDecisionCommand(
     if (decision !== 'ApproveOnce' && decision !== 'Deny' && decision !== 'Cancel') return null;
     if (
       decision === 'ApproveOnce' &&
-      (request.status !== 'Pending' || toolApprovalExpired(tool, nowMs))
+      (request.status !== 'Pending' ||
+        toolApprovalExpired(tool, nowMs) ||
+        (tool.canonical_tool === 'generate_image' && !imageToolReviewValid(tool.image)))
     )
       return null;
     return {

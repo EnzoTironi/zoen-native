@@ -77,9 +77,39 @@ pub async fn put(
             .to_string()
     };
     let (device, ts, sig) = (h("x-zoen-device"), h("x-zoen-ts"), h("x-zoen-sig"));
-    let admitted = match policy::put_policy(&sha, &device, &ts, &sig, &st.relay_name, now_ms()) {
+    let binding = match headers.get(protocol::runtime_binding::BLOB_HEADER) {
+        None => None,
+        Some(value) => {
+            if value.as_bytes().len() > 2048 {
+                return err(StatusCode::UNAUTHORIZED, "invalid runtime binding");
+            }
+            match serde_json::from_slice::<protocol::runtime_binding::BlobBinding>(value.as_bytes())
+            {
+                Ok(binding) => Some(binding),
+                Err(_) => return err(StatusCode::UNAUTHORIZED, "invalid runtime binding"),
+            }
+        }
+    };
+    if st.log.managed_device(&device).is_some() && binding.is_none() {
+        return err(StatusCode::FORBIDDEN, "managed runtime binding required");
+    }
+    let policy = match &binding {
+        Some(binding) => {
+            policy::put_bound_policy(&sha, &device, &ts, &sig, &st.relay_name, now_ms(), binding)
+        }
+        None => policy::put_policy(&sha, &device, &ts, &sig, &st.relay_name, now_ms()),
+    };
+    let admitted = match policy {
         Ok(admitted) => admitted,
         Err(error) => return policy_error(error),
+    };
+    let generation = if let Some(binding) = &binding {
+        match crate::runtime_binding::verify_blob(&st, &device, binding).await {
+            Ok(generation) => generation,
+            Err(_) => return err(StatusCode::FORBIDDEN, "runtime binding refused"),
+        }
+    } else {
+        None
     };
     match crate::db::device_active(&st.pool, &device).await {
         Ok(true) => {}
@@ -106,15 +136,15 @@ pub async fn put(
         mode: PutMode::Create,
         ..Default::default()
     };
-    match st
-        .blobs
-        .put_opts(
-            &ObjPath::from(admitted.key),
-            PutPayload::from_bytes(body),
-            opts,
-        )
-        .await
-    {
+    let result = put_effect(
+        st.blobs.clone(),
+        ObjPath::from(admitted.key),
+        body,
+        opts,
+        generation,
+    )
+    .await;
+    match result {
         Ok(_) => {
             st.metrics.blob_stored(n);
             st.analytics.count("blobs_stored", 1);
@@ -140,6 +170,7 @@ pub fn cors() -> tower_http::cors::CorsLayer {
             HeaderName::from_static("x-zoen-device"),
             HeaderName::from_static("x-zoen-ts"),
             HeaderName::from_static("x-zoen-sig"),
+            HeaderName::from_static(protocol::runtime_binding::BLOB_HEADER),
         ])
         .max_age(std::time::Duration::from_secs(86_400))
 }
@@ -172,3 +203,35 @@ pub async fn get(State(st): State<Shared>, Path(sha): Path<String>) -> Response 
         }
     }
 }
+
+/// The actual object-store task owns the OS guard independently of its caller.
+/// Dropping/cancelling the HTTP handler only detaches the JoinHandle; retirement
+/// still waits for the put future and its real storage effect to terminate.
+async fn put_effect(
+    store: Arc<dyn ObjectStore>,
+    key: ObjPath,
+    body: Bytes,
+    options: PutOptions,
+    generation: Option<relay_admission::managed_images::GenerationGuard>,
+) -> object_store::Result<object_store::PutResult> {
+    let Some(generation) = generation else {
+        return store
+            .put_opts(&key, PutPayload::from_bytes(body), options)
+            .await;
+    };
+    tokio::spawn(async move {
+        let result = store
+            .put_opts(&key, PutPayload::from_bytes(body), options)
+            .await;
+        drop(generation);
+        result
+    })
+    .await
+    .map_err(|_| object_store::Error::Generic {
+        store: "managed upload",
+        source: "managed object-store task failed".into(),
+    })?
+}
+
+#[cfg(test)]
+mod managed_tests;

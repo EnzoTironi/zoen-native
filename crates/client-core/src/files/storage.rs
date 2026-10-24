@@ -39,7 +39,7 @@ impl Engine {
                 }
             }
         }
-        Ok(random_key())
+        random_key()
     }
 
     /// Stores `plain` locally and, in a relay-synced Space, queues its encrypted copy.
@@ -59,7 +59,7 @@ impl Engine {
             }
             return Ok(c.clone());
         }
-        let (sha, key, sealed) = seal_chunk(file_key, plain);
+        let (sha, key, sealed) = seal_chunk(file_key, plain)?;
         self.store.put_media(&sha, mime, plain, now_ms())?;
         let blob = hex::encode(Sha256::digest(&sealed));
         let key_hex = hex::encode(key);

@@ -36,6 +36,7 @@ use crate::{
 
 mod authentication;
 mod ephemeral;
+mod managed;
 mod online;
 mod publishing;
 mod requests;
@@ -71,6 +72,7 @@ struct Session {
     started: std::time::Instant,
     first_sync_done: bool,
     claim_receipts: bool,
+    managed_binding: Option<protocol::runtime_binding::Request>,
 }
 
 struct DeliveryAuthorization {
@@ -221,6 +223,7 @@ pub async fn run(socket: WebSocket, st: Shared, ip: String) {
         started: std::time::Instant::now(),
         first_sync_done: false,
         claim_receipts,
+        managed_binding: None,
     };
     // `ready` first: the client's handshake reads it before anything else.
     let _ = tx

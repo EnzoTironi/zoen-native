@@ -45,6 +45,7 @@ pub struct Pending {
     pub env: Envelope,
     pub target_known: bool,
     pub fence: Fence,
+    pub managed: Option<Arc<relay_admission::managed_images::ManagedPublishPermit>>,
 }
 
 /// What a batch did: one result per envelope, in order, and how many attempts it took.
@@ -76,6 +77,9 @@ pub struct BatchStats {
 
 type Reply = (Result<Sequencing, Reject>, BatchStats);
 
+mod reservation;
+pub(crate) use reservation::ManagedAdmission;
+
 struct Job {
     pending: Pending,
     reply: oneshot::Sender<Reply>,
@@ -106,83 +110,16 @@ impl<B: Batcher> Sequencer<B> {
 
     /// Queues `env` behind its Space's earlier envelopes and waits for its result.
     pub async fn append(&self, env: Envelope, target_known: bool, fence: Fence) -> Reply {
-        let busy = || {
-            (
-                Err(Reject::retry("sequencer capacity reached")),
+        match self.reserve(env, target_known, fence) {
+            Ok(reservation) => reservation.send(None).await,
+            Err(reason) => (
+                Err(reason),
                 BatchStats {
                     size: 0,
                     attempts: 0,
                 },
-            )
-        };
-        let Ok(count) = self.count.clone().try_acquire_owned() else {
-            return busy();
-        };
-        let size = env.retained_len().saturating_add(512);
-        let Ok(bytes) = self
-            .bytes
-            .clone()
-            .try_acquire_many_owned(size.min(u32::MAX as usize) as u32)
-        else {
-            return busy();
-        };
-        let space = env.space().to_string();
-        let (reply, answer) = oneshot::channel();
-        let mut job = Job {
-            pending: Pending {
-                env,
-                target_known,
-                fence,
-            },
-            reply,
-            _count: count,
-            _bytes: bytes,
-        };
-        // A send fails only when the worker just exited (idle, or a panic). It is already
-        // gone from the map or is removed here, so the retry starts a fresh worker.
-        for attempt in 0..2 {
-            let tx = match self.queue(&space) {
-                Ok(tx) => tx,
-                Err(error) => {
-                    return (
-                        Err(error),
-                        BatchStats {
-                            size: 0,
-                            attempts: 0,
-                        },
-                    )
-                }
-            };
-            match tx.try_send(job) {
-                Ok(()) => break,
-                Err(mpsc::error::TrySendError::Full(_)) => return busy(),
-                Err(mpsc::error::TrySendError::Closed(back)) => {
-                    if attempt == 1 {
-                        return busy();
-                    }
-                    job = back;
-                    let Ok(mut queues) = self.queues.lock() else {
-                        return (
-                            Err(Reject::unavailable()),
-                            BatchStats {
-                                size: 0,
-                                attempts: 0,
-                            },
-                        );
-                    };
-                    if queues.get(&space).is_some_and(|q| q.same_channel(&tx)) {
-                        queues.remove(&space);
-                    }
-                }
-            }
+            ),
         }
-        answer.await.unwrap_or((
-            Err(Reject::unavailable()),
-            BatchStats {
-                size: 0,
-                attempts: 0,
-            },
-        ))
     }
 
     /// Spaces with a live worker (for tests and metrics).
@@ -240,7 +177,7 @@ async fn work<B: Batcher>(
                         // existing unavailable reply path and releases their permits.
                         return;
                     };
-                    if !rx.is_empty() {
+                    if !rx.is_empty() || rx.capacity() != rx.max_capacity() {
                         continue;
                     }
                     if q.get(&space).is_some_and(|tx| tx.same_channel(&me)) {
@@ -313,3 +250,6 @@ pub(crate) mod fork_histories;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod managed_generation_tests;

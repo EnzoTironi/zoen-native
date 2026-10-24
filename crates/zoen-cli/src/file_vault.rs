@@ -3,6 +3,7 @@
 //! transaction or a substitute for the enrollment/setup recovery record. The
 //! CLI establishes its home before opening this adapter; only the vault's entry
 //! within that existing home is created and synchronized here.
+use client_core::SecretVault;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -183,3 +184,17 @@ impl FileVault {
 #[cfg(test)]
 #[path = "file_vault_tests.rs"]
 mod tests;
+
+impl SecretVault for FileVault {
+    fn load(&self, key: String) -> Option<Vec<u8>> {
+        self.read_bytes(&key).ok()
+    }
+    fn save(&self, key: String, value: Vec<u8>) -> bool {
+        self.write_bytes(&key, &value).is_ok()
+    }
+    fn delete(&self, key: String) {
+        // SecretVault cannot report deletion errors. Callers needing confirmed
+        // removal must still reconcile with the retained enrollment/setup state.
+        let _ = self.remove(&key);
+    }
+}

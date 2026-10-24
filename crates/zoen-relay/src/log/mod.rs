@@ -29,6 +29,12 @@ pub enum Sequencing {
     },
 }
 
+pub enum ManagedPublication {
+    Sequenced(Sequencing),
+    /// Exact original evidence; this result does not append or fan out again.
+    Observed(Sequenced),
+}
+
 /// A redeemable invite, as the preview shows it.
 pub struct InviteInfo {
     pub space: String,
@@ -62,6 +68,29 @@ pub struct VisiblePage {
 /// Every call names its Space or identity, so cells and regions route above the trait.
 #[async_trait::async_trait]
 pub trait LogStore: Send + Sync {
+    /// Trusted host registry; absent devices retain ordinary messaging behavior.
+    fn managed_device(
+        &self,
+        _device: &str,
+    ) -> Option<std::sync::Arc<crate::managed_devices::ManagedDevice>> {
+        None
+    }
+    /// Read actual paired deployment/current checkpoint. Unsupported stores refuse.
+    async fn managed_checkpoint(
+        &self,
+        _deployment: &relay_admission::managed_images::Deployment,
+    ) -> Result<Option<relay_admission::managed_images::Checkpoint>, StoreError> {
+        Ok(None)
+    }
+    /// Read-only transport proof. An unsupported store cannot claim a runtime
+    /// deployment. The expected witness is read by the host from its own SQL.
+    async fn runtime_cell(
+        &self,
+        _namespace: &str,
+        _witness: &str,
+    ) -> Result<Option<String>, StoreError> {
+        Ok(None)
+    }
     /// Whether this node can renew its cell authority. Test stores default to ready.
     async fn ready(&self) -> bool {
         true
@@ -69,6 +98,25 @@ pub trait LogStore: Send + Sync {
     /// Admits and sequences one envelope in a single transaction. `target_known` says
     /// whether the identity a `MemberAdded` names is in the directory.
     async fn append(&self, env: &Envelope, target_known: bool) -> Result<Sequencing, Reject>;
+    /// Reserve ownership and capacity BEFORE independent consumption. The queue
+    /// retains the resulting linear permit through the actual append commit.
+    async fn append_managed_effect(
+        &self,
+        _env: &Envelope,
+        _target_known: bool,
+        _checkpoint: &relay_admission::managed_images::Checkpoint,
+    ) -> Result<ManagedPublication, Reject> {
+        Err(Reject::retry("managed publication unavailable"))
+    }
+    /// Observe only the exact retained publication. Absence after independent
+    /// consumption is uncertainty, never a new append capability.
+    async fn managed_publication_observation(
+        &self,
+        _condition: &relay_admission::managed_images::PublishCondition,
+        _env: &Envelope,
+    ) -> Result<Option<Sequenced>, StoreError> {
+        Ok(None)
+    }
     /// Events of `space` from `from` on, in order, at most `limit`.
     async fn read(
         &self,

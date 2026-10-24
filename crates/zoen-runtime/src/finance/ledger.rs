@@ -15,8 +15,8 @@ impl Finance {
         let row: Option<(i64, i64)> = sqlx::query_as(sqlx::AssertSqlSafe(query.to_owned()))
             .bind(&b.context.owner)
             .bind(b.period_start)
-            .bind(&b.price.currency)
-            .bind(i16::from(b.price.scale))
+            .bind(b.price.currency())
+            .bind(i16::from(b.price.scale()))
             .fetch_optional(&mut **tx)
             .await?;
         let Some((held_units, spent_units)) = row else {
@@ -48,8 +48,8 @@ impl Finance {
             || now >= end
             || now >= p.expires_at_ms
             || !p.enabled
-            || p.currency != b.price.currency
-            || p.scale != b.price.scale
+            || p.currency != b.price.currency()
+            || p.scale != b.price.scale()
             || !p.allowed_profiles.contains(&b.price.digest()?)
             || b.hold_units > p.max_attempt_units
         {
@@ -98,6 +98,19 @@ impl Finance {
         Ok(())
     }
     pub async fn install_policy(&self, signed: SignedOwnerPolicy) -> Result<String, RuntimeError> {
+        // Preserve rejection of invalid signatures before touching the database.
+        if !event_log::owner_budget::verify(&signed) {
+            return Err(RuntimeError::InvalidPolicy);
+        }
+        let mut tx = self.begin().await?;
+        let digest = Self::install_policy_in(&mut tx, signed).await?;
+        tx.commit().await?;
+        Ok(digest)
+    }
+    pub(super) async fn install_policy_in(
+        tx: &mut Transaction<'_, Postgres>,
+        signed: SignedOwnerPolicy,
+    ) -> Result<String, RuntimeError> {
         if !event_log::owner_budget::verify(&signed) {
             return Err(RuntimeError::InvalidPolicy);
         }
@@ -107,35 +120,33 @@ impl Finance {
         if p.expires_at_ms <= start || p.expires_at_ms > end {
             return Err(RuntimeError::InvalidPolicy);
         }
-        let mut tx = self.begin().await?;
-        Self::device(&mut tx, &p.owner, &signed.device, &signed.cert).await?;
-        Self::person(&mut tx, &p.owner).await?;
-        let now = Self::clock(&mut tx).await?;
+        Self::device(tx, &p.owner, &signed.device, &signed.cert).await?;
+        Self::person(tx, &p.owner).await?;
+        let now = Self::clock(tx).await?;
         if now >= p.expires_at_ms {
             return Err(RuntimeError::InvalidPolicy);
         }
         sqlx::query("INSERT INTO runtime_periods(owner,period_start,period_end,currency,scale) VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING")
-            .bind(&p.owner).bind(start).bind(end).bind(&p.currency).bind(i16::from(p.scale)).execute(&mut *tx).await?;
+            .bind(&p.owner).bind(start).bind(end).bind(&p.currency).bind(i16::from(p.scale)).execute(&mut **tx).await?;
         let matching: Option<i32> = sqlx::query_scalar("SELECT 1 FROM runtime_periods WHERE owner=$1 AND period_start=$2 AND period_end=$3 AND currency=$4 AND scale=$5 FOR UPDATE")
-            .bind(&p.owner).bind(start).bind(end).bind(&p.currency).bind(i16::from(p.scale)).fetch_optional(&mut *tx).await?;
+            .bind(&p.owner).bind(start).bind(end).bind(&p.currency).bind(i16::from(p.scale)).fetch_optional(&mut **tx).await?;
         if matching.is_none() {
             return Err(RuntimeError::InvalidPolicy);
         }
         let existing: Option<(i64,String)> = sqlx::query_as("SELECT version,digest FROM runtime_policies WHERE owner=$1 AND period_start=$2 ORDER BY version DESC LIMIT 1")
-            .bind(&p.owner).bind(start).fetch_optional(&mut *tx).await?;
+            .bind(&p.owner).bind(start).fetch_optional(&mut **tx).await?;
         let exact: Option<String> = sqlx::query_scalar(
             "SELECT digest FROM runtime_policies WHERE owner=$1 AND period_start=$2 AND version=$3",
         )
         .bind(&p.owner)
         .bind(start)
         .bind(i64::from(p.version))
-        .fetch_optional(&mut *tx)
+        .fetch_optional(&mut **tx)
         .await?;
         if let Some(old) = exact {
             if old != digest {
                 return Err(RuntimeError::InvalidBinding);
             }
-            tx.commit().await?;
             return Ok(digest);
         }
         if !match existing {
@@ -149,8 +160,7 @@ impl Finance {
         }
         sqlx::query("INSERT INTO runtime_policies(owner,period_start,version,digest,previous_digest,signed) VALUES ($1,$2,$3,$4,$5,$6)")
             .bind(&p.owner).bind(start).bind(i64::from(p.version)).bind(&digest).bind(&p.previous_digest)
-            .bind(Json(&signed)).execute(&mut *tx).await?;
-        tx.commit().await?;
+            .bind(Json(&signed)).execute(&mut **tx).await?;
         Ok(digest)
     }
     pub(super) async fn journal(
@@ -247,6 +257,7 @@ impl Finance {
         Ok(())
     }
     pub async fn claim(&self, b: &Binding) -> Result<Option<FreshClaim>, RuntimeError> {
+        let digest = b.digest()?;
         let mut tx = self.begin().await?;
         Self::directory(&mut tx, b).await?;
         let balance = Self::lock_period(&mut tx, b, false).await?;
@@ -263,7 +274,7 @@ impl Finance {
             "SELECT 1 FROM runtime_attempts WHERE attempt=$1 AND binding_digest=$2",
         )
         .bind(&b.context.attempt_id)
-        .bind(b.digest()?)
+        .bind(&digest)
         .fetch_optional(&mut *tx)
         .await?;
         if exact.is_none() {
@@ -295,7 +306,8 @@ impl Finance {
         Ok(new.then(|| FreshClaim {
             attempt: b.context.attempt_id.clone(),
             nonce,
-            binding: b.digest().expect("validated binding"),
+            binding: digest,
+            checkpoint: None,
         }))
     }
     pub async fn guard(

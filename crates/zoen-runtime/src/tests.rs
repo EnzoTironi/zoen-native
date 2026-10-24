@@ -1,10 +1,16 @@
 //! Real service primitives; seeded core scopes are not certified MLS integration.
+mod account_policy_context;
 mod deployment;
 mod failure_cuts;
 mod financial;
 mod http;
+pub(crate) mod image_tasks;
 mod journeys;
 mod managed_custody;
+mod managed_image_recovery;
+mod managed_images;
+mod owner_policy_controls;
+mod policy_replay;
 mod retained;
 mod stores;
 mod vault;
@@ -197,7 +203,7 @@ impl World {
             request_digest: hash(b"explicit-finance-fixture"),
             requested_output_tokens: 3,
             hold_units: 13,
-            price: self.runtime.price.clone(),
+            price: self.runtime.price.clone().into(),
         }
     }
     async fn balance(&self) -> PeriodBalance {

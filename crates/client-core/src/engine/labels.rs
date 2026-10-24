@@ -206,6 +206,22 @@ pub(crate) fn event_label(b: &EventBody) -> String {
                 t("Pedido recusado", "Request declined")
             }
         }
+        EventBody::OwnerPolicyOptionsRequested { .. } => {
+            t("Consulta de limite de IA", "AI spending policy inquiry")
+        }
+        EventBody::OwnerPolicyOptionsRefused { .. } => t(
+            "Consulta de limite de IA recusada",
+            "AI spending policy inquiry refused",
+        ),
+        EventBody::OwnerPolicyOptionsReported { .. } => {
+            t("Opções do limite de IA", "AI spending policy options")
+        }
+        EventBody::OwnerPolicySubmitted { .. } => {
+            t("Limite de IA enviado", "AI spending policy submitted")
+        }
+        EventBody::OwnerPolicyReported { .. } => {
+            t("Resposta ao limite de IA", "AI spending policy response")
+        }
         EventBody::UsageRecorded { cents, .. } => {
             tr!("Uso de IA: {}", "AI usage: {}", money(*cents))
         }

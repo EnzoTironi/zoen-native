@@ -1,10 +1,29 @@
 use super::*;
 pub(super) async fn run() {
+    // Independent fixture phases must not retain each other's debug-mode poll
+    // temporaries while their nested SQL/FDB/HTTP operations are executing.
+    Box::pin(native()).await;
+    Box::pin(authority()).await;
+}
+
+async fn native() {
+    owner_policy_controls::run().await;
+    Box::pin(image_tasks::run()).await;
+    Box::pin(managed_image_recovery::run()).await;
     managed_custody::run().await;
+    // Independent journeys are siblings: boxing their stored futures does not
+    // remove debug-mode poll temporaries from a nested caller's stack frame.
+    let reviewed_image = Box::pin(retained::image_tasks::review()).await;
+    let prepared_image = Box::pin(retained::image_tasks::prepare(reviewed_image)).await;
+    Box::pin(retained::image_tasks::deliver(prepared_image)).await;
     Box::pin(retained::run()).await;
+    Box::pin(retained::admission::run()).await;
     Box::pin(retained::output::run()).await;
     stores::native_device_custody().await;
     println!("native custody journey: test-provisioned real directory, retained OpenMLS packages, cold restore and device revocation PASS");
+}
+
+async fn authority() {
     failure_cuts::other_namespace_cannot_refund_dispatched_hold().await;
     println!("authority journey: another FDB namespace cannot refund an in-flight paid hold PASS");
     deployment::matching_workers_and_immutable_pairing().await;
@@ -51,6 +70,8 @@ pub(super) async fn run() {
     );
     w.finish().await;
     println!("authority journey: real HTTP settlement and durable replay PASS");
+    policy_replay::exact_restart_and_historical_replay().await;
+    policy_replay::expired_exact_replay_does_not_reactivate().await;
     financial::policies_and_historical_owner().await;
     println!("authority journey: signed policy and historical owner sponsorship PASS");
     financial::configured_gateway_must_match_price_profile().await;

@@ -12,10 +12,40 @@ pub(crate) struct FreshClaim {
     attempt: String,
     nonce: String,
     binding: String,
+    checkpoint: Option<crate::managed_images::DispatchCheckpoint>,
 }
 impl FreshClaim {
-    pub fn consume(self) -> (String, String, String) {
-        (self.attempt, self.nonce, self.binding)
+    pub(crate) fn effect_digest(&self) -> Result<String, RuntimeError> {
+        self.checkpoint_reference().digest()
+    }
+    pub(crate) fn checkpoint_reference(&self) -> crate::managed_images::DispatchReference {
+        crate::managed_images::DispatchReference {
+            attempt: self.attempt.clone(),
+            nonce: self.nonce.clone(),
+            binding_digest: self.binding.clone(),
+        }
+    }
+    pub(crate) fn with_checkpoint(
+        mut self,
+        checkpoint: Option<crate::managed_images::DispatchCheckpoint>,
+    ) -> Result<Self, RuntimeError> {
+        if checkpoint.as_ref().is_some_and(|checkpoint| {
+            Some(&checkpoint.prepared.effect_digest) != self.effect_digest().ok().as_ref()
+        }) {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        self.checkpoint = checkpoint;
+        Ok(self)
+    }
+    pub fn consume(
+        self,
+    ) -> (
+        String,
+        String,
+        String,
+        Option<crate::managed_images::DispatchCheckpoint>,
+    ) {
+        (self.attempt, self.nonce, self.binding, self.checkpoint)
     }
 }
 pub(crate) struct DirectoryGuard {
@@ -180,8 +210,15 @@ impl NativeDirectoryGuard {
     }
 
     pub(crate) async fn authorize(
+        self,
+        scope: crate::native::ActivationScope,
+    ) -> Result<NativeActivation, RuntimeError> {
+        self.authorize_before(scope, None).await
+    }
+    pub(crate) async fn authorize_before(
         mut self,
         scope: crate::native::ActivationScope,
+        expires_at_ms: Option<i64>,
     ) -> Result<NativeActivation, RuntimeError> {
         if !scope.matches_directory(
             &self.owner,
@@ -194,7 +231,15 @@ impl NativeDirectoryGuard {
         // Query and ACK latency consume the window. A dead/idle-terminated
         // connection fails before any FDB activation can start.
         let observed = std::time::Instant::now();
-        Finance::clock(&mut self.tx).await?;
+        let now = Finance::clock(&mut self.tx).await?;
+        let remaining = match expires_at_ms {
+            Some(expiry) => expiry
+                .checked_sub(now)
+                .filter(|remaining| *remaining > 0)
+                .ok_or(RuntimeError::Denied)?
+                .min(2000) as u64,
+            None => 2000,
+        };
         self.tx.commit().await?;
         // Explicit test cuts after a known real SQL commit. Neither cut claims
         // database wire-level commit-unknown behavior.
@@ -209,7 +254,7 @@ impl NativeDirectoryGuard {
         }
         let admission = NativeActivation {
             scope,
-            expires: observed + std::time::Duration::from_secs(2),
+            expires: observed + std::time::Duration::from_millis(remaining),
         };
         admission.check(&admission.scope)?;
         Ok(admission)
@@ -232,12 +277,15 @@ impl DirectoryGuard {
         mut self,
         admission: crate::execution::FreshAdmission,
     ) -> Result<DispatchPermit, RuntimeError> {
-        let (attempt, nonce) = admission.consume();
+        let (attempt, nonce, checkpoint) = admission.consume();
         sqlx::query("INSERT INTO runtime_admission_witnesses (attempt,nonce) VALUES ($1,$2)")
             .bind(attempt)
             .bind(nonce)
             .execute(&mut *self.tx)
             .await?;
+        if let Some(checkpoint) = checkpoint {
+            checkpoint.write_sql(&mut self.tx).await?;
+        }
         // Anchor the monotonic deadline before the SQL clock request, so query
         // and commit latency consume the window rather than extend permission.
         let observed = std::time::Instant::now();
@@ -281,5 +329,9 @@ pub(crate) fn period(year: i32, month: u8) -> Result<(i64, i64), RuntimeError> {
     Ok((start.timestamp_millis(), end.timestamp_millis()))
 }
 mod directory;
+mod image_checkpoint;
+mod image_checkpoint_recovery;
+mod image_publication;
 mod ledger;
+mod owner_policy;
 mod settlement;

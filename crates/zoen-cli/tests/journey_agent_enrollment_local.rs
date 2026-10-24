@@ -47,19 +47,8 @@ fn now_ms() -> u64 {
         .as_millis() as u64
 }
 
-// This adapter exercises the exact CLI atomic replacement implementation. It
-// only ever receives paths created below; no default home or user vault is used.
-impl SecretVault for file_vault::FileVault {
-    fn load(&self, key: String) -> Option<Vec<u8>> {
-        self.read_bytes(&key).ok()
-    }
-    fn save(&self, key: String, value: Vec<u8>) -> bool {
-        self.write_bytes(&key, &value).is_ok()
-    }
-    fn delete(&self, key: String) {
-        let _ = self.remove(&key);
-    }
-}
+// The shared CLI adapter owns the SecretVault implementation, including atomic
+// replacement. This test supplies only its own fresh synthetic homes.
 struct Home {
     path: PathBuf,
     lock: Option<agent_host_lock::HostLock>,

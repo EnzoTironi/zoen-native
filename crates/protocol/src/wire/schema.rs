@@ -59,7 +59,7 @@ pub struct PbReq {
     pub id: u64,
     #[prost(
         oneof = "pb_req::Op",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23"
     )]
     pub op: Option<pb_req::Op>,
 }
@@ -111,6 +111,8 @@ pub mod pb_req {
         RegisterPush(PbPushToken),
         #[prost(message, tag = "22")]
         CallTurn(PbCallTurnRequest),
+        #[prost(message, tag = "23")]
+        RuntimeBinding(PbRuntimeBindingRequest),
     }
 }
 
@@ -506,7 +508,7 @@ pub struct PbRes {
     pub id: u64,
     #[prost(
         oneof = "pb_res::R",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15"
     )]
     pub r: Option<pb_res::R>,
 }
@@ -542,7 +544,37 @@ pub mod pb_res {
         AgentState(PbAgentState),
         #[prost(message, tag = "14")]
         CallTurn(PbCallTurnReply),
+        #[prost(message, tag = "15")]
+        RuntimeBinding(PbRuntimeBindingProof),
     }
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct PbRuntimeBindingRequest {
+    #[prost(string, tag = "1")]
+    pub namespace: String,
+    #[prost(bytes = "vec", tag = "2")]
+    pub nonce: Vec<u8>,
+    #[prost(message, optional, tag = "3")]
+    pub managed: Option<PbManagedCheckpoint>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct PbManagedCheckpoint {
+    #[prost(uint64, tag = "1")]
+    pub generation: u64,
+    #[prost(uint64, tag = "2")]
+    pub sequence: u64,
+    #[prost(string, tag = "3")]
+    pub digest: String,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct PbRuntimeBindingProof {
+    #[prost(string, tag = "1")]
+    pub cell: String,
+    #[prost(bytes = "vec", tag = "2")]
+    pub tag: Vec<u8>,
 }
 
 #[derive(Clone, PartialEq, Message)]

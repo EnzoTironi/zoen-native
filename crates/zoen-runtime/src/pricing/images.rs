@@ -1,12 +1,14 @@
 //! Inert image pricing only. This grants no task, SQL hold or dispatch authority.
+mod endpoint;
 mod evidence;
+pub use endpoint::ImageEndpointPolicy;
 #[cfg(test)]
 mod tests;
 use crate::{hash, RuntimeError};
 use serde::{Deserialize, Serialize};
 use zoen_models::{
-    AttemptContext, DispatchDescriptor, DispatchRequest, ImageAttemptResult, ImageDispatch,
-    Operation, IMAGE_PROFILE, MAX_IMAGE_BYTES,
+    image_response_budget, AttemptContext, DispatchDescriptor, DispatchRequest, ImageAttemptResult,
+    ImageDispatch, Operation, IMAGE_PROFILE, MAX_IMAGE_BYTES,
 };
 
 /// Host-configured obligation tariffs in USD micro-units per million tokens.
@@ -16,6 +18,9 @@ use zoen_models::{
 pub struct ImagePriceProfile {
     pub version: String,
     pub endpoint: String,
+    /// Omitted for existing HTTPS profiles so their signed digests stay stable.
+    #[serde(default, skip_serializing_if = "ImageEndpointPolicy::is_https")]
+    pub endpoint_policy: ImageEndpointPolicy,
     pub model: String,
     pub credential_ref: String,
     pub currency: String,
@@ -60,7 +65,7 @@ impl ImagePriceProfile {
             || !self.model.starts_with("gpt-image-")
             || !crate::id(&self.credential_ref)
             || self.endpoint.len() > 2048
-            || endpoint.scheme() != "https"
+            || !self.endpoint_policy.permits(&endpoint)
             || !endpoint.username().is_empty()
             || endpoint.password().is_some()
             || endpoint.host().is_none()
@@ -74,6 +79,8 @@ impl ImagePriceProfile {
             || !(1..=MAX_IMAGE_BYTES).contains(&self.image.max_image_bytes)
             || !(1..=1_048_576).contains(&self.max_request_bytes)
             || !(1..=16_777_216).contains(&self.max_response_bytes)
+            || image_response_budget(self.image.max_image_bytes)
+                .is_none_or(|n| n > self.max_response_bytes)
             || self.reservation_units <= 0
             || [
                 self.input_text_units_per_million,
@@ -102,6 +109,8 @@ impl ImagePriceProfile {
             || !(1..=self.max_request_bytes).contains(&d.max_request_bytes)
             || !(1..=d.max_request_bytes).contains(&d.encoded_request_bytes)
             || !(1..=self.max_response_bytes).contains(&d.max_response_bytes)
+            || image_response_budget(self.image.max_image_bytes)
+                .is_none_or(|n| n > d.max_response_bytes)
             || request.request_digest.len() != 64
             || !request
                 .request_digest

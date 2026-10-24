@@ -8,6 +8,7 @@ fn profile() -> ImagePriceProfile {
     ImagePriceProfile {
         version: "image-v1".into(),
         endpoint: "https://api.openai.com/v1/images/generations".into(),
+        endpoint_policy: ImageEndpointPolicy::Https,
         model: "gpt-image-fixture".into(),
         credential_ref: "host-image-fixture".into(),
         currency: "USD".into(),
@@ -26,7 +27,7 @@ fn profile() -> ImagePriceProfile {
         output_image_units_per_million: 4_000_000,
         reservation_units: 10,
         max_request_bytes: 32768,
-        max_response_bytes: 65536,
+        max_response_bytes: 262144,
     }
 }
 fn dispatch(p: &ImagePriceProfile) -> DispatchRequest {
@@ -51,7 +52,7 @@ fn dispatch(p: &ImagePriceProfile) -> DispatchRequest {
             credential_ref: p.credential_ref.clone(),
             encoded_request_bytes: 200,
             max_request_bytes: 32768,
-            max_response_bytes: 65536,
+            max_response_bytes: 262144,
             requested_output_tokens: 0,
             image: Some(p.image.clone()),
         },
@@ -163,7 +164,7 @@ fn image_profile_and_quote_digests_bind_price_request_scope_and_exact_specificat
     changed!(output_text_units_per_million, 23);
     changed!(output_image_units_per_million, 29);
     changed!(max_request_bytes, 32767);
-    changed!(max_response_bytes, 65535);
+    changed!(max_response_bytes, p.max_response_bytes - 1);
     for i in 0..5 {
         let mut x = p.clone();
         match i {
@@ -388,4 +389,58 @@ fn integer_rounding_boundaries_and_overflows_never_cap_or_wrap_incurred_cost() {
     reflect_usage(&mut r);
     assert_eq!(q.charge(&r), Err(RuntimeError::InvalidProfile));
     assert_eq!(q.reservation_units(), 10);
+}
+
+#[test]
+fn image_price_refuses_a_spec_that_its_response_budget_cannot_represent() {
+    let mut p = profile();
+    p.max_response_bytes = zoen_models::image_response_budget(p.image.max_image_bytes).unwrap();
+    assert!(p.validate().is_ok());
+    let mut d = dispatch(&p);
+    d.descriptor.max_response_bytes = p.max_response_bytes;
+    assert!(p.quote(&d).is_ok());
+    let digest = p.digest().unwrap();
+    let mut incompatible = d.clone();
+    incompatible.descriptor.max_response_bytes -= 1;
+    assert!(p.quote(&incompatible).is_err());
+    p.max_response_bytes -= 1;
+    assert!(p.validate().is_err());
+    assert!(p.digest().is_err());
+    p.max_response_bytes += 2;
+    assert_ne!(p.digest().unwrap(), digest);
+}
+
+#[test]
+fn fixture_endpoint_domain_is_explicit_and_dns_never_becomes_loopback_permission() {
+    let mut p = profile();
+    let original = p.digest().unwrap();
+    let legacy = serde_json::to_value(&p).unwrap();
+    assert!(legacy.get("endpoint_policy").is_none());
+    assert_eq!(
+        serde_json::from_value::<ImagePriceProfile>(legacy)
+            .unwrap()
+            .digest()
+            .unwrap(),
+        original
+    );
+    p.endpoint_policy = ImageEndpointPolicy::LoopbackFixture;
+    for endpoint in [
+        "http://127.0.0.1:3000/v1/images/generations",
+        "http://[::1]:3000/v1/images/generations",
+    ] {
+        p.endpoint = endpoint.into();
+        p.quote(&dispatch(&p)).unwrap();
+        assert_ne!(p.digest().unwrap(), original);
+    }
+    for endpoint in [
+        "http://localhost:3000/v1/images/generations",
+        "http://127.0.0.1.evil/v1/images/generations",
+        "http://10.0.0.1/v1/images/generations",
+        "https://api.openai.com/v1/images/generations",
+        "http://127.0.0.1/v1/images/generations?forward=1",
+        "http://secret@127.0.0.1/v1/images/generations",
+    ] {
+        p.endpoint = endpoint.into();
+        assert_eq!(p.digest(), Err(RuntimeError::InvalidProfile), "{endpoint}");
+    }
 }

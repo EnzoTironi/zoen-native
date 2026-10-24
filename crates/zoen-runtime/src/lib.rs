@@ -7,9 +7,20 @@ use admission::{Binding, Capture, Session, VerifiedStep};
 mod custody;
 mod execution;
 mod finance;
+mod image_host;
+mod image_tasks;
+mod managed_images;
+pub use image_host::{
+    ImageHostConfig, ImageHostProgress, ImageRuntimeHost, OwnerPolicyInstallation,
+};
 mod native;
+pub use native::{
+    ImageDeliveryProgress, ImageDeliveryTarget, ImageOutputInspection, ImageReviewIntent,
+    ImageReviewProgress,
+};
 mod pricing;
-pub use pricing::{ImagePriceProfile, ImagePriceQuote, PriceProfile};
+mod relay_binding;
+pub use pricing::{ImageEndpointPolicy, ImagePriceProfile, ImagePriceQuote, PriceProfile};
 pub use types::owner_budget::{OwnerPeriodPolicy, SignedOwnerPolicy};
 
 use foundationdb::{tuple::Subspace, Database};
@@ -181,6 +192,8 @@ pub struct RuntimeAuthority {
     price: PriceProfile,
     // No production setter: an incarnation UUID does not prove absence after restore.
     continuity: Arc<AtomicBool>,
+    managed_images: Option<Arc<tokio::sync::Mutex<managed_images::ManagedImages>>>,
+    image_output: Option<native::ManagedImageOutput>,
     #[cfg(test)]
     fault: std::sync::atomic::AtomicU8,
     #[cfg(test)]
@@ -225,6 +238,8 @@ impl RuntimeAuthority {
             gateway,
             price: config.price,
             continuity: Arc::new(AtomicBool::new(false)),
+            managed_images: None,
+            image_output: None,
             #[cfg(test)]
             fault: std::sync::atomic::AtomicU8::new(0),
             #[cfg(test)]
@@ -235,6 +250,10 @@ impl RuntimeAuthority {
             output_fixture: None,
         })
     }
+    /// Install or observe the exact signed owner/period/version digest. An
+    /// existing older digest is historical observation, not proof of the latest
+    /// active budget. Current directory/signature/expiry checks still apply;
+    /// financial admission independently selects the latest policy.
     pub async fn install_policy(&self, signed: SignedOwnerPolicy) -> Result<String, RuntimeError> {
         self.finance.install_policy(signed).await
     }
@@ -434,12 +453,8 @@ impl RuntimeAuthority {
         let mut report = ReconcileReport::default();
         for (attempt, digest, sealed) in self.execution.pending_evidence(limit).await? {
             report.inspected += 1;
-            let capture: Capture =
-                self.custody
-                    .open(&format!("evidence/{attempt}"), Some(&digest), &sealed)?;
             if self
-                .finance
-                .capture(&capture, &digest, &sealed)
+                .capture_retained_evidence(&attempt, &digest, &sealed)
                 .await
                 .is_ok()
             {
@@ -482,6 +497,7 @@ impl RuntimeAuthority {
             runtime: self,
             step,
             admitted: Mutex::new(None),
+            image: None,
         };
         let result = self
             .gateway

@@ -52,3 +52,15 @@ Official contracts consulted on 2026-10-23:
 
 - [Images generation request and response](https://developers.openai.com/api/reference/typescript/resources/images/methods/generate).
 - [Output formats, dimensions and quality](https://developers.openai.com/api/docs/guides/image-generation).
+
+
+The supported response domain reserves exactly 65,536 bytes for normalized JSON
+fields other than the canonical base64 string. The PNG budget must satisfy
+`4 * ceil(png_bytes / 3) + 65,536 <= max_response_bytes`; both gateway preflight
+and the bound image price profile reject incompatible limits before admission.
+At the existing 16,777,216-byte response cap the maximum PNG is 12,533,760 bytes.
+The 12 MiB raw PNG ceiling is a separate hard bound, not a claim that its full
+range fits a 16 MiB JSON response. Normalized envelope fields above 65,536 bytes
+are rejected while retaining provider usage/evidence. Transport still bounds the
+actual raw JSON, including whitespace/escapes. This defines supported outputs;
+it does not force the provider to respect a cost or output ceiling.

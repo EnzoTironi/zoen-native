@@ -35,6 +35,7 @@ pub mod cursor_repair;
 pub mod experiments;
 pub mod links;
 pub mod push;
+pub mod runtime_binding;
 pub mod sites;
 pub mod turn;
 pub mod wire;
@@ -81,6 +82,8 @@ pub const CAPABILITIES: &[&str] = &[
     "profiles",
     AGENT_OWNER_PROOF,
     KEY_PACKAGE_CLAIM_CAPABILITY,
+    runtime_binding::CAPABILITY,
+    runtime_binding::MANAGED_CAPABILITY,
 ];
 
 /// A database-clock sample from the authenticated, receipt-capable relay connection.

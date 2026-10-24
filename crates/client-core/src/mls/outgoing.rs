@@ -65,6 +65,21 @@ impl Engine {
     }
 
     pub(super) fn seal_outgoing(&mut self, e: &Event, epoch: u64) -> R<()> {
+        // Ratchet and exact ciphertext remain one durable operation.
+        let tx = self.store.conn().unchecked_transaction().map_err(storage)?;
+        self.seal_outgoing_in_transaction(e, epoch)?;
+        tx.commit().map_err(storage)?;
+        Ok(())
+    }
+
+    /// The caller's transaction also retains its producer-specific association.
+    /// This does not open, commit, or recover a partial transaction.
+    pub(crate) fn seal_outgoing_in_transaction(&self, e: &Event, epoch: u64) -> R<()> {
+        if self.store.conn().is_autocommit() {
+            return Err(CoreError::Invalid {
+                reason: "Sealing requires a retained transaction.".into(),
+            });
+        }
         let author = self
             .net
             .author
@@ -76,11 +91,8 @@ impl Engine {
             content: e.content.clone(),
             sig: e.sig.clone(),
         };
-        // Advancing the sender ratchet and retaining its exact ciphertext are
-        // one durable operation. A failed cache write must not consume a generation.
-        let tx = self.store.conn().unchecked_transaction().map_err(storage)?;
         let data = self
-            .device_on(&tx)?
+            .device_on(self.store.conn())?
             .seal(&e.space, &inner.encode())
             .map_err(mls_err)?;
         let outer = Envelope::sealed(
@@ -95,7 +107,6 @@ impl Engine {
             &sealed_meta(&e.client_id),
             &format!("{epoch}:{}:{}", hex::encode(outer.content()), outer.sig),
         )?;
-        tx.commit().map_err(storage)?;
         Ok(())
     }
 
