@@ -1,4 +1,7 @@
-use super::*;
+use super::{
+    DeviceCore, EventBody, FileDoc, ImageTaskFacts, ItemContent, ItemKind, NativeError,
+    NativeImage, Result, MAX_EVENT_BYTES,
+};
 use protocol::Envelope;
 use sha2::{Digest, Sha256};
 
@@ -15,18 +18,23 @@ impl std::fmt::Debug for PreparedImageTask {
     }
 }
 impl PreparedImageTask {
+    #[must_use]
     pub fn blobs(&self) -> &[crate::files::NativeFileBlob] {
         &self.blobs
     }
+    #[must_use]
     pub fn facts(&self) -> &ImageTaskFacts {
         &self.facts
     }
+    #[must_use]
     pub fn file(&self) -> &FileDoc {
         &self.file
     }
+    #[must_use]
     pub fn envelope(&self) -> &Envelope {
         &self.envelope
     }
+    #[must_use]
     pub fn image(&self) -> &NativeImage {
         &self.image
     }

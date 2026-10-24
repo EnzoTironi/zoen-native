@@ -1,4 +1,4 @@
-//! Publication operations on the original PageSession state.
+//! Publication operations on the original `PageSession` state.
 
 use super::*;
 

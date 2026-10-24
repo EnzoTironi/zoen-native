@@ -1,6 +1,9 @@
 //! Encrypted media HTTP transfer and existing bounded retry ownership.
 
-use super::*;
+use super::{
+    now_ms, tracing_like, Arc, CoreListener, Duration, EngineLease, MediaDownloadRetries,
+    RecoveryRetries, SinkExt, StreamExt,
+};
 
 /// Uploads queued encrypted copies and downloads the ones the chats need, retrying with
 /// backoff (a peer's event can arrive before their upload finishes).
@@ -141,8 +144,8 @@ pub(super) async fn media_worker(
         }
 
         tokio::select! {
-            _ = kick.notified() => {}
-            _ = tokio::time::sleep(Duration::from_secs(5)) => {}
+            () = kick.notified() => {}
+            () = tokio::time::sleep(Duration::from_secs(5)) => {}
         }
     }
 }

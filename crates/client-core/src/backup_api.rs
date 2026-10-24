@@ -23,7 +23,7 @@ const STATUS_META: &str = "backup.status";
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct BackupStatusDto {
     pub enabled: bool,
-    /// "password" or "recovery_key" (empty while off).
+    /// "password" or "`recovery_key`" (empty while off).
     pub mode: String,
     /// When the last backup reached the server (ms since 1970; 0 = never).
     pub last_backup_ms: i64,

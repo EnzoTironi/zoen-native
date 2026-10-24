@@ -1,6 +1,9 @@
 //! Confirmed membership and encrypted profile-key shares.
 
-use super::*;
+use super::{
+    now_ms, open_share, seal_share, share_context, Digest, Engine, Event, EventBody, HashSet,
+    IdentityId, IdentityKind, ProfileKeyShare, SealedShare, SpaceId, R, SHARES_PER_EVENT,
+};
 
 #[cfg(test)]
 mod tests;

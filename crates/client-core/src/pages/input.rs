@@ -86,7 +86,7 @@ pub(super) struct Capture {
     pub sha256: String,
 }
 mod payload_bytes {
-    use super::*;
+    use super::{tagged, Deserialize, MAX_CAPTURE};
     pub fn serialize<S: serde::Serializer>(bytes: &[u8], s: S) -> Result<S::Ok, S::Error> {
         s.serialize_str(&tagged::encode_bytes(bytes))
     }

@@ -1,5 +1,9 @@
 //! Persistence, identity signing and projection reload.
-use super::*;
+use super::{
+    new_ulid, not_found, now_ms, t, Author, CoreError, Engine, Event, EventBody, HashMap, Identity,
+    IdentityId, IdentityKind, ItemState, PlanReplay, Policy, Privacy, Projection, Signer, SpaceId,
+    SpaceKind, SpaceLog, SpaceState, State, Store, R,
+};
 
 impl Engine {
     pub(crate) fn merge_space_projections(
@@ -111,7 +115,7 @@ impl Engine {
         self.pages
             .sessions
             .lock()
-            .unwrap_or_else(|p| p.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clear();
         self.logs.clear();
         self.space_order.clear();
@@ -332,8 +336,7 @@ impl Engine {
         self.state
             .spaces
             .get(space)
-            .map(|s| s.members.iter().any(|(m, _)| m == who))
-            .unwrap_or(false)
+            .is_some_and(|s| s.members.iter().any(|(m, _)| m == who))
     }
 
     pub fn wipe(&mut self) -> R<()> {

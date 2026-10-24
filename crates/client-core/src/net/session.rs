@@ -1,6 +1,13 @@
 //! One authenticated ordered dispatcher with cursor repair ownership.
 
-use super::*;
+use super::{
+    auth_message, complete_reads, cursor_repair, dispatch, flush, http_base, maintenance,
+    media_worker, mpsc, recv, refused, register, send, tracing_like, watch, ws_url, AbortOnDrop,
+    Arc, AuthenticatedRelay, ClaimClockSample, ClientFrame, Cmd, ConnState, CoreListener, Ctx,
+    CursorRepair, CursorRepairPolicy, DeferredReceipts, Duration, Exit, HashMap, HashSet,
+    KeyPackageClaimClock, Message, ProfileTraffic, ServerFrame, SinkExt, StreamExt, Waiting,
+    CAPABILITIES, MAINTENANCE_PERIOD, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION,
+};
 
 pub(super) async fn session(
     ctx: &Ctx,
@@ -47,7 +54,10 @@ pub(super) async fn session_with_repair_policy(
     // ── login ──
     let hello = ClientFrame::Hello {
         protocol: PROTOCOL_VERSION,
-        capabilities: CAPABILITIES.iter().map(|c| c.to_string()).collect(),
+        capabilities: CAPABILITIES
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect(),
         identity: identity.clone(),
         device: key.id(),
         cert,
@@ -200,7 +210,7 @@ pub(super) async fn session_with_repair_policy(
     loop {
         if let Err(e) = complete_reads::drain(&mut sink,&mut waiting,&mut next_id,&mut deferred_reads).await { break Exit::Retry(e); }
         tokio::select! {
-            _ = async {
+            () = async {
                 match complete_reads::deadline(&waiting) {
                     Some(deadline) => tokio::time::sleep_until(deadline).await,
                     None => std::future::pending().await,
@@ -241,7 +251,7 @@ pub(super) async fn session_with_repair_policy(
                 None | Some(Cmd::Stop) => break Exit::Stop,
                 Some(Cmd::Flush) => {
                     // A profile edit needs a fresh login to re-register.
-                    let needs_register = engine!(|engine| engine.account().map(|a| !a.registered).unwrap_or(false));
+                    let needs_register = engine!(|engine| engine.account().is_some_and(|a| !a.registered));
                     if needs_register { break Exit::Retry("re-registering".into()) }
                     if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) }
                     media_kick.notify_one();
@@ -255,7 +265,7 @@ pub(super) async fn session_with_repair_policy(
                     if let Err(e) = send(&mut sink, &ClientFrame::Ephemeral { space, kind }).await { break Exit::Retry(e) }
                 }
             },
-            _ = &mut tick => {
+            () = &mut tick => {
                 #[cfg(test)]
                 if let Some(work) = &ctx.maintenance_work { work(); }
                 if !ctx.status.borrow().synced {
@@ -278,7 +288,7 @@ pub(super) async fn session_with_repair_policy(
                 // burst of overdue scans over the same pending work.
                 tick.as_mut().reset(tokio::time::Instant::now() + MAINTENANCE_PERIOD);
             }
-            _ = async {
+            () = async {
                 match cursor_repair.admission() {
                     Some(next) => tokio::time::sleep_until(next).await,
                     None => std::future::pending().await,
@@ -305,7 +315,7 @@ pub(super) async fn session_with_repair_policy(
     let repair_abandoned =
         cursor_repair.abandon_transport(repair_expired, tokio::time::Instant::now());
     // Include unsent claims if writing a batch failed before their waiting entry existed.
-    engine!(|engine| engine.mls_claims_disconnected());
+    engine!(super::super::engine::Engine::mls_claims_disconnected);
     for (_, w) in deferred_reads {
         w.fail("offline");
     }

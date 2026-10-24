@@ -1,5 +1,9 @@
 //! Item cards and message/voice presentation projections.
-use super::*;
+use super::{
+    content_hash, kind_id, kind_label, t, ts, Delivery, Engine, Entry, EntryBody, EntryKind,
+    EventBody, ItemCard, ItemContent, ItemKind, ItemState, MessageMarks, MessageMediaDto, Persona,
+    PlanLine, ReactionDto, ReqStatus, SpaceState, TimelineEntry, VoiceMeta, VoiceNoteDto, R,
+};
 
 impl Engine {
     pub(super) fn line_hash(line: &PlanLine) -> R<String> {

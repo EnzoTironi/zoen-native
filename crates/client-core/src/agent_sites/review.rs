@@ -1,5 +1,9 @@
 //! The unchanged signed Request/ToolProposal envelope owns review and consent.
-use super::*;
+use super::{
+    contract, digest, executor_binding, invalid, json, model_name, parse, sha, shared, stale,
+    token, ActionClass, AgentRequest, Client, Command, CoreError, Digest, ItemContent, ItemKind,
+    State, ToolProposal, Value, ARGUMENT_LIMIT, HTML_LIMIT, R, REVISION, SCHEMA,
+};
 use crate::{AgentRequestDto, AgentToolApprovalInput};
 use types::EventBody;
 
@@ -150,8 +154,7 @@ pub(crate) fn matches(state: &State, req: &AgentRequest, space: &str) -> bool {
         && source == p.source_sha256
         && req.tool_proposal_hash(space).as_deref() == Some(&req.content_hash)
         && serde_json::to_vec(&("zoen.tool-task.v1", space, &req.agent, &p.source))
-            .ok()
-            .is_some_and(|bytes| p.task_sha256 == sha(&bytes))
+            .is_ok_and(|bytes| p.task_sha256 == sha(&bytes))
         && ask["envelope"]
             == json!({"agent":req.agent,"device":p.device,"owner":p.owner,"space":space,"from":p.serving,"inbound_sha256":inbound})
 }

@@ -1,5 +1,8 @@
 //! A whole Page uses its observed canonical snapshot and the existing input journal.
-use super::*;
+use super::{
+    invalid, tagged, text, validate_target, Binding, Capture, Digest, PageBlockDto, PageInputMode,
+    PageInputTarget, MAX_CAPTURE, R,
+};
 use std::collections::{HashMap, HashSet, VecDeque};
 
 pub(in crate::pages) fn validate(blocks: &[PageBlockDto]) -> R<()> {

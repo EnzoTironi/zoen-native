@@ -1,6 +1,11 @@
 //! Capture on the original Engine and canonical document state.
 
-use super::*;
+use super::{
+    content_json, intent_id, invalid, references, stale, valid_asset, validate, Content, Digest,
+    Engine, HashMap, MediaDraftAsset, MediaDraftAssetInput, MediaDraftDto, MediaDraftSaveResult,
+    MediaDraftScope, Record, SaveReceipt, Sha256, Zeroizing, MAX_ASSET_BYTES, MAX_CONTENT_BYTES,
+    MAX_SAVE_RECEIPTS, R,
+};
 
 impl Engine {
     pub(super) fn media_draft(&self, scope: &MediaDraftScope) -> R<MediaDraftDto> {

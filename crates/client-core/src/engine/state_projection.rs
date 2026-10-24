@@ -1,5 +1,9 @@
 //! Fold authenticated accepted events into the existing State.
-use super::*;
+use super::{
+    t, BeforeEvent, Entry, EntryBody, Event, EventBody, GrantState, HashMap, Identity, IdentityId,
+    ItemContent, ItemKind, MessageMarks, PlanOrigin, Privacy, Projection, ReqStatus, RequestState,
+    Role, SpaceKind, SpaceState, State, Version,
+};
 
 impl State {
     pub(crate) fn apply_checked(

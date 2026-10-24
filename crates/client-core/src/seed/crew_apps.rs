@@ -5,7 +5,7 @@ use crate::i18n::t;
 use crate::CoreError;
 use types::new_id;
 use types::{AppDoc, Capability, EventBody, GrantScope, ItemContent, ItemKind, TrustLevel};
-/// Saturday Crew: hike (locked + ride), pet Paçoca, MapTap — feeds Home strip + chat tiles.
+/// Saturday Crew: hike (locked + ride), pet Paçoca, `MapTap` — feeds Home strip + chat tiles.
 pub(super) fn seed(e: &mut Engine, turma: &str, cast: &Cast, t0: i64) -> R<()> {
     let Cast {
         enzo,

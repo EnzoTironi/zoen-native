@@ -1,5 +1,8 @@
 //! Non-model options worker, using the same confirmed encrypted control channel.
-use super::*;
+use super::{
+    denied, invalid, validate_options, Client, CoreError, Engine, EventBody, OwnerPolicyOptions,
+    Serialize, SignedOwnerPolicyInquiry, R,
+};
 pub struct OwnerPolicyInquiryControl {
     source: String,
     sequence: u64,
@@ -7,21 +10,27 @@ pub struct OwnerPolicyInquiryControl {
     digest: String,
 }
 impl OwnerPolicyInquiryControl {
+    #[must_use]
     pub fn source(&self) -> &str {
         &self.source
     }
+    #[must_use]
     pub fn sequence(&self) -> u64 {
         self.sequence
     }
+    #[must_use]
     pub fn space(&self) -> &str {
         &self.signed.inquiry.space
     }
+    #[must_use]
     pub fn agent(&self) -> &str {
         &self.signed.inquiry.agent
     }
+    #[must_use]
     pub fn signed(&self) -> &SignedOwnerPolicyInquiry {
         &self.signed
     }
+    #[must_use]
     pub fn digest(&self) -> &str {
         &self.digest
     }
@@ -69,7 +78,7 @@ impl Engine {
                     }
                 }
                 Err(CoreError::Forbidden { .. }) => {
-                    scan.counts.rejected = scan.counts.rejected.saturating_add(1)
+                    scan.counts.rejected = scan.counts.rejected.saturating_add(1);
                 }
                 Err(error) => return Err(error),
             }
@@ -148,7 +157,7 @@ impl Engine {
                 self.logs
                     .get(query.space())
                     .into_iter()
-                    .flat_map(|log| log.events()),
+                    .flat_map(event_log::SpaceLog::events),
             )
             .any(|event| {
                 let matches = match &event.body {

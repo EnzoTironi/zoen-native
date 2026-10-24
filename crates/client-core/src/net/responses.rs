@@ -1,6 +1,9 @@
 //! Correlated responses settle only the current request on this socket.
 
-use super::*;
+use super::{
+    complete_reads, flush, settle, tracing_like, CoreListener, Ctx, Exit, HashMap, HashSet,
+    ProfileTraffic, Reply, Sink, SinkExt, StreamExt, Waiting,
+};
 
 pub(super) struct ReplyContext<'a> {
     pub(super) ctx: &'a Ctx,

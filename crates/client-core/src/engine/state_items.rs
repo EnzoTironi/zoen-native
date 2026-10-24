@@ -1,5 +1,8 @@
 //! Accepted and recoverable item/media projection state.
-use super::*;
+use super::{
+    t, Entry, EntryBody, Event, EventBody, ItemContent, ItemKind, ItemState, MessageMarks, State,
+    Version,
+};
 
 impl State {
     pub(super) fn create_item(
@@ -90,7 +93,7 @@ impl State {
 
     /// Reserve a failed local identity before confirmed events are replayed. A
     /// legacy attachment claim must not acquire a card when recovery bytes are
-    /// inserted later. A validated ItemCreated clears this derived reservation.
+    /// inserted later. A validated `ItemCreated` clears this derived reservation.
     pub(crate) fn reserve_failed_attachment(&mut self, event: &Event, local: &str, source: &Event) {
         let EventBody::MessagePosted {
             attaches: Some(item),

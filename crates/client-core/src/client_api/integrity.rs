@@ -1,5 +1,5 @@
 //! Read-only integrity boundary. Verification always rereads canonical storage.
-use super::*;
+use super::{encode, invalid, Client, CoreError, LogEventsPage};
 
 impl Client {
     fn integrity_scope(engine: &crate::engine::Engine, space: &str) -> Result<(), CoreError> {

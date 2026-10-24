@@ -1,6 +1,9 @@
 //! Session publication and durable exact upload replay.
 
-use super::*;
+use super::{
+    seal_profile, sign_agreement, sign_upload, DeviceSigned, Engine, SealedProfile, StoredUpload,
+    MAX_CIPHERTEXT, META_AGREEMENT,
+};
 
 impl Engine {
     // ── relay traffic ──

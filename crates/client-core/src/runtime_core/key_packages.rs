@@ -1,6 +1,6 @@
 //! One initial public-package outbox inside the complete native device image.
 //! Retention is not relay publication authority or acknowledgement evidence.
-use super::*;
+use super::{Deserialize, DeviceCore, NativeError, NativeImage, Result, Serialize};
 
 const KEY: &str = "runtime.initial-key-packages/1";
 const COUNT: usize = 32;
@@ -22,12 +22,15 @@ pub struct InitialKeyPackages {
     acknowledged: bool,
 }
 impl InitialKeyPackages {
+    #[must_use]
     pub fn packages(&self) -> &[Vec<u8>] {
         &self.packages
     }
+    #[must_use]
     pub fn digest(&self) -> &str {
         &self.digest
     }
+    #[must_use]
     pub fn acknowledged(&self) -> bool {
         self.acknowledged
     }

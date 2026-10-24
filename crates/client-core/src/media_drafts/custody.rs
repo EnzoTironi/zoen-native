@@ -1,6 +1,10 @@
 //! Custody on the original Engine and canonical document state.
 
-use super::*;
+use super::{
+    invalid, storage_error, validate, Digest, Engine, Hkdf, MediaDraftAsset, MediaDraftScope,
+    OptionalExtension, Record, Sha256, Storage, Zeroizing, DOMAIN, MAX_ASSET_BYTES,
+    MAX_RECORD_BYTES, MAX_RETAINED_BYTES, MAX_SCOPES, MEDIA_DRAFT_REVISION_ZERO, PREFIX, R,
+};
 
 impl Engine {
     pub(super) fn media_draft_scope(&self, scope: &MediaDraftScope) -> R<Storage> {
@@ -39,7 +43,7 @@ impl Engine {
         };
         let plain = Zeroizing::new(
             crate::local_sealed::open(&storage.key, &storage.aad, &encoded, MAX_RECORD_BYTES)
-                .map_err(|_| storage_error())?,
+                .map_err(|()| storage_error())?,
         );
         let record: Record = serde_json::from_slice(&plain).map_err(|_| storage_error())?;
         if record.revision == MEDIA_DRAFT_REVISION_ZERO {
@@ -56,7 +60,7 @@ impl Engine {
             return Err(invalid());
         }
         let encrypted = crate::local_sealed::seal(&storage.key, &storage.aad, &plain)
-            .map_err(|_| storage_error())?;
+            .map_err(|()| storage_error())?;
         self.store.set_meta(&storage.id, &encrypted)?;
         let (scopes, bytes): (usize, usize) = self.store.conn().query_row(
             "SELECT COUNT(CASE WHEN key LIKE 'media.draft.record.%' THEN 1 END), COALESCE(SUM(length(CAST(value AS BLOB))),0) FROM meta WHERE key LIKE 'media.draft.%'",
@@ -79,7 +83,7 @@ impl Engine {
         for (asset, bytes) in fresh {
             let encrypted =
                 crate::local_sealed::seal(&storage.key, &storage.asset_aad(asset)?, bytes)
-                    .map_err(|_| storage_error())?;
+                    .map_err(|()| storage_error())?;
             self.store
                 .set_meta(&storage.asset_key(&asset.id), &encrypted)?;
         }
@@ -106,7 +110,7 @@ impl Engine {
                 &encoded,
                 MAX_ASSET_BYTES,
             )
-            .map_err(|_| storage_error())?,
+            .map_err(|()| storage_error())?,
         );
         if bytes.len() as u64 != asset.size || hex::encode(Sha256::digest(&*bytes)) != asset.sha256
         {

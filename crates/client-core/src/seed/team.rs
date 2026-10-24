@@ -16,7 +16,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<String> {
     let team = new_id("sp")?;
     e.append_at(
         &team,
-        &enzo,
+        enzo,
         at(60 * 24 * 2),
         EventBody::SpaceCreated {
             title: t(&t("Zoen · Produto", "Zoen · Product"), "Zoen · Product"),
@@ -27,7 +27,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<String> {
     for m in [lucas, ana, zoen] {
         e.append_at(
             &team,
-            &enzo,
+            enzo,
             at(60 * 24 * 2),
             EventBody::MemberAdded {
                 identity: m.clone(),
@@ -37,7 +37,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<String> {
     }
     e.append_at(
         &team,
-        &lucas,
+        lucas,
         at(60 * 6),
         msg(&t(
             "Subi o build novo no TestFlight. A cápsula de vidro encolhendo ao rolar ficou linda.",
@@ -46,7 +46,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<String> {
     )?;
     e.append_at(
         &team,
-        &ana,
+        ana,
         at(60 * 5 + 40),
         msg(&t(
             "O cartão de pedido no escuro tá impecável. Só falta o ícone do Mac.",
@@ -54,7 +54,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<String> {
         ))?,
     )?;
     let summary = new_id("it")?;
-    e.append_at(&team, &zoen, at(60 * 5), EventBody::ItemCreated {
+    e.append_at(&team, zoen, at(60 * 5), EventBody::ItemCreated {
         item: summary.clone(),
         kind: ItemKind::Note,
         content: ItemContent::Text { text: t(&t("Resumo do dia\n• Build novo no TestFlight (Lucas)\n• Cartão de pedido aprovado no escuro (Ana)\n• Pendente: ícone do app no Mac", "Daily summary\n• New build on TestFlight (Lucas)\n• Request card approved in dark mode (Ana)\n• Pending: the Mac app icon"), "Daily summary\n• New build on TestFlight (Lucas)\n• Request card approved in dark mode (Ana)\n• Pending: the Mac app icon") },
@@ -62,7 +62,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<String> {
     })?;
     e.append_at(
         &team,
-        &zoen,
+        zoen,
         at(60 * 5),
         EventBody::MessagePosted {
             message: new_id("msg")?,
@@ -81,7 +81,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<String> {
     )?;
     e.append_at(
         &team,
-        &zoen,
+        zoen,
         at(60 * 5),
         EventBody::UsageRecorded {
             agent: zoen.clone(),

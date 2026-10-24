@@ -20,7 +20,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<()> {
     let paraty = new_id("sp")?;
     e.append_at(
         &paraty,
-        &enzo,
+        enzo,
         at(200),
         EventBody::SpaceCreated {
             title: t(
@@ -34,7 +34,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<()> {
     for m in [marina, zoen, fin, org] {
         e.append_at(
             &paraty,
-            &enzo,
+            enzo,
             at(200),
             EventBody::MemberAdded {
                 identity: m.clone(),
@@ -44,40 +44,40 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<()> {
     }
     e.append_at(
         &paraty,
-        &enzo,
+        enzo,
         at(200),
         grant(
-            &enzo,
-            &zoen,
+            enzo,
+            zoen,
             GrantScope::Space(paraty.clone()),
             Capability::Trust(TrustLevel::Act),
         )?,
     )?;
     e.append_at(
         &paraty,
-        &enzo,
+        enzo,
         at(200),
         grant(
-            &enzo,
-            &fin,
+            enzo,
+            fin,
             GrantScope::Space(paraty.clone()),
             Capability::Trust(TrustLevel::Act),
         )?,
     )?;
     e.append_at(
         &paraty,
-        &marina,
+        marina,
         at(199),
         grant(
-            &marina,
-            &org,
+            marina,
+            org,
             GrantScope::Space(paraty.clone()),
             Capability::Trust(TrustLevel::Suggest),
         )?,
     )?;
     e.append_at(
         &paraty,
-        &marina,
+        marina,
         at(190),
         msg(&t(
             "Feriado chegando… bora pra Paraty? 🌊",
@@ -86,7 +86,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<()> {
     )?;
     e.append_at(
         &paraty,
-        &enzo,
+        enzo,
         at(188),
         msg(&t(
             "Bora! @Zoen planeja nosso fim de semana em Paraty, até R$ 1.500",
@@ -169,7 +169,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<()> {
     let plan_item = new_id("it")?;
     e.append_at(
         &paraty,
-        &zoen,
+        zoen,
         at(187),
         EventBody::ItemCreated {
             item: plan_item.clone(),
@@ -184,10 +184,10 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<()> {
             ),
         },
     )?;
-    e.append_at(&paraty, &zoen, at(187), EventBody::MessagePosted { message: new_id("msg")?, text: t(&t("Montei o plano: ônibus, 2 noites na Casa Azul e escuna. R$ 1.348 de R$ 1.500 · sobra R$ 152.", "Here's the plan: bus, 2 nights at Casa Azul and a schooner. $1,348 of $1,500 · $152 left."), "Here's the plan: bus, 2 nights at Casa Azul and a schooner. $1,348 of $1,500 · $152 left."), attaches: Some(plan_item.clone()), reply: None, media: None, forwarded: false, })?;
+    e.append_at(&paraty, zoen, at(187), EventBody::MessagePosted { message: new_id("msg")?, text: t(&t("Montei o plano: ônibus, 2 noites na Casa Azul e escuna. R$ 1.348 de R$ 1.500 · sobra R$ 152.", "Here's the plan: bus, 2 nights at Casa Azul and a schooner. $1,348 of $1,500 · $152 left."), "Here's the plan: bus, 2 nights at Casa Azul and a schooner. $1,348 of $1,500 · $152 left."), attaches: Some(plan_item.clone()), reply: None, media: None, forwarded: false, })?;
     e.append_at(
         &paraty,
-        &zoen,
+        zoen,
         at(187),
         EventBody::UsageRecorded {
             agent: zoen.clone(),
@@ -208,7 +208,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<()> {
     let trip_state = serde_json::json!({ "title": trip_title, "place": "Paraty", "target": t0 + 9 * 24 * 60 * MIN + 7 * 60 * MIN, "log": [{ "who": "Zoen", "what": t(&t("criou a contagem", "started the countdown"), "started the countdown"), "at": at(186) }] });
     e.append_at(
         &paraty,
-        &zoen,
+        zoen,
         at(186),
         EventBody::ItemCreated {
             item: trip.clone(),
@@ -228,10 +228,10 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<()> {
     )?;
     e.append_at(
         &paraty,
-        &enzo,
+        enzo,
         at(186),
         grant(
-            &enzo,
+            enzo,
             &format!("app:{trip}"),
             GrantScope::Item(trip.clone()),
             Capability::Trust(TrustLevel::Act),
@@ -239,7 +239,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<()> {
     )?;
     e.append_at(
         &paraty,
-        &zoen,
+        zoen,
         at(186),
         EventBody::MessagePosted {
             message: new_id("msg")?,
@@ -259,7 +259,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<()> {
 
     e.append_at(
         &paraty,
-        &marina,
+        marina,
         at(175),
         msg(&t(
             "Amei! Troca o jantar por aquele do centro histórico que tem moqueca?",
@@ -279,7 +279,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<()> {
     }
     e.append_at(
         &paraty,
-        &zoen,
+        zoen,
         at(174),
         EventBody::ItemVersioned {
             item: plan_item.clone(),
@@ -295,7 +295,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<()> {
     )?;
     e.append_at(
         &paraty,
-        &zoen,
+        zoen,
         at(174),
         msg(&t(
             "Troquei: jantar no Banana da Terra (R$ 260). Total agora R$ 1.388.",
@@ -303,10 +303,10 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<()> {
         ))?,
     )?;
 
-    e.append_at(&paraty, &fin, at(160), msg(&t("Dividi meio a meio: R$ 694 pra cada. Deixei as reservas prontas em Atividade pra você aprovar.", "Split it 50/50: $694 each. The bookings are ready in Activity for you to approve."))?)?;
+    e.append_at(&paraty, fin, at(160), msg(&t("Dividi meio a meio: R$ 694 pra cada. Deixei as reservas prontas em Atividade pra você aprovar.", "Split it 50/50: $694 each. The bookings are ready in Activity for you to approve."))?)?;
     e.append_at(
         &paraty,
-        &fin,
+        fin,
         at(160),
         EventBody::UsageRecorded {
             agent: fin.clone(),
@@ -321,7 +321,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<()> {
     // Pedidos do Financeiro: linhas vermelhas (dinheiro acima do teto) e envio para fora.
     e.open_request_at(
         &paraty,
-        &fin,
+        fin,
         at(159),
         &t("Reservar a Pousada Casa Azul", "Book the Casa Azul Inn"),
         &t(
@@ -334,7 +334,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<()> {
     )?;
     e.open_request_at(
         &paraty,
-        &fin,
+        fin,
         at(158),
         &t("Comprar as passagens de ônibus", "Buy the bus tickets"),
         &t(
@@ -347,7 +347,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<()> {
     )?;
     e.open_request_at(
         &paraty,
-        &fin,
+        fin,
         at(157),
         &t(
             "Mandar a cobrança de R$ 694 para a Marina",
@@ -364,7 +364,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<()> {
 
     e.append_at(
         &paraty,
-        &org,
+        org,
         at(150),
         msg(&t(
             "Criei a lista de malas da Marina e um lembrete pra sexta, 17h.",
@@ -373,7 +373,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<()> {
     )?;
     e.append_at(
         &paraty,
-        &marina,
+        marina,
         at(18),
         msg(&t(
             "@Enzo já aprovou a pousada? Eles seguram a reserva só até hoje 😅",

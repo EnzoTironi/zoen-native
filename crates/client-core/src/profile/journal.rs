@@ -1,6 +1,9 @@
 //! Protected local profile intent and fixed-key initialization.
 
-use super::*;
+use super::{
+    invalid, AgreementKey, CoreError, Engine, OwnJournal, OwnProfileSync, ProfileFields,
+    ProfileKey, META_OWN_SYNC, META_UPLOADED, R,
+};
 
 impl Engine {
     pub(super) fn own_profile_journal(&self) -> R<OwnJournal> {

@@ -1,5 +1,8 @@
 //! Transport-local complete-read staging; no partial page reaches Engine/host.
-use super::*;
+use super::{
+    remember_waiting, send, ClientFrame, Duration, Exit, HashMap, Op, Reply, Sink, SinkExt,
+    StreamExt, Waiting,
+};
 use protocol::complete_reads::{Assembly, Kind, Request};
 
 pub(super) fn start(op: Op, done: Waiting, owner: Option<&(String, String)>) -> (Op, Waiting) {

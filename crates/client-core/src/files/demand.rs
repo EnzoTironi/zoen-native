@@ -1,6 +1,9 @@
 //! Demand operations on the original Engine state.
 
-use super::*;
+use super::{
+    invalid_file, random_key, t, validate_file, ChunkRef, CoreError, Digest, Engine, FileDto,
+    HashMap, ItemContent, KeyInit, Wanted, MAX_FILE_BYTES, R,
+};
 
 impl Engine {
     /// A demand never inherits authority from JS or an old account. Recheck the

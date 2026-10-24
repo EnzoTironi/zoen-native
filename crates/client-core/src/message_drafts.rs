@@ -211,7 +211,7 @@ impl Engine {
         let encoded = encoded.ok_or_else(storage_error)?;
         let plain = Zeroizing::new(
             crate::local_sealed::open(&storage.key, &storage.aad, &encoded, MAX_PLAIN_BYTES)
-                .map_err(|_| storage_error())?,
+                .map_err(|()| storage_error())?,
         );
         let record: Record = serde_json::from_slice(&plain).map_err(|_| storage_error())?;
         if !valid_revision(&record.draft.revision)
@@ -239,7 +239,7 @@ impl Engine {
             return Err(invalid());
         }
         let encoded = crate::local_sealed::seal(&storage.key, &storage.aad, &plain)
-            .map_err(|_| storage_error())?;
+            .map_err(|()| storage_error())?;
         let (count, bytes, old): (usize, usize, usize) = self.store.conn().query_row(
             "SELECT COUNT(*), COALESCE(SUM(length(CAST(value AS BLOB))),0), COALESCE(MAX(CASE WHEN key=?1 THEN length(CAST(value AS BLOB)) END),0) FROM meta WHERE key LIKE 'message.draft.%'",
             [&storage.id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).map_err(|_| storage_error())?;

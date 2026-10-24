@@ -1,5 +1,9 @@
 //! App and agent tool calls through the existing authority path.
-use super::*;
+use super::{
+    apps, evaluate, json, not_found, now_ms, reason_label, t, tr, AgentTool, AppCallOutcome,
+    AppCallStatus, AppDoc, Budget, CoreError, Decision, Engine, EventBody, IdentityKind,
+    ItemContent, ItemKind, ItemState, LowerFirst, TimelineEntry, Value, R,
+};
 
 impl Engine {
     /// `tools/call` vindo da interface de um mini-app. Toda chamada passa pelo avaliador
@@ -262,7 +266,7 @@ impl Engine {
                         a.insert("forId".into(), s.into());
                     }
                 }
-                apps::pin_client(&mut args, Some(s)).map(|_| {
+                apps::pin_client(&mut args, Some(s)).map(|()| {
                     if let Some(a) = args.as_object_mut().filter(|a| a.contains_key("forId")) {
                         a.insert("forName".into(), self.persona(s).name.into());
                     }
@@ -290,7 +294,7 @@ impl Engine {
         }
         // Serving someone, the agent may only do what they could do themselves (a client
         // can't resolve requests or change the hours by asking it to).
-        let pinned = pinned.and_then(|_| match (&actor_owner, serving) {
+        let pinned = pinned.and_then(|()| match (&actor_owner, serving) {
             (Some(_), Some(s)) => {
                 let name = self.persona(s).name;
                 let them = apps::Actor {
@@ -303,7 +307,7 @@ impl Engine {
             _ => Ok(()),
         });
         let applied = match pinned
-            .and_then(|_| apps::apply_as(&doc.app, tool_name, &args, &state, &caller, now))
+            .and_then(|()| apps::apply_as(&doc.app, tool_name, &args, &state, &caller, now))
         {
             Ok(a) => a,
             Err(msg) => {

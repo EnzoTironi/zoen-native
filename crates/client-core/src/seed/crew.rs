@@ -19,7 +19,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<(String, u64, u64)
     let turma = new_id("sp")?;
     e.append_at(
         &turma,
-        &enzo,
+        enzo,
         at(60 * 24 * 4),
         EventBody::SpaceCreated {
             title: t(&t("Turma do Sábado", "Saturday Crew"), "Saturday Crew"),
@@ -30,7 +30,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<(String, u64, u64)
     for m in [marina, lucas, ana, zoen] {
         e.append_at(
             &turma,
-            &enzo,
+            enzo,
             at(60 * 24 * 4),
             EventBody::MemberAdded {
                 identity: m.clone(),
@@ -40,18 +40,18 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<(String, u64, u64)
     }
     e.append_at(
         &turma,
-        &enzo,
+        enzo,
         at(60 * 24 * 4),
         grant(
-            &enzo,
-            &zoen,
+            enzo,
+            zoen,
             GrantScope::Space(turma.clone()),
             Capability::Trust(TrustLevel::Act),
         )?,
     )?;
     let joke = e.append_at(
         &turma,
-        &lucas,
+        lucas,
         at(52),
         msg(&t(
             "Vocês ainda acham que Liubliana fica na Eslováquia? 😂",
@@ -60,7 +60,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<(String, u64, u64)
     )?;
     let group_read = e.append_at(
         &turma,
-        &enzo,
+        enzo,
         at(51),
         msg(&t(
             "Eu levo água e uns lanches 🥾",
@@ -69,7 +69,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<(String, u64, u64)
     )?;
     e.append_at(
         &turma,
-        &marina,
+        marina,
         at(50),
         EventBody::MessagePosted {
             message: new_id("msg")?,
@@ -82,13 +82,13 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<(String, u64, u64)
     )?;
     e.append_at(
         &turma,
-        &ana,
+        ana,
         at(50),
         msg(&t("Foi UMA vez", "That was ONE time"))?,
     )?;
     e.append_at(
         &turma,
-        &marina,
+        marina,
         at(48),
         msg(&t(
             "Esse grupo precisa de um mascote",
@@ -97,7 +97,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<(String, u64, u64)
     )?;
     let group_delivered = e.append_at(
         &turma,
-        &enzo,
+        enzo,
         at(47),
         msg(&t(
             "A Paçoca já faz parte da turma 😂",
@@ -110,7 +110,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<(String, u64, u64)
     super::crew_apps::seed(e, &turma, cast, t0)?;
     e.append_at(
         &turma,
-        &enzo,
+        enzo,
         at(37),
         msg(&t(
             "Sábado às oito na praça?",

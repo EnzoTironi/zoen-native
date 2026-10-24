@@ -1,6 +1,10 @@
 //! Authenticated relay admission and confirmation of pending intents.
 
-use super::*;
+use super::{
+    chain_hash, content_hash_of, new_ulid, t, Author, CoreError, Engine, Entry, Event, EventBody,
+    Ingest, PendingCommitment, PlanReplay, Projection, Seen, Sequenced, SpaceLog, State,
+    GENESIS_PREV, R,
+};
 
 impl Engine {
     /// What a new event in `space` says its author had seen: the relay-ordered head, or,
@@ -125,7 +129,10 @@ impl Engine {
 
     pub(super) fn ingest_plain(&mut self, e: Event) -> Ingest {
         let space = e.space.clone();
-        let next = self.logs.get(&space).map(|l| l.next_seq()).unwrap_or(0);
+        let next = self
+            .logs
+            .get(&space)
+            .map_or(0, event_log::SpaceLog::next_seq);
         if e.seq < next {
             if self.approval_replay_needed {
                 if let Err(error) = self.reproject_approval_overlay() {
@@ -279,7 +286,6 @@ impl Engine {
         self.state
             .spaces
             .get(space)
-            .map(|s| s.members.iter().any(|(m, _)| m == who))
-            .unwrap_or(false)
+            .is_some_and(|s| s.members.iter().any(|(m, _)| m == who))
     }
 }

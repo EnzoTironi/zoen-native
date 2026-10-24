@@ -2,7 +2,10 @@ use std::collections::{HashMap, HashSet};
 
 use event_log::{content_hash, content_hash_of, SpaceLog};
 use store::Store;
-use types::*;
+use types::{
+    AgentRequest, Event, EventBody, GrantScope, Identity, IdentityId, ItemContent, ItemId,
+    ItemKind, PageContent, PageManifest, PlanDoc, RequestId, SpaceId,
+};
 
 use crate::engine::{State, R};
 use crate::CoreError;

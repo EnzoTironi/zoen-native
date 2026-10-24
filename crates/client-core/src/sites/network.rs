@@ -1,6 +1,10 @@
 //! Only the authenticated relay discovers publication destinations. All HTTP
 //! clients are disposable, cookie-free, redirect-free and bounded.
-use super::*;
+use super::{
+    forbidden, hex64, invalid, safe_time, stale, valid_source, Change, Client, Configuration,
+    CoreError, Inspection, Mutation, Serialize, SignedMutation, SitePrepared, SiteReview,
+    SiteScope, SiteStatus, SourceVersion, MAX_HTML_BYTES, R, SCHEMA,
+};
 use protocol::sites::{Receipt, SignedInspection};
 use serde::de::DeserializeOwned;
 use std::time::Duration;

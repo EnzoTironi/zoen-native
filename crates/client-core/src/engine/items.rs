@@ -1,5 +1,8 @@
 //! Current/historical item views and ordinary restoration.
-use super::*;
+use super::{
+    kind_id, kind_label, not_found, plan_to_dto, t, CoreError, Engine, EventBody, ItemContent,
+    ItemDetail, ItemKind, ItemState, VersionDto, R,
+};
 
 impl Engine {
     pub fn item(&self, id: &str) -> R<ItemDetail> {

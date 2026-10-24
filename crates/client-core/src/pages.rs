@@ -10,7 +10,7 @@ use std::collections::HashMap;
 
 use base64::Engine as _;
 use documents::{BlockEdit, Kind, Page};
-use types::*;
+use types::{new_id, EventBody, ItemContent, ItemId, ItemKind, PageContent, PlanDoc, Role};
 
 use crate::engine::{Engine, ItemState, R};
 use crate::i18n::t;
@@ -178,11 +178,11 @@ pub(crate) fn block_dto(b: &documents::Block) -> PageBlockDto {
         Kind::Bullet { indent } => d.indent = *indent,
         Kind::Numbered { indent, number } => {
             d.indent = *indent;
-            d.number = *number
+            d.number = *number;
         }
         Kind::Task { indent, checked } => {
             d.indent = *indent;
-            d.checked = *checked
+            d.checked = *checked;
         }
         Kind::Code { lang } => d.lang = lang.clone(),
         Kind::Image { url, alt, title } => {

@@ -1,5 +1,8 @@
-//! A small effect receipt commits with the FileDoc change. It stores no HTML.
-use super::*;
+//! A small effect receipt commits with the `FileDoc` change. It stores no HTML.
+use super::{
+    invalid, json, parse, review, sha, stale, Client, Command, Deserialize, Digest, Engine,
+    Serialize, ToolProposal, R, REVISION,
+};
 
 pub struct ApprovedSiteTool {
     request: String,
@@ -8,6 +11,7 @@ pub struct ApprovedSiteTool {
     proposal: ToolProposal,
 }
 impl ApprovedSiteTool {
+    #[must_use]
     pub fn proposal(&self) -> &ToolProposal {
         &self.proposal
     }

@@ -1,6 +1,10 @@
 //! History state behind the unchanged native Client facade.
 
-use super::*;
+use super::{
+    chunk_meta, history_commit, invalid, link, owner, t, valid_history_manifest, Client, CoreError,
+    Duration, HistoryBox, HistoryDto, HistoryReceive, HistoryStatusDto, Op, Ordering, Reply,
+    SecretVault, META_HISTORY, META_INITIAL_HISTORY_PENDING, META_PRIMARY,
+};
 
 impl Client {
     pub(super) fn history_status_impl(&self) -> Result<HistoryStatusDto, CoreError> {

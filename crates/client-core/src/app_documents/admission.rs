@@ -1,6 +1,9 @@
 //! Admission on the original Engine and canonical document state.
 
-use super::*;
+use super::{
+    invalid, json, metadata, t, unavailable, validate_scene, AppDoc, AppDocumentDto, CoreError,
+    Digest, Engine, HashMap, ItemContent, Value, EMPTY, MAX_SCENE_BYTES, MIME, R, RESOURCE,
+};
 
 impl Engine {
     pub(crate) fn attach_app_document(

@@ -1,5 +1,8 @@
 //! Key-package publication and refused-handshake recovery.
-use super::*;
+use super::{
+    identity_set, join_set, mls_err, rewelcome_meta, storage, tracing_like, welcome_meta, Engine,
+    Envelope, EventBody, KeyPackageBatch, SealedKind, KEY_PACKAGES, META_PUBLISHED, R,
+};
 
 impl Engine {
     // ── work for the network task ──

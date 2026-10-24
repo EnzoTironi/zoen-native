@@ -10,7 +10,9 @@ use documents::plan::{
 };
 use rusqlite::OptionalExtension;
 use sha2::{Digest, Sha256};
-use types::*;
+use types::{
+    Event, EventBody, ItemContent, ItemKind, PageContent, PageManifest, PlanDoc, PlanManifestV1,
+};
 
 use crate::engine::{Engine, R};
 use crate::CoreError;
@@ -73,7 +75,7 @@ impl PlanSnapshot {
             .blocks()
             .map_err(|error| invalid(&error.to_string()))?
             .iter()
-            .map(|block| block.plain_text())
+            .map(documents::plan::PlanBlock::plain_text)
             .collect::<Vec<_>>()
             .join("\n");
         Ok(Self {
@@ -399,9 +401,10 @@ impl Engine {
             _ => return Err(invalid("the scoped Plan has no confirmed origin")),
         };
         let log = self.logs.get(space);
-        let (fold, _) = confirmed::Prefix::from_log(space, log, log.map_or(0, |log| log.len()))?
-            .with_requests(&scoped.requests)
-            .fold(item, |page| self.plan_payload(page))?;
+        let (fold, _) =
+            confirmed::Prefix::from_log(space, log, log.map_or(0, event_log::SpaceLog::len))?
+                .with_requests(&scoped.requests)
+                .fold(item, |page| self.plan_payload(page))?;
         if fold.waiting
             || fold
                 .origin_tag()
@@ -461,7 +464,7 @@ impl Engine {
             return Err(invalid("the authenticated Item origin is ambiguous"));
         }
         let log = self.logs.get(&it.space);
-        let end = log.map_or(0, |log| log.len());
+        let end = log.map_or(0, event_log::SpaceLog::len);
         let pending = self.store.outbox()?;
         let prefix = confirmed::Prefix::from_log(&it.space, log, end)?;
         let scoped = self.space_projections.get(&it.space).unwrap_or(&self.state);

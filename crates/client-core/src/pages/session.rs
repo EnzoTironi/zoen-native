@@ -1,17 +1,23 @@
 //! One document session owns canonical state, drafts, receipts and publication.
-//! Public Page adapters admit BinaryPage only until Plan consumers and clients migrate.
+//! Public Page adapters admit `BinaryPage` only until Plan consumers and clients migrate.
 
 use base64::Engine as _;
 use documents::plan::{PlanBlock, PlanBlockEdit, PlanDocument, PlanRevision, PlanUpdate};
 use documents::{Block, BlockEdit, Frontiers, Page};
 use std::sync::Arc;
-use types::*;
+use types::{Event, EventBody, ItemContent, ItemKind, PageManifest, Role, SpaceId};
 
 use crate::engine::{Engine, ItemState, R};
 use crate::i18n::t;
 use crate::CoreError;
 
-use super::drafts::{self, tagged::*};
+use super::drafts::{
+    self,
+    tagged::{
+        decode_bytes, decode_context, encode_bytes, invalid, PlanCommitRef, PlanJournalV1,
+        PlanOrigin, PlanReceiptV1, PlanSnapshotV1, MAX_CONTEXT_BYTES,
+    },
+};
 use super::plan::{self, Acceptance, PlanFold};
 use super::PageBlockDto;
 

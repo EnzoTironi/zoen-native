@@ -512,5 +512,5 @@ pub(crate) fn open_v3(key: &[u8; 32], aad: &[u8], encoded: &str, tag: &[u8]) -> 
     domain.extend(b"\0input-journal.v3\0");
     domain.extend(tag);
     crate::local_sealed::open(key, &domain, &format!("v1:{body}"), MAX_JOURNAL_BYTES)
-        .map_err(|_| super::storage_error())
+        .map_err(|()| super::storage_error())
 }

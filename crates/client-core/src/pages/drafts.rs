@@ -197,7 +197,7 @@ impl Engine {
             tagged::open_v3(&key, &aad, &encoded, b"binary-page")?
         } else {
             crate::local_sealed::open(&key, &aad, &encoded, tagged::MAX_JOURNAL_BYTES)
-                .map_err(|_| storage_error())?
+                .map_err(|()| storage_error())?
         };
         let journal: Journal = tagged::strict_legacy(&plain)?;
         journal.input.validate()?;
@@ -253,9 +253,9 @@ impl Engine {
 }
 
 fn seal(key: &[u8; 32], aad: &[u8], plain: &[u8]) -> R<String> {
-    crate::local_sealed::seal(key, aad, plain).map_err(|_| storage_error())
+    crate::local_sealed::seal(key, aad, plain).map_err(|()| storage_error())
 }
 
 fn open(key: &[u8; 32], aad: &[u8], encoded: &str) -> R<Vec<u8>> {
-    crate::local_sealed::open(key, aad, encoded, usize::MAX).map_err(|_| storage_error())
+    crate::local_sealed::open(key, aad, encoded, usize::MAX).map_err(|()| storage_error())
 }

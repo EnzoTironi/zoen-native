@@ -1,6 +1,9 @@
 //! Editing operations on the original Engine state.
 
-use super::*;
+use super::{
+    invalid, t, CoreError, Digest, Engine, EventBody, FileEditStatus, HashMap, ItemContent,
+    KeyInit, R,
+};
 
 impl Engine {
     pub(super) fn file_edit_status(

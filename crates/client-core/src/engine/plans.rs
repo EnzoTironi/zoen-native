@@ -1,5 +1,9 @@
 //! Plan creation, guarded edits and undo/version restoration.
-use super::*;
+use super::{
+    money, new_id, not_found, plan_from_dto, t, tr, ts, CoreError, EditOutcome, Engine, EventBody,
+    IdentityKind, ItemContent, ItemDetail, ItemKind, ItemProposal, PlanDoc, PlanDto, PlanLine,
+    PlanOutcome, Privacy, Role, SpaceId, SpaceKind, UndoToken, R,
+};
 
 impl Engine {
     /// O agente transforma um pedido num Item (plano). O plano em si vem do cliente
@@ -193,8 +197,7 @@ impl Engine {
                 .find(|m| {
                     self.identities
                         .get(m)
-                        .map(|i| i.kind == IdentityKind::Agent && i.handle == "financeiro")
-                        .unwrap_or(false)
+                        .is_some_and(|i| i.kind == IdentityKind::Agent && i.handle == "financeiro")
                 })
                 .or_else(|| {
                     self.identities

@@ -1,5 +1,5 @@
 //! Schema2 is a closed native Page contract inside the existing signed envelope.
-use super::*;
+use super::{invalid, stale, AgentPageTurn, Client, R};
 use crate::{
     agent_binary_documents::tool_approvals as shared,
     agent_page_tools as tools,
@@ -14,9 +14,11 @@ pub struct ApprovedPageTurn {
     proposal: ToolProposal,
 }
 impl ApprovedPageTurn {
+    #[must_use]
     pub fn turn(&self) -> &AgentPageTurn {
         &self.turn
     }
+    #[must_use]
     pub fn proposal(&self) -> &ToolProposal {
         &self.proposal
     }
@@ -120,7 +122,7 @@ pub(crate) fn matches(state: &State, req: &AgentRequest, space: &str) -> bool {
 }
 
 /// Pages use current Page membership plus a single signed approval. There is no
-/// App principal or implicit app:<id> Trust::Act grant for a native document.
+/// App principal or implicit app:<id> `Trust::Act` grant for a native document.
 pub(crate) fn access(state: &State, p: &ToolProposal) -> bool {
     parsed(p).is_ok()
         && state.items.get(&p.artifact).is_some_and(|item| {
@@ -168,7 +170,7 @@ impl Client {
         match tools::parse(&input.canonical_tool, &input.arguments).map_err(|_| invalid())? {
             tools::Command::Read { artifact } if artifact == current.artifact_id => {}
             tools::Command::Replace(command) if command.artifact_id == current.artifact_id => {
-                e.agent_page_validate_write(&command)?
+                e.agent_page_validate_write(&command)?;
             }
             _ => return Err(stale()),
         }

@@ -276,7 +276,7 @@ impl Client {
         let relay_name = self
             .net
             .lock()
-            .unwrap_or_else(|p| p.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .as_ref()
             .and_then(|net| net.authenticated_relay_name(&relay, &acct.identity_id, &key.id()))
             .ok_or_else(|| {

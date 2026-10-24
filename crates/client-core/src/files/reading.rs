@@ -1,6 +1,10 @@
 //! Reading operations on the original Engine state.
 
-use super::*;
+use super::{
+    invalid, invalid_file, validate_chunk, validate_file, ChunkRef, CoreError, Digest, Engine,
+    FileDoc, FileDto, ItemContent, KeyInit, Sha256, MAX_CHUNK, MAX_FILE_BYTES, MAX_THUMBNAIL_BYTES,
+    R,
+};
 
 impl Engine {
     /// The file's bytes at `version` (latest when `None`), if every chunk is here.

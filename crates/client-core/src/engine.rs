@@ -10,12 +10,25 @@ use event_log::{content_hash, Author, LogError, Signer, SpaceLog};
 use grants::{evaluate, standing_allow_permitted, standing_key, Budget, Decision, Policy, Reason};
 use serde_json::{json, Value};
 use store::Store;
-use types::*;
+use types::{
+    new_id, new_secret_id, new_ulid, ActionClass, AgentRequest, AppDoc, BackgroundSpec, Capability,
+    Event, EventBody, Grant, GrantScope, Identity, IdentityId, IdentityKind, ItemContent, ItemId,
+    ItemKind, ItemProposal, PlanDoc, PlanLine, PlanSection, Privacy, RequestId, RequestResolution,
+    Role, SpaceId, SpaceKind, ToolDecision, TrustLevel, VoiceMeta,
+};
 
 use crate::apps;
 use crate::pages::{BeforeEvent, Currentness, PlanOrigin, PlanReplay, Projection};
 
-use crate::dto::*;
+use crate::dto::{
+    AgentActivityDto, AgentProfile, AgentRequestDto, AgentSpaceTrust, AppCallOutcome,
+    AppCallStatus, AppMetricDto, AppResourceDto, AppSpecDto, AppStateDto, AppToolDto, CoreStats,
+    DecideOutcome, DecisionKind, DecisionPreview, Delivery, DeviceGrantDto, EditOutcome, EntryKind,
+    ItemCard, ItemDetail, LogEventDto, LogReport, MemberRoleDto, Mention, MessageMediaDto, Persona,
+    PersonaKind, PlanDto, PlanLineDto, PlanOutcome, PlanSectionDto, PrivacyDto, ReactionDto,
+    RequestDecision, RequestStatus, SearchHit, SpaceKindDto, SpaceSummary, StandingDecisionDto,
+    TimelineEntry, ToolApprovalDto, TrustLevelDto, UndoToken, VersionDto, VoiceNoteDto,
+};
 use crate::i18n::{money, t, ts};
 use crate::tr;
 use crate::CoreError;
@@ -47,11 +60,11 @@ pub(crate) use labels::{
 pub(crate) fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
+        .map_or(0, |d| d.as_millis() as i64)
 }
 
 /// "R$ 1.348" ou "R$ 12,40".
+#[must_use]
 pub fn brl(cents: i64) -> String {
     crate::i18n::money_in(crate::i18n::Lang::Pt, cents)
 }

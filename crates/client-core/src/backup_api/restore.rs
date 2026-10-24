@@ -1,5 +1,9 @@
 //! Existing backup restore lifecycle.
-use super::*;
+use super::{
+    backup, hex32, http, http_base, invalid, json, offline, refused, t, AccountDto, Arc,
+    BackupStatusDto, Client, CoreError, Digest, Kdf, Opened, SecretVault, Started, STATUS_META,
+    VAULT_AGREEMENT, VAULT_BACKUP, VAULT_BACKUP_GENERATION, VAULT_DEVICE, VAULT_IDENTITY,
+};
 
 impl Client {
     pub(crate) async fn restore_backup_expected(

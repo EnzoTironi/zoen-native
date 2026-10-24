@@ -1,6 +1,11 @@
 //! Copies on the original Engine and canonical document state.
 
-use super::*;
+use super::{
+    hash, invalid, json, metadata, new_id, stale, storage, t, unavailable, valid_hash, valid_id,
+    validate_scene, AppDoc, AppDocumentDto, BTreeSet, Capability, CopyReceipt, Digest, Engine,
+    EventBody, Grant, GrantScope, HashMap, ItemContent, ItemKind, Scene, TrustLevel, Value,
+    MAX_RECEIPTS, MIME, R,
+};
 
 impl Engine {
     /// Copy is an explicit conflict recovery action, never an automatic overwrite.

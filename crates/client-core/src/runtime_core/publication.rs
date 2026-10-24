@@ -30,30 +30,37 @@ impl fmt::Debug for PreparedReply {
 }
 
 impl PreparedReply {
+    #[must_use]
     pub fn facts(&self) -> &ReplyFacts {
         &self.facts
     }
 
+    #[must_use]
     pub fn envelope(&self) -> &Envelope {
         &self.envelope
     }
 
+    #[must_use]
     pub fn message(&self) -> &str {
         &self.message
     }
 
+    #[must_use]
     pub fn event_digest(&self) -> &str {
         &self.event_digest
     }
 
+    #[must_use]
     pub fn reference_digest(&self) -> &str {
         &self.reference_digest
     }
 
+    #[must_use]
     pub fn publish_digest(&self) -> &str {
         &self.publish_digest
     }
 
+    #[must_use]
     pub fn image(&self) -> &NativeImage {
         &self.image
     }
