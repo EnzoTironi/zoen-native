@@ -169,3 +169,6 @@ fn actual_keyboard_tab_enter_and_ime_create_the_same_plain_document_profile() ->
     );
     Ok(())
 }
+
+#[path = "browser_touch_tests.rs"]
+mod touch;
