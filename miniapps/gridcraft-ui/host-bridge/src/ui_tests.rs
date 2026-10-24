@@ -67,6 +67,10 @@ fn actual_keyboard_enter_checkpoint_and_pending_receipt_freeze_at_phone_geometry
     key(&mut h, Key::Enter);
     assert_eq!(value(&h, "A2"), gridcraft_engine::core::Value::Empty);
     assert!(
+        h.state().editor.is_none(),
+        "pending input must not create a later draft"
+    );
+    assert!(
         h.state_mut()
             .run("cell.set", json!({"cell":"A2","input":"9"}))
             .is_err()

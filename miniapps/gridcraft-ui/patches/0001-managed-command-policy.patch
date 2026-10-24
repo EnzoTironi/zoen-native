@@ -46,3 +46,15 @@
      let Some((col, row, at)) = app.grid.filter_menu else { return };
      let Some(d) = app.session.active() else { return };
      let wb = d.wb.clone();
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -938,6 +938,9 @@
+
+     /// Starts editing the active cell. `text` replaces the content (typing) or pre-fills it.
+     pub fn begin_edit(&mut self, text: Option<String>, from_formula_bar: bool) {
++        // A pending host CAS owns the visible model; raw keyboard text must not
++        // become an untracked draft that reappears after its receipt.
++        if self.session.managed_frozen { return; }
+         // The source formula is display-only on spill children. Grid replacement keeps its
+         // existing behavior, but no formula-bar entry path may edit that displayed formula.
+         if from_formula_bar && formula_bar::active_spill_anchor(self).is_some() {
