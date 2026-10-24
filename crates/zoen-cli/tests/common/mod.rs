@@ -3,6 +3,7 @@
 //! free port, and `zoen` homes in a temp dir. Needs `ZOEN_TEST_PG` and a running
 //! FoundationDB (`eval "$(scripts/fdb.sh env)"`).
 
+pub mod claim_proxy;
 mod diagnostics;
 mod relay_build;
 pub mod watch;

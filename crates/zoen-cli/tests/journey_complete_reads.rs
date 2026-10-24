@@ -1,6 +1,8 @@
 //! More than two pages of actual Agent cursors, created only through the same
 //! registration, MLS invitation and Advance APIs used by the host. No provider,
 //! SQL cursor seeding, FDB membership injection or quota override.
+#[path = "complete_reads/arrival.rs"]
+mod arrival;
 mod common;
 #[path = "../src/file_vault.rs"]
 mod file_vault;
