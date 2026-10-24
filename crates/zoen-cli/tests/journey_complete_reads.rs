@@ -114,14 +114,15 @@ async fn complete_agent_state_and_cli_inspection_keep_257_existing_cursors_acros
             .0
             .send_message(space.clone(), format!("Unhandled source {n}"))
             .unwrap();
-        owner.0.wait_until_settled(20_000).await.unwrap();
-        agent.0.wait_until_settled(20_000).await.unwrap();
+        arrival::settled_message(&owner, &agent, &space, &format!("Unhandled source {n}")).await;
+        // This is still an exact message assertion on the real recipient, not
+        // local emptiness or the sender's accepted echo.
         assert!(agent
             .0
             .timeline(space.clone())
             .unwrap()
             .iter()
-            .any(|e| matches!(&e.kind, client_core::EntryKind::Message { text, .. } if text == &format!("Unhandled source {n}"))));
+            .any(|e| matches!(&e.kind, client_core::EntryKind::Message { text, .. } if text == &format!("Unhandled source {n}"))), "missing received source {n}");
         agent.0.agent_advance(space.clone(), 0).await.unwrap();
         expected.insert(space, 0);
         // Stay below the existing request/device quota. This is setup pacing,
