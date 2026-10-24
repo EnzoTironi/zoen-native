@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import * as flow from './tool-review-renewal.ts';
+import * as ownership from './account-scope.ts';
 import * as siteSource from '../sites/source.ts';
 import { createLocalization } from '../i18n/runtime.ts';
 import { reviewRenewal } from '../i18n/catalogs/review-renewal.ts';
@@ -274,7 +275,8 @@ export function fixture(locale: 'en' | 'pt-BR' = 'en') {
             state: displayedSession.getSnapshot(),
           }),
         };
-      if (path.endsWith('/core/provider')) return { useClient: () => ({ store }) };
+      if (path.endsWith('/core/provider')) return { useClient: () => ({ store, ...state }) };
+      if (path.endsWith('/core/account-scope')) return ownership;
       if (path.endsWith('/tool-review-renewal.ts')) return flow;
       throw new Error(`Unexpected fixture import ${path}`);
     };
