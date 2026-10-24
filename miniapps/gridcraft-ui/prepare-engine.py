@@ -36,7 +36,8 @@ def main():
         raise SystemExit("Refusing an existing adapter directory")
     patches = [HERE / "patches/0001-managed-command-policy.patch",
                HERE / "patches/0002-web-without-filesystem.patch",
-               HERE / "patches/0003-managed-share-intent.patch"]
+               HERE / "patches/0003-managed-share-intent.patch",
+               HERE / "patches/0004-refused-drag-keeps-undo.patch"]
     for patch in patches:
         subprocess.run(["git", "-C", str(directory), "apply", "--check", str(patch)], check=True)
         subprocess.run(["git", "-C", str(directory), "apply", str(patch)], check=True)
