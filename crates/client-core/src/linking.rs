@@ -15,6 +15,7 @@ use crate::sync::AccountMeta;
 use crate::CoreError;
 
 type R<T> = Result<T, CoreError>;
+mod observation;
 
 const META_ACTIVE: &str = "devices.active";
 const META_REVOKED: &str = "devices.revoked";

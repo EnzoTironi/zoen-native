@@ -28,6 +28,7 @@ pub(super) enum CoreStage {
     Scan,
     Recheck,
     Report,
+    Observation,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub(super) struct CoreFailure {
@@ -67,6 +68,7 @@ pub(super) struct Counts {
     pub ipc_error: Option<image_ipc::Failure>,
     pub runtime_error: Option<PolicyUnavailable>,
     pub runtime_stage: Option<zoen_runtime::OwnerPolicyContextStage>,
+    pub worker_group: Option<client_core::owner_policy::WorkerGroupObservation>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub(super) struct Summary {
@@ -109,6 +111,54 @@ impl Observer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn worker_group_snapshot_uses_the_existing_bounded_deduplicated_record(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        use client_core::owner_policy::{
+            WorkerConnectionState, WorkerDirectoryState, WorkerGroupObservation, WorkerGroupState,
+        };
+        let mut summary = Summary::new(true, Agent::Ready);
+        summary.inquiries.runtime_error = Some(PolicyUnavailable::Denied);
+        summary.inquiries.runtime_stage =
+            Some(zoen_runtime::OwnerPolicyContextStage::AdmissionMlsGroup);
+        summary.inquiries.worker_group = Some(WorkerGroupObservation {
+            device_fingerprint: "ab".repeat(32),
+            group: WorkerGroupState::Ready,
+            directory: WorkerDirectoryState::Complete,
+            space_synced: true,
+            socket: WorkerConnectionState::Online,
+            socket_synced: Some(true),
+            roster_lists_self: true,
+            own_leaf: Some(true),
+            self_active: Some(true),
+            active_devices: Some(2),
+            revoked_devices: Some(0),
+            other_active_devices: Some(1),
+            other_active_leaves: Some(0),
+            asked_other_devices: Some(0),
+            dirty: false,
+            claiming: false,
+            retry_scheduled: false,
+        });
+        let mut observer = Observer::default();
+        let mut output = Vec::new();
+        observer.write(summary.clone(), &mut output);
+        observer.write(summary, &mut output);
+        assert_eq!(output.iter().filter(|b| **b == b'\n').count(), 1);
+        assert!(output.len() < 2048);
+        let record: serde_json::Value = serde_json::from_slice(&output)?;
+        assert_eq!(
+            record["summary"]["inquiries"]["worker_group"]["group"],
+            "ready"
+        );
+        assert_eq!(
+            record["summary"]["inquiries"]["runtime_stage"],
+            "admission_mls_group"
+        );
+        assert_eq!(record["summary"]["inquiries"]["refusal_accepted"], 0);
+        assert_eq!(record["summary"]["inquiries"]["report_accepted"], 0);
+        Ok(())
+    }
     #[test]
     fn repeated_observation_is_quiet_but_new_stage_error_is_emitted_without_private_error_text() {
         let private = "secret-token/private-config/account-id";
