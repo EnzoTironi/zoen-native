@@ -1,3 +1,4 @@
+import type { AttachmentGalleryJournal } from './attachment-gallery-journal.ts';
 import type { AttachmentAsset } from './attachment-draft';
 import type {
   PhotoLibraryAlbum,
@@ -19,6 +20,7 @@ export type PhotoPickerState = Readonly<{
   error: unknown;
   screen: 'grid' | 'albums' | 'preview' | 'selected';
   previewId: string | null;
+  captions: Readonly<{ forced: string | null; items: Readonly<Record<string, string>> }>;
   category: 'photos' | 'document' | 'audio';
 }>;
 export type PhotoPickerPort = {
@@ -51,14 +53,18 @@ export type PhotoPickerSubmission = Readonly<{
 }>;
 /** Derived by the current durable draft owner; never a second draft authority. */
 export type PhotoPickerAdmission = Readonly<{
+  journal?: AttachmentGalleryJournal;
   sendAsFileAllowed: boolean;
   existingOptions?: MediaDraftAttachmentOptions;
 }>;
 export type Request = {
+  journal?: AttachmentGalleryJournal;
   current(): boolean;
   remaining: number;
   resolve(files: AttachmentAsset[]): void;
+  reject(error: unknown): void;
   retired: boolean;
+  discarding?: boolean;
   working: boolean;
   epoch: number;
   needsReconciliation: boolean;
@@ -83,5 +89,6 @@ export const empty: PhotoPickerState = {
   error: null,
   screen: 'grid',
   previewId: null,
+  captions: { forced: null, items: {} },
   category: 'photos',
 };

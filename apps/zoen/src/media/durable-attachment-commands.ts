@@ -118,6 +118,14 @@ export async function cancel(
   }
 }
 
+/** Explicit composer actions finish the picker phase, keeping the same assets and mutation IDs. */
+function completeGallery(value: MediaDraftAttachments): MediaDraftAttachments {
+  if (!value.gallery) return value;
+  const next = { ...value };
+  delete next.gallery;
+  return next;
+}
+
 export async function remove(
   context: Pick<DurableAttachmentRuntime, 'channel' | 'current' | 'review' | 'retireApproval'> &
     Pick<DurableAttachmentActions, 'failure'>,
@@ -142,7 +150,7 @@ export async function remove(
     await channel.save(
       items.length
         ? {
-            ...currentContent,
+            ...completeGallery(currentContent),
             items,
             ...(items.length === 1 && currentContent.options?.grouping === 'grouped'
               ? {
@@ -183,7 +191,10 @@ export async function reorder(
   const byId = new Map(items.map((item) => [item.mutation_id, item]));
   if (ids.some((id) => !byId.has(id))) return;
   try {
-    await channel.save({ ...latest.content, items: ids.map((id) => byId.get(id)!) });
+    await channel.save({
+      ...completeGallery(latest.content),
+      items: ids.map((id) => byId.get(id)!),
+    });
   } catch (reason) {
     failure(reason);
   }
@@ -223,11 +234,16 @@ export async function edit(
   runtime.submitting = true;
   publish({ error: null });
   try {
-    if (finalCaption !== undefined && before.items[index]!.caption !== finalCaption)
+    if (
+      before.gallery ||
+      (finalCaption !== undefined && before.items[index]!.caption !== finalCaption)
+    )
       await channel.save({
-        ...before,
+        ...completeGallery(before),
         items: before.items.map((item) =>
-          item.mutation_id === mutationId ? { ...item, caption: finalCaption } : item,
+          item.mutation_id === mutationId && finalCaption !== undefined
+            ? { ...item, caption: finalCaption }
+            : item,
         ),
       });
     const saved = channel.getSnapshot();
@@ -317,7 +333,7 @@ export async function send(
         // The final native UITextView value can be newer than React's last
         // caption callback. Journal it through the same CAS writer before Send.
         await channel.save({
-          ...latest.content,
+          ...completeGallery(latest.content),
           items: latest.content.items.map((value) =>
             value.mutation_id === finalCaption.mutationId
               ? { ...value, caption: finalCaption.text }
@@ -331,6 +347,19 @@ export async function send(
         runtime.approval !== presentation ||
         presentation?.closing ||
         review.getSnapshot().mutationId ||
+        after.content?.kind !== 'attachments' ||
+        !sameAttachmentSelection(after.content, observed)
+      )
+        return;
+    }
+    const pending = channel.getSnapshot();
+    if (pending.content?.kind === 'attachments' && pending.content.gallery && !pending.frozen) {
+      await channel.save(completeGallery(pending.content));
+      const after = channel.getSnapshot();
+      if (
+        !current() ||
+        runtime.approval !== presentation ||
+        presentation?.closing ||
         after.content?.kind !== 'attachments' ||
         !sameAttachmentSelection(after.content, observed)
       )

@@ -12,7 +12,8 @@ import type {
   PhotoPickerSubmission,
 } from '../media/attachment-photo-session.ts';
 import { AttachmentReview } from '../media/attachment-review.ts';
-import { MediaDraftChannel } from '../media/media-draft-channel.ts';
+import * as mediaDraftContract from '../media/media-draft-contract.ts';
+import { MediaDraftChannel, MediaDraftFailure } from '../media/media-draft-channel.ts';
 import type { MediaDraftDto, MediaDraftPort, MediaDraftScope } from '../media/media-draft-types.ts';
 import { PlaybackCoordinator } from '../media/playback-owner.ts';
 
@@ -52,7 +53,7 @@ export const compiled = await build({
         builder.onResolve(
           {
             filter:
-              /^\.\/(?:use-durable-attachment-(?:controller)|durable-attachment-(?:types|view|pick|commands|contract|review))$/,
+              /^\.\/(?:use-durable-attachment-(?:controller)|durable-attachment-(?:types|view|pick|commands|contract|review)|attachment-gallery-journal)$/,
           },
           ({ path }) => ({
             path: fileURLToPath(
@@ -247,9 +248,18 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
   let nextPhotoSubmission: PhotoPickerSubmission | null = null;
   let photoSubmission: PhotoPickerSubmission | null = null;
   const photoAdmissions: (PhotoPickerAdmission | undefined)[] = [];
+  let nativePhotoCancel: (() => void) | undefined;
+  let nativePhotoPick:
+    | ((
+        remaining: number,
+        current: () => boolean,
+        admission?: PhotoPickerAdmission,
+      ) => Promise<AttachmentAsset[]>)
+    | null = null;
   const photoPicker = {
     pick: async (_remaining: number, _current: () => boolean, admission?: PhotoPickerAdmission) => {
       photoAdmissions.push(admission);
+      if (nativePhotoPick) return nativePhotoPick(_remaining, _current, admission);
       const intent = nextPhotoSubmission;
       nextPhotoSubmission = null;
       photoSubmission = null;
@@ -257,13 +267,16 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
       photoSubmission = intent;
       return files;
     },
-    cancel: () => {},
+    cancel: () => nativePhotoCancel?.(),
     view: null,
     preferredUri: () => preferredPhotoUri,
     submission: () => photoSubmission,
   };
   const ports: Record<string, unknown> = {
     './attachment-categories': attachmentCategories,
+    './media-draft-channel': { MediaDraftFailure },
+    './media-draft-contract': mediaDraftContract,
+    'expo-media-library': { MediaType: { IMAGE: 'image', VIDEO: 'video' } },
     react: {
       useMemo: memo,
       useCallback: (read: unknown, deps: readonly unknown[]) => memo(() => read, deps),
@@ -375,6 +388,13 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
     for (const current of slots) current.cleanup?.();
   };
   return {
+    nativePhotoPicker: (pick: NonNullable<typeof nativePhotoPick>, cancel?: () => void) => {
+      nativePhotoPick = pick;
+      nativePhotoCancel = cancel;
+    },
+    nativePhotoSubmission: (intent: PhotoPickerSubmission) => {
+      photoSubmission = intent;
+    },
     preferPhoto: (uri: string | null) => {
       preferredPhotoUri = uri;
     },

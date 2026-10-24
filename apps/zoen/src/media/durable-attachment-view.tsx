@@ -117,6 +117,7 @@ export function renderDurableAttachment(
             void channel
               .save({
                 ...next,
+                ...(next.gallery ? { gallery: { ...next.gallery, forced_caption: false } } : {}),
                 items: next.items.map((item) =>
                   item.mutation_id === selected.mutationId ? { ...item, caption } : item,
                 ),

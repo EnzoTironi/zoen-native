@@ -163,3 +163,20 @@ test('unsupported Photos video format cannot prepare an edit or fall through to 
   assert.deepEqual(f.copies, []);
   f.retire();
 });
+
+test('a caption-only journal projection does not retire the still-observed native input revision', async () => {
+  const f = await fixture(true);
+  f.photos.select(item('a'));
+  f.act(f.render(), 'preview', 'ph://a');
+  const observed = f.render();
+  f.act(observed, 'caption', 'ph://a', { text: 'A' });
+  const updated = f.render();
+  assert.equal(JSON.parse(updated.props.model).revision, JSON.parse(observed.props.model).revision);
+  f.act(observed, 'caption', 'ph://a', { text: 'AB' });
+  assert.equal(JSON.parse(f.render().props.model).caption.value, 'AB');
+  f.act(f.render(), 'preview', 'ph://b');
+  f.act(observed, 'caption', 'ph://a', { text: 'Foreign late keystroke' });
+  assert.equal(f.photos.getSnapshot().captions.items['ph://a'], 'AB');
+  f.retire();
+  await tick();
+});

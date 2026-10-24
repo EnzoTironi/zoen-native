@@ -1,4 +1,5 @@
 import { randomUUID } from 'expo-crypto';
+import { AttachmentGalleryJournal } from './attachment-gallery-journal';
 import {
   AttachmentDraftFailure,
   MAX_ATTACHMENT_ITEMS,
@@ -77,13 +78,21 @@ export async function pick(
     await sensitiveCacheWork.run(async () => {
       const admissionDraft = channel.getSnapshot();
       const before = admissionDraft.content;
-      const count = before?.kind === 'attachments' ? before.items.length : 0;
+      const gallery =
+        kind === 'photo'
+          ? new AttachmentGalleryJournal(channel, current, randomUUID, admission.current.replyTo)
+          : null;
+      const count =
+        before?.kind === 'attachments'
+          ? before.items.length - (before.gallery?.entries.length ?? 0)
+          : 0;
       const sendAsFileAllowed =
         count === 0 || (before?.kind === 'attachments' && before.options?.presentation === 'file');
       if (count >= MAX_ATTACHMENT_ITEMS) throw new AttachmentDraftFailure('limit');
       selected = await (kind === 'photo'
         ? photos.pick(MAX_ATTACHMENT_ITEMS - count, current, {
             sendAsFileAllowed,
+            ...(gallery ? { journal: gallery } : {}),
             ...(before?.kind === 'attachments' && count > 0
               ? {
                   existingOptions: before.options ?? {
@@ -99,11 +108,16 @@ export async function pick(
       const latest = channel.getSnapshot();
       if (latest.content && latest.content.kind !== 'attachments')
         throw new AttachmentDraftFailure('unavailable');
-      const existing = latest.content?.kind === 'attachments' ? latest.content : null;
+      const ownsGallery = Boolean(gallery?.owns());
+      const existing = ownsGallery
+        ? gallery!.basis()
+        : latest.content?.kind === 'attachments'
+          ? latest.content
+          : null;
       const submission = kind === 'photo' ? photos.submission?.() : null;
       if (
         submission?.options &&
-        (latest.value?.revision !== admissionDraft.value?.revision ||
+        ((latest.value?.revision !== admissionDraft.value?.revision && !ownsGallery) ||
           !['media', 'file'].includes(submission.options.presentation) ||
           !['separate', 'grouped'].includes(submission.options.grouping) ||
           (submission.options.presentation === 'file' &&
@@ -138,6 +152,20 @@ export async function pick(
         selected.reduce((sum, asset) => sum + asset.size, retained) > MAX_ATTACHMENT_TOTAL_BYTES
       )
         throw new AttachmentDraftFailure('size');
+      if (ownsGallery && gallery) {
+        const retained = await gallery.finish(
+          selected,
+          submission,
+          photos.preferredUri?.() ?? null,
+        );
+        if (!retained || !current()) return;
+        delegated = true;
+        publish({ selected: retained.selectedId });
+        if (submission?.requestEdit) editAfterPicking = retained.selectedId;
+        if (submission?.send) directSend = retained.content;
+        else approve = selected.some((asset) => /^(image|video)\//.test(asset.mime));
+        return;
+      }
       const additions = selected.map((asset) => ({ ...asset, id: randomUUID() }));
       const inputs: MediaDraftIngest[] = additions.map(({ id, uri, name, mime }) => ({
         id,
