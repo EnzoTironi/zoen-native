@@ -323,3 +323,103 @@ new file mode 100644
 +    state = .failed
 +  }
 +}
+diff --git a/node_modules/@expo/ui/ios/RNHostView.swift b/node_modules/@expo/ui/ios/RNHostView.swift
+--- a/node_modules/@expo/ui/ios/RNHostView.swift
++++ b/node_modules/@expo/ui/ios/RNHostView.swift
+@@ -50,6 +50,9 @@
+       .onAppear {
+         updateTouchHandler()
+       }
++      .onChange(of: props.layoutRoot) { _ in
++        updateTouchHandler()
++      }
+       .onChange(of: props.children?.first?.childIdentity) { _ in
+         updateTouchHandler()
+       }
+@@ -60,11 +63,7 @@
+
+   // Follows the current child, which Fabric can replace or remount while this view stays.
+   private func updateTouchHandler() {
+-    if props.layoutRoot, let view = firstChildUIView {
+-      touchHandler.attach(to: view)
+-    } else {
+-      touchHandler.detach()
+-    }
++    touchHandler.update(layoutRoot: props.layoutRoot, view: firstChildUIView)
+   }
+
+   @ViewBuilder
+@@ -145,29 +144,16 @@
+ // Tracks the `RCTSurfaceTouchHandler` attached to a hosted RN view so it can be detached when the
+ // `RNHostView` disappears, instead of leaking onto the recycled component view.
+ private final class RNHostTouchHandler: ObservableObject {
+-  private weak var touchHandler: UIGestureRecognizer?
+-  private weak var attachedView: UIView?
+-
+-  func attach(to view: UIView) {
+-    if attachedView === view, touchHandler != nil {
+-      return
+-    }
+-    detach()
+-    touchHandler = ExpoUITouchHandlerHelper.createAndAttachTouchHandler(for: view)
+-    attachedView = view
+-  }
+-
+-  func detach() {
+-    if let touchHandler, let attachedView {
+-      ExpoUITouchHandlerHelper.detachTouchHandler(touchHandler, from: attachedView)
+-    }
+-    touchHandler = nil
+-    attachedView = nil
+-  }
+-
+-  deinit {
+-    detach()
+-  }
++  private let binding = RNHostTouchBinding<UIView, UIGestureRecognizer>(
++    attach: { ExpoUITouchHandlerHelper.createAndAttachTouchHandler(for: $0) },
++    detach: { ExpoUITouchHandlerHelper.detachTouchHandler($0, from: $1) }
++  )
++
++  func update(layoutRoot: Bool, view: UIView?) {
++    binding.update(layoutRoot: layoutRoot, child: view)
++  }
++
++  func detach() { binding.retire() }
+ }
+
+ // Sets SwiftUI view size from Yoga node size on the matched axes
+diff --git a/node_modules/@expo/ui/ios/RNHostTouchBinding.swift b/node_modules/@expo/ui/ios/RNHostTouchBinding.swift
+new file mode 100644
+--- /dev/null
++++ b/node_modules/@expo/ui/ios/RNHostTouchBinding.swift
+@@ -0,0 +1,29 @@
++// Owns only touch-handler attachment, not application actions or view identity.
++internal final class RNHostTouchBinding<Child: AnyObject, Handler: AnyObject> {
++  private weak var handler: Handler?
++  private weak var child: Child?
++  private let attach: (Child) -> Handler?
++  private let detach: (Handler, Child) -> Void
++
++  init(attach: @escaping (Child) -> Handler?, detach: @escaping (Handler, Child) -> Void) {
++    self.attach = attach
++    self.detach = detach
++  }
++
++  func update(layoutRoot: Bool, child next: Child?) {
++    guard layoutRoot, let next else { retire(); return }
++    if child === next, handler != nil { return }
++    retire()
++    guard let handler = attach(next) else { return }
++    child = next
++    self.handler = handler
++  }
++
++  func retire() {
++    if let handler, let child { detach(handler, child) }
++    handler = nil
++    child = nil
++  }
++
++  deinit { retire() }
++}
