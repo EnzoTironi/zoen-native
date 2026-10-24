@@ -52,6 +52,10 @@ test('Word exports only DOCX and genuine PDF; other editors and OS types stay cl
   assert.ok(binaryExportAllowed('wordcraft', 'pdf'));
   assert.ok(!binaryExportAllowed('deckcraft', 'docx'));
   assert.ok(!binaryExportAllowed('gridcraft', 'docx'));
+  assert.deepEqual(binaryExportFileType('pdf'), {
+    mimeType: 'application/pdf',
+    UTI: 'com.adobe.pdf',
+  });
   assert.deepEqual(binaryExportFileType('docx'), {
     mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     UTI: 'org.openxmlformats.wordprocessingml.document',
