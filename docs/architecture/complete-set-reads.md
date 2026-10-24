@@ -137,9 +137,29 @@ between pages, and inspecting the full result with the normal CLI. Synthetic
 socket fixtures separately prove incomplete State never seeds omitted cursors or
 publishes host readiness.
 
-At the source-writing checkpoint, the full web suite (116 tests, zero skipped) and
-TypeScript checks have passed. The new web fixture originally failed because its
-vault stub omitted the existing durable-save port; that failure is retained and
-the fixture was repaired without changing the product persistence contract. Rust compilation, native/relay/CLI execution and
-genuine WASM binding validation remain pending. Receipts must name the immutable
-source executed; written tests and documentation are not runtime acceptance.
+The qualified sources are `d1dee885` (six-package all-target Clippy, protocol 7,
+native directory 7, MLS durability 17), `dcbf5d00` (native transport 3, browser
+core 99 plus the separately executed opt-in synthetic exporter, global resource
+1, PostgreSQL/socket snapshot 5, cursor compatibility 4, host startup 10,
+client-types Clippy, release WASM and genuine wasm-bindgen), and `df75172c`
+(the complete real 257-group CLI journey). The full Web suite has 116 passing
+tests and TypeScript passes on its unchanged source tree. All executed product
+tests passed; the only ordinary-suite ignored test is the named opt-in synthetic
+fixture exporter, separately executed successfully with an explicit private file.
+
+The CLI journey proves the original multi-page state remains stable while a
+higher Advance and membership removal commit, a new read observes both changes,
+reinvitation exposes the preserved original cursor, and a cold normal CLI reports
+the exact complete set. Its first attempt exposed a fixture opening a second
+Client on exclusively owned SQLite. The repair shares the live public AccountDto
+with the independent certified socket; production and assertions are unchanged.
+Earlier compiler, fixture and external-wrapper failures remain recorded alongside
+the successful source-bound guards. No blanket overall success is attributed to
+a failed intermediate wrapper.
+
+Actual receipts and generated WASM manifests remain in the external qualification
+bundle `zoen-coherent-read-pages-v458`. Generated `.d.ts` confirms the real
+`read_capability(enabled: boolean): string` export used by the host. Native UI,
+whole-process RSS, and 200/1,000-connection capacity are not accepted by these
+focused tests. Integration/CI and iPhone qualification remain separate; this
+document does not close #217 or the broader #176/#177.
