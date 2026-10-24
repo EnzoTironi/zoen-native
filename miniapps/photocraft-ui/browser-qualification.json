@@ -1,0 +1,196 @@
+{
+  "schema": 1,
+  "source": {
+    "compiledBrowser": "c8ff3bed0d6abe9308fe20ef41a969c97363075d",
+    "validatedPins": "6d0b62dcbd7ee142e8173f11712405c3c3fb93fa",
+    "prepared": "4b8553b457e0a00d789a34fa6ce1254c6d16fe78",
+    "upstream": "9b9643764f3fb77d9f0e48d7510983ae50621e11",
+    "basePhoto": "39f33ea9242cc78e82176c8f15198253a0fbe7de",
+    "releaseFocusOriginal": "2d4f0d50",
+    "releaseFocusCherryPick": "ee2414f1",
+    "retainedLockSha256": "f196b125494ad2e13ebc615633f126b16f80526e2f96ed6f45a6786a5d53e066",
+    "compiledInputEqualityAtValidatedPins": {
+      "engine": 31,
+      "bootstrap": 167
+    }
+  },
+  "artifacts": "/Users/enzotironi/.codex/builds/zoen-photocraft-browser-envelope-v592",
+  "runtime": {
+    "schema": 1,
+    "engine": "photocraft",
+    "revision": "9b9643764f3fb77d9f0e48d7510983ae50621e11",
+    "abi": "zoen-host-v1",
+    "module": {
+      "url": "https://qualification.invalid/photocraft/9b9643764f3fb77d9f0e48d7510983ae50621e11/photocraft.js",
+      "bytes": 158764,
+      "sha256": "b2e2968f4dc9b55be26c9da07ea5c23d5a03612d658ede1058d4c38388455ac8",
+      "mime": "text/javascript"
+    },
+    "wasm": {
+      "url": "https://qualification.invalid/photocraft/9b9643764f3fb77d9f0e48d7510983ae50621e11/photocraft_bg.wasm",
+      "bytes": 32678769,
+      "sha256": "2428e9ba888df43224fe3f3a3a64eb5026dbe7b520eca8b7ab3767c0b063d7d6",
+      "mime": "application/wasm"
+    }
+  },
+  "html": {
+    "bytes": 624492,
+    "sha256": "6288224c908ba6134e8bc2c95bf60b61261a174808e85a4a4dd73c4673f75e6b",
+    "trackedBytesEqual": true
+  },
+  "build": [
+    {
+      "name": "browser-wasm-clippy",
+      "seconds": 109.311,
+      "exit": 0,
+      "logSha256": "7d380ed260a9e601be83f296eaa208f3bb12d741d7105470e82b45f05edf8289"
+    },
+    {
+      "name": "browser-wasm",
+      "seconds": 435.326,
+      "exit": 0,
+      "logSha256": "e7883989c50ae8dd4cf3b67f90590856899c0c4c7c8db977fba94444fe73fb92"
+    }
+  ],
+  "browser": [
+    {
+      "name": "browser-command-chromium-01",
+      "exit": 0,
+      "seconds": 4.95,
+      "logSha256": "75beca9204eeebce8bc0e7cf1fc6f82941318cad4256bd33f84b0f12802174cb",
+      "receiptSha256": "57ba91449a4f210a2535a2a401c3b13dcd001a2193b37b146b4142b905a406dc",
+      "operation": {
+        "action": "rotate_clockwise",
+        "kind": "command"
+      },
+      "checkpoint": {
+        "kind": "humanCheckpoint"
+      },
+      "independentPixels": {
+        "rotation": "clockwise90",
+        "width": 480,
+        "height": 640,
+        "allPixelsEqual": true
+      },
+      "coldReopen": {
+        "head": {
+          "sha256": "351c27a4eee8474d12982331bc74f8dc62871425eb1ef8ee1afe27505bb1da30",
+          "version": "3"
+        },
+        "mutationRequests": 0
+      }
+    },
+    {
+      "name": "managed-browser-chromium-01",
+      "exit": 0,
+      "seconds": 10.572,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "receiptSha256": "6547b0773816a390ebccdfe58a910d518bb9ea56758da6d72fb8e6bdb3b7f9da",
+      "touchPause": {
+        "trusted": true,
+        "remaining": 0,
+        "activeElement": "CANVAS"
+      },
+      "edited": {
+        "writes": 2,
+        "version": 3,
+        "newBlackPixels": 495
+      },
+      "coldReopen": {
+        "version": 3,
+        "writes": 0,
+        "sha256": "34fa6a3820d32c6fbfda2832c378977ab9f34b32718c51ca9b59274ff6d0d36c"
+      }
+    },
+    {
+      "name": "browser-command-webkit-01",
+      "exit": 0,
+      "seconds": 2.569,
+      "logSha256": "582db0e5715b76a3f187429d3a504c79a2d2d508f8b2762db14308ae60444469",
+      "receiptSha256": "c60a0ee73ac0d22482df572513d34d9c34d237fb31dc6daaf8a91b4ca9857474",
+      "operation": {
+        "action": "rotate_clockwise",
+        "kind": "command"
+      },
+      "checkpoint": {
+        "kind": "humanCheckpoint"
+      },
+      "independentPixels": {
+        "rotation": "clockwise90",
+        "width": 480,
+        "height": 640,
+        "allPixelsEqual": true
+      },
+      "coldReopen": {
+        "head": {
+          "sha256": "351c27a4eee8474d12982331bc74f8dc62871425eb1ef8ee1afe27505bb1da30",
+          "version": "3"
+        },
+        "mutationRequests": 0
+      }
+    },
+    {
+      "name": "managed-browser-webkit-01",
+      "exit": 0,
+      "seconds": 3.725,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "receiptSha256": "4c3cb1f8562f48451b1525c500cb5fa62b2118b86e8cc71d8163a86075a89bc6",
+      "touchPause": {
+        "trusted": true,
+        "remaining": 0,
+        "activeElement": "CANVAS"
+      },
+      "edited": {
+        "writes": 2,
+        "version": 3,
+        "newBlackPixels": 495
+      },
+      "coldReopen": {
+        "version": 3,
+        "writes": 0,
+        "sha256": "34fa6a3820d32c6fbfda2832c378977ab9f34b32718c51ca9b59274ff6d0d36c"
+      }
+    }
+  ],
+  "registration": [
+    {
+      "name": "registration-tests",
+      "seconds": 24.705,
+      "exit": 0,
+      "passed": 2,
+      "logSha256": "ca35647939243739620256601aa0b5875743e9cd2f826500c24d6bacaefecaf1"
+    },
+    {
+      "name": "miniapps-clippy-all-targets",
+      "seconds": 11.595,
+      "exit": 0,
+      "passed": null,
+      "logSha256": "1713c730ef29b55d06d06be120995d20566d2e917cf01324d93ffaffeb1fc67b"
+    }
+  ],
+  "priorActualCliWasip2Evidence": {
+    "artifacts": "/Users/enzotironi/.codex/builds/zoen-photocraft-operation-contract-v590",
+    "compiledSource": "39f33ea9242cc78e82176c8f15198253a0fbe7de",
+    "worker": {
+      "path": "/Users/enzotironi/.codex/builds/zoen-photocraft-operation-contract-v590/component/photocraft-zoen-host.wasm",
+      "sha256": "0014ef28916f686e185ff2887a1909c75c7ef755454591e94c8d65e97e166e9c"
+    },
+    "preserved": true
+  },
+  "limits": [
+    "Renderer ABI command cases supply synthetic scope/ACK; MCP/manual cases supply a synthetic Core read/CAS port. These are distinct from the earlier actual CLI/Core/WASIp2 regression.",
+    "No real model/provider dispatch, approval UI, native iPhone, deployment or install was exercised.",
+    "qualification.invalid identifies local qualified files; it is not an available hosted runtime. Default manifest remains unavailable without explicit configuration.",
+    "Browser source build used jobs=1, a private target and retained validated lock; no SDK, device, retained services or Root target was changed.",
+    "Final documentation/pin additions do not imply recompilation; exact 31 engine and 167 bootstrap inputs were checked byte-identical."
+  ],
+  "priorBrowserRed": {
+    "source": "c8ff3bed0d6abe9308fe20ef41a969c97363075d",
+    "exit": 1,
+    "seconds": 4.078,
+    "moduleSha256": "b2e2968f4dc9b55be26c9da07ea5c23d5a03612d658ede1058d4c38388455ac8",
+    "wasmSha256": "5a0b16fd71930d35d9fc157d85d88ae4f7417c6cd3462ddb54894970bc10a36c",
+    "logSha256": "337b55dd0c20bf47dbf5123fb9b492f8c5a79c8c8754e4986c10672a91587a41",
+    "observedFailure": "actual metadata.operation 'rotate_clockwise'; expected {kind:'command',action:'rotate_clockwise'}"
+  }
+}

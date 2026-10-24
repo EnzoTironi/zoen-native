@@ -189,7 +189,12 @@ impl BrowserBridge {
             .host
             .as_mut()
             .ok_or_else(|| failure("not_open"))?
-            .prepare(command.mutation, fingerprint, bytes, &json!(command.action))?;
+            .prepare(
+                command.mutation,
+                fingerprint,
+                bytes,
+                &json!({"kind":"command","action":command.action}),
+            )?;
         self.pending = Some(Entry {
             kind: Kind::Agent,
             id,
@@ -240,6 +245,9 @@ impl BrowserBridge {
     }
 }
 
+#[cfg(test)]
+#[path = "browser_contract_tests.rs"]
+mod contract_tests;
 #[cfg(test)]
 #[path = "browser_rollback_tests.rs"]
 mod rollback_tests;
