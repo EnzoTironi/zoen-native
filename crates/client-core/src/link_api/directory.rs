@@ -1,6 +1,9 @@
 //! Directory behind the unchanged native Client facade.
 
-use super::*;
+#[cfg(test)]
+use event_log::Signer;
+
+use super::{invalid, t, Client, CoreError, DeviceDto, Op, Reply};
 use crate::{engine::Engine, net::RequestHandle};
 
 #[derive(Clone, PartialEq, Eq)]

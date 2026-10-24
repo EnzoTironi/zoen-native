@@ -12,7 +12,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<String> {
     let com = new_id("sp")?;
     e.append_at(
         &com,
-        &ana,
+        ana,
         at(60 * 24 * 3),
         EventBody::SpaceCreated {
             title: t(
@@ -25,7 +25,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<String> {
     )?;
     e.append_at(
         &com,
-        &ana,
+        ana,
         at(60 * 24 * 3),
         EventBody::MemberAdded {
             identity: guia.clone(),
@@ -34,7 +34,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<String> {
     )?;
     e.append_at(
         &com,
-        &ana,
+        ana,
         at(60 * 24 * 3),
         EventBody::MemberAdded {
             identity: enzo.clone(),
@@ -43,25 +43,25 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<String> {
     )?;
     e.append_at(
         &com,
-        &ana,
+        ana,
         at(60 * 24 * 3),
         grant(
-            &ana,
-            &guia,
+            ana,
+            guia,
             GrantScope::Space(com.clone()),
             Capability::Trust(TrustLevel::Listen),
         )?,
     )?;
     e.append_at(
         &com,
-        &ana,
+        ana,
         at(60 * 24 * 2),
         msg(&t(
             "Bem-vindos! Aqui a gente troca roteiro de praia, trilha e pousada boa e barata.",
             "Welcome! This is where we swap beach itineraries, trails and good cheap inns.",
         ))?,
     )?;
-    e.append_at(&com, &guia, at(60 * 9), msg(&t("Maré baixa no sábado às 9h40 — melhor horário pra chegar na Praia do Sono pela trilha.", "Low tide on Saturday at 9:40 am — the best time to hike to Praia do Sono."))?)?;
+    e.append_at(&com, guia, at(60 * 9), msg(&t("Maré baixa no sábado às 9h40 — melhor horário pra chegar na Praia do Sono pela trilha.", "Low tide on Saturday at 9:40 am — the best time to hike to Praia do Sono."))?)?;
 
     // Trail mini-app pinned in the community (investor showcase: trip-group feel).
     super::coastal_hike::seed(e, &com, cast, t0)?;

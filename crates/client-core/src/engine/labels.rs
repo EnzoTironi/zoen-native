@@ -1,5 +1,9 @@
 //! Stable domain labels and plan DTO conversion.
-use super::*;
+use super::{
+    money, new_id, t, tr, ts, ActionClass, Capability, EventBody, ItemKind, PlanDoc, PlanDto,
+    PlanLine, PlanLineDto, PlanSection, PlanSectionDto, Policy, Reason, TrustLevel, TrustLevelDto,
+    R,
+};
 
 pub(super) trait LowerFirst {
     fn to_lowercase_first(&self) -> String;

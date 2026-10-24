@@ -1,6 +1,9 @@
 //! Prepare one approved enrollment without replacing durable retry key material.
 use super::enroll_delivery::RetainedPeer;
-use super::*;
+use super::{
+    enroll_delivery, invalid, link, owner, secret32, t, Arc, BTreeSet, Client, CoreError,
+    IdentityBox, LinkCode, Peer, SecretVault, Signer, VAULT_AGREEMENT, VAULT_IDENTITY, VAULT_PEERS,
+};
 use zeroize::{Zeroize, Zeroizing};
 
 pub(super) struct PreparedEnrollment {

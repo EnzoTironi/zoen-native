@@ -1,6 +1,9 @@
 //! Server-side Agent identity and runtime commands; the same Client owns state.
 
-use super::*;
+use super::{
+    invalid, unexpected, AccountDto, Arc, Client, CoreError, Op, Reply, SecretVault,
+    VAULT_AGREEMENT, VAULT_DEVICE, VAULT_IDENTITY,
+};
 
 /// The Agent identity id a root secret signs as (server-side runtime).
 pub fn agent_id_for_root(root: Vec<u8>) -> Result<String, CoreError> {

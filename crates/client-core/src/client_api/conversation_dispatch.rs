@@ -1,5 +1,8 @@
 //! Conversation and agent-control application operations.
-use super::*;
+use super::{
+    account_vault, definition_target, encode, invalid, timeline_page, Arc, Client, Command,
+    CoreError, SecretVault,
+};
 
 impl Client {
     pub(super) async fn dispatch_client(
@@ -7,7 +10,22 @@ impl Client {
         command: Command,
         vault: Option<Arc<dyn SecretVault>>,
     ) -> Result<String, CoreError> {
-        use Command::*;
+        use Command::{
+            AddAdmin, AddMember, AgentDefinitionDismiss, AgentDefinitionPreview,
+            AgentDefinitionRead, AgentDefinitionReconcile, AgentDefinitionUpdate,
+            AgentEnrollmentApprove, AgentEnrollmentDismiss, AgentEnrollmentPreview,
+            AgentEnrollmentStatus, AgentStatus, CallHistory, ControlAgent, CreateAgentInvite,
+            CreateCommunity, CreateGroup, CreateInvite, DeleteMessage, EditMessage, EncryptChat,
+            FindAccountPolicyOptions, FindOwnerPolicyOptions, FindOwnerPolicySubmission,
+            FindPeople, ForwardMessage, InviteCall, JoinInvite, LeaveSpace, MarkRead, Message,
+            MessageDraft, NewMutationId, OpenAgentLink, OwnerPolicyOptions, OwnerPolicyStatus,
+            PageBlockMarkdown, PageParseMarkdown, PrepareOwnerPolicy, PreviewInvite,
+            ProviderSignIn, React, RecoverFailedMediaDraft, RemoveMember, RemoveMemberReviewed,
+            RequestAccountPolicyOptions, RequestOwnerPolicyOptions, RespondCall, ReviewOwnerPolicy,
+            RevokeAgentInvite, SaveMessageDraft, SendMessage, SendMessageDraft, SetChatMuted,
+            SetChatPrefs, SetTyping, Snapshot, SpaceMemberContext, StartDirect,
+            StartOwnerPolicyDirect, SubmitOwnerPolicy, Thread, Timeline, UniversalSearch,
+        };
         match command {
             StartOwnerPolicyDirect {
                 expected_identity_id,

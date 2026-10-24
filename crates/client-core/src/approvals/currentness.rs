@@ -1,6 +1,9 @@
 //! Existing currentness on the same canonical State authority.
 
-use super::*;
+use super::{
+    content_hash, ActionClass, AgentRequest, Currentness, ItemContent, ItemKind, PlanDoc, PlanRead,
+    Role, State,
+};
 
 impl State {
     pub(crate) fn writer(&self, space: &str, identity: &str) -> bool {

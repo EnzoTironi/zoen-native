@@ -1,4 +1,4 @@
-//! Input operations on the original PageSession state.
+//! Input operations on the original `PageSession` state.
 
 use super::*;
 
@@ -52,7 +52,10 @@ impl PageSession {
         mode: super::super::input::PageInputMode,
         context: &str,
     ) -> R<super::super::input::PageInputDto> {
-        use super::super::input::*;
+        use super::super::input::{
+            invalid, validate_target, validate_writer, whole_document, Binding, PageInputMode,
+            PageInputTarget, TaggedBlock,
+        };
         validate_writer(writer)?;
         validate_target(&target)?;
         if target == PageInputTarget::WholeDocument && mode != PageInputMode::Markdown {
@@ -176,7 +179,9 @@ impl PageSession {
         sequence: u64,
         payload: &[u8],
     ) -> R<super::super::input::PageInputAck> {
-        use super::super::input::*;
+        use super::super::input::{
+            digest, fingerprint, invalid, validate_payload, Capture, PageInputAck, MAX_CAPTURE,
+        };
         if payload.len() > MAX_CAPTURE {
             return Err(invalid("input capture exceeds 1 MiB"));
         }
@@ -223,7 +228,7 @@ impl PageSession {
         sha: &str,
         id: &str,
     ) -> R<super::super::input::PageInputAck> {
-        use super::super::input::*;
+        use super::super::input::{fingerprint, validate_writer, PageInputAck};
         validate_writer(id)?;
         let fingerprint = fingerprint(&("discard", writer, revision, sequence, sha, id))?;
         if let Some(receipt) = self.input_state().replay(&fingerprint) {
@@ -256,7 +261,7 @@ impl PageSession {
         revision: u64,
         id: &str,
     ) -> R<super::super::input::PageInputAck> {
-        use super::super::input::*;
+        use super::super::input::{fingerprint, invalid, validate_writer, PageInputAck};
         validate_writer(writer)?;
         validate_writer(id)?;
         let fingerprint = fingerprint(&("release-empty", writer, revision, id))?;
@@ -291,7 +296,9 @@ impl PageSession {
         sha: &str,
         id: &str,
     ) -> R<(super::super::input::PageInputAck, AcceptedEdit)> {
-        use super::super::input::*;
+        use super::super::input::{
+            fingerprint, invalid, page_edits, validate_writer, PageInputAck, PageInputTarget,
+        };
         validate_writer(id)?;
         let fingerprint = fingerprint(&("apply", writer, revision, sequence, sha, id))?;
         if let Some(receipt) = self.input_state().replay(&fingerprint) {

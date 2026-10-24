@@ -38,7 +38,7 @@ impl Engine {
             .pages
             .sessions
             .lock()
-            .unwrap_or_else(|p| p.into_inner());
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let session = match sessions.entry(item.to_string()) {
             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
             std::collections::hash_map::Entry::Vacant(entry) => {

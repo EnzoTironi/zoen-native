@@ -1,6 +1,6 @@
 //! Bounded unvalidated receipts on the current socket.
 
-use super::*;
+use super::{DeferredReceipts, Engine, HashSet};
 
 impl DeferredReceipts {
     pub(crate) fn device_message(

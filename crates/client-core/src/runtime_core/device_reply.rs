@@ -1,6 +1,10 @@
-//! Device reply operations on the original DeviceCore state.
+//! Device reply operations on the original `DeviceCore` state.
 
-use super::*;
+use super::{
+    direct_writers, evaluate_permission, ActionClass, Capability, DeviceCore, Event, EventBody,
+    GrantScope, GrantState, NativeError, NativeFrontier, Policy, ReplyDiscovery, ReplyFacts,
+    ReplyIntent, Result, Seen, SpaceLog, State, Zeroizing, MAX_BATCH, MAX_CONTEXT_BYTES, PROFILE,
+};
 
 impl DeviceCore {
     pub fn reply(&self, space: &str, trigger: &str, at_ms: i64) -> Result<ReplyFacts> {

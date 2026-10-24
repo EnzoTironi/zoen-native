@@ -1,6 +1,6 @@
 //! Plans on the original Engine and canonical document state.
 
-use super::*;
+use super::{invalid, plan, Engine, EventBody, ItemContent, ItemKind, PlanDoc, R};
 
 impl Engine {
     pub(crate) fn plan_snapshot(&self, item: &str) -> R<plan::PlanSnapshot> {

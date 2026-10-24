@@ -70,6 +70,7 @@ pub struct AgentPageTurn {
     pub(crate) approval: Option<(String, String)>,
 }
 impl AgentPageTurn {
+    #[must_use]
     pub fn snapshot(&self) -> &AgentPageSnapshot {
         &self.snapshot
     }

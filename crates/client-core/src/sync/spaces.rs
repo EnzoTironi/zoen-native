@@ -1,6 +1,9 @@
 //! Relay Space creation and membership transitions.
 
-use super::*;
+use super::{
+    new_id, new_ulid, t, CoreError, Engine, EventBody, IdentityId, Privacy, Role, SpaceId,
+    SpaceKind, R,
+};
 
 impl Engine {
     // ── Spaces on the relay ──

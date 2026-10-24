@@ -1,6 +1,9 @@
 //! Fixed-key prepared account installation and signup validation.
 
-use super::*;
+use super::{
+    tint_for, AccountMeta, Author, CoreError, Engine, Identity, IdentityKind, PreparedAccount,
+    Signer, R,
+};
 
 impl Engine {
     /// Only the protected staging identity may repair its unfinished local install.

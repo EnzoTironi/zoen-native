@@ -1,6 +1,6 @@
 //! Handle changes are online directory requests. The local profile changes only
 //! after the relay acknowledges the exact requested handle for this account.
-use super::*;
+use super::{invalid, AccountDto, Arc, Client, CoreError};
 use crate::{engine::Engine, sync::AccountMeta};
 use protocol::{Op, Reply};
 use std::{
@@ -19,7 +19,7 @@ impl InFlight {
         if !CHANGING
             .get_or_init(Mutex::default)
             .lock()
-            .unwrap_or_else(|error| error.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .insert(key)
         {
             return Err(invalid("A username change is already in progress."));
@@ -33,7 +33,7 @@ impl Drop for InFlight {
             .get()
             .unwrap()
             .lock()
-            .unwrap_or_else(|error| error.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .remove(&self.0);
     }
 }

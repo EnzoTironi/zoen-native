@@ -1,6 +1,9 @@
 //! Complete captured-text conversion using the original input validators and Page parser.
 
-use super::*;
+use super::{
+    empty_block, invalid, rich, text, Binding, Capture, PageBlockDto, PageInputMode,
+    PageInputTarget, RichBlock, TaggedBlock, TextSpanDto, R,
+};
 
 /// Maps the native semantic ranges directly. No before/after text inference occurs.
 pub(in crate::pages) fn page_edits(binding: &Binding, capture: &Capture) -> R<Vec<PageBlockDto>> {

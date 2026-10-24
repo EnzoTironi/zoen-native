@@ -90,7 +90,10 @@ impl Client {
                 "Continue with Apple or Google to finish signing in.",
             )));
         }
-        let mut guard = self.net.lock().unwrap_or_else(|p| p.into_inner());
+        let mut guard = self
+            .net
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if guard.is_some() {
             return Ok(());
         }
@@ -129,7 +132,11 @@ impl Client {
         let _language = crate::i18n::enter(self.lang);
         self.link_pickup.cancel();
         self.cancel_history_receive();
-        let net = self.net.lock().unwrap_or_else(|p| p.into_inner()).take();
+        let net = self
+            .net
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
         {
             let mut engine = self.lock();
             engine.net.poke = None;
@@ -163,7 +170,7 @@ impl Client {
         bio: String,
     ) -> Result<AccountDto, CoreError> {
         self.lock().update_profile(&name, &handle, &bio)?;
-        self.with_net(|n| n.flush());
+        self.with_net(super::net::Net::flush);
         self.account_dto().ok_or_else(|| invalid("account"))
     }
 
@@ -290,11 +297,11 @@ impl Client {
                 } else {
                     EphemeralKind::StoppedTyping
                 },
-            )
+            );
         });
     }
 
-    /// What you (or your agent) are doing in a chat: "processing", "building", "in_call"…
+    /// What you (or your agent) are doing in a chat: "processing", "building", "`in_call`"…
     pub fn set_status(&self, space_id: String, status: String) {
         if !self.lock().net.synced.contains(&space_id) {
             return;

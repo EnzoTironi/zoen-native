@@ -99,7 +99,7 @@ impl ProviderSetup {
         );
         let saved = vault.save(VAULT_SETUP.into(), bytes.to_vec());
         let held = vault.load(VAULT_SETUP.into()).map(Zeroizing::new);
-        if !saved || held.as_deref().map(|bytes| bytes.as_slice()) != Some(bytes.as_slice()) {
+        if !saved || held.as_deref().map(std::vec::Vec::as_slice) != Some(bytes.as_slice()) {
             return Err(invalid(
                 "Não foi possível guardar as chaves deste aparelho.",
             ));

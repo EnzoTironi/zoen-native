@@ -18,7 +18,7 @@ const ADMISSION: &str = "agent.enrollment.admission.v1";
 const ROOT: &str = "agent_root";
 const RECORD_LIMIT: usize = 16 * 1024;
 
-/// Trusted local configuration. expected_owner_id must come from trusted setup,
+/// Trusted local configuration. `expected_owner_id` must come from trusted setup,
 /// before displaying a code; it is never inferred from a mailbox response.
 pub struct AgentEnrollmentHostRequest {
     pub expected_owner_id: String,
@@ -341,7 +341,7 @@ impl Client {
     }
 
     /// Only unaccepted, uninstalled offers can be discarded. Explicit cancellation
-    /// preserves agent_root and never erases or revokes an Agent identity.
+    /// preserves `agent_root` and never erases or revokes an Agent identity.
     pub async fn cancel_agent_enrollment(
         &self,
         vault: Arc<dyn SecretVault>,

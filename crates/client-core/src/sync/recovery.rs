@@ -1,6 +1,10 @@
 //! Confirmed-history reload and optimistic approval overlays.
 
-use super::*;
+use super::{
+    is_message_send, CoreError, Engine, Event, EventBody, HashMap, HashSet, ItemContent, ItemKind,
+    PageContent, PendingCommitment, PlanReplay, Projection, State, EVENT_FORMAT_META,
+    EVENT_FORMAT_VALUE, R,
+};
 
 impl Engine {
     /// Logs from an older event format can't be re-verified under the current one: start over (pre-launch only; ADR 0010).

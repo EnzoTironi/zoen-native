@@ -1,16 +1,16 @@
 //! Current profile request correlation and retry deadlines.
 
-use super::*;
+use super::{Duration, HashMap, Waiting};
 
 /// Only the current retry may consume a profile response or settle its deadline.
 /// A timed-out request can still reply after the replacement was sent.
 pub(super) fn remember_waiting(waiting: &mut HashMap<u64, Waiting>, id: u64, next: Waiting) {
     match &next {
         Waiting::SealedProfiles(_) => {
-            waiting.retain(|_, entry| !matches!(entry, Waiting::SealedProfiles(_)))
+            waiting.retain(|_, entry| !matches!(entry, Waiting::SealedProfiles(_)));
         }
         Waiting::ProfileUploaded(_) => {
-            waiting.retain(|_, entry| !matches!(entry, Waiting::ProfileUploaded(_)))
+            waiting.retain(|_, entry| !matches!(entry, Waiting::ProfileUploaded(_)));
         }
         _ => {}
     }

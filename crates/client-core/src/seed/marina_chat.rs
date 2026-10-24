@@ -10,7 +10,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<(String, u64, u64)
     let dm_marina = new_id("sp")?;
     e.append_at(
         &dm_marina,
-        &enzo,
+        enzo,
         at(60 * 24 * 5),
         EventBody::SpaceCreated {
             title: "Marina".into(),
@@ -20,7 +20,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<(String, u64, u64)
     )?;
     e.append_at(
         &dm_marina,
-        &enzo,
+        enzo,
         at(60 * 24 * 5),
         EventBody::MemberAdded {
             identity: marina.clone(),
@@ -29,13 +29,13 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<(String, u64, u64)
     )?;
     let sunscreen = e.append_at(
         &dm_marina,
-        &enzo,
+        enzo,
         at(52),
         msg(&t("Comprei o protetor solar ☀️", "Bought the sunscreen ☀️"))?,
     )?;
     let charger = e.append_at(
         &dm_marina,
-        &marina,
+        marina,
         at(44),
         msg(&t(
             "Perfeito! Leva o carregador portátil também?",
@@ -44,7 +44,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<(String, u64, u64)
     )?;
     let marina_delivered = e.append_at(
         &dm_marina,
-        &enzo,
+        enzo,
         at(43),
         msg(&t(
             "Já deixei o carregador na mochila 🔋",
@@ -53,7 +53,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<(String, u64, u64)
     )?;
     e.append_at(
         &dm_marina,
-        &enzo,
+        enzo,
         at(42),
         msg(&t(
             "Saio às oito. Te aviso quando chegar 🙂",

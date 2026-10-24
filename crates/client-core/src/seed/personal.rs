@@ -12,7 +12,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<()> {
     let me_space = new_id("sp")?;
     e.append_at(
         &me_space,
-        &enzo,
+        enzo,
         at(60 * 24 * 6),
         EventBody::SpaceCreated {
             title: t(&t("Pessoal", "Personal"), "Personal"),
@@ -22,22 +22,22 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<()> {
     )?;
     e.append_at(
         &me_space,
-        &enzo,
+        enzo,
         at(60 * 24 * 6),
         grant(
-            &enzo,
-            &zoen,
+            enzo,
+            zoen,
             GrantScope::Everywhere,
             Capability::MonthlyBudget { cents: 1_000 },
         )?,
     )?;
     e.append_at(
         &me_space,
-        &enzo,
+        enzo,
         at(60 * 24 * 6),
         grant(
-            &enzo,
-            &fin,
+            enzo,
+            fin,
             GrantScope::Everywhere,
             Capability::MonthlyBudget { cents: 500 },
         )?,

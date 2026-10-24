@@ -1,5 +1,10 @@
 //! Chat summaries, receipts and signed conversation actions.
-use super::*;
+use super::{
+    new_id, not_found, now_ms, reason_label, t, tr, ActionClass, CoreError, Decision, Engine,
+    Entry, EntryBody, EventBody, IdentityKind, ItemContent, ItemId, ItemKind, MemberRoleDto,
+    Persona, Privacy, PrivacyDto, ReqStatus, Role, SpaceKind, SpaceKindDto, SpaceSummary,
+    TimelineEntry, R,
+};
 
 impl Engine {
     // ───────────────────────────── API pública ─────────────────────────────
@@ -53,7 +58,7 @@ impl Engine {
         let unread = s
             .entries
             .iter()
-            .filter(|e| e.author != me && read_seq.map(|r| e.seq > r).unwrap_or(true))
+            .filter(|e| e.author != me && read_seq.map_or(true, |r| e.seq > r))
             .filter(|e| matches!(e.body, EntryBody::Message { .. }))
             .count() as u32;
         let pending = self
@@ -72,8 +77,7 @@ impl Engine {
             id: s.id.clone(),
             title: counterpart
                 .as_ref()
-                .map(|c| c.name.clone())
-                .unwrap_or_else(|| s.title.clone()),
+                .map_or_else(|| s.title.clone(), |c| c.name.clone()),
             kind,
             privacy: match s.privacy {
                 Privacy::EndToEnd => PrivacyDto::EndToEnd,
@@ -88,7 +92,7 @@ impl Engine {
             unread,
             last_delivery,
             pending_requests: pending,
-            event_count: self.logs.get(id).map(|l| l.len() as u64).unwrap_or(0),
+            event_count: self.logs.get(id).map_or(0, |l| l.len() as u64),
         })
     }
 

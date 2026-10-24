@@ -1,6 +1,12 @@
 //! Existing projection on the same canonical State authority.
 
-use super::*;
+use super::{
+    content_matches, standing_allow_permitted, standing_key, t, BeforeEvent, Capability,
+    Currentness, Entry, EntryBody, Event, EventBody, Grant, GrantScope, GrantState, HashMap,
+    Identity, IdentityId, IdentityKind, ItemContent, ItemKind, ItemState, PageContent,
+    PageManifest, Projection, ReqStatus, RequestResolution, RequestState, State, ToolDecision,
+    TrustLevel, Version,
+};
 
 impl State {
     /// Replay and live ingestion use the same authorization checks as local decisions.
@@ -179,10 +185,10 @@ impl State {
                     || (*approved && !self.writer(&r.space, &r.req.agent))
                     || (*approved
                         && match (&r.req.item, &r.req.line) {
-                            (Some(item), Some(_)) => !self
+                            (Some(item), Some(_)) => self
                                 .items
                                 .get(item)
-                                .is_some_and(|item| item.space == r.space),
+                                .is_none_or(|item| item.space != r.space),
                             (None, None) => false,
                             _ => true,
                         })

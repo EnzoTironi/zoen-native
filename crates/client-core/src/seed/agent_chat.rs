@@ -10,7 +10,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<String> {
     let dm_zoen = new_id("sp")?;
     e.append_at(
         &dm_zoen,
-        &enzo,
+        enzo,
         at(60 * 26),
         EventBody::SpaceCreated {
             title: "Zoen".into(),
@@ -20,7 +20,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<String> {
     )?;
     e.append_at(
         &dm_zoen,
-        &enzo,
+        enzo,
         at(60 * 26),
         EventBody::MemberAdded {
             identity: zoen.clone(),
@@ -29,7 +29,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<String> {
     )?;
     e.append_at(
         &dm_zoen,
-        &zoen,
+        zoen,
         at(60 * 26),
         msg(&t(
             "Oi, Enzo. O que você quer resolver?",
@@ -38,7 +38,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<String> {
     )?;
     e.append_at(
         &dm_zoen,
-        &enzo,
+        enzo,
         at(60 * 25),
         msg(&t(
             "Me lembra de renovar o passaporte antes de dezembro",
@@ -46,7 +46,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<String> {
         ))?,
     )?;
     let task = new_id("it")?;
-    e.append_at(&dm_zoen, &zoen, at(60 * 25), EventBody::ItemCreated {
+    e.append_at(&dm_zoen, zoen, at(60 * 25), EventBody::ItemCreated {
         item: task.clone(),
         kind: ItemKind::Task,
         content: ItemContent::Text { text: t(&t("Renovar o passaporte\nAgendar na PF até 15/11 · levar RG e passaporte antigo", "Renew passport\nBook an appointment by Nov 15 · bring ID and the old passport"), "Renew passport\nBook an appointment by Nov 15 · bring ID and the old passport") },
@@ -54,7 +54,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<String> {
     })?;
     e.append_at(
         &dm_zoen,
-        &zoen,
+        zoen,
         at(60 * 25),
         EventBody::MessagePosted {
             message: new_id("msg")?,
@@ -73,7 +73,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<String> {
     )?;
     e.append_at(
         &dm_zoen,
-        &zoen,
+        zoen,
         at(60 * 25),
         EventBody::UsageRecorded {
             agent: zoen.clone(),

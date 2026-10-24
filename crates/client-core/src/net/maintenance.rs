@@ -1,6 +1,9 @@
 //! A completed catch-up permits one existing ordered maintenance pass.
 
-use super::*;
+use super::{
+    complete_reads, flush, free, send, tracing_like, ClaimClockSample, ClientFrame, Ctx, Duration,
+    EphemeralKind, Exit, HashMap, HashSet, Op, ProfileTraffic, Sink, Waiting, PROFILE_TIMEOUT,
+};
 
 /// Borrows the active session; the caller still owns scheduling and watchdogs.
 pub(super) struct MaintenanceContext<'a> {
@@ -46,7 +49,7 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
         };
     }
     if profiles_inflight.is_none() {
-        let unknown = engine!(|engine| engine.take_unknown());
+        let unknown = engine!(super::super::engine::Engine::take_unknown);
         if !unknown.is_empty() {
             let id = *next_id;
             *next_id += 1;
@@ -67,7 +70,7 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
             *profiles_inflight = Some(tokio::time::Instant::now());
         }
     }
-    let shared = engine!(|engine| engine.profile_share_pass());
+    let shared = engine!(super::super::engine::Engine::profile_share_pass);
     match shared {
         Ok(true) => {
             if let Err(e) = flush(ctx, sink, sent).await {
@@ -92,7 +95,7 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
         }
     }
     if free(&mut traffic.upload) {
-        let upload = engine!(|engine| engine.profile_to_upload());
+        let upload = engine!(super::super::engine::Engine::profile_to_upload);
         if let Some(profile) = upload {
             traffic.upload = Some(tokio::time::Instant::now() + PROFILE_TIMEOUT);
             let version = profile.version;
@@ -113,7 +116,7 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
         }
     }
     if free(&mut traffic.profiles) {
-        let ids = engine!(|engine| engine.take_need_profiles());
+        let ids = engine!(super::super::engine::Engine::take_need_profiles);
         if !ids.is_empty() {
             traffic.profiles = Some(tokio::time::Instant::now() + PROFILE_TIMEOUT);
             *opening = Some(tokio::time::Instant::now());
@@ -124,7 +127,7 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
         }
     }
     if free(&mut traffic.key_packages) {
-        let publish = engine!(|engine| engine.mls_key_packages_to_publish());
+        let publish = engine!(super::super::engine::Engine::mls_key_packages_to_publish);
         if let Some((packages, last_resort)) = publish {
             traffic.key_packages = Some(tokio::time::Instant::now() + PROFILE_TIMEOUT);
             reqs.push((
@@ -136,7 +139,7 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
             ));
         }
     }
-    for (to, sealed) in engine!(|engine| engine.take_device_outbox()) {
+    for (to, sealed) in engine!(super::super::engine::Engine::take_device_outbox) {
         tracing_like(&format!(
             "device message to {} ({} bytes)",
             &to[..12.min(to.len())],
@@ -144,10 +147,10 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
         ));
         reqs.push((Op::SendDevice { to, sealed }, Waiting::Ignored));
     }
-    if engine!(|engine| engine.take_ask_devices()) {
+    if engine!(super::super::engine::Engine::take_ask_devices) {
         reqs.push((Op::Devices, Waiting::Devices));
     }
-    match engine!(|engine| engine.mls_recovery_pass()) {
+    match engine!(super::super::engine::Engine::mls_recovery_pass) {
         Ok(true) => media_kick.notify_one(),
         Ok(false) => {}
         Err(e) => tracing_like(&format!("group recovery: {e}")),
@@ -175,7 +178,7 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
         }
         Err(_) => {}
     }
-    let checkpoints = engine!(|engine| engine.mls_checkpoints());
+    let checkpoints = engine!(super::super::engine::Engine::mls_checkpoints);
     match checkpoints {
         Ok(true) => {
             if let Err(e) = flush(ctx, sink, sent).await {
@@ -185,7 +188,7 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
         Ok(false) => {}
         Err(e) => tracing_like(&format!("checkpoints: {e}")),
     }
-    let sealed = engine!(|engine| engine.mls_seal_outbox());
+    let sealed = engine!(super::super::engine::Engine::mls_seal_outbox);
     match sealed {
         Ok(true) => {
             if let Err(e) = flush(ctx, sink, sent).await {

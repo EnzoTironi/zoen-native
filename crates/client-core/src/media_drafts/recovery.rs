@@ -1,6 +1,10 @@
 //! Explicit recovery copies refused local bytes into the existing private journal.
 //! It never changes the original event, receipt, Failed state, or transport queue.
-use super::*;
+use super::{
+    intent_id, invalid, stale, storage_error, t, target_id, validate, Attachment, Content,
+    CoreError, Engine, MediaDraftAsset, MediaDraftDto, MediaDraftScope, OptionalExtension, Record,
+    Zeroizing, MAX_ASSET_BYTES, R,
+};
 use crate::engine::{Entry, EntryBody};
 use types::{
     AttachmentGrouping, AttachmentSendOptions, Event, EventBody, FileDoc, ItemContent, ItemKind,

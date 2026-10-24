@@ -139,7 +139,7 @@ impl Client {
                 if let Some(retained) =
                     owner.with(self, |engine| Ok(engine.store.meta(&chunk_meta(n))?))?
                 {
-                    if b64.decode(retained).ok().is_some_and(|bytes| {
+                    if b64.decode(retained).is_ok_and(|bytes| {
                         bytes.len() <= MAX_HISTORY_CHUNK && event_log::sha256_hex(&bytes) == *sha
                     }) {
                         resumed += 1;
@@ -148,7 +148,7 @@ impl Client {
                     return Err(invalid("A retained history chunk does not match."));
                 }
                 if stop_after.is_some_and(|s| fetched >= s) {
-                    return Err(invalid(format!("history stopped at {}/{total}", n)));
+                    return Err(invalid(format!("history stopped at {n}/{total}")));
                 }
                 let mut r = receive
                     .wait(async {

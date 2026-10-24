@@ -1,5 +1,5 @@
 //! Local key preparation precedes replacement; the existing install remains canonical.
-use super::*;
+use super::{CoreError, Engine, PreparedAccount, Signer, R};
 use event_log::{
     profile::{AgreementKey, ProfileKey},
     CryptoError,

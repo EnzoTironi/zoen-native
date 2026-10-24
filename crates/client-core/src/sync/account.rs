@@ -1,6 +1,9 @@
 //! Local account creation, authorization and device unlock.
 
-use super::*;
+use super::{
+    new_id, normalize_handle, t, AccountMeta, Author, CoreError, Engine, EventBody, Identity,
+    IdentityId, IdentityKind, PreparedAccount, Privacy, Role, Signer, SpaceKind, R,
+};
 
 impl Engine {
     // ── account ──

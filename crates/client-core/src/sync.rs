@@ -21,6 +21,9 @@
 //! - **Reopen:** confirmed events are re-verified from disk, then the outbox is replayed
 //!   on top. Kill the app mid-send and nothing is lost or duplicated.
 
+#[cfg(test)]
+use types::TrustLevel;
+
 use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},
@@ -30,7 +33,10 @@ use event_log::content::SealedKind;
 use event_log::{chain_hash, content_hash_of, Author, Signer, SpaceLog};
 use protocol::{normalize_handle, Cursor, Envelope, Sequenced};
 use serde::{Deserialize, Serialize};
-use types::*;
+use types::{
+    new_id, new_ulid, Event, EventBody, FileDoc, Identity, IdentityId, IdentityKind, ItemContent,
+    ItemKind, PageContent, Privacy, Role, Seen, SpaceId, SpaceKind, GENESIS_PREV,
+};
 
 use crate::dto::Delivery;
 use crate::engine::{Engine, Entry, State};
@@ -101,11 +107,11 @@ pub struct NetState {
     /// The unlocked device key (loaded from the vault).
     pub author: Option<Author>,
     pub synced: HashSet<SpaceId>,
-    /// client_id → Space, for events in the outbox.
+    /// `client_id` → Space, for events in the outbox.
     pub pending: HashMap<String, SpaceId>,
     /// Spaces whose pending resolutions overlay their ordered approval state.
     pub(crate) optimistic_approvals: HashSet<SpaceId>,
-    /// client_id → why the relay refused it.
+    /// `client_id` → why the relay refused it.
     pub failed: HashMap<String, String>,
     /// Identities seen in logs whose profile this device doesn't have yet.
     pub unknown: HashSet<IdentityId>,
@@ -250,7 +256,7 @@ pub(crate) mod replay_probe;
 mod spaces;
 
 impl Engine {
-    /// OpenMLS `SenderRatchetConfiguration` default `out_of_order_tolerance`.
+    /// `OpenMLS` `SenderRatchetConfiguration` default `out_of_order_tolerance`.
     /// A generation this far behind one already opened still decrypts; one step
     /// further is `TooDistantInThePast` and that page never opens on the device.
     const APPLICATION_IN_FLIGHT: usize = 5;

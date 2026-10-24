@@ -1,5 +1,8 @@
-//! The same FileDoc and canonical encryption with externally retained bytes.
-use super::*;
+//! The same `FileDoc` and canonical encryption with externally retained bytes.
+use super::{
+    invalid_file, seal_chunk, ChunkRef, Digest, Engine, FileDoc, Sha256, AVG_CHUNK, MAX_CHUNK,
+    MAX_FILE_BYTES, MIN_CHUNK, R,
+};
 
 /// Prepared canonical relay ciphertext, never an upload acknowledgement.
 pub struct NativeFileBlob {
@@ -12,9 +15,11 @@ impl std::fmt::Debug for NativeFileBlob {
     }
 }
 impl NativeFileBlob {
+    #[must_use]
     pub fn reference(&self) -> &ChunkRef {
         &self.reference
     }
+    #[must_use]
     pub fn bytes(&self) -> &[u8] {
         &self.bytes
     }

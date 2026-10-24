@@ -1,5 +1,9 @@
 //! Retained outgoing ciphertext, handshakes and stale-epoch fences.
-use super::*;
+use super::{
+    event_from_content, mls_err, must_seal, new_ulid, sealed_meta, storage, t, CoreError, Engine,
+    Envelope, Event, EventBody, HashMap, HashSet, InnerEvent, Sealed, SealedKind, SpaceId, R,
+    SUITE_ID,
+};
 
 impl Engine {
     /// The epoch a queued event was sealed at, without reading its sealed bytes.
@@ -162,7 +166,7 @@ impl Engine {
             })?;
         let at_ms = crate::engine::now_ms();
         let client_id = new_ulid(at_ms)?;
-        let seen = self.logs.get(space).and_then(|l| l.head());
+        let seen = self.logs.get(space).and_then(event_log::SpaceLog::head);
         let (content, sig) = author.sign_sealed(space, &client_id, at_ms, seen.as_ref(), sealed);
         let e = event_from_content(
             content,

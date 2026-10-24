@@ -159,7 +159,7 @@ impl Engine {
         }
         let pending = self.store.outbox()?;
         let original = pending.iter().map(|entry| &entry.event)
-            .chain(self.logs.get(&scope.space_id).into_iter().flat_map(|log| log.events()))
+            .chain(self.logs.get(&scope.space_id).into_iter().flat_map(event_log::SpaceLog::events))
             .find(|event| event.space == scope.space_id && event.author == scope.expected_identity_id
                 && matches!(&event.body, EventBody::OwnerPolicySubmitted { agent, signed }
                     if agent == &scope.agent_id && signed.policy.owner == scope.expected_identity_id
@@ -185,7 +185,7 @@ impl Engine {
         // Pending outbox entries and confirmed log entries share one original ID.
         let pending = self.store.outbox()?;
         if let Some(event) = pending.iter().map(|entry| &entry.event)
-            .chain(self.logs.get(&scope.space_id).into_iter().flat_map(|log| log.events()))
+            .chain(self.logs.get(&scope.space_id).into_iter().flat_map(event_log::SpaceLog::events))
             .find(|event| {
                 event.space == scope.space_id && matches!(&event.body, EventBody::OwnerPolicySubmitted { agent, signed }
                     if agent == &scope.agent_id && event.author == scope.expected_identity_id

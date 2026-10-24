@@ -1,6 +1,11 @@
 //! Ordered server frames borrow the one live session's local bookkeeping.
 
-use super::*;
+use super::{
+    flush, report_rejection, responses, send, tracing_like, watch, ClaimClockSample, ClientFrame,
+    Ctx, CursorRepair, DeferredReceipts, Duration, EphemeralKind, ErrorCode, Exit, HashMap,
+    HashSet, Ingest, KeyPackageClaimClock, ProfileTraffic, RejectionOutcome, ServerFrame, Sink,
+    Waiting,
+};
 
 /// A per-call borrow, never another cursor, receipt or connection owner.
 pub(super) struct FrameContext<'a> {
@@ -212,11 +217,11 @@ pub(super) async fn dispatch_frame(
                 // Reset retries only after this connection actually caught up.
                 *backoff = Duration::from_millis(500);
                 ctx.status.send_modify(|s| s.synced = true);
-                engine!(|engine| engine.mls_refresh_checkpoints());
+                engine!(super::super::engine::Engine::mls_refresh_checkpoints);
                 engine!(|engine| engine.net.link.ask_devices = true);
                 // Ephemeral sends may have been lost before this socket existed.
                 // Rebuild receipts after catch-up, even with no new remote events.
-                let receipts = engine!(|engine| engine.receipts_to_replay());
+                let receipts = engine!(super::super::engine::Engine::receipts_to_replay);
                 let mut failed = None;
                 for (space, kind) in receipts {
                     if let Err(e) = send(
@@ -239,7 +244,7 @@ pub(super) async fn dispatch_frame(
                     return Err(Exit::Retry(e));
                 }
             }
-            if let Err(e) = engine!(|engine| engine.mls_ask_rejoin()) {
+            if let Err(e) = engine!(super::super::engine::Engine::mls_ask_rejoin) {
                 tracing_like(&format!("rejoin: {e}"));
             }
             // Anything still pending after a full catch-up goes out again (it
@@ -268,10 +273,10 @@ pub(super) async fn dispatch_frame(
             .await?;
         }
         ServerFrame::ProfileChanged { identity, .. } => {
-            engine!(|engine| engine.profile_changed(&identity))
+            engine!(|engine| engine.profile_changed(&identity));
         }
         ServerFrame::KeyPackagesLow { device, remaining } => {
-            engine!(|engine| engine.mls_key_packages_low(&device, remaining))
+            engine!(|engine| engine.mls_key_packages_low(&device, remaining));
         }
         ServerFrame::DeviceMessage { from, to, sealed } => {
             if let Err(e) = engine!(
@@ -279,7 +284,7 @@ pub(super) async fn dispatch_frame(
             ) {
                 return Err(Exit::Retry(e.to_string()));
             }
-            if engine!(|engine| engine.take_initial_history_ready()) {
+            if engine!(super::super::engine::Engine::take_initial_history_ready) {
                 if let Some(listener) = &ctx.listener {
                     listener.on_ephemeral(
                         String::new(),
