@@ -158,6 +158,8 @@ engine/ABI/JS/WASM and generated HTML. `build-resource-manifest.mjs` verifies
 actual sealed local assets independently of Rust pins. It does not deploy them.
 
 Actual qualification for this consumer is recorded in [AGENT-EVIDENCE.md](AGENT-EVIDENCE.md).
-PDF export remains unfinished
-product work: the upstream PDF crate exists but this closed worker/browser API
-does not yet expose or qualify it. DOCX is the only currently offered export.
+Accepted-head DOCX/PDF export, the actual pinned font/layout path, retained
+missing-glyph RED and independently inspected current/historical outputs are
+recorded in [PDF-EVIDENCE.md](PDF-EVIDENCE.md). The configured package exposes
+both formats; the default manifest remains unavailable. Unsupported font glyphs
+refuse PDF without changing the DOCX or pending draft.
