@@ -33,6 +33,17 @@ fn native_seed_is_structurally_accepted_without_rewriting_source() -> R {
     Ok(())
 }
 #[test]
+fn real_native_transform_keeps_the_same_closed_document_profile() -> R {
+    let source = include_bytes!("fixtures/native-asymmetric.pcraft");
+    let rotated = include_bytes!("fixtures/native-rotated.pcraft");
+    let before = Document::parse(source)?;
+    let after = Document::parse(rotated)?;
+    assert_eq!((before.width, before.height), (640, 480));
+    assert_eq!((after.width, after.height), (480, 640));
+    assert_ne!(source.as_slice(), rotated.as_slice());
+    Ok(())
+}
+#[test]
 fn unknown_nested_fields_profiles_tile_coordinates_and_references_are_refused() -> R {
     let (manifest, _) = container(EMPTY)?;
     for (path, value) in [
