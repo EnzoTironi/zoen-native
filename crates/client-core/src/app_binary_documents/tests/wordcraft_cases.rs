@@ -144,3 +144,43 @@ fn docx_receipt_failure_rolls_back_and_revoked_trust_cannot_observe_an_ack_or_wr
     assert_eq!(counts(&f), before);
     Ok(())
 }
+#[test]
+fn configured_wordcraft_person_factory_creates_one_standard_card_and_same_host_file() -> R<()> {
+    let f = fixture(":memory:");
+    let before = counts(&f);
+    let args = json!({"title":"Shared document","mutationId":"person-word-create"}).to_string();
+    if !miniapps::binary::Format::Wordcraft.available() {
+        assert!(f
+            .client
+            .install_app(f.space.clone(), wordcraft::APP.into(), args)
+            .is_err());
+        assert_eq!(counts(&f), before);
+        return Ok(());
+    }
+    let first = f
+        .client
+        .install_app(f.space.clone(), wordcraft::APP.into(), args.clone())?;
+    let repeated = f
+        .client
+        .install_app(f.space.clone(), wordcraft::APP.into(), args)?;
+    assert_eq!(first.id, repeated.id);
+    let base = f.client.app_binary_read(first.id.clone(), None, None)?;
+    assert_eq!(base.actor_kind, "person");
+    assert_eq!(STANDARD.decode(&base.data_base64).expect("base64"), DOCX);
+    let edited = save(&f, &base, EDITED, "person-host-edit")?;
+    assert_eq!(edited.item_id, first.id);
+    assert_eq!(edited.version, 2);
+    assert_eq!(
+        STANDARD.decode(&edited.data_base64).expect("base64"),
+        EDITED
+    );
+    let cards=f.client.timeline(f.space.clone())?.into_iter().filter(|entry|matches!(&entry.kind,EntryKind::Message{card:Some(card),..} if card.item_id==first.id)).count();
+    assert_eq!(cards, 1);
+    assert_eq!(
+        f.client
+            .app_binary_read(first.id, Some(1), Some(base.sha256))?
+            .data_base64,
+        base.data_base64
+    );
+    Ok(())
+}

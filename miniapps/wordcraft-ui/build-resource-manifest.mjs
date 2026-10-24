@@ -11,7 +11,7 @@ if (!runtimePath || !assetsPath || !outputPath)
 const runtimePackage = parseRuntimePackage(JSON.parse(await readFile(runtimePath, "utf8")));
 const revision = "d1b0bfc3f9dd83126b162a42b667facecb003b7f";
 if (runtimePackage.engine !== "wordcraft" || runtimePackage.revision !== revision)
-  throw Error("The configured Grid engine revision changed");
+  throw Error("The configured Word engine revision changed");
 const directory = await realpath(assetsPath);
 for (const asset of [runtimePackage.module, runtimePackage.wasm]) {
   const path = resolve(directory, basename(new URL(asset.url).pathname));
