@@ -24,7 +24,8 @@ SELF = "scripts/ci-documentation-scope.py"
 TEST = "scripts/tests/test_ci_documentation_scope.py"
 
 from ci_frontend_inputs import (
-    BUNDLE_MANIFESTS, FRONTEND_CONTRACTS, NON_INPUT_APP_LITERALS, RESOURCE_MANIFESTS, RUST_ROOTS,
+    FRONTEND_CONTRACTS, NON_INPUT_APP_LITERALS, RESOURCE_MANIFESTS, RUST_ROOTS,
+    SOURCE_BUNDLE_MANIFESTS,
 )
 
 
@@ -78,7 +79,7 @@ def validate_frontend(base, head, ancestor, paths):
             data = json.loads(git("show", tree + ":" + path))
             if not isinstance(data, dict):
                 raise ValueError("Invalid embedded-resource manifest: " + path)
-            if path in BUNDLE_MANIFESTS[:2]:
+            if path in SOURCE_BUNDLE_MANIFESTS:
                 sources = data.get("sources")
                 if (not isinstance(sources, dict) or not sources or len(sources) > 4096
                         or any(not isinstance(name, str) or not isinstance(digest, str)
@@ -112,7 +113,9 @@ def validate_frontend(base, head, ancestor, paths):
         if search.returncode == 0:
             readers = {row.decode("utf-8").partition(":")[2]
                        for row in search.stdout.split(b"\0") if row}
-            if readers - NON_INPUT_APP_LITERALS:
+            # These exact pinned manifests were parsed above, including every
+            # declared source. They are known closures, not dynamic Rust readers.
+            if readers - NON_INPUT_APP_LITERALS - set(RESOURCE_MANIFESTS):
                 raise ValueError("A Rust input refers to frontend source or a broad app reader")
         elif search.returncode != 1:
             raise ValueError("Cannot establish the Rust/frontend input boundary")

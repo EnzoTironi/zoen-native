@@ -3,6 +3,12 @@
 # Reviewed Cargo roots, test commands, client coverage and embedded-resource
 # recipes. Drift selects the full lane; refreshing a pin never bypasses tests.
 FRONTEND_CONTRACTS = {
+    # Word includes shared frontend source through its generated bootstrap.
+    "crates/miniapps/resources/wordcraft.manifest.json": "6876c4e6da3486956d76ada9a7d496cfe9b85e67d58c86a23b721f7df52198b1",
+    "crates/miniapps/resources/generated/wordcraft-bootstrap.manifest.json": "e6d9559d911fbc72f6a932bc9bc4d2090ba2bb8120d76c4ee8edbca97e1335bf",
+    "miniapps/wordcraft-ui/build-bootstrap.mjs": "944862507c8e710eb1584b80654706a6535c34003a67ef247bab27de6d0ad31c",
+    "miniapps/wordcraft-ui/build-resource-manifest.mjs": "58883d2a1600baae7d61930d85f72086e0063a80e3b95a1b7c60284fdc4085db",
+    "miniapps/wordcraft-ui/prepare-engine.py": "7eb5454ac8c06c3a67083f0487a3b1ae069a2310b8312d403d33bd240f107421",
     "crates/miniapps/resources/countdown.manifest.json": "e4e75fe59826cc21cc32f60e844cae5e803b3ff4b093134599319716fe1adbd7",
     "crates/miniapps/resources/deckcraft.manifest.json": "ba104825f8838605b8376d71c78e9c62621159c5d9530f7fb988327ae0d6a358",
     "crates/miniapps/resources/excalidraw.manifest.json": "0c781ade300c8aa15102f71b12facfd6dbd541d609ccacae5a19a8701a43400a",
@@ -28,12 +34,12 @@ FRONTEND_CONTRACTS = {
     ".github/workflows/expo.yml": "085e800264619bcc17f43b676a40b9ee682cb8e7dff845058b9ff4247e1bf7e7",
     "apps/zoen/package.json": "d58538007aec677d34171d4a09f883973c1c8bf9440b141d5bc72f33b2dba14b",
     "apps/zoen/src/miniapps/vendor/deckcraft-bootstrap.manifest.json": "a2622622d2e7157f09728d452b5f8056839b4fc49f846a60b0c024bda9a88ed5",
-    "apps/zoen/src/miniapps/vendor/runtime-support.manifest.json": "d227c6b524f0c8d47dc8a5a8304e449492183a01f564022fa49388bc56e7394e",
+    "apps/zoen/src/miniapps/vendor/runtime-support.manifest.json": "7dbb32c6ff5de48a4f8027aa41175b111d305951cdf987ec079420655cc37d89",
     "apps/zoen/src/miniapps/vendor/excalidraw-ui.manifest.json": "9e58fab46099bb8ef146d5bef194bab99385095e0ce845bb3a0f442e84ae12d3",
     "miniapps/deckcraft-ui/build-bootstrap.mjs": "ecf7c02ddf67fac3f3bbb566b00940c2c5becc5a8f94060bf410a0f9b74fb57e",
     "miniapps/gridcraft-ui/build-bootstrap.mjs": "0ed258e83d06338d27393778c552a1094e694ca1a0f585c28dec11728ecc64ec",
-    "tools/miniapp-build/managed-binary-bootstrap.mjs": "217966d6b89e5165432bfd018c88c970d89a1225a2d8083bd0fe231206d84412",
-    "scripts/build-expo-core.mjs": "de33e30847a89300a242f7d0e8c15484fd2245815488138175ace8eec7011b41",
+    "tools/miniapp-build/managed-binary-bootstrap.mjs": "93196f98be23a6c1eff4db0b68cc9758dbb2906f53f94ca48595a0028dba7f55",
+    "scripts/build-expo-core.mjs": "8b58f32e98077ac464faafb9d7d7d61816b892d71c22418e02bb4170c291204f",
     "scripts/build-expo-web-core.mjs": "9504ad593e1413ed9b8e36c4b79032df1336e7ad740adbac18b5e9361fa8dfd2",
 }
 RESOURCE_MANIFESTS = (
@@ -44,6 +50,8 @@ RESOURCE_MANIFESTS = (
     "crates/miniapps/resources/deckcraft.manifest.json",
     "crates/miniapps/resources/excalidraw.manifest.json",
     "crates/miniapps/resources/gridcraft.manifest.json",
+    "crates/miniapps/resources/wordcraft.manifest.json",
+    "crates/miniapps/resources/generated/wordcraft-bootstrap.manifest.json",
     "crates/miniapps/resources/hike.manifest.json",
     "crates/miniapps/resources/list.manifest.json",
     "crates/miniapps/resources/maptap.manifest.json",
@@ -59,6 +67,12 @@ BUNDLE_MANIFESTS = (
     "apps/zoen/src/miniapps/vendor/deckcraft-bootstrap.manifest.json",
     "apps/zoen/src/miniapps/vendor/runtime-support.manifest.json",
     "apps/zoen/src/miniapps/vendor/excalidraw-ui.manifest.json",
+    "crates/miniapps/resources/generated/wordcraft-bootstrap.manifest.json",
+)
+SOURCE_BUNDLE_MANIFESTS = (
+    "apps/zoen/src/miniapps/vendor/deckcraft-bootstrap.manifest.json",
+    "apps/zoen/src/miniapps/vendor/runtime-support.manifest.json",
+    "crates/miniapps/resources/generated/wordcraft-bootstrap.manifest.json",
 )
 RUST_ROOTS = ("crates", "tools/uniffi-bindgen")  # Bound by the Cargo.toml pin.
 # Exact pinned bodies: Codex's disabled feature name and Apple's association

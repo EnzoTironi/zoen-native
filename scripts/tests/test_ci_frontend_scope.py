@@ -12,6 +12,7 @@ import unittest
 
 SOURCE = Path(__file__).resolve().parents[1] / "ci-documentation-scope.py"
 sys.path.insert(0, str(SOURCE.parent))
+from ci_frontend_inputs import BUNDLE_MANIFESTS
 SPEC = importlib.util.spec_from_file_location("frontend_scope", SOURCE)
 SCOPE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(SCOPE)
@@ -64,8 +65,8 @@ class FrontendScopeTests(unittest.TestCase):
         self.assertTrue(result["run_rust"], result)
         self.assertFalse(result["frontend_only"], result)
 
-    def pin_manifest(self, data):
-        path = SCOPE.BUNDLE_MANIFESTS[0]
+    def pin_manifest(self, data, path=None):
+        path = path or BUNDLE_MANIFESTS[0]
         self.write(path, json.dumps(data))
         SCOPE.FRONTEND_CONTRACTS[path] = hashlib.sha256(Path(path).read_bytes()).hexdigest()
         self.base = self.commit()
@@ -153,7 +154,7 @@ class FrontendScopeTests(unittest.TestCase):
         self.assertTrue(result["frontend_only"], result)
 
     def test_actual_manifest_declared_transitive_frontend_input_keeps_rust(self):
-        original = json.loads(Path(SCOPE.BUNDLE_MANIFESTS[0]).read_text())
+        original = json.loads(Path(BUNDLE_MANIFESTS[0]).read_text())
         self.assertTrue(original["sources"], "Exercise the actual compiled source manifest")
         self.assertEqual(original["resourceUri"], "ui://zoen/deckcraft/index.html")
         original["sources"][FRONTEND] = hashlib.sha256(Path(FRONTEND).read_bytes()).hexdigest()
@@ -164,17 +165,38 @@ class FrontendScopeTests(unittest.TestCase):
         self.assertIn("embedded-resource", result["reason"])
 
     def test_nested_provenance_input_is_also_part_of_the_closure(self):
-        data = json.loads(Path(SCOPE.BUNDLE_MANIFESTS[0]).read_text())
+        data = json.loads(Path(BUNDLE_MANIFESTS[0]).read_text())
         data["provenance"] = {"compiled": [{"source": FRONTEND}]}
         self.pin_manifest(data)
         self.edit_frontend()
         self.assert_full(self.classify())
 
+    def test_word_bootstrap_declared_frontend_input_keeps_rust(self):
+        path = "crates/miniapps/resources/generated/wordcraft-bootstrap.manifest.json"
+        self.assertIn(path, SCOPE.SOURCE_BUNDLE_MANIFESTS)
+        data = json.loads(Path(path).read_text())
+        self.assertEqual(data["resourceUri"], "ui://zoen/wordcraft/index.html")
+        self.assertTrue(data["sources"])
+        data["sources"][FRONTEND] = hashlib.sha256(Path(FRONTEND).read_bytes()).hexdigest()
+        self.pin_manifest(data, path)
+        self.edit_frontend()
+        result = self.classify()
+        self.assert_full(result)
+        self.assertIn("embedded-resource", result["reason"])
+
+    def test_word_bootstrap_empty_source_closure_never_skips_rust(self):
+        path = "crates/miniapps/resources/generated/wordcraft-bootstrap.manifest.json"
+        self.pin_manifest({"sources": {}}, path)
+        self.edit_frontend()
+        result = self.classify()
+        self.assert_full(result)
+        self.assertIn("Invalid bundled source closure", result["reason"])
+
     def test_manifest_parse_shape_and_hash_failures_default_full(self):
         original = self.base
         for data in (b"not JSON", b"[]", b'{"sources":{}}', b'{"sources":{"x":42}}'):
             self.git("reset", "--hard", original)
-            path = SCOPE.BUNDLE_MANIFESTS[0]
+            path = BUNDLE_MANIFESTS[0]
             self.write(path, data)
             SCOPE.FRONTEND_CONTRACTS[path] = hashlib.sha256(data).hexdigest()
             self.base = self.commit()
@@ -231,7 +253,8 @@ class FrontendScopeTests(unittest.TestCase):
         run = subprocess.run([sys.executable, str(SOURCE), "--base", self.base, "--head", head,
                               "--event", "pull_request"], env=env, capture_output=True, text=True)
         self.assertEqual(run.returncode, 0, run.stderr)
-        self.assertFalse(json.loads(run.stdout)["run_rust"])
+        result = json.loads(run.stdout)
+        self.assertFalse(result["run_rust"], result)
         self.assertIn("run_rust=false", output.read_text())
         self.assertIn("frontend_only=true", output.read_text())
         self.assertIn("Rust job SKIPPED: no application Rust compilation or journeys", summary.read_text())
