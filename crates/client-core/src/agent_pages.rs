@@ -134,7 +134,18 @@ impl Client {
     pub fn agent_page_finish_read(&self, turn: &AgentPageTurn) -> R<AgentPageSnapshot> {
         let e = self.lock();
         e.recheck_agent_page_turn(turn, false)?;
-        let current = e.agent_page_snapshot(&turn.snapshot.artifact_id)?;
+        let mut current = e.agent_page_snapshot(&turn.snapshot.artifact_id)?;
+        if !crate::agent_page_tools::prefix_matches(
+            &e.state,
+            &current.artifact_id,
+            current.version,
+            &turn.snapshot.prefix_sha256,
+        ) {
+            return Err(stale());
+        }
+        current
+            .prefix_sha256
+            .clone_from(&turn.snapshot.prefix_sha256);
         if current != turn.snapshot {
             return Err(stale());
         }
