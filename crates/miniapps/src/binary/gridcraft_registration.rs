@@ -1,15 +1,14 @@
 //! Explicit build configuration gates the real, pinned GridCraft editor package.
 use super::{
-    Format,
     resource::{self, RuntimePins},
+    Format,
 };
 use crate::{
-    AppSpec,
-    gridcraft::{APP, Document, RESOURCE},
-    tool,
+    gridcraft::{Document, APP, RESOURCE},
+    tool, AppSpec,
 };
 use localization::{t, ts};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::sync::OnceLock;
 use types::ActionClass;
 pub const EMPTY: &[u8] = include_bytes!("../../resources/gridcraft-empty.xlsx");
