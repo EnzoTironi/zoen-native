@@ -156,6 +156,9 @@ pub fn specs() -> Vec<AppSpec> {
     if let Some(gridcraft) = crate::binary::gridcraft_registration::spec() {
         specs.push(gridcraft);
     }
+    if let Some(wordcraft) = crate::binary::wordcraft_registration::spec() {
+        specs.push(wordcraft);
+    }
     specs
 }
 

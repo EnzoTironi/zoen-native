@@ -49,7 +49,8 @@ export function deckcraftExportFilename(
       .replace(/[^\p{L}\p{N} _.-]/gu, '')
       .replace(/^\.+/, '')
       .trim()
-      .slice(0, 80) || (format === 'xlsx' ? 'workbook' : 'presentation');
+      .slice(0, 80) ||
+    (format === 'xlsx' ? 'workbook' : format === 'docx' ? 'document' : 'presentation');
   return `${name}-v${head.version}.${format}`;
 }
 

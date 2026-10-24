@@ -1,4 +1,4 @@
-/** The existing managed binary document/MCP lifetime, shared by the two fixed
+/** The existing managed binary document/MCP lifetime, shared by the explicit fixed
  * formats. Identity, grants and accepted versions remain Core responsibilities. */
 import { App } from '@modelcontextprotocol/ext-apps';
 import { attachDeckcraftDocument, type DeckcraftBindings } from './deckcraft-document.ts';

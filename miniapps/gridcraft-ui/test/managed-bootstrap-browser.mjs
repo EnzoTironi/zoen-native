@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { exerciseWord, inspectWord, reopenWord } from "./word-bootstrap-assertions.mjs";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
@@ -6,17 +7,19 @@ import { resolve, isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
 import { build } from "../../../apps/zoen/node_modules/esbuild/lib/main.js";
 import { findBrowserExecutable } from "../../../tools/miniapp-build/browser-executable.ts";
-const [editor, modulePath, wasmPath, htmlPath, seedPath, output, playwrightPath] =
+const [editor, modulePath, wasmPath, htmlPath, seedPath, output, playwrightPath, wordInspector] =
   process.argv.slice(2);
 if (
-  !["deckcraft", "gridcraft"].includes(editor) ||
+  !["deckcraft", "gridcraft", "wordcraft"].includes(editor) ||
   ![modulePath, wasmPath, htmlPath, seedPath, output, playwrightPath].every(
     (p) => p && isAbsolute(p),
   )
 )
   throw Error(
-    "Usage: managed-bootstrap-browser.mjs EDITOR ABS_MODULE ABS_WASM ABS_HTML ABS_SEED ABS_OUTPUT ABS_PLAYWRIGHT",
+    "Usage: managed-bootstrap-browser.mjs EDITOR ABS_MODULE ABS_WASM ABS_HTML ABS_SEED ABS_OUTPUT ABS_PLAYWRIGHT [ABS_WORD_INSPECTOR]",
   );
+if (editor === "wordcraft" && (!wordInspector || !isAbsolute(wordInspector)))
+  throw Error("Word proof requires the genuine native Word inspector");
 await mkdir(output, { recursive: true });
 const sha = (b) => createHash("sha256").update(b).digest("hex");
 const module = await readFile(modulePath),
@@ -27,7 +30,9 @@ assert.ok(module.length <= 512 * 1024 && wasm.length <= 48 * 1024 * 1024);
 const revision =
   editor === "deckcraft"
     ? "a31b990d32f2c8562f1588562f922960c3fde48b"
-    : "b8771d51fb4da60bd48c13cf313d6d6014dc5e66";
+    : editor === "gridcraft"
+      ? "b8771d51fb4da60bd48c13cf313d6d6014dc5e66"
+      : "d1b0bfc3f9dd83126b162a42b667facecb003b7f";
 const asset = (b, suffix, mime) => ({
   url: `https://code.example.test/${editor}/${revision}/${sha(b)}.${suffix}`,
   bytes: b.length,
@@ -114,7 +119,10 @@ try {
       "--disable-component-update",
     ],
   });
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const page = await browser.newPage({
+    viewport: { width: 390, height: 844 },
+    hasTouch: editor === "wordcraft",
+  });
   page.on("pageerror", (e) => errors.push(String(e)));
   page.on("console", (e) => {
     if (e.type() === "error") consoleErrors.push(e.text());
@@ -122,7 +130,8 @@ try {
   await page.goto(`http://127.0.0.1:${server.address().port}/`, { waitUntil: "load" });
   await page.waitForFunction(() => window.probe?.opened, undefined, { timeout: 25000 });
   assert.equal(await page.evaluate(() => window.probe.writes), 0);
-  const formats = editor === "deckcraft" ? ["pptx", "pdf"] : ["xlsx"];
+  const formats =
+    editor === "deckcraft" ? ["pptx", "pdf"] : editor === "gridcraft" ? ["xlsx"] : ["docx"];
   for (const format of formats) await page.evaluate((f) => window.probe.share(f), format);
   if (editor === "gridcraft") {
     const frame = page.frames().find((f) => f !== page.mainFrame());
@@ -133,6 +142,7 @@ try {
     await page.waitForFunction(() => window.probe.writes === 1, undefined, { timeout: 8000 });
     await page.evaluate(() => window.probe.share("xlsx"));
   }
+  const word = editor === "wordcraft" ? await exerciseWord(page, wordInspector, output) : undefined;
   const result = await page.evaluate(() => ({
     states: window.probe.states,
     exports: window.probe.exports,
@@ -140,9 +150,14 @@ try {
     accepted: window.probe.accepted,
     version: window.probe.version,
   }));
-  assert.equal(result.exports.length, formats.length + (editor === "gridcraft" ? 1 : 0));
-  assert.equal(result.writes, editor === "gridcraft" ? 1 : 0);
-  assert.equal(result.version, editor === "gridcraft" ? 2 : 1);
+  assert.equal(result.exports.length, formats.length + (editor !== "deckcraft" ? 1 : 0));
+  if (editor === "wordcraft") {
+    assert.ok(result.writes >= 2);
+    assert.equal(result.version, result.writes + 1);
+  } else {
+    assert.equal(result.writes, editor !== "deckcraft" ? 1 : 0);
+    assert.equal(result.version, editor !== "deckcraft" ? 2 : 1);
+  }
   if (editor === "deckcraft") assert.equal(result.accepted, seed.toString("base64"));
   else assert.notEqual(result.accepted, seed.toString("base64"));
   for (const [index, file] of result.exports.entries()) {
@@ -153,12 +168,28 @@ try {
         ? b.subarray(0, 5).toString() === "%PDF-"
         : b[0] === 0x50 && b[1] === 0x4b,
     );
-    if (editor === "gridcraft")
+    if (editor !== "deckcraft")
       assert.equal(file.data, index === 0 ? seed.toString("base64") : result.accepted);
     await writeFile(resolve(output, `accepted-${index + 1}.${file.format}`), b);
+    if (editor === "wordcraft") {
+      assert.equal(file.format, "docx");
+      assert.equal(inspectWord(b, wordInspector), index === 0 ? "" : "Word browser\nSecond line");
+    }
     delete file.data;
     file.bytes = b.length;
   }
+  if (word)
+    word.reopen = await reopenWord(
+      page,
+      ({ version, data }) => {
+        files.set("/config.json", [
+          Buffer.from(JSON.stringify({ ...config, version, seed: data })),
+          "application/json",
+        ]);
+      },
+      wordInspector,
+      output,
+    );
   await assert.rejects(
     page.evaluate((f) => window.probe.share(f), editor === "deckcraft" ? "xlsx" : "pdf"),
   );
@@ -178,6 +209,7 @@ try {
     seed: { bytes: seed.length, sha256: sha(seed) },
     fixtureBundleSha256: sha(bundled.outputFiles[0].contents),
     ...result,
+    ...(word ? { word } : {}),
     requests,
     errors,
     consoleErrors,

@@ -5,10 +5,12 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 export async function buildManagedBinaryBootstrap(editor, outputDir, check = false) {
-  if (editor !== "deckcraft" && editor !== "gridcraft") throw Error("Unsupported binary App");
-  if (editor === "gridcraft" && !outputDir)
-    throw Error("Grid requires an explicit build directory");
-  const title = editor === "deckcraft" ? "Presentation" : "Workbook";
+  if (editor !== "deckcraft" && editor !== "gridcraft" && editor !== "wordcraft")
+    throw Error("Unsupported binary App");
+  if (editor !== "deckcraft" && !outputDir)
+    throw Error("This editor requires an explicit build directory");
+  const title =
+    editor === "deckcraft" ? "Presentation" : editor === "gridcraft" ? "Workbook" : "Document";
   const result = await build({
     absWorkingDir: root,
     entryPoints: [`miniapps/${editor}-ui/src/mcp-app.ts`],
@@ -78,8 +80,8 @@ export async function buildManagedBinaryBootstrap(editor, outputDir, check = fal
           "crates/miniapps/resources/deckcraft.html": html,
         }
       : {
-          "gridcraft.html": html,
-          "gridcraft-bootstrap.manifest.json": `${JSON.stringify(manifest, null, 2)}\n`,
+          [`${editor}.html`]: html,
+          [`${editor}-bootstrap.manifest.json`]: `${JSON.stringify(manifest, null, 2)}\n`,
           "BOOTSTRAP-LICENSES.txt": notices,
         };
   if (editor === "deckcraft") {

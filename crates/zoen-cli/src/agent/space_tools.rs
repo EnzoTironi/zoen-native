@@ -54,6 +54,7 @@ impl<'a> SpaceTools<'a> {
                 for tool in [
                     client_core::agent_app_creation::TOOL,
                     client_core::agent_app_creation::GRID_TOOL,
+                    client_core::agent_app_creation::WORD_TOOL,
                 ] {
                     let Some(format) = client_core::agent_app_creation::creation_format(tool)
                     else {
@@ -75,17 +76,17 @@ impl<'a> SpaceTools<'a> {
         if let Err(reason) = site_tools::discover(e, space, source, serving, &mut names) {
             say(reason);
         }
-        let binary_items: std::collections::BTreeSet<_> =
-            e.items()
-                .into_iter()
-                .filter(|item| {
-                    item.space_id == space
-                        && item.app.as_ref().is_some_and(|app| {
-                            matches!(app.app_id.as_str(), "deckcraft" | "gridcraft")
-                        })
-                })
-                .map(|item| item.id)
-                .collect();
+        let binary_items: std::collections::BTreeSet<_> = e
+            .items()
+            .into_iter()
+            .filter(|item| {
+                item.space_id == space
+                    && item.app.as_ref().is_some_and(|app| {
+                        matches!(app.app_id.as_str(), "deckcraft" | "gridcraft" | "wordcraft")
+                    })
+            })
+            .map(|item| item.id)
+            .collect();
         for t in e.agent_tools(space) {
             // Artifact transport is for its managed App UI, never a model tool.
             if binary_items.contains(&t.item_id) {

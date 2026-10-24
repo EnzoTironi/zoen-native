@@ -58,3 +58,52 @@ fn binary_dispatch_keeps_deck_aliases_and_grid_artifact_bindings_distinct() {
     assert!(is_read("read_gridcraft"));
     assert!(!is_read("gridcraft_cell_set"));
 }
+
+#[test]
+fn word_tools_keep_exact_head_text_profile_and_actor_binding_closed() {
+    let good = json!({"artifactId":"it_word_abc","version":3,"sha256":"a".repeat(64),"text":"Olá 日本語\n<&>\t"});
+    assert_eq!(
+        command("wordcraft_text_replace", &good).expect("closed text replacement"),
+        (
+            Some(3),
+            Some("a".repeat(64)),
+            Some(json!({"command":"text.replace","params":{"text":"Olá 日本語\n<&>\t"}}))
+        )
+    );
+    for (key, value) in [
+        ("actorId", json!("forged")),
+        ("scope", json!({})),
+        ("path", json!("/tmp/x")),
+        ("version", json!(0)),
+        ("sha256", json!("A".repeat(64))),
+        ("text", json!("\u{fffe}")),
+        ("text", json!("a".repeat(16385))),
+    ] {
+        let mut bad = good.clone();
+        bad[key] = value;
+        assert!(command("wordcraft_text_replace", &bad).is_err(), "{key}");
+    }
+    assert_eq!(
+        command("read_wordcraft", &json!({"artifactId":"it_word_abc"})).expect("read"),
+        (None, None, None)
+    );
+    let mut escaped = good.clone();
+    escaped["text"] = json!("\"".repeat(16384));
+    assert!(
+        command("wordcraft_text_replace", &escaped).is_err(),
+        "JSON escaping still respects the existing signed envelope limit"
+    );
+    assert!(command("read_wordcraft", &good).is_err());
+    assert!(command(
+        "wordcraft_text_replace",
+        &json!({"artifactId":"it_word_abc"})
+    )
+    .is_err());
+    assert!(is_read("read_wordcraft"));
+    assert!(!is_read("wordcraft_text_replace"));
+    let alias = model_name("wordcraft_text_replace", "it_word_abc").expect("bounded alias");
+    assert!(is_model_name(&alias));
+    assert!(alias.len() <= 64);
+    assert_ne!(Some(alias), model_name("wordcraft_text_replace", "other"));
+    assert!(!recognizes("wordcraft_command"));
+}

@@ -372,6 +372,9 @@ impl Engine {
                     item: item.into(),
                     content: ItemContent::App(next),
                     note: match format {
+                        Format::Wordcraft => {
+                            crate::i18n::t("Documento atualizado", "Updated document")
+                        }
                         Format::Deckcraft => {
                             crate::i18n::t("Apresentação atualizada", "Updated presentation")
                         }

@@ -218,6 +218,7 @@ test('artifact consumer rejects raced bytes, missing artifacts and changed sourc
   assert.equal(commands[0].environment.SDKROOT, '/sdk/host');
   assert(commands[0].args.includes('ZOEN_DECKCRAFT_RESOURCE_MANIFEST_JSON'));
   assert(commands[0].args.includes('ZOEN_GRIDCRAFT_RESOURCE_MANIFEST_JSON'));
+  assert(commands[0].args.includes('ZOEN_WORDCRAFT_RESOURCE_MANIFEST_JSON'));
   assert(!commands[0].args.includes('--adopt-idle-target'));
   mode = 'changed-source';
   await assert.rejects(guarded.build([], specification), /source changed between/);
@@ -294,4 +295,26 @@ test('compiled Grid seed bytes invalidate the native input stamp without a Rust 
     next.toString('hex'),
   );
   assert.notEqual(after.sha256, before.sha256, 'native cache stamp ignored changed compiled XLSX');
+});
+
+test('Word resource-only changes invalidate the native source stamp and are guarded inputs', async (t) => {
+  const path = await fixture(t);
+  const root = join(path, 'workspace');
+  const target = join(path, 'shared');
+  await workspace(root, 'word-resource-input');
+  await build(root, target, { ZOEN_WORDCRAFT_RESOURCE_MANIFEST_JSON: '{"fixture":"word-A"}' });
+  const before = await stamp(root);
+  await build(root, target, { ZOEN_WORDCRAFT_RESOURCE_MANIFEST_JSON: '{"fixture":"word-B"}' });
+  const after = await stamp(root);
+  assert.notEqual(after.sha256, before.sha256);
+  assert.notEqual(after.cargoQualification, before.cargoQualification);
+  const qualification = JSON.parse(await readFile(after.cargoQualification, 'utf8'));
+  const guard = JSON.parse(await readFile(qualification.builds[0].receipt, 'utf8'));
+  assert.equal(guard.status, 'PASS');
+  assert.equal(
+    guard.before.context.environment.ZOEN_WORDCRAFT_RESOURCE_MANIFEST_JSON,
+    createHash('sha256').update(JSON.stringify('{"fixture":"word-B"}')).digest('hex'),
+  );
+  assert.equal(await readFile(join(root, 'apps/zoen/src/core/generated/Command.ts'), 'utf8'),
+    `word-resource-input|${join(root, 'crates/client-core')}`);
 });

@@ -3,6 +3,8 @@ use super::Format;
 use crate::deckcraft;
 #[path = "../gridcraft/agent_tools.rs"]
 mod gridcraft_tools;
+#[path = "../wordcraft/agent_tools.rs"]
+mod wordcraft_tools;
 pub use deckcraft::agent_tools::{canonical_json, Definition, ParsedCommand};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -12,6 +14,8 @@ pub fn format(tool: &str) -> Option<Format> {
         Some(Format::Deckcraft)
     } else if gridcraft_tools::recognizes(tool) {
         Some(Format::Gridcraft)
+    } else if wordcraft_tools::recognizes(tool) {
+        Some(Format::Wordcraft)
     } else {
         None
     }
@@ -20,17 +24,20 @@ pub fn tools_for(kind: Format) -> Vec<Definition> {
     match kind {
         Format::Deckcraft => deckcraft::agent_tools::tools(),
         Format::Gridcraft => gridcraft_tools::tools(),
+        Format::Wordcraft => wordcraft_tools::tools(),
     }
 }
 pub fn tools() -> Vec<Definition> {
     let mut out = tools_for(Format::Deckcraft);
     out.extend(tools_for(Format::Gridcraft));
+    out.extend(tools_for(Format::Wordcraft));
     out
 }
 pub fn command(tool: &str, args: &Value) -> Result<ParsedCommand, String> {
     match format(tool) {
         Some(Format::Deckcraft) => deckcraft::agent_tools::command(tool, args),
         Some(Format::Gridcraft) => gridcraft_tools::command(tool, args),
+        Some(Format::Wordcraft) => wordcraft_tools::command(tool, args),
         None => Err("Unsupported binary App tool".into()),
     }
 }
@@ -38,7 +45,7 @@ pub fn recognizes(tool: &str) -> bool {
     format(tool).is_some()
 }
 pub fn is_read(tool: &str) -> bool {
-    matches!(tool, "read_deckcraft" | "read_gridcraft")
+    matches!(tool, "read_deckcraft" | "read_gridcraft" | "read_wordcraft")
 }
 pub fn model_name(tool: &str, item: &str) -> Option<String> {
     if format(tool) == Some(Format::Deckcraft) {
@@ -46,7 +53,7 @@ pub fn model_name(tool: &str, item: &str) -> Option<String> {
     }
     let digest = format!("{:x}", Sha256::digest(item.as_bytes()));
     let name = format!("{tool}__{}", &digest[..40]);
-    (format(tool) == Some(Format::Gridcraft)
+    (matches!(format(tool), Some(Format::Gridcraft | Format::Wordcraft))
         && !item.is_empty()
         && item.len() <= 128
         && item

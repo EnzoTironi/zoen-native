@@ -5,7 +5,6 @@ import {
   hash,
   CANONICAL_SCENE_CHUNK_BYTES as CHUNK,
 } from './canonical-scene.ts';
-import { MAX_BINARY_DOCUMENT_BYTES } from './canonical-binary.ts';
 import {
   binaryEditorFormat,
   binaryExportAllowed,
@@ -128,7 +127,10 @@ export class DeckcraftDocument {
   private async engine(op: string, input?: unknown, bytes = new Uint8Array()) {
     this.check();
     // Check before wasm-bindgen copies the Uint8Array or its JSON String.
-    if (!(bytes instanceof Uint8Array) || bytes.byteLength > MAX_BINARY_DOCUMENT_BYTES)
+    if (
+      !(bytes instanceof Uint8Array) ||
+      bytes.byteLength > binaryEditorFormat(this.options.editor).maxDocumentBytes
+    )
       throw new Error('Document input is too large.');
     const envelope = JSON.stringify(input === undefined ? { op } : { op, input });
     if (envelope.length > 65_536 || new TextEncoder().encode(envelope).length > 65_536)
@@ -139,7 +141,10 @@ export class DeckcraftDocument {
       typeof response.metadata !== 'string' ||
       response.metadata.length > 65_536 ||
       !(response.bytes instanceof Uint8Array) ||
-      response.bytes.byteLength > (op === 'export' ? 16 * 1024 * 1024 : MAX_BINARY_DOCUMENT_BYTES)
+      response.bytes.byteLength >
+        (op === 'export'
+          ? 16 * 1024 * 1024
+          : binaryEditorFormat(this.options.editor).maxDocumentBytes)
     )
       throw new Error('Invalid engine response.');
     const metadata = record(JSON.parse(response.metadata));
@@ -159,7 +164,7 @@ export class DeckcraftDocument {
         Number(read.currentVersion) < read.version ||
         !digest(read.sha256) ||
         !positive(read.bytes) ||
-        read.bytes > MAX_BINARY_DOCUMENT_BYTES ||
+        read.bytes > binaryEditorFormat(this.options.editor).maxDocumentBytes ||
         read.chunkBytes !== CHUNK ||
         !token(read.transferId) ||
         read.engineRevision !== binaryEditorFormat(this.options.editor).engineRevision

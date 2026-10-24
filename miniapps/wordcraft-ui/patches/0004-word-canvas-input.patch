@@ -1,0 +1,245 @@
+diff --git a/crates/ui-egui/src/canvas.rs b/crates/ui-egui/src/canvas.rs
+index 3d052d3..39c8283 100644
+--- a/crates/ui-egui/src/canvas.rs
++++ b/crates/ui-egui/src/canvas.rs
+@@ -1191,7 +1191,8 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
+         // chrome changes, and a new id dropped the keyboard focus, so the arrows, Page Up/Down
+         // and Escape did nothing in Read Mode until the reader clicked a page (#1772).
+         ui.advance_cursor_after_rect(content);
+-        let resp = ui.interact(content, egui::Id::new("wordcraft_canvas"), Sense::click_and_drag());
++        let resp = ui.interact(content, crate::text_activation::widget_id(app), Sense::click_and_drag());
++        crate::text_activation::contact(app, ui, &resp);
+         if let Some(tr) = scroll_target {
+             ui.scroll_to_rect(Rect::from_min_size(ui.min_rect().min + tr.min.to_vec2(), tr.size()), None);
+         }
+@@ -1655,6 +1656,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
+     if !middle_gesture && !crate::table_pen::pointer(app, ui, &resp, &rects, &layout, geo.scale) {
+         mouse(app, ui, &resp, &rects, &layout, geo.scale);
+     }
++    crate::text_activation::publish(app, ui, &resp);
+     // A click on a check box ticks it; on a list's button opens the list.
+     if !middle_gesture {
+         crate::content_controls::clicks(app, &resp);
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index d3ae79e..7331bb3 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -26,6 +26,7 @@ pub mod async_saves;
+ pub mod autoscroll;
+ pub mod backstage;
+ pub mod canvas;
++mod text_activation;
+ pub mod caret_glide;
+ pub mod chrome;
+ pub mod colors;
+diff --git a/crates/ui-egui/src/text_activation.rs b/crates/ui-egui/src/text_activation.rs
+new file mode 100644
+index 0000000..4375643
+--- /dev/null
++++ b/crates/ui-egui/src/text_activation.rs
+@@ -0,0 +1,130 @@
++//! A real managed Word canvas contact owns only its current document's rendered caret.
++//! This is ephemeral UI ownership, never a document/permission/keyboard clock.
++use crate::WordApp;
++use egui::{Id, PointerButton, Response, Ui};
++
++pub(crate) fn widget_id(app: &WordApp) -> Id {
++    app.session.managed_binding.map_or_else(
++        || Id::new("wordcraft_canvas"),
++        |binding| Id::new(("wordcraft_canvas", binding, app.session.document_id())),
++    )
++}
++fn cancelled(ui: &Ui) -> bool {
++    ui.input(|input| {
++        let mut first = None;
++        let multiple_starts = input.events.iter().any(|event| {
++            if let egui::Event::Touch {
++                device_id,
++                id,
++                phase: egui::TouchPhase::Start,
++                ..
++            } = event
++            {
++                let key = (*device_id, *id);
++                let previous = first.replace(key);
++                previous.is_some_and(|previous| previous != key)
++            } else {
++                false
++            }
++        });
++        !input.focused
++            || multiple_starts
++            || input.multi_touch().is_some()
++            || input.events.iter().any(|event| {
++                matches!(
++                    event,
++                    egui::Event::Touch {
++                        phase: egui::TouchPhase::Cancel,
++                        ..
++                    }
++                )
++            })
++            || (input
++                .events
++                .iter()
++                .any(|event| matches!(event, egui::Event::PointerGone))
++                && !input.pointer.primary_released())
++    })
++}
++pub(crate) fn contact(app: &WordApp, ui: &Ui, response: &Response) {
++    if app.session.managed_binding.is_none() {
++        return;
++    }
++    let key = response.id.with("managed-text-contact");
++    if cancelled(ui) || !ui.is_enabled() || app.session.managed_frozen {
++        ui.data_mut(|data| data.remove::<Option<Id>>(key));
++    } else if response.is_pointer_button_down_on()
++        && ui.input(|input| input.pointer.primary_pressed())
++    {
++        ui.data_mut(|data| data.insert_temp(key, Some(widget_id(app))));
++    }
++}
++pub(crate) fn publish(app: &mut WordApp, ui: &Ui, response: &Response) {
++    if app.session.managed_binding.is_none() || !ui.input(|input| input.pointer.primary_released())
++    {
++        return;
++    }
++    let armed = ui
++        .data_mut(|data| data.remove_temp::<Option<Id>>(response.id.with("managed-text-contact")))
++        .flatten();
++    let owner = widget_id(app);
++    if armed != Some(owner)
++        || response.id != owner
++        || !response.has_focus()
++        || app.session.managed_frozen
++        || !ui.is_enabled()
++        || cancelled(ui)
++        || response.dragged()
++        || !response.clicked_by(PointerButton::Primary)
++        || !ui.input(|input| input.pointer.button_clicked(PointerButton::Primary))
++        || app.session.sel.focus.story != wordcraft_doc::StoryRef::Body
++    {
++        return;
++    }
++    let Some(at) = response.interact_pointer_pos() else {
++        return;
++    };
++    if crate::canvas::pos_from_screen(app, at).is_none() {
++        return;
++    }
++    // Recompute only after the actual upstream mouse/selection and focus logic.
++    // The earlier painted IME output can still describe the preceding caret.
++    let Some((at, height)) = crate::canvas::caret_screen(app) else {
++        return;
++    };
++    if !at.x.is_finite() || !at.y.is_finite() || !height.is_finite() || height <= 0.0 {
++        return;
++    }
++    let caret = egui::Rect::from_min_size(at, egui::vec2(1.0, height));
++    if !app
++        .canvas
++        .viewport
++        .is_some_and(|viewport| viewport.intersects(caret))
++    {
++        return;
++    }
++    let global = ui
++        .ctx()
++        .layer_transform_to_global(ui.layer_id())
++        .unwrap_or_default();
++    let interrupt = ui.ctx().output(|out| {
++        out.ime
++            .as_ref()
++            .is_some_and(|ime| ime.should_interrupt_composition)
++    });
++    ui.output_mut(|output| {
++        output.ime = Some(egui::output::IMEOutput {
++            rect: global * caret,
++            cursor_rect: global * caret,
++            purpose: egui::IMEPurpose::Normal,
++            should_interrupt_composition: interrupt,
++        })
++    });
++    let frame = ui.ctx().cumulative_frame_nr();
++    ui.data_mut(|data| {
++        data.insert_temp(
++            Id::new("eframe.text_input_activation"),
++            Some((frame, owner)),
++        )
++    });
++}
+diff --git a/vendor/eframe-0.36.2/src/web/text_input_activation.rs b/vendor/eframe-0.36.2/src/web/text_input_activation.rs
+index 5dcdfdd..94fede2 100644
+--- a/vendor/eframe-0.36.2/src/web/text_input_activation.rs
++++ b/vendor/eframe-0.36.2/src/web/text_input_activation.rs
+@@ -46,7 +46,7 @@ impl PrimaryContact {
+     }
+
+     /// Returns once for the owning release, carrying eligibility for activation.
+-    /// IDs of PointerEvent and Touch are deliberately never compared with each other.
++    /// IDs of `PointerEvent` and Touch are deliberately never compared with each other.
+     pub fn end(&mut self, family: Family, id: i32) -> Option<bool> {
+         let slot = match family {
+             Family::Pointer => self.pointer,
+@@ -72,7 +72,7 @@ impl PrimaryContact {
+ }
+
+ /// Cancellation must drop button/click state, not synthesize a clickable Up.
+-/// PointerGone alone only hides hover and deliberately leaves buttons down.
++/// `PointerGone` alone only hides hover and deliberately leaves buttons down.
+ pub(crate) fn cancel_primary(ctx: &egui::Context, contact: &mut PrimaryContact, events: &mut Vec<egui::Event>) -> bool {
+     if !contact.cancel() {
+         return false;
+@@ -91,13 +91,13 @@ pub(crate) fn cancel_primary(ctx: &egui::Context, contact: &mut PrimaryContact,
+ const ACTIVATION: &str = "eframe.text_input_activation";
+
+ /// A custom editor may publish a content-free (egui-frame, current-owner-ID)
+-/// pulse after admitting a textual click. The standard TextEdit needs no adapter.
++/// pulse after admitting a textual click. The standard `TextEdit` needs no adapter.
+ /// The runner clears before logic and consumes after that same synchronous run.
+ pub(crate) fn clear_custom(ctx: &egui::Context) {
+     ctx.data_mut(|data| data.remove::<Option<(u64, egui::Id)>>(egui::Id::new(ACTIVATION)));
+ }
+
+-/// The output-level predicate used by AppRunner, also exercised by the native UI harness.
++/// The output-level predicate used by `AppRunner`, also exercised by the native UI harness.
+ pub(crate) fn accepted_output_text(ctx: &egui::Context, ime: Option<&egui::output::IMEOutput>) -> bool {
+     // A focus handoff interrupts the previous composition, but still advertises
+     // the newly admitted editor. AppRunner must clear that composition before
+@@ -111,7 +111,7 @@ pub(crate) fn accepted_current_text(ctx: &egui::Context, ime: bool) -> bool {
+         return false;
+     }
+     if ctx.text_edit_focused()
+-        && let Some(id) = ctx.memory(|memory| memory.focused())
++        && let Some(id) = ctx.memory(egui::Memory::focused)
+         && ctx.last_pass_widget_enabled(id)
+     {
+         // Reading a Response replays egui's click-elsewhere focus policy. A
+@@ -124,6 +124,17 @@ pub(crate) fn accepted_current_text(ctx: &egui::Context, ime: bool) -> bool {
+             return true;
+         }
+     }
++    // Word's canvas is the actual keyboard owner, not a fabricated TextEdit.
++    // Require its current pulse AND the same primary-clicked, enabled widget;
++    // ordinary focused IME frames and another document's contact cannot qualify.
++    if let Some(id) = ctx.memory(egui::Memory::focused)
++        && ctx.last_pass_widget_enabled(id)
++        && custom.is_some_and(|(frame, owner)| owner == id && frame.checked_add(1) == Some(ctx.cumulative_frame_nr()))
++        && ctx.interaction_snapshot(|interaction| interaction.clicked == Some(id))
++        && ctx.input(|input| input.pointer.button_clicked(egui::PointerButton::Primary))
++    {
++        return true;
++    }
+     // A custom canvas owns IME only while no ordinary egui widget has focus.
+     ctx.memory(|memory| memory.focused().is_none()) && custom.is_some_and(|(frame, _owner)| frame.checked_add(1) == Some(ctx.cumulative_frame_nr()))
+ }
+diff --git a/vendor/egui-0.36.2/src/containers/scene.rs b/vendor/egui-0.36.2/src/containers/scene.rs
+index 0934522..54e38d8 100644
+--- a/vendor/egui-0.36.2/src/containers/scene.rs
++++ b/vendor/egui-0.36.2/src/containers/scene.rs
+@@ -1,5 +1,3 @@
+-use core::f32;
+-
+ use emath::{GuiRounding as _, Pos2};
+
+ use crate::{

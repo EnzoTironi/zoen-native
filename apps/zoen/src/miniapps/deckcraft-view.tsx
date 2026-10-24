@@ -406,7 +406,15 @@ function DeckcraftDocument({
                 <NativeButton
                   key={format}
                   secondary
-                  label={format === 'pdf' ? 'PDF' : format === 'xlsx' ? 'Excel' : 'PowerPoint'}
+                  label={
+                    format === 'pdf'
+                      ? 'PDF'
+                      : format === 'xlsx'
+                        ? 'Excel'
+                        : format === 'docx'
+                          ? 'Word'
+                          : 'PowerPoint'
+                  }
                   testID={`${verified.manifest.id}-history-export-${format}`}
                   disabled={blocked}
                   onPress={() => {

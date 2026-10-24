@@ -5,3 +5,5 @@ apps/zoen/patches/react-native-enriched-markdown+1.1.1.patch -text -whitespace
 miniapps/deckcraft-ui/BOOTSTRAP-LICENSES.txt -text -whitespace
 # Preserve ts-rs output exactly, including spaces before generated field documentation.
 apps/zoen/src/core/generated/*.ts -whitespace
+# Preserve the actual generated Word dependency notices byte for byte.
+crates/miniapps/resources/generated/wordcraft-bootstrap-licenses.txt -text -whitespace

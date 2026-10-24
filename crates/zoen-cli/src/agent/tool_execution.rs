@@ -25,7 +25,10 @@ impl ApprovedToolAdmission for CanonicalToolAdmission<'_, '_> {
                     .map_err(|e| e.to_string())?;
             }
         }
-        let result = if matches!(tool, "read_deckcraft" | "read_gridcraft" | "read_page") {
+        let result = if matches!(
+            tool,
+            "read_deckcraft" | "read_gridcraft" | "read_wordcraft" | "read_page"
+        ) {
             self.tools
                 .done()
                 .into_iter()

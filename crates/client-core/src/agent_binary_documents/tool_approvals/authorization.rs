@@ -9,7 +9,7 @@ impl Engine {
         };
         let action = if matches!(
             p.canonical_tool.as_str(),
-            "read_deckcraft" | "read_gridcraft" | "read_page" | "read_site"
+            "read_deckcraft" | "read_gridcraft" | "read_wordcraft" | "read_page" | "read_site"
         ) {
             ActionClass::Reply
         } else {

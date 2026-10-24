@@ -32,6 +32,7 @@ mod defaults;
 pub mod excalidraw;
 mod execution;
 pub mod gridcraft;
+pub mod wordcraft;
 mod projection;
 mod schedule;
 mod scoped;

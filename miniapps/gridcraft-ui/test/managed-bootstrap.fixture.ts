@@ -2,6 +2,7 @@ import { createDeckcraftSession } from "../../../apps/zoen/src/miniapps/deckcraf
 import { streamDeckcraftExport } from "../../../apps/zoen/src/miniapps/deckcraft-export";
 import {
   binaryEditorFormat,
+  type BinaryExportFormat,
   type BinaryEditorId,
 } from "../../../apps/zoen/src/miniapps/binary-formats";
 import { sandboxHtml, type VerifiedMiniappResource } from "../../../apps/zoen/src/miniapps/sandbox";
@@ -15,6 +16,7 @@ export async function startProbe(config: {
   editor: BinaryEditorId;
   html: string;
   seed: string;
+  version?: number;
   runtime: NonNullable<VerifiedMiniappResource["manifest"]["runtimePackage"]>;
 }) {
   initializeLocalization("en");
@@ -26,7 +28,10 @@ export async function startProbe(config: {
   let requested = false;
   let ids = 0;
   let writes = 0;
-  let version = 1;
+  let version = config.version ?? 1;
+  if (!Number.isSafeInteger(version) || version < 1) throw Error("Invalid fixture version");
+  let holdNext = false;
+  let releaseWrite: (() => void) | undefined;
   let accepted = decode64(config.seed);
   const states: unknown[] = [];
   const exports: { format: string; data: string; sha256: string }[] = [];
@@ -69,6 +74,14 @@ export async function startProbe(config: {
         command.expected_sha256 !== hash(accepted)
       )
         throw Error("Synthetic CAS refused");
+      if (holdNext) {
+        holdNext = false;
+        await new Promise<void>((resolve) => {
+          releaseWrite = resolve;
+        });
+        releaseWrite = undefined;
+        check();
+      }
       accepted = decode64(command.data_base64);
       version++;
       writes++;
@@ -149,8 +162,16 @@ export async function startProbe(config: {
     get accepted() {
       return encode64(accepted);
     },
-    share: (kind: "xlsx" | "pdf" | "pptx") => session.share(kind),
+    share: (kind: BinaryExportFormat) => session.share(kind),
     flush: () => session.controller.flush(),
+    close: () => session.controller.flush({ retire: true }),
+    holdNextWrite: () => {
+      holdNext = true;
+    },
+    get writeHeld() {
+      return !!releaseWrite;
+    },
+    releaseWrite: () => releaseWrite?.(),
     retire: () => {
       active = false;
       session.retire();
