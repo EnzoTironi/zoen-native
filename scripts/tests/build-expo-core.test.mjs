@@ -219,6 +219,7 @@ test('artifact consumer rejects raced bytes, missing artifacts and changed sourc
   assert(commands[0].args.includes('ZOEN_DECKCRAFT_RESOURCE_MANIFEST_JSON'));
   assert(commands[0].args.includes('ZOEN_GRIDCRAFT_RESOURCE_MANIFEST_JSON'));
   assert(commands[0].args.includes('ZOEN_WORDCRAFT_RESOURCE_MANIFEST_JSON'));
+  assert(commands[0].args.includes('ZOEN_PHOTOCRAFT_RESOURCE_MANIFEST_JSON'));
   assert(!commands[0].args.includes('--adopt-idle-target'));
   mode = 'changed-source';
   await assert.rejects(guarded.build([], specification), /source changed between/);
