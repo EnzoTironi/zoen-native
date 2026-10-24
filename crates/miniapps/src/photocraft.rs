@@ -5,6 +5,7 @@ use std::{
     collections::BTreeSet,
     io::{Cursor, Read},
 };
+pub mod agent_tools;
 mod manifest;
 #[cfg(test)]
 mod tests;

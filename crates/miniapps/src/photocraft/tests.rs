@@ -112,3 +112,40 @@ fn duplicate_json_fields_and_unbounded_containers_are_refused() -> R {
     assert!(Document::parse(&EMPTY[..EMPTY.len() - 1]).is_err());
     Ok(())
 }
+#[test]
+fn tools_only_propose_closed_native_transforms_against_exact_observed_heads() -> R {
+    let valid = json!({"artifactId":"it_photo_test","version":2,"sha256":"a".repeat(64),"action":"rotate_clockwise"});
+    assert_eq!(
+        agent_tools::command("photocraft_transform", &valid)?,
+        (
+            Some(2),
+            Some("a".repeat(64)),
+            Some(json!("rotate_clockwise"))
+        )
+    );
+    assert_eq!(
+        agent_tools::command("read_photocraft", &json!({"artifactId":"it_photo_test"}))?,
+        (None, None, None)
+    );
+    for (key, value) in [
+        ("version", json!(0)),
+        ("version", json!(4294967295_u32)),
+        ("sha256", json!("A".repeat(64))),
+        ("artifactId", json!("../other")),
+        ("action", json!("image.load")),
+        ("action", json!({"command":"rotate_clockwise"})),
+    ] {
+        let mut bad = valid.clone();
+        bad[key] = value;
+        assert!(
+            agent_tools::command("photocraft_transform", &bad).is_err(),
+            "{key}"
+        );
+    }
+    let mut forged = valid.clone();
+    forged["actorId"] = json!("another_actor");
+    assert!(agent_tools::command("photocraft_transform", &forged).is_err());
+    assert!(agent_tools::command("read_photocraft", &valid).is_err());
+    assert!(agent_tools::command("photocraft_command", &valid).is_err());
+    Ok(())
+}
