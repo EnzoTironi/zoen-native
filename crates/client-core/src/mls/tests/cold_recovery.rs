@@ -28,6 +28,16 @@ fn settled_groups_do_not_repeat_recovery_download_group_reads(
             &entry.kind, crate::dto::EntryKind::Message { text, .. } if text == "Exact established source"
         )));
     }
+    let directory = vec![protocol::DeviceRecord {
+        device: peer
+            .account()
+            .ok_or("missing fixture account")?
+            .device
+            .clone(),
+        revoked: false,
+    }];
+    peer.devices_arrived(directory.clone())?;
+    assert!(peer.mls_to_claim(Some(clock))?.is_none());
     peer.profiles_session_start(true);
     recovery_probe::reset(Duration::from_millis(2));
     let initial = Instant::now();
@@ -57,12 +67,18 @@ fn settled_groups_do_not_repeat_recovery_download_group_reads(
     let after_agreement = Instant::now();
     assert!(!peer.mls_recovery_pass()?);
     let after_agreement_ms = after_agreement.elapsed().as_millis();
+    // SyncDone also requests the complete device directory on every socket.
+    // An identical persisted directory must not invalidate all classified groups.
+    peer.devices_arrived(directory)?;
+    let after_directory = Instant::now();
+    assert!(!peer.mls_recovery_pass()?);
+    let after_directory_ms = after_directory.elapsed().as_millis();
     let (downloads, groups) = recovery_probe::reads();
     recovery_probe::reset(Duration::ZERO);
-    eprintln!("recovery_read_work groups=32 actual_download_reads={downloads} actual_recovery_reads={groups} first_download_ms={first_download_ms} recovery_ms={recovery_ms} repeated_download_ms={repeated_download_ms} after_agreement_ms={after_agreement_ms} injected_per_read_ms=2");
+    eprintln!("recovery_read_work groups=32 actual_download_reads={downloads} actual_recovery_reads={groups} first_download_ms={first_download_ms} recovery_ms={recovery_ms} repeated_download_ms={repeated_download_ms} after_agreement_ms={after_agreement_ms} after_directory_ms={after_directory_ms} injected_per_read_ms=2");
     assert_eq!(
         groups, 32,
-        "one real classification is required; profile arrival must not repeat it"
+        "one real classification is required; unrelated refresh must not repeat it"
     );
     assert_eq!(
         downloads, 0,
