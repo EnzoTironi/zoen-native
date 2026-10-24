@@ -5,6 +5,8 @@
 mod archive;
 #[cfg(feature = "browser")]
 pub mod browser;
+#[cfg(feature = "browser")]
+mod browser_policy;
 pub mod managed;
 
 use photocraft_doc::{ColorMode, Document, LayerContent, SampleType};

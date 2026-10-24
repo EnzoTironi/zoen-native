@@ -1,10 +1,11 @@
 //! Actual upstream Session and Undo; only the host owns canonical persistence.
+pub use super::browser_policy::command_policy;
 use crate::managed::{
     self, Accept, Command, Export, Head, HostBridge, Mutation, Open, Proposal, Result, failure,
     hash,
 };
 use photocraft_doc::Document;
-use photocraft_engine::{EngineError, Session};
+use photocraft_engine::Session;
 use serde_json::{Value, json};
 use std::sync::{
     Arc,
@@ -29,34 +30,6 @@ pub struct BrowserBridge {
     accepted: Option<Arc<Document>>,
     pending: Option<Entry>,
     paused: bool,
-}
-fn denied() -> EngineError {
-    EngineError::Other("This action is unavailable in this document.".into())
-}
-/// # Errors
-/// Closed raster commands only; no file, plugin, network, font or account commands.
-pub fn command_policy(s: &Session, id: &str, _params: &Value) -> photocraft_engine::Result<()> {
-    if s.managed_frozen {
-        return Err(denied());
-    }
-    match id {
-        "image.imageRotation.flipCanvasHorizontal"
-        | "image.imageRotation.flipCanvasVertical"
-        | "image.imageRotation.90cw"
-        | "image.imageRotation.90ccw"
-        | "image.imageRotation.180"
-        | "paint.stroke"
-        | "paint.pencil"
-        | "tools.setColors"
-        | "edit.undo"
-        | "edit.redo"
-        | "view.zoomIn"
-        | "view.zoomOut"
-        | "view.fitOnScreen"
-        | "view.100"
-        | "view.zoom" => Ok(()),
-        _ => Err(denied()),
-    }
 }
 impl BrowserBridge {
     #[must_use]
@@ -161,9 +134,6 @@ impl BrowserBridge {
         if let Some(p) = self.admission(s, &m, &fingerprint)? {
             return Ok(p);
         }
-        if self.paused {
-            return Err(failure("host_paused"));
-        }
         let doc = self.doc(s)?.clone();
         let bytes =
             photocraft_format::save_to_bytes(&doc, &photocraft_format::SaveOptions::default())
@@ -194,12 +164,26 @@ impl BrowserBridge {
         if self.paused || self.dirty(s)? {
             return Err(failure("local_changes"));
         }
-        s.execute(command.action.command(), json!({}))
-            .map_err(|_| failure("engine_command_refused"))?;
-        let doc = self.doc(s)?.clone();
-        let bytes =
-            photocraft_format::save_to_bytes(&doc, &photocraft_format::SaveOptions::default())
-                .map_err(|_| failure("document_encoding"))?;
+        // Retain the actual upstream history and document if its result cannot
+        // enter the accepted profile. An engine success alone is not a save.
+        let previous = s.active().ok_or_else(|| failure("not_open"))?.clone();
+        let prepared = (|| {
+            s.execute(command.action.command(), json!({}))
+                .map_err(|_| failure("engine_command_refused"))?;
+            let doc = self.doc(s)?.clone();
+            let bytes =
+                photocraft_format::save_to_bytes(&doc, &photocraft_format::SaveOptions::default())
+                    .map_err(|_| failure("document_encoding"))?;
+            managed::checked(&bytes)?;
+            Ok((doc, bytes))
+        })();
+        let (doc, bytes) = match prepared {
+            Ok(value) => value,
+            Err(error) => {
+                *s.active_mut().ok_or_else(|| failure("document_changed"))? = previous;
+                return Err(error);
+            }
+        };
         let id = command.mutation.mutation_id.clone();
         let proposal = self
             .host
@@ -255,3 +239,7 @@ impl BrowserBridge {
         self.status(s)
     }
 }
+
+#[cfg(test)]
+#[path = "browser_rollback_tests.rs"]
+mod rollback_tests;

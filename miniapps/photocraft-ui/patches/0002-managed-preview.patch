@@ -1,0 +1,41 @@
+--- a/crates/engine/src/brush_cmds.rs
++++ b/crates/engine/src/brush_cmds.rs
+@@ -443,6 +443,8 @@
+     points: Vec<StrokePoint>,
+     /// The document and revision the stroke started on.
+     base: (photocraft_doc::DocId, u64),
++    /// Ephemeral managed preview bounds; never stored in the document.
++    managed_bounds: Option<(f64, f64)>,
+ }
+ 
+ /// A finished live stroke offered to its own commit ([`Session::offer_live_stroke`],
+@@ -490,6 +492,7 @@
+     /// Start a live stroke of `cmd`: `paint.stroke` (the Brush and Eraser) or `paint.pencil`.
+     /// Committing `cmd` with the same params and `"seed": live.seed` gives the same pixels.
+     pub fn begin_with(s: &Session, cmd: &str, p: &Value) -> Result<Self> {
++        if let Some(policy) = s.managed_policy { policy(s, cmd, p)?; }
+         has_paintable(s).map_err(EngineError::Other)?;
+         let pts = parse_points(p, cmd)?;
+         let pencil = match cmd {
+@@ -532,6 +535,7 @@
+             cmyk: doc_cmyk_space(s),
+             points: Vec::new(),
+             base,
++            managed_bounds: s.managed_binding.and_then(|_| s.active().map(|st| (f64::from(st.doc.size.width), f64::from(st.doc.size.height)))),
+         };
+         live.push(&pts)?;
+         Ok(live)
+@@ -568,6 +572,13 @@
+     /// nothing new appears on release.
+     /// Invalid coordinates reject the whole batch without changing the preview.
+     pub fn push(&mut self, pts: &[StrokePoint]) -> Result<Rect> {
++        if let Some((w, h)) = self.managed_bounds {
++            if self.points.len().checked_add(pts.len()).is_none_or(|n| n > 4096)
++                || pts.iter().any(|p| !p.x.is_finite() || !p.y.is_finite()
++                    || p.x < 0.0 || p.y < 0.0 || p.x >= w || p.y >= h
++                    || !p.pressure.is_finite() || !(0.0..=1.0).contains(&p.pressure))
++            { return Err(bad(&self.cmd, "managed stroke outside bounded canvas")); }
++        }
+         check_coords(pts, &self.cmd)?;
+         self.points.extend_from_slice(pts);
+         let cmyk = self.cmyk.clone();

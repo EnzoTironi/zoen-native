@@ -69,7 +69,8 @@ def prepare(directory, browser=False, eframe_crate=None, egui_crate=None):
     if browser:
         foundation = browser_recipe()
         inputs.extend(foundation.inputs())
-        patches = [HERE / "patches/0001-managed-session.patch"]
+        patches = [HERE / "patches/0001-managed-session.patch",
+                   HERE / "patches/0002-managed-preview.patch"]
         for p in sorted((HERE / "browser").rglob("*")):
             if p.is_symlink():
                 raise ValueError("Refusing symlinked browser input")

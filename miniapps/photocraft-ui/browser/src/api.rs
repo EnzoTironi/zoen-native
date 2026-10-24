@@ -214,7 +214,12 @@ pub(crate) fn drain(
     let Some(mut work) = work else {
         return;
     };
-    let interaction = app.host_interaction();
+    let interaction = app.host_interaction()
+        || QUEUE.with(|q| {
+            q.borrow().ctx.as_ref().is_some_and(|ctx| {
+                ctx.input(|input| input.pointer.any_down() || input.multi_touch().is_some())
+            })
+        });
     let empty = |metadata| Proposal {
         bytes: vec![],
         metadata,

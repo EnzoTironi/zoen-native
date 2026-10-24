@@ -84,8 +84,10 @@ impl eframe::App for Shell {
         if api::retired() || !self.bridge.is_open() {
             return;
         }
-        ui.add_enabled_ui(!self.app.session.managed_frozen, |ui| {
-            self.app.ui(ui, frame)
+        crate::viewport::show(ui, |ui| {
+            ui.add_enabled_ui(!self.app.session.managed_frozen, |ui| {
+                self.app.ui(ui, frame)
+            });
         });
         ui.ctx().output_mut(|o| {
             o.commands

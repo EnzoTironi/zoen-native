@@ -199,7 +199,8 @@ impl HostBridge {
             ),
         };
         Ok(Proposal {
-            metadata: json!({"scope":self.scope,"head":self.head,"mime":mime,
+            metadata: json!({"scope":self.scope,"sourceHead":self.head,"mime":mime,
+            "format":request.format,"engineRevision":"9b9643764f3fb77d9f0e48d7510983ae50621e11",
             "sha256":hash(&bytes),"byteLength":bytes.len()}),
             bytes,
         })
