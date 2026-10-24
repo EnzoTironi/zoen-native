@@ -156,3 +156,21 @@ satisfies the resource pins; it remains immutable at its old URL. These proofs
 cover the source and Chromium touch contract, not the iPhone software keyboard.
 The endpoint-neutral default still does not enable Grid; actual native resource
 delivery, iPhone/agent/CAS interaction and complete issue445 acceptance stay open.
+
+The short embedded editing viewport has a separate, transient render policy. It
+compares the actual safe egui canvas against the requested ribbon/formula/status/
+sheet chrome plus a worksheet interaction row. While a real cell editor is active
+and that content cannot fit, the current TextEdit is rendered in the formula row
+with its SAME widget ID, buffer, cursor and IME owner. Cancel/Enter keep their
+existing paths. The Commands popup uses the existing catalog/run policy and the
+explicit managed Share intent in a viewport-constrained virtualized list. It
+does not auto-focus another search input, alter saved ribbon/formula settings,
+create a different editor or infer a keyboard from orientation. The ordinary
+layout returns when the real available space fits or the edit finishes.
+
+`patches/0005-compact-retained-editor.patch` applies after0004 only in the browser/mobile
+preparation; ordinary headless preparation keeps its original renderer. The real egui
+regressions are in `host-bridge/src/compact_ui_tests.rs`. Real pinned egui tests and the genuine release WASM passed, with a byte-exact
+fresh normal preparation recorded in [issue445](https://github.com/EnzoTironi/zoen-native/issues/445).
+This is not iPhone landscape editing acceptance, nor proof of why the retained499
+native host-height samples differ.
