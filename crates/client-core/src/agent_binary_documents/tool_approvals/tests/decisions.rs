@@ -36,19 +36,20 @@ pub(super) fn denial_and_cancellation_are_terminal_idempotent_without_tools_file
     }
 }
 
-pub(super) fn expired_signed_request_never_approves_and_can_be_cancelled_without_a_clock_sleep() {
+pub(super) fn expired_signed_request_never_approves_and_can_be_cancelled_without_a_clock_sleep(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let fixture = fixture();
     let original = stage(&fixture, "read_deckcraft");
     let mut expired = fixture.agent.lock().state.requests[&original.id]
         .req
         .clone();
-    expired.id = types::new_id("synthetic_expired_ask");
+    expired.id = types::new_id("synthetic_expired_ask")?;
     expired.tool_proposal.as_mut().unwrap().expires_at_ms = crate::engine::now_ms() - 1000;
     expired.content_hash = expired.tool_proposal_hash(&fixture.space).unwrap();
     let opened = expired.tool_proposal.as_ref().unwrap().expires_at_ms - 1000;
     let id = expired.id.clone();
     let hash = expired.content_hash.clone();
-    append_at(&fixture, expired, opened);
+    append_at(&fixture, expired, opened)?;
     assert!(fixture.agent.lock().state.requests.contains_key(&id));
     let before = counts(&fixture);
     assert!(owner_decide(&fixture, &id, &hash, ToolRequestDecision::ApproveOnce).is_err());
@@ -62,11 +63,14 @@ pub(super) fn expired_signed_request_never_approves_and_can_be_cancelled_without
         RequestStatus::Cancelled
     );
     assert_v1(&fixture);
+
+    Ok(())
 }
 
-pub(super) fn signed_grant_block_cannot_be_overridden_by_an_owner_approval_request() {
+pub(super) fn signed_grant_block_cannot_be_overridden_by_an_owner_approval_request(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let fixture = fixture();
-    signed_trust(&fixture, TrustLevel::Listen);
+    signed_trust(&fixture, TrustLevel::Listen)?;
     let turn = turn(&fixture);
     let before = counts(&fixture);
     assert!(fixture
@@ -75,6 +79,8 @@ pub(super) fn signed_grant_block_cannot_be_overridden_by_an_owner_approval_reque
         .is_err());
     assert_eq!(counts(&fixture), before);
     assert_v1(&fixture);
+
+    Ok(())
 }
 
 pub(super) fn generic_standing_decision_never_resolves_or_labels_a_pending_tool_request() {

@@ -1,7 +1,7 @@
 use super::*;
 
-pub(super) async fn live_event_overtaking_final_replay_page_reconciles_once_without_later_message()
-{
+pub(super) async fn live_event_overtaking_final_replay_page_reconciles_once_without_later_message(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     fn assert_history(engine: &Engine, space: &str) {
         let messages: Vec<_> = engine
             .timeline(space)
@@ -59,7 +59,7 @@ pub(super) async fn live_event_overtaking_final_replay_page_reconciles_once_with
     let _ = engine.mls_key_packages_to_publish().unwrap();
     engine.mls_key_packages_published(Ok(()));
     let author = engine.net.author.clone().unwrap();
-    let peer = Author::root(Signer::generate());
+    let peer = Author::root(Signer::generate()?);
     let space = "sp_replay_handoff";
     let mut head = None;
     let canonical = store::Store::open(relay_path.to_str().unwrap()).unwrap();
@@ -291,6 +291,8 @@ pub(super) async fn live_event_overtaking_final_replay_page_reconciles_once_with
     let mut reopened = Engine::open(reader_path.to_str().unwrap()).unwrap();
     assert!(reopened.unlock(Some(device_secret.to_vec())).unwrap());
     assert_history(&reopened, space);
+
+    Ok(())
 }
 
 pub(super) async fn initial_catch_up_unavailable_retries_without_resetting_backoff() {

@@ -27,7 +27,7 @@ fn failed_media_recovery_rejects_pending_confirmed_foreign_scope_and_revoked_acc
 
 #[test]
 fn failed_media_recovery_revalidates_actual_signed_outbox_device_and_complete_group() {
-    admission_cases::failed_media_recovery_revalidates_actual_signed_outbox_device_and_complete_group()
+    admission_cases::failed_media_recovery_revalidates_actual_signed_outbox_device_and_complete_group().unwrap()
 }
 
 #[test]

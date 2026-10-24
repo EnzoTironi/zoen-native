@@ -19,15 +19,15 @@ struct Fixture {
 }
 
 impl Fixture {
-    fn new() -> Self {
-        let home = Home(std::env::temp_dir().join(types::new_id("page-overlay")));
+    fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        let home = Home(std::env::temp_dir().join(types::new_id("page-overlay")?));
         std::fs::create_dir(&home.0).unwrap();
         let path = home.0.join("reader.sqlite");
         let mut engine = Engine::open(path.to_str().unwrap()).unwrap();
         engine
             .create_account("Reader", "reader", "http://127.0.0.1:9")
             .unwrap();
-        let owner = Author::device(&Signer::generate(), Signer::generate());
+        let owner = Author::device(&Signer::generate()?, Signer::generate()?);
         engine
             .put_profiles(vec![Identity {
                 id: owner.identity.clone(),
@@ -56,14 +56,18 @@ impl Fixture {
             identity: f.engine.me_id().unwrap(),
             role: Role::Member,
         });
-        f
+        Ok(f)
     }
 
-    fn append_as(&mut self, author: &Author, body: EventBody) {
+    fn append_as(
+        &mut self,
+        author: &Author,
+        body: EventBody,
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut head = self.engine.logs.get(SPACE).and_then(|log| log.head());
         let event = author.sign_event(
             SPACE,
-            &types::new_id("page-event"),
+            &types::new_id("page-event")?,
             1_800_000_000_000,
             head.clone(),
             body,
@@ -73,6 +77,8 @@ impl Fixture {
                 .ingest(frame(Envelope::plain(&event), &mut head)),
             Ingest::Applied
         );
+
+        Ok(())
     }
 
     fn append(&mut self, body: EventBody) {
@@ -138,7 +144,7 @@ fn snapshot(engine: &Engine) -> serde_json::Value {
 #[test]
 fn ordinary_remote_pages_retain_pending_and_failed_outbox_projection_after_cold_replay() {
     for failed in [false, true] {
-        let mut f = Fixture::new();
+        let mut f = Fixture::new().unwrap();
         let pending = f
             .engine
             .send_message(SPACE, "Retained local intent")
@@ -164,8 +170,8 @@ fn ordinary_remote_pages_retain_pending_and_failed_outbox_projection_after_cold_
 
 #[test]
 fn ordinary_remote_page_after_author_removal_still_uses_checked_projection() {
-    let mut f = Fixture::new();
-    let removed = Author::device(&Signer::generate(), Signer::generate());
+    let mut f = Fixture::new().unwrap();
+    let removed = Author::device(&Signer::generate().unwrap(), Signer::generate().unwrap());
     f.append(EventBody::MemberAdded {
         identity: removed.identity.clone(),
         role: Role::Member,
@@ -186,7 +192,7 @@ fn ordinary_remote_page_after_author_removal_still_uses_checked_projection() {
 
 #[test]
 fn ordinary_remote_page_beside_a_confirmed_legacy_plan_matches_cold_projection() {
-    let mut f = Fixture::new();
+    let mut f = Fixture::new().unwrap();
     f.legacy_plan();
     crate::sync::replay_probe::reset();
     f.page();
@@ -197,10 +203,10 @@ fn ordinary_remote_page_beside_a_confirmed_legacy_plan_matches_cold_projection()
 
 #[test]
 fn ordinary_remote_page_preserves_a_real_optimistic_plan_approval_until_its_echo() {
-    let mut f = Fixture::new();
+    let mut f = Fixture::new().unwrap();
     f.legacy_plan();
     let local = f.engine.net.author.clone().unwrap();
-    let agent = Author::device(&Signer::generate(), Signer::generate());
+    let agent = Author::device(&Signer::generate().unwrap(), Signer::generate().unwrap());
     f.engine
         .put_profiles(vec![Identity {
             id: agent.identity.clone(),
@@ -270,9 +276,9 @@ fn ordinary_remote_page_preserves_a_real_optimistic_plan_approval_until_its_echo
 
 #[test]
 fn ordinary_remote_page_does_not_release_a_real_waiting_plan_approval() {
-    let mut f = Fixture::new();
+    let mut f = Fixture::new().unwrap();
     f.legacy_plan();
-    let agent = Author::device(&Signer::generate(), Signer::generate());
+    let agent = Author::device(&Signer::generate().unwrap(), Signer::generate().unwrap());
     f.engine
         .put_profiles(vec![Identity {
             id: agent.identity.clone(),
@@ -296,7 +302,7 @@ fn ordinary_remote_page_does_not_release_a_real_waiting_plan_approval() {
     let document = fold.document.as_ref().unwrap();
     let plan = document.view().unwrap().to_plan_doc();
     let bytes = document.full_update().to_json().unwrap();
-    let (key, sealed) = crate::media::seal(&bytes);
+    let (key, sealed) = crate::media::seal(&bytes).unwrap();
     let content = PageContent {
         title: plan.title.clone(),
         path: String::new(),

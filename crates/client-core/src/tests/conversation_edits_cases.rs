@@ -218,8 +218,9 @@ pub(super) fn edits_deletes_and_reactions_fold_over_the_original() {
     assert!(f.forwarded);
 }
 
-pub(super) fn ana_replaces_and_removes_only_her_reaction_while_bias_survives_replay() {
-    let path = std::env::temp_dir().join(types::new_id("reactions-replay"));
+pub(super) fn ana_replaces_and_removes_only_her_reaction_while_bias_survives_replay(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let path = std::env::temp_dir().join(types::new_id("reactions-replay")?);
     let e = Client::open(path.to_string_lossy().into(), "en".into()).unwrap();
     e.seed_demo_if_empty().unwrap();
     let s = e
@@ -301,6 +302,8 @@ pub(super) fn ana_replaces_and_removes_only_her_reaction_while_bias_survives_rep
     assert_eq!(replayed, remaining);
     drop(e);
     std::fs::remove_file(path).unwrap();
+
+    Ok(())
 }
 
 pub(super) fn chat_prefs_live_in_my_personal_space_and_last_one_wins() {

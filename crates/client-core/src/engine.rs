@@ -318,6 +318,14 @@ impl From<store::StoreError> for CoreError {
     }
 }
 
+impl From<event_log::CryptoError> for CoreError {
+    fn from(error: event_log::CryptoError) -> Self {
+        Self::Storage {
+            message: error.to_string(),
+        }
+    }
+}
+
 impl From<types::IdError> for CoreError {
     fn from(error: types::IdError) -> Self {
         Self::Storage {

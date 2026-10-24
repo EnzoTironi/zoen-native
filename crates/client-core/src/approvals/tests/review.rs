@@ -22,7 +22,7 @@ fn confirm_pending(e: &mut Engine) {
 #[test]
 fn a_newer_standing_decision_stops_an_interrupted_batch_after_restart() {
     for allow in [false, true] {
-        let (chat, mut e) = Chat::create();
+        let (chat, mut e) = Chat::create().unwrap();
         for prompt in ["first", "second"] {
             e.agent_create_plan(
                 &chat.space,
@@ -49,7 +49,7 @@ fn a_newer_standing_decision_stops_an_interrupted_batch_after_restart() {
             &chat.owner,
             EventBody::GrantIssued {
                 grant: Grant {
-                    id: new_id("gr_replacement"),
+                    id: new_id("gr_replacement").unwrap(),
                     grantor: chat.owner.clone(),
                     grantee: Some(chat.agent.clone()),
                     scope: GrantScope::Space(chat.space.clone()),
@@ -79,7 +79,7 @@ fn a_newer_standing_decision_stops_an_interrupted_batch_after_restart() {
 
 #[test]
 fn an_ordered_denial_wins_over_an_optimistic_approval_before_its_echo() {
-    let (chat, mut e) = Chat::create();
+    let (chat, mut e) = Chat::create().unwrap();
     e.agent_create_plan(
         &chat.space,
         &chat.agent,
@@ -95,14 +95,16 @@ fn an_ordered_denial_wins_over_an_optimistic_approval_before_its_echo() {
     e.decide_request(&r.req.id, RequestDecision::AlwaysApprove)
         .unwrap();
     let pending = e.store.outbox().unwrap().into_iter().next().unwrap().event;
-    let other_device =
-        event_log::Author::device(&e.signers[&chat.owner], event_log::Signer::generate());
+    let other_device = event_log::Author::device(
+        &e.signers[&chat.owner],
+        event_log::Signer::generate().unwrap(),
+    );
     let mut log =
         event_log::SpaceLog::from_events(&chat.space, e.logs[&chat.space].events().to_vec())
             .unwrap();
     let signed = other_device.sign_event(
         &chat.space,
-        &new_ulid(crate::engine::now_ms()),
+        &new_ulid(crate::engine::now_ms()).unwrap(),
         crate::engine::now_ms(),
         log.head(),
         EventBody::RequestResolved {
@@ -158,7 +160,7 @@ fn an_ordered_denial_wins_over_an_optimistic_approval_before_its_echo() {
 
 #[test]
 fn ordered_agent_removal_invalidates_an_optimistic_approval_before_its_echo() {
-    let (chat, mut e) = Chat::create();
+    let (chat, mut e) = Chat::create().unwrap();
     e.agent_create_plan(
         &chat.space,
         &chat.agent,
@@ -181,7 +183,8 @@ fn ordered_agent_removal_invalidates_an_optimistic_approval_before_its_echo() {
         EventBody::MemberRemoved {
             identity: chat.agent.clone(),
         },
-    );
+    )
+    .unwrap();
     assert_eq!(e.state.requests[&id].status, ReqStatus::Pending);
     assert!(e.items().is_empty());
     assert!(!e
@@ -215,7 +218,7 @@ fn ordered_agent_removal_invalidates_an_optimistic_approval_before_its_echo() {
 #[test]
 fn another_member_cannot_preempt_or_revoke_an_approval_generated_grant() {
     for standing in [false, true] {
-        let (chat, mut e) = Chat::create();
+        let (chat, mut e) = Chat::create().unwrap();
         let stranger = e
             .create_identity(identity(IdentityKind::Person, None), true)
             .unwrap();
@@ -256,7 +259,8 @@ fn another_member_cannot_preempt_or_revoke_an_approval_generated_grant() {
                     expires_at_ms: None,
                 },
             },
-        );
+        )
+        .unwrap();
         e.decide_request(
             &id,
             if standing {
@@ -274,7 +278,8 @@ fn another_member_cannot_preempt_or_revoke_an_approval_generated_grant() {
             EventBody::GrantRevoked {
                 grant: collision.clone(),
             },
-        );
+        )
+        .unwrap();
         let item = e.items()[0].id.clone();
         assert_eq!(
             e.item(&item).unwrap().app.unwrap().trust,
@@ -302,7 +307,8 @@ fn another_member_cannot_preempt_or_revoke_an_approval_generated_grant() {
             EventBody::GrantRevoked {
                 grant: format!("gr_app_{id}"),
             },
-        );
+        )
+        .unwrap();
         assert_eq!(
             e.item(&item).unwrap().app.unwrap().trust,
             TrustLevelDto::Listen
@@ -312,7 +318,7 @@ fn another_member_cannot_preempt_or_revoke_an_approval_generated_grant() {
 
 #[test]
 fn another_members_device_grant_cannot_authorize_this_owners_phone() {
-    let (chat, mut e) = Chat::create();
+    let (chat, mut e) = Chat::create().unwrap();
     e.agent_create_app(
         &chat.space,
         &chat.agent,
@@ -343,7 +349,7 @@ fn another_members_device_grant_cannot_authorize_this_owners_phone() {
         &stranger,
         EventBody::GrantIssued {
             grant: Grant {
-                id: new_id("gr"),
+                id: new_id("gr").unwrap(),
                 grantor: stranger.clone(),
                 grantee: Some(format!("app:{item}")),
                 scope: GrantScope::Item(item.clone()),
@@ -354,7 +360,8 @@ fn another_members_device_grant_cannot_authorize_this_owners_phone() {
                 expires_at_ms: None,
             },
         },
-    );
+    )
+    .unwrap();
     assert!(!e.app_device_allowed(&item, "camera"));
     drop(e);
     let mut e = chat.reopen();

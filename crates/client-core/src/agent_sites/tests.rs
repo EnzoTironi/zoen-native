@@ -5,7 +5,7 @@ use crate::{
 };
 use types::{Capability, EventBody, Grant, GrantScope, TrustLevel};
 
-fn setup() -> Fixture {
+fn setup() -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
     let f = fixture_with_privacy(Privacy::EndToEnd);
     let mut e = f.agent.lock();
     let actor = e.me_id().unwrap();
@@ -14,7 +14,7 @@ fn setup() -> Fixture {
         &f.owner,
         EventBody::GrantIssued {
             grant: Grant {
-                id: types::new_id("site_trust"),
+                id: types::new_id("site_trust")?,
                 grantor: f.owner.clone(),
                 grantee: Some(actor),
                 scope: GrantScope::Space(f.space.clone()),
@@ -25,7 +25,7 @@ fn setup() -> Fixture {
     )
     .unwrap();
     drop(e);
-    f
+    Ok(f)
 }
 fn input(f: &Fixture, tool: &str, args: Value, steps: Value) -> AgentToolApprovalInput {
     let e = f.agent.lock();
@@ -105,7 +105,7 @@ fn contracts_refuse_authority_hosting_fields_and_bound_exact_unicode() {
 }
 #[test]
 fn proposal_is_inert_then_one_approved_file_survives_projection_reload() {
-    let f = setup();
+    let f = setup().unwrap();
     let before = f.agent.items().len();
     let r = stage(&f, "create_site", create_args(), json!([]));
     assert_eq!(f.agent.items().len(), before);
@@ -146,7 +146,7 @@ fn proposal_is_inert_then_one_approved_file_survives_projection_reload() {
 }
 #[test]
 fn reviewed_edit_recovers_receipt_without_a_third_version_and_keeps_old_bytes() {
-    let f = setup();
+    let f = setup().unwrap();
     let r = stage(&f, "create_site", create_args(), json!([]));
     let created = execute(&f, &r);
     let p = f.agent.approved_site_tool(&r.id).unwrap();
@@ -184,7 +184,7 @@ fn reviewed_edit_recovers_receipt_without_a_third_version_and_keeps_old_bytes() 
 #[test]
 fn denied_modified_source_and_revoked_writer_never_create() {
     for mode in 0..3 {
-        let f = setup();
+        let f = setup().unwrap();
         let before = f.agent.items().len();
         let r = stage(&f, "create_site", create_args(), json!([]));
         if mode == 0 {
@@ -225,7 +225,7 @@ fn denied_modified_source_and_revoked_writer_never_create() {
 }
 #[test]
 fn no_receipt_cannot_be_recovered_and_atomic_failure_leaves_no_file() {
-    let f = setup();
+    let f = setup().unwrap();
     let r = stage(&f, "create_site", create_args(), json!([]));
     decide(&f, &r, ToolRequestDecision::ApproveOnce).unwrap();
     let p = f.agent.approved_site_tool(&r.id).unwrap();
@@ -243,7 +243,7 @@ fn no_receipt_cannot_be_recovered_and_atomic_failure_leaves_no_file() {
 
 #[test]
 fn reviewed_base_hash_and_current_writer_are_rechecked_before_an_edit() {
-    let f = setup();
+    let f = setup().unwrap();
     let r = stage(&f, "create_site", create_args(), json!([]));
     let created = execute(&f, &r);
     let p = f.agent.approved_site_tool(&r.id).unwrap();
@@ -283,7 +283,7 @@ fn reviewed_base_hash_and_current_writer_are_rechecked_before_an_edit() {
 
 #[test]
 fn human_preview_is_read_only_and_requires_exact_owner_device_and_request_hash() {
-    let f = setup();
+    let f = setup().unwrap();
     let r = stage(&f, "create_site", create_args(), json!([]));
     let hash = &r.tool_approval.as_ref().unwrap().content_hash;
     let before = f.agent.items().len();
@@ -305,7 +305,7 @@ fn human_preview_is_read_only_and_requires_exact_owner_device_and_request_hash()
 
 #[test]
 fn lost_receipt_metadata_cannot_duplicate_an_existing_canonical_file() {
-    let f = setup();
+    let f = setup().unwrap();
     let request = stage(&f, "create_site", create_args(), json!([]));
     let created = execute(&f, &request);
     let permit = f.agent.approved_site_tool(&request.id).unwrap();
@@ -333,7 +333,7 @@ fn lost_receipt_metadata_cannot_duplicate_an_existing_canonical_file() {
 
 #[test]
 fn receipt_identity_is_independent_of_the_envelopes_json_field_order() {
-    let f = setup();
+    let f = setup().unwrap();
     let r = stage(&f, "create_site", create_args(), json!([]));
     let request = f
         .agent

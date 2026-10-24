@@ -93,7 +93,7 @@ fn later_signed_step_retires_prior_requested_intent_without_staging_a_successor(
         .is_err());
     assert_eq!(counts(&f), before);
     let mut forged = f.agent.lock().state.requests[&old.id].req.clone();
-    forged.id = types::new_id("obsolete-successor");
+    forged.id = types::new_id("obsolete-successor").unwrap();
     let p = forged.tool_proposal.as_mut().unwrap();
     p.expires_at_ms = crate::engine::now_ms() + 60_000;
     p.review = Some(types::ToolReviewLineage {
@@ -104,7 +104,7 @@ fn later_signed_step_retires_prior_requested_intent_without_staging_a_successor(
     });
     forged.content_hash = forged.tool_proposal_hash(&f.space).unwrap();
     let forged_id = forged.id.clone();
-    append_at(&f, forged, crate::engine::now_ms());
+    append_at(&f, forged, crate::engine::now_ms()).unwrap();
     assert!(!f.agent.lock().state.requests.contains_key(&forged_id));
     assert_eq!(
         f.agent
@@ -210,7 +210,7 @@ fn renewed_pending_or_approved_read_retires_when_a_later_step_is_canonical() {
 #[test]
 fn accepted_renewed_deck_receipt_recovers_before_obsolete_leaf_refusal() {
     let f = fixture();
-    signed_trust(&f, TrustLevel::Suggest);
+    signed_trust(&f, TrustLevel::Suggest).unwrap();
     let (old, _) = expired_approved(&f, "deckcraft_slide_notes");
     let review = request_again(&f, &old);
     let next = f

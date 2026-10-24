@@ -73,7 +73,7 @@ fn assert_plan(got: &PlanDto, expect: &PlanDoc) {
 
 #[test]
 fn divergent_hash_on_each_writer_appends_nothing() {
-    let mut fixture = Fixture::new();
+    let mut fixture = Fixture::new().unwrap();
     let line = line_id();
     let before = snapshot(&fixture);
     let stale = "stale-binding";
@@ -106,8 +106,8 @@ fn divergent_hash_on_each_writer_appends_nothing() {
 
 #[test]
 fn pure_confirmation_keeps_the_binding_and_the_saved_edit_uses_it() {
-    let mut fixture = Fixture::new();
-    let item = new_id("confirmed-binding");
+    let mut fixture = Fixture::new().unwrap();
+    let item = new_id("confirmed-binding").unwrap();
     let creation = fixture.queue(EventBody::ItemCreated {
         item: item.clone(),
         kind: ItemKind::Plan,
@@ -133,7 +133,7 @@ fn pure_confirmation_keeps_the_binding_and_the_saved_edit_uses_it() {
 
 #[test]
 fn semantic_field_changes_move_the_binding() {
-    let mut fixture = Fixture::new();
+    let mut fixture = Fixture::new().unwrap();
     let mut seen = vec![
         fixture
             .engine
@@ -220,7 +220,7 @@ fn semantic_field_changes_move_the_binding() {
 
 #[test]
 fn restore_with_a_stale_hash_appends_nothing_and_plain_restore_refuses_plans() {
-    let mut fixture = Fixture::new();
+    let mut fixture = Fixture::new().unwrap();
     let observed = fixture
         .engine
         .plan_page(&fixture.item)
@@ -260,7 +260,7 @@ fn restore_with_a_stale_hash_appends_nothing_and_plain_restore_refuses_plans() {
 
 #[test]
 fn undo_after_an_intermediate_edit_appends_nothing() {
-    let mut fixture = Fixture::new();
+    let mut fixture = Fixture::new().unwrap();
     let line = line_id();
     let first_hash = fixture
         .engine
@@ -302,7 +302,7 @@ fn undo_after_an_intermediate_edit_appends_nothing() {
 
 #[test]
 fn undo_without_an_intermediate_edit_restores_the_previous_line() {
-    let mut fixture = Fixture::new();
+    let mut fixture = Fixture::new().unwrap();
     let previous = original().sections[0].lines[0].text.clone();
     let observed = fixture
         .engine
@@ -321,7 +321,7 @@ fn undo_without_an_intermediate_edit_restores_the_previous_line() {
 
 #[test]
 fn remote_event_between_read_and_write_is_refused() {
-    let mut fixture = Fixture::new();
+    let mut fixture = Fixture::new().unwrap();
     let member = add_identity(&mut fixture.engine, "Remote member");
     fixture.ordered(EventBody::MemberAdded {
         identity: member.clone(),
@@ -355,7 +355,7 @@ fn remote_event_between_read_and_write_is_refused() {
 
 #[test]
 fn unsaved_draft_refuses_a_plan_doc_change_on_every_writer() {
-    let mut fixture = Fixture::new();
+    let mut fixture = Fixture::new().unwrap();
     open_private_draft(&mut fixture, "observed-private-draft");
     let opened = fixture.engine.plan_page(&fixture.item).unwrap();
     assert!(opened.unsaved);
@@ -477,7 +477,7 @@ fn unsaved_draft_refuses_a_plan_doc_change_on_every_writer() {
 
 #[test]
 fn restoring_a_missing_version_is_a_clean_not_found_and_appends_nothing() {
-    let mut fixture = Fixture::new();
+    let mut fixture = Fixture::new().unwrap();
     let observed = fixture
         .engine
         .plan_page(&fixture.item)

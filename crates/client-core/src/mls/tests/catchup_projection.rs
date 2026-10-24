@@ -4,7 +4,7 @@ use crate::sync::replay_probe::{projection, Home};
 
 #[test]
 fn encrypted_ordinary_pages_are_single_pass_and_cold_reopen_retains_exact_source() {
-    let home = Home(std::env::temp_dir().join(types::new_id("sealed-page-catchup")));
+    let home = Home(std::env::temp_dir().join(types::new_id("sealed-page-catchup").unwrap()));
     std::fs::create_dir(&home.0).unwrap();
     let path = home.0.join("peer.sqlite");
     let (mut owner, _, _) = member(":memory:");

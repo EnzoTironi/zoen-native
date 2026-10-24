@@ -47,8 +47,8 @@ impl Conn {
         )
         .await
         .context("websocket")?;
-        let root = Signer::generate();
-        let author = Author::device(&root, Signer::generate());
+        let root = Signer::generate()?;
+        let author = Author::device(&root, Signer::generate()?);
         let mut c = Conn { ws, author };
         c.send(&ClientFrame::Hello {
             protocol: PROTOCOL_VERSION,

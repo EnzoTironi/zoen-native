@@ -16,13 +16,14 @@ impl crate::SecretVault for Vault {
     }
 }
 
-pub(super) fn a_removal_during_held_recovery_survives_restart_and_repairs_before_sealing() {
+pub(super) fn a_removal_during_held_recovery_survives_restart_and_repairs_before_sealing(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let path = std::env::temp_dir().join(format!(
         "zoen-removal-recovery-{}.db",
         types::new_ulid(now_ms())
     ));
     let space = "removed-during-upload";
-    let fixture = staged_recovery(path.to_str().unwrap(), space);
+    let fixture = staged_recovery(path.to_str().unwrap(), space)?;
     let mut engine = fixture.engine;
     let external = Envelope::plain(&engine.store.outbox().unwrap()[0].event);
     let reference = RecoveryRef::parse(external.recovery().unwrap()).unwrap();
@@ -99,17 +100,19 @@ pub(super) fn a_removal_during_held_recovery_survives_restart_and_repairs_before
     assert_eq!(engine.outbox_len(), 0);
     drop(engine);
     let _ = std::fs::remove_file(path);
+
+    Ok(())
 }
 
 pub(super) fn erase_device_clears_held_markers_atomically_and_fresh_restore_can_recover_the_same_space(
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use crate::SecretVault;
     let path = std::env::temp_dir().join(format!(
         "zoen-erased-recovery-{}.db",
         types::new_ulid(now_ms())
     ));
     let space = "recover-after-erasure";
-    let fixture = staged_recovery(path.to_str().unwrap(), space);
+    let fixture = staged_recovery(path.to_str().unwrap(), space)?;
     drop(fixture.engine);
     let api = crate::Client::open(path.to_str().unwrap().into(), "en".into()).unwrap();
     let vault = std::sync::Arc::new(Vault::default());
@@ -160,7 +163,7 @@ pub(super) fn erase_device_clears_held_markers_atomically_and_fresh_restore_can_
     engine
         .install_restored_account(
             &event_log::Signer::from_secret(&fixture.root),
-            event_log::Signer::generate(),
+            event_log::Signer::generate()?,
             "http://relay.test",
         )
         .unwrap();
@@ -184,6 +187,8 @@ pub(super) fn erase_device_clears_held_markers_atomically_and_fresh_restore_can_
     assert_eq!(engine.outbox_len(), 1);
     drop(engine);
     let _ = std::fs::remove_file(path);
+
+    Ok(())
 }
 
 pub(super) fn legacy_stub_cannot_install_or_invalidate_authenticated_recovery_context() {

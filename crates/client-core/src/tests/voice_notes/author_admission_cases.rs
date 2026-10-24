@@ -2,7 +2,8 @@
 
 use super::*;
 
-pub(super) fn another_author_or_a_removed_author_cannot_deduplicate_an_earlier_note() {
+pub(super) fn another_author_or_a_removed_author_cannot_deduplicate_an_earlier_note(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let e = seeded();
     let space = find_space(&e, "Paraty com a Marina");
     let root = e.send_message(space.id.clone(), "Root".into()).unwrap();
@@ -31,7 +32,7 @@ pub(super) fn another_author_or_a_removed_author_cannot_deduplicate_an_earlier_n
                 &space.id,
                 &me,
                 EventBody::MessagePosted {
-                    message: types::new_id("msg"),
+                    message: types::new_id("msg")?,
                     text: String::new(),
                     attaches: Some(item),
                     reply: Some(types::ReplyRef::thread(root.id)),
@@ -47,6 +48,8 @@ pub(super) fn another_author_or_a_removed_author_cannot_deduplicate_an_earlier_n
         .unwrap()
         .iter()
         .any(|x| x.id == original.id));
+
+    Ok(())
 }
 
 pub(super) fn invalid_voice_reply_targets_do_not_publish_audio_or_create_items() {

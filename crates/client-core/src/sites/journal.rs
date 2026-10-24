@@ -152,7 +152,7 @@ mod tests {
             Some(r.clone())
         );
         let mut competing = r.clone();
-        competing.mutation.request_id = types::new_secret_id("pub");
+        competing.mutation.request_id = types::new_secret_id("pub").unwrap();
         assert!(e.site_begin_publication(&competing).is_err());
         let raw: String = e
             .store

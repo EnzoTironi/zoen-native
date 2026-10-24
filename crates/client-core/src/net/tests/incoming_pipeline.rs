@@ -161,7 +161,8 @@ async fn malformed_wire_and_rejected_signature_do_not_poison_following_messages_
     let _ = rustls::crypto::ring::default_provider().install_default();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("ws://{}", listener.local_addr().unwrap());
-    let directory = Directory(std::env::temp_dir().join(types::new_id("incoming-pipeline")));
+    let directory =
+        Directory(std::env::temp_dir().join(types::new_id("incoming-pipeline").unwrap()));
     std::fs::create_dir(&directory.0).unwrap();
     let path = directory.0.join("reader.sqlite");
     let root = Signer::from_secret(&[83; 32]);

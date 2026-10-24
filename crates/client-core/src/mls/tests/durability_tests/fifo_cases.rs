@@ -2,8 +2,8 @@
 use super::*;
 
 pub(super) fn cold_outbox_fifo_preserves_signed_intents_ciphertext_and_receiver_order_after_clock_rollback(
-) {
-    let database = Database::new();
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let database = Database::new()?;
     let space = "fifo-backwards-clock";
     let (mut owner, secret, mut peer, _) = encrypted_pair(&database, space);
     let author = owner.net.author.clone().unwrap();
@@ -78,10 +78,13 @@ pub(super) fn cold_outbox_fifo_preserves_signed_intents_ciphertext_and_receiver_
     }
     assert_eq!(owner.store.outbox_len().unwrap(), 0);
     peer.logs[space].verify().unwrap();
+
+    Ok(())
 }
 
-pub(super) fn backward_clock_welcome_stays_behind_original_commit_and_other_space_advances() {
-    let database = Database::new();
+pub(super) fn backward_clock_welcome_stays_behind_original_commit_and_other_space_advances(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let database = Database::new()?;
     let space = "fifo-handshake";
     let (mut owner, secret, peer, _) = encrypted_pair(&database, space);
     // encrypted_pair already added peer's signature key. A different key package
@@ -174,4 +177,6 @@ pub(super) fn backward_clock_welcome_stays_behind_original_commit_and_other_spac
         .outbox_envelopes()
         .iter()
         .any(|e| e.client_id() == independent.client_id));
+
+    Ok(())
 }

@@ -10,10 +10,10 @@ const RAW: &str = "raw 😀\r\n\0e\u{301}\r\u{85}\u{2029}tail";
 
 struct Database(std::path::PathBuf);
 impl Database {
-    fn new() -> Self {
-        let path = std::env::temp_dir().join(new_id("zoen-plan-session"));
+    fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        let path = std::env::temp_dir().join(new_id("zoen-plan-session")?);
         std::fs::create_dir_all(&path).unwrap();
-        Self(path)
+        Ok(Self(path))
     }
     fn path(&self) -> String {
         self.0.join("session.sqlite").to_str().unwrap().into()
@@ -183,6 +183,7 @@ fn binary_replay_keeps_the_exact_pre_upgrade_payload() {
 #[test]
 fn binary_refresh_reuses_verified_payload_and_rechecks_after_reload() {
     binary_compatibility_cases::binary_refresh_reuses_verified_payload_and_rechecks_after_reload()
+        .unwrap()
 }
 
 #[test]
@@ -197,12 +198,12 @@ fn binary_failed_publication_preserves_the_existing_visible_error() {
 
 #[test]
 fn typed_plan_draft_and_exact_receipt_survive_file_reopen() {
-    context_receipts_cases::typed_plan_draft_and_exact_receipt_survive_file_reopen()
+    context_receipts_cases::typed_plan_draft_and_exact_receipt_survive_file_reopen().unwrap()
 }
 
 #[test]
 fn contexts_bind_actor_space_item_kind_and_creation() {
-    context_receipts_cases::contexts_bind_actor_space_item_kind_and_creation()
+    context_receipts_cases::contexts_bind_actor_space_item_kind_and_creation().unwrap()
 }
 
 #[test]
@@ -217,7 +218,7 @@ fn changed_request_with_same_mutation_refuses_atomically() {
 
 #[test]
 fn lost_reply_empty_diff_undo_and_redo_continue_own_branch() {
-    continuation_cases::lost_reply_empty_diff_undo_and_redo_continue_own_branch()
+    continuation_cases::lost_reply_empty_diff_undo_and_redo_continue_own_branch().unwrap()
 }
 
 #[test]
@@ -266,7 +267,7 @@ fn generation_fence_allows_exact_receipt_replay_but_refuses_new_continuation() {
 
 #[test]
 fn receipt_eviction_fences_forgotten_retry_across_reopen() {
-    journal_recovery_cases::receipt_eviction_fences_forgotten_retry_across_reopen()
+    journal_recovery_cases::receipt_eviction_fences_forgotten_retry_across_reopen().unwrap()
 }
 
 #[test]
@@ -281,7 +282,7 @@ fn oversized_context_or_journal_fails_before_memory_replacement() {
 
 #[test]
 fn lost_response_after_durable_accept_recovers_the_same_receipt() {
-    journal_recovery_cases::lost_response_after_durable_accept_recovers_the_same_receipt()
+    journal_recovery_cases::lost_response_after_durable_accept_recovers_the_same_receipt().unwrap()
 }
 
 #[test]
@@ -296,7 +297,7 @@ fn journal_failure_after_outbox_insert_rolls_back_event_and_projection() {
 
 #[test]
 fn lost_commit_response_reopens_one_exact_pending_source() {
-    publication_cases::lost_commit_response_reopens_one_exact_pending_source()
+    publication_cases::lost_commit_response_reopens_one_exact_pending_source().unwrap()
 }
 
 #[test]
@@ -351,7 +352,7 @@ fn reader_removed_actor_and_key_loss_refuse_mutation_but_keep_saved_read() {
 
 #[test]
 fn newer_draft_survives_older_ack_and_permanent_transport_refusal() {
-    publication_cases::newer_draft_survives_older_ack_and_permanent_transport_refusal()
+    publication_cases::newer_draft_survives_older_ack_and_permanent_transport_refusal().unwrap()
 }
 
 #[test]
@@ -364,12 +365,12 @@ fn blob_publication_and_two_first_writers_converge_without_cas() {
 
 #[test]
 fn backup_export_excludes_actual_page_and_plan_private_journals_without_mutating_source() {
-    convergence_backup_cases::backup_export_excludes_actual_page_and_plan_private_journals_without_mutating_source()
+    convergence_backup_cases::backup_export_excludes_actual_page_and_plan_private_journals_without_mutating_source().unwrap()
 }
 
 #[test]
 fn backup_restore_strips_authentic_old_device_page_and_plan_journals_before_edit_admission() {
-    convergence_backup_cases::backup_restore_strips_authentic_old_device_page_and_plan_journals_before_edit_admission()
+    convergence_backup_cases::backup_restore_strips_authentic_old_device_page_and_plan_journals_before_edit_admission().unwrap()
 }
 
 #[path = "input_tests.rs"]

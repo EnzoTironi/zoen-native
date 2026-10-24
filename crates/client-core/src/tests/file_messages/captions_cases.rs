@@ -253,9 +253,10 @@ pub(super) fn blank_caption_edit_is_scoped_to_live_own_ordinary_files_and_enforc
     }
 }
 
-pub(super) fn captioned_file_retries_survive_reopen_and_reject_caption_drift() {
+pub(super) fn captioned_file_retries_survive_reopen_and_reject_caption_drift(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use sha2::{Digest, Sha256};
-    let dir = std::env::temp_dir().join(types::new_id("caption-send"));
+    let dir = std::env::temp_dir().join(types::new_id("caption-send")?);
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("core.sqlite").to_string_lossy().to_string();
     let caption = "First caption 🐝";
@@ -306,6 +307,8 @@ pub(super) fn captioned_file_retries_survive_reopen_and_reject_caption_drift() {
     assert_eq!(storage(&e), blank_counts);
     drop(e);
     std::fs::remove_dir_all(dir).unwrap();
+
+    Ok(())
 }
 
 pub(super) fn file_caption_bounds_and_failed_receipt_leave_no_partial_file_or_message() {

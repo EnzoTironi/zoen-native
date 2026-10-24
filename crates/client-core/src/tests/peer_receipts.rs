@@ -10,11 +10,11 @@ struct Database {
 }
 
 impl Database {
-    fn new() -> Self {
-        let directory = std::env::temp_dir().join(types::new_id("peer-receipts"));
+    fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        let directory = std::env::temp_dir().join(types::new_id("peer-receipts")?);
         std::fs::create_dir_all(&directory).unwrap();
         let path = directory.join("core.sqlite").to_string_lossy().into_owned();
-        Self { directory, path }
+        Ok(Self { directory, path })
     }
 
     fn open(&self) -> Arc<Client> {
@@ -113,7 +113,7 @@ fn pending_membership_cannot_admit_a_new_peer_or_suppress_a_confirmed_peers_rece
 
 #[test]
 fn confirmed_removal_discards_new_and_deferred_marks_so_rejoin_cannot_authorize_them() {
-    membership_cases::confirmed_removal_discards_new_and_deferred_marks_so_rejoin_cannot_authorize_them()
+    membership_cases::confirmed_removal_discards_new_and_deferred_marks_so_rejoin_cannot_authorize_them().unwrap()
 }
 
 // Complete cases keep their original annotated entrypoints above.

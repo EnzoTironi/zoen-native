@@ -135,7 +135,7 @@ fn legacy_item_proposal_keeps_its_delivery_message_and_item_after_reprojection()
     for approved in [true, false] {
         let fixture = fixture();
         signed_trust(&fixture, TrustLevel::Suggest);
-        let item = types::new_id("synthetic_legacy_plan");
+        let item = types::new_id("synthetic_legacy_plan").unwrap();
         let message = "The reviewed synthetic plan is ready.";
         let (agent, request, event) = {
             let mut engine = fixture.agent.lock();

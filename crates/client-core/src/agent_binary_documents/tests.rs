@@ -34,10 +34,12 @@ pub(crate) struct Fixture {
     pub(crate) source: String,
     pub(crate) base: AppBinaryDocumentDto,
 }
-pub(crate) fn fixture() -> Fixture {
-    fixture_with_privacy(Privacy::Closed)
+pub(crate) fn fixture() -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
+    Ok(fixture_with_privacy(Privacy::Closed)?)
 }
-pub(crate) fn fixture_with_privacy(privacy: Privacy) -> Fixture {
+pub(crate) fn fixture_with_privacy(
+    privacy: Privacy,
+) -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
     let owner = Client::open(":memory:".into(), "en".into()).unwrap();
     let vault = Arc::new(Vault::default());
     let owner_id = owner
@@ -83,7 +85,7 @@ pub(crate) fn fixture_with_privacy(privacy: Privacy) -> Fixture {
     }
     // A signed locally ordered fixture avoids impersonating a remote identity
     // through the real account's publish-only device/outbox admission guard.
-    let space = types::new_id("worker_space");
+    let space = types::new_id("worker_space")?;
     {
         let mut e = agent.lock();
         let me = e.me_id().unwrap();
@@ -123,7 +125,7 @@ pub(crate) fn fixture_with_privacy(privacy: Privacy) -> Fixture {
         )
         .unwrap()
         .id;
-    Fixture {
+    Ok(Fixture {
         owner_client: owner,
         agent,
         agent_vault,
@@ -131,7 +133,7 @@ pub(crate) fn fixture_with_privacy(privacy: Privacy) -> Fixture {
         space,
         source,
         base,
-    }
+    })
 }
 pub(super) fn turn(f: &Fixture) -> AgentBinaryTurn {
     f.agent
@@ -165,7 +167,7 @@ pub(super) fn counts(f: &Fixture) -> Vec<i64> {
 }
 #[test]
 fn signed_source_and_actual_certified_agent_are_required_before_worker_admission() {
-    let f = fixture();
+    let f = fixture().unwrap();
     let before = counts(&f);
     let t = turn(&f);
     assert_eq!(t.document().actor_kind, "agent");
@@ -213,7 +215,7 @@ fn signed_source_and_actual_certified_agent_are_required_before_worker_admission
 }
 #[test]
 fn source_changes_and_device_retirement_fence_compute_results_without_partial_writes() {
-    let f = fixture();
+    let f = fixture().unwrap();
     let t = turn(&f);
     // A reaction is outside command source content and does not revoke the turn.
     {
@@ -292,7 +294,7 @@ fn source_changes_and_device_retirement_fence_compute_results_without_partial_wr
 }
 #[test]
 fn serving_writer_and_exact_native_receipts_remain_authoritative_after_compute() {
-    let f = fixture();
+    let f = fixture().unwrap();
     let t = turn(&f);
     let intent = hex::encode([2; 32]);
     assert!(f

@@ -1,36 +1,44 @@
 use super::*;
 use types::call_transport::{CallTransportPayload as P, CallTransportSignal};
 
-fn signal(f: &Fixture, call: &CallRecord, payload: P) -> CallTransportSignal {
-    CallTransportSignal {
-        signal_id: new_secret_id("tx"),
+fn signal(
+    f: &Fixture,
+    call: &CallRecord,
+    payload: P,
+) -> std::result::Result<CallTransportSignal, Box<dyn std::error::Error>> {
+    Ok(CallTransportSignal {
+        signal_id: new_secret_id("tx")?,
         call_id: call.call_id.clone(),
         invitation: call.invitation.clone(),
         recipient_device: f.callee.device.clone().unwrap(),
         generation: 0,
         payload,
-    }
+    })
 }
-fn event(f: &Fixture, by: &Author, signal: CallTransportSignal) -> Event {
-    by.sign_event(
+fn event(
+    f: &Fixture,
+    by: &Author,
+    signal: CallTransportSignal,
+) -> std::result::Result<Event, Box<dyn std::error::Error>> {
+    Ok(by.sign_event(
         "sp_calls",
-        &new_ulid(400),
+        &new_ulid(400)?,
         400,
         f.log.head(),
         EventBody::CallTransportV1 { signal },
-    )
+    ))
 }
-fn accepted() -> (Fixture, CallRecord) {
-    let mut f = Fixture::new();
+fn accepted() -> std::result::Result<(Fixture, CallRecord), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
     let call = f.invite();
     let accept = f.accept(&call);
     f.push(f.callee.clone(), 200, EventBody::CallV1 { signal: accept });
-    (f, call)
+    Ok((f, call))
 }
 
 #[test]
 fn no_sdp_or_ice_before_both_events_are_canonically_confirmed() {
-    let (mut f, call) = accepted();
+    let (mut f, call) = accepted().unwrap();
     let offer = event(
         &f,
         &f.caller,
@@ -40,8 +48,10 @@ fn no_sdp_or_ice_before_both_events_are_canonically_confirmed() {
             P::Offer {
                 sdp: "v=0\r\na=fingerprint:sha-256 exact\r\n".into(),
             },
-        ),
-    );
+        )
+        .unwrap(),
+    )
+    .unwrap();
     assert!(f.engine.state.call_transport_valid(&offer));
     f.engine.state.spaces.get_mut("sp_calls").unwrap().calls[0].acceptance_confirmed = false;
     assert!(!f.engine.state.call_transport_valid(&offer));
@@ -52,14 +62,15 @@ fn no_sdp_or_ice_before_both_events_are_canonically_confirmed() {
 
 #[test]
 fn selected_devices_only_negotiate_and_wrong_invitation_or_recipient_is_refused() {
-    let (f, call) = accepted();
+    let (f, call) = accepted().unwrap();
     let base = signal(
         &f,
         &call,
         P::Offer {
             sdp: "offer".into(),
         },
-    );
+    )
+    .unwrap();
     assert!(!f
         .engine
         .state
@@ -84,14 +95,15 @@ fn selected_devices_only_negotiate_and_wrong_invitation_or_recipient_is_refused(
 
 #[test]
 fn accepted_device_transport_replays_once_and_terminal_calls_refuse_old_signals() {
-    let (mut f, call) = accepted();
+    let (mut f, call) = accepted().unwrap();
     let offer = signal(
         &f,
         &call,
         P::Offer {
             sdp: "v=0\r\na=fingerprint:sha-256 exact\r\n".into(),
         },
-    );
+    )
+    .unwrap();
     f.push(
         f.caller.clone(),
         300,
@@ -129,14 +141,15 @@ fn accepted_device_transport_replays_once_and_terminal_calls_refuse_old_signals(
 
 #[test]
 fn one_offer_one_answer_per_generation_and_bounds_prevent_unlimited_log_growth() {
-    let (mut f, call) = accepted();
+    let (mut f, call) = accepted().unwrap();
     let offer = signal(
         &f,
         &call,
         P::Offer {
             sdp: "offer".into(),
         },
-    );
+    )
+    .unwrap();
     f.push(
         f.caller.clone(),
         300,
@@ -148,7 +161,8 @@ fn one_offer_one_answer_per_generation_and_bounds_prevent_unlimited_log_growth()
         P::Offer {
             sdp: "different offer".into(),
         },
-    );
+    )
+    .unwrap();
     assert!(!f
         .engine
         .state
@@ -159,7 +173,8 @@ fn one_offer_one_answer_per_generation_and_bounds_prevent_unlimited_log_growth()
         P::Answer {
             sdp: "answer".into(),
         },
-    );
+    )
+    .unwrap();
     answer.recipient_device = f.caller.device.clone().unwrap();
     assert!(f
         .engine
@@ -176,7 +191,8 @@ fn one_offer_one_answer_per_generation_and_bounds_prevent_unlimited_log_growth()
         P::Offer {
             sdp: "restart".into(),
         },
-    );
+    )
+    .unwrap();
     restart.generation = 1;
     assert!(f
         .engine
@@ -193,7 +209,8 @@ fn one_offer_one_answer_per_generation_and_bounds_prevent_unlimited_log_growth()
         P::Offer {
             sdp: "x".repeat(types::call_transport::MAX_SDP_BYTES + 1),
         },
-    );
+    )
+    .unwrap();
     assert!(!f
         .engine
         .state
@@ -202,14 +219,14 @@ fn one_offer_one_answer_per_generation_and_bounds_prevent_unlimited_log_growth()
 
 #[test]
 fn cold_orphan_is_retired_by_normal_signed_hangup_before_a_new_invite() {
-    let (mut f, call) = accepted();
+    let (mut f, call) = accepted().unwrap();
     let image = f.engine.store.memory_image().unwrap();
     f.engine = Engine::from_store(Store::from_memory_image(&image).unwrap(), ":memory:").unwrap();
     assert!(f.record().accepted_device.is_some() && !f.record().terminal());
     let end = f.end(&call, CallEndReason::HungUp);
     f.push(f.caller.clone(), 500, EventBody::CallV1 { signal: end });
     let next = CallSignal::Invite {
-        call_id: new_secret_id("call"),
+        call_id: new_secret_id("call").unwrap(),
         callee: f.callee.identity.clone(),
         media: CallMedia::Video,
         expires_at_ms: 1500,
@@ -220,14 +237,15 @@ fn cold_orphan_is_retired_by_normal_signed_hangup_before_a_new_invite() {
 
 #[test]
 fn role_revocation_retires_media_and_refuses_future_call_admission() {
-    let (mut f, call) = accepted();
+    let (mut f, call) = accepted().unwrap();
     let offer = signal(
         &f,
         &call,
         P::Offer {
             sdp: "offer".into(),
         },
-    );
+    )
+    .unwrap();
     f.push(
         f.caller.clone(),
         300,
@@ -250,7 +268,7 @@ fn role_revocation_retires_media_and_refuses_future_call_admission() {
         .state
         .call_transport_valid(&event(&f, &f.caller, offer)));
     let next = CallSignal::Invite {
-        call_id: new_secret_id("call"),
+        call_id: new_secret_id("call").unwrap(),
         callee: f.callee.identity.clone(),
         media: CallMedia::Audio,
         expires_at_ms: 1500,

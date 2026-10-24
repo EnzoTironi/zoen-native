@@ -97,10 +97,10 @@ impl Material {
 }
 struct Directory(PathBuf);
 impl Directory {
-    fn new() -> Self {
-        let path = std::env::temp_dir().join(types::new_id("zoen-link-install"));
+    fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        let path = std::env::temp_dir().join(types::new_id("zoen-link-install")?);
         std::fs::create_dir(&path).unwrap();
-        Self(path)
+        Ok(Self(path))
     }
     fn open(&self) -> Arc<Client> {
         Client::open(
@@ -134,7 +134,7 @@ fn assert_not_installed(client: &Client) {
 fn each_rejected_or_ambiguous_vault_write_keeps_keys_retryable_across_cold_reopen() {
     for accept_failure in [false, true] {
         for fail_at in 1..=4 {
-            let directory = Directory::new();
+            let directory = Directory::new().unwrap();
             let material = Material::new();
             let vault = material.vault();
             let pending = vault.load(link::VAULT_PENDING.into()).unwrap();

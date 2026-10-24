@@ -62,7 +62,7 @@ fn page_creation_is_one_original_card_and_discussion_reads_never_append_events()
 
 #[test]
 fn imported_page_thread_and_edited_page_recover_the_same_original_root() {
-    let directory = std::env::temp_dir().join(types::new_id("discussion-test"));
+    let directory = std::env::temp_dir().join(types::new_id("discussion-test").unwrap());
     std::fs::create_dir_all(&directory).unwrap();
     let path = directory
         .join("client.sqlite")

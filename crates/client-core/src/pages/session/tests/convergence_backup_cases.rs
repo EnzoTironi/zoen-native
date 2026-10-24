@@ -128,9 +128,9 @@ pub(super) fn blob_publication_and_two_first_writers_converge_without_cas() {
     }
 }
 
-pub(super) fn backup_export_excludes_actual_page_and_plan_private_journals_without_mutating_source()
-{
-    for kind in [ItemKind::Page, ItemKind::Plan] {
+pub(super) fn backup_export_excludes_actual_page_and_plan_private_journals_without_mutating_source(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Ok(for kind in [ItemKind::Page, ItemKind::Plan] {
         let (f, _, _, private) = private_document_backup_source(kind);
         let ciphertext = f.cipher().unwrap();
         let head = f.engine.logs[&f.space]
@@ -138,7 +138,7 @@ pub(super) fn backup_export_excludes_actual_page_and_plan_private_journals_witho
             .map(|head| (head.seq, head.hash));
         let events = f.engine.store.event_count().unwrap();
         let outbox = f.engine.store.outbox_len().unwrap();
-        let db = Database::new();
+        let db = Database::new()?;
         std::fs::write(db.path(), f.engine.backup_snapshot().unwrap()).unwrap();
         let connection = rusqlite::Connection::open(db.path()).unwrap();
         let rows: i64 = connection
@@ -165,12 +165,12 @@ pub(super) fn backup_export_excludes_actual_page_and_plan_private_journals_witho
                 .map(|head| (head.seq, head.hash)),
             head
         );
-    }
+    })
 }
 
 pub(super) fn backup_restore_strips_authentic_old_device_page_and_plan_journals_before_edit_admission(
-) {
-    for kind in [ItemKind::Page, ItemKind::Plan] {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Ok(for kind in [ItemKind::Page, ItemKind::Plan] {
         let (f, header, canonical, private) = private_document_backup_source(kind);
         let ciphertext = f.cipher().unwrap();
         let row = row_id(&f.engine, f.engine.item_state(&f.item).unwrap()).unwrap();
@@ -178,7 +178,7 @@ pub(super) fn backup_restore_strips_authentic_old_device_page_and_plan_journals_
         let head = f.engine.logs[&f.space]
             .head()
             .map(|head| (head.seq, head.hash));
-        let db = Database::new();
+        let db = Database::new()?;
         std::fs::write(db.path(), f.engine.backup_snapshot().unwrap()).unwrap();
         let connection = rusqlite::Connection::open(db.path()).unwrap();
         // Test restore independently of export using the real old device's sealed row.
@@ -194,7 +194,7 @@ pub(super) fn backup_restore_strips_authentic_old_device_page_and_plan_journals_
             .restore_snapshot(
                 &header,
                 &std::fs::read(db.path()).unwrap(),
-                event_log::Signer::generate(),
+                event_log::Signer::generate()?,
             )
             .unwrap();
         assert_eq!(restored.account().unwrap().identity, f.owner);
@@ -237,5 +237,5 @@ pub(super) fn backup_restore_strips_authentic_old_device_page_and_plan_journals_
         let mut original_session = f.session();
         assert_eq!(original_session.read(&f.engine).unwrap().view, private);
         assert_eq!(f.cipher().as_deref(), Some(ciphertext.as_str()));
-    }
+    })
 }

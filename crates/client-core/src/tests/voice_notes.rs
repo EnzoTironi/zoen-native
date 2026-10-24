@@ -71,12 +71,13 @@ fn unresolved_legacy_voice_markers_cannot_escape_their_source_chat_as_text() {
 
 #[test]
 fn forwarded_voice_survives_cold_reopen_and_a_destination_only_peer_decrypts_new_chunks() {
-    forwarding_recovery_cases::forwarded_voice_survives_cold_reopen_and_a_destination_only_peer_decrypts_new_chunks()
+    forwarding_recovery_cases::forwarded_voice_survives_cold_reopen_and_a_destination_only_peer_decrypts_new_chunks().unwrap()
 }
 
 #[test]
 fn another_author_or_a_removed_author_cannot_deduplicate_an_earlier_note() {
     author_admission_cases::another_author_or_a_removed_author_cannot_deduplicate_an_earlier_note()
+        .unwrap()
 }
 
 #[test]
@@ -108,6 +109,7 @@ fn ordinary_files_stay_collaborative_but_only_the_author_can_make_them_voice() {
 fn rejected_voice_sends_keep_their_audio_reply_and_delivery_error_after_reopen() {
     presentation_cases::rejected_voice_sends_keep_their_audio_reply_and_delivery_error_after_reopen(
     )
+    .unwrap()
 }
 
 #[test]

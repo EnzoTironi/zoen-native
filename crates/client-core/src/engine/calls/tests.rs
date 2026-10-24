@@ -8,7 +8,7 @@ struct Fixture {
     other_device: Author,
 }
 impl Fixture {
-    fn new() -> Self {
+    fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
         let mut engine = Engine::open(":memory:").unwrap();
         fn person(engine: &mut Engine, name: &str) -> Signer {
             let id = engine
@@ -31,9 +31,9 @@ impl Fixture {
         }
         let a = person(&mut engine, "caller");
         let b = person(&mut engine, "callee");
-        let caller = Author::device(&a, Signer::generate());
-        let callee = Author::device(&b, Signer::generate());
-        let other_device = Author::device(&b, Signer::generate());
+        let caller = Author::device(&a, Signer::generate()?);
+        let callee = Author::device(&b, Signer::generate()?);
+        let other_device = Author::device(&b, Signer::generate()?);
         engine.store.set_meta("me", &a.id()).unwrap();
         let mut f = Self {
             engine,
@@ -59,23 +59,33 @@ impl Fixture {
                 role: Role::Member,
             },
         );
-        f
+        Ok(f)
     }
-    fn event(&self, by: &Author, at: i64, signal: CallSignal) -> Event {
-        by.sign_event(
+    fn event(
+        &self,
+        by: &Author,
+        at: i64,
+        signal: CallSignal,
+    ) -> std::result::Result<Event, Box<dyn std::error::Error>> {
+        Ok(by.sign_event(
             "sp_calls",
-            &new_ulid(at),
+            &new_ulid(at)?,
             at,
             self.log.head(),
             EventBody::CallV1 { signal },
-        )
+        ))
     }
-    fn push(&mut self, by: Author, at: i64, body: EventBody) -> Event {
-        let event = by.sign_event("sp_calls", &new_ulid(at), at, self.log.head(), body);
+    fn push(
+        &mut self,
+        by: Author,
+        at: i64,
+        body: EventBody,
+    ) -> std::result::Result<Event, Box<dyn std::error::Error>> {
+        let event = by.sign_event("sp_calls", &new_ulid(at)?, at, self.log.head(), body);
         let event = self.log.sequence(event).clone();
         self.engine.store.append_event(&event).unwrap();
         self.engine.reload().unwrap();
-        event
+        Ok(event)
     }
     fn invite(&mut self) -> CallRecord {
         self.push(
@@ -121,7 +131,7 @@ impl Fixture {
 
 #[test]
 fn sqlite_cold_replay_keeps_signed_invitation_acceptance_and_terminal_history() {
-    let mut f = Fixture::new();
+    let mut f = Fixture::new().unwrap();
     let call = f.invite();
     assert!(call.invitation_confirmed && call.ringing_at(100));
     let accept = f.accept(&call);
@@ -139,7 +149,7 @@ fn sqlite_cold_replay_keeps_signed_invitation_acceptance_and_terminal_history() 
 
 #[test]
 fn two_devices_accepting_choose_first_canonical_device_and_reject_late_callbacks() {
-    let mut f = Fixture::new();
+    let mut f = Fixture::new().unwrap();
     let call = f.invite();
     let accept = f.accept(&call);
     let second = f.event(&f.other_device, 201, accept.clone());
@@ -152,12 +162,12 @@ fn two_devices_accepting_choose_first_canonical_device_and_reject_late_callbacks
 
 #[test]
 fn cancellation_before_accept_is_terminal_and_accept_before_cancel_requires_hangup() {
-    let mut f = Fixture::new();
+    let mut f = Fixture::new().unwrap();
     let call = f.invite();
     let end = f.end(&call, CallEndReason::Cancelled);
     f.push(f.caller.clone(), 200, EventBody::CallV1 { signal: end });
     assert!(!f.valid(&f.event(&f.callee, 201, f.accept(&call))));
-    let mut f = Fixture::new();
+    let mut f = Fixture::new().unwrap();
     let call = f.invite();
     let accept = f.accept(&call);
     f.push(f.callee.clone(), 200, EventBody::CallV1 { signal: accept });
@@ -167,7 +177,7 @@ fn cancellation_before_accept_is_terminal_and_accept_before_cancel_requires_hang
 
 #[test]
 fn wrong_invitation_author_device_and_expired_acceptance_have_no_projection_effect() {
-    let mut f = Fixture::new();
+    let mut f = Fixture::new().unwrap();
     let call = f.invite();
     let before = f.record();
     assert!(!f.valid(&f.event(&f.caller, 200, f.accept(&call))));
@@ -187,7 +197,7 @@ fn wrong_invitation_author_device_and_expired_acceptance_have_no_projection_effe
 
 #[test]
 fn membership_change_invalidates_existing_call_in_cold_replay() {
-    let mut f = Fixture::new();
+    let mut f = Fixture::new().unwrap();
     let call = f.invite();
     let accept = f.accept(&call);
     f.push(f.callee.clone(), 200, EventBody::CallV1 { signal: accept });
@@ -206,7 +216,7 @@ fn membership_change_invalidates_existing_call_in_cold_replay() {
 fn call_signal_encoding_is_closed_and_legacy_messages_unchanged() {
     let invalid = serde_json::json!({"CallV1":{"signal":{"type":"accept","call_id":"call_a","invitation":"hash","role":"admin"}}});
     assert!(serde_json::from_value::<EventBody>(invalid).is_err());
-    let f = Fixture::new();
+    let f = Fixture::new().unwrap();
     assert_eq!(
         event_log::content::decode_body(br#"{"CallV2":{"room":"x"}}"#),
         EventBody::Unsupported {
@@ -218,7 +228,7 @@ fn call_signal_encoding_is_closed_and_legacy_messages_unchanged() {
 
 #[test]
 fn signed_glare_reprojects_to_first_canonical_invitation_and_rejects_duplicate_ids() {
-    let mut f = Fixture::new();
+    let mut f = Fixture::new().unwrap();
     let call = f.invite();
     let second = CallSignal::Invite {
         call_id: format!("call_{}", "b".repeat(32)),
@@ -239,7 +249,7 @@ fn signed_glare_reprojects_to_first_canonical_invitation_and_rejects_duplicate_i
 
 #[test]
 fn no_call_authority_in_group_clear_space_agent_dm_or_root_signed_event() {
-    let mut f = Fixture::new();
+    let mut f = Fixture::new().unwrap();
     let signal = CallSignal::Invite {
         call_id: format!("call_{}", "b".repeat(32)),
         callee: f.callee.identity.clone(),
@@ -272,7 +282,7 @@ fn no_call_authority_in_group_clear_space_agent_dm_or_root_signed_event() {
 
 #[test]
 fn excessive_lifetime_and_stale_account_command_are_refused_before_writes() {
-    let mut f = Fixture::new();
+    let mut f = Fixture::new().unwrap();
     for expiry in [200, 199, 200 + MAX_RING_MS + 1, i64::MAX] {
         let signal = CallSignal::Invite {
             call_id: format!("call_{}", "b".repeat(32)),
@@ -298,7 +308,7 @@ fn excessive_lifetime_and_stale_account_command_are_refused_before_writes() {
 
 #[test]
 fn terminal_call_never_rings_on_cold_replay_or_duplicate_end() {
-    let mut f = Fixture::new();
+    let mut f = Fixture::new().unwrap();
     let call = f.invite();
     let end = f.end(&call, CallEndReason::Declined);
     f.push(
@@ -317,7 +327,7 @@ fn terminal_call_never_rings_on_cold_replay_or_duplicate_end() {
 
 #[test]
 fn future_dated_invite_can_be_declined_or_superseded_without_poisoning_the_dm() {
-    let mut f = Fixture::new();
+    let mut f = Fixture::new().unwrap();
     let future = CallSignal::Invite {
         call_id: format!("call_{}", "c".repeat(32)),
         callee: f.callee.identity.clone(),

@@ -31,7 +31,10 @@ pub(super) fn ordered(engine: &Engine, envelope: Envelope) -> Sequenced {
     }
 }
 
-pub(super) fn colliding_native_reply(fixture: &Fixture, prepared: &PreparedReply) -> Envelope {
+pub(super) fn colliding_native_reply(
+    fixture: &Fixture,
+    prepared: &PreparedReply,
+) -> std::result::Result<Envelope, Box<dyn std::error::Error>> {
     let fork = DeviceCore::restore(
         NativeImage::decode_bounded(prepared.image().as_bytes().to_vec()).unwrap(),
         fixture.credential(),
@@ -45,7 +48,7 @@ pub(super) fn colliding_native_reply(fixture: &Fixture, prepared: &PreparedReply
         original.at_ms(),
         original.seen(),
         EventBody::MessagePosted {
-            message: new_id("different-message"),
+            message: new_id("different-message")?,
             text: "Different native result".into(),
             attaches: None,
             reply: None,
@@ -66,17 +69,20 @@ pub(super) fn colliding_native_reply(fixture: &Fixture, prepared: &PreparedReply
             .encode(),
         )
         .unwrap();
-    Envelope::sealed(
+    Ok(Envelope::sealed(
         author,
         SPACE,
         original.client_id(),
         original.at_ms(),
         original.seen().as_ref(),
         Sealed::new(SealedKind::Application, ::mls::SUITE_ID, bytes),
-    )
+    ))
 }
 
-pub(super) fn receipt_source_message(fixture: &mut Fixture, index: usize) -> Sequenced {
+pub(super) fn receipt_source_message(
+    fixture: &mut Fixture,
+    index: usize,
+) -> std::result::Result<Sequenced, Box<dyn std::error::Error>> {
     let author = fixture.owner.net.author.clone().unwrap();
     fixture
         .owner
@@ -85,7 +91,7 @@ pub(super) fn receipt_source_message(fixture: &mut Fixture, index: usize) -> Seq
             &author,
             600 + index as i64,
             EventBody::MessagePosted {
-                message: new_id("prefix"),
+                message: new_id("prefix")?,
                 text: format!("Historical position {index}"),
                 attaches: None,
                 reply: None,
@@ -97,7 +103,7 @@ pub(super) fn receipt_source_message(fixture: &mut Fixture, index: usize) -> Seq
     fixture.owner.mls_seal_outbox().unwrap();
     let frame = ordered(&fixture.owner, fixture.owner.outbox_envelopes().remove(0));
     assert_eq!(fixture.owner.ingest(frame.clone()), Ingest::Confirmed);
-    frame
+    Ok(frame)
 }
 
 pub(super) fn sealed_frame(author: &Author, client_id: &str, seen: Option<&Seen>) -> Envelope {

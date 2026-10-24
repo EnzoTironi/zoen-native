@@ -169,8 +169,8 @@ pub fn claim_citizen(
     {
         return Err(ClaimError::Owner);
     }
-    let root = Signer::generate();
-    let device = Signer::generate();
+    let root = Signer::generate()?;
+    let device = Signer::generate()?;
     let author = Author::device(&root, device);
     let proof = agent_owner::authorize(owner, &root.id()).ok_or(ClaimError::Owner)?;
     let name = name.into();
@@ -214,6 +214,8 @@ pub fn claim_citizen(
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ClaimError {
+    #[error("citizen key preparation failed: {0}")]
+    Crypto(#[from] event_log::CryptoError),
     #[error("owner device cannot authorize an agent")]
     Owner,
     #[error("agent profile needs a name and handle")]

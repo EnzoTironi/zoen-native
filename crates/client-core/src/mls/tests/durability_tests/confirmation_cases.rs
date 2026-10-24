@@ -1,8 +1,9 @@
 //! Existing SQLite crash/confirmation assertions, invoked by stable test entrypoints.
 use super::*;
 
-pub(super) fn plain_confirmation_cleanup_failure_keeps_exact_outbox_for_cold_retry() {
-    let database = Database::new();
+pub(super) fn plain_confirmation_cleanup_failure_keeps_exact_outbox_for_cold_retry(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let database = Database::new()?;
     let path = database.path("sender.sqlite");
     let (mut sender, _, secret) = member(&path);
     let (_, peer, _) = member(":memory:");
@@ -65,10 +66,13 @@ pub(super) fn plain_confirmation_cleanup_failure_keeps_exact_outbox_for_cold_ret
     let sender = reopen(&path, &secret);
     assert!(sender.store.outbox().unwrap().is_empty());
     assert_eq!(message_count(&sender, space, &message.id), 1);
+
+    Ok(())
 }
 
-pub(super) fn pending_confirmation_other_member_does_not_ack_or_stamp_our_plain_event() {
-    let database = Database::new();
+pub(super) fn pending_confirmation_other_member_does_not_ack_or_stamp_our_plain_event(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let database = Database::new()?;
     let path = database.path("member-collision.sqlite");
     let (mut owner, _, secret) = member(&path);
     let (_, peer, _) = member(":memory:");
@@ -112,16 +116,19 @@ pub(super) fn pending_confirmation_other_member_does_not_ack_or_stamp_our_plain_
         "only the optimistic owner row is stamped"
     );
     assert_eq!(owner.state.spaces[space].entries.len(), 2);
+
+    Ok(())
 }
 
-pub(super) fn pending_confirmation_another_certified_device_cannot_ack_this_devices_event() {
-    let database = Database::new();
+pub(super) fn pending_confirmation_another_certified_device_cannot_ack_this_devices_event(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let database = Database::new()?;
     let path = database.path("device-collision.sqlite");
     let mut owner = Engine::open(&path).unwrap();
     let (root, secret, _) = owner
         .create_account("Owner", "owner_devices", "http://relay.test")
         .unwrap();
-    let other = Author::device(&Signer::from_secret(&root), Signer::generate());
+    let other = Author::device(&Signer::from_secret(&root), Signer::generate()?);
     let space = "plain-device-collision";
     let (_, peer, _) = member(":memory:");
     closed_space(&mut owner, &peer, space);
@@ -146,6 +153,8 @@ pub(super) fn pending_confirmation_another_certified_device_cannot_ack_this_devi
     drop(owner);
     let owner = reopen(&path, &secret);
     assert_pending_confirmation_retained(&owner, &pending);
+
+    Ok(())
 }
 
 pub(super) fn pending_confirmation_same_signer_with_different_signed_bytes_is_not_our_receipt() {
@@ -173,8 +182,9 @@ pub(super) fn pending_confirmation_same_signer_with_different_signed_bytes_is_no
     assert_pending_confirmation_remote(&owner, &frame, &author);
 }
 
-pub(super) fn pending_confirmation_other_space_cannot_remove_a_pending_event_on_cold_reopen() {
-    let database = Database::new();
+pub(super) fn pending_confirmation_other_space_cannot_remove_a_pending_event_on_cold_reopen(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let database = Database::new()?;
     let path = database.path("space-collision.sqlite");
     let (mut owner, _, secret) = member(&path);
     let (_, peer, _) = member(":memory:");
@@ -198,10 +208,13 @@ pub(super) fn pending_confirmation_other_space_cannot_remove_a_pending_event_on_
     let owner = reopen(&path, &secret);
     assert_pending_confirmation_retained(&owner, &pending);
     assert_pending_confirmation_remote(&owner, &frame, &peer);
+
+    Ok(())
 }
 
-pub(super) fn pending_confirmation_other_mls_member_keeps_pending_overlay_and_cold_outbox() {
-    let database = Database::new();
+pub(super) fn pending_confirmation_other_mls_member_keeps_pending_overlay_and_cold_outbox(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let database = Database::new()?;
     let space = "sealed-member-collision";
     let (mut owner, secret, mut peer, _) = encrypted_pair(&database, space);
     let message = owner
@@ -229,10 +242,13 @@ pub(super) fn pending_confirmation_other_mls_member_keeps_pending_overlay_and_co
     let owner = reopen(&database.path("owner.sqlite"), &secret);
     assert_pending_confirmation_retained(&owner, &pending);
     assert_pending_confirmation_remote(&owner, &frame, &author);
+
+    Ok(())
 }
 
-pub(super) fn pending_confirmation_exact_signed_echo_cleans_a_crash_window_on_cold_reopen() {
-    let database = Database::new();
+pub(super) fn pending_confirmation_exact_signed_echo_cleans_a_crash_window_on_cold_reopen(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let database = Database::new()?;
     let path = database.path("true-confirmation.sqlite");
     let (mut owner, _, secret) = member(&path);
     let (_, peer, _) = member(":memory:");
@@ -264,6 +280,8 @@ pub(super) fn pending_confirmation_exact_signed_echo_cleans_a_crash_window_on_co
         .is_none());
     assert_eq!(message_count(&owner, space, &message.id), 1);
     owner.logs[space].verify().unwrap();
+
+    Ok(())
 }
 
 pub(super) fn pending_confirmation_outbox_read_failure_never_appends_or_guesses_an_ack() {
@@ -309,8 +327,9 @@ pub(super) fn pending_confirmation_outbox_read_failure_never_appends_or_guesses_
     assert_eq!(owner.ingest(frame), Ingest::Confirmed);
 }
 
-pub(super) fn pending_confirmation_retained_older_sealed_echo_survives_resealing() {
-    let database = Database::new();
+pub(super) fn pending_confirmation_retained_older_sealed_echo_survives_resealing(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let database = Database::new()?;
     let space = "sealed-original-ack-after-reseal";
     let (mut owner, secret, _, _) = encrypted_pair(&database, space);
     let message = owner
@@ -350,10 +369,13 @@ pub(super) fn pending_confirmation_retained_older_sealed_echo_survives_resealing
         .is_none());
     assert_eq!(message_count(&owner, space, &message.id), 1);
     owner.logs[space].verify().unwrap();
+
+    Ok(())
 }
 
-pub(super) fn pending_confirmation_sealed_outbox_read_failure_keeps_event_and_ratchet_unchanged() {
-    let database = Database::new();
+pub(super) fn pending_confirmation_sealed_outbox_read_failure_keeps_event_and_ratchet_unchanged(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let database = Database::new()?;
     let space = "sealed-confirmation-storage-read";
     let (mut owner, _, _, _) = encrypted_pair(&database, space);
     let message = owner
@@ -392,4 +414,6 @@ pub(super) fn pending_confirmation_sealed_outbox_read_failure_keeps_event_and_ra
         )
         .unwrap();
     assert_eq!(owner.ingest(frame), Ingest::Confirmed);
+
+    Ok(())
 }

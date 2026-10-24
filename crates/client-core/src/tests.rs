@@ -360,7 +360,7 @@ fn permanently_rejected_genesis_fails_descendants_atomically_across_relaunch() {
 /// device refuses the forged history instead of showing it.
 #[test]
 fn a_device_refuses_a_relay_that_hides_a_message_and_rehashes() {
-    transport_recovery_cases::a_device_refuses_a_relay_that_hides_a_message_and_rehashes()
+    transport_recovery_cases::a_device_refuses_a_relay_that_hides_a_message_and_rehashes().unwrap()
 }
 
 #[test]
@@ -370,22 +370,25 @@ fn inline_replies_quote_and_thread_replies_gather_under_the_root() {
 
 #[test]
 fn immediate_cold_reopen_after_sync_stop() {
-    transport_recovery_cases::immediate_cold_reopen_after_sync_stop()
+    transport_recovery_cases::immediate_cold_reopen_after_sync_stop().unwrap()
 }
 
 #[test]
 fn immediate_cold_reopen_after_implicit_sync_drop() {
-    transport_recovery_cases::immediate_cold_reopen_after_implicit_sync_drop()
+    transport_recovery_cases::immediate_cold_reopen_after_implicit_sync_drop().unwrap()
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn immediate_cold_reopen_inside_an_unrelated_runtime() {
-    transport_recovery_cases::immediate_cold_reopen_inside_an_unrelated_runtime().await
+    transport_recovery_cases::immediate_cold_reopen_inside_an_unrelated_runtime()
+        .await
+        .unwrap()
 }
 
 #[test]
 fn callback_can_stop_and_destroy_its_core_before_immediate_reopen() {
     transport_recovery_cases::callback_can_stop_and_destroy_its_core_before_immediate_reopen()
+        .unwrap()
 }
 
 #[test]
@@ -400,7 +403,7 @@ fn failed_delivery_send_does_not_consume_the_watermark() {
 
 #[test]
 fn receipt_replay_survives_offline_reads_and_restarts() {
-    receipts_cases::receipt_replay_survives_offline_reads_and_restarts()
+    receipts_cases::receipt_replay_survives_offline_reads_and_restarts().unwrap()
 }
 
 #[test]
@@ -417,6 +420,7 @@ fn edits_deletes_and_reactions_fold_over_the_original() {
 fn ana_replaces_and_removes_only_her_reaction_while_bias_survives_replay() {
     conversation_edits_cases::ana_replaces_and_removes_only_her_reaction_while_bias_survives_replay(
     )
+    .unwrap()
 }
 
 #[test]

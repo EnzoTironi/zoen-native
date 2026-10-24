@@ -250,8 +250,9 @@ pub(super) fn ordinary_files_stay_collaborative_but_only_the_author_can_make_the
     assert_eq!(engine.file_bytes(&item, None).unwrap(), Some(vec![1; 64]));
 }
 
-pub(super) fn rejected_voice_sends_keep_their_audio_reply_and_delivery_error_after_reopen() {
-    let dir = std::env::temp_dir().join(types::new_id("voice-refusal"));
+pub(super) fn rejected_voice_sends_keep_their_audio_reply_and_delivery_error_after_reopen(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = std::env::temp_dir().join(types::new_id("voice-refusal")?);
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("core.sqlite").to_string_lossy().to_string();
     let (space, root, sent) = {
@@ -312,4 +313,6 @@ pub(super) fn rejected_voice_sends_keep_their_audio_reply_and_delivery_error_aft
     drop(engine);
     drop(e);
     std::fs::remove_dir_all(dir).unwrap();
+
+    Ok(())
 }

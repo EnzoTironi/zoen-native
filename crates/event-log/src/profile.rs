@@ -16,7 +16,7 @@ use prost::Message;
 use sha2::{Digest, Sha256};
 use x25519_dalek::{PublicKey, StaticSecret};
 
-use crate::{device_cert_message, verify_sig, Author};
+use crate::{crypto::random, device_cert_message, verify_sig, Author, CryptoError};
 
 const PROFILE_INFO: &[u8] = b"zoen-profile-v1";
 const SHARE_INFO: &[u8] = b"zoen-profile-key-share-v1";
@@ -25,12 +25,6 @@ const UPLOAD_DOMAIN: &[u8] = b"zoen-profile-upload-v1\0";
 const NONCE: usize = 24;
 /// Biggest profile ciphertext a relay accepts (fields are short; the photo is a blob).
 pub const MAX_CIPHERTEXT: usize = 8 * 1024;
-
-fn random<const N: usize>() -> [u8; N] {
-    let mut b = [0u8; N];
-    getrandom::getrandom(&mut b).expect("system randomness");
-    b
-}
 
 /// The fields a profile carries, as the protobuf the author encrypts. Unknown fields
 /// from newer clients are dropped on re-encode, so only the owner ever re-encodes.
@@ -82,7 +76,7 @@ impl ProfilePhoto {
         if bytes.is_empty() || bytes.len() > MAX_PHOTO_BYTES {
             return None;
         }
-        let (key, sealed) = crate::media::seal(bytes);
+        let (key, sealed) = crate::media::seal(bytes).ok()?;
         let photo = Self {
             sha256: hex::encode(Sha256::digest(bytes)),
             blob: hex::encode(Sha256::digest(&sealed)),
@@ -131,9 +125,10 @@ impl std::fmt::Debug for ProfileKey {
 }
 
 impl ProfileKey {
-    #[must_use]
-    pub fn generate() -> Self {
-        Self(random())
+    /// # Errors
+    /// Refuses unavailable system entropy without constructing a profile key.
+    pub fn generate() -> Result<Self, CryptoError> {
+        Ok(Self(random()?))
     }
 
     pub fn from_hex(s: &str) -> Option<Self> {
@@ -145,12 +140,12 @@ impl ProfileKey {
         hex::encode(self.0)
     }
 
-    fn cipher(&self) -> XChaCha20Poly1305 {
+    fn cipher(&self) -> Result<XChaCha20Poly1305, CryptoError> {
         let mut k = [0u8; 32];
         Hkdf::<Sha256>::new(None, &self.0)
             .expand(PROFILE_INFO, &mut k)
-            .expect("32 bytes");
-        XChaCha20Poly1305::new(&k.into())
+            .map_err(|_| CryptoError::KeyDerivation)?;
+        Ok(XChaCha20Poly1305::new(&k.into()))
     }
 }
 
@@ -165,16 +160,18 @@ fn profile_aad(identity: &str, version: u64) -> Vec<u8> {
 }
 
 /// `nonce ‖ ciphertext+tag`.
-#[must_use]
+///
+/// # Errors
+/// Refuses entropy, key derivation or authenticated encryption failure.
 pub fn seal_profile(
     key: &ProfileKey,
     identity: &str,
     version: u64,
     fields: &ProfileFields,
-) -> Vec<u8> {
-    let nonce = random::<NONCE>();
+) -> Result<Vec<u8>, CryptoError> {
+    let nonce = random::<NONCE>()?;
     let ct = key
-        .cipher()
+        .cipher()?
         .encrypt(
             &XNonce::from(nonce),
             Payload {
@@ -182,8 +179,8 @@ pub fn seal_profile(
                 aad: &profile_aad(identity, version),
             },
         )
-        .expect("encrypt");
-    [nonce.as_slice(), &ct].concat()
+        .map_err(|_| CryptoError::Encryption)?;
+    Ok([nonce.as_slice(), &ct].concat())
 }
 
 #[must_use]
@@ -199,6 +196,7 @@ pub fn open_profile(
     let nonce: [u8; NONCE] = sealed[..NONCE].try_into().ok()?;
     let plain = key
         .cipher()
+        .ok()?
         .decrypt(
             &XNonce::from(nonce),
             Payload {
@@ -262,9 +260,10 @@ pub fn verify_upload(identity: &str, version: u64, ciphertext: &[u8], s: &Device
 pub struct AgreementKey(StaticSecret);
 
 impl AgreementKey {
-    #[must_use]
-    pub fn generate() -> Self {
-        Self(StaticSecret::from(random::<32>()))
+    /// # Errors
+    /// Refuses unavailable system entropy without constructing an agreement key.
+    pub fn generate() -> Result<Self, CryptoError> {
+        Ok(Self(StaticSecret::from(random::<32>()?)))
     }
 
     #[must_use]
@@ -349,13 +348,13 @@ pub fn seal_share(
     context: &[u8],
 ) -> Option<SealedShare> {
     let recipient: [u8; 32] = hex::decode(recipient_public).ok()?.try_into().ok()?;
-    let eph = StaticSecret::from(random::<32>());
+    let eph = StaticSecret::from(random::<32>().ok()?);
     let eph_pub = PublicKey::from(&eph).to_bytes();
     let shared = eph.diffie_hellman(&PublicKey::from(recipient));
     if !shared.was_contributory() {
         return None;
     }
-    let nonce = random::<NONCE>();
+    let nonce = random::<NONCE>().ok()?;
     let msg = [key.0.as_slice(), &version.to_be_bytes()].concat();
     let ct = share_key(shared.as_bytes(), &eph_pub, &recipient, context)?
         .encrypt(&XNonce::from(nonce), msg.as_slice())
@@ -412,8 +411,8 @@ mod tests {
 
     #[test]
     fn a_profile_opens_only_with_its_key_identity_and_version() {
-        let key = ProfileKey::generate();
-        let sealed = seal_profile(&key, "ana", 3, &fields());
+        let key = ProfileKey::generate().unwrap();
+        let sealed = seal_profile(&key, "ana", 3, &fields()).unwrap();
         assert_eq!(open_profile(&key, "ana", 3, &sealed), Some(fields()));
         assert!(open_profile(&ProfileKey::generate(), "ana", 3, &sealed).is_none());
         assert!(
@@ -432,9 +431,9 @@ mod tests {
 
     #[test]
     fn a_share_opens_only_for_its_recipient_and_context() {
-        let key = ProfileKey::generate();
-        let bruno = AgreementKey::generate();
-        let carla = AgreementKey::generate();
+        let key = ProfileKey::generate().unwrap();
+        let bruno = AgreementKey::generate().unwrap();
+        let carla = AgreementKey::generate().unwrap();
         let ctx = share_context("sp1", "ana", "bruno");
         let share = seal_share(&key, 7, &bruno.public_hex(), &ctx).unwrap();
         assert_eq!(open_share(&bruno, &share, &ctx), Some((key, 7)));
@@ -451,20 +450,26 @@ mod tests {
 
     #[test]
     fn uploads_and_agreement_keys_are_signed_by_a_certified_device() {
-        let root = Signer::generate();
-        let ana = Author::device(&root, Signer::generate());
-        let ct = seal_profile(&ProfileKey::generate(), &ana.identity, 1, &fields());
+        let root = Signer::generate().unwrap();
+        let ana = Author::device(&root, Signer::generate().unwrap());
+        let ct = seal_profile(
+            &ProfileKey::generate().unwrap(),
+            &ana.identity,
+            1,
+            &fields(),
+        )
+        .unwrap();
         let s = sign_upload(&ana, 1, &ct).unwrap();
         assert!(verify_upload(&ana.identity, 1, &ct, &s));
         assert!(!verify_upload(&ana.identity, 2, &ct, &s));
-        let mallory = Author::device(&Signer::generate(), Signer::generate());
+        let mallory = Author::device(&Signer::generate().unwrap(), Signer::generate().unwrap());
         let forged = DeviceSigned {
             cert: mallory.cert.clone().unwrap(),
             ..sign_upload(&mallory, 1, &ct).unwrap()
         };
         assert!(!verify_upload(&ana.identity, 1, &ct, &forged));
 
-        let ak = AgreementKey::generate();
+        let ak = AgreementKey::generate().unwrap();
         let s = sign_agreement(&ana, &ak.public_hex()).unwrap();
         assert!(verify_agreement(&ana.identity, &ak.public_hex(), &s));
         assert!(!verify_agreement(

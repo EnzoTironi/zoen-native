@@ -1,9 +1,9 @@
 use super::*;
 use types::{Privacy, Role, SpaceKind};
 
-fn sample() -> Result<(SpaceLog, Signer, Signer), types::IdError> {
-    let enzo = Signer::generate();
-    let marina = Signer::generate();
+fn sample() -> Result<(SpaceLog, Signer, Signer), Box<dyn std::error::Error>> {
+    let enzo = Signer::generate()?;
+    let marina = Signer::generate()?;
     let mut log = SpaceLog::new("sp_paraty");
     log.append(
         &enzo,
@@ -165,7 +165,7 @@ fn forged_author_fails_signature() {
 
 #[test]
 fn fields_and_kinds_from_newer_clients_survive_verbatim() {
-    let author = Signer::generate();
+    let author = Signer::generate().unwrap();
     let mut log = SpaceLog::new("sp_new");
     log.append(
         &author,
@@ -247,7 +247,7 @@ fn a_sequencer_cannot_move_an_event_before_what_its_author_saw() {
 
 #[test]
 fn words_signed_on_one_history_do_not_verify_on_another() {
-    let enzo = Signer::generate();
+    let enzo = Signer::generate().unwrap();
     let mut real = SpaceLog::new("sp_fork");
     real.append(
         &enzo,
@@ -341,7 +341,7 @@ fn only_creation_and_self_join_may_skip_the_causal_link() {
         LogError::MissingCausalLink { seq: 4 }
     );
 
-    let newcomer = Signer::generate();
+    let newcomer = Signer::generate().unwrap();
     let join = Author::root(newcomer.clone()).sign_event(
         "sp_paraty",
         "join",
@@ -399,8 +399,8 @@ fn events_from_another_space_are_rejected() {
 
 #[test]
 fn device_keys_sign_for_their_identity() {
-    let root = Signer::generate();
-    let phone = Author::device(&root, Signer::generate());
+    let root = Signer::generate().unwrap();
+    let phone = Author::device(&root, Signer::generate().unwrap());
     let mut log = SpaceLog::new("sp_dm");
     let e = phone.sign_event(
         "sp_dm",
@@ -418,10 +418,10 @@ fn device_keys_sign_for_their_identity() {
     assert!(log.verify().is_ok());
 
     // A device certified by someone else can't speak for this identity.
-    let mallory = Signer::generate();
+    let mallory = Signer::generate().unwrap();
     let fake = Author::certified(
         root.id(),
-        Signer::generate(),
+        Signer::generate().unwrap(),
         mallory.sign(b"zoen-device-v1:x"),
     );
     let e = fake.sign_event(
@@ -447,7 +447,7 @@ fn device_keys_sign_for_their_identity() {
 
 #[test]
 fn relay_sequenced_events_are_accepted_in_order_only() {
-    let root = Signer::generate();
+    let root = Signer::generate().unwrap();
     let me = Author::root(root);
     let mut relay = SpaceLog::new("sp_g");
     let a = relay
@@ -494,7 +494,7 @@ fn relay_sequenced_events_are_accepted_in_order_only() {
 
 #[test]
 fn an_end_to_end_space_cannot_be_created_again_as_readable() {
-    let me = Author::root(Signer::generate());
+    let me = Author::root(Signer::generate().unwrap());
     let created = |client_id: &str, privacy, seen| {
         let body = EventBody::SpaceCreated {
             title: "g".into(),
@@ -520,7 +520,7 @@ fn an_end_to_end_space_cannot_be_created_again_as_readable() {
 
 #[test]
 fn signer_roundtrips_secret() {
-    let s = Signer::generate();
+    let s = Signer::generate().unwrap();
     let again = Signer::from_secret(&s.secret());
     assert_eq!(s.id(), again.id());
     assert_eq!(s.id().len(), 64);

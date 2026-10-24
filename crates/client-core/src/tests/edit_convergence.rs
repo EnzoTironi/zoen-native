@@ -21,10 +21,10 @@ const CHILD_FINAL: &str = "Levar água 💧\n+ lanche";
 struct Database(PathBuf);
 
 impl Database {
-    fn new() -> Self {
-        let path = std::env::temp_dir().join(types::new_id("edit-convergence"));
+    fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        let path = std::env::temp_dir().join(types::new_id("edit-convergence")?);
         std::fs::create_dir_all(&path).unwrap();
-        Self(path)
+        Ok(Self(path))
     }
 
     fn path(&self, name: &str) -> String {
@@ -161,7 +161,7 @@ fn assert_replica(engine: &Engine, expected: &[TimelineEntry]) {
 
 #[test]
 fn pending_signed_edits_converge_with_confirmed_remote_history_across_cold_reopen() {
-    let database = Database::new();
+    let database = Database::new().unwrap();
     let local_path = database.path("local.sqlite");
     let remote_path = database.path("remote.sqlite");
     let owner = Signer::from_secret(&[41; 32]);

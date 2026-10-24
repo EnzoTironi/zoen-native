@@ -217,7 +217,8 @@ pub(super) fn edited_binary_fixture() -> (std::sync::Arc<Client>, String, PageSe
     (public, id, session)
 }
 
-pub(super) fn encrypted_exact_source_and_peer_readability() {
+pub(super) fn encrypted_exact_source_and_peer_readability(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut owner = Engine::open(":memory:").unwrap();
     owner
         .create_account("Ana", "ana", "http://relay.test")
@@ -228,8 +229,8 @@ pub(super) fn encrypted_exact_source_and_peer_readability() {
     let mut f = Fixture {
         owner: owner.me.clone().unwrap(),
         engine: owner,
-        space: new_id("mls-plan"),
-        item: new_id("mls-item"),
+        space: new_id("mls-plan")?,
+        item: new_id("mls-item")?,
     };
     f.ordered(EventBody::SpaceCreated {
         title: "Encrypted Plan".into(),
@@ -343,7 +344,7 @@ pub(super) fn encrypted_exact_source_and_peer_readability() {
             &f.space,
             &peer_author.identity,
             EventBody::MessagePosted {
-                message: new_id("peer-readable"),
+                message: new_id("peer-readable")?,
                 text: "peer after typed Plan".into(),
                 attaches: None,
                 reply: None,
@@ -363,11 +364,16 @@ pub(super) fn encrypted_exact_source_and_peer_readability() {
     assert!(
         matches!(&f.engine.logs[&f.space].events().last().unwrap().body, EventBody::MessagePosted { text, .. } if text == "peer after typed Plan")
     );
+
+    Ok(())
 }
 
 pub(super) fn private_document_backup_source(
     kind: ItemKind,
-) -> (Fixture, crate::backup::Header, DocumentView, DocumentView) {
+) -> std::result::Result<
+    (Fixture, crate::backup::Header, DocumentView, DocumentView),
+    Box<dyn std::error::Error>,
+> {
     let mut engine = Engine::open(":memory:").unwrap();
     let (identity_secret, _, agreement_secret) = engine
         .create_account("Backup author", "backup_author", "http://127.0.0.1:1")
@@ -376,8 +382,8 @@ pub(super) fn private_document_backup_source(
     let mut f = Fixture {
         engine,
         owner: owner.clone(),
-        space: new_id("document-backup-space"),
-        item: new_id("document-backup-item"),
+        space: new_id("document-backup-space")?,
+        item: new_id("document-backup-item")?,
     };
     f.ordered(EventBody::SpaceCreated {
         title: "Document backup".into(),
@@ -433,7 +439,7 @@ pub(super) fn private_document_backup_source(
         agreement_secret: hex::encode(agreement_secret),
         created_ms: 1,
     };
-    (f, header, observed.view, accepted.current.view)
+    Ok((f, header, observed.view, accepted.current.view))
 }
 
 pub(super) fn private_document_backup_edit(

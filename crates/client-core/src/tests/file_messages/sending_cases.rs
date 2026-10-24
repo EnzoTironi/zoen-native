@@ -173,8 +173,9 @@ pub(super) fn failed_message_or_receipt_write_rolls_back_files_keys_and_projecti
     }
 }
 
-pub(super) fn exact_file_send_retries_survive_cold_reopen_and_reject_intent_drift() {
-    let dir = std::env::temp_dir().join(types::new_id("file-send"));
+pub(super) fn exact_file_send_retries_survive_cold_reopen_and_reject_intent_drift(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = std::env::temp_dir().join(types::new_id("file-send")?);
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("core.sqlite").to_string_lossy().to_string();
     let (space, id, item, counts) = {
@@ -231,6 +232,8 @@ pub(super) fn exact_file_send_retries_survive_cold_reopen_and_reject_intent_drif
     }
     drop(e);
     std::fs::remove_dir_all(dir).unwrap();
+
+    Ok(())
 }
 
 pub(super) fn file_message_sync_delivers_the_original_attachment_and_encrypted_chunks() {

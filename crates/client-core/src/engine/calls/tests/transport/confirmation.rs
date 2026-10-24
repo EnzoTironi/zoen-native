@@ -19,7 +19,7 @@ fn deliver(f: &mut Fixture, pending: Event, expected: Ingest) {
 
 #[test]
 fn own_invite_and_accept_ack_reproject_confirmation_before_media_without_reload() {
-    let mut f = Fixture::new();
+    let mut f = Fixture::new().unwrap();
     let invite = f
         .engine
         .append_synced(
@@ -28,7 +28,7 @@ fn own_invite_and_accept_ack_reproject_confirmation_before_media_without_reload(
             100,
             EventBody::CallV1 {
                 signal: CallSignal::Invite {
-                    call_id: new_secret_id("call"),
+                    call_id: new_secret_id("call").unwrap(),
                     callee: f.callee.identity.clone(),
                     media: CallMedia::Audio,
                     expires_at_ms: 1100,
@@ -58,7 +58,8 @@ fn own_invite_and_accept_ack_reproject_confirmation_before_media_without_reload(
         P::Offer {
             sdp: "offer".into(),
         },
-    );
+    )
+    .unwrap();
     assert!(!f
         .engine
         .state
@@ -74,7 +75,7 @@ fn own_invite_and_accept_ack_reproject_confirmation_before_media_without_reload(
 
 #[test]
 fn canonical_other_device_accept_overrides_local_accept_before_any_media() {
-    let mut f = Fixture::new();
+    let mut f = Fixture::new().unwrap();
     let call = f.invite();
     let acceptance = f.accept(&call);
     let pending = f
@@ -98,7 +99,8 @@ fn canonical_other_device_accept_overrides_local_accept_before_any_media() {
         P::Answer {
             sdp: "answer".into(),
         },
-    );
+    )
+    .unwrap();
     answer.recipient_device = f.caller.device.clone().unwrap();
     assert!(!f
         .engine
@@ -115,7 +117,7 @@ fn canonical_other_device_accept_overrides_local_accept_before_any_media() {
 
 #[test]
 fn accepted_before_queued_cancel_recovers_through_signed_hangup() {
-    let mut f = Fixture::new();
+    let mut f = Fixture::new().unwrap();
     let call = f.invite();
     let cancel = f.end(&call, CallEndReason::Cancelled);
     let pending = f

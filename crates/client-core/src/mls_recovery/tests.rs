@@ -60,15 +60,17 @@ fn an_empty_claim_reply_resumes_context_creation_for_a_ready_group() {
 
 #[test]
 fn a_missing_group_recovers_when_its_validated_blob_arrives_later() {
-    context_creation::a_missing_group_recovers_when_its_validated_blob_arrives_later();
+    context_creation::a_missing_group_recovers_when_its_validated_blob_arrives_later().unwrap();
 }
 
-fn restored_receiver(staged: &StagedRecovery) -> Engine {
+fn restored_receiver(
+    staged: &StagedRecovery,
+) -> std::result::Result<Engine, Box<dyn std::error::Error>> {
     let mut engine = Engine::open(":memory:").unwrap();
     engine
         .install_restored_account(
             &event_log::Signer::from_secret(&staged.root),
-            event_log::Signer::generate(),
+            event_log::Signer::generate()?,
             "http://relay.test",
         )
         .unwrap();
@@ -83,12 +85,12 @@ fn restored_receiver(staged: &StagedRecovery) -> Engine {
     for confirmed in &staged.baseline {
         assert_eq!(engine.ingest(confirmed.clone()), Ingest::Applied);
     }
-    engine
+    Ok(engine)
 }
 
 #[test]
 fn a_recovery_error_keeps_its_group_queued_through_a_future_retry() {
-    context_creation::a_recovery_error_keeps_its_group_queued_through_a_future_retry();
+    context_creation::a_recovery_error_keeps_its_group_queued_through_a_future_retry().unwrap();
 }
 
 #[test]
@@ -96,7 +98,10 @@ fn producing_one_context_preserves_the_other_queued_groups() {
     context_creation::producing_one_context_preserves_the_other_queued_groups();
 }
 
-fn staged_recovery(path: &str, space: &str) -> StagedRecovery {
+fn staged_recovery(
+    path: &str,
+    space: &str,
+) -> std::result::Result<StagedRecovery, Box<dyn std::error::Error>> {
     let mut engine = Engine::open(path).unwrap();
     let (root, _, agreement) = engine
         .create_account("Ana", "ana", "http://relay.test")
@@ -163,7 +168,7 @@ fn staged_recovery(path: &str, space: &str) -> StagedRecovery {
         baseline.push(confirmed);
     }
     engine.device().unwrap().forget(space).unwrap();
-    let replacement = event_log::Signer::generate();
+    let replacement = event_log::Signer::generate()?;
     let device = replacement.secret();
     engine
         .install_restored_account(
@@ -179,7 +184,7 @@ fn staged_recovery(path: &str, space: &str) -> StagedRecovery {
     assert!(engine.mls_recovery_pass().unwrap());
     assert!(engine.device().unwrap().recovery_pending(space));
     assert!(engine.outbox_envelopes().is_empty());
-    StagedRecovery {
+    Ok(StagedRecovery {
         engine,
         peer_engine,
         root,
@@ -188,28 +193,30 @@ fn staged_recovery(path: &str, space: &str) -> StagedRecovery {
         peer,
         baseline,
         context_blob,
-    }
+    })
 }
 
 #[test]
 fn peer_external_commit_storage_failure_keeps_the_cursor_epoch_and_context_for_retry() {
-    processing_failures::peer_external_commit_storage_failure_keeps_the_cursor_epoch_and_context_for_retry();
+    processing_failures::peer_external_commit_storage_failure_keeps_the_cursor_epoch_and_context_for_retry().unwrap();
 }
 
 #[test]
 fn peer_application_processing_failure_keeps_the_same_frame_readable_on_retry() {
     processing_failures::peer_application_processing_failure_keeps_the_same_frame_readable_on_retry(
-    );
+    ).unwrap();
 }
 
 #[test]
 fn welcome_storage_failure_rolls_back_the_key_package_and_cursor_for_retry() {
-    processing_failures::welcome_storage_failure_rolls_back_the_key_package_and_cursor_for_retry();
+    processing_failures::welcome_storage_failure_rolls_back_the_key_package_and_cursor_for_retry()
+        .unwrap();
 }
 
 #[test]
 fn a_removal_during_held_recovery_survives_restart_and_repairs_before_sealing() {
-    held_recovery::a_removal_during_held_recovery_survives_restart_and_repairs_before_sealing();
+    held_recovery::a_removal_during_held_recovery_survives_restart_and_repairs_before_sealing()
+        .unwrap();
 }
 
 #[test]
@@ -219,7 +226,7 @@ fn agreement_lookup_finishes_before_the_engine_requests_one_shot_key_packages() 
 
 #[test]
 fn erase_device_clears_held_markers_atomically_and_fresh_restore_can_recover_the_same_space() {
-    held_recovery::erase_device_clears_held_markers_atomically_and_fresh_restore_can_recover_the_same_space();
+    held_recovery::erase_device_clears_held_markers_atomically_and_fresh_restore_can_recover_the_same_space().unwrap();
 }
 
 #[test]
@@ -229,7 +236,8 @@ fn legacy_stub_cannot_install_or_invalidate_authenticated_recovery_context() {
 
 #[test]
 fn context_and_commit_roll_back_together_and_wait_for_upload_after_restart() {
-    context_persistence::context_and_commit_roll_back_together_and_wait_for_upload_after_restart();
+    context_persistence::context_and_commit_roll_back_together_and_wait_for_upload_after_restart()
+        .unwrap();
 }
 
 #[test]

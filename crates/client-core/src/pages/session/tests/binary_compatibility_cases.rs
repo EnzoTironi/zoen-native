@@ -121,9 +121,10 @@ pub(super) fn binary_replay_keeps_the_exact_pre_upgrade_payload() {
     );
 }
 
-pub(super) fn binary_refresh_reuses_verified_payload_and_rechecks_after_reload() {
+pub(super) fn binary_refresh_reuses_verified_payload_and_rechecks_after_reload(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut f = Fixture::new();
-    let id = new_id("binary-cache-page");
+    let id = new_id("binary-cache-page")?;
     let page = Page::from_markdown("# Cached\n\nVerified raw 😀\r\ncontent\n").unwrap();
     let blob = f.engine.page_blob(&f.space, &page.snapshot()).unwrap();
     f.ordered(EventBody::ItemCreated {
@@ -182,6 +183,8 @@ pub(super) fn binary_refresh_reuses_verified_payload_and_rechecks_after_reload()
     assert!(resumed.can_edit && resumed.save_error.is_none());
     assert_eq!(resumed.view, before.view);
     assert_eq!(resumed.content_hash, before.content_hash);
+
+    Ok(())
 }
 
 pub(super) fn binary_failed_publication_preserves_the_existing_visible_error() {

@@ -1,9 +1,10 @@
 //! Preserved processing failures scenarios; stable test entries stay in the parent.
 use super::*;
 
-pub(super) fn peer_external_commit_storage_failure_keeps_the_cursor_epoch_and_context_for_retry() {
+pub(super) fn peer_external_commit_storage_failure_keeps_the_cursor_epoch_and_context_for_retry(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let space = "peer-merge-storage-failure";
-    let fixture = staged_recovery(":memory:", space);
+    let fixture = staged_recovery(":memory:", space)?;
     let mut recovered = fixture.engine;
     let mut peer = fixture.peer_engine;
     for frame in &fixture.baseline {
@@ -80,21 +81,24 @@ pub(super) fn peer_external_commit_storage_failure_keeps_the_cursor_epoch_and_co
         peer.device().unwrap().checkpoint(space).unwrap(),
         recovered.device().unwrap().checkpoint(space).unwrap()
     );
-    for (sender, recipient) in [(&recovered, &peer), (&peer, &recovered)] {
-        let sender = sender.device().unwrap();
-        let data = sender
-            .seal(space, b"readable after the identical retry")
-            .unwrap();
-        assert!(matches!(
-            recipient.device().unwrap().open(space, &data, &recipient.roster(space), sender.leaf()).unwrap(),
-            ::mls::Opened::Application { plaintext, .. } if plaintext == b"readable after the identical retry"
-        ));
-    }
+    Ok(
+        for (sender, recipient) in [(&recovered, &peer), (&peer, &recovered)] {
+            let sender = sender.device().unwrap();
+            let data = sender
+                .seal(space, b"readable after the identical retry")
+                .unwrap();
+            assert!(matches!(
+                recipient.device().unwrap().open(space, &data, &recipient.roster(space), sender.leaf()).unwrap(),
+                ::mls::Opened::Application { plaintext, .. } if plaintext == b"readable after the identical retry"
+            ));
+        },
+    )
 }
 
-pub(super) fn peer_application_processing_failure_keeps_the_same_frame_readable_on_retry() {
+pub(super) fn peer_application_processing_failure_keeps_the_same_frame_readable_on_retry(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let space = "peer-processing-storage-failure";
-    let fixture = staged_recovery(":memory:", space);
+    let fixture = staged_recovery(":memory:", space)?;
     let mut recovered = fixture.engine;
     let mut peer = fixture.peer_engine;
     for frame in &fixture.baseline {
@@ -154,11 +158,14 @@ pub(super) fn peer_application_processing_failure_keeps_the_same_frame_readable_
         &peer.state.spaces[space].entries.last().unwrap().body,
         crate::engine::EntryBody::Message { text, .. } if text == "readable on retry"
     ));
+
+    Ok(())
 }
 
-pub(super) fn welcome_storage_failure_rolls_back_the_key_package_and_cursor_for_retry() {
+pub(super) fn welcome_storage_failure_rolls_back_the_key_package_and_cursor_for_retry(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let space = "welcome-storage-failure";
-    let fixture = staged_recovery(":memory:", space);
+    let fixture = staged_recovery(":memory:", space)?;
     let mut peer = fixture.peer_engine;
     let welcome = fixture.baseline.last().unwrap().clone();
     assert_eq!(welcome.env.sealed_kind(), Some(SealedKind::Welcome));
@@ -202,4 +209,6 @@ pub(super) fn welcome_storage_failure_rolls_back_the_key_package_and_cursor_for_
     assert_eq!(peer.ingest(welcome), Ingest::Applied);
     assert_eq!(peer.device().unwrap().epoch(space).unwrap(), 1);
     assert_eq!(peer.logs[space].next_seq(), before.0 + 1);
+
+    Ok(())
 }

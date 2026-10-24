@@ -7,11 +7,14 @@ fn queue_at(
     f: &mut Fixture,
     scope: &OwnerPolicyScope,
     at_ms: i64,
-) -> StdResult<crate::owner_policy::OwnerPolicyOptionsStatus, CoreError> {
-    f.owner.queue_owner_policy_inquiry(
+) -> std::result::Result<
+    StdResult<crate::owner_policy::OwnerPolicyOptionsStatus, CoreError>,
+    Box<dyn std::error::Error>,
+> {
+    Ok(f.owner.queue_owner_policy_inquiry(
         scope,
         OwnerPolicyInquiry {
-            id: types::new_id("account_inquiry"),
+            id: types::new_id("account_inquiry")?,
             owner: scope.expected_identity_id.clone(),
             agent: scope.agent_id.clone(),
             space: scope.space_id.clone(),
@@ -21,7 +24,7 @@ fn queue_at(
             purpose: Some(OwnerPolicyInquiryPurpose::AccountBudget),
             at_ms,
         },
-    )
+    ))
 }
 fn cold_owner(f: &mut Fixture) -> TestResult {
     let actor = f.owner.net.author.clone().ok_or("missing owner")?;
@@ -285,7 +288,7 @@ fn image_inquiry_ack_recovery_also_retains_latest_producer_after_clock_rollback(
     };
     let at = crate::engine::now_ms();
     let inquiry = |at_ms| OwnerPolicyInquiry {
-        id: types::new_id("image_inquiry"),
+        id: types::new_id("image_inquiry").unwrap(),
         owner: scope.expected_identity_id.clone(),
         agent: scope.agent_id.clone(),
         space: scope.space_id.clone(),

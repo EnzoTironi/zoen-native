@@ -118,7 +118,8 @@ pub(super) fn media_contract_group_dependencies_wait_for_confirmed_files_and_do_
         .any(|env| env.client_id() == sent.entries[1].id));
 }
 
-pub(super) fn media_contract_grouped_preexisting_confirmed_files_need_no_new_creation() {
+pub(super) fn media_contract_grouped_preexisting_confirmed_files_need_no_new_creation(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let f = fixture(":memory:");
     let items: Vec<_> = ["one.pdf", "two.pdf"]
         .into_iter()
@@ -170,7 +171,7 @@ pub(super) fn media_contract_grouped_preexisting_confirmed_files_need_no_new_cre
                     &f.scope.space_id,
                     &f.scope.expected_identity_id,
                     types::EventBody::MessagePosted {
-                        message: types::new_id("msg"),
+                        message: types::new_id("msg")?,
                         text: format!("Existing {index}"),
                         attaches: Some(item.clone()),
                         media: options
@@ -209,9 +210,12 @@ pub(super) fn media_contract_grouped_preexisting_confirmed_files_need_no_new_cre
             .collect::<Vec<_>>(),
         [ids[1].clone()]
     );
+
+    Ok(())
 }
 
-pub(super) fn media_contract_rejects_invalid_options_and_foreign_authority_without_mutation() {
+pub(super) fn media_contract_rejects_invalid_options_and_foreign_authority_without_mutation(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let f = fixture(":memory:");
     let before = counts(&f.engine);
     for options in [
@@ -242,10 +246,12 @@ pub(super) fn media_contract_rejects_invalid_options_and_foreign_authority_witho
         vec![input("a"), input("b")],
     );
     let mut foreign = f.scope.clone();
-    foreign.expected_identity_id = event_log::Signer::generate().id();
+    foreign.expected_identity_id = event_log::Signer::generate()?.id();
     let before = counts(&f.engine);
     assert!(f.engine.send_media_draft(foreign, draft.revision).is_err());
     assert_eq!(counts(&f.engine), before);
+
+    Ok(())
 }
 
 pub(super) fn media_contract_rejects_invalid_group_index_and_duplicate_membership_atomically() {

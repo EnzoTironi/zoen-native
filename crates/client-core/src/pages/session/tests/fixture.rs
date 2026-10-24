@@ -3,11 +3,15 @@
 use super::*;
 
 impl Fixture {
-    pub(super) fn new() -> Self {
-        Self::at(":memory:")
+    pub(super) fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        Ok(Self::at(":memory:")?)
     }
-    pub(super) fn at(path: &str) -> Self {
-        Self::with_ids(path, new_id("plan-space"), new_id("plan-item"))
+    pub(super) fn at(path: &str) -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        Ok(Self::with_ids(
+            path,
+            new_id("plan-space")?,
+            new_id("plan-item")?,
+        ))
     }
     pub(super) fn with_ids(path: &str, space: String, item: String) -> Self {
         let mut engine = Engine::open(path).unwrap();
@@ -53,14 +57,18 @@ impl Fixture {
     pub(super) fn session(&self) -> PageSession {
         PageSession::open(&self.engine, &self.item).unwrap()
     }
-    pub(super) fn signed_as(&self, author: &str, body: EventBody) -> Event {
-        self.engine.author_for(author).unwrap().sign_event(
+    pub(super) fn signed_as(
+        &self,
+        author: &str,
+        body: EventBody,
+    ) -> std::result::Result<Event, Box<dyn std::error::Error>> {
+        Ok(self.engine.author_for(author).unwrap().sign_event(
             &self.space,
-            &new_id("session-event"),
+            &new_id("session-event")?,
             1_800_000_000_000,
             self.engine.logs.get(&self.space).and_then(|log| log.head()),
             body,
-        )
+        ))
     }
     pub(super) fn ordered(&mut self, body: EventBody) -> Event {
         let event = self.signed_as(&self.owner, body);

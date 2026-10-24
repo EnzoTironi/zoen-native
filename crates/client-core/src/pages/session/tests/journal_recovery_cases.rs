@@ -2,8 +2,9 @@
 
 use super::*;
 
-pub(super) fn receipt_eviction_fences_forgotten_retry_across_reopen() {
-    let db = Database::new();
+pub(super) fn receipt_eviction_fences_forgotten_retry_across_reopen(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let db = Database::new()?;
     let mut f = Fixture::at(&db.path());
     let mut s = f.session();
     let read = s.read(&f.engine).unwrap();
@@ -42,6 +43,8 @@ pub(super) fn receipt_eviction_fences_forgotten_retry_across_reopen() {
     no_change(&f, &s, &before);
     drop(s);
     drop(f);
+
+    Ok(())
 }
 
 pub(super) fn journal_insert_or_update_failure_keeps_previous_draft() {
@@ -148,8 +151,9 @@ pub(super) fn oversized_context_or_journal_fails_before_memory_replacement() {
     );
 }
 
-pub(super) fn lost_response_after_durable_accept_recovers_the_same_receipt() {
-    let db = Database::new();
+pub(super) fn lost_response_after_durable_accept_recovers_the_same_receipt(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let db = Database::new()?;
     let mut f = Fixture::at(&db.path());
     let mut s = f.session();
     let read = s.read(&f.engine).unwrap();
@@ -173,4 +177,6 @@ pub(super) fn lost_response_after_durable_accept_recovers_the_same_receipt() {
     );
     drop(s);
     drop(f);
+
+    Ok(())
 }

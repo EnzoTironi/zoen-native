@@ -78,7 +78,7 @@ fn accepted_retry_precedes_changed_writer_reply_and_clear_retains_receipt() {
 
 #[test]
 fn backup_restore_and_device_erase_never_carry_a_private_media_draft_to_another_account() {
-    save_receipts_cases::backup_restore_and_device_erase_never_carry_a_private_media_draft_to_another_account()
+    save_receipts_cases::backup_restore_and_device_erase_never_carry_a_private_media_draft_to_another_account().unwrap()
 }
 
 #[test]
@@ -151,6 +151,7 @@ fn media_contract_group_dependencies_wait_for_confirmed_files_and_do_not_block_o
 #[test]
 fn media_contract_grouped_preexisting_confirmed_files_need_no_new_creation() {
     group_admission_cases::media_contract_grouped_preexisting_confirmed_files_need_no_new_creation()
+        .unwrap()
 }
 
 #[test]
@@ -167,7 +168,7 @@ fn media_contract_refused_duplicate_creation_cannot_poison_confirmed_file_refere
 
 #[test]
 fn media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped() {
-    refusals_cases::media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped()
+    refusals_cases::media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped().unwrap()
 }
 
 #[test]
@@ -177,7 +178,7 @@ fn media_contract_group_failure_rolls_back_and_retains_frozen_options() {
 
 #[test]
 fn media_contract_rejects_invalid_options_and_foreign_authority_without_mutation() {
-    group_admission_cases::media_contract_rejects_invalid_options_and_foreign_authority_without_mutation()
+    group_admission_cases::media_contract_rejects_invalid_options_and_foreign_authority_without_mutation().unwrap()
 }
 
 #[test]
@@ -192,7 +193,7 @@ fn media_contract_forwarded_group_is_rejected_and_single_forward_preserves_file_
 
 #[test]
 fn media_contract_failed_local_metadata_remains_visible_after_revocation_and_cold_recovery() {
-    custody_cases::media_contract_failed_local_metadata_remains_visible_after_revocation_and_cold_recovery()
+    custody_cases::media_contract_failed_local_metadata_remains_visible_after_revocation_and_cold_recovery().unwrap()
 }
 
 #[test]
@@ -243,7 +244,7 @@ fn media_contract_received_ordered_fixtures_use_the_same_cursor_as_browser() {
             media_contract_receive(
                 &f,
                 types::EventBody::MessagePosted {
-                    message: types::new_id("msg"),
+                    message: types::new_id("msg").unwrap(),
                     text: format!("fixture-{index}"),
                     attaches: Some(items[index].clone()),
                     media: Some(media),
@@ -300,7 +301,7 @@ fn media_contract_recovery_only_file_refuses_revert_command() {
 #[test]
 fn media_contract_recovery_only_file_refuses_signed_projection_and_ingest() {
     recovery_authority_cases::media_contract_recovery_only_file_refuses_signed_projection_and_ingest(
-    )
+    ).unwrap()
 }
 
 #[test]

@@ -106,10 +106,10 @@ pub(super) fn rows(f: &Fixture) -> Vec<(String, String)> {
         .unwrap()
 }
 
-pub(super) fn temp() -> std::path::PathBuf {
-    let path = std::env::temp_dir().join(types::new_id("media-draft-test"));
+pub(super) fn temp() -> std::result::Result<std::path::PathBuf, Box<dyn std::error::Error>> {
+    let path = std::env::temp_dir().join(types::new_id("media-draft-test")?);
     std::fs::create_dir_all(&path).unwrap();
-    path
+    Ok(path)
 }
 
 pub(super) fn asset(f: &Fixture, draft: &MediaDraftDto, id: &str) -> Vec<u8> {
@@ -137,7 +137,9 @@ pub(super) fn media_options(ids: &[&str], presentation: &str, grouping: &str) ->
     value.to_string()
 }
 
-pub(super) fn media_contract_refused_duplicate_creation(presentation: &str) {
+pub(super) fn media_contract_refused_duplicate_creation(
+    presentation: &str,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let f = fixture(":memory:");
     media_contract_confirm_scope(&f);
     let draft = save(
@@ -177,7 +179,7 @@ pub(super) fn media_contract_refused_duplicate_creation(presentation: &str) {
         .unwrap()
         .sign_event(
             &f.scope.space_id,
-            &types::new_id("duplicate"),
+            &types::new_id("duplicate")?,
             file.at_ms + 1,
             None,
             file.body,
@@ -218,6 +220,8 @@ pub(super) fn media_contract_refused_duplicate_creation(presentation: &str) {
             .delivery,
         crate::Delivery::Sent
     );
+
+    Ok(())
 }
 
 pub(super) fn media_contract_confirm_scope(f: &Fixture) {
@@ -259,17 +263,21 @@ pub(super) fn media_contract_confirm_id(f: &Fixture, id: &str) {
     );
 }
 
-pub(super) fn media_contract_receive(f: &Fixture, body: types::EventBody, foreign: bool) {
+pub(super) fn media_contract_receive(
+    f: &Fixture,
+    body: types::EventBody,
+    foreign: bool,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut engine = f.engine.lock();
     let author = if foreign {
-        event_log::Author::root(event_log::Signer::generate())
+        event_log::Author::root(event_log::Signer::generate()?)
     } else {
         engine.author_for(&f.scope.expected_identity_id).unwrap()
     };
     let mut relay = engine.logs[&f.scope.space_id].clone();
     let signed = author.sign_event(
         &f.scope.space_id,
-        &types::new_id("received"),
+        &types::new_id("received")?,
         crate::engine::now_ms(),
         relay.head(),
         body,
@@ -281,13 +289,18 @@ pub(super) fn media_contract_receive(f: &Fixture, body: types::EventBody, foreig
         hash: event.hash.clone(),
         env: protocol::Envelope::plain(event),
     });
+
+    Ok(())
 }
 
-pub(super) fn media_contract_recovered_writer() -> (Fixture, String) {
-    media_contract_recovered_writer_at(":memory:")
+pub(super) fn media_contract_recovered_writer(
+) -> std::result::Result<(Fixture, String), Box<dyn std::error::Error>> {
+    Ok(media_contract_recovered_writer_at(":memory:")?)
 }
 
-pub(super) fn media_contract_recovered_writer_at(path: &str) -> (Fixture, String) {
+pub(super) fn media_contract_recovered_writer_at(
+    path: &str,
+) -> std::result::Result<(Fixture, String), Box<dyn std::error::Error>> {
     let f = fixture(path);
     media_contract_confirm_scope(&f);
     let draft = save(
@@ -313,7 +326,7 @@ pub(super) fn media_contract_recovered_writer_at(path: &str) -> (Fixture, String
             identity: f.scope.expected_identity_id.clone(),
         },
         false,
-    );
+    )?;
     let pending = f.engine.lock().store.outbox().unwrap();
     for row in pending {
         assert!(f
@@ -329,16 +342,18 @@ pub(super) fn media_contract_recovered_writer_at(path: &str) -> (Fixture, String
             role: types::Role::Member,
         },
         false,
-    );
+    )?;
     assert_eq!(
         f.engine.file_bytes(item.clone(), None).unwrap().unwrap(),
         input("recovery").bytes
     );
-    (f, item)
+    Ok((f, item))
 }
 
-pub(super) fn media_contract_recovery_command_refused(command: &str) {
-    let (f, item) = media_contract_recovered_writer();
+pub(super) fn media_contract_recovery_command_refused(
+    command: &str,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (f, item) = media_contract_recovered_writer()?;
     let before = counts(&f.engine);
     let result = {
         let mut engine = f.engine.lock();
@@ -377,6 +392,8 @@ pub(super) fn media_contract_recovery_command_refused(command: &str) {
         f.engine.file_bytes(item, None).unwrap().unwrap(),
         input("recovery").bytes
     );
+
+    Ok(())
 }
 
 pub(super) fn media_contract_upload_all(f: &Fixture) {

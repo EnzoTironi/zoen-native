@@ -7,10 +7,10 @@ pub(super) fn ingest_as(
     space: &str,
     author: &str,
     body: EventBody,
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let event = engine.author_for(author).unwrap().sign_event(
         space,
-        &types::new_id("voice-event"),
+        &types::new_id("voice-event")?,
         crate::engine::now_ms(),
         engine.logs[space].head(),
         body,
@@ -26,6 +26,8 @@ pub(super) fn ingest_as(
         }),
         crate::sync::Ingest::Applied
     );
+
+    Ok(())
 }
 
 pub(super) fn note(

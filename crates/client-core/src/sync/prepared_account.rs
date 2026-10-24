@@ -105,6 +105,8 @@ impl Engine {
                 root: &setup.root,
                 device: &setup.device,
                 agreement: &setup.agreement,
+                profile_key: None,
+                personal_agent_key: None,
                 name: &setup.name,
                 handle: &setup.handle,
                 relay: &setup.relay,
@@ -128,6 +130,29 @@ impl Engine {
         let device = Signer::from_secret(setup.device);
         let identity = root.id();
         let author = Author::device(&root, device.clone());
+        // Durable setup recovery keeps existing canonical keys. Fresh material is
+        // prepared before the first write and is never substituted for a saved key.
+        let profile_key = if self.store.profile_key(&identity)?.is_none() {
+            Some(match setup.profile_key {
+                Some(key) => key.clone(),
+                None => event_log::profile::ProfileKey::generate()?,
+            })
+        } else {
+            None
+        };
+        let has_personal_agent = self.identities.values().any(|person| {
+            person.kind == IdentityKind::Agent
+                && person.owner.as_deref() == Some(identity.as_str())
+                && person.handle == "zoen"
+        });
+        let personal_agent = if setup.agent.is_none() && !has_personal_agent {
+            Some(match setup.personal_agent_key {
+                Some(key) => key.clone(),
+                None => Signer::generate()?,
+            })
+        } else {
+            None
+        };
         let storage_error = |error: rusqlite::Error| CoreError::Storage {
             message: error.to_string(),
         };
@@ -173,13 +198,13 @@ impl Engine {
             })?;
             self.net.author = Some(author);
             let agreement = event_log::profile::AgreementKey::from_secret(*setup.agreement);
-            if self.store.profile_key(&identity)?.is_none() {
-                self.init_profile_with_agreement(&identity, setup.name, agreement)?;
+            if let Some(profile_key) = profile_key {
+                self.init_profile_with_agreement(&identity, setup.name, agreement, profile_key)?;
             } else {
                 self.net.profiles.agreement = Some(agreement);
             }
             if setup.agent.is_none() {
-                self.seed_personal_agent(&identity)?;
+                self.seed_personal_agent(&identity, personal_agent)?;
             }
             validate(self)?;
             self.store

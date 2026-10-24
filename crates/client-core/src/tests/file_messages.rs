@@ -24,7 +24,7 @@ fn failed_message_or_receipt_write_rolls_back_files_keys_and_projection() {
 
 #[test]
 fn exact_file_send_retries_survive_cold_reopen_and_reject_intent_drift() {
-    sending_cases::exact_file_send_retries_survive_cold_reopen_and_reject_intent_drift()
+    sending_cases::exact_file_send_retries_survive_cold_reopen_and_reject_intent_drift().unwrap()
 }
 
 #[test]
@@ -44,7 +44,7 @@ fn blank_caption_edit_is_scoped_to_live_own_ordinary_files_and_enforces_caption_
 
 #[test]
 fn captioned_file_retries_survive_reopen_and_reject_caption_drift() {
-    captions_cases::captioned_file_retries_survive_reopen_and_reject_caption_drift()
+    captions_cases::captioned_file_retries_survive_reopen_and_reject_caption_drift().unwrap()
 }
 
 #[test]

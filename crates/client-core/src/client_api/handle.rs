@@ -190,7 +190,7 @@ mod tests {
     fn a_replaced_device_cannot_receive_an_older_handle_acknowledgement() {
         let mut engine = engine();
         let change = prepare(&engine, "new_handle").unwrap();
-        engine.net.account.as_mut().unwrap().device = event_log::Signer::generate().id();
+        engine.net.account.as_mut().unwrap().device = event_log::Signer::generate().unwrap().id();
         assert!(acknowledged(
             &mut engine,
             &change,

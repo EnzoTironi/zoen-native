@@ -2,8 +2,9 @@
 
 use super::*;
 
-pub(super) fn conflicting_sealed_seen_blocks_cold_restore_with_valid_pending_credentials() {
-    let mut fixture = Fixture::new();
+pub(super) fn conflicting_sealed_seen_blocks_cold_restore_with_valid_pending_credentials(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = Fixture::new()?;
     fixture.grant("conflicting-prefix-trust", None);
     let trigger = fixture.message("Original retained input");
     let original = fixture
@@ -48,11 +49,14 @@ pub(super) fn conflicting_sealed_seen_blocks_cold_restore_with_valid_pending_cre
         Err(NativeError::Credential)
     ));
     println!("JOURNEY a member's real signature over a conflicting held-prefix hash preserves the pending reply but parks publication and rejects cold restore with the matching certified device");
+
+    Ok(())
 }
 
-pub(super) fn receipt_prefix_keeps_exact_pending_bytes_and_resumes_beyond_64_real_positions() {
+pub(super) fn receipt_prefix_keeps_exact_pending_bytes_and_resumes_beyond_64_real_positions(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use sha2::{Digest, Sha256};
-    let mut fixture = Fixture::new();
+    let mut fixture = Fixture::new()?;
     fixture.grant("prefix-trust", Some(1000));
     let trigger = fixture.message("Original prefix input");
     let original = fixture
@@ -159,11 +163,14 @@ pub(super) fn receipt_prefix_keeps_exact_pending_bytes_and_resumes_beyond_64_rea
         Some("original opaque metadata")
     );
     println!("JOURNEY 65 real certified encrypted source positions resume across cold 64-position prefix; pending retry rows, other command, orphan sealing and original reference remain exact; only the actual target produces acceptance");
+
+    Ok(())
 }
 
-pub(super) fn receipt_prefix_validates_original_pending_before_reading_unrelated_history() {
+pub(super) fn receipt_prefix_validates_original_pending_before_reading_unrelated_history(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for case in ["pending-inner", "missing-sealed-copy", "pending-map"] {
-        let mut fixture = Fixture::new();
+        let mut fixture = Fixture::new()?;
         fixture.grant("prefix-pending-trust", None);
         let trigger = fixture.message("Original pending input");
         let original = fixture
@@ -228,9 +235,12 @@ pub(super) fn receipt_prefix_validates_original_pending_before_reading_unrelated
         assert_eq!(fixture.core.engine.logs[SPACE].head().unwrap(), initial);
     }
     println!("JOURNEY tampered certified inner, missing original sealed copy and pending-map mismatch refuse before applying unrelated prefix history");
+
+    Ok(())
 }
 
-pub(super) fn receipt_prefix_refuses_skipped_duplicate_oversized_and_partially_invalid_batches() {
+pub(super) fn receipt_prefix_refuses_skipped_duplicate_oversized_and_partially_invalid_batches(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for case in [
         "skip",
         "duplicate",
@@ -238,7 +248,7 @@ pub(super) fn receipt_prefix_refuses_skipped_duplicate_oversized_and_partially_i
         "late-invalid",
         "other-pending-acceptance",
     ] {
-        let mut fixture = Fixture::new();
+        let mut fixture = Fixture::new()?;
         fixture.grant("prefix-batch-trust", None);
         let trigger = fixture.message("Original batch input");
         let original = fixture
@@ -311,4 +321,6 @@ pub(super) fn receipt_prefix_refuses_skipped_duplicate_oversized_and_partially_i
         );
     }
     println!("JOURNEY source gap, replay-only prefix, 65-position input, invalid later chain and another pending acceptance refuse whole scratch; original committed publication stays recoverable");
+
+    Ok(())
 }

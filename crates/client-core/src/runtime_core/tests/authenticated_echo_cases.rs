@@ -2,9 +2,10 @@
 
 use super::*;
 
-pub(super) fn generic_ingest_refuses_colliding_ciphertext_plaintext_pruning_and_changed_header() {
+pub(super) fn generic_ingest_refuses_colliding_ciphertext_plaintext_pruning_and_changed_header(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for case in ["ciphertext", "plaintext", "pruned", "timestamp"] {
-        let mut fixture = Fixture::new();
+        let mut fixture = Fixture::new()?;
         fixture.grant("echo-original-trust", None);
         let trigger = fixture.message("Original source request");
         let original = fixture
@@ -79,9 +80,12 @@ pub(super) fn generic_ingest_refuses_colliding_ciphertext_plaintext_pruning_and_
         assert_eq!(cold.engine.outbox_envelopes(), vec![expected]);
     }
     println!("JOURNEY generic facade refuses a different genuinely opened MLS result with valid same CID/device, signed plaintext, same-hash pruned frame and signed changed timestamp before own confirmation");
+
+    Ok(())
 }
 
-pub(super) fn own_echo_requires_valid_original_inner_and_historical_sealing_copy() {
+pub(super) fn own_echo_requires_valid_original_inner_and_historical_sealing_copy(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for case in [
         "missing-copy",
         "bad-copy",
@@ -90,7 +94,7 @@ pub(super) fn own_echo_requires_valid_original_inner_and_historical_sealing_copy
         "missing-reference",
         "missing-native-pending",
     ] {
-        let mut fixture = Fixture::new();
+        let mut fixture = Fixture::new()?;
         fixture.grant("copy-original-trust", None);
         let trigger = fixture.message("Retained source request");
         let original = fixture
@@ -203,10 +207,13 @@ pub(super) fn own_echo_requires_valid_original_inner_and_historical_sealing_copy
         assert_eq!(cold.engine.outbox_envelopes(), vec![envelope]);
     }
     println!("JOURNEY missing/malformed copy, altered view, another genuinely signed inner after real store roundtrip, missing original reference and inconsistent pending map refuse before confirmation");
+
+    Ok(())
 }
 
-pub(super) fn exact_old_epoch_echo_survives_real_commit_cold_restore_and_replay() {
-    let mut fixture = Fixture::new();
+pub(super) fn exact_old_epoch_echo_survives_real_commit_cold_restore_and_replay(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = Fixture::new()?;
     fixture.grant("historical-trust", None);
     let trigger = fixture.message("Original history");
     let original = fixture
@@ -302,10 +309,13 @@ pub(super) fn exact_old_epoch_echo_survives_real_commit_cold_restore_and_replay(
         accepted.hash
     );
     println!("JOURNEY real native commit advances epoch without resealing the pending output; historical exact signed copy confirms after cold restore and unchanged replay creates no new outbox");
+
+    Ok(())
 }
 
-pub(super) fn later_colliding_echo_invalidates_an_entire_partially_ingested_batch() {
-    let mut fixture = Fixture::new();
+pub(super) fn later_colliding_echo_invalidates_an_entire_partially_ingested_batch(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = Fixture::new()?;
     fixture.grant("batch-original-trust", None);
     let trigger = fixture.message("Original batch source");
     let original = fixture
@@ -356,10 +366,13 @@ pub(super) fn later_colliding_echo_invalidates_an_entire_partially_ingested_batc
     );
     assert_ne!(cold.engine.logs[SPACE].head().unwrap().hash, first.hash);
     println!("JOURNEY a colliding own echo after an applied entry poisons the whole scratch batch; cold prior image keeps its earlier frontier and exact pending output");
+
+    Ok(())
 }
 
-pub(super) fn own_echo_is_context_only_and_mismatching_mls_sender_cannot_refresh() {
-    let mut fixture = Fixture::new();
+pub(super) fn own_echo_is_context_only_and_mismatching_mls_sender_cannot_refresh(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = Fixture::new()?;
     fixture.grant("explicit-trust", None);
     let trigger = fixture.message("Owner's original request");
     let original = fixture
@@ -400,7 +413,7 @@ pub(super) fn own_echo_is_context_only_and_mismatching_mls_sender_cannot_refresh
         550,
         seen.clone(),
         EventBody::MessagePosted {
-            message: new_id("message"),
+            message: new_id("message")?,
             text: "Outer agent differs from actual owner MLS leaf".into(),
             attaches: None,
             reply: None,
@@ -435,4 +448,6 @@ pub(super) fn own_echo_is_context_only_and_mismatching_mls_sender_cannot_refresh
         Err(NativeError::Permission)
     ));
     println!("JOURNEY own retained echo is context, never owner trigger; valid signed outer with different actual MLS sender denies refresh");
+
+    Ok(())
 }

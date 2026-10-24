@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn published_read_and_exact_owner_approval_replace_only_one_block() {
-    let f = fixture();
+    let f = fixture().unwrap();
     let t = turn(&f);
     let c = command(&t);
     assert_eq!(
@@ -53,7 +53,7 @@ fn published_read_and_exact_owner_approval_replace_only_one_block() {
 #[test]
 fn deny_cancel_wrong_arguments_and_later_block_cannot_publish() {
     for decision in [ToolRequestDecision::Deny, ToolRequestDecision::Cancel] {
-        let f = fixture();
+        let f = fixture().unwrap();
         let t = turn(&f);
         let c = command(&t);
         let req = stage(&f, &t, &c);
@@ -64,7 +64,7 @@ fn deny_cancel_wrong_arguments_and_later_block_cannot_publish() {
         assert_eq!(counts(&f), before);
         assert_eq!(page(&f).version, 1);
     }
-    let f = fixture();
+    let f = fixture().unwrap();
     let t = turn(&f);
     let c = command(&t);
     let (_, permit) = approved(&f, &t, &c);
@@ -75,7 +75,7 @@ fn deny_cancel_wrong_arguments_and_later_block_cannot_publish() {
         .agent
         .agent_page_replace(permit.turn(), &altered)
         .is_err());
-    block(&f);
+    block(&f).unwrap();
     let before = counts(&f);
     assert!(f.actor.agent.agent_page_replace(permit.turn(), &c).is_err());
     assert_eq!(counts(&f), before);
@@ -84,7 +84,7 @@ fn deny_cancel_wrong_arguments_and_later_block_cannot_publish() {
 
 #[test]
 fn private_draft_is_not_read_or_published_and_stale_before_is_not_reviewed() {
-    let f = fixture();
+    let f = fixture().unwrap();
     let t = turn(&f);
     let c = command(&t);
     let initial = page(&f);
@@ -124,7 +124,7 @@ fn private_draft_is_not_read_or_published_and_stale_before_is_not_reviewed() {
         page(&f).blocks.iter().find(|b| b.id == private.id).unwrap(),
         &private
     );
-    let f = fixture();
+    let f = fixture().unwrap();
     let t = turn(&f);
     let mut c = command(&t);
     c.before.text = "Invented before".into();
@@ -169,7 +169,7 @@ fn private_draft_is_not_read_or_published_and_stale_before_is_not_reviewed() {
 #[test]
 fn source_device_membership_and_real_new_head_are_rechecked_after_review() {
     for boundary in 0..4 {
-        let f = fixture();
+        let f = fixture().unwrap();
         let t = turn(&f);
         let c = command(&t);
         let (_, permit) = approved(&f, &t, &c);
@@ -235,7 +235,7 @@ fn source_device_membership_and_real_new_head_are_rechecked_after_review() {
 
 #[test]
 fn active_empty_input_binding_blocks_agent_write_without_discard_or_capture() {
-    let f = fixture();
+    let f = fixture().unwrap();
     let t = turn(&f);
     let c = command(&t);
     let (_, permit) = approved(&f, &t, &c);
@@ -274,7 +274,7 @@ fn active_empty_input_binding_blocks_agent_write_without_discard_or_capture() {
 
 #[test]
 fn semantically_reverted_private_history_is_not_included_in_agent_publication() {
-    let f = fixture();
+    let f = fixture().unwrap();
     let t = turn(&f);
     let c = command(&t);
     for (id, text) in [
@@ -319,12 +319,12 @@ fn semantically_reverted_private_history_is_not_included_in_agent_publication() 
 
 #[test]
 fn expired_signed_page_ask_is_retained_but_never_approves_or_executes() {
-    let f = fixture();
+    let f = fixture().unwrap();
     let t = turn(&f);
     let c = command(&t);
     let req = stage(&f, &t, &c);
     let mut expired = f.actor.agent.lock().state.requests[&req.id].req.clone();
-    expired.id = types::new_id("expired_page_ask");
+    expired.id = types::new_id("expired_page_ask").unwrap();
     expired.tool_proposal.as_mut().unwrap().expires_at_ms = crate::engine::now_ms() - 1000;
     expired.content_hash = expired.tool_proposal_hash(&f.actor.space).unwrap();
     let id = expired.id.clone();
@@ -339,7 +339,7 @@ fn expired_signed_page_ask_is_retained_but_never_approves_or_executes() {
         let author = e.author_for(&expired.agent).unwrap();
         let signed = author.sign_event(
             &f.actor.space,
-            &types::new_ulid(at),
+            &types::new_ulid(at).unwrap(),
             at,
             log.head(),
             EventBody::RequestOpened { request: expired },
@@ -372,7 +372,7 @@ fn expired_signed_page_ask_is_retained_but_never_approves_or_executes() {
 
 #[test]
 fn page_read_approval_and_another_space_cannot_authorize_a_write() {
-    let f = fixture();
+    let f = fixture().unwrap();
     let t = turn(&f);
     let c = command(&t);
     let req = f
@@ -389,7 +389,7 @@ fn page_read_approval_and_another_space_cannot_authorize_a_write() {
     let before = counts(&f);
     assert!(f.actor.agent.agent_page_replace(permit.turn(), &c).is_err());
     assert_eq!(counts(&f), before);
-    let space = types::new_id("other_page_space");
+    let space = types::new_id("other_page_space").unwrap();
     {
         let mut e = f.actor.agent.lock();
         let me = e.me_id().unwrap();

@@ -28,6 +28,7 @@ fn fixture_at(path: &str) -> (Arc<Client>, PageDto) {
 #[test]
 fn closing_and_reopening_the_database_recovers_the_exact_edit_receipt_and_draft() {
     journal_recovery::closing_and_reopening_the_database_recovers_the_exact_edit_receipt_and_draft()
+        .unwrap()
 }
 
 #[test]
@@ -157,7 +158,7 @@ fn corrupt_journal_preserves_saved_read_and_refuses_overwriting_the_draft() {
 
 #[test]
 fn public_page_reads_reuse_verified_media_and_require_it_again_after_reload() {
-    publication::public_page_reads_reuse_verified_media_and_require_it_again_after_reload()
+    publication::public_page_reads_reuse_verified_media_and_require_it_again_after_reload().unwrap()
 }
 
 #[test]

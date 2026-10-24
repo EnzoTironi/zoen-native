@@ -30,8 +30,9 @@ pub(super) fn png(width: u32, height: u32) -> Vec<u8> {
     }
     bytes
 }
-pub(super) fn approved() -> (Fixture, String, String) {
-    let mut f = Fixture::new();
+pub(super) fn approved(
+) -> std::result::Result<(Fixture, String, String), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
     f.encrypted(
         EventBody::GrantIssued {
             grant: Grant {
@@ -87,11 +88,11 @@ pub(super) fn approved() -> (Fixture, String, String) {
             .input(),
         &input()
     );
-    (f, request, hash)
+    Ok((f, request, hash))
 }
 #[test]
 fn approved_image_task_produces_real_encrypted_filedoc_and_cold_native_image() {
-    let (mut f, request, hash) = approved();
+    let (mut f, request, hash) = approved().unwrap();
     let before = f.core.image().unwrap();
     let bytes = png(1024, 1024);
     let prepared = f
@@ -144,7 +145,7 @@ fn approved_image_task_produces_real_encrypted_filedoc_and_cold_native_image() {
 }
 #[test]
 fn image_task_permission_tracks_owner_review_expiry_device_scope_and_revocation() {
-    let (mut f, request, _) = approved();
+    let (mut f, request, _) = approved().unwrap();
     let facts = f
         .core
         .image_task(&request, crate::engine::now_ms())
@@ -170,7 +171,7 @@ fn image_task_permission_tracks_owner_review_expiry_device_scope_and_revocation(
 }
 #[test]
 fn reply_only_trust_never_opens_an_image_review() {
-    let mut f = Fixture::new();
+    let mut f = Fixture::new().unwrap();
     f.grant("reply-only", None);
     f.message("Create an image");
     let source = f.core.engine.logs[SPACE]
@@ -185,7 +186,7 @@ fn reply_only_trust_never_opens_an_image_review() {
 
 #[test]
 fn image_task_uses_sql_observed_trust_expiry_and_never_revives_an_older_grant() {
-    let (mut f, request, _) = approved();
+    let (mut f, request, _) = approved().unwrap();
     let expiry = crate::engine::now_ms() + 30_000;
     f.encrypted(
         EventBody::GrantIssued {
@@ -234,7 +235,7 @@ fn image_task_uses_sql_observed_trust_expiry_and_never_revives_an_older_grant() 
 
 #[test]
 fn image_task_tracks_downgrade_and_does_not_revive_expired_regrant() {
-    let (mut f, request, _) = approved();
+    let (mut f, request, _) = approved().unwrap();
     let at = crate::engine::now_ms();
     for (id, level, expiry, allowed) in [
         ("image-deny", TrustLevel::Listen, None, false),
@@ -265,7 +266,7 @@ fn image_task_tracks_downgrade_and_does_not_revive_expired_regrant() {
 
 #[test]
 fn referenced_image_exceeds_capsule_limit_without_inline_media_or_upload_ack() {
-    let (mut f, request, hash) = approved();
+    let (mut f, request, hash) = approved().unwrap();
     let mut bytes = Vec::new();
     {
         let mut encoder = png::Encoder::new(&mut bytes, 1024, 1024);
@@ -338,7 +339,7 @@ fn referenced_image_exceeds_capsule_limit_without_inline_media_or_upload_ack() {
 
 #[test]
 fn referenced_png_at_the_full_representable_response_boundary_stays_bounded() {
-    let (mut f, request, hash) = approved();
+    let (mut f, request, hash) = approved().unwrap();
     const MAXIMUM: usize = 12_533_760;
     let base = png(1024, 1024);
     let mut bytes = Vec::new();
@@ -376,7 +377,7 @@ fn referenced_png_at_the_full_representable_response_boundary_stays_bounded() {
 
 #[test]
 fn identical_png_in_distinct_approved_tasks_keeps_independent_blob_keys_after_cold_restore() {
-    let (mut f, first_request, first_hash) = approved();
+    let (mut f, first_request, first_hash) = approved().unwrap();
     let bytes = png(1024, 1024);
     let first = f
         .core

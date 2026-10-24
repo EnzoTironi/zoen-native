@@ -15,7 +15,7 @@ impl Client {
                     "This device already has an account.",
                 )));
             }
-            let device = Signer::generate();
+            let device = Signer::generate()?;
             let (hpke_secret, hpke_public) = link::key_pair();
             let secret = link::random::<32>();
             let code = LinkCode {

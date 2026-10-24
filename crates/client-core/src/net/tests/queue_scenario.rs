@@ -1,6 +1,8 @@
 use super::*;
 
-pub(super) async fn queued_messages_round_trip(catch_up: CatchUp) {
+pub(super) async fn queued_messages_round_trip(
+    catch_up: CatchUp,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("ws://{}", listener.local_addr().unwrap());
@@ -31,7 +33,7 @@ pub(super) async fn queued_messages_round_trip(catch_up: CatchUp) {
 
     // A second enrolled leaf of the same identity can read both offline messages
     // and supplies a genuine MLS commit that this session has not caught up with.
-    let peer_author = Author::device(&Signer::from_secret(&root_secret), Signer::generate());
+    let peer_author = Author::device(&Signer::from_secret(&root_secret), Signer::generate()?);
     let mut peer_store = rusqlite::Connection::open_in_memory().unwrap();
     ::mls::migrate(&mut peer_store).unwrap();
     let peer_secret = peer_author.key.secret();
@@ -462,4 +464,6 @@ pub(super) async fn queued_messages_round_trip(catch_up: CatchUp) {
     })
     .await
     .expect("catch-up ordering stalled");
+
+    Ok(())
 }

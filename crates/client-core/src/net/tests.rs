@@ -17,17 +17,23 @@ mod media_uploads;
 
 #[tokio::test]
 async fn pickup_expired_deadline_opens_no_connection() {
-    pickup_cases::pickup_expired_deadline_opens_no_connection().await;
+    pickup_cases::pickup_expired_deadline_opens_no_connection()
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
 async fn pickup_deadline_bounds_a_stalled_connection() {
-    pickup_cases::pickup_deadline_bounds_a_stalled_connection().await;
+    pickup_cases::pickup_deadline_bounds_a_stalled_connection()
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
 async fn pickup_reconnects_after_transport_failure_and_is_cancelable() {
-    pickup_cases::pickup_reconnects_after_transport_failure_and_is_cancelable().await;
+    pickup_cases::pickup_reconnects_after_transport_failure_and_is_cancelable()
+        .await
+        .unwrap();
 }
 
 #[test]
@@ -63,17 +69,18 @@ fn recovery_download_retries_follow_current_references_and_discard_obsolete_fail
 
 #[test]
 fn engine_lease_revocation_waits_for_current_work_and_finishes_storage_release() {
-    lease_cases::engine_lease_revocation_waits_for_current_work_and_finishes_storage_release();
+    lease_cases::engine_lease_revocation_waits_for_current_work_and_finishes_storage_release()
+        .unwrap();
 }
 
 #[test]
 fn poisoned_engine_lease_still_revokes_and_releases_storage() {
-    lease_cases::poisoned_engine_lease_still_revokes_and_releases_storage();
+    lease_cases::poisoned_engine_lease_still_revokes_and_releases_storage().unwrap();
 }
 
 #[test]
 fn blocked_media_upload_releases_storage_and_preserves_ciphertext() {
-    lease_cases::blocked_media_upload_releases_storage_and_preserves_ciphertext();
+    lease_cases::blocked_media_upload_releases_storage_and_preserves_ciphertext().unwrap();
 }
 
 async fn request(socket: &mut RelaySocket) -> ClientFrame {
@@ -136,7 +143,8 @@ async fn catch_up_socket(listener: &tokio::net::TcpListener) -> RelaySocket {
 #[tokio::test(flavor = "current_thread")]
 async fn live_event_overtaking_final_replay_page_reconciles_once_without_later_message() {
     catchup_cases::live_event_overtaking_final_replay_page_reconciles_once_without_later_message()
-        .await;
+        .await
+        .unwrap();
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -220,7 +228,9 @@ async fn a_control_notice_is_dispatched_between_slow_maintenance_passes() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn member_seen_beyond_the_next_sequence_is_fetched_once_then_forks() {
-    ordering_cases::member_seen_beyond_the_next_sequence_is_fetched_once_then_forks().await;
+    ordering_cases::member_seen_beyond_the_next_sequence_is_fetched_once_then_forks()
+        .await
+        .unwrap();
 }
 #[test]
 fn superseded_profile_query_cannot_consume_current_batch_or_its_backoff() {

@@ -2,8 +2,9 @@
 
 use super::*;
 
-pub(super) fn a_second_device_projects_the_same_output_after_its_agent_profile_arrives() {
-    let (chat, mut e) = Chat::create();
+pub(super) fn a_second_device_projects_the_same_output_after_its_agent_profile_arrives(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (chat, mut e) = Chat::create()?;
     e.agent_create_plan(
         &chat.space,
         &chat.agent,
@@ -59,10 +60,13 @@ pub(super) fn a_second_device_projects_the_same_output_after_its_agent_profile_a
         observer.agent_profile(&chat.agent).budget_spent_cents,
         Some(37)
     );
+
+    Ok(())
 }
 
-pub(super) fn plan_approval_after_restart_creates_the_exact_item_and_debits_usage_once() {
-    let (chat, mut e) = Chat::create();
+pub(super) fn plan_approval_after_restart_creates_the_exact_item_and_debits_usage_once(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (chat, mut e) = Chat::create()?;
     let out = e
         .agent_create_plan(
             &chat.space,
@@ -106,10 +110,13 @@ pub(super) fn plan_approval_after_restart_creates_the_exact_item_and_debits_usag
     assert_eq!(e.items().len(), 1);
     assert_eq!(e.agent_profile(&chat.agent).budget_spent_cents, Some(37));
     assert!(e.verify_all().iter().all(|r| r.valid));
+
+    Ok(())
 }
 
-pub(super) fn app_approval_after_restart_creates_an_usable_item_with_its_scoped_grant() {
-    let (chat, mut e) = Chat::create();
+pub(super) fn app_approval_after_restart_creates_an_usable_item_with_its_scoped_grant(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (chat, mut e) = Chat::create()?;
     let out = e
         .agent_create_app(
             &chat.space,
@@ -133,10 +140,13 @@ pub(super) fn app_approval_after_restart_creates_an_usable_item_with_its_scoped_
     let fed = e.app_call_tool(&item.id, "pet_feed", "{}", false).unwrap();
     assert_eq!(fed.status, AppCallStatus::Done);
     assert_eq!(fed.item.unwrap().version, 2);
+
+    Ok(())
 }
 
-pub(super) fn failed_approval_write_leaves_the_proposal_pending_and_identical_retry_succeeds() {
-    let (chat, mut e) = Chat::create();
+pub(super) fn failed_approval_write_leaves_the_proposal_pending_and_identical_retry_succeeds(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (chat, mut e) = Chat::create()?;
     e.agent_create_plan(
         &chat.space,
         &chat.agent,
@@ -167,4 +177,6 @@ pub(super) fn failed_approval_write_leaves_the_proposal_pending_and_identical_re
     e.resolve_request(&id, true).unwrap();
     assert_eq!(e.items().len(), 1);
     assert_eq!(e.agent_profile(&chat.agent).budget_spent_cents, Some(37));
+
+    Ok(())
 }

@@ -49,6 +49,8 @@ pub(crate) struct PreparedAccount<'a> {
     pub(crate) root: &'a [u8; 32],
     pub(crate) device: &'a [u8; 32],
     pub(crate) agreement: &'a [u8; 32],
+    pub(crate) profile_key: Option<&'a event_log::profile::ProfileKey>,
+    pub(crate) personal_agent_key: Option<&'a Signer>,
     pub(crate) name: &'a str,
     pub(crate) handle: &'a str,
     pub(crate) relay: &'a str,
@@ -234,6 +236,7 @@ fn same_media_group(first: &Event, second: &Event) -> bool {
 }
 
 mod account;
+mod account_preparation;
 mod ingestion;
 mod outbox;
 mod prepared_account;
@@ -275,14 +278,14 @@ mod owner_tests {
     #[test]
     fn remote_agents_need_authorization_and_cannot_change_their_owner() {
         let mut e = Engine::open(":memory:").unwrap();
-        let owner = Author::device(&Signer::generate(), Signer::generate());
-        let original = agent(&owner, Signer::generate().id());
+        let owner = Author::device(&Signer::generate().unwrap(), Signer::generate().unwrap());
+        let original = agent(&owner, Signer::generate().unwrap().id());
         let mut unsigned = original.clone();
         unsigned.owner_proof = None;
         e.put_profiles(vec![unsigned]).unwrap();
         assert!(!e.identities.contains_key(&original.id));
         e.put_profiles(vec![original.clone()]).unwrap();
-        let other = Author::device(&Signer::generate(), Signer::generate());
+        let other = Author::device(&Signer::generate().unwrap(), Signer::generate().unwrap());
         let transferred = agent(&other, original.id.clone());
         e.put_profiles(vec![transferred]).unwrap();
         assert_eq!(e.identities[&original.id], original);
@@ -297,7 +300,7 @@ mod owner_tests {
     #[test]
     fn authorization_requires_an_unlocked_account_device_and_does_not_issue_a_grant() {
         let mut e = Engine::open(":memory:").unwrap();
-        let agent = Signer::generate().id();
+        let agent = Signer::generate().unwrap().id();
         assert!(e.authorize_agent(&agent).is_err());
         e.create_account("Owner", "owner", "http://127.0.0.1:9")
             .unwrap();
@@ -320,7 +323,7 @@ mod owner_tests {
         e.create_account("Owner", "owner", "http://127.0.0.1:9")
             .unwrap();
         let owner = e.net.author.clone().unwrap();
-        let mut legacy = agent(&owner, Signer::generate().id());
+        let mut legacy = agent(&owner, Signer::generate().unwrap().id());
         legacy.owner_proof = None;
         e.store.put_identity(&legacy, None).unwrap();
         let space = e
@@ -348,7 +351,7 @@ mod owner_tests {
 
         let me = e.me_id().unwrap();
         let original = e.identities[&me].clone();
-        let other = Author::device(&Signer::generate(), Signer::generate());
+        let other = Author::device(&Signer::generate().unwrap(), Signer::generate().unwrap());
         e.put_profiles(vec![agent(&other, me.clone())]).unwrap();
         assert_eq!(e.identities[&me], original);
     }

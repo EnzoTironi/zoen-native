@@ -117,7 +117,7 @@ fn unchanged_scene_ack_adds_no_version_and_receipt_eviction_never_rebases_stale_
 #[test]
 fn disk_reopen_reverifies_scene_receipts_and_preserves_exact_unknown_fields_and_images() {
     owned_scene::disk_reopen_reverifies_scene_receipts_and_preserves_exact_unknown_fields_and_images(
-    )
+    ).unwrap()
 }
 
 #[test]

@@ -16,7 +16,7 @@ fn snapshot_at(fixture: &Fixture, end: usize) -> (PlanFold, u32) {
 
 #[test]
 fn bounded_prefix_excludes_a_later_cutover_and_late_legacy_write() {
-    let mut fixture = Fixture::new();
+    let mut fixture = Fixture::new().unwrap();
     let before_end = frontier(&fixture);
     let (before, before_number) = snapshot_at(&fixture, before_end);
     let manifest = before.manifest().unwrap();
@@ -85,7 +85,7 @@ fn bounded_prefix_excludes_a_later_cutover_and_late_legacy_write() {
 
 #[test]
 fn prefix_roster_checks_use_membership_at_each_ordered_event() {
-    let mut fixture = Fixture::new();
+    let mut fixture = Fixture::new().unwrap();
     let member = add_identity(&mut fixture.engine, "Historical member");
     fixture.ordered(EventBody::MemberAdded {
         identity: member.clone(),
@@ -160,7 +160,7 @@ fn prefix_roster_checks_use_membership_at_each_ordered_event() {
 
 #[test]
 fn ui_overlay_keeps_version_addresses_after_invalid_undo_and_duplicate_creation() {
-    let mut fixture = Fixture::new();
+    let mut fixture = Fixture::new().unwrap();
     fixture.ordered(fixture.undo(99));
     let reader = add_identity(&mut fixture.engine, "Reader");
     fixture.ordered(EventBody::MemberAdded {
@@ -240,7 +240,7 @@ fn ui_overlay_keeps_version_addresses_after_invalid_undo_and_duplicate_creation(
 
 #[test]
 fn bounded_fold_never_reads_payloads_beyond_its_frontier() {
-    let mut fixture = Fixture::new();
+    let mut fixture = Fixture::new().unwrap();
     let member = add_identity(&mut fixture.engine, "Removed writer");
     fixture.ordered(EventBody::MemberAdded {
         identity: member.clone(),
@@ -330,12 +330,12 @@ fn bounded_fold_never_reads_payloads_beyond_its_frontier() {
 
 #[test]
 fn wrong_space_or_unavailable_prefix_cannot_borrow_future_history() {
-    let mut fixture = Fixture::new();
-    let other = Fixture::new();
+    let mut fixture = Fixture::new().unwrap();
+    let other = Fixture::new().unwrap();
     let end = frontier(&fixture);
     let stored = fixture.engine.store.events(&fixture.space).unwrap();
     let other_stored = other.engine.store.events(&other.space).unwrap();
-    let pending_item = new_id("pending-origin");
+    let pending_item = new_id("pending-origin").unwrap();
     fixture.queue(EventBody::ItemCreated {
         item: pending_item.clone(),
         kind: ItemKind::Plan,

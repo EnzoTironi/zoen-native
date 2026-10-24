@@ -14,15 +14,16 @@ pub(super) fn media_contract_recovery_only_file_refuses_revert_command() {
     media_contract_recovery_command_refused("revert");
 }
 
-pub(super) fn media_contract_recovery_only_file_refuses_signed_projection_and_ingest() {
-    for operation in ["legacy", "version", "revert"] {
+pub(super) fn media_contract_recovery_only_file_refuses_signed_projection_and_ingest(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Ok(for operation in ["legacy", "version", "revert"] {
         let dir = temp();
         let path = dir.join("recovery-authority.sqlite");
         let (f, item) = media_contract_recovered_writer_at(path.to_str().unwrap());
         let content = f.engine.lock().state.items[&item].current().content.clone();
         let body = match operation {
             "legacy" => types::EventBody::MessagePosted {
-                message: types::new_id("msg"),
+                message: types::new_id("msg")?,
                 text: "signed remote recovery claim".into(),
                 attaches: Some(item.clone()),
                 media: None,
@@ -48,7 +49,7 @@ pub(super) fn media_contract_recovery_only_file_refuses_signed_projection_and_in
                 .unwrap()
                 .sign_event(
                     &f.scope.space_id,
-                    &types::new_id("remote"),
+                    &types::new_id("remote")?,
                     crate::engine::now_ms(),
                     engine.logs[&f.scope.space_id].head(),
                     body.clone(),
@@ -91,7 +92,7 @@ pub(super) fn media_contract_recovery_only_file_refuses_signed_projection_and_in
         );
         drop(reopened);
         std::fs::remove_dir_all(dir).unwrap();
-    }
+    })
 }
 
 pub(super) fn media_contract_recovery_bytes_can_be_explicitly_copied_to_a_fresh_file() {

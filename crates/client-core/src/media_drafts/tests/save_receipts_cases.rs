@@ -97,8 +97,8 @@ pub(super) fn private_asset_and_record_storage_failures_rollback_and_can_retry_w
     assert_eq!(asset(&f, &draft, "a"), input("a").bytes);
 }
 
-pub(super) fn backup_restore_and_device_erase_never_carry_a_private_media_draft_to_another_account()
-{
+pub(super) fn backup_restore_and_device_erase_never_carry_a_private_media_draft_to_another_account(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let f = fixture(":memory:");
     let draft = save(&f, "0", &attachments(&["a"], None), vec![input("a")]);
     // Confirm the legitimate group history so a restored account can see its normal membership.
@@ -161,7 +161,7 @@ pub(super) fn backup_restore_and_device_erase_never_carry_a_private_media_draft_
         .restore_snapshot(
             &header,
             &std::fs::read(&path).unwrap(),
-            event_log::Signer::generate(),
+            event_log::Signer::generate()?,
         )
         .unwrap();
     assert_eq!(
@@ -186,6 +186,8 @@ pub(super) fn backup_restore_and_device_erase_never_carry_a_private_media_draft_
     assert!(f.engine.media_draft(f.scope.clone()).is_err());
     drop(restored);
     std::fs::remove_dir_all(dir).unwrap();
+
+    Ok(())
 }
 
 pub(super) fn failed_receipt_commit_rolls_back_canonical_send_and_retains_the_attempted_payload() {

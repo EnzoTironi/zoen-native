@@ -4,7 +4,8 @@ use super::*;
 /// Twelve sealed pages, delivered in the worst order the publish window allows.
 /// A seventh generation opened before the first is permanent loss; the outbox
 /// never offers that sixth in-flight ciphertext.
-pub(super) fn publish_window_keeps_a_reordered_burst_decryptable() {
+pub(super) fn publish_window_keeps_a_reordered_burst_decryptable(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use ::mls::sealed::state_key;
     use event_log::Signer;
     use std::collections::{BTreeSet, HashMap};
@@ -29,7 +30,7 @@ pub(super) fn publish_window_keeps_a_reordered_burst_decryptable() {
     assert_eq!(engine.ingest(ordered(&engine, genesis)), Ingest::Applied);
     engine.create_mls_group(space).unwrap();
 
-    let peer_author = Author::device(&Signer::from_secret(&root_secret), Signer::generate());
+    let peer_author = Author::device(&Signer::from_secret(&root_secret), Signer::generate()?);
     let mut peer_conn = Connection::open_in_memory().unwrap();
     ::mls::migrate(&mut peer_conn).unwrap();
     let peer = Device::new(
@@ -152,12 +153,15 @@ pub(super) fn publish_window_keeps_a_reordered_burst_decryptable() {
         format!("{err:?}").contains("TooDistantInThePast"),
         "{err:?}"
     );
+
+    Ok(())
 }
 
 /// Space A already has five application generations in flight. Its sixth
 /// application, and anything newer in that same Space, stays queued. Space B
 /// still publishes.
-pub(super) fn publish_window_lets_the_next_space_through() {
+pub(super) fn publish_window_lets_the_next_space_through(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use ::mls::sealed::state_key;
     use event_log::Signer;
     use std::collections::{BTreeSet, HashMap};
@@ -187,7 +191,7 @@ pub(super) fn publish_window_lets_the_next_space_through() {
     );
     engine.create_mls_group(space_a).unwrap();
 
-    let peer_author = Author::device(&Signer::from_secret(&root_secret), Signer::generate());
+    let peer_author = Author::device(&Signer::from_secret(&root_secret), Signer::generate()?);
     let mut peer_conn = Connection::open_in_memory().unwrap();
     ::mls::migrate(&mut peer_conn).unwrap();
     let peer = Device::new(
@@ -350,4 +354,6 @@ pub(super) fn publish_window_lets_the_next_space_through() {
         "A's later handshake overtook the held application"
     );
     assert!(offered.iter().all(|env| env.space() != space_a));
+
+    Ok(())
 }

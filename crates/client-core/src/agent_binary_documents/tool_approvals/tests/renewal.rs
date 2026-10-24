@@ -122,7 +122,7 @@ fn first_valid_signed_successor_wins_and_forged_or_legacy_roots_cannot_reset_lin
     // Build candidates from the exact frozen predecessor before either is sequenced.
     let original = f.agent.lock().state.requests[&old.id].req.clone();
     let mut first = original.clone();
-    first.id = types::new_id("first_review");
+    first.id = types::new_id("first_review").unwrap();
     first.tool_proposal.as_mut().unwrap().expires_at_ms = crate::engine::now_ms() + 60_000;
     first.tool_proposal.as_mut().unwrap().review = Some(types::ToolReviewLineage {
         root: old.id.clone(),
@@ -133,7 +133,7 @@ fn first_valid_signed_successor_wins_and_forged_or_legacy_roots_cannot_reset_lin
     first.content_hash = first.tool_proposal_hash(&f.space).unwrap();
     for mutation in 0..4 {
         let mut forged = first.clone();
-        forged.id = types::new_id("forged_review");
+        forged.id = types::new_id("forged_review").unwrap();
         let p = forged.tool_proposal.as_mut().unwrap();
         match mutation {
             0 => p.review.as_mut().unwrap().root = "other-root".into(),
@@ -143,21 +143,21 @@ fn first_valid_signed_successor_wins_and_forged_or_legacy_roots_cannot_reset_lin
         }
         forged.content_hash = forged.tool_proposal_hash(&f.space).unwrap();
         let id = forged.id.clone();
-        append_at(&f, forged, crate::engine::now_ms());
+        append_at(&f, forged, crate::engine::now_ms()).unwrap();
         assert!(!f.agent.lock().state.requests.contains_key(&id));
     }
     let mut competing = first.clone();
-    competing.id = types::new_id("later_review");
+    competing.id = types::new_id("later_review").unwrap();
     competing.content_hash = competing.tool_proposal_hash(&f.space).unwrap();
-    append_at(&f, first.clone(), crate::engine::now_ms());
-    append_at(&f, competing.clone(), crate::engine::now_ms());
+    append_at(&f, first.clone(), crate::engine::now_ms()).unwrap();
+    append_at(&f, competing.clone(), crate::engine::now_ms()).unwrap();
     assert!(!f.agent.lock().state.requests.contains_key(&competing.id));
     let mut bypass = original;
-    bypass.id = types::new_id("legacy_bypass");
+    bypass.id = types::new_id("legacy_bypass").unwrap();
     bypass.tool_proposal.as_mut().unwrap().expires_at_ms = crate::engine::now_ms() + 60_000;
     bypass.content_hash = bypass.tool_proposal_hash(&f.space).unwrap();
     let bypass_id = bypass.id.clone();
-    append_at(&f, bypass, crate::engine::now_ms());
+    append_at(&f, bypass, crate::engine::now_ms()).unwrap();
     assert!(!f.agent.lock().state.requests.contains_key(&bypass_id));
     f.agent.lock().reload().unwrap();
     assert_eq!(
@@ -173,7 +173,7 @@ fn first_valid_signed_successor_wins_and_forged_or_legacy_roots_cannot_reset_lin
 #[test]
 fn receipt_arriving_after_owner_intent_reconciles_without_staging_or_repeating_the_effect() {
     let f = fixture();
-    signed_trust(&f, TrustLevel::Suggest);
+    signed_trust(&f, TrustLevel::Suggest).unwrap();
     let (old, live) = expired_approved(&f, "deckcraft_slide_notes");
     owner_decide(
         &f,
@@ -211,7 +211,7 @@ fn receipt_arriving_after_owner_intent_reconciles_without_staging_or_repeating_t
 fn renewal_refuses_changed_head_and_signed_block_without_creating_an_intent() {
     for block in [false, true] {
         let f = fixture();
-        signed_trust(&f, TrustLevel::Suggest);
+        signed_trust(&f, TrustLevel::Suggest).unwrap();
         let (old, live) = expired_approved(&f, "deckcraft_slide_notes");
         if block {
             signed(
@@ -219,7 +219,7 @@ fn renewal_refuses_changed_head_and_signed_block_without_creating_an_intent() {
                 &f.owner,
                 EventBody::GrantIssued {
                     grant: Grant {
-                        id: types::new_id("synthetic_block"),
+                        id: types::new_id("synthetic_block").unwrap(),
                         grantor: f.owner.clone(),
                         grantee: Some(f.agent.account().unwrap().identity_id),
                         scope: GrantScope::Space(f.space.clone()),
@@ -260,7 +260,7 @@ fn renewal_refuses_changed_head_and_signed_block_without_creating_an_intent() {
 fn signed_non_owner_or_wrong_hash_intents_are_inert_and_later_revocation_prevents_staging() {
     for failure in ["device", "app-grant", "served-writer", "block"] {
         let f = fixture();
-        signed_trust(&f, TrustLevel::Suggest);
+        signed_trust(&f, TrustLevel::Suggest).unwrap();
         let (old, _) = expired_approved(&f, "deckcraft_slide_notes");
         let agent = f.agent.account().unwrap().identity_id;
         for (author, hash) in [
@@ -326,7 +326,7 @@ fn signed_non_owner_or_wrong_hash_intents_are_inert_and_later_revocation_prevent
                 &f.owner,
                 EventBody::GrantIssued {
                     grant: Grant {
-                        id: types::new_id("synthetic_block"),
+                        id: types::new_id("synthetic_block").unwrap(),
                         grantor: f.owner.clone(),
                         grantee: Some(agent.clone()),
                         scope: GrantScope::Space(f.space.clone()),

@@ -2,8 +2,9 @@
 
 use super::*;
 
-pub(super) fn typed_plan_draft_and_exact_receipt_survive_file_reopen() {
-    let db = Database::new();
+pub(super) fn typed_plan_draft_and_exact_receipt_survive_file_reopen(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let db = Database::new()?;
     let mut f = Fixture::at(&db.path());
     let mut s = f.session();
     let read = s.read(&f.engine).unwrap();
@@ -79,9 +80,12 @@ pub(super) fn typed_plan_draft_and_exact_receipt_survive_file_reopen() {
     assert_eq!(f.cipher().unwrap(), cipher);
     drop(s);
     drop(f);
+
+    Ok(())
 }
 
-pub(super) fn contexts_bind_actor_space_item_kind_and_creation() {
+pub(super) fn contexts_bind_actor_space_item_kind_and_creation(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut f = Fixture::new();
     let mut s = f.session();
     let read = s.read(&f.engine).unwrap();
@@ -122,7 +126,7 @@ pub(super) fn contexts_bind_actor_space_item_kind_and_creation() {
         .is_err());
     }
     no_change(&f, &s, &before);
-    let other_id = new_id("other-plan");
+    let other_id = new_id("other-plan")?;
     f.ordered(EventBody::ItemCreated {
         item: other_id.clone(),
         kind: ItemKind::Plan,
@@ -220,6 +224,8 @@ pub(super) fn contexts_bind_actor_space_item_kind_and_creation() {
         )
         .is_err());
     assert!(recreated.cipher().is_none());
+
+    Ok(())
 }
 
 pub(super) fn same_mutation_replays_exact_accepted_context_but_returns_current_view() {

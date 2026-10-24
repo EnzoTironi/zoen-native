@@ -29,7 +29,7 @@ fn ack(f: &PageFixture, cid: &str) {
 
 #[test]
 fn queued_is_not_confirmed_and_exact_receipt_survives_ack_and_later_head() {
-    let f = fixture();
+    let f = fixture().unwrap();
     let t = turn(&f);
     let c = command(&t);
     let (request, permit) = approved(&f, &t, &c);
@@ -91,14 +91,14 @@ fn queued_is_not_confirmed_and_exact_receipt_survives_ack_and_later_head() {
 
 #[test]
 fn lost_outer_response_and_process_cold_reopen_return_same_publication() {
-    let f = fixture();
+    let f = fixture().unwrap();
     let t = turn(&f);
     let c = command(&t);
     let (request, permit) = approved(&f, &t, &c);
     queue_mode(&f);
     // Discarding a completed API result models loss strictly after outer RELEASE.
     let accepted = f.actor.agent.agent_page_replace(permit.turn(), &c).unwrap();
-    let dir = std::env::temp_dir().join(types::new_id("page-command-cold"));
+    let dir = std::env::temp_dir().join(types::new_id("page-command-cold").unwrap());
     std::fs::create_dir(&dir).unwrap();
     let path = dir.join("state.sqlite");
     f.actor
@@ -132,7 +132,7 @@ fn lost_outer_response_and_process_cold_reopen_return_same_publication() {
 #[test]
 fn real_sql_faults_after_apply_publication_and_receipt_rollback_entire_command() {
     for fail_at in [1, 2, 3] {
-        let f = fixture();
+        let f = fixture().unwrap();
         let t = turn(&f);
         let c = command(&t);
         let (_, permit) = approved(&f, &t, &c);
@@ -159,7 +159,7 @@ fn real_sql_faults_after_apply_publication_and_receipt_rollback_entire_command()
         let accepted = f.actor.agent.agent_page_replace(permit.turn(), &c).unwrap();
         assert_eq!(accepted.observed_base_version, 1);
     }
-    let f = fixture();
+    let f = fixture().unwrap();
     let t = turn(&f);
     let c = command(&t);
     let (_, permit) = approved(&f, &t, &c);
@@ -173,7 +173,7 @@ fn real_sql_faults_after_apply_publication_and_receipt_rollback_entire_command()
 
 #[test]
 fn permanent_refusal_recovery_reports_the_original_cid_without_retrying_it() {
-    let f = fixture();
+    let f = fixture().unwrap();
     let t = turn(&f);
     let c = command(&t);
     let (_, permit) = approved(&f, &t, &c);
@@ -200,7 +200,7 @@ fn permanent_refusal_recovery_reports_the_original_cid_without_retrying_it() {
 
 #[test]
 fn valid_member_same_cid_is_not_confirmation_and_does_not_mask_the_later_exact_echo() {
-    let f = fixture();
+    let f = fixture().unwrap();
     let t = turn(&f);
     let c = command(&t);
     let (_, permit) = approved(&f, &t, &c);
@@ -221,7 +221,7 @@ fn valid_member_same_cid_is_not_confirmation_and_does_not_mask_the_later_exact_e
             at,
             log.head(),
             EventBody::MessagePosted {
-                message: types::new_id("foreign_alias"),
+                message: types::new_id("foreign_alias").unwrap(),
                 text: "Valid foreign same-CID event".into(),
                 attaches: None,
                 reply: None,
@@ -261,7 +261,7 @@ fn valid_member_same_cid_is_not_confirmation_and_does_not_mask_the_later_exact_e
 #[test]
 fn concurrent_peer_publication_does_not_turn_local_result_into_a_canonical_version() {
     use base64::Engine as _;
-    let f = fixture();
+    let f = fixture().unwrap();
     let t = turn(&f);
     let c = command(&t);
     let (request, permit) = approved(&f, &t, &c);
@@ -312,7 +312,7 @@ fn concurrent_peer_publication_does_not_turn_local_result_into_a_canonical_versi
         .unwrap();
         let signed = e.author_for(&f.actor.owner).unwrap().sign_event(
             &f.actor.space,
-            &types::new_id("peer_page"),
+            &types::new_id("peer_page").unwrap(),
             crate::engine::now_ms(),
             log.head(),
             EventBody::ItemVersioned {
@@ -361,7 +361,7 @@ fn concurrent_peer_publication_does_not_turn_local_result_into_a_canonical_versi
     );
     let wire = serde_json::to_value(&replay).unwrap();
     assert!(wire.get("version").is_none() && wire.get("contentSha256").is_none());
-    let dir = std::env::temp_dir().join(types::new_id("concurrent-page-cold"));
+    let dir = std::env::temp_dir().join(types::new_id("concurrent-page-cold").unwrap());
     std::fs::create_dir(&dir).unwrap();
     let path = dir.join("state.sqlite");
     f.actor

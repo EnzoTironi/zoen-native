@@ -43,7 +43,7 @@ fn canonical_wire_request_projects_and_approves_after_reload_in_both_map_feature
         .stage_tool_approval(&turn(&fixture), reverse_ordered_input(&fixture))
         .unwrap();
     let mut request = fixture.agent.lock().state.requests[&staged.id].req.clone();
-    request.id = types::new_id("synthetic_cross_feature_ask");
+    request.id = types::new_id("synthetic_cross_feature_ask").unwrap();
     request.tool_proposal.as_mut().unwrap().arguments_json = sorted_arguments(&fixture);
     request.content_hash = request.tool_proposal_hash(&fixture.space).unwrap();
     let id = request.id.clone();
@@ -166,7 +166,7 @@ fn signed_noncanonical_wire_is_retained_without_projection_or_approval() {
     let fixture = fixture();
     let staged = stage(&fixture, "deckcraft_slide_notes");
     let mut request = fixture.agent.lock().state.requests[&staged.id].req.clone();
-    request.id = types::new_id("synthetic_noncanonical_wire");
+    request.id = types::new_id("synthetic_noncanonical_wire").unwrap();
     request.tool_proposal.as_mut().unwrap().arguments_json = format!(
         r#"{{"version":1,"text":"Synthetic reviewed notes","slideId":1,"sha256":"{}","artifactId":"{}"}}"#,
         fixture.base.sha256, fixture.base.item_id,

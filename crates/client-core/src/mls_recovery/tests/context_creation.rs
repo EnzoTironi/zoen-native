@@ -111,10 +111,11 @@ pub(super) fn an_empty_claim_reply_resumes_context_creation_for_a_ready_group() 
     assert!(!engine.pending_uploads(8).is_empty());
 }
 
-pub(super) fn a_missing_group_recovers_when_its_validated_blob_arrives_later() {
+pub(super) fn a_missing_group_recovers_when_its_validated_blob_arrives_later(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let space = "late-recovery-blob";
-    let staged = staged_recovery(":memory:", space);
-    let mut engine = restored_receiver(&staged);
+    let staged = staged_recovery(":memory:", space)?;
+    let mut engine = restored_receiver(&staged)?;
     assert!(!engine.mls_recovery_pass().unwrap());
     assert!(!engine.mls_recovery_pass().unwrap());
     let reference = engine.recovery_context(space).unwrap();
@@ -124,12 +125,15 @@ pub(super) fn a_missing_group_recovers_when_its_validated_blob_arrives_later() {
     assert!(engine.mls_recovery_pass().unwrap());
     assert!(engine.device().unwrap().recovery_pending(space));
     assert!(engine.outbox_envelopes().is_empty());
+
+    Ok(())
 }
 
-pub(super) fn a_recovery_error_keeps_its_group_queued_through_a_future_retry() {
+pub(super) fn a_recovery_error_keeps_its_group_queued_through_a_future_retry(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let space = "future-recovery-retry";
-    let staged = staged_recovery(":memory:", space);
-    let mut engine = restored_receiver(&staged);
+    let staged = staged_recovery(":memory:", space)?;
+    let mut engine = restored_receiver(&staged)?;
     let reference = engine.recovery_context(space).unwrap();
     assert!(engine.recovery_context_arrived(&reference, &staged.context_blob));
     engine.net.profiles.agreement = None;
@@ -151,6 +155,8 @@ pub(super) fn a_recovery_error_keeps_its_group_queued_through_a_future_retry() {
         .insert(space.into(), Instant::now() - Duration::from_secs(1));
     assert!(engine.mls_recovery_pass().unwrap());
     assert!(engine.device().unwrap().recovery_pending(space));
+
+    Ok(())
 }
 
 pub(super) fn producing_one_context_preserves_the_other_queued_groups() {

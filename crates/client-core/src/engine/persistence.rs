@@ -183,8 +183,16 @@ impl Engine {
 
     // ── escrita de baixo nível ──
 
-    pub(crate) fn create_identity(&mut self, mut identity: Identity, local: bool) -> R<IdentityId> {
-        let signer = Signer::generate();
+    pub(crate) fn create_identity(&mut self, identity: Identity, local: bool) -> R<IdentityId> {
+        self.create_identity_with_signer(identity, local, Signer::generate()?)
+    }
+
+    pub(crate) fn create_identity_with_signer(
+        &mut self,
+        mut identity: Identity,
+        local: bool,
+        signer: Signer,
+    ) -> R<IdentityId> {
         identity.id = signer.id();
         if local && identity.kind == IdentityKind::Agent && identity.owner_proof.is_none() {
             identity.owner_proof = self
@@ -332,20 +340,26 @@ impl Engine {
             .map_err(|e| CoreError::Storage {
                 message: e.to_string(),
             })?;
+        self.clear_local_store()?;
+        tx.commit().map_err(|e| CoreError::Storage {
+            message: e.to_string(),
+        })?;
+        self.reload()
+    }
+
+    /// Clears the canonical tables inside the transaction owned by the caller.
+    pub(crate) fn clear_local_store(&self) -> R<()> {
         self.store.wipe()?;
         self.store.wipe_sync()?;
         self.store.wipe_profiles()?;
-        ::mls::clear_recovery_markers(&tx).map_err(crate::mls::mls_err)?;
+        ::mls::clear_recovery_markers(self.store.conn()).map_err(crate::mls::mls_err)?;
         // `wipe` empties `meta` too: keep the format marker, or the next open takes this
         // device's fresh v2 logs for old demo data and erases them.
         self.store.set_meta(
             crate::sync::EVENT_FORMAT_META,
             crate::sync::EVENT_FORMAT_VALUE,
         )?;
-        tx.commit().map_err(|e| CoreError::Storage {
-            message: e.to_string(),
-        })?;
-        self.reload()
+        Ok(())
     }
 
     /// Who signs for `author` here: this device's key for the account, or a local

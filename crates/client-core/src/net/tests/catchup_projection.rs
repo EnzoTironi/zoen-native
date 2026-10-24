@@ -40,7 +40,7 @@ async fn ordinary_remote_page_catchup_is_single_pass_and_cold_projection_exact()
     let _ = rustls::crypto::ring::default_provider().install_default();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("ws://{}", listener.local_addr().unwrap());
-    let home = Home(std::env::temp_dir().join(types::new_id("catchup-projection")));
+    let home = Home(std::env::temp_dir().join(types::new_id("catchup-projection").unwrap()));
     std::fs::create_dir(&home.0).unwrap();
     let path = home.0.join("reader.sqlite");
     let mut engine = Engine::open(path.to_str().unwrap()).unwrap();
@@ -48,7 +48,7 @@ async fn ordinary_remote_page_catchup_is_single_pass_and_cold_projection_exact()
     engine.set_registered(true).unwrap();
     let _ = engine.mls_key_packages_to_publish().unwrap();
     engine.mls_key_packages_published(Ok(()));
-    let author = Author::device(&Signer::generate(), Signer::generate());
+    let author = Author::device(&Signer::generate().unwrap(), Signer::generate().unwrap());
     let events = pages(&author, 32);
     let engine = Arc::new(Mutex::new(engine));
     let (status, _) = watch::channel(NetStatus {

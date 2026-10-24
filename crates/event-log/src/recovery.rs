@@ -254,8 +254,8 @@ mod tests {
 
     #[test]
     fn only_named_recoverable_keys_open_the_bound_context() {
-        let ana = AgreementKey::generate();
-        let bruno = AgreementKey::generate();
+        let ana = AgreementKey::generate().unwrap();
+        let bruno = AgreementKey::generate().unwrap();
         let a = "aa".repeat(32);
         let b = "bb".repeat(32);
         let device = "dd".repeat(32);
@@ -287,7 +287,7 @@ mod tests {
 
     #[test]
     fn invalid_keys_duplicate_recipients_and_malformed_records_are_refused() {
-        let key = AgreementKey::generate();
+        let key = AgreementKey::generate().unwrap();
         let id = "ab".repeat(32);
         let public = key.public_hex();
         assert!(seal("sp_room", 1, &id, b"tree", &[(&id, &"00".repeat(32))]).is_none());

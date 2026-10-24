@@ -1,17 +1,17 @@
 use super::*;
 use test_transport::{next_call, Call, Fixture};
 
-pub(super) fn code() -> (LinkCode, Vec<u8>) {
-    let device = Signer::generate();
+pub(super) fn code() -> std::result::Result<(LinkCode, Vec<u8>), Box<dyn std::error::Error>> {
+    let device = Signer::generate()?;
     let (secret, public) = link::key_pair();
-    (
+    Ok((
         LinkCode {
             device: device.id(),
             hpke: public,
             secret: [77; 32],
         },
         secret,
-    )
+    ))
 }
 pub(super) fn opened(call: &Call, code: &LinkCode, recipient: &[u8]) -> IdentityBox {
     let Op::DeliverLink {
@@ -79,7 +79,7 @@ async fn ambiguous_delivery_reuses_same_peer_key_across_cold_reopen_and_explicit
     let mut f = Fixture::new().await;
     f.online().await;
     let account = f.client().account().unwrap();
-    let (code, recipient) = code();
+    let (code, recipient) = code().unwrap();
     let first = enroll(&f, &code);
     let accepted = next_call(&mut f.relay.calls).await;
     let original = opened(&accepted, &code, &recipient);
@@ -139,7 +139,7 @@ async fn ambiguous_delivery_reuses_same_peer_key_across_cold_reopen_and_explicit
 async fn ambiguous_vault_save_does_not_deliver_or_claim_success_and_retains_retry_material() {
     let mut f = Fixture::new().await;
     f.online().await;
-    let (code, recipient) = code();
+    let (code, recipient) = code().unwrap();
     f.vault.ambiguous_peer_save.store(true, Ordering::SeqCst);
     assert!(enroll(&f, &code).await.unwrap().is_err());
     assert!(

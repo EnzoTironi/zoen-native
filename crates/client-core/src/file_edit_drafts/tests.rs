@@ -135,10 +135,10 @@ fn rows(f: &Fixture) -> Vec<(String, String)> {
         .collect::<Result<_, _>>()
         .unwrap()
 }
-fn temp() -> std::path::PathBuf {
-    let path = std::env::temp_dir().join(types::new_id("file-edit-draft-test"));
+fn temp() -> std::result::Result<std::path::PathBuf, Box<dyn std::error::Error>> {
+    let path = std::env::temp_dir().join(types::new_id("file-edit-draft-test")?);
     std::fs::create_dir_all(&path).unwrap();
-    path
+    Ok(path)
 }
 fn role(f: &Fixture, role: Role) {
     f.engine
@@ -157,6 +157,7 @@ fn role(f: &Fixture, role: Role) {
 #[test]
 fn complete_captures_are_private_encrypted_and_survive_a_locked_cold_reopen() {
     private_custody::complete_captures_are_private_encrypted_and_survive_a_locked_cold_reopen()
+        .unwrap()
 }
 
 #[test]
@@ -167,7 +168,7 @@ fn fifo_keeps_all_snapshots_and_advances_only_its_own_base_while_the_origin_stay
 #[test]
 fn lost_commit_ack_reopens_and_returns_its_exact_receipt_without_touching_newer_edits_or_versions()
 {
-    capture_queue::lost_commit_ack_reopens_and_returns_its_exact_receipt_without_touching_newer_edits_or_versions()
+    capture_queue::lost_commit_ack_reopens_and_returns_its_exact_receipt_without_touching_newer_edits_or_versions().unwrap()
 }
 
 #[test]
@@ -218,7 +219,7 @@ fn validation_queue_bounds_and_same_bytes_commit_preserve_existing_file_semantic
 
 #[test]
 fn backup_restore_and_device_erase_exclude_private_pdf_journals_even_from_retained_snapshots() {
-    private_custody::backup_restore_and_device_erase_exclude_private_pdf_journals_even_from_retained_snapshots()
+    private_custody::backup_restore_and_device_erase_exclude_private_pdf_journals_even_from_retained_snapshots().unwrap()
 }
 
 mod admission;

@@ -75,8 +75,9 @@ pub(super) fn journal_failure_after_outbox_insert_rolls_back_event_and_projectio
     assert!(!s.read(&f.engine).unwrap().unsaved);
 }
 
-pub(super) fn lost_commit_response_reopens_one_exact_pending_source() {
-    let db = Database::new();
+pub(super) fn lost_commit_response_reopens_one_exact_pending_source(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let db = Database::new()?;
     let mut f = Fixture::at(&db.path());
     let mut s = f.session();
     let read = s.read(&f.engine).unwrap();
@@ -138,6 +139,8 @@ pub(super) fn lost_commit_response_reopens_one_exact_pending_source() {
     assert!(!s.read(&f.engine).unwrap().unsaved);
     drop(s);
     drop(f);
+
+    Ok(())
 }
 
 pub(super) fn only_complete_canonical_exact_source_acks() {
@@ -323,8 +326,9 @@ pub(super) fn waiting_blob_blocks_edit_ack_and_later_versions_until_ready() {
     assert!(journal(&s).commit.is_none());
 }
 
-pub(super) fn newer_draft_survives_older_ack_and_permanent_transport_refusal() {
-    let db = Database::new();
+pub(super) fn newer_draft_survives_older_ack_and_permanent_transport_refusal(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let db = Database::new()?;
     let mut f = Fixture::at(&db.path());
     let mut s = f.session();
     let read = s.read(&f.engine).unwrap();
@@ -388,4 +392,6 @@ pub(super) fn newer_draft_survives_older_ack_and_permanent_transport_refusal() {
     );
     drop(s);
     drop(f);
+
+    Ok(())
 }

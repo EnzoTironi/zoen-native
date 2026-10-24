@@ -6,7 +6,7 @@ use documents::{Kind, Span};
 
 #[test]
 fn typed_client_read_preserves_duplicate_line_ids_and_exact_legacy_text() {
-    let fixture = Fixture::new();
+    let fixture = Fixture::new().unwrap();
     let pending = fixture.engine.store.outbox().unwrap().len();
     let read = fixture.engine.plan_page(&fixture.item).unwrap();
     assert!(read.ready);
@@ -44,7 +44,7 @@ fn typed_client_read_preserves_duplicate_line_ids_and_exact_legacy_text() {
 
 #[test]
 fn typed_client_read_keeps_all_prose_metadata_and_utf16_marks_after_cutover() {
-    let mut fixture = Fixture::new();
+    let mut fixture = Fixture::new().unwrap();
     let mut document = fixture.fold().document.unwrap();
     let kinds = vec![
         Kind::Paragraph,
@@ -83,7 +83,7 @@ fn typed_client_read_keeps_all_prose_metadata_and_utf16_marks_after_cutover() {
     let edits: Vec<_> = kinds
         .iter()
         .map(|kind| {
-            let id = new_id("prose");
+            let id = new_id("prose").unwrap();
             order.push(id.clone());
             PlanBlockEdit {
                 id,
@@ -176,7 +176,7 @@ fn typed_client_read_keeps_all_prose_metadata_and_utf16_marks_after_cutover() {
 
 #[test]
 fn typed_client_read_labels_private_draft_without_leaking_it_into_shared_cards() {
-    let fixture = Fixture::new();
+    let fixture = Fixture::new().unwrap();
     let current = fixture.engine.plan_page(&fixture.item).unwrap();
     let pending = fixture.engine.store.outbox().unwrap().len();
     fixture
@@ -232,7 +232,7 @@ fn typed_client_read_labels_private_draft_without_leaking_it_into_shared_cards()
 
 #[test]
 fn typed_client_read_returns_exact_extreme_cents_even_when_total_is_unrepresentable() {
-    let mut fixture = Fixture::new();
+    let mut fixture = Fixture::new().unwrap();
     let mut plan = original();
     plan.budget_cents = Some(i64::MIN);
     plan.sections[0].lines[0].cost_cents = i64::MAX;

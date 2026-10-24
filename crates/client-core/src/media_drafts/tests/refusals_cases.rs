@@ -110,7 +110,8 @@ pub(super) fn media_contract_refused_duplicate_creation_cannot_poison_confirmed_
     }
 }
 
-pub(super) fn media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped() {
+pub(super) fn media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let f = fixture(":memory:");
     media_contract_confirm_scope(&f);
     let draft = save(
@@ -174,7 +175,7 @@ pub(super) fn media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped
         .lock()
         .author_for(&f.scope.expected_identity_id)
         .unwrap();
-    let foreign = event_log::Author::root(event_log::Signer::generate());
+    let foreign = event_log::Author::root(event_log::Signer::generate()?);
     let identity_secret: [u8; 32] = f
         .vault
         .load(crate::sync::VAULT_IDENTITY.into())
@@ -183,7 +184,7 @@ pub(super) fn media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped
         .unwrap();
     let sibling = event_log::Author::device(
         &event_log::Signer::from_secret(&identity_secret),
-        event_log::Signer::generate(),
+        event_log::Signer::generate()?,
     );
     let mut unrelated = Vec::new();
     // Authenticated negative fixtures deliberately do not represent authorized local sends.
@@ -194,7 +195,7 @@ pub(super) fn media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped
     ] {
         let event = author.sign_event(
             space,
-            &types::new_id("unrelated"),
+            &types::new_id("unrelated")?,
             original.at_ms + 10,
             None,
             original.body.clone(),
@@ -222,7 +223,7 @@ pub(super) fn media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped
         }
         let mut event = own.sign_event(
             &f.scope.space_id,
-            &types::new_id("drift"),
+            &types::new_id("drift")?,
             original.at_ms + 11,
             None,
             body,
@@ -305,12 +306,12 @@ pub(super) fn media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped
         .iter()
         .any(|env| env.client_id() == later.id));
     let timeline = f.engine.timeline(f.scope.space_id.clone()).unwrap();
-    for original in &sent.entries {
+    Ok(for original in &sent.entries {
         let entry = timeline
             .iter()
             .find(|entry| entry.id == original.id)
             .unwrap();
         assert_eq!(entry.delivery, crate::Delivery::Failed);
         assert_eq!(entry.media, original.media);
-    }
+    })
 }

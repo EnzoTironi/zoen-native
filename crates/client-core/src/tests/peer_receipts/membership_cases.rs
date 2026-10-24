@@ -200,8 +200,9 @@ pub(super) fn pending_membership_cannot_admit_a_new_peer_or_suppress_a_confirmed
     assert_delivery(&e, &c, Delivery::Read);
 }
 
-pub(super) fn confirmed_removal_discards_new_and_deferred_marks_so_rejoin_cannot_authorize_them() {
-    for remove_reader in [false, true] {
+pub(super) fn confirmed_removal_discards_new_and_deferred_marks_so_rejoin_cannot_authorize_them(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Ok(for remove_reader in [false, true] {
         let (_db, e, c) = fixture();
         membership(
             &e,
@@ -225,7 +226,7 @@ pub(super) fn confirmed_removal_discards_new_and_deferred_marks_so_rejoin_cannot
             let mut engine = e.lock();
             let signed = engine.author_for(actor).unwrap().sign_event(
                 &c.space,
-                &types::new_id("membership"),
+                &types::new_id("membership")?,
                 crate::engine::now_ms(),
                 engine.logs[&c.space].head(),
                 body,
@@ -270,5 +271,5 @@ pub(super) fn confirmed_removal_discards_new_and_deferred_marks_so_rejoin_cannot
             .unwrap());
         assert_eq!(snapshot(&e).rows[0].2, format!("{:020}", 12));
         assert_eq!(snapshot(&e).rows[0].3, format!("{:020}", 11));
-    }
+    })
 }

@@ -4,7 +4,7 @@ use crate::agent_binary_documents::tests::renewal_history::{confirm_pending, exp
 
 #[test]
 fn page_renewal_preserves_exact_block_intent_and_requires_a_new_approval() {
-    let f = fixture();
+    let f = fixture().unwrap();
     let t = turn(&f);
     let command = command(&t);
     let old = expired_approved(&f.actor, stage(&f, &t, &command));
@@ -71,7 +71,7 @@ fn page_renewal_preserves_exact_block_intent_and_requires_a_new_approval() {
 
 #[test]
 fn accepted_page_after_owner_intent_reconciles_without_a_fresh_pending_request() {
-    let f = fixture();
+    let f = fixture().unwrap();
     let t = turn(&f);
     let c = command(&t);
     let live = stage(&f, &t, &c);
@@ -111,7 +111,7 @@ fn later_step(f: &PageFixture) {
 #[test]
 fn renewed_page_pending_or_approved_write_cannot_execute_after_a_later_step() {
     for approved_before in [false, true] {
-        let f = fixture();
+        let f = fixture().unwrap();
         let t = turn(&f);
         let command = command(&t);
         let old = expired_approved(&f.actor, stage(&f, &t, &command));
@@ -149,7 +149,7 @@ fn renewed_page_pending_or_approved_write_cannot_execute_after_a_later_step() {
 
 #[test]
 fn accepted_renewed_page_receipt_survives_a_later_canonical_step() {
-    let f = fixture();
+    let f = fixture().unwrap();
     let t = turn(&f);
     let command = command(&t);
     let old = expired_approved(&f.actor, stage(&f, &t, &command));

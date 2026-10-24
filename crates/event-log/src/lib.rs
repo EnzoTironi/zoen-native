@@ -25,6 +25,8 @@ pub mod profile;
 pub mod profile_sync;
 pub mod recovery;
 
+mod crypto;
+pub use crypto::CryptoError;
 mod error;
 pub use error::LogError;
 
@@ -40,13 +42,12 @@ pub struct Signer {
 }
 
 impl Signer {
-    #[must_use]
-    pub fn generate() -> Self {
-        let mut seed = [0u8; 32];
-        getrandom::getrandom(&mut seed).expect("entropia do sistema");
-        Self {
-            key: SigningKey::from_bytes(&seed),
-        }
+    /// Creates a fresh signing key.
+    ///
+    /// # Errors
+    /// Returns the operating system entropy failure before constructing a key.
+    pub fn generate() -> Result<Self, CryptoError> {
+        Ok(Self::from_secret(&crypto::random()?))
     }
 
     #[must_use]

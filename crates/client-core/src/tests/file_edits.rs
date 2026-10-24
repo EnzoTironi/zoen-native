@@ -407,7 +407,7 @@ fn rejected_item_version_append_restores_every_sql_row_projection_and_upload_the
 
 #[test]
 fn checked_file_edit_and_original_history_survive_a_cold_database_reopen() {
-    let directory = std::env::temp_dir().join(types::new_id("checked-file-reopen"));
+    let directory = std::env::temp_dir().join(types::new_id("checked-file-reopen").unwrap());
     std::fs::create_dir_all(&directory).unwrap();
     let path = directory.join("core.sqlite").to_string_lossy().to_string();
     let (f, saved) = {

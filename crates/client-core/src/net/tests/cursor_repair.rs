@@ -198,7 +198,8 @@ async fn barrier(
 #[tokio::test(flavor = "current_thread")]
 async fn healthy_socket_recovers_final_unannounced_event_without_reconnect_or_followup() {
     socket_repair::healthy_socket_recovers_final_unannounced_event_without_reconnect_or_followup()
-        .await;
+        .await
+        .unwrap();
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -237,7 +238,7 @@ async fn legitimate_full_completion_retargets_the_cleanup_budget_before_close() 
 
 #[tokio::test(flavor = "current_thread")]
 async fn healthy_socket_discovers_new_authorized_space_when_joined_and_all_live_events_are_lost() {
-    socket_repair::healthy_socket_discovers_new_authorized_space_when_joined_and_all_live_events_are_lost().await;
+    socket_repair::healthy_socket_discovers_new_authorized_space_when_joined_and_all_live_events_are_lost().await.unwrap();
 }
 
 mod session_failure;

@@ -2,8 +2,9 @@
 
 use super::*;
 
-pub(super) fn lost_reply_empty_diff_undo_and_redo_continue_own_branch() {
-    let db = Database::new();
+pub(super) fn lost_reply_empty_diff_undo_and_redo_continue_own_branch(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let db = Database::new()?;
     let mut f = Fixture::at(&db.path());
     let mut s = f.session();
     let read = s.read(&f.engine).unwrap();
@@ -71,6 +72,8 @@ pub(super) fn lost_reply_empty_diff_undo_and_redo_continue_own_branch() {
     );
     drop(s);
     drop(f);
+
+    Ok(())
 }
 
 pub(super) fn continuation_does_not_replace_unseen_remote_fields_or_blocks() {

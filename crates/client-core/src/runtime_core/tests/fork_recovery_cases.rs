@@ -2,8 +2,9 @@
 
 use super::*;
 
-pub(super) fn failed_opening_record_rolls_back_log_and_ratchet_and_discards_workspace() {
-    let mut fixture = Fixture::new();
+pub(super) fn failed_opening_record_rolls_back_log_and_ratchet_and_discards_workspace(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = Fixture::new()?;
     fixture.grant("retained-trust", None);
     let trigger = fixture.message("Known original request");
     let original = fixture
@@ -25,7 +26,7 @@ pub(super) fn failed_opening_record_rolls_back_log_and_ratchet_and_discards_work
             &author,
             450,
             EventBody::MessagePosted {
-                message: new_id("message"),
+                message: new_id("message")?,
                 text: "Open atomically".into(),
                 attaches: None,
                 reply: None,
@@ -57,10 +58,13 @@ pub(super) fn failed_opening_record_rolls_back_log_and_ratchet_and_discards_work
     restored.ingest(vec![frame.clone()]).unwrap();
     assert!(restored.reply(SPACE, &frame.hash, 500).is_ok());
     println!("JOURNEY real opening/log/ratchet rollback on receipt failure; workspace discarded; same message opens from retained image");
+
+    Ok(())
 }
 
-pub(super) fn conflicting_actual_member_checkpoint_parks_live_and_cold_core() {
-    let mut fixture = Fixture::new();
+pub(super) fn conflicting_actual_member_checkpoint_parks_live_and_cold_core(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = Fixture::new()?;
     fixture.grant("explicit-trust", None);
     let trigger = fixture.message("Original request");
     let original = fixture
@@ -83,10 +87,13 @@ pub(super) fn conflicting_actual_member_checkpoint_parks_live_and_cold_core() {
         Err(NativeError::Credential)
     ));
     println!("JOURNEY signed member checkpoint with conflicting group digest parks live core and refuses cold restore");
+
+    Ok(())
 }
 
-pub(super) fn diverged_member_checkpoint_parks_live_and_cold_core() {
-    let mut fixture = Fixture::new();
+pub(super) fn diverged_member_checkpoint_parks_live_and_cold_core(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = Fixture::new()?;
     fixture.grant("explicit-trust", None);
     let trigger = fixture.message("Original request");
     let original = fixture
@@ -186,10 +193,13 @@ pub(super) fn diverged_member_checkpoint_parks_live_and_cold_core() {
     println!(
         "JOURNEY honest checkpoint from the other fork parks live send and refuses cold restore"
     );
+
+    Ok(())
 }
 
-pub(super) fn sealed_member_seen_ahead_marks_the_fork_and_parks_send() {
-    let mut fixture = Fixture::new();
+pub(super) fn sealed_member_seen_ahead_marks_the_fork_and_parks_send(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = Fixture::new()?;
     fixture.grant("sealed-fork-trust", None);
     let trigger = fixture.message("Original request");
     let original = fixture
@@ -218,7 +228,7 @@ pub(super) fn sealed_member_seen_ahead_marks_the_fork_and_parks_send() {
         .integrity_error
         .is_none());
 
-    let stranger = event_log::Author::root(event_log::Signer::generate());
+    let stranger = event_log::Author::root(event_log::Signer::generate()?);
     let refused = fixture.core.engine.ingest(ordered(
         &fixture.core.engine,
         sealed_frame(&stranger, "sealed-stranger", Some(&ahead)),
@@ -276,4 +286,6 @@ pub(super) fn sealed_member_seen_ahead_marks_the_fork_and_parks_send() {
         fixture.core.refresh(&original, 500),
         Err(NativeError::NotReady)
     ));
+
+    Ok(())
 }

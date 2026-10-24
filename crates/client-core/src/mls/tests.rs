@@ -59,7 +59,7 @@ fn rejected_pruned_history_preserves_the_mls_group() {
 /// never offers that sixth in-flight ciphertext.
 #[test]
 fn publish_window_keeps_a_reordered_burst_decryptable() {
-    publish_window_cases::publish_window_keeps_a_reordered_burst_decryptable();
+    publish_window_cases::publish_window_keeps_a_reordered_burst_decryptable().unwrap();
 }
 
 /// Space A already has five application generations in flight. Its sixth
@@ -67,111 +67,113 @@ fn publish_window_keeps_a_reordered_burst_decryptable() {
 /// still publishes.
 #[test]
 fn publish_window_lets_the_next_space_through() {
-    publish_window_cases::publish_window_lets_the_next_space_through();
+    publish_window_cases::publish_window_lets_the_next_space_through().unwrap();
 }
 
 #[test]
 fn divergent_prefix_on_the_local_chain_marks_the_space() {
-    prefix_settlement_cases::divergent_prefix_on_the_local_chain_marks_the_space();
+    prefix_settlement_cases::divergent_prefix_on_the_local_chain_marks_the_space().unwrap();
 }
 
 #[test]
 fn matching_prefix_does_not_fork() {
-    prefix_settlement_cases::matching_prefix_does_not_fork();
+    prefix_settlement_cases::matching_prefix_does_not_fork().unwrap();
 }
 
 #[test]
 fn matching_pending_prefix_is_cleared_without_a_fork() {
-    prefix_settlement_cases::matching_pending_prefix_is_cleared_without_a_fork();
+    prefix_settlement_cases::matching_pending_prefix_is_cleared_without_a_fork().unwrap();
 }
 
 #[test]
 fn pending_prefix_forks_when_the_chain_reaches_it() {
-    prefix_settlement_cases::pending_prefix_forks_when_the_chain_reaches_it();
+    prefix_settlement_cases::pending_prefix_forks_when_the_chain_reaches_it().unwrap();
 }
 
 #[test]
 fn pending_prefix_survives_reopen_and_forks_when_reached() {
-    prefix_settlement_cases::pending_prefix_survives_reopen_and_forks_when_reached();
+    prefix_settlement_cases::pending_prefix_survives_reopen_and_forks_when_reached().unwrap();
 }
 
 #[test]
 fn divergent_digest_still_marks_the_space() {
-    prefix_settlement_cases::divergent_digest_still_marks_the_space();
+    prefix_settlement_cases::divergent_digest_still_marks_the_space().unwrap();
 }
 
 #[test]
 fn colluding_near_claims_do_not_evict_an_honest_far_claim() {
-    prefix_admission_cases::colluding_near_claims_do_not_evict_an_honest_far_claim();
+    prefix_admission_cases::colluding_near_claims_do_not_evict_an_honest_far_claim().unwrap();
 }
 
 #[test]
 fn same_device_higher_claim_replaces_the_lower_and_catches_an_earlier_fork() {
     prefix_admission_cases::same_device_higher_claim_replaces_the_lower_and_catches_an_earlier_fork(
-    );
+    ).unwrap();
 }
 
 #[test]
 fn two_devices_of_one_member_keep_separate_claims() {
-    prefix_admission_cases::two_devices_of_one_member_keep_separate_claims();
+    prefix_admission_cases::two_devices_of_one_member_keep_separate_claims().unwrap();
 }
 
 #[test]
 fn a_non_member_checkpoint_is_ignored() {
-    prefix_admission_cases::a_non_member_checkpoint_is_ignored();
+    prefix_admission_cases::a_non_member_checkpoint_is_ignored().unwrap();
 }
 
 #[test]
 fn an_honest_conversation_with_many_members_ends_with_no_pending_prefix() {
-    prefix_admission_cases::an_honest_conversation_with_many_members_ends_with_no_pending_prefix();
+    prefix_admission_cases::an_honest_conversation_with_many_members_ends_with_no_pending_prefix()
+        .unwrap();
 }
 
 #[test]
 fn a_removed_member_pending_claim_is_kept_until_the_chain_reaches_it() {
-    prefix_admission_cases::a_removed_member_pending_claim_is_kept_until_the_chain_reaches_it();
+    prefix_admission_cases::a_removed_member_pending_claim_is_kept_until_the_chain_reaches_it()
+        .unwrap();
 }
 
 #[test]
 fn pending_prefix_ceiling_refuses_a_new_device_without_evicting() {
-    prefix_admission_cases::pending_prefix_ceiling_refuses_a_new_device_without_evicting();
+    prefix_admission_cases::pending_prefix_ceiling_refuses_a_new_device_without_evicting().unwrap();
 }
 
 #[test]
 fn a_member_seen_at_or_beyond_the_event_seq_is_a_fork() {
-    authorization_cases::a_member_seen_at_or_beyond_the_event_seq_is_a_fork();
+    authorization_cases::a_member_seen_at_or_beyond_the_event_seq_is_a_fork().unwrap();
 }
 
 #[test]
 fn an_event_ahead_of_the_local_head_stays_a_gap() {
-    authorization_cases::an_event_ahead_of_the_local_head_stays_a_gap();
+    authorization_cases::an_event_ahead_of_the_local_head_stays_a_gap().unwrap();
 }
 
 #[test]
 fn a_non_member_seen_beyond_the_event_is_refused_without_a_fork() {
-    authorization_cases::a_non_member_seen_beyond_the_event_is_refused_without_a_fork();
+    authorization_cases::a_non_member_seen_beyond_the_event_is_refused_without_a_fork().unwrap();
 }
 
 #[test]
 fn a_forged_signature_is_refused_without_a_fork() {
-    authorization_cases::a_forged_signature_is_refused_without_a_fork();
+    authorization_cases::a_forged_signature_is_refused_without_a_fork().unwrap();
 }
 
 #[test]
 fn a_non_member_diverged_seen_is_refused_without_a_fork() {
-    authorization_cases::a_non_member_diverged_seen_is_refused_without_a_fork();
+    authorization_cases::a_non_member_diverged_seen_is_refused_without_a_fork().unwrap();
 }
 
 #[test]
 fn a_crash_after_fork_meta_still_reports_the_fork_after_reopen() {
-    recovery_cases::a_crash_after_fork_meta_still_reports_the_fork_after_reopen();
+    recovery_cases::a_crash_after_fork_meta_still_reports_the_fork_after_reopen().unwrap();
 }
 
 #[test]
 fn a_pending_claim_settles_through_a_pruned_stub() {
-    recovery_cases::a_pending_claim_settles_through_a_pruned_stub();
+    recovery_cases::a_pending_claim_settles_through_a_pruned_stub().unwrap();
 }
 
 #[test]
 fn concurrent_sealed_siblings_send_until_a_member_proves_a_fork() {
-    recovery_cases::concurrent_sealed_siblings_send_until_a_member_proves_a_fork();
+    recovery_cases::concurrent_sealed_siblings_send_until_a_member_proves_a_fork().unwrap();
 }

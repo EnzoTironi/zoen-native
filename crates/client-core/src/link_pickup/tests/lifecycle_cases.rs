@@ -1,13 +1,14 @@
 //! Complete original test bodies; registration remains in the parent.
 use super::*;
 
-pub(super) async fn retire_before_first_worker_poll_never_constructs_transport() {
+pub(super) async fn retire_before_first_worker_poll_never_constructs_transport(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let control = PickupControl::default();
     let constructed = Arc::new(AtomicUsize::new(0));
     let observed = constructed.clone();
     let mut waiter = control
         .begin_with_factory(
-            || Ok(pending("http://127.0.0.1:1".into())),
+            || Ok(pending("http://127.0.0.1:1".into())?),
             budget(),
             move |_, _, _, _| {
                 Box::new(move || {
@@ -25,9 +26,12 @@ pub(super) async fn retire_before_first_worker_poll_never_constructs_transport()
     tokio::time::timeout(BOUND, control.drain()).await.unwrap();
     assert_eq!(constructed.load(Ordering::SeqCst), 0);
     assert!(control.with_request(|| Ok(())).is_err());
+
+    Ok(())
 }
 
-pub(super) async fn production_pickup_retired_before_first_poll_opens_no_tcp_connection() {
+pub(super) async fn production_pickup_retired_before_first_poll_opens_no_tcp_connection(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let control = PickupControl::default();
     let mut waiter = control
@@ -36,7 +40,7 @@ pub(super) async fn production_pickup_retired_before_first_poll_opens_no_tcp_con
                 Ok(pending(format!(
                     "http://{}",
                     listener.local_addr().unwrap()
-                )))
+                ))?)
             },
             budget(),
             i18n::Lang::En,
@@ -51,11 +55,14 @@ pub(super) async fn production_pickup_retired_before_first_poll_opens_no_tcp_con
             .await
             .is_err()
     );
+
+    Ok(())
 }
 
-pub(super) async fn revoked_signing_handle_cannot_read_id_sign_or_install() {
+pub(super) async fn revoked_signing_handle_cannot_read_id_sign_or_install(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let control = PickupControl::default();
-    let (mut waiter, started) = held(&control);
+    let (mut waiter, started) = held(&control)?;
     let key = tokio::time::timeout(BOUND, started).await.unwrap().unwrap();
     let id = key.id().unwrap();
     assert!(event_log::verify_sig(
@@ -78,13 +85,16 @@ pub(super) async fn revoked_signing_handle_cannot_read_id_sign_or_install() {
     tokio::time::timeout(BOUND, control.drain()).await.unwrap();
     // stop_sync-style cancellation is retryable only after actual retirement.
     assert_eq!(control.with_request(|| Ok(7)).unwrap(), 7);
+
+    Ok(())
 }
 
-pub(super) async fn finished_worker_keeps_admission_occupied_until_consumer_retires() {
+pub(super) async fn finished_worker_keeps_admission_occupied_until_consumer_retires(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let control = PickupControl::default();
     let mut waiter = control
         .begin_with_factory(
-            || Ok(pending("http://127.0.0.1:1".into())),
+            || Ok(pending("http://127.0.0.1:1".into())?),
             budget(),
             |_, _, _, _| Box::new(|| Box::pin(async { Ok(vec![4, 5, 6]) })),
         )
@@ -125,6 +135,8 @@ pub(super) async fn finished_worker_keeps_admission_occupied_until_consumer_reti
     tokio::time::timeout(BOUND, drain).await.unwrap();
     assert_eq!(writes.load(Ordering::SeqCst), 0);
     assert!(control.with_request(|| Ok(())).is_ok());
+
+    Ok(())
 }
 
 /// Blocks the ACTUAL inner Future destructor, rather than faking an unfinished
@@ -180,7 +192,8 @@ impl Drop for HeldDrop {
     }
 }
 
-pub(super) async fn abort_and_waiter_drop_do_not_fake_worker_drain() {
+pub(super) async fn abort_and_waiter_drop_do_not_fake_worker_drain(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let control = PickupControl::default();
     let gate = Arc::new(DropGate {
         opened: Mutex::new(false),
@@ -193,7 +206,7 @@ pub(super) async fn abort_and_waiter_drop_do_not_fake_worker_drain() {
     let inner_gate = gate.clone();
     let waiter = control
         .begin_with_factory(
-            || Ok(pending("http://127.0.0.1:1".into())),
+            || Ok(pending("http://127.0.0.1:1".into())?),
             budget(),
             move |_, _, _, _| {
                 Box::new(move || {
@@ -225,23 +238,29 @@ pub(super) async fn abort_and_waiter_drop_do_not_fake_worker_drain() {
     tokio::time::timeout(BOUND, drain).await.unwrap();
     assert!(gate.exited.load(Ordering::SeqCst));
     assert!(control.with_request(|| Ok(())).is_ok());
+
+    Ok(())
 }
 
-pub(super) async fn consumer_drop_cancels_an_actual_running_worker() {
+pub(super) async fn consumer_drop_cancels_an_actual_running_worker(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let control = PickupControl::default();
-    let (waiter, started) = held(&control);
+    let (waiter, started) = held(&control)?;
     let key = tokio::time::timeout(BOUND, started).await.unwrap().unwrap();
     drop(waiter);
     assert!(key.sign(b"late caller").is_err());
     tokio::time::timeout(BOUND, control.drain()).await.unwrap();
     assert!(control.with_request(|| Ok(())).is_ok());
+
+    Ok(())
 }
 
-pub(super) async fn worker_panic_wakes_typed_waiter_and_retires_after_both_drops() {
+pub(super) async fn worker_panic_wakes_typed_waiter_and_retires_after_both_drops(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let control = PickupControl::default();
     let mut waiter = control
         .begin_with_factory(
-            || Ok(pending("http://127.0.0.1:1".into())),
+            || Ok(pending("http://127.0.0.1:1".into())?),
             budget(),
             |_, _, _, _| Box::new(|| panic!("owned test worker panic")),
         )
@@ -251,13 +270,16 @@ pub(super) async fn worker_panic_wakes_typed_waiter_and_retires_after_both_drops
     drop(waiter);
     tokio::time::timeout(BOUND, control.drain()).await.unwrap();
     assert!(control.with_request(|| Ok(())).is_ok());
+
+    Ok(())
 }
 
-pub(super) async fn accepted_install_finishes_before_terminal_retire_returns() {
+pub(super) async fn accepted_install_finishes_before_terminal_retire_returns(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let control = PickupControl::default();
     let mut waiter = control
         .begin_with_factory(
-            || Ok(pending("http://127.0.0.1:1".into())),
+            || Ok(pending("http://127.0.0.1:1".into())?),
             budget(),
             |_, _, _, _| Box::new(|| Box::pin(async { Ok(vec![1]) })),
         )
@@ -297,13 +319,16 @@ pub(super) async fn accepted_install_finishes_before_terminal_retire_returns() {
     assert!(installed.load(Ordering::SeqCst));
     tokio::time::timeout(BOUND, control.drain()).await.unwrap();
     assert!(control.with_request(|| Ok(())).is_err());
+
+    Ok(())
 }
 
-pub(super) async fn panicking_install_fails_closed_without_forgetting_live_owners() {
+pub(super) async fn panicking_install_fails_closed_without_forgetting_live_owners(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let control = PickupControl::default();
     let mut waiter = control
         .begin_with_factory(
-            || Ok(pending("http://127.0.0.1:1".into())),
+            || Ok(pending("http://127.0.0.1:1".into())?),
             budget(),
             |_, _, _, _| Box::new(|| Box::pin(async { Ok(vec![1]) })),
         )
@@ -321,4 +346,6 @@ pub(super) async fn panicking_install_fails_closed_without_forgetting_live_owner
     tokio::time::timeout(BOUND, drain).await.unwrap();
     // A poisoned install gate is terminal, unlike ordinary stop_sync cancel.
     assert!(control.with_request(|| Ok(())).is_err());
+
+    Ok(())
 }

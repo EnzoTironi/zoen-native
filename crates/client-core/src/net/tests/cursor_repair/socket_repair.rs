@@ -1,12 +1,12 @@
 //! Preserved socket repair scenarios; stable test entries stay in the parent.
 use super::*;
 
-pub(super) async fn healthy_socket_recovers_final_unannounced_event_without_reconnect_or_followup()
-{
+pub(super) async fn healthy_socket_recovers_final_unannounced_event_without_reconnect_or_followup(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("ws://{}", listener.local_addr().unwrap());
-    let directory = Directory(std::env::temp_dir().join(types::new_id("final-unannounced")));
+    let directory = Directory(std::env::temp_dir().join(types::new_id("final-unannounced")?));
     std::fs::create_dir(&directory.0).unwrap();
     let path = directory.0.join("reader.sqlite");
     let canonical_path = directory.0.join("canonical.sqlite");
@@ -215,14 +215,16 @@ pub(super) async fn healthy_socket_recovers_final_unannounced_event_without_reco
     assert_eq!(assert_history(&reopened, &peer.identity), expected);
     assert_eq!(reopened.ingest(missing), Ingest::Duplicate);
     assert_eq!(assert_history(&reopened, &peer.identity), expected);
+
+    Ok(())
 }
 
 pub(super) async fn healthy_socket_discovers_new_authorized_space_when_joined_and_all_live_events_are_lost(
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("ws://{}", listener.local_addr().unwrap());
-    let directory = Directory(std::env::temp_dir().join(types::new_id("new-space-lost-joined")));
+    let directory = Directory(std::env::temp_dir().join(types::new_id("new-space-lost-joined")?));
     std::fs::create_dir(&directory.0).unwrap();
     let path = directory.0.join("reader.sqlite");
     let canonical_path = directory.0.join("canonical.sqlite");
@@ -475,4 +477,6 @@ pub(super) async fn healthy_socket_discovers_new_authorized_space_when_joined_an
     assert_eq!(assert_history(&reopened, &peer.identity), expected);
     assert_eq!(reopened.ingest(missing), Ingest::Duplicate);
     assert_eq!(assert_history(&reopened, &peer.identity), expected);
+
+    Ok(())
 }

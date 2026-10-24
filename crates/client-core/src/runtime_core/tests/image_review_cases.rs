@@ -1,7 +1,8 @@
 use super::*;
 
-pub(super) fn pending() -> (Fixture, String, String, Envelope) {
-    let mut fixture = Fixture::new();
+pub(super) fn pending(
+) -> std::result::Result<(Fixture, String, String, Envelope), Box<dyn std::error::Error>> {
+    let mut fixture = Fixture::new()?;
     fixture.encrypted(
         EventBody::GrantIssued {
             grant: Grant {
@@ -26,17 +27,17 @@ pub(super) fn pending() -> (Fixture, String, String, Envelope) {
         .core
         .stage_image_task(SPACE, &source, image_task_cases::input())
         .unwrap();
-    (
+    Ok((
         fixture,
         review.id,
         review.tool_approval.unwrap().content_hash,
         envelope,
-    )
+    ))
 }
 
 #[test]
 fn only_the_original_current_pending_review_can_be_offered_after_cold_reopen() {
-    let (mut fixture, request, content_hash, envelope) = pending();
+    let (mut fixture, request, content_hash, envelope) = pending().unwrap();
     let now = crate::engine::now_ms();
     fixture
         .core
@@ -76,7 +77,7 @@ fn only_the_original_current_pending_review_can_be_offered_after_cold_reopen() {
 
 #[test]
 fn fresh_revocation_refuses_review_publication_without_clearing_its_original() {
-    let (mut fixture, request, content_hash, envelope) = pending();
+    let (mut fixture, request, content_hash, envelope) = pending().unwrap();
     fixture.encrypted(
         EventBody::GrantRevoked {
             grant: "image-review-act".into(),

@@ -217,14 +217,15 @@ pub(super) fn permanently_rejected_genesis_fails_descendants_atomically_across_r
     std::fs::remove_dir_all(dir).unwrap();
 }
 
-pub(super) fn a_device_refuses_a_relay_that_hides_a_message_and_rehashes() {
+pub(super) fn a_device_refuses_a_relay_that_hides_a_message_and_rehashes(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use event_log::{chain_hash, content_hash_of, Author, Signer, SpaceLog};
     use protocol::{Envelope, Sequenced};
     use types::{EventBody, Privacy, SpaceKind};
 
     let e = Client::open(":memory:".into(), "pt-BR".into()).unwrap();
-    let ana = Author::root(Signer::generate());
-    let bia = Author::root(Signer::generate());
+    let ana = Author::root(Signer::generate()?);
+    let bia = Author::root(Signer::generate()?);
     let mut honest = SpaceLog::new("sp_fork");
     let genesis = honest
         .sequence(ana.sign_event(
@@ -295,10 +296,13 @@ pub(super) fn a_device_refuses_a_relay_that_hides_a_message_and_rehashes() {
         .find(|s| s.title == "Viagem")
         .unwrap();
     assert!(!space.last_preview.contains("ok, entendi"));
+
+    Ok(())
 }
 
-pub(super) fn immediate_cold_reopen_after_sync_stop() {
-    let folder = std::env::temp_dir().join(types::new_id("net-cold-reopen"));
+pub(super) fn immediate_cold_reopen_after_sync_stop(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let folder = std::env::temp_dir().join(types::new_id("net-cold-reopen")?);
     std::fs::create_dir_all(&folder).unwrap();
     let mut failures = Vec::new();
     for sample in 0..32 {
@@ -353,11 +357,14 @@ pub(super) fn immediate_cold_reopen_after_sync_stop() {
         "{} immediate reopen failures: {failures:?}",
         failures.len()
     );
+
+    Ok(())
 }
 
-pub(super) fn immediate_cold_reopen_after_implicit_sync_drop() {
-    for sample in 0..32 {
-        let path = std::env::temp_dir().join(types::new_id("implicit-net-drop"));
+pub(super) fn immediate_cold_reopen_after_implicit_sync_drop(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Ok(for sample in 0..32 {
+        let path = std::env::temp_dir().join(types::new_id("implicit-net-drop")?);
         let path = path.to_string_lossy().to_string();
         let core = Client::open(path.clone(), "en".into()).unwrap();
         core.create_account(
@@ -386,15 +393,19 @@ pub(super) fn immediate_cold_reopen_after_implicit_sync_drop() {
         );
         drop(reopened);
         std::fs::remove_file(path).unwrap();
-    }
+    })
 }
 
-pub(super) async fn immediate_cold_reopen_inside_an_unrelated_runtime() {
-    immediate_cold_reopen_after_sync_stop();
-    immediate_cold_reopen_after_implicit_sync_drop();
+pub(super) async fn immediate_cold_reopen_inside_an_unrelated_runtime(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    immediate_cold_reopen_after_sync_stop()?;
+    immediate_cold_reopen_after_implicit_sync_drop()?;
+
+    Ok(())
 }
 
-pub(super) fn callback_can_stop_and_destroy_its_core_before_immediate_reopen() {
+pub(super) fn callback_can_stop_and_destroy_its_core_before_immediate_reopen(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use std::sync::mpsc;
     use std::time::Duration;
     struct Listener {
@@ -424,7 +435,7 @@ pub(super) fn callback_can_stop_and_destroy_its_core_before_immediate_reopen() {
         fn on_error(&self, _: String) {}
         fn on_profile_changed(&self, _: String) {}
     }
-    let path = std::env::temp_dir().join(types::new_id("reentrant-net-drop"));
+    let path = std::env::temp_dir().join(types::new_id("reentrant-net-drop")?);
     let path = path.to_string_lossy().to_string();
     let core = Client::open(path.clone(), "en".into()).unwrap();
     core.create_account(
@@ -453,4 +464,6 @@ pub(super) fn callback_can_stop_and_destroy_its_core_before_immediate_reopen() {
         .unwrap();
     drop(reopened);
     std::fs::remove_file(path).unwrap();
+
+    Ok(())
 }

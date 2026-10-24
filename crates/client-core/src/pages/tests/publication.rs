@@ -73,11 +73,12 @@ pub(super) fn newer_draft_waits_for_ack_and_survives_a_permanent_refusal() {
     assert_eq!(confirmed.save_error, None);
 }
 
-pub(super) fn public_page_reads_reuse_verified_media_and_require_it_again_after_reload() {
+pub(super) fn public_page_reads_reuse_verified_media_and_require_it_again_after_reload(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (engine, original) = fixture();
     let markdown = "# Cached\r\n\r\nVerified raw 😀 e\u{301}\r\ncontent\n";
     let document = Page::from_markdown(markdown).unwrap();
-    let id = new_id("cached-public-page");
+    let id = new_id("cached-public-page")?;
     let blob = {
         let mut core = engine.lock();
         let blob = core
@@ -143,6 +144,8 @@ pub(super) fn public_page_reads_reuse_verified_media_and_require_it_again_after_
     assert!(resumed.ready && resumed.can_edit);
     assert_eq!(resumed.blocks, observed.blocks);
     assert_eq!(engine.page_markdown(id).unwrap(), markdown);
+
+    Ok(())
 }
 
 pub(super) fn publication_journal_failure_rolls_back_the_actual_event_and_retains_the_draft() {

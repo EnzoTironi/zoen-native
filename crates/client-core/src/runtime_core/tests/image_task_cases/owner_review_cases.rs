@@ -10,7 +10,7 @@ fn client(engine: Engine) -> std::sync::Arc<Client> {
 
 #[test]
 fn prospective_image_review_projects_exact_signed_facts_without_an_item() {
-    let (f, request, hash) = approved();
+    let (f, request, hash) = approved().unwrap();
     let row = &f.core.engine.state.requests[&request];
     assert!(!f
         .core
@@ -40,7 +40,7 @@ fn prospective_image_review_projects_exact_signed_facts_without_an_item() {
 
 #[test]
 fn invalid_or_rebound_image_payload_has_no_renderable_review() {
-    let (f, request, _) = approved();
+    let (f, request, _) = approved().unwrap();
     let original = f.core.engine.state.requests[&request]
         .req
         .tool_proposal
@@ -72,7 +72,7 @@ fn invalid_or_rebound_image_payload_has_no_renderable_review() {
 
 #[tokio::test]
 async fn application_command_stages_one_scoped_review_and_refuses_changed_actor_source_or_owner() {
-    let (mut f, _, _) = approved();
+    let (mut f, _, _) = approved().unwrap();
     f.message("Create another image");
     let source = f.core.engine.logs[SPACE]
         .events()

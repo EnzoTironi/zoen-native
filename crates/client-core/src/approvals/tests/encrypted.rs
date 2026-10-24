@@ -59,7 +59,7 @@ fn encrypted_conflicts_and_membership_changes_reconcile_before_the_own_approval_
             .unwrap()
             .id
             .clone();
-        let space = new_id("sp");
+        let space = new_id("sp").unwrap();
         a.append(
             &space,
             &owner,
@@ -85,7 +85,7 @@ fn encrypted_conflicts_and_membership_changes_reconcile_before_the_own_approval_
             &owner,
             EventBody::GrantIssued {
                 grant: Grant {
-                    id: new_id("gr"),
+                    id: new_id("gr").unwrap(),
                     grantor: owner.clone(),
                     grantee: Some(agent.clone()),
                     scope: GrantScope::Everywhere,
@@ -105,7 +105,7 @@ fn encrypted_conflicts_and_membership_changes_reconcile_before_the_own_approval_
         )
         .unwrap();
         let request = a.state.request_order[0].clone();
-        let b_author = Author::device(&root, Signer::generate());
+        let b_author = Author::device(&root, Signer::generate().unwrap());
         let mut b = Engine::open(":memory:").unwrap();
         b.store.put_identity(&a.identities[&owner], None).unwrap();
         b.store.set_meta("me", &owner).unwrap();
@@ -143,7 +143,7 @@ fn encrypted_conflicts_and_membership_changes_reconcile_before_the_own_approval_
             .key_packages(1, false)
             .unwrap()
             .remove(0);
-        let agent_author = Author::device(&a.signers[&agent], Signer::generate());
+        let agent_author = Author::device(&a.signers[&agent], Signer::generate().unwrap());
         let mut agent_store = store::Store::in_memory().unwrap();
         ::mls::migrate(agent_store.conn_mut()).unwrap();
         let agent_device = ::mls::Device::new(
@@ -163,7 +163,7 @@ fn encrypted_conflicts_and_membership_changes_reconcile_before_the_own_approval_
         let env = Envelope::sealed(
             a.net.author.as_ref().unwrap(),
             &space,
-            &new_ulid(crate::engine::now_ms()),
+            &new_ulid(crate::engine::now_ms()).unwrap(),
             crate::engine::now_ms(),
             a.logs[&space].head().as_ref(),
             Sealed::new(SealedKind::Commit, ::mls::SUITE_ID, commit.commit),
@@ -173,7 +173,7 @@ fn encrypted_conflicts_and_membership_changes_reconcile_before_the_own_approval_
         let env = Envelope::sealed(
             a.net.author.as_ref().unwrap(),
             &space,
-            &new_ulid(crate::engine::now_ms()),
+            &new_ulid(crate::engine::now_ms()).unwrap(),
             crate::engine::now_ms(),
             a.logs[&space].head().as_ref(),
             Sealed::new(SealedKind::Welcome, ::mls::SUITE_ID, welcome.clone()),

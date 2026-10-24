@@ -126,7 +126,7 @@ fn one_signed_app_owns_exact_encrypted_file_versions_and_retry_never_recreates_i
 }
 #[test]
 fn disk_reopen_lost_response_retry_and_exact_export_source_keep_original_accepted_head() {
-    let dir = std::env::temp_dir().join(new_id("deckcraft-canonical"));
+    let dir = std::env::temp_dir().join(new_id("deckcraft-canonical").unwrap());
     std::fs::create_dir(&dir).unwrap();
     let path = dir.join("device.sqlite");
     let f = fixture(path.to_str().unwrap());
