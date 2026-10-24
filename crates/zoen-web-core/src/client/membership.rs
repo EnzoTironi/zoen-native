@@ -98,3 +98,7 @@ mod directory;
 mod directory_tests;
 mod network;
 mod planner;
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[path = "membership_tests.rs"]
+mod tests;
