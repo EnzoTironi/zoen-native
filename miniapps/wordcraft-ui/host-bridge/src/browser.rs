@@ -10,7 +10,12 @@ use wordcraft_doc::{Document, StoryRef};
 use wordcraft_engine::Session;
 
 static NEXT_BINDING: AtomicU64 = AtomicU64::new(1);
+enum PendingKind {
+    Manual,
+    Agent,
+}
 struct Entry {
+    kind: PendingKind,
     id: String,
     fingerprint: String,
     proposal: Proposal,
@@ -138,7 +143,7 @@ impl BrowserBridge {
             };
         }
         if let Some(pending) = &self.pending {
-            if pending.document != s.doc {
+            if matches!(pending.kind, PendingKind::Agent) && pending.document != s.doc {
                 return Err(failure("document_changed"));
             }
             return if pending.id == m.mutation_id && pending.fingerprint == fingerprint {
@@ -176,12 +181,15 @@ impl BrowserBridge {
         // plain-text checkpoint, never a lossy rich-document normalization path.
         proposal.metadata["operation"] = json!({"kind":"humanCheckpoint"});
         self.pending = Some(Entry {
+            kind: PendingKind::Manual,
             id,
             fingerprint,
             proposal: proposal.clone(),
             document: s.doc.clone(),
         });
-        s.managed_frozen = true;
+        // The original canonical proposal stays immutable; newer manual input
+        // remains local until a later checkpoint after this exact receipt.
+        s.managed_frozen = self.paused;
         Ok(proposal)
     }
     /// Apply the same closed agent command only when the visible manual document is unchanged.
@@ -207,6 +215,7 @@ impl BrowserBridge {
         s.set_document(doc);
         self.document_id = s.document_id();
         self.pending = Some(Entry {
+            kind: PendingKind::Agent,
             id,
             fingerprint,
             proposal: proposal.clone(),
@@ -215,10 +224,13 @@ impl BrowserBridge {
         Ok(proposal)
     }
     /// # Errors
-    /// Refuses a foreign/late receipt or a changed visible model. ACK cannot undo a host pause.
+    /// Refuses a foreign/late receipt or a changed agent model. Exact manual ACK advances
+    /// only the accepted baseline, preserving newer local input and actual Undo.
+    /// ACK cannot undo a host pause.
     pub fn accept(&mut self, s: &mut Session, receipt: &Accept) -> Result<Value> {
         self.document(s)?;
         if let Some(pending) = &self.pending
+            && matches!(pending.kind, PendingKind::Agent)
             && pending.document != s.doc
         {
             return Err(failure("document_changed"));
@@ -248,7 +260,11 @@ impl BrowserBridge {
     pub fn freeze(&mut self, s: &mut Session, frozen: bool) -> Result<Value> {
         self.document(s)?;
         self.paused = frozen;
-        s.managed_frozen = frozen || self.pending.is_some();
+        s.managed_frozen = frozen
+            || self
+                .pending
+                .as_ref()
+                .is_some_and(|entry| matches!(entry.kind, PendingKind::Agent));
         self.status(s)
     }
 }

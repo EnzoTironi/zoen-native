@@ -77,6 +77,7 @@ fn actual_canvas_keyboard_checkpoint_pending_freeze_ack_undo_and_accepted_export
         "Human edit Olá"
     );
     let proposal = bridge.snapshot(&mut h.state_mut().session, mutation(&bytes, "keyboard"))?;
+    bridge.freeze(&mut h.state_mut().session, true)?;
     h.input_mut()
         .events
         .push(Event::Text("unacknowledged second edit".into()));
@@ -94,6 +95,8 @@ fn actual_canvas_keyboard_checkpoint_pending_freeze_ack_undo_and_accepted_export
             head: head("2", &proposal.bytes),
         },
     )?;
+    assert!(h.state().session.managed_frozen);
+    bridge.freeze(&mut h.state_mut().session, false)?;
     key(&mut h, Key::Z, Modifiers::COMMAND);
     assert_eq!(h.state().session.doc.plain_text(StoryRef::Body), "Original");
     assert_eq!(

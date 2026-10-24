@@ -67,6 +67,20 @@ fn delayed_manual_ack_retains_real_input_without_rewriting_original_proposal() -
             .is_err()
     );
     assert_eq!(h.state().session.doc.plain_text(StoryRef::Body), expected);
+    assert!(
+        bridge
+            .open(
+                &mut h.state_mut().session,
+                Open {
+                    scope: scope(),
+                    head: head("1", &original)
+                },
+                &original,
+            )
+            .is_err(),
+        "reopen cannot replace an outstanding proposal or its newer local draft"
+    );
+    assert_eq!(h.state().session.doc.plain_text(StoryRef::Body), expected);
     bridge.accept(
         &mut h.state_mut().session,
         &Accept {
@@ -101,6 +115,32 @@ fn delayed_manual_ack_retains_real_input_without_rewriting_original_proposal() -
     assert_eq!(
         profile::parse(&latest.bytes)?.plain_text(StoryRef::Body),
         expected
+    );
+    assert!(
+        bridge
+            .accept(
+                &mut h.state_mut().session,
+                &Accept {
+                    scope: scope(),
+                    mutation_id: "manual-inflight".into(),
+                    head: head("2", &pending.bytes),
+                },
+            )
+            .is_err(),
+        "a delayed duplicate receipt cannot consume the next proposal"
+    );
+    assert_eq!(
+        bridge
+            .snapshot(
+                &mut h.state_mut().session,
+                Mutation {
+                    scope: scope(),
+                    base: head("2", &pending.bytes),
+                    mutation_id: "retained-input".into(),
+                },
+            )?
+            .bytes,
+        latest.bytes
     );
     bridge.accept(
         &mut h.state_mut().session,
@@ -151,6 +191,53 @@ fn delayed_manual_ack_retains_real_input_without_rewriting_original_proposal() -
         session.doc.plain_text(StoryRef::Body),
         expected,
         "a fresh renderer opens only the actual accepted DOCX, not later unsaved Undo"
+    );
+    Ok(())
+}
+
+#[test]
+fn actual_agent_proposal_stays_frozen_and_receipt_cannot_remove_host_pause() -> Result<()> {
+    let (mut h, mut bridge, bytes) = harness()?;
+    click_canvas(&mut h)?;
+    let proposal = bridge.execute(
+        &mut h.state_mut().session,
+        Command {
+            mutation: mutation(&bytes, "agent-inflight"),
+            action: Action::TextReplace(TextReplace {
+                text: "Agent text".into(),
+            }),
+        },
+    )?;
+    bridge.freeze(&mut h.state_mut().session, false)?;
+    type_text(&mut h, "must not enter agent proposal");
+    key(&mut h, Key::Enter, Modifiers::NONE);
+    assert!(h.state().session.managed_frozen);
+    assert_eq!(
+        h.state().session.doc.plain_text(StoryRef::Body),
+        "Agent text"
+    );
+    bridge.freeze(&mut h.state_mut().session, true)?;
+    bridge.accept(
+        &mut h.state_mut().session,
+        &Accept {
+            scope: scope(),
+            mutation_id: "agent-inflight".into(),
+            head: head("2", &proposal.bytes),
+        },
+    )?;
+    assert!(h.state().session.managed_frozen);
+    type_text(&mut h, "still paused");
+    assert_eq!(
+        h.state().session.doc.plain_text(StoryRef::Body),
+        "Agent text"
+    );
+    bridge.freeze(&mut h.state_mut().session, false)?;
+    click_canvas(&mut h)?;
+    key(&mut h, Key::A, Modifiers::COMMAND);
+    type_text(&mut h, "Human after receipt");
+    assert_eq!(
+        h.state().session.doc.plain_text(StoryRef::Body),
+        "Human after receipt"
     );
     Ok(())
 }

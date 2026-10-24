@@ -59,6 +59,7 @@ fn actual_manual_model_ack_preserves_undo_and_exact_accepted_export() -> Result<
         profile::parse(&proposal.bytes)?.plain_text(StoryRef::Body),
         "Manual Olá\t日本語\n"
     );
+    b.freeze(&mut s, true)?;
     assert!(
         s.run("text.insert", &json!({"text":"hidden","raw":true}))
             .is_err()
@@ -79,7 +80,6 @@ fn actual_manual_model_ack_preserves_undo_and_exact_accepted_export() -> Result<
         .bytes,
         bytes
     );
-    b.freeze(&mut s, true)?;
     b.accept(
         &mut s,
         &Accept {
