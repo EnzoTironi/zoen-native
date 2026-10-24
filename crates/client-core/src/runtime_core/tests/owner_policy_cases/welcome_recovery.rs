@@ -36,6 +36,49 @@ fn candidate() -> StdResult<(Fixture, String, OwnerPolicyInquiryControl), Box<dy
     Ok((f, key.id(), query))
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn client_capture_requires_the_running_worker_device_on_the_real_current_channel(
+) -> TestResult {
+    let (f, target, query) = candidate()?;
+    let relay = crate::link_api::directory_test_relay(target).await;
+    let client = Client::open(":memory:".into(), "en".into())?;
+    let current_device = f.agent_device.id();
+    {
+        let mut engine = client.lock();
+        *engine = f.core.engine;
+        let account = engine
+            .net
+            .account
+            .as_mut()
+            .ok_or("synthetic agent account")?;
+        account.relay_url = relay.url.clone();
+        let account = serde_json::to_string(account)?;
+        engine.store.set_meta("account", &account)?;
+    }
+    crate::link_api::directory_test_online(&client).await;
+    // Settle the normal checkpoint opportunity before observing capture. It is
+    // the existing Net lifecycle, not part of a recovery/control publication.
+    client.lock().mls_checkpoints()?;
+    let before = client.lock().outbox_envelopes();
+    let current = client.owner_policy_welcome_attempt(&query, &current_device);
+    let old = client.owner_policy_welcome_attempt(&query, &"cc".repeat(32));
+    let after = client.lock().outbox_envelopes();
+    client.stop_sync();
+    assert!(
+        current.is_ok(),
+        "actual current authenticated worker capture"
+    );
+    assert!(
+        old.is_err(),
+        "same agent cannot borrow a replacement device before capture"
+    );
+    assert_eq!(
+        after, before,
+        "capture does not enqueue any control or joining"
+    );
+    Ok(())
+}
+
 #[test]
 fn missing_corrupt_incomplete_or_revoked_directory_never_requests_a_native_rotation() -> TestResult
 {
