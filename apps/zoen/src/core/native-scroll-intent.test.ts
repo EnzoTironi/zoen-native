@@ -39,3 +39,35 @@ test('inset-only updates after an external reveal do not replay the old keyboard
   assert.equal(f.props().contentOffset, undefined);
   assert.equal(f.props().contentOffset, undefined);
 });
+
+test('new keyboard corrections can repeat a target after an external native scroll', () => {
+  const f = nativeScrollIntentFixture();
+  f.props();
+  f.keyboard(320);
+  assert.equal((f.props().contentOffset as { y: number }).y, 696);
+  f.scroll.value = 696;
+  f.keyboard(0);
+  assert.equal((f.props().contentOffset as { y: number }).y, 376);
+  f.scroll.value = 56;
+  f.keyboard(320);
+  assert.equal((f.props().contentOffset as { y: number }).y, 376);
+  assert.equal(f.props().contentOffset, undefined);
+});
+
+test('frozen inset changes do not resurrect the last offset on unfreeze', () => {
+  const f = nativeScrollIntentFixture();
+  f.props();
+  f.keyboard(320);
+  assert.equal((f.props().contentOffset as { y: number }).y, 696);
+  f.scroll.value = 120;
+  f.freeze.value = true;
+  f.tick();
+  f.keyboard(0);
+  f.extra.value = 52;
+  f.tick();
+  assert.equal(f.props().contentOffset, undefined);
+  f.freeze.value = false;
+  f.tick();
+  assert.equal(f.props().contentOffset, undefined);
+  assert.equal((f.props().contentInset as { bottom: number }).bottom, 52);
+});

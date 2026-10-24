@@ -58,6 +58,7 @@ type KeyboardEvent = { height: number; duration: number };
 /** Actual pinned SDK keyboard, padding correction, and animatedProps; only host ports are replaced. */
 export function nativeScrollIntentFixture() {
   const extra = { value: 240 };
+  const freeze = { value: false };
   const scroll = { value: 376 };
   const layout = { value: { width: 390, height: 700 } };
   const size = { value: { width: 390, height: 1300 } };
@@ -140,6 +141,7 @@ export function nativeScrollIntentFixture() {
   const chat = module.exports.Chat(
     {
       extraContentPadding: extra,
+      freeze,
       contentOffset: { x: 0, y: 376 },
       keyboardLiftBehavior: 'always',
       children: null,
@@ -163,6 +165,7 @@ export function nativeScrollIntentFixture() {
   tick();
   return {
     extra,
+    freeze,
     scroll,
     tick,
     props: () => (view.props.animatedProps as Mutable<Record<string, unknown>>).value,

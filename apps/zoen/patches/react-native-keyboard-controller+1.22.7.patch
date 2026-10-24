@@ -1,5 +1,5 @@
 diff --git a/node_modules/react-native-keyboard-controller/ios/observers/movement/observer/KeyboardMovementObserver+Interactive.swift b/node_modules/react-native-keyboard-controller/ios/observers/movement/observer/KeyboardMovementObserver+Interactive.swift
-index 7f2cb909ab..014f1d5451 100644
+index 7f2cb90..014f1d5 100644
 --- a/node_modules/react-native-keyboard-controller/ios/observers/movement/observer/KeyboardMovementObserver+Interactive.swift
 +++ b/node_modules/react-native-keyboard-controller/ios/observers/movement/observer/KeyboardMovementObserver+Interactive.swift
 @@ -25,10 +25,6 @@ extension KeyboardMovementObserver {
@@ -30,7 +30,7 @@ index 7f2cb909ab..014f1d5451 100644
  
      keyboardDidTask?.cancel()
 diff --git a/node_modules/react-native-keyboard-controller/ios/observers/movement/observer/KeyboardMovementObserver+Listeners.swift b/node_modules/react-native-keyboard-controller/ios/observers/movement/observer/KeyboardMovementObserver+Listeners.swift
-index 60ae5de6a3..f07c6b796c 100644
+index 60ae5de..f07c6b7 100644
 --- a/node_modules/react-native-keyboard-controller/ios/observers/movement/observer/KeyboardMovementObserver+Listeners.swift
 +++ b/node_modules/react-native-keyboard-controller/ios/observers/movement/observer/KeyboardMovementObserver+Listeners.swift
 @@ -28,6 +28,9 @@ extension KeyboardMovementObserver {
@@ -43,3 +43,285 @@ index 60ae5de6a3..f07c6b796c 100644
        initializeAnimation(fromValue: prevKeyboardPosition, toValue: self.keyboardHeight)
        scheduleDidEvent(height: self.keyboardHeight, duration: animation?.duration ?? CGFloat(duration) / 1000)
      }
+diff --git a/node_modules/react-native-keyboard-controller/src/components/KeyboardChatScrollView/index.tsx b/node_modules/react-native-keyboard-controller/src/components/KeyboardChatScrollView/index.tsx
+index 935bc71..791315a 100644
+--- a/node_modules/react-native-keyboard-controller/src/components/KeyboardChatScrollView/index.tsx
++++ b/node_modules/react-native-keyboard-controller/src/components/KeyboardChatScrollView/index.tsx
+@@ -52,6 +52,7 @@ const KeyboardChatScrollView: React.ForwardRefExoticComponent<
+       padding,
+       currentHeight,
+       contentOffsetY,
++      contentOffsetRevision,
+       scroll,
+       layout,
+       size,
+@@ -76,6 +77,7 @@ const KeyboardChatScrollView: React.ForwardRefExoticComponent<
+       layout,
+       size,
+       contentOffsetY,
++      contentOffsetRevision,
+       inverted,
+       keyboardLiftBehavior,
+       freeze: freezeSV,
+@@ -157,6 +159,7 @@ const KeyboardChatScrollView: React.ForwardRefExoticComponent<
+           }
+           bottomPadding={totalPadding}
+           contentOffsetY={contentOffsetY}
++          contentOffsetRevision={contentOffsetRevision}
+           inverted={inverted}
+           scrollIndicatorPadding={indicatorPadding}
+           ScrollViewComponent={ScrollViewComponent}
+diff --git a/node_modules/react-native-keyboard-controller/src/components/KeyboardChatScrollView/useChatKeyboard/index.ios.ts b/node_modules/react-native-keyboard-controller/src/components/KeyboardChatScrollView/useChatKeyboard/index.ios.ts
+index 1ae9b81..d55c9eb 100644
+--- a/node_modules/react-native-keyboard-controller/src/components/KeyboardChatScrollView/useChatKeyboard/index.ios.ts
++++ b/node_modules/react-native-keyboard-controller/src/components/KeyboardChatScrollView/useChatKeyboard/index.ios.ts
+@@ -1,3 +1,4 @@
++import { useCallback } from "react";
+ import { useSharedValue } from "react-native-reanimated";
+ 
+ import { useKeyboardHandler } from "../../../hooks";
+@@ -48,6 +49,15 @@ function useChatKeyboard(
+   const padding = useSharedValue(0);
+   const currentHeight = useSharedValue(0);
+   const contentOffsetY = useSharedValue(options.initialContentOffsetY ?? 0);
++  const contentOffsetRevision = useSharedValue(0);
++  const setContentOffset = useCallback(
++    (target: number) => {
++      "worklet";
++      contentOffsetY.value = target;
++      contentOffsetRevision.value += 1;
++    },
++    [contentOffsetY, contentOffsetRevision],
++  );
+   const targetKeyboardHeight = useSharedValue(0);
+   const prevAbsorption = useSharedValue(0);
+   const isInteractiveDismissal = useSharedValue(false);
+@@ -135,9 +145,8 @@ function useChatKeyboard(
+               0,
+             );
+ 
+-            contentOffsetY.value = Math.max(
+-              -actualTotalPadding,
+-              Math.min(scroll.value, maxScroll),
++            setContentOffset(
++              Math.max(-actualTotalPadding, Math.min(scroll.value, maxScroll)),
+             );
+           } else {
+             const maxScroll = Math.max(
+@@ -145,10 +154,7 @@ function useChatKeyboard(
+               0,
+             );
+ 
+-            contentOffsetY.value = Math.max(
+-              0,
+-              Math.min(scroll.value, maxScroll),
+-            );
++            setContentOffset(Math.max(0, Math.min(scroll.value, maxScroll)));
+           }
+ 
+           return;
+@@ -170,9 +176,8 @@ function useChatKeyboard(
+               0,
+             );
+ 
+-            contentOffsetY.value = Math.max(
+-              -actualTotalPadding,
+-              Math.min(scroll.value, maxScroll),
++            setContentOffset(
++              Math.max(-actualTotalPadding, Math.min(scroll.value, maxScroll)),
+             );
+           } else {
+             const maxScroll = Math.max(
+@@ -180,10 +185,7 @@ function useChatKeyboard(
+               0,
+             );
+ 
+-            contentOffsetY.value = Math.max(
+-              0,
+-              Math.min(scroll.value, maxScroll),
+-            );
++            setContentOffset(Math.max(0, Math.min(scroll.value, maxScroll)));
+           }
+ 
+           return;
+@@ -207,7 +209,7 @@ function useChatKeyboard(
+         if (!shouldShiftContent(keyboardLiftBehavior, atEnd)) {
+           // Preserve current scroll position so animated props
+           // don't re-apply a stale contentOffset when padding changes
+-          contentOffsetY.value = scroll.value;
++          setContentOffset(scroll.value);
+ 
+           return;
+         }
+@@ -219,18 +221,20 @@ function useChatKeyboard(
+           minimumPaddingAbsorbed > 0 &&
+           effective > 0
+         ) {
+-          contentOffsetY.value = scroll.value;
++          setContentOffset(scroll.value);
+ 
+           return;
+         }
+ 
+-        contentOffsetY.value = computeIOSContentOffset(
+-          relativeScroll,
+-          scrollEffective,
+-          size.value.height,
+-          layout.value.height,
+-          inverted,
+-          actualTotalPadding,
++        setContentOffset(
++          computeIOSContentOffset(
++            relativeScroll,
++            scrollEffective,
++            size.value.height,
++            layout.value.height,
++            inverted,
++            actualTotalPadding,
++          ),
+         );
+       },
+       onInteractive: () => {
+@@ -259,13 +263,20 @@ function useChatKeyboard(
+         padding.value = effective;
+       },
+     },
+-    [inverted, keyboardLiftBehavior, offset, extraContentPadding],
++    [
++      inverted,
++      keyboardLiftBehavior,
++      offset,
++      extraContentPadding,
++      setContentOffset,
++    ],
+   );
+ 
+   return {
+     padding,
+     currentHeight,
+     contentOffsetY,
++    contentOffsetRevision,
+     scroll,
+     layout,
+     size,
+diff --git a/node_modules/react-native-keyboard-controller/src/components/KeyboardChatScrollView/useChatKeyboard/types.ts b/node_modules/react-native-keyboard-controller/src/components/KeyboardChatScrollView/useChatKeyboard/types.ts
+index f89b7c8..46696e5 100644
+--- a/node_modules/react-native-keyboard-controller/src/components/KeyboardChatScrollView/useChatKeyboard/types.ts
++++ b/node_modules/react-native-keyboard-controller/src/components/KeyboardChatScrollView/useChatKeyboard/types.ts
+@@ -22,6 +22,8 @@ type UseChatKeyboardReturn = {
+   currentHeight: SharedValue<number>;
+   /** Absolute Y content offset for iOS (set once in onStart). `undefined` on Android. */
+   contentOffsetY: SharedValue<number> | undefined;
++  /** Identity of the latest iOS scroll command, including repeated targets. */
++  contentOffsetRevision?: SharedValue<number>;
+   /** Current vertical scroll offset. */
+   scroll: SharedValue<number>;
+   /** Visible viewport dimensions. */
+diff --git a/node_modules/react-native-keyboard-controller/src/components/KeyboardChatScrollView/useExtraContentPadding/index.ts b/node_modules/react-native-keyboard-controller/src/components/KeyboardChatScrollView/useExtraContentPadding/index.ts
+index e7584ed..10587b5 100644
+--- a/node_modules/react-native-keyboard-controller/src/components/KeyboardChatScrollView/useExtraContentPadding/index.ts
++++ b/node_modules/react-native-keyboard-controller/src/components/KeyboardChatScrollView/useExtraContentPadding/index.ts
+@@ -25,6 +25,7 @@ type UseExtraContentPaddingOptions = {
+   size: SharedValue<{ width: number; height: number }>;
+   /** IOS only — when provided, sets contentOffset atomically with contentInset. */
+   contentOffsetY?: SharedValue<number>;
++  contentOffsetRevision?: SharedValue<number>;
+   inverted: boolean;
+   keyboardLiftBehavior: KeyboardLiftBehavior;
+   freeze: SharedValue<boolean>;
+@@ -56,6 +57,7 @@ function useExtraContentPadding(options: UseExtraContentPaddingOptions): void {
+     layout,
+     size,
+     contentOffsetY,
++    contentOffsetRevision,
+     inverted,
+     keyboardLiftBehavior,
+     freeze,
+@@ -68,6 +70,9 @@ function useExtraContentPadding(options: UseExtraContentPaddingOptions): void {
+       if (contentOffsetY && IS_FABRIC) {
+         // eslint-disable-next-line react-compiler/react-compiler
+         contentOffsetY.value = target;
++        if (contentOffsetRevision) {
++          contentOffsetRevision.value += 1;
++        }
+       } else if (OS === "android") {
+         // Defer scrollTo so the animatedProps inset commit lands first;
+         // otherwise the native ScrollView clamps to the old range.
+@@ -78,7 +83,7 @@ function useExtraContentPadding(options: UseExtraContentPaddingOptions): void {
+         safeScrollTo(scrollViewRef, 0, target, false);
+       }
+     },
+-    [scrollViewRef, contentOffsetY],
++    [scrollViewRef, contentOffsetY, contentOffsetRevision],
+   );
+ 
+   useAnimatedReaction(
+diff --git a/node_modules/react-native-keyboard-controller/src/components/ScrollViewWithBottomPadding/index.tsx b/node_modules/react-native-keyboard-controller/src/components/ScrollViewWithBottomPadding/index.tsx
+index 6902a73..7112c22 100644
+--- a/node_modules/react-native-keyboard-controller/src/components/ScrollViewWithBottomPadding/index.tsx
++++ b/node_modules/react-native-keyboard-controller/src/components/ScrollViewWithBottomPadding/index.tsx
+@@ -44,6 +44,8 @@ type ScrollViewWithBottomPaddingProps = {
+   scrollIndicatorPadding?: SharedValue<number>;
+   /** Absolute Y content offset (iOS only, for KeyboardChatScrollView). */
+   contentOffsetY?: SharedValue<number>;
++  /** Distinguishes a new command from an inset-only refresh of its old target. */
++  contentOffsetRevision?: SharedValue<number>;
+   applyWorkaroundForContentInsetHitTestBug?: boolean;
+   /**
+    * Fires whenever the effective content inset changes (combines the static `contentInset`
+@@ -66,6 +68,7 @@ const ScrollViewWithBottomPadding = forwardRef<
+       scrollIndicatorInsets,
+       inverted,
+       contentOffsetY,
++      contentOffsetRevision,
+       applyWorkaroundForContentInsetHitTestBug,
+       onContentInsetChange,
+       children,
+@@ -75,13 +78,19 @@ const ScrollViewWithBottomPadding = forwardRef<
+   ) => {
+     const { contentOffset } = rest;
+     const prevContentOffsetY = useSharedValue<number | null>(null);
++    const prevContentOffsetRevision = useSharedValue<number | undefined>(
++      undefined,
++    );
+ 
+     useEffect(() => {
+       if (contentOffsetY) {
+         // eslint-disable-next-line react-compiler/react-compiler
+         contentOffsetY.value = contentOffset?.y ?? 0;
++        if (contentOffsetRevision) {
++          contentOffsetRevision.value += 1;
++        }
+       }
+-    }, [contentOffsetY, contentOffset?.y]);
++    }, [contentOffsetY, contentOffsetRevision, contentOffset?.y]);
+ 
+     const insets = useDerivedValue(() => {
+       const dynamicTop = inverted ? bottomPadding.value : 0;
+@@ -155,10 +164,16 @@ const ScrollViewWithBottomPadding = forwardRef<
+       if (contentOffsetY) {
+         const y = contentOffsetY.value;
+ 
+-        // Emit the initialized offset once, then only when the target changes.
++        const revision = contentOffsetRevision?.value;
++
++        // A new command can repeat its target after the user scrolls elsewhere.
+         // Inset-only updates must not replay the previous scroll command.
+-        if (y !== prevContentOffsetY.value) {
++        if (
++          y !== prevContentOffsetY.value ||
++          revision !== prevContentOffsetRevision.value
++        ) {
+           prevContentOffsetY.value = y;
++          prevContentOffsetRevision.value = revision;
+           result.contentOffset = { x: contentOffset?.x ?? 0, y };
+         }
+       }
+@@ -171,6 +186,7 @@ const ScrollViewWithBottomPadding = forwardRef<
+       scrollIndicatorInsets?.left,
+       inverted,
+       contentOffsetY,
++      contentOffsetRevision,
+       contentOffset?.x,
+     ]);
+ 
