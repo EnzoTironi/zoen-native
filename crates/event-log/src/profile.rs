@@ -318,13 +318,13 @@ fn share_key(
     ephemeral: &[u8; 32],
     recipient: &[u8; 32],
     context: &[u8],
-) -> XChaCha20Poly1305 {
+) -> Option<XChaCha20Poly1305> {
     let salt = [ephemeral.as_slice(), recipient].concat();
     let mut k = [0u8; 32];
     Hkdf::<Sha256>::new(Some(&salt), shared)
         .expand_multi_info(&[SHARE_INFO, b"\0", context], &mut k)
-        .expect("32 bytes");
-    XChaCha20Poly1305::new(&k.into())
+        .ok()?;
+    Some(XChaCha20Poly1305::new(&k.into()))
 }
 
 /// `context` names sender, recipient and Space, so a share can't be replayed elsewhere.
@@ -357,7 +357,7 @@ pub fn seal_share(
     }
     let nonce = random::<NONCE>();
     let msg = [key.0.as_slice(), &version.to_be_bytes()].concat();
-    let ct = share_key(shared.as_bytes(), &eph_pub, &recipient, context)
+    let ct = share_key(shared.as_bytes(), &eph_pub, &recipient, context)?
         .encrypt(&XNonce::from(nonce), msg.as_slice())
         .ok()?;
     Some(SealedShare {
@@ -381,7 +381,7 @@ pub fn open_share(
     let shared = me.0.diffie_hellman(&PublicKey::from(eph));
     let recipient = PublicKey::from(&me.0).to_bytes();
     let nonce: [u8; NONCE] = sealed[..NONCE].try_into().ok()?;
-    let plain = share_key(shared.as_bytes(), &eph, &recipient, context)
+    let plain = share_key(shared.as_bytes(), &eph, &recipient, context)?
         .decrypt(&XNonce::from(nonce), &sealed[NONCE..])
         .ok()?;
     if plain.len() != 40 {
