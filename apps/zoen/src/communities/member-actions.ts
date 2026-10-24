@@ -111,7 +111,8 @@ export class MemberActionsSession {
     });
     void this.refresh(this.ticket());
   }
-  close() {
+  close(ticket?: MemberActionTicket | null) {
+    if (ticket !== undefined && !this.current(ticket)) return;
     ++this.generation;
     ++this.readGeneration;
     this.review = null;

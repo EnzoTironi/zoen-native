@@ -124,6 +124,18 @@ test('blur and reopen invalidate the old dialog without disturbing a new selecti
   assert.equal(f.session.getSnapshot().selected, 'c'.repeat(64));
 });
 
+test('a delayed native dismiss cannot close a newly selected participant', async () => {
+  const f = fixture();
+  await f.open();
+  const dismissed = f.session.ticket();
+  await f.open('c'.repeat(64));
+  f.session.close(dismissed);
+  assert.equal(f.session.getSnapshot().selected, 'c'.repeat(64));
+  f.session.close(f.session.ticket());
+  assert.equal(f.session.getSnapshot().selected, null);
+  assert.equal(f.writes.length, 0);
+});
+
 for (const replacement of [
   { ...context(), can_remove: false },
   { ...context(), revision: '2'.repeat(64) },

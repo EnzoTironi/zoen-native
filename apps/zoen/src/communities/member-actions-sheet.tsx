@@ -31,7 +31,7 @@ export function MemberActionsSheet({
       <BottomSheet
         testID="member-actions-sheet"
         isPresented={Boolean(state.selected)}
-        onDismiss={() => session.close()}
+        onDismiss={() => session.close(ticket)}
         snapPoints={["half", "full"]}
         containerColor={p.list.background}
       >
@@ -58,7 +58,7 @@ export function MemberActionsSheet({
               <IconButton
                 name={{ ios: "xmark", android: "close", web: "close" }}
                 label={t("common.close")}
-                onPress={() => session.close()}
+                onPress={() => session.close(ticket)}
               />
             </View>
             {state.phase === "loading" ? <Loading /> : null}
@@ -91,7 +91,7 @@ export function MemberActionsSheet({
                       icon: { ios: "person.crop.circle", android: "person", web: "person" },
                       onPress: () => {
                         if (!session.canOpenProfile(ticket)) return;
-                        session.close();
+                        session.close(ticket);
                         router.push({ pathname: "/person/[id]", params: { id: member.id } });
                       },
                     },
