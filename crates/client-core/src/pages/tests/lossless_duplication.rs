@@ -55,7 +55,7 @@ fn every_kind_duplicates_undoes_replays_exports_and_recovers_cold() {
     let accepted = apply(&client, &original, "duplicate-all", &copies).unwrap();
     assert_eq!(accepted.page.blocks, copies);
     assert_ne!(accepted.page.content_hash, original.content_hash);
-    for pair in accepted.page.blocks.chunks_exact(2) {
+    for pair in accepted.page.blocks.as_chunks::<2>().0 {
         let mut normalized = pair[1].clone();
         normalized.id = pair[0].id.clone();
         assert_eq!(normalized, pair[0]);
