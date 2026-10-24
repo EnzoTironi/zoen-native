@@ -5,6 +5,7 @@
 
 mod diagnostics;
 pub mod watch;
+mod watch_readiness;
 mod world_commands;
 mod world_service;
 
