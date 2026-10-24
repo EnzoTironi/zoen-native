@@ -115,7 +115,7 @@ mod tests {
     fn worker_group_snapshot_uses_the_existing_bounded_deduplicated_record(
     ) -> Result<(), Box<dyn std::error::Error>> {
         use client_core::owner_policy::{
-            WorkerDirectoryState, WorkerGroupObservation, WorkerGroupState,
+            WorkerConnectionState, WorkerDirectoryState, WorkerGroupObservation, WorkerGroupState,
         };
         let mut summary = Summary::new(true, Agent::Ready);
         summary.inquiries.runtime_error = Some(PolicyUnavailable::Denied);
@@ -125,7 +125,9 @@ mod tests {
             device_fingerprint: "ab".repeat(32),
             group: WorkerGroupState::Ready,
             directory: WorkerDirectoryState::Complete,
-            synced: true,
+            space_synced: true,
+            socket: WorkerConnectionState::Online,
+            socket_synced: Some(true),
             roster_lists_self: true,
             own_leaf: Some(true),
             self_active: Some(true),

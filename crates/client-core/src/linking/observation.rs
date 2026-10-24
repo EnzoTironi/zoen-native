@@ -1,7 +1,7 @@
 //! Bounded projection of the actual linked-device and MLS state. No writes.
 use super::*;
 use crate::owner_policy::{
-    WorkerDirectoryState as D, WorkerGroupObservation, WorkerGroupState as G,
+    WorkerConnectionState, WorkerDirectoryState as D, WorkerGroupObservation, WorkerGroupState as G,
 };
 
 fn directory_set(raw: &str) -> Option<BTreeSet<String>> {
@@ -51,7 +51,9 @@ impl Engine {
             device_fingerprint: event_log::sha256_hex(account.device.as_bytes()),
             group,
             directory: D::Missing,
-            synced: self.net.synced.contains(space),
+            space_synced: self.net.synced.contains(space),
+            socket: WorkerConnectionState::Unobserved,
+            socket_synced: None,
             roster_lists_self: self
                 .mls_roster(space)
                 .is_some_and(|r| r.contains_key(&account.identity)),

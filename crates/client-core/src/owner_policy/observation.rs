@@ -18,13 +18,23 @@ pub enum WorkerDirectoryState {
     Invalid,
     Storage,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkerConnectionState {
+    Unobserved,
+    Offline,
+    Connecting,
+    Online,
+}
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct WorkerGroupObservation {
     /// Hash of this public device ID only; no raw identity, device or conversation.
     pub device_fingerprint: String,
     pub group: WorkerGroupState,
     pub directory: WorkerDirectoryState,
-    pub synced: bool,
+    pub space_synced: bool,
+    pub socket: WorkerConnectionState,
+    pub socket_synced: Option<bool>,
     pub roster_lists_self: bool,
     pub own_leaf: Option<bool>,
     pub self_active: Option<bool>,
@@ -79,6 +89,17 @@ impl Client {
         &self,
         query: &OwnerPolicyInquiryControl,
     ) -> R<WorkerGroupObservation> {
-        self.lock().owner_policy_worker_observation(query)
+        // Existing global order: Net then Engine. Stop/account transitions
+        // cannot replace this channel between the scope check and snapshot.
+        let net = self.net.lock().unwrap_or_else(|p| p.into_inner());
+        let mut observed = self.lock().owner_policy_worker_observation(query)?;
+        let status = net.as_ref().map(crate::net::Net::status);
+        observed.socket = match status.as_ref().map(|status| &status.state) {
+            None | Some(crate::net::ConnState::Offline) => WorkerConnectionState::Offline,
+            Some(crate::net::ConnState::Connecting) => WorkerConnectionState::Connecting,
+            Some(crate::net::ConnState::Online) => WorkerConnectionState::Online,
+        };
+        observed.socket_synced = Some(status.is_some_and(|status| status.synced));
+        Ok(observed)
     }
 }

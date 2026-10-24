@@ -13,7 +13,9 @@ use crate::{
 use context_rejection::ContextAdmissionFailure;
 pub use context_rejection::OwnerPolicyContextRejection;
 pub use control::OwnerPolicySubmission;
-pub use observation::{WorkerDirectoryState, WorkerGroupObservation, WorkerGroupState};
+pub use observation::{
+    WorkerConnectionState, WorkerDirectoryState, WorkerGroupObservation, WorkerGroupState,
+};
 pub use options::{
     OwnerPolicyContext, OwnerPolicyInquiryControl, OwnerPolicyInquiryCounts,
     OwnerPolicyInquiryScan, OwnerPolicyOptionsStatus,
