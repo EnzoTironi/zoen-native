@@ -92,16 +92,23 @@ impl Engine {
         }
     }
 
-    pub(super) fn apply_fields(&mut self, id: &str) -> R<()> {
+    /// Stage only SQL. The receiver publishes memory after its savepoint commits.
+    pub(super) fn stage_fields_projection(&self, id: &str) -> R<Option<Identity>> {
         let Some(mut ident) = self.identities.get(id).cloned() else {
-            self.net.unknown.insert(id.to_string());
-            return Ok(());
+            return Ok(None);
         };
         self.overlay_profile(&mut ident);
         self.store.put_identity(&ident, None)?;
-        self.identities.insert(id.to_string(), ident);
-        self.index_dirty = true;
-        Ok(())
+        Ok(Some(ident))
+    }
+
+    pub(super) fn publish_fields_projection(&mut self, id: &str, projection: Option<Identity>) {
+        if let Some(ident) = projection {
+            self.identities.insert(id.to_string(), ident);
+            self.index_dirty = true;
+        } else {
+            self.net.unknown.insert(id.to_string());
+        }
     }
 
     /// Profile photos this device holds a key for but not the bytes.

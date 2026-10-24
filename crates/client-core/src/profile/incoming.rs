@@ -189,21 +189,26 @@ impl Engine {
     fn commit_foreign_profile(&mut self, profile: &SealedProfile, fields: &ProfileFields) -> R<()> {
         self.store
             .raw_execute("SAVEPOINT foreign_profile_receive")?;
-        let applied = (|| -> R<()> {
+        let applied = (|| -> R<Option<Identity>> {
             self.store.set_profile_fields(
                 &profile.identity,
                 profile.version,
                 &fields.to_bytes(),
             )?;
-            self.apply_fields(&profile.identity)
-        })();
-        if let Err(error) = applied {
-            self.store
-                .raw_execute("ROLLBACK TO foreign_profile_receive")?;
+            let projection = self.stage_fields_projection(&profile.identity)?;
             self.store.raw_execute("RELEASE foreign_profile_receive")?;
-            return Err(error);
-        }
-        self.store.raw_execute("RELEASE foreign_profile_receive")?;
+            Ok(projection)
+        })();
+        let projection = match applied {
+            Ok(projection) => projection,
+            Err(error) => {
+                self.store
+                    .raw_execute("ROLLBACK TO foreign_profile_receive")?;
+                self.store.raw_execute("RELEASE foreign_profile_receive")?;
+                return Err(error);
+            }
+        };
+        self.publish_fields_projection(&profile.identity, projection);
         Ok(())
     }
 
@@ -242,23 +247,31 @@ impl Engine {
             journal.upload = None;
         }
         self.store.raw_execute("SAVEPOINT own_profile_receive")?;
-        let applied = (|| -> R<()> {
+        let applied = (|| -> R<Option<Identity>> {
             if let Some(fields) = &adopted {
                 self.store
                     .set_profile_fields(&me, version, &fields.to_bytes())?;
             }
             self.save_own_profile_journal(&journal)?;
-            if adopted.is_some() {
-                self.apply_fields(&me)?;
-            }
-            Ok(())
-        })();
-        if let Err(error) = applied {
-            self.store.raw_execute("ROLLBACK TO own_profile_receive")?;
+            let projection = if adopted.is_some() {
+                self.stage_fields_projection(&me)?
+            } else {
+                None
+            };
             self.store.raw_execute("RELEASE own_profile_receive")?;
-            return Err(error);
+            Ok(projection)
+        })();
+        let projection = match applied {
+            Ok(projection) => projection,
+            Err(error) => {
+                self.store.raw_execute("ROLLBACK TO own_profile_receive")?;
+                self.store.raw_execute("RELEASE own_profile_receive")?;
+                return Err(error);
+            }
+        };
+        if adopted.is_some() {
+            self.publish_fields_projection(&me, projection);
         }
-        self.store.raw_execute("RELEASE own_profile_receive")?;
         Ok(matches!(outcome, Observe::Adopt))
     }
 
