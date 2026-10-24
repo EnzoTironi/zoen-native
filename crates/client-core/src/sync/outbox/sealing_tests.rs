@@ -121,5 +121,16 @@ fn invalid_unsealed_head_never_advances_its_ratchet_while_other_chat_seals_and_e
         );
         drop(cold);
         drop(database);
+}
+
+#[test]
+fn unreadable_unsealed_head_preserves_ratchet_and_other_chat_progress_through_exact_repair() {
+    exercise_fault("json");
+}
+
+#[test]
+fn invalid_signed_head_cannot_consume_ratchet_or_ciphertext_before_dispatch_validation() {
+    for fault in ["signature", "empty-content"] {
+        exercise_fault(fault);
     }
 }
