@@ -172,10 +172,10 @@ impl Engine {
     pub(super) fn artifact_receipt(
         &self,
         turn: &AgentBinaryTurn,
-    ) -> R<Option<crate::app_binary_documents::SourceReceipt>> {
+    ) -> R<Option<crate::app_binary_documents::SourceBinding>> {
         Ok(self
             .artifact_request(&turn.space, &turn.source)?
-            .map(|request| crate::app_binary_documents::SourceReceipt {
+            .map(|request| crate::app_binary_documents::SourceBinding {
                 source: turn.source.clone(),
                 source_sha256: turn.source_sha256.clone(),
                 request_id: request.request_id,
