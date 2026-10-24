@@ -12,7 +12,7 @@ import type { AppSpecDto } from '../core/generated/AppSpecDto';
 import { Loading, NativeButton, Surface } from '../components/primitives';
 import { useTheme } from '../theme';
 import { useAppSheetCloseButton } from './app-sheet-context';
-import { binaryEditorFormat } from './binary-formats';
+import { binaryEditorFormat, type BinaryExportFormat } from './binary-formats';
 import { createDeckcraftSession } from './deckcraft-session';
 import type { DeckcraftFeedbackReason } from './deckcraft-feedback.ts';
 import { shareDeckcraftExport } from './deckcraft-export-files';
@@ -195,6 +195,14 @@ function DeckcraftDocument({
   const { store } = useClient();
   const format = binaryEditorFormat(verified.manifest.id);
   const messages = format.messages;
+  const exportLabels: Record<BinaryExportFormat, string> = {
+    pptx: 'PowerPoint',
+    pdf: 'PDF',
+    xlsx: 'Excel',
+    docx: 'Word',
+    pcraft: t('documents.projectFile'),
+    png: 'PNG',
+  };
   const { colors, scheme } = useTheme();
   const insets = useSafeAreaInsets();
   const closeButton = useAppSheetCloseButton();
@@ -406,15 +414,7 @@ function DeckcraftDocument({
                 <NativeButton
                   key={format}
                   secondary
-                  label={
-                    format === 'pdf'
-                      ? 'PDF'
-                      : format === 'xlsx'
-                        ? 'Excel'
-                        : format === 'docx'
-                          ? 'Word'
-                          : 'PowerPoint'
-                  }
+                  label={exportLabels[format]}
                   testID={`${verified.manifest.id}-history-export-${format}`}
                   disabled={blocked}
                   onPress={() => {
