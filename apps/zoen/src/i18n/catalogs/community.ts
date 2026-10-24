@@ -12,6 +12,7 @@ export const community = defineFeature(
     removeNamed: 'Remove %{name}?',
     removeFrom: 'Remove this person from “%{title}”?',
     removing: 'Removal pending',
+    refused: 'Removal was refused. This person is still a member.',
     updating: 'Membership updating',
     readFailed: 'Could not verify this member. Try again.',
     actionFailed:
@@ -28,6 +29,7 @@ export const community = defineFeature(
     removeNamed: 'Remover %{name}?',
     removeFrom: 'Remover esta pessoa de “%{title}”?',
     removing: 'Remoção pendente',
+    refused: 'Remoção recusada. Esta pessoa continua na conversa.',
     updating: 'Atualizando participantes',
     readFailed: 'Não foi possível verificar este participante. Tente novamente.',
     actionFailed:

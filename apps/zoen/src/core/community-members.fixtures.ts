@@ -20,6 +20,7 @@ export function context(member = peer): SpaceMemberContext {
     role: 'member',
     state: 'Active',
     can_remove: true,
+    removal_failed: false,
     revision: '1'.repeat(64),
     member: {
       id: member,

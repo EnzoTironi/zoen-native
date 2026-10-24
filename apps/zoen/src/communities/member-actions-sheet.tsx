@@ -129,7 +129,7 @@ export function MemberActionsSheet({
                 ) : null}
                 {state.actionFailed ? (
                   <Text accessibilityRole="alert" selectable style={{ color: p.destructive }}>
-                    {t('community.actionFailed')}
+                    {t(context.removal_failed ? 'community.refused' : 'community.actionFailed')}
                   </Text>
                 ) : null}
               </>

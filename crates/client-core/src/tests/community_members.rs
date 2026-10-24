@@ -109,18 +109,15 @@ fn current_permissions_device_revocation_direct_and_self_fail_before_writes() ->
     let counts = (e.store.event_count()?, e.store.outbox()?.len());
     let own = e.space_member_context(&f.space, &f.identity, &f.identity, &f.device)?;
     assert!(!own.can_remove);
-    assert!(
-        e.remove_member_reviewed(&f.space, &f.identity, &f.identity, &f.device, &own.revision)
-            .is_err()
-    );
-    assert!(
-        e.space_member_context(&f.space, &f.member, "foreign", &f.device)
-            .is_err()
-    );
-    assert!(
-        e.space_member_context(&f.space, &f.member, &f.identity, "foreign")
-            .is_err()
-    );
+    assert!(e
+        .remove_member_reviewed(&f.space, &f.identity, &f.identity, &f.device, &own.revision)
+        .is_err());
+    assert!(e
+        .space_member_context(&f.space, &f.member, "foreign", &f.device)
+        .is_err());
+    assert!(e
+        .space_member_context(&f.space, &f.member, &f.identity, "foreign")
+        .is_err());
     assert!(
         !e.space_member_context(&f.space, &f.founder, &f.identity, &f.device)?
             .can_remove,
@@ -129,10 +126,9 @@ fn current_permissions_device_revocation_direct_and_self_fail_before_writes() ->
     assert_eq!((e.store.event_count()?, e.store.outbox()?.len()), counts);
     e.store
         .set_meta("devices.revoked", &serde_json::to_string(&vec![&f.device])?)?;
-    assert!(
-        e.space_member_context(&f.space, &f.member, &f.identity, &f.device)
-            .is_err()
-    );
+    assert!(e
+        .space_member_context(&f.space, &f.member, &f.identity, &f.device)
+        .is_err());
     drop(e);
     let counts = f.counts()?;
     assert!(f.remove(&review.revision).is_err());
@@ -186,36 +182,97 @@ fn pending_role_change_never_admits_a_reviewed_removal() -> TestResult<()> {
 }
 
 #[test]
-fn permanent_refusal_restores_member_and_failed_rows_never_mean_removed() -> TestResult<()> {
-    let f = Fixture::new(SpaceKind::Community)?;
-    f.remove(&f.context()?.revision)?;
-    let pending = f.pending_removal()?;
-    assert_eq!(
-        f.client.lock().reject(
-            &pending.client_id,
-            "synthetic permanent refusal",
-            true,
-            None
-        ),
-        crate::sync::RejectionOutcome::UserFailed
-    );
+fn permanent_refusal_survives_cold_reopen_and_confirmed_removal_clears_it() -> TestResult<()> {
+    let directory = std::env::temp_dir().join(types::new_id("membership-refusal"));
+    std::fs::create_dir(&directory)?;
+    let f = Fixture::at(
+        directory.join("core.sqlite").to_string_lossy().into_owned(),
+        SpaceKind::Community,
+    )?;
+    let review = f.context()?;
+    assert!(!review.removal_failed);
+    assert!(!f.remove(&review.revision)?.removal_failed);
+    let failed = f.reject_removal()?;
     let current = f.context()?;
     assert_eq!(current.state, MemberActionState::Active);
-    assert!(current.member.is_some() && current.can_remove);
-    assert!(
-        f.client
-            .lock()
-            .store
-            .outbox()?
-            .iter()
-            .any(|p| p.event.client_id == pending.client_id && p.failed)
-    );
+    assert!(current.member.is_some() && current.can_remove && current.removal_failed);
+    assert_ne!(current.revision, review.revision);
+    assert!(f
+        .client
+        .lock()
+        .store
+        .outbox()?
+        .iter()
+        .any(|p| p.event.client_id == failed.client_id && p.failed));
+    let f = f.cold_reopen()?;
+    assert_eq!(f.context()?, current);
+    let counts = f.counts()?;
+    assert!(f.remove(&review.revision).is_err());
+    assert_eq!(f.counts()?, counts);
+    // A new explicit review may retry; reads and reopen never enqueue it.
+    assert!(!f.remove(&current.revision)?.removal_failed);
+    f.confirm(f.pending_removal()?)?;
+    assert_eq!(f.context()?.state, MemberActionState::Removed);
+    assert!(!f.context()?.removal_failed);
+    let f = f.cold_reopen()?;
+    assert_eq!(f.context()?.state, MemberActionState::Removed);
+    assert!(!f.context()?.removal_failed);
+    drop(f);
+    std::fs::remove_dir_all(directory)?;
     Ok(())
 }
 
 #[test]
-fn enqueue_failure_keeps_projection_and_post_enqueue_read_failure_retains_exact_intent()
--> TestResult<()> {
+fn refusal_is_exact_writer_target_and_membership_cut_not_unrelated_or_old_history() -> TestResult<()>
+{
+    let f = Fixture::new(SpaceKind::Community)?;
+    for sibling in [true, false] {
+        f.retain_other_writer_refusal(sibling)?;
+        assert!(!f.context()?.removal_failed);
+    }
+    for who in [&f.member, &f.identity] {
+        f.remove(&f.context()?.revision)?;
+        f.reject_removal()?;
+        assert!(f.context()?.removal_failed);
+        assert!(
+            !f.client
+                .lock()
+                .space_member_context(&f.space, &f.founder, &f.identity, &f.device)?
+                .removal_failed
+        );
+        f.ordered(EventBody::MessagePosted {
+            message: types::new_id("message"),
+            text: "ordinary message does not erase refusal".into(),
+            attaches: None,
+            reply: None,
+            forwarded: false,
+            media: None,
+        })?;
+        assert!(f.context()?.removal_failed);
+        let role = if who == &f.identity {
+            Role::Admin
+        } else {
+            Role::Member
+        };
+        f.ordered(EventBody::MemberRemoved {
+            identity: who.clone(),
+        })?;
+        f.ordered(EventBody::MemberAdded {
+            identity: who.clone(),
+            role,
+        })?;
+        assert!(f.context()?.can_remove);
+        assert!(
+            !f.context()?.removal_failed,
+            "rejoin retires old actor/target failure"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn enqueue_failure_keeps_projection_and_post_enqueue_read_failure_retains_exact_intent(
+) -> TestResult<()> {
     let f = Fixture::new(SpaceKind::Group)?;
     let review = f.context()?;
     let counts = f.counts()?;

@@ -22,6 +22,8 @@ pub struct SpaceMemberContext {
     pub role: Option<String>,
     pub state: MemberActionState,
     pub can_remove: bool,
+    /// Permanent failure of an exact local intent on the current membership cut.
+    pub removal_failed: bool,
     /// A derived review fingerprint, not a stored grant or a mutation receipt.
     pub revision: String,
 }

@@ -145,3 +145,64 @@ test('web keeps profile navigation without advertising unsupported native member
   assert.equal(f.calls.length, 0);
   await f.close();
 });
+
+test('permanent refusal remains visible after canonical refresh and sheet reopen without mutation retry', async () => {
+  const f = await communityUi();
+  const row = nodes(f.render().tree).find(
+    (node) => node.props.testID === `details-member-${peer}`,
+  )!;
+  row.props.onLongPress();
+  await settle();
+  f.confirm(async () => true);
+  let screen = f.render();
+  nodes(screen.sheet)
+    .find((node) => node.props.testID === 'member-remove')!
+    .props.onPress();
+  await settle();
+  assert.equal(f.render().props!.state.context.state, 'Removing');
+  const restored = {
+    ...f.context(),
+    state: 'Active' as const,
+    can_remove: true,
+    removal_failed: true,
+    revision: '2'.repeat(64),
+  };
+  f.value(restored);
+  f.room.members.push(restored.member!);
+  f.driver.changed?.({ kind: 'change', spaceIds: [f.room.id] });
+  await settle();
+  screen = f.render();
+  assert.equal(screen.props!.state.actionFailed, true);
+  assert.equal(
+    strings(nodes(screen.sheet).find((node) => node.props.accessibilityRole === 'alert')),
+    f.t('community.refused'),
+  );
+  nodes(screen.sheet)
+    .find((node) => node.type === 'BottomSheet')!
+    .props.onDismiss();
+  screen = f.render();
+  nodes(screen.tree)
+    .find((node) => node.props.testID === `details-member-${peer}`)!
+    .props.onLongPress();
+  await settle();
+  screen = f.render();
+  assert.equal(screen.props!.state.actionFailed, true);
+  assert.equal(f.calls.filter((call) => call.op === 'remove_member_reviewed').length, 1);
+  f.value({ ...restored, removal_failed: false, revision: '3'.repeat(64) });
+  f.driver.changed?.({ kind: 'change', spaceIds: [f.room.id] });
+  await settle();
+  assert.equal(f.render().props!.state.actionFailed, false);
+  f.value({
+    ...restored,
+    state: 'Removed',
+    member: null,
+    role: null,
+    can_remove: false,
+    removal_failed: false,
+  });
+  f.driver.changed?.({ kind: 'change', spaceIds: [f.room.id] });
+  await settle();
+  assert.equal(f.render().props!.state.selected, null);
+  assert.equal(f.calls.filter((call) => call.op === 'remove_member_reviewed').length, 1);
+  await f.close();
+});

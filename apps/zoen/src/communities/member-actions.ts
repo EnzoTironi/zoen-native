@@ -30,8 +30,10 @@ function validate(context: SpaceMemberContext, space: string, member: string, ow
     !/^[a-f0-9]{64}$/.test(context.revision) ||
     !['Active', 'Updating', 'Removing', 'Removed'].includes(context.state) ||
     typeof context.can_remove !== 'boolean' ||
+    typeof context.removal_failed !== 'boolean' ||
     (context.member !== null && context.member.id !== member) ||
-    (context.state === 'Removed' && (context.member !== null || context.can_remove)) ||
+    (context.state === 'Removed' &&
+      (context.member !== null || context.can_remove || context.removal_failed)) ||
     (context.can_remove &&
       (context.state !== 'Active' || !context.member || member === owner.identity))
   )
@@ -149,7 +151,7 @@ export class MemberActionsSession {
         phase: 'ready',
         context,
         busy: Boolean(this.review || this.writes.has(ticket.scope)),
-        actionFailed: failed && context.state !== 'Removing',
+        actionFailed: context.removal_failed || (failed && context.state !== 'Removing'),
       });
     } catch {
       if (this.current(ticket) && read === this.readGeneration)

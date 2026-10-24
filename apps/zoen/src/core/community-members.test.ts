@@ -253,6 +253,7 @@ for (const patch of [
   { space_id: 'foreign' },
   { revision: 'not-a-digest' },
   { state: 'invented' },
+  { removal_failed: 'false' },
   { member: null, can_remove: true },
   { member: { ...context().member!, id: 'foreign' } },
 ])

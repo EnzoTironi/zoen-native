@@ -179,6 +179,51 @@ impl Fixture {
             row.event.space == self.space && !row.failed && matches!(&row.event.body, types::EventBody::MemberRemoved { identity } if identity == &self.member)
         ).map(|row| row.event).ok_or_else(|| "missing actual removal intent".into())
     }
+    pub fn reject_removal(&self) -> TestResult<types::Event> {
+        let pending = self.pending_removal()?;
+        assert_eq!(
+            self.client.lock().reject(
+                &pending.client_id,
+                "synthetic permanent refusal",
+                true,
+                None
+            ),
+            crate::sync::RejectionOutcome::UserFailed
+        );
+        Ok(pending)
+    }
+    /// Pre-existing, actually signed failed intent from a different writer.
+    pub fn retain_other_writer_refusal(&self, sibling: bool) -> TestResult<()> {
+        let engine = self.client.lock();
+        let author = if sibling {
+            let bytes = self
+                .vault
+                .load(crate::sync::VAULT_IDENTITY.into())
+                .ok_or("missing fixture identity")?;
+            let secret: [u8; 32] = bytes.as_slice().try_into()?;
+            event_log::Author::device(
+                &event_log::Signer::from_secret(&secret),
+                event_log::Signer::generate(),
+            )
+        } else {
+            engine.author_for(&self.founder)?
+        };
+        let event = author.sign_event(
+            &self.space,
+            &types::new_id("refused"),
+            crate::engine::now_ms(),
+            engine.causal_head(&self.space)?,
+            types::EventBody::MemberRemoved {
+                identity: self.member.clone(),
+            },
+        );
+        event_log::verify_author(&event)?;
+        engine.store.outbox_put(&event)?;
+        engine
+            .store
+            .outbox_note(&event.client_id, "synthetic other writer refusal", true)?;
+        Ok(())
+    }
     pub fn confirm(&self, pending: types::Event) -> TestResult<()> {
         let mut engine = self.client.lock();
         let mut relay = engine

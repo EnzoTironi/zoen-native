@@ -56,6 +56,20 @@ impl Engine {
                 .find(|(id, _)| id == who)
                 .map(|(_, role)| *role)
         };
+        // Only membership cuts participate, so unrelated chat messages do not
+        // invalidate a review; remove/rejoin and role replacement always do.
+        let cut = |who: &str| {
+            self.logs.get(space).and_then(|log| {
+                log.events().iter().rev().find(|event| match &event.body {
+                    EventBody::SpaceCreated { .. } => event.author == who,
+                    EventBody::MemberAdded { identity, .. }
+                    | EventBody::MemberRemoved { identity } => identity == who,
+                    _ => false,
+                })
+            })
+        };
+        let actor_cut = cut(identity);
+        let member_cut = cut(member);
         let pending = self.store.outbox()?;
         let mut updating = false;
         let mut removing = false;
@@ -95,20 +109,26 @@ impl Engine {
             && member != identity
             && super::spaces::may_remove_member(Some(actor_role), target_role)
             && super::spaces::may_remove_member(projected(identity), projected(member));
-        // Only membership cuts participate, so unrelated chat messages do not
-        // invalidate a review; remove/rejoin and role replacement always do.
-        let cut = |who: &str| {
-            self.logs
-                .get(space)
-                .and_then(|log| {
-                    log.events().iter().rev().find(|event| match &event.body {
-                        EventBody::SpaceCreated { .. } => event.author == who,
-                        EventBody::MemberAdded { identity, .. }
-                        | EventBody::MemberRemoved { identity } => identity == who,
-                        _ => false,
-                    })
-                })
-                .map(|event| event.hash.as_str())
+        // Failed outbox rows are existing durable dispositions, not new authority.
+        // Only this exact native writer, target and still-applicable signed causal
+        // membership cut can surface a refusal. Rejoins/role ABA retire old failures.
+        let failure = if state == MemberActionState::Active {
+            pending.iter().rev().find(|row| {
+                let event = &row.event;
+                if !row.failed || event.space != space || event.author != identity
+                    || event.device.as_deref() != Some(device)
+                    || !matches!(&event.body, EventBody::MemberRemoved { identity: target } if target == member)
+                { return false; }
+                let (Some(log), Some(seen), Some(actor), Some(target)) =
+                    (self.logs.get(space), event.seen.as_ref(), actor_cut, member_cut)
+                else { return false; };
+                event_log::verify_author(event).is_ok()
+                    && !log.events().iter().any(|e| e.client_id == event.client_id)
+                    && log.events().iter().any(|e| e.seq == seen.seq && e.hash == seen.hash)
+                    && actor.seq <= seen.seq && target.seq <= seen.seq
+            }).map(|row| row.event.client_id.as_str())
+        } else {
+            None
         };
         let review = serde_json::to_vec(&(
             space,
@@ -118,8 +138,9 @@ impl Engine {
             member,
             actor_role,
             target_role,
-            cut(identity),
-            cut(member),
+            actor_cut.map(|event| &event.hash),
+            member_cut.map(|event| &event.hash),
+            failure,
             state,
             person.as_ref().map(|person| (&person.name, &person.handle)),
         ))
@@ -139,6 +160,7 @@ impl Engine {
             role: target_role.map(role_name),
             state,
             can_remove,
+            removal_failed: failure.is_some(),
             revision: format!("{:x}", Sha256::digest(review)),
         })
     }
