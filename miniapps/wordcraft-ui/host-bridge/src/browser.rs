@@ -1,12 +1,12 @@
 //! Ephemeral adapter for the actual upstream canvas. Core remains the only durable authority.
 use super::browser_policy::command_policy;
 use crate::{
-    Accept, Action, Command, Export, Head, HostBridge, Mutation, Open, Proposal, Result,
-    TextReplace, failure, hash, profile,
+    Accept, Command, Export, Head, HostBridge, Mutation, Open, Proposal, Result, failure, hash,
+    profile,
 };
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicU64, Ordering};
-use wordcraft_doc::{Document, StoryRef};
+use wordcraft_doc::Document;
 use wordcraft_engine::Session;
 
 static NEXT_BINDING: AtomicU64 = AtomicU64::new(1);
@@ -114,7 +114,7 @@ impl BrowserBridge {
         next.autosave = false;
         next.prefs.detect_language = false;
         next.prefs.autocorrect.enabled = false;
-        next.view.focus_mode = true;
+        next.view.focus_mode = false;
         next.view.ruler = false;
         next.view.mode = wordcraft_engine::layout::ViewMode::Web;
         self.document_id = next.document_id();
@@ -165,21 +165,17 @@ impl BrowserBridge {
         if let Some(proposal) = self.admission(s, &m, &fingerprint)? {
             return Ok(proposal);
         }
-        let actual = wordcraft_docx::write(&s.doc).map_err(|_| failure("docx_write"))?;
-        let doc = profile::parse(&actual)?;
-        let text = doc.plain_text(StoryRef::Body);
         let id = m.mutation_id.clone();
-        let mut proposal = self
+        let proposal = self
             .host
             .as_mut()
             .ok_or_else(|| failure("not_open"))?
-            .execute(Command {
-                mutation: m,
-                action: Action::TextReplace(TextReplace { text }),
-            })?;
-        // Both the model above and the final engine writer are checked. This is an explicit
-        // plain-text checkpoint, never a lossy rich-document normalization path.
-        proposal.metadata["operation"] = json!({"kind":"humanCheckpoint"});
+            .prepare_document(
+                m,
+                fingerprint.clone(),
+                &s.doc,
+                json!({"kind":"humanCheckpoint"}),
+            )?;
         self.pending = Some(Entry {
             kind: PendingKind::Manual,
             id,

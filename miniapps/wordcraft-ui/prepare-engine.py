@@ -13,6 +13,7 @@ import shutil
 import subprocess
 
 REVISION = "d1b0bfc3f9dd83126b162a42b667facecb003b7f"
+CODEC_REVISION = REVISION
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 
@@ -43,6 +44,9 @@ def prepare(directory, wasi=False, browser=False, eframe_crate=None, egui_crate=
               for source in sorted((HERE / "host-bridge").rglob("*")) if source.is_file()]
     patches = [HERE / "patches/0001-wasi-system-clock.patch",
                HERE / "patches/0002-wasi-native-only-helpers.patch"] if wasi else []
+    profile = ROOT / "crates/wordcraft-profile"
+    copies.extend((source, Path("crates/zoen-word-profile") / source.relative_to(profile))
+                  for source in sorted(profile.rglob("*")) if source.is_file())
     inputs = [Path(__file__).resolve()]
     foundation = None
     if browser:
@@ -64,6 +68,12 @@ def prepare(directory, wasi=False, browser=False, eframe_crate=None, egui_crate=
     for folder in [HERE / "host-bridge", *([HERE / "browser"] if browser else [])]:
         if any(p.is_symlink() for p in folder.rglob("*")):
             raise ValueError("Refusing symlinked adapter directory")
+    profile_manifest = (profile / "Cargo.toml").read_text()
+    for name, relative in [("wordcraft-doc", "../doc"), ("wordcraft-docx", "../docx")]:
+        fixed = f'{name} = {{ git = "https://github.com/storytold/wordcraft", rev = "{CODEC_REVISION}" }}'
+        if fixed not in profile_manifest:
+            raise ValueError("Shared profile codec pin changed")
+        profile_manifest = profile_manifest.replace(fixed, f'{name} = {{ path = "{relative}" }}')
     opened = []
     try:
         if foundation:
@@ -79,10 +89,11 @@ def prepare(directory, wasi=False, browser=False, eframe_crate=None, egui_crate=
             target = directory / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, target)
+        (directory / "crates/zoen-word-profile/Cargo.toml").write_text(profile_manifest)
         if foundation:
             foundation.apply(directory, opened)
         result = {"schema": 1, "upstream": REVISION, "adapterAbi": "zoen-host-v1",
-                  "profile": "plain-text-v1", "inputs": hashes, "wasiClocks": wasi,
+                  "profile": "rich-document-v1", "inputs": hashes, "wasiClocks": wasi,
                   "browser": browser, "compiled": False, "runtimeExecuted": False, "appAvailable": False}
         if foundation:
             result["archives"] = {Path(a.name).name: foundation.sha(Path(a.name)) for a in opened}

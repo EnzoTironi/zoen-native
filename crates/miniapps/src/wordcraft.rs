@@ -1,13 +1,13 @@
-//! Closed, lossless plain DOCX storage profile for the pinned upstream writer.
+//! Bounded lossless rich DOCX using the same pinned upstream codec as the editor.
 //! No engine/layout/fonts, editing, network or browser availability is provided here.
 #![warn(clippy::pedantic, clippy::perf)]
 use serde_json::json;
+#[cfg(test)]
 use std::{
     collections::BTreeMap,
     io::{Cursor, Read},
 };
 pub(crate) mod archive;
-mod plain;
 #[cfg(test)]
 mod tests;
 pub const APP: &str = "wordcraft";
@@ -15,12 +15,14 @@ pub const APP: &str = "wordcraft";
 pub const RESOURCE: &str = "ui://zoen/wordcraft/index.html";
 pub const MIME: &str = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 pub const ENGINE_REVISION: &str = "d1b0bfc3f9dd83126b162a42b667facecb003b7f";
-pub const MAX_BYTES: usize = 512 * 1024;
-pub const MAX_TEXT: usize = 32 * 1024;
+pub const MAX_BYTES: usize = zoen_word_profile::MAX_DOCUMENT;
+pub const MAX_TEXT: usize = zoen_word_profile::MAX_TEXT;
 pub const EMPTY: &[u8] = include_bytes!("../resources/wordcraft-empty.docx");
+#[cfg(test)]
 const MAX_PART: usize = 1024 * 1024;
+#[cfg(test)]
 const MAX_TOTAL: usize = 4 * MAX_PART;
-const INVALID: &str = "Invalid or unsupported managed plain DOCX document";
+const INVALID: &str = "Invalid or unsupported managed DOCX document";
 pub struct Document {
     pub text: String,
     pub paragraphs: usize,
@@ -31,50 +33,26 @@ impl Document {
     /// # Errors
     /// Refuses unsupported markup/metadata, malformed archives or exceeded bounds.
     pub fn parse(bytes: &[u8]) -> Result<Self, &'static str> {
-        let mut template = parts(EMPTY)?;
-        let mut parts = parts(bytes)?;
-        let document = parts.remove("word/document.xml").ok_or(INVALID)?;
-        let baseline = template.remove("word/document.xml").ok_or(INVALID)?;
-        let text = plain::text(&document, &baseline)?;
-        let words = text
-            .split(|c: char| c.is_whitespace() || c == '\u{fffc}')
-            .filter(|word| word.chars().any(char::is_alphanumeric))
-            .count();
-        let paragraphs = text.split('\n').count();
-        let app = parts.remove("docProps/app.xml").ok_or(INVALID)?;
-        let baseline_app = template.remove("docProps/app.xml").ok_or(INVALID)?;
-        let expected_app = std::str::from_utf8(&baseline_app)
-            .map_err(|_| INVALID)?
-            .replace("<Words>0</Words>", &format!("<Words>{words}</Words>"))
-            .replace(
-                "<Paragraphs>1</Paragraphs>",
-                &format!("<Paragraphs>{paragraphs}</Paragraphs>"),
-            );
-        if app != expected_app.as_bytes() || parts != template {
-            return Err(INVALID);
-        }
+        let model = zoen_word_profile::parse(bytes)?;
         Ok(Self {
-            text,
-            paragraphs,
-            words,
+            text: model.plain_text(zoen_word_profile::StoryRef::Body),
+            paragraphs: model.paragraph_count(),
+            words: model.word_count(),
         })
     }
     #[must_use]
     pub fn metadata(&self, title: &str) -> String {
         // Content remains in the encrypted FileDoc, never duplicated in Item metadata.
         json!({"title":title,"paragraphs":self.paragraphs,"words":self.words,
-            "profile":"plain-text-v1","engineRevision":ENGINE_REVISION})
+            "profile":"rich-document-v1","engineRevision":ENGINE_REVISION})
         .to_string()
     }
 }
 #[must_use]
 pub fn valid_text(text: &str) -> bool {
-    text.len() <= MAX_TEXT
-        && !text.chars().any(|c| {
-            !matches!(c, '\t' | '\n' | '\u{20}'..='\u{D7FF}' | '\u{E000}'..='\u{FFFD}' | '\u{10000}'..='\u{10FFFF}')
-                || (c.is_control() && c != '\n' && c != '\t')
-        })
+    zoen_word_profile::validate_text(text).is_ok()
 }
+#[cfg(test)]
 fn parts(bytes: &[u8]) -> Result<BTreeMap<String, Vec<u8>>, &'static str> {
     if bytes.is_empty() || bytes.len() > MAX_BYTES {
         return Err(INVALID);

@@ -6,13 +6,40 @@ fn denied() -> CmdError {
     CmdError::Disabled("This action is unavailable in this document.".into())
 }
 /// # Errors
-/// Refuses commands outside the declared plain document editor or a frozen input lease.
+/// Refuses commands outside the managed rich document editor or a frozen input lease.
 pub fn command_policy(s: &Session, id: &str, params: &Value) -> Result<(), CmdError> {
     let read = matches!(id, "document.inspect" | "edit.undoHistory");
     if s.managed_frozen && !read {
         return Err(denied());
     }
     if id.starts_with("caret.") || id.starts_with("select.") || read {
+        return Ok(());
+    }
+    if matches!(
+        id,
+        "format.bold"
+            | "format.italic"
+            | "format.underline"
+            | "format.strikethrough"
+            | "format.font"
+            | "format.size"
+            | "format.color"
+            | "format.highlight"
+            | "format.clear"
+            | "format.growFont"
+            | "format.shrinkFont"
+            | "para.align"
+            | "para.alignLeft"
+            | "para.alignCenter"
+            | "para.alignRight"
+            | "para.justify"
+            | "para.style"
+            | "para.spacing"
+            | "para.lineSpacing"
+            | "para.single"
+            | "para.double"
+            | "para.oneAndHalf"
+    ) {
         return Ok(());
     }
     match id {

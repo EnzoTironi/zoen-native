@@ -34,7 +34,7 @@ pub fn hash(bytes: &[u8]) -> String {
 
 struct Pending {
     fingerprint: String,
-    command: Command,
+    mutation: Mutation,
     proposal: Proposal,
 }
 
@@ -76,8 +76,8 @@ impl HostBridge {
     #[must_use]
     pub fn status(&self) -> Value {
         json!({"engineRevision":profile::ENGINE_REVISION,"scope":self.scope,"head":self.head,
-            "pendingMutationId":self.pending.as_ref().map(|p|&p.command.mutation.mutation_id),
-            "profile":"plain-text-v1"})
+            "pendingMutationId":self.pending.as_ref().map(|p|&p.mutation.mutation_id),
+            "profile":"rich-document-v1"})
     }
 
     #[must_use]
@@ -99,33 +99,10 @@ impl HostBridge {
     /// # Errors
     /// Refuses stale scope/head/intent, pending conflicts, invalid text or engine failure.
     pub fn execute(&mut self, command: Command) -> Result<Proposal> {
-        let mutation = &command.mutation;
-        self.scope(&mutation.scope)?;
-        if !wire::identifier(&mutation.mutation_id) || mutation.base.number()? == u64::MAX {
-            return Err(failure("invalid_mutation"));
-        }
         let fingerprint =
             hash(&serde_json::to_vec(&command).map_err(|_| failure("invalid_request"))?);
-        if let Some(last) = self
-            .last
-            .as_ref()
-            .filter(|p| p.command.mutation.mutation_id == mutation.mutation_id)
-        {
-            return if last.fingerprint == fingerprint {
-                Ok(last.proposal.clone())
-            } else {
-                Err(failure("mutation_reused"))
-            };
-        }
-        if let Some(pending) = &self.pending {
-            return if pending.fingerprint == fingerprint {
-                Ok(pending.proposal.clone())
-            } else {
-                Err(failure("proposal_pending"))
-            };
-        }
-        if mutation.base != self.head {
-            return Err(failure("stale_head"));
+        if let Some(proposal) = self.retry(&command.mutation, &fingerprint)? {
+            return Ok(proposal);
         }
         let Action::TextReplace(params) = &command.action;
         profile::validate_text(&params.text)?;
@@ -142,19 +119,64 @@ impl HostBridge {
         if text != params.text {
             return Err(failure("engine_text_mismatch"));
         }
-        let bytes = profile::encode(&text)?;
-        if profile::parse(&bytes)?.plain_text(StoryRef::Body) != params.text {
-            return Err(failure("encoded_text_mismatch"));
+        self.prepare_document(
+            command.mutation,
+            fingerprint,
+            &next.doc,
+            json!({"kind":"command","action":command.action}),
+        )
+    }
+    fn retry(&self, mutation: &Mutation, fingerprint: &str) -> Result<Option<Proposal>> {
+        self.scope(&mutation.scope)?;
+        if !wire::identifier(&mutation.mutation_id) || mutation.base.number()? == u64::MAX {
+            return Err(failure("invalid_mutation"));
         }
+        if let Some(last) = self
+            .last
+            .as_ref()
+            .filter(|p| p.mutation.mutation_id == mutation.mutation_id)
+        {
+            return if last.fingerprint == fingerprint {
+                Ok(Some(last.proposal.clone()))
+            } else {
+                Err(failure("mutation_reused"))
+            };
+        }
+        if let Some(pending) = &self.pending {
+            return if pending.fingerprint == fingerprint {
+                Ok(Some(pending.proposal.clone()))
+            } else {
+                Err(failure("proposal_pending"))
+            };
+        }
+        if mutation.base != self.head {
+            return Err(failure("stale_head"));
+        }
+        Ok(None)
+    }
+    /// The same inert proposal path for genuine manual and closed agent changes.
+    /// # Errors
+    /// Refuses changed scope/head/intent or any model that cannot survive DOCX.
+    pub(crate) fn prepare_document(
+        &mut self,
+        mutation: Mutation,
+        fingerprint: String,
+        document: &wordcraft_doc::Document,
+        operation: Value,
+    ) -> Result<Proposal> {
+        if let Some(proposal) = self.retry(&mutation, &fingerprint)? {
+            return Ok(proposal);
+        }
+        let bytes = profile::encode_document(document)?;
         let proposal = Proposal {
             metadata: json!({"scope":mutation.scope,"base":mutation.base,"mutationId":mutation.mutation_id,
                 "sha256":hash(&bytes),"byteLength":bytes.len(),"engineRevision":profile::ENGINE_REVISION,
-                "operation":{"kind":"command","action":command.action},"acceptedHead":null}),
+                "operation":operation,"acceptedHead":null}),
             bytes,
         };
         self.pending = Some(Pending {
             fingerprint,
-            command,
+            mutation,
             proposal: proposal.clone(),
         });
         Ok(proposal)
@@ -167,7 +189,7 @@ impl HostBridge {
         self.scope(&receipt.scope)?;
         if self.pending.is_none() {
             return if self.last.as_ref().is_some_and(|p| {
-                p.command.mutation.mutation_id == receipt.mutation_id
+                p.mutation.mutation_id == receipt.mutation_id
                     && p.proposal.metadata["acceptedHead"] == json!(receipt.head)
             }) && self.head == receipt.head
             {
@@ -185,7 +207,7 @@ impl HostBridge {
             .number()?
             .checked_add(1)
             .ok_or_else(|| failure("version_exhausted"))?;
-        if pending.command.mutation.mutation_id != receipt.mutation_id
+        if pending.mutation.mutation_id != receipt.mutation_id
             || receipt.head.number()? != version
             || receipt.head.sha256 != hash(&pending.proposal.bytes)
         {

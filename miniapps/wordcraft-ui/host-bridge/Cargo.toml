@@ -16,6 +16,7 @@ path = "src/clock_probe.rs"
 required-features = ["qualification"]
 
 [dependencies]
+zoen-word-profile = { path = "../zoen-word-profile" }
 wordcraft-ui-egui = { path = "../ui-egui", optional = true }
 egui = { workspace = true, optional = true }
 egui_kittest = { version = "0.36", default-features = false, optional = true }

@@ -1,9 +1,9 @@
 [package]
 name = "zoen-word-profile"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-publish.workspace = true
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+publish = false
 
 [dependencies]
 wordcraft-doc = { git = "https://github.com/storytold/wordcraft", rev = "d1b0bfc3f9dd83126b162a42b667facecb003b7f" }
