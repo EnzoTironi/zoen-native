@@ -80,7 +80,7 @@ impl eframe::App for Shell {
         if api::retired() || !self.bridge.is_open() {
             return;
         }
-        self.app.ui(ui);
+        crate::viewport::show(&mut self.app, ui);
         if self.app.session.managed_frozen {
             // History, explicit host pause and a pending agent proposal cannot accept typing.
             ui.ctx().output_mut(|o| {
