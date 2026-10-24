@@ -103,6 +103,16 @@ fn rich_manual_agent_ack_cold_docx_pdf_and_undo_keep_one_actual_document() -> Re
     let final_model = s.doc.clone();
     assert_eq!(final_model.body[1], manual.body[1]);
     assert_eq!(final_model.core, styled_model.core);
+    let (wordcraft_doc::Block::Para(final_p), wordcraft_doc::Block::Para(styled_p)) =
+        (final_model.body[0].as_ref(), styled_model.body[0].as_ref())
+    else {
+        return Err(failure("missing_paragraph"));
+    };
+    assert_eq!(final_p.props, styled_p.props);
+    assert_eq!(
+        final_p.runs[0].props, styled_p.runs[0].props,
+        "range edit keeps the real selected run formatting"
+    );
     let exported = b.export(
         &s,
         &Export {
@@ -215,5 +225,116 @@ fn invalid_unicode_stale_scope_and_lossy_serialization_roll_back_actual_session(
     );
     assert_eq!(s.doc, before);
     assert_eq!(s.edit_snapshot().undo_depth(), depth);
+    Ok(())
+}
+
+#[test]
+fn higher_head_headless_agent_refresh_undo_is_a_new_human_cas_edit() -> Result<()> {
+    let (mut browser, mut canvas, original) = opened("Original")?;
+    let identity = canvas.document_id();
+    canvas
+        .run("select.all", &json!({"whole":true}))
+        .map_err(|_| failure("select"))?;
+    canvas
+        .run("text.insert", &json!({"text":"Manual","raw":true}))
+        .map_err(|_| failure("type"))?;
+    let human = browser.snapshot(&mut canvas, mutation(&original, "human"))?;
+    ack(&mut browser, &mut canvas, "human", "2", &human)?;
+    let manual = canvas.doc.clone();
+    // The real agent path has an isolated headless worker. It does not call the canvas dispatcher.
+    let mut worker = HostBridge::open(
+        Open {
+            scope: scope(),
+            head: head("2", &human.bytes),
+        },
+        &human.bytes,
+    )?;
+    let change=worker.execute(request(head("2",&human.bytes),"remote-agent",json!({"command":"range.format","params":{"range":range(0,6),"format":{"bold":true,"alignment":"center"}}}))?)?;
+    worker.accept(&Accept {
+        scope: scope(),
+        mutation_id: "remote-agent".into(),
+        head: head("3", &change.bytes),
+    })?;
+    let remote = profile::parse(&change.bytes)?;
+    browser.open(
+        &mut canvas,
+        Open {
+            scope: scope(),
+            head: head("3", &change.bytes),
+        },
+        &change.bytes,
+    )?;
+    assert_eq!(
+        canvas.document_id(),
+        identity,
+        "higher-head refresh must retain the live bound Session"
+    );
+    assert_eq!(canvas.doc, remote);
+    canvas
+        .run("edit.undo", &json!({}))
+        .map_err(|_| failure("remote_refresh_lost_undo"))?;
+    assert_eq!(canvas.doc, manual);
+    assert_eq!(
+        browser.status(&canvas)?["head"],
+        json!(head("3", &change.bytes)),
+        "Undo never rewinds accepted history"
+    );
+    assert_eq!(browser.status(&canvas)?["dirty"], true);
+    assert_eq!(
+        browser
+            .export(
+                &canvas,
+                &Export {
+                    scope: scope(),
+                    head: head("3", &change.bytes),
+                    format: ExportFormat::Docx
+                }
+            )?
+            .bytes,
+        change.bytes
+    );
+    assert!(
+        browser
+            .snapshot(
+                &mut canvas,
+                Mutation {
+                    scope: scope(),
+                    base: head("2", &human.bytes),
+                    mutation_id: "stale-undo".into()
+                }
+            )
+            .is_err()
+    );
+    let undo = browser.snapshot(
+        &mut canvas,
+        Mutation {
+            scope: scope(),
+            base: head("3", &change.bytes),
+            mutation_id: "human-undo".into(),
+        },
+    )?;
+    assert_eq!(profile::parse(&undo.bytes)?, manual);
+    ack(&mut browser, &mut canvas, "human-undo", "4", &undo)?;
+    assert_eq!(
+        browser.status(&canvas)?["head"],
+        json!(head("4", &undo.bytes))
+    );
+    canvas
+        .run("edit.undo", &json!({}))
+        .map_err(|_| failure("earlier_manual_undo_lost"))?;
+    assert_eq!(canvas.doc.plain_text(StoryRef::Body), "Original");
+    assert_eq!(
+        browser
+            .export(
+                &canvas,
+                &Export {
+                    scope: scope(),
+                    head: head("4", &undo.bytes),
+                    format: ExportFormat::Docx
+                }
+            )?
+            .bytes,
+        undo.bytes
+    );
     Ok(())
 }

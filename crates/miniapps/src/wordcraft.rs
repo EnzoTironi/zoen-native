@@ -22,6 +22,7 @@ pub const EMPTY: &[u8] = include_bytes!("../resources/wordcraft-empty.docx");
 const MAX_PART: usize = 1024 * 1024;
 #[cfg(test)]
 const MAX_TOTAL: usize = 4 * MAX_PART;
+#[cfg(test)]
 const INVALID: &str = "Invalid or unsupported managed DOCX document";
 pub struct Document {
     pub text: String,

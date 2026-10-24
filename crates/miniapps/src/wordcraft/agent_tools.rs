@@ -2,6 +2,7 @@
 use crate::deckcraft::agent_tools::{Definition, ParsedCommand};
 use serde_json::{json, Value};
 use zoen_word_profile::action::Action;
+#[path = "agent_tools/schema.rs"]
 mod schema;
 pub fn tools() -> Vec<Definition> {
     schema::tools()

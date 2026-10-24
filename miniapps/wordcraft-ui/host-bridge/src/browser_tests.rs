@@ -137,7 +137,7 @@ fn opaque_model_cannot_be_silently_normalized_and_manual_draft_blocks_agent() ->
     let (mut b, mut s, bytes) = opened("Original")?;
     s.doc
         .passthrough
-        .insert("customXml/private.xml".into(), b"opaque".to_vec());
+        .insert("customXml/private.xml".into(), b"opaque".to_vec().into());
     let retained = s.doc.clone();
     assert!(b.snapshot(&mut s, mutation(&bytes, "rich")).is_err());
     assert_eq!(s.doc, retained);
@@ -270,3 +270,46 @@ fn typed_soft_break_refuses_before_mutation_while_real_paste_paragraphs_stay_sup
 
 #[path = "browser_rich_tests.rs"]
 mod rich;
+
+#[test]
+fn reviewed_agent_edit_preserves_existing_manual_undo() -> Result<()> {
+    let (mut b, mut s, original) = opened("Original")?;
+    insert(&mut s, "Manual")?;
+    let p = b.snapshot(&mut s, mutation(&original, "human"))?;
+    b.accept(
+        &mut s,
+        &Accept {
+            scope: scope(),
+            mutation_id: "human".into(),
+            head: head("2", &p.bytes),
+        },
+    )?;
+    let proposal = b.execute(
+        &mut s,
+        Command {
+            mutation: Mutation {
+                scope: scope(),
+                base: head("2", &p.bytes),
+                mutation_id: "agent".into(),
+            },
+            action: Action::TextReplace(TextReplace {
+                text: "Agent".into(),
+            }),
+        },
+    )?;
+    b.accept(
+        &mut s,
+        &Accept {
+            scope: scope(),
+            mutation_id: "agent".into(),
+            head: head("3", &proposal.bytes),
+        },
+    )?;
+    s.run("edit.undo", &json!({}))
+        .map_err(|_| failure("agent_replaced_the_undo_history"))?;
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "Manual");
+    s.run("edit.undo", &json!({}))
+        .map_err(|_| failure("manual_history_lost"))?;
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "Original");
+    Ok(())
+}
