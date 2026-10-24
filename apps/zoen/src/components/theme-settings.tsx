@@ -179,7 +179,10 @@ function Toggle({
         justifyContent: 'center',
       }}
     >
-      <Host matchContents style={{ width: '100%' }}>
+      <Host
+        matchContents={process.env.EXPO_OS === 'ios' ? { vertical: true } : true}
+        style={{ width: '100%' }}
+      >
         <Switch
           label={label}
           value={value}

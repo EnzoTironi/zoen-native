@@ -85,6 +85,7 @@ pub struct AndroidPackage {
 }
 
 pub struct AppState {
+    pub read_snapshots: read_snapshots::Resources,
     /// OIDC provider proofs and explicit signed account bindings.
     pub auth: auth::Service,
     pub turn: turn::Service,
@@ -271,7 +272,9 @@ pub async fn build_with_managed(
     log.start_renewal();
     tracing::info!(node = %node, partitions = ownership::PARTITION_COUNT, "persisted space ownership ready");
     let analytics = analytics::Analytics::load(&pool).await?;
+    let read_snapshots = read_snapshots::Resources::new(&pool);
     let state = Arc::new(AppState {
+        read_snapshots,
         auth: auth::Service::new(auth::Settings::from_env()?)?,
         turn: turn::Service::from_env()?,
         pool,
@@ -476,3 +479,5 @@ async fn metrics(State(st): State<Shared>) -> impl IntoResponse {
             + &st.limits.render_metrics(),
     )
 }
+
+pub mod read_snapshots;

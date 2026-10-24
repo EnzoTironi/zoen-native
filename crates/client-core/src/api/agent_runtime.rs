@@ -61,13 +61,29 @@ impl Client {
 
     /// The relay's record for this agent runtime: status, definition and cursors.
     pub async fn agent_state(&self) -> Result<protocol::AgentStateRecord, CoreError> {
-        match self
-            .request(Op::Agent(protocol::AgentRequest::State))
-            .await?
+        let (owner, channel) = self.device_directory_owner()?;
+        let reply = channel
+            .clone()
+            .send(Op::Agent(protocol::AgentRequest::State))
+            .await
+            .map_err(invalid)?;
+        let Reply::AgentState(state) = reply else {
+            return Err(unexpected());
+        };
+        if state.cursors.len() > protocol::complete_reads::CURSOR_ROWS
+            || state.definition.len() > protocol::complete_reads::DEFINITION_BYTES
         {
-            Reply::AgentState(s) => Ok(s),
-            _ => Err(unexpected()),
+            return Err(invalid(protocol::complete_reads::PROFILE_EXCEEDED));
         }
+        let mut spaces = std::collections::BTreeSet::new();
+        if state.cursors.iter().any(|(space, _)| {
+            space.is_empty()
+                || space.len() > protocol::complete_reads::KEY_BYTES
+                || !spaces.insert(space.clone())
+        }) {
+            return Err(invalid(protocol::complete_reads::INVALID));
+        }
+        self.with_device_directory_completion(&owner, &channel, |_| Ok(state))
     }
 
     /// This agent runtime handled `space` through `seq` (inclusive).

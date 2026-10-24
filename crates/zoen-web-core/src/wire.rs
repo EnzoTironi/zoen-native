@@ -220,6 +220,7 @@ pub fn decode_server(bytes: &[u8]) -> Result<ServerMessage, String> {
                 Reply::AgentState(a) => {
                     serde_json::json!({"kind":"agent_state","status":a.status,"definition_version":a.definition_version})
                 }
+                Reply::CompletePage(_) => serde_json::json!({"kind":"complete_page"}),
                 Reply::Devices(devices) => {
                     serde_json::json!({"kind":"devices","devices":devices.iter().map(|d| serde_json::json!({"device":d.device,"revoked":d.revoked})).collect::<Vec<_>>()})
                 }

@@ -229,6 +229,12 @@ pub(super) enum Command {
         archived: bool,
         muted: bool,
     },
+    SetChatMuted {
+        space_id: String,
+        muted: bool,
+        expected_identity_id: String,
+        expected_device_id: String,
+    },
     StartDirect {
         identity_id: String,
     },

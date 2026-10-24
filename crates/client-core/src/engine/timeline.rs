@@ -326,6 +326,32 @@ impl Engine {
         Ok(self.entry_dto(s.entries.last().expect("acabou de entrar")))
     }
 
+    /// The Engine lock covers owner validation, current preference merge and the
+    /// existing signed Personal-log writer. This is not distributed compare-and-set.
+    pub(crate) fn set_chat_muted(
+        &mut self,
+        space: &str,
+        muted: bool,
+        identity: &str,
+        device: &str,
+    ) -> R<()> {
+        self.native_surface_owner(identity, device)?;
+        self.space_state(space)?;
+        if !self.is_member(space, identity) {
+            return Err(CoreError::Forbidden {
+                reason: t("o acesso à conversa mudou", "conversation access changed"),
+            });
+        }
+        let mut prefs = self
+            .state
+            .chat_prefs
+            .get(space)
+            .cloned()
+            .unwrap_or_default();
+        prefs.muted_until_ms = muted.then_some(i64::MAX);
+        self.set_chat_prefs(space, prefs)
+    }
+
     /// Pins, archives or mutes one of my chats in its signed local Personal log.
     /// Replication of this log across devices is a separate transport contract.
     pub fn set_chat_prefs(&mut self, space: &str, prefs: types::ChatPrefs) -> R<()> {

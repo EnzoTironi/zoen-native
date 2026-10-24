@@ -70,7 +70,7 @@ export type PolicyState = Readonly<{
   limitInput: string;
   maxAttemptInput: string;
   enabled: boolean;
-  optionsState: 'pending' | 'ready' | 'refused' | 'delivery_failed' | null;
+  optionsState: 'pending' | 'ready' | 'refused' | 'delivery_failed' | 'expired' | null;
   optionsSource: string | null;
   inquiryDigest: string | null;
   effectiveness: 'unknown' | 'current' | 'superseded' | 'expired' | 'disabled';
@@ -193,13 +193,14 @@ export class OwnerPolicySession {
       (this.state.inquiryDigest &&
         expectedSource &&
         value.inquiry_digest !== this.state.inquiryDigest) ||
-      !['pending', 'ready', 'refused', 'delivery_failed'].includes(value.state) ||
+      !['pending', 'ready', 'refused', 'delivery_failed', 'expired'].includes(value.state) ||
       (value.state === 'ready') !== !!value.context ||
       (value.context && !validContext(value.context))
     )
       throw Error('Invalid options');
     const context = value.context ? frozenContext(value.context) : null;
     const replaced = !!context && this.state.context?.options_digest !== context.options_digest;
+    const withdrawn = !context && !!this.state.context && !this.submitted;
     const phase = this.submitted
       ? this.state.phase
       : value.state === 'ready'
@@ -207,17 +208,23 @@ export class OwnerPolicySession {
         : value.state === 'pending'
           ? 'loading'
           : 'refused';
-    if (replaced) this.revision++;
+    if (replaced || withdrawn) this.revision++;
     this.publish({
       optionsState:
-        value.state === 'pending' || value.state === 'ready' || value.state === 'refused'
+        value.state === 'pending' ||
+        value.state === 'ready' ||
+        value.state === 'refused' ||
+        value.state === 'expired'
           ? value.state
           : 'delivery_failed',
       optionsSource: value.source,
       inquiryDigest: value.inquiry_digest,
       context,
-      phase: !this.submitted && this.state.phase === 'review' && !replaced ? 'review' : phase,
-      review: replaced && !this.submitted ? null : this.state.review,
+      phase:
+        !this.submitted && this.state.phase === 'review' && !replaced && !withdrawn
+          ? 'review'
+          : phase,
+      review: (replaced || withdrawn) && !this.submitted ? null : this.state.review,
       limitInput:
         context && !this.dirty ? (context.current_limit_units ?? '') : this.state.limitInput,
       maxAttemptInput:
@@ -309,7 +316,7 @@ export class OwnerPolicySession {
       !this.inquiryUncertain &&
       !observed.refreshing &&
       !!observed.optionsSource &&
-      (observed.optionsState === 'refused' || observed.optionsState === 'delivery_failed')
+      ['refused', 'delivery_failed', 'expired'].includes(observed.optionsState ?? '')
     );
   }
   async retryOptions(observed: PolicyState = this.state) {

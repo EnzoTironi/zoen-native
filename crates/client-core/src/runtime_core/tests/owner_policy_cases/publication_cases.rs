@@ -2,7 +2,7 @@
 use super::*;
 
 type ProviderRows = Vec<(Vec<u8>, String, Vec<u8>, i64)>;
-fn provider_rows(engine: &Engine) -> rusqlite::Result<ProviderRows> {
+pub(super) fn provider_rows(engine: &Engine) -> rusqlite::Result<ProviderRows> {
     let mut query = engine.store.conn().prepare(
         "SELECT group_id,data_type,group_data,provider_version FROM openmls_group_data ORDER BY group_id,data_type",
     )?;

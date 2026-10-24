@@ -1,6 +1,4 @@
-//! Implementation within the existing browser client authority.
 use super::*;
-
 impl<S: Signer> Client<S> {
     pub fn claim_clock(&mut self, value: &str) -> Result<(), String> {
         self.membership_net.clock = if value.is_empty() {

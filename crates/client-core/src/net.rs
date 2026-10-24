@@ -27,6 +27,7 @@ use crate::engine::Engine;
 use crate::sync::{Ingest, RejectionOutcome};
 use crate::CoreListener;
 
+mod complete_reads;
 mod dispatch;
 mod maintenance;
 mod media;
@@ -334,6 +335,11 @@ type Stream = futures_util::stream::SplitStream<
 >;
 
 enum Waiting {
+    Paged {
+        assembly: Box<protocol::complete_reads::Assembly>,
+        deadline: tokio::time::Instant,
+        done: Box<Waiting>,
+    },
     External(oneshot::Sender<Result<Reply, String>>),
     /// The ids asked for, so ones the relay doesn't know aren't asked again forever.
     Profiles(Vec<String>),

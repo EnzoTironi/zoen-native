@@ -90,6 +90,7 @@ mod invite_routing;
 mod managed;
 mod managed_publish;
 mod managed_registry;
+mod membership_reads;
 mod routing;
 mod runtime;
 pub use runtime::{RuntimeHead, RuntimeSource, RuntimeSourceBatch};

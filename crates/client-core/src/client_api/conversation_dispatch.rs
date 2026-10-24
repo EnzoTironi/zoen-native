@@ -252,6 +252,17 @@ impl Client {
                 archived,
                 muted.then_some(i64::MAX),
             )?),
+            SetChatMuted {
+                space_id,
+                muted,
+                expected_identity_id,
+                expected_device_id,
+            } => encode(&self.lock().set_chat_muted(
+                &space_id,
+                muted,
+                &expected_identity_id,
+                &expected_device_id,
+            )?),
             StartDirect { identity_id } => encode(&self.start_direct(identity_id)?),
             CreateGroup { title, member_ids } => encode(&self.create_group(title, member_ids)?),
             CreateCommunity { title } => encode(&self.create_community(title)?),

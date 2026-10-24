@@ -31,6 +31,7 @@ pub use frames::{
     InvitePreview, KeyPackageRecord, Op, Reply, SealedProfile, ServerFrame,
 };
 
+pub mod complete_reads;
 pub mod cursor_repair;
 pub mod experiments;
 pub mod links;
@@ -80,6 +81,7 @@ pub const CAPABILITIES: &[&str] = &[
     "invites",
     "presence",
     "profiles",
+    complete_reads::CAPABILITY,
     AGENT_OWNER_PROOF,
     KEY_PACKAGE_CLAIM_CAPABILITY,
     runtime_binding::CAPABILITY,

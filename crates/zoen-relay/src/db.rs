@@ -460,16 +460,30 @@ pub async fn devices_of(
     pool: &PgPool,
     identity: &str,
 ) -> Result<Vec<protocol::DeviceRecord>, sqlx::Error> {
-    let rows: Vec<(String, bool)> = sqlx::query_as(
-        "SELECT device, revoked_at IS NOT NULL FROM devices WHERE identity = $1 ORDER BY created_at",
+    // Compatibility helper: a finite complete result or an explicit profile
+    // refusal. Session wire readers use the independently paged snapshot path.
+    let rows: Vec<(Option<String>, bool)> = sqlx::query_as(
+        "SELECT CASE WHEN octet_length(device)=64 THEN device ELSE NULL END, revoked_at IS NOT NULL FROM devices WHERE identity = $1 ORDER BY device COLLATE \"C\" LIMIT $2",
     )
     .bind(identity)
+    .bind((protocol::complete_reads::DEVICE_ROWS + 1) as i64)
     .fetch_all(pool)
     .await?;
-    Ok(rows
-        .into_iter()
-        .map(|(device, revoked)| protocol::DeviceRecord { device, revoked })
-        .collect())
+    if rows.len() > protocol::complete_reads::DEVICE_ROWS {
+        return Err(sqlx::Error::Protocol(
+            protocol::complete_reads::PROFILE_EXCEEDED.into(),
+        ));
+    }
+    rows.into_iter()
+        .map(|(device, revoked)| {
+            Ok(protocol::DeviceRecord {
+                device: device.ok_or_else(|| {
+                    sqlx::Error::Protocol(protocol::complete_reads::PROFILE_EXCEEDED.into())
+                })?,
+                revoked,
+            })
+        })
+        .collect()
 }
 
 /// Whether `device` is a device of `identity` still linked.

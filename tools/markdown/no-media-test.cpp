@@ -75,6 +75,15 @@ static int run(int argc, char **argv) {
   check(count(fenced,NodeType::Image)==0 && count(fenced,NodeType::Video)==0,"Literal code became media");
   const auto inlineCode=parse("`x < y && ![literal](file:///not-read)`",true);
   check(count(inlineCode,NodeType::Code)==1 && text(inlineCode)=="x < y && ![literal](file:///not-read)","Inline code changed");
+  const std::string autolinks="See https://example.invalid/help, www.example.invalid and person@example.invalid.";
+  const auto linked=parse(autolinks,true);
+  check(Md4cFlags{}.permissiveAutolinks,"Pinned parser must enable its existing autolinks by default");
+  check(count(linked,NodeType::Link)==3,"Bare URL, WWW or email did not become a link");
+  check(text(linked)==autolinks,"Autolinking changed visible source");
+  const auto codeLinks=parse("`https://example.invalid person@example.invalid`\n\n```text\nwww.example.invalid\n```",true);
+  check(count(codeLinks,NodeType::Link)==0,"Literal code acquired navigation");
+  noMedia(autolinks);
+  std::cout << "PASS bare URL, WWW and email links with literal code preserved\n";
   MD4CParser parser; Md4cFlags defaults; const auto implicit=parser.parse("![default](https://example.invalid/default.png)");
   check(canonical(implicit)==canonical(parse("![default](https://example.invalid/default.png)",false)),"Omitted flag differs from false");
   std::cout << "PASS exact code fences, inline code, formatting, explicit links and false defaults\n";

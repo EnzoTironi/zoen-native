@@ -97,6 +97,8 @@ const core = {
         client?.free();
         client = new wasm.BrowserCore(op.account, op.snapshot, 'en');
         return client.view();
+      case 'read_capability':
+        return client.read_capability(op.enabled);
       case 'claim_clock':
         return client.claim_clock(op.value);
       case 'bootstrap':

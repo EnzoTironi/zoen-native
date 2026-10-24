@@ -1,9 +1,10 @@
 //! Genuine Runtime options, correlated with one authenticated owner inquiry.
 mod account;
 mod control;
+mod index;
 mod prepare;
 use super::*;
-pub use control::OwnerPolicyInquiryControl;
+pub use control::{OwnerPolicyInquiryControl, OwnerPolicyInquiryCounts, OwnerPolicyInquiryScan};
 use types::owner_policy_context::{
     OwnerPolicyInquiry, OwnerPolicyOptions, SignedOwnerPolicyInquiry, CONTEXT_TTL_MS,
 };
@@ -88,6 +89,16 @@ impl Engine {
         scope: &OwnerPolicyScope,
         source: &str,
     ) -> R<SignedOwnerPolicyInquiry> {
+        let signed = self.owner_policy_query_record(scope, source)?;
+        self.owner_policy_context_input(&signed.inquiry, crate::engine::now_ms())?;
+        Ok(signed)
+    }
+
+    fn owner_policy_query_record(
+        &self,
+        scope: &OwnerPolicyScope,
+        source: &str,
+    ) -> R<SignedOwnerPolicyInquiry> {
         self.owner_policy_conversation(scope)?;
         let pending = self.store.outbox_get(source)?;
         let event = self
@@ -112,7 +123,6 @@ impl Engine {
         {
             return Err(denied());
         }
-        self.owner_policy_context_input(&signed.inquiry, crate::engine::now_ms())?;
         Ok(signed.clone())
     }
     pub(crate) fn find_owner_policy_options(
@@ -121,44 +131,7 @@ impl Engine {
         request: &str,
         expected_hash: &str,
     ) -> R<Option<OwnerPolicyOptionsStatus>> {
-        self.owner_policy_conversation(scope)?;
-        let pending = self.store.outbox()?;
-        let mut original: Option<(i64, String)> = None;
-        for event in pending.iter().map(|entry| &entry.event).chain(
-            self.logs
-                .get(&scope.space_id)
-                .into_iter()
-                .flat_map(|log| log.events()),
-        ) {
-            let EventBody::OwnerPolicyOptionsRequested { agent, signed } = &event.body else {
-                continue;
-            };
-            if event.space != scope.space_id
-                || event.author != scope.expected_identity_id
-                || event.device.as_deref() != Some(scope.expected_device_id.as_str())
-                || agent != &scope.agent_id
-                || signed.inquiry.purpose.is_some()
-                || signed.inquiry.request != request
-                || signed.inquiry.content_hash != expected_hash
-            {
-                continue;
-            }
-            match self.owner_policy_query(scope, &event.client_id) {
-                Ok(_) => {}
-                Err(CoreError::Forbidden { .. }) => continue,
-                Err(error) => return Err(error),
-            }
-            let candidate = (signed.inquiry.at_ms, event.client_id.clone());
-            if original
-                .as_ref()
-                .is_none_or(|previous| &candidate > previous)
-            {
-                original = Some(candidate);
-            }
-        }
-        original
-            .map(|(_, source)| self.owner_policy_options(scope, &source))
-            .transpose()
+        self.find_policy_inquiry(scope, None, request, expected_hash)
     }
 
     pub(crate) fn request_owner_policy_options(
@@ -189,7 +162,7 @@ impl Engine {
         self.owner_policy_image_input(&inquiry, inquiry.at_ms)?;
         self.queue_owner_policy_inquiry(scope, inquiry)
     }
-    fn queue_owner_policy_inquiry(
+    pub(crate) fn queue_owner_policy_inquiry(
         &mut self,
         scope: &OwnerPolicyScope,
         inquiry: OwnerPolicyInquiry,
@@ -213,20 +186,23 @@ impl Engine {
         let signed = event_log::owner_policy_inquiry::sign(&author, inquiry).ok_or_else(denied)?;
         let digest =
             event_log::owner_policy_inquiry::digest(&signed.inquiry).ok_or_else(invalid)?;
-        let event = self.append_synced(
-            &scope.space_id,
-            &author,
-            crate::engine::now_ms(),
-            EventBody::OwnerPolicyOptionsRequested {
-                agent: scope.agent_id.clone(),
-                signed,
-            },
-        )?;
-        Ok(OwnerPolicyOptionsStatus {
-            source: event.client_id,
-            inquiry_digest: digest,
-            state: "pending".into(),
-            context: None,
+        self.atomic_agent_action(|engine| {
+            let event = engine.append_synced(
+                &scope.space_id,
+                &author,
+                crate::engine::now_ms(),
+                EventBody::OwnerPolicyOptionsRequested {
+                    agent: scope.agent_id.clone(),
+                    signed,
+                },
+            )?;
+            engine.retain_owner_policy_inquiry(scope, &event)?;
+            Ok(OwnerPolicyOptionsStatus {
+                source: event.client_id,
+                inquiry_digest: digest,
+                state: "pending".into(),
+                context: None,
+            })
         })
     }
     fn owner_policy_options_record(
@@ -268,6 +244,27 @@ impl Engine {
         scope: &OwnerPolicyScope,
         source: &str,
     ) -> R<OwnerPolicyOptionsStatus> {
+        self.owner_policy_options_at(scope, source, crate::engine::now_ms())
+    }
+
+    /// Project terminal expiry using one observed clock; execution keeps its
+    /// independent strict freshness checks.
+    pub(crate) fn owner_policy_options_at(
+        &self,
+        scope: &OwnerPolicyScope,
+        source: &str,
+        at_ms: i64,
+    ) -> R<OwnerPolicyOptionsStatus> {
+        let original = self.owner_policy_query_record(scope, source)?;
+        if self.owner_policy_inquiry_expired(&original.inquiry, at_ms)? {
+            return Ok(OwnerPolicyOptionsStatus {
+                source: source.into(),
+                inquiry_digest: event_log::owner_policy_inquiry::digest(&original.inquiry)
+                    .ok_or_else(invalid)?,
+                state: "expired".into(),
+                context: None,
+            });
+        }
         let (inquiry, options) = self.owner_policy_options_record(scope, source)?;
         let input = self.owner_policy_context_input(&inquiry.inquiry, crate::engine::now_ms())?;
         let digest =

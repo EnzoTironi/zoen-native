@@ -16,6 +16,8 @@ pub(super) struct MaintenanceContext<'a> {
     pub(super) claim_clock: &'a Option<ClaimClockSample>,
     pub(super) claim_refusal_reported: &'a mut bool,
     pub(super) media_kick: &'a tokio::sync::Notify,
+    pub(super) read_owner: Option<&'a (String, String)>,
+    pub(super) deferred_reads: &'a mut complete_reads::Deferred,
 }
 
 pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit> {
@@ -32,6 +34,8 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
         claim_clock,
         claim_refusal_reported,
         media_kick,
+        read_owner,
+        deferred_reads,
     } = context;
     macro_rules! engine {
         ($work:expr) => {
@@ -193,13 +197,12 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
     }
     let mut failed = None;
     for (op, w) in reqs {
-        let id = *next_id;
-        *next_id += 1;
-        if let Err(e) = send(sink, &ClientFrame::Req { id, op }).await {
+        let (op, w) = complete_reads::start(op, w, read_owner);
+        if let Err(e) = complete_reads::submit(op, w, sink, waiting, next_id, deferred_reads).await
+        {
             failed = Some(e);
             break;
         }
-        remember_waiting(waiting, id, w);
     }
     if let Some(e) = failed {
         return Err(Exit::Retry(e));

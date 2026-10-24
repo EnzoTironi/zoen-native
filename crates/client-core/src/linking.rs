@@ -184,7 +184,23 @@ impl Engine {
     }
 
     /// The relay's list of our devices.
-    pub(crate) fn devices_arrived(&mut self, list: Vec<DeviceRecord>) {
+    pub(crate) fn devices_arrived(&mut self, list: Vec<DeviceRecord>) -> R<()> {
+        if list.len() > protocol::complete_reads::DEVICE_ROWS {
+            return Err(CoreError::Invalid {
+                reason: protocol::complete_reads::PROFILE_EXCEEDED.into(),
+            });
+        }
+        let mut seen = BTreeSet::new();
+        for record in &list {
+            if record.device.len() != 64
+                || !record.device.bytes().all(|b| b.is_ascii_hexdigit())
+                || !seen.insert(record.device.clone())
+            {
+                return Err(CoreError::Invalid {
+                    reason: protocol::complete_reads::INVALID.into(),
+                });
+            }
+        }
         let active: BTreeSet<String> = list
             .iter()
             .filter(|d| !d.revoked)
@@ -195,19 +211,23 @@ impl Engine {
             .filter(|d| d.revoked)
             .map(|d| d.device.clone())
             .collect();
-        let _ = self.store.set_meta(
-            META_ACTIVE,
-            &serde_json::to_string(&active).unwrap_or_default(),
-        );
-        let _ = self.store.set_meta(
-            META_REVOKED,
-            &serde_json::to_string(&revoked).unwrap_or_default(),
-        );
-        if let Err(e) = self.mls_siblings() {
-            tracing_like(&format!("sibling devices: {e}"));
-        }
+        let active = serde_json::to_string(&active).map_err(|e| CoreError::Storage {
+            message: e.to_string(),
+        })?;
+        let revoked = serde_json::to_string(&revoked).map_err(|e| CoreError::Storage {
+            message: e.to_string(),
+        })?;
+        // Reuse the existing Engine savepoint + reload-on-failure boundary. Both
+        // sets and any sibling publication either persist together or retain the
+        // previous complete projection. No partial page invokes this method.
+        self.atomic_agent_action(|engine| {
+            engine.store.set_meta(META_ACTIVE, &active)?;
+            engine.store.set_meta(META_REVOKED, &revoked)?;
+            engine.mls_siblings()
+        })?;
         let spaces: Vec<SpaceId> = self.net.synced.iter().cloned().collect();
         self.net.mls.mark_dirty(spaces);
+        Ok(())
     }
 
     pub(crate) fn revoked_devices(&self) -> BTreeSet<String> {

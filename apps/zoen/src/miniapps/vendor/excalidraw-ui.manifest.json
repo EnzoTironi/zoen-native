@@ -2,8 +2,8 @@
   "resourceUri": "ui://zoen/excalidraw.html",
   "mimeType": "text/html;profile=mcp-app",
   "presentation": "pinned-upstream-patched-build",
-  "sha256": "6cf18cb4780fcf7f48908f93250c655ce7be969535ed19a2019836c245cd9916",
-  "bytes": 6196826,
+  "sha256": "504923690c679748e87876339ea138eb1c6de81c069a803919b154607319e89e",
+  "bytes": 6196903,
   "csp": {
     "connectDomains": [],
     "resourceDomains": [],
@@ -19,13 +19,16 @@
     "patchCommit": "aafc247efb8ba0689e193557749784ea80ee4996",
     "patchSha256": "1449b6a7176c032ea36e3d6a1cf293ce05ea353063b009c568bef69999f93675",
     "sourceSha256": {
-      "src/mcp-app.tsx": "b47c122a07119b7f076aa426bfd5bc48b4f65af8531b1dec3d8e35cfe0ac9e58",
+      "src/mcp-app.tsx": "c2122c9bd4d8a3e3746e88dd593bccae892a74aa148466117f3a50dea9320506",
       "src/mcp-entry.tsx": "41314dcc1fbbdccc32e38bcd3431f55c210b198aa55d4c3cae70dac36639dc8a",
       "src/mcp-app.html": "be7f7457a602100feaf13f37c5dc1f22f8e30ff2469d210708542aa7be2cf179",
       "src/edit-context.ts": "de7d1aa4032455ff3e012b3b16c3fdc086bc6324f8cd7697d0e2ded5b94474f2",
       "src/pencil-audio.ts": "13f6ff769d5d2140faeeffa4b49d5a9f7a85b357b20d0c2603e53bdd288b98bf",
       "src/sounds.ts": "c197a890a699a9ed3348cc5ff12d676b2e9923ab25fcb80045cdad10f4baff4f",
-      "src/global.css": "01a1661286115e7513d5e7aca80b78d6e3f7309e2fc25b065cc0a488e4a20fb5"
+      "src/global.css": "01a1661286115e7513d5e7aca80b78d6e3f7309e2fc25b065cc0a488e4a20fb5",
+      "src/mcp-diagram.tsx": "0a5b94f716bc9da6190ced3a82e5b73575fb79042afa07ca164980ba8f265782",
+      "src/mcp-diagram-scene.ts": "3569a3b108edcd52efc92085f161650c7015dc9086c8413e24513af261868057",
+      "src/mcp-chrome.tsx": "6e5d7c8a93d637a9c07ceb15a1cb6dc5dcb598d3c1358958ba64324d8e7ef6eb"
     },
     "licenseDeclaration": {
       "upstreamPackageJson": "MIT",
@@ -40,7 +43,8 @@
       "Public aiEnabled=false additionally gates manual Mermaid menu and Mermaid paste paths; optional converter branch excluded.",
       "One host-context subscription applies negotiated mobile safe-area insets to floating controls in both canonical and legacy editors, without padding or resizing the canvas.",
       "Apply negotiated top/right safe-area insets to the pinned mobile Library/lock/hand panel in both editors so it cannot cover the toolbar; place the legacy compact Export beside that panel without overlapping either toolbar; canvas dimensions and Library visibility remain unchanged.",
-      "Consume the validated Zoen floating close rectangle in both editors; only floating top controls clear its corner, while the canvas, actual safe-area insets, and document state keep their full frame."
+      "Consume the validated Zoen floating close rectangle in both editors; only floating top controls clear its corner, while the canvas, actual safe-area insets, and document state keep their full frame.",
+      "Split maintained legacy MCP editor by responsibility into chrome, streaming SVG preview, scene conversion/viewport helpers and host lifecycle; preserve the pinned upstream revision and runtime behavior."
     ],
     "externalResources": [],
     "prSourceSha256": "e311cfa69aa3c67a0dbfecdbc3005857c12590de3c1d871afe7c853703acd928",
@@ -56,7 +60,7 @@
       "../../packages/zoen-miniapp-sdk/src/host-chrome.ts": "733cb92d9d744846cb230c639e8be488139e893e874abc2c6372469982f5ed7f",
       "LICENSE": "1b2ee57f0f797d2475ed4e723e905725531e88d1bb9ea37d81dd213faf4bdbea",
       "NOTICE.md": "d549aeea7c029cd1a0a1697025bb5e043e01e75792d3c22c6086738b80485f3b",
-      "README.md": "262bb3aee76e5534c6041f2d453811679b8fd8f18e85bd423d60c74d36239b4f",
+      "README.md": "691a78aa14b8021b1ef8a492dfbb5cfaa7d5dd1ccbea376247a7571ad0f8947e",
       "build.mjs": "ee5b16f15d661f5af37fbcc901718395e3271e520a850b163461014f31093efa",
       "library-assets.mjs": "7671fbb009fad62088336dc1c0fbf303e0a432e642d1f8ae9df924d33b9eed9e",
       "licenses/excalidraw-v0.18.0-MIT.txt": "1352d204fdb90d5e482c13139d848bc2c9300a9a7de358a0a558a23e72d0d8be",
@@ -76,11 +80,14 @@
       "src/global.css": "01a1661286115e7513d5e7aca80b78d6e3f7309e2fc25b065cc0a488e4a20fb5",
       "src/host-safe-area.ts": "60d46971377c599a1fc32a344e473247ea1a40d62d4a7c4e531732e88fb24ccf",
       "src/mcp-app.html": "be7f7457a602100feaf13f37c5dc1f22f8e30ff2469d210708542aa7be2cf179",
-      "src/mcp-app.tsx": "b47c122a07119b7f076aa426bfd5bc48b4f65af8531b1dec3d8e35cfe0ac9e58",
+      "src/mcp-app.tsx": "c2122c9bd4d8a3e3746e88dd593bccae892a74aa148466117f3a50dea9320506",
+      "src/mcp-chrome.tsx": "6e5d7c8a93d637a9c07ceb15a1cb6dc5dcb598d3c1358958ba64324d8e7ef6eb",
+      "src/mcp-diagram-scene.ts": "3569a3b108edcd52efc92085f161650c7015dc9086c8413e24513af261868057",
+      "src/mcp-diagram.tsx": "0a5b94f716bc9da6190ced3a82e5b73575fb79042afa07ca164980ba8f265782",
       "src/mcp-entry.tsx": "41314dcc1fbbdccc32e38bcd3431f55c210b198aa55d4c3cae70dac36639dc8a",
       "src/pencil-audio.ts": "13f6ff769d5d2140faeeffa4b49d5a9f7a85b357b20d0c2603e53bdd288b98bf",
       "src/sounds.ts": "c197a890a699a9ed3348cc5ff12d676b2e9923ab25fcb80045cdad10f4baff4f",
-      "upstream.json": "a9238b18457835596db357e21481bfe82d1a19e2f766a019753b37f4460610ad"
+      "upstream.json": "0030208375ded6ddf42294364510053755d008853bbc817413e27aecad0da82f"
     },
     "fontAssetSha256": {
       "./fonts/Assistant/Assistant-Bold.woff2": "e0cdd332ce039770e93ec44336b6db65f931940f42b0342aad35a06e7f991d29",

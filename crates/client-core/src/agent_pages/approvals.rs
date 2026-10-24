@@ -107,7 +107,7 @@ pub(crate) fn matches(state: &State, req: &AgentRequest, space: &str) -> bool {
         && p.serving != req.agent
         && item.space == space
         && item.current().number == p.version
-        && tools::prefix(state, &p.artifact, p.version).ok().as_deref() == Some(p.sha256.as_str())
+        && tools::prefix_matches(state, &p.artifact, p.version, &p.sha256)
         && source_sha == p.source_sha256
         && req.tool_proposal_hash(space).as_deref() == Some(&req.content_hash)
         && p.task_sha256
@@ -298,10 +298,12 @@ impl Client {
         {
             return Err(stale());
         }
-        let snapshot = e.agent_page_snapshot_at(&p.artifact, p.version)?;
-        if snapshot.prefix_sha256 != p.sha256 {
+        let mut snapshot = e.agent_page_snapshot_at(&p.artifact, p.version)?;
+        if !tools::prefix_matches(&e.state, &p.artifact, p.version, &p.sha256) {
             return Err(stale());
         }
+        // Retain the original signed legacy binding, never rewrite the proposal.
+        snapshot.prefix_sha256.clone_from(&p.sha256);
         let turn = AgentPageTurn {
             snapshot,
             device,

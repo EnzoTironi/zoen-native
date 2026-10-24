@@ -31,6 +31,11 @@ pub(crate) enum Command {
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum PolicyProgress {
+    /// A diagnostic outcome only: never a refusal, receipt or retry permission.
+    Unavailable {
+        operation: PolicyOperation,
+        code: PolicyUnavailable,
+    },
     Installed {
         policy_digest: String,
     },
@@ -43,6 +48,27 @@ pub(crate) enum PolicyProgress {
     OptionsRefused {
         inquiry_digest: String,
     },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum PolicyOperation {
+    Context,
+    Import,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum PolicyUnavailable {
+    InvalidPolicy,
+    InvalidProfile,
+    DeploymentMismatch,
+    InvalidBinding,
+    Denied,
+    OverBudget,
+    CoreAuthorityUnavailable,
+    RestoreUnreconciled,
+    Unavailable,
+    EvidenceTooLarge,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]

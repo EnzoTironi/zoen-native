@@ -350,6 +350,10 @@ impl BrowserCore {
         let _language = localization::enter(self.lang);
         serde_json::to_string(&self.client.conversations()).map_err(error)
     }
+    pub fn read_capability(&mut self, enabled: bool) -> String {
+        self.client.read_capability(enabled);
+        String::new()
+    }
     pub fn claim_clock(&mut self, value: &str) -> Result<String, JsValue> {
         let _language = localization::enter(self.lang);
         self.client.claim_clock(value).map_err(error)?;

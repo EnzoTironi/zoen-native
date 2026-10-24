@@ -168,6 +168,8 @@ async function run(operation: CoreOperation): Promise<string | Uint8Array> {
       return core.open_chunk(operation.chunk, operation.sealed);
     case 'blob_put_message':
       return core.blob_put_message(operation.sha, operation.ts, operation.relay);
+    case 'read_capability':
+      return restored().read_capability(operation.enabled);
     case 'claim_clock':
       return restored().claim_clock(operation.value);
     case 'maintenance':

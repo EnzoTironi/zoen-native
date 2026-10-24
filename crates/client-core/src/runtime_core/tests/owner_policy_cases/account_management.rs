@@ -52,7 +52,9 @@ fn account_inquiry_without_image_preserves_explicit_disable_version_and_pending_
         max_attempt_units: 9_007_199_254_740_993,
         expires_at_ms: now + 60_000,
         enabled: true,
-        allowed_profiles: vec!["11".repeat(32)],
+        allowed_profiles: (0..16)
+            .map(|value| format!("{value:02x}").repeat(32))
+            .collect(),
     };
     let signed = event_log::owner_budget::sign(&author, prior).ok_or("prior signing refused")?;
     let previous = event_log::owner_budget::digest(&signed.policy).ok_or("prior digest")?;
@@ -90,6 +92,20 @@ fn account_inquiry_without_image_preserves_explicit_disable_version_and_pending_
         context.current_limit_units.as_deref(),
         Some("9007199254740995")
     );
+    assert_eq!(context.existing_profile_count, 16);
+    assert!(
+        f.owner
+            .prepare_owner_policy(
+                &scope,
+                &status.source,
+                &context.options_digest,
+                "9007199254740995",
+                "9007199254740993",
+                true,
+            )
+            .is_err(),
+        "enabling the new seventeenth profile remains invalid"
+    );
     let review = f.owner.prepare_owner_policy(
         &scope,
         &status.source,
@@ -104,7 +120,9 @@ fn account_inquiry_without_image_preserves_explicit_disable_version_and_pending_
     assert!(!policy.enabled);
     assert_eq!(
         policy.allowed_profiles,
-        vec!["11".repeat(32), "22".repeat(32)]
+        (0..16)
+            .map(|value| format!("{value:02x}").repeat(32))
+            .collect::<Vec<_>>()
     );
     let submitted = f.owner.submit_owner_policy(
         &scope,

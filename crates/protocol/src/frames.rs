@@ -141,6 +141,7 @@ pub enum Op {
     },
     /// This identity's devices, unlinked ones included.
     Devices,
+    CompleteRead(crate::complete_reads::Request),
     /// Unlinks one of this identity's devices: it can't sign in again and its key packages
     /// go. Its leaves leave the groups through commits by the other devices.
     Unlink {
@@ -254,6 +255,7 @@ impl Op {
             Op::DeliverLink { .. } => "deliver_link",
             Op::FetchLink { .. } => "fetch_link",
             Op::Devices => "devices",
+            Op::CompleteRead(_) => "complete_read",
             Op::Unlink { .. } => "unlink",
             Op::SendDevice { .. } => "send_device",
             Op::Agent(AgentRequest::State) => "agent_state",
@@ -302,6 +304,7 @@ pub enum Reply {
     /// FetchLink: the sealed box, `None` while nobody left one.
     Link(Option<Vec<u8>>),
     Devices(Vec<DeviceRecord>),
+    CompletePage(crate::complete_reads::Page),
     AgentState(AgentStateRecord),
     CallTurn(crate::turn::TurnCredentials),
     RuntimeBinding(crate::runtime_binding::Proof),

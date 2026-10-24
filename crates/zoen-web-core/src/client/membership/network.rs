@@ -1,23 +1,14 @@
-//! Implementation within the existing browser client authority.
 use super::*;
-
 impl<S: Signer> Client<S> {
     pub(in crate::client) fn membership_reply(
         &mut self,
         id: u64,
         result: &Result<Reply, String>,
+        outgoing: &mut Vec<Vec<u8>>,
     ) -> Result<bool, String> {
-        if id == DEVICES_REQUEST {
-            self.membership_net.devices_requested = false;
-            self.membership_net.devices_due =
-                self.view_now_ms
-                    .saturating_add(if result.is_ok() { 60_000 } else { 5000 });
-            if let Ok(Reply::Devices(devices)) = result {
-                self.saved.membership.revoked = devices
-                    .iter()
-                    .filter(|device| device.revoked)
-                    .map(|device| device.device.clone())
-                    .collect();
+        if (DEVICES_REQUEST_BASE..=DEVICES_REQUEST_BASE + u64::from(u32::MAX)).contains(&id) {
+            if self.membership_net.devices_requested && id == self.membership_net.devices_request {
+                self.device_directory_reply(result, outgoing)?;
             }
             return Ok(true);
         }
@@ -216,6 +207,7 @@ impl<S: Signer> Client<S> {
         if self.membership_net.devices_requested
             && self.membership_net.devices_due <= self.view_now_ms
         {
+            self.device_directory_cancel(frames);
             self.membership_net.devices_requested = false;
         }
         if !self.membership_net.devices_requested
@@ -226,10 +218,11 @@ impl<S: Signer> Client<S> {
                 })
             })
         {
+            let op = self.device_directory_begin()?;
             frames.push(
                 ClientFrame::Req {
-                    id: DEVICES_REQUEST,
-                    op: Op::Devices,
+                    id: self.membership_net.devices_request,
+                    op,
                 }
                 .encode(),
             );

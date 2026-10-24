@@ -9,7 +9,10 @@ use crate::{
     Client, CoreError,
 };
 pub use control::OwnerPolicySubmission;
-pub use options::{OwnerPolicyContext, OwnerPolicyInquiryControl, OwnerPolicyOptionsStatus};
+pub use options::{
+    OwnerPolicyContext, OwnerPolicyInquiryControl, OwnerPolicyInquiryCounts,
+    OwnerPolicyInquiryScan, OwnerPolicyOptionsStatus,
+};
 use serde::{Deserialize, Serialize};
 use types::{owner_budget::OwnerPeriodPolicy, EventBody, IdentityKind, Privacy, SpaceKind};
 

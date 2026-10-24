@@ -11,6 +11,7 @@ import {
   type ConversationTimelineRow,
 } from './conversation-timeline.ts';
 import { messageCard } from './message-presentation.ts';
+import { selectedDeckHead } from '../miniapps/deck-version-selection.ts';
 import type { ItemDetail, TimelineEntry } from './types';
 import type { ItemCard } from './generated/ItemCard';
 
@@ -261,6 +262,7 @@ function renderScreen(
         }),
       };
     if (path.endsWith('/home/menus')) return { HomeCardMenu: 'HomeCardMenu' };
+    if (path === './deck-version-selection') return { selectedDeckHead };
     if (path === './state-view') return { MiniappState: 'MiniappState' };
     if (path === './view-host') return { MiniappView: 'MiniappView' };
     if (path.endsWith('/native-surfaces/controls'))
