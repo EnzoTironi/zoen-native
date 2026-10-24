@@ -120,12 +120,17 @@ The browser test runs the genuine MCP bootstrap, renderer, shared session and
 export controller with a clearly synthetic Core read/CAS port. Independent PNG
 checks decode the actual exports. It covers trusted pointer input, same-event
 pause, newer input during delayed ACK, rotation without a document write, export,
-owner retirement and fresh-renderer reopen. Chromium and WebKit evidence must be
-reported separately; a browser run is not native iPhone acceptance.
+owner retirement and fresh-renderer reopen. Chromium and WebKit each passed the complete consumer journey on the same sealed
+package. Both produced the same accepted native bytes and 495 independently
+decoded new black pixels, preserved the original colored pixels, and reopened v3
+with zero writes. The trusted completed touch focused the real canvas and the
+same-event pause included the stroke. Both runs had no page/console/cleanup
+errors. These are separate browser results, not native iPhone acceptance.
 
-#556 remains open for final package/browser and iPhone acceptance, shared-host
-lifecycle qualification, measured memory/usability, broader lossless profiles and
-reviewed PNG import. Do not claim complete upstream editing parity or a live
+#556 remains open for native iPhone acceptance, the final combined configured
+consumer/native build, measured memory/usability, broader lossless profiles and
+reviewed PNG import. The browser package includes the shared owner-cleanup fix;
+full browser reopen and retirement passed. Do not claim complete upstream editing parity or a live
 service from this integration.
 
 ## Provenance

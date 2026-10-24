@@ -174,9 +174,9 @@ try {
     green: [0, 255, 0, 255],
   });
   await page.evaluate(() => window.probe.holdNextWrite());
-  const touchPause = await pauseOnCompletedTouch(page, 180, 340);
+  const touchPause = await pauseOnCompletedTouch(page, 180, 430);
   await page.waitForFunction(() => window.probe.writeHeld, undefined, { timeout: 10000 });
-  await page.touchscreen.tap(250, 440);
+  await page.touchscreen.tap(230, 500);
   const frame = page.frames().find((f) => f !== page.mainFrame());
   assert.ok(frame);
   await frame.evaluate(
