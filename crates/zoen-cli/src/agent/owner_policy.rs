@@ -105,7 +105,30 @@ async fn reconcile(e: &Client, agent: &str, space: &str, summary: &mut Summary) 
                                 Some(observation::failure(CoreStage::Report, &error))
                         }
                     },
-                    reply::OptionsReply::Pending(fault) => reply::observe(counts, fault),
+                    reply::OptionsReply::Pending(fault) => {
+                        use zoen_runtime::OwnerPolicyContextStage as Stage;
+                        let group_failure = matches!(
+                            &fault,
+                            reply::Fault::Runtime(
+                                _,
+                                Some(
+                                    Stage::AdmissionMlsGroup
+                                        | Stage::AdmissionMlsPending
+                                        | Stage::AdmissionMlsStorage
+                                )
+                            )
+                        );
+                        reply::observe(counts, fault);
+                        if group_failure {
+                            match e.owner_policy_worker_observation(&current) {
+                                Ok(observed) => counts.worker_group = Some(observed),
+                                Err(error) => {
+                                    counts.core_error =
+                                        Some(observation::failure(CoreStage::Observation, &error))
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
