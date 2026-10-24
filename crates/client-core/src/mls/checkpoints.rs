@@ -14,6 +14,8 @@ impl Engine {
             .cloned()
             .collect();
         for space in spaces {
+            #[cfg(test)]
+            refresh_probe::before_group_read();
             if !self.device().is_ok_and(|d| d.has_group(&space)) {
                 continue;
             }
@@ -140,3 +142,7 @@ impl Engine {
         Ok(queued)
     }
 }
+
+#[cfg(test)]
+#[path = "checkpoints/refresh_probe.rs"]
+pub(crate) mod refresh_probe;
