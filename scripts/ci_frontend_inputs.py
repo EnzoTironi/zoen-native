@@ -3,6 +3,7 @@
 # Reviewed Cargo roots, test commands, client coverage and embedded-resource
 # recipes. Drift selects the full lane; refreshing a pin never bypasses tests.
 FRONTEND_CONTRACTS = {
+    "scripts/ci-rust-shards.py": "66cf8a228cb51e4f38ba4c23be42f88a43bf4a9b39daf149b0d410d813ba19ea",
     "scripts/expo-cargo-artifacts.mjs": "cebc6836153781bb5b172f1f80be5f401d1bc4a45c1429e22d6f6f20500b99dd",
     "crates/miniapps/resources/photocraft.manifest.json": "a94d382e440280a5c4e529c0a48e01a81568c389ad2c4a21ba603c66ed7e5ccb",
     "crates/miniapps/resources/generated/photocraft-bootstrap.manifest.json": "5ad07267ab1f4ef54bf90417b3d732f52990f213a8443a800d527c0eb7c3b91a",
@@ -37,7 +38,7 @@ FRONTEND_CONTRACTS = {
     "crates/zoen-agentd/src/citizen/codex.rs": "4dd0e69d67a1fbd02e326ff1477f29a4396c986f878782ca5af9ba6cc7253bc6",
     "crates/zoen-relay/src/lib.rs": "0a85a11509ff1968e85b09abefab3b979c5e19ba797624f2fb7a42ab1deb0981",
     "Cargo.toml": "4059ed818d502e2493f51d45a356cde25deabcf34feb40f8509ba22a5e4f0d27",
-    ".github/workflows/ci.yml": "fd620ffc26625762df13419673a105463878c7f65ac4a0ba446728ee86536b5f",
+    ".github/workflows/ci.yml": "7f022560bb9ba28bfda8db147ab1a62e403eba5b12bd30b4588f207b4ecee9f6",
     ".github/workflows/expo.yml": "085e800264619bcc17f43b676a40b9ee682cb8e7dff845058b9ff4247e1bf7e7",
     "apps/zoen/package.json": "d58538007aec677d34171d4a09f883973c1c8bf9440b141d5bc72f33b2dba14b",
     "apps/zoen/src/miniapps/vendor/deckcraft-bootstrap.manifest.json": "2955693bc8052abb95d6552dd397c04d7a1d8b73bd364e3c3b7fef882d7799f0",

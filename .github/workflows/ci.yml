@@ -94,8 +94,10 @@ jobs:
       - name: Exported Grid workbook reader contracts
         run: python3 -m unittest discover -s miniapps/gridcraft-ui/test -p test_xlsx_export.py -v
 
-      - name: Documentation/frontend CI scope regression tests
-        run: python3 -m unittest discover -s scripts/tests -p 'test_ci*scope.py' -v
+      - name: CI selection and Rust shard coverage
+        run: |
+          python3 -m unittest discover -s scripts/tests -p 'test_ci*scope.py' -v
+          python3 -m unittest discover -s scripts/tests -p 'test_ci_rust_shards.py' -v
 
       - name: Canonical acceptance composition and source writes
         run: python3 scripts/test-acceptance.py
@@ -125,11 +127,36 @@ jobs:
 
 
   rust:
+    needs: [change-scope, rust-tests]
+    # Keep one stable required check; a failed/cancelled/missing shard cannot pass.
+    if: ${{ always() && (needs.change-scope.result != 'success' || needs.change-scope.outputs.run_rust != 'false') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Require every Rust shard
+        env:
+          RUST_RESULT: ${{ needs.rust-tests.result }}
+        run: test "$RUST_RESULT" = success
+
+  rust-tests:
     needs: change-scope
     # Only an explicit verified skip can omit Rust; missing/failed scope stays full.
     if: ${{ !cancelled() && (needs.change-scope.result != 'success' || needs.change-scope.outputs.run_rust != 'false') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: workspace
+            command: cargo test --workspace --exclude zoen-cli --no-fail-fast
+          - shard: cli-a
+            command: python3 scripts/ci-rust-shards.py 0
+          - shard: cli-b
+            command: python3 scripts/ci-rust-shards.py 1
+          - shard: cli-c
+            command: python3 scripts/ci-rust-shards.py 2
+    name: rust (${{ matrix.shard }})
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -145,6 +172,7 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Format
+        if: matrix.shard == 'workspace'
         run: cargo fmt --all --check
 
       - name: Postgres, FoundationDB and NATS
@@ -198,11 +226,13 @@ jobs:
           echo "ZOEN_REQUIRE_FIRECRACKER=1" >> "$GITHUB_ENV"
 
       - name: Clippy
+        if: matrix.shard == 'workspace'
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       # Workspace feature unification includes the CLI's insertion-ordered JSON.
       # Qualify the native core separately so it cannot hide a cross-client drift.
       - name: Native and CLI tool JSON contracts
+        if: matrix.shard == 'workspace'
         run: |
           cargo test --locked -p client-core --lib agent_binary_documents::tool_approvals::tests::json_order
           cargo test --locked -p client-core --lib --features serde_json/preserve_order,serde_json/float_roundtrip,serde_json/raw_value agent_binary_documents::tool_approvals::tests::json_order
@@ -217,7 +247,8 @@ jobs:
       - name: Tests and journeys
         env:
           ZOEN_SYNC_DIAGNOSTIC_DIR: ${{ runner.temp }}/zoen-sync-diagnostics
-        run: cargo test --workspace --no-fail-fast
+        # Package partition: all workspace unit/integration/doc tests still run.
+        run: ${{ matrix.command }}
 
       # Only typed, bounded observations written by a failed synthetic World.
       # Never upload its home, vault, SQLite, raw stderr/stdout or relay log.
@@ -225,7 +256,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: rust-sync-readiness
+          name: rust-sync-readiness-${{ matrix.shard }}
           path: ${{ runner.temp }}/zoen-sync-diagnostics/*.json
           if-no-files-found: ignore
           retention-days: 3

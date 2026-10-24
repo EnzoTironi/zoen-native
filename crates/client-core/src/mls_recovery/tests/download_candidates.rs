@@ -1,5 +1,31 @@
 use super::*;
 
+#[test]
+fn an_absent_recovery_recipient_key_can_arrive_after_classification(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let space = "late-recipient-key";
+    let staged = staged_recovery(":memory:", space);
+    let mut engine = missing_receiver(&staged, space);
+    engine.store.conn().execute(
+        "DELETE FROM peer_agreement_keys WHERE identity = ?1",
+        [&staged.peer.identity],
+    )?;
+    assert!(engine.agreement_keys_arrived(Vec::new(), std::slice::from_ref(&staged.peer.identity)));
+    let reference = engine.wanted_recovery_contexts().remove(0);
+    assert!(engine.recovery_context_arrived(&reference, &staged.context_blob));
+    assert!(!engine.mls_recovery_pass()?);
+    assert_eq!(engine.device()?.group_state(space)?, GroupState::Missing);
+    // The previous absence ended that classification without a retry error.
+    // A later genuine signed key must still wake it and recover real state.
+    assert!(engine.agreement_keys_arrived(
+        vec![staged.peer.clone()],
+        std::slice::from_ref(&staged.peer.identity),
+    ));
+    assert!(engine.mls_recovery_pass()?);
+    assert!(engine.device()?.recovery_pending(space));
+    Ok(())
+}
+
 fn missing_receiver(staged: &StagedRecovery, space: &str) -> Engine {
     let mut engine = restored_receiver(staged);
     engine.net.synced.insert(space.into());
