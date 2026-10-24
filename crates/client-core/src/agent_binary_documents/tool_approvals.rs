@@ -175,6 +175,7 @@ pub(crate) fn mutation_id(p: &ToolProposal, intent: &str) -> String {
     let prefix = match agent_tools::format(&p.canonical_tool) {
         Some(binary::Format::Gridcraft) => "gridcmd",
         Some(binary::Format::Wordcraft) => "wordcmd",
+        Some(binary::Format::Photocraft) => "photocmd",
         _ => "deckcmd",
     };
     format!("{prefix}_{intent}")
@@ -188,6 +189,9 @@ pub(crate) fn operation(tool: &str) -> String {
         "generate_image" => t("Criar imagem", "Create image"),
         "read_page" => t("Ler página", "Read Page"),
         "create_gridcraft" => t("Criar planilha", "Create spreadsheet"),
+        "create_photocraft" => t("Criar imagem", "Create image"),
+        "read_photocraft" => t("Ler imagem", "Read image"),
+        "photocraft_transform" => t("Transformar imagem", "Transform image"),
         "create_wordcraft" => t("Criar documento", "Create document"),
         "read_wordcraft" => t("Ler documento", "Read document"),
         "wordcraft_text_replace" => t("Substituir texto", "Replace text"),
@@ -216,7 +220,12 @@ pub(crate) fn review_detail(p: &ToolProposal, title: &str) -> String {
             crate::i18n::t("Depois", "After"),
             args["after"]["text"].as_str().unwrap_or_default()
         ),
-        "read_deckcraft" | "read_gridcraft" | "read_wordcraft" => heading,
+        "read_deckcraft" | "read_gridcraft" | "read_wordcraft" | "read_photocraft" => heading,
+        "photocraft_transform" => format!(
+            "{}\n{}",
+            heading,
+            args["action"].as_str().unwrap_or_default()
+        ),
         "gridcraft_cell_set" => format!(
             "{}\n{}!{}\n{}",
             heading,

@@ -372,6 +372,7 @@ impl Engine {
                     item: item.into(),
                     content: ItemContent::App(next),
                     note: match format {
+                        Format::Photocraft => crate::i18n::t("Imagem atualizada", "Updated image"),
                         Format::Wordcraft => {
                             crate::i18n::t("Documento atualizado", "Updated document")
                         }

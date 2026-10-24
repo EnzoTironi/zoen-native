@@ -1,0 +1,19 @@
+{
+  "id": "photocraft",
+  "name": "PhotoCraft",
+  "resourceUri": "ui://zoen/photocraft/index.html",
+  "mimeType": "text/html;profile=mcp-app",
+  "capabilities": [],
+  "allowedDomains": [],
+  "linkDomains": [],
+  "networkPurpose": "",
+  "permissions": {},
+  "csp": {
+    "connectDomains": [],
+    "resourceDomains": [],
+    "frameDomains": [],
+    "baseUriDomains": []
+  },
+  "sha256": "6288224c908ba6134e8bc2c95bf60b61261a174808e85a4a4dd73c4673f75e6b",
+  "bytes": 624492
+}

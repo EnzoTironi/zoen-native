@@ -5,12 +5,11 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 export async function buildManagedBinaryBootstrap(editor, outputDir, check = false) {
-  if (editor !== "deckcraft" && editor !== "gridcraft" && editor !== "wordcraft")
+  if (!["deckcraft", "gridcraft", "wordcraft", "photocraft"].includes(editor))
     throw Error("Unsupported binary App");
   if (editor !== "deckcraft" && !outputDir)
     throw Error("This editor requires an explicit build directory");
-  const title =
-    editor === "deckcraft" ? "Presentation" : editor === "gridcraft" ? "Workbook" : "Document";
+  const title = { deckcraft: "Presentation", gridcraft: "Workbook", wordcraft: "Document", photocraft: "Image" }[editor];
   const result = await build({
     absWorkingDir: root,
     entryPoints: [`miniapps/${editor}-ui/src/mcp-app.ts`],

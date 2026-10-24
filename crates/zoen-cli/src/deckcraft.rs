@@ -61,8 +61,16 @@ pub fn configured() -> Result<Option<Arc<DeckcraftWorker>>, String> {
         ],
         cache.as_ref(),
     )?;
+    let photo = configured_for(
+        "photocraft",
+        [
+            "ZOEN_PHOTOCRAFT_WORKER_COMPONENT",
+            "ZOEN_PHOTOCRAFT_WORKER_MANIFEST",
+            "ZOEN_PHOTOCRAFT_WORKER_PUBLISHER",
+        ],
+    )?;
     let mut configured: Option<DeckcraftWorker> = None;
-    for worker in [deck, grid, word].into_iter().flatten() {
+    for worker in [deck, grid, word, photo].into_iter().flatten() {
         configured = Some(match configured {
             None => worker,
             Some(current) => current.combine(worker)?,
@@ -263,6 +271,7 @@ async fn execute_turn(
         "deckcraft" => "deckcmd",
         "gridcraft" => "gridcmd",
         "wordcraft" => "wordcmd",
+        "photocraft" => "photocmd",
         _ => return Err("Unsupported binary App executor".into()),
     };
     let mutation = format!("{prefix}_{intent}");

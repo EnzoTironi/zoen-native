@@ -1,6 +1,7 @@
 //! Fixed format dispatch over the existing binary document/approval contract.
 use super::Format;
 use crate::deckcraft;
+use crate::photocraft::agent_tools as photocraft_tools;
 #[path = "../gridcraft/agent_tools.rs"]
 mod gridcraft_tools;
 #[path = "../wordcraft/agent_tools.rs"]
@@ -16,6 +17,8 @@ pub fn format(tool: &str) -> Option<Format> {
         Some(Format::Gridcraft)
     } else if wordcraft_tools::recognizes(tool) {
         Some(Format::Wordcraft)
+    } else if photocraft_tools::recognizes(tool) {
+        Some(Format::Photocraft)
     } else {
         None
     }
@@ -25,12 +28,14 @@ pub fn tools_for(kind: Format) -> Vec<Definition> {
         Format::Deckcraft => deckcraft::agent_tools::tools(),
         Format::Gridcraft => gridcraft_tools::tools(),
         Format::Wordcraft => wordcraft_tools::tools(),
+        Format::Photocraft => photocraft_tools::tools(),
     }
 }
 pub fn tools() -> Vec<Definition> {
     let mut out = tools_for(Format::Deckcraft);
     out.extend(tools_for(Format::Gridcraft));
     out.extend(tools_for(Format::Wordcraft));
+    out.extend(tools_for(Format::Photocraft));
     out
 }
 pub fn command(tool: &str, args: &Value) -> Result<ParsedCommand, String> {
@@ -38,6 +43,7 @@ pub fn command(tool: &str, args: &Value) -> Result<ParsedCommand, String> {
         Some(Format::Deckcraft) => deckcraft::agent_tools::command(tool, args),
         Some(Format::Gridcraft) => gridcraft_tools::command(tool, args),
         Some(Format::Wordcraft) => wordcraft_tools::command(tool, args),
+        Some(Format::Photocraft) => photocraft_tools::command(tool, args),
         None => Err("Unsupported binary App tool".into()),
     }
 }
@@ -45,7 +51,10 @@ pub fn recognizes(tool: &str) -> bool {
     format(tool).is_some()
 }
 pub fn is_read(tool: &str) -> bool {
-    matches!(tool, "read_deckcraft" | "read_gridcraft" | "read_wordcraft")
+    matches!(
+        tool,
+        "read_deckcraft" | "read_gridcraft" | "read_wordcraft" | "read_photocraft"
+    )
 }
 pub fn model_name(tool: &str, item: &str) -> Option<String> {
     if format(tool) == Some(Format::Deckcraft) {
@@ -53,8 +62,10 @@ pub fn model_name(tool: &str, item: &str) -> Option<String> {
     }
     let digest = format!("{:x}", Sha256::digest(item.as_bytes()));
     let name = format!("{tool}__{}", &digest[..40]);
-    (matches!(format(tool), Some(Format::Gridcraft | Format::Wordcraft))
-        && !item.is_empty()
+    (matches!(
+        format(tool),
+        Some(Format::Gridcraft | Format::Wordcraft | Format::Photocraft)
+    ) && !item.is_empty()
         && item.len() <= 128
         && item
             .bytes()
