@@ -36,3 +36,7 @@ These tests supply synthetic Scope/Head values. They prove engine bytes and
 adapter behavior, **not** canonical host authorization, durable ACK-loss recovery,
 App registration, managed browser/WASIp2 execution, iPhone keyboard or native
 save/recovery/export. Those acceptance criteria remain open in #502/#180.
+
+The later real visual editor and shared MCP browser qualifications are recorded
+separately in [BROWSER-EVIDENCE.md](BROWSER-EVIDENCE.md); they do not change the
+execution scope of the first native slice above.

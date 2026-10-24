@@ -137,7 +137,8 @@ in [CANONICAL-EVIDENCE.md](CANONICAL-EVIDENCE.md). This includes a serializer-lo
 RED and its strict XML/round-trip correction; the old sealed components above
 remain preserved.
 
-Remaining vertical acceptance: the real managed upstream editor/canvas, browser
-resource/host registration and lifecycle, certified-agent action approval, native
+The real managed canvas/browser continuation and its retained REDs are recorded
+in [BROWSER-EVIDENCE.md](BROWSER-EVIDENCE.md). Browser resource registration,
+canonical creation/certified-agent action approval, native
 open/edit/save/cold recovery/export, accessibility and orientation. Keep #502 and
 #180 open until their actual journey criteria pass.
