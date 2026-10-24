@@ -63,7 +63,8 @@ impl<S: Signer> Client<S> {
         let mut extra = Vec::new();
         match ServerFrame::decode(bytes).map_err(|e| e.to_string())? {
             ServerFrame::Res { id, result } if self.linking_reply(id, &result)? => {}
-            ServerFrame::Res { id, result } if self.membership_reply(id, &result, &mut extra)? => {}
+            ServerFrame::Res { id, result }
+                if self.membership_reply(id, &result, &mut extra)? => {}
             ServerFrame::Res { id, result } if self.profile_reply(id, &result)? => {}
             ServerFrame::DeviceMessage { from, to, sealed } => {
                 self.history_ready |= self.history_hint(&from, &to, &sealed);

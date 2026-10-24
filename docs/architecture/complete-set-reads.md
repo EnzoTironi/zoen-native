@@ -137,7 +137,9 @@ between pages, and inspecting the full result with the normal CLI. Synthetic
 socket fixtures separately prove incomplete State never seeds omitted cursors or
 publishes host readiness.
 
-At the source-writing checkpoint, only the focused web connection/message tests
-and TypeScript checks have run. Rust compilation, native/relay/CLI execution and
+At the source-writing checkpoint, the full web suite (116 tests, zero skipped) and
+TypeScript checks have passed. The new web fixture originally failed because its
+vault stub omitted the existing durable-save port; that failure is retained and
+the fixture was repaired without changing the product persistence contract. Rust compilation, native/relay/CLI execution and
 genuine WASM binding validation remain pending. Receipts must name the immutable
 source executed; written tests and documentation are not runtime acceptance.
