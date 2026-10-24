@@ -1,7 +1,7 @@
 use super::*;
 use types::{Privacy, Role, SpaceKind};
 
-fn sample() -> (SpaceLog, Signer, Signer) {
+fn sample() -> Result<(SpaceLog, Signer, Signer), types::IdError> {
     let enzo = Signer::generate();
     let marina = Signer::generate();
     let mut log = SpaceLog::new("sp_paraty");
@@ -13,7 +13,7 @@ fn sample() -> (SpaceLog, Signer, Signer) {
             kind: SpaceKind::Group,
             privacy: Privacy::EndToEnd,
         },
-    );
+    )?;
     log.append(
         &enzo,
         2,
@@ -21,7 +21,7 @@ fn sample() -> (SpaceLog, Signer, Signer) {
             identity: marina.id(),
             role: Role::Member,
         },
-    );
+    )?;
     log.append(
         &marina,
         3,
@@ -33,7 +33,7 @@ fn sample() -> (SpaceLog, Signer, Signer) {
             media: None,
             forwarded: false,
         },
-    );
+    )?;
     log.append(
         &enzo,
         4,
@@ -45,13 +45,13 @@ fn sample() -> (SpaceLog, Signer, Signer) {
             media: None,
             forwarded: false,
         },
-    );
-    (log, enzo, marina)
+    )?;
+    Ok((log, enzo, marina))
 }
 
 #[test]
 fn valid_log_verifies_and_chains() {
-    let (log, _, _) = sample();
+    let (log, _, _) = sample().unwrap();
     assert_eq!(log.len(), 4);
     assert!(log.verify().is_ok());
     assert_eq!(log.events()[0].prev, GENESIS_PREV);
@@ -63,7 +63,7 @@ fn valid_log_verifies_and_chains() {
 
 #[test]
 fn roundtrip_through_json_still_verifies() {
-    let (log, _, _) = sample();
+    let (log, _, _) = sample().unwrap();
     let json = serde_json::to_string(log.events()).unwrap();
     let events: Vec<Event> = serde_json::from_str(&json).unwrap();
     assert!(SpaceLog::from_events("sp_paraty", events).is_ok());
@@ -90,7 +90,7 @@ fn rehash(e: &mut Event) {
 
 #[test]
 fn tampered_content_is_detected() {
-    let (log, _, _) = sample();
+    let (log, _, _) = sample().unwrap();
     let mut events = log.events().to_vec();
     events[2] = rewrite(&events[2], |c| {
         c.payload = Some(Payload::Body(content::encode_body(
@@ -112,7 +112,7 @@ fn tampered_content_is_detected() {
 
 #[test]
 fn a_view_that_disagrees_with_the_signed_bytes_is_rejected() {
-    let (log, _, _) = sample();
+    let (log, _, _) = sample().unwrap();
     let mut events = log.events().to_vec();
     events[2].body = EventBody::MessagePosted {
         message: "m1".into(),
@@ -130,7 +130,7 @@ fn a_view_that_disagrees_with_the_signed_bytes_is_rejected() {
 
 #[test]
 fn rehashed_tamper_fails_signature() {
-    let (log, _, _) = sample();
+    let (log, _, _) = sample().unwrap();
     let mut events = log.events().to_vec();
     events[3] = rewrite(&events[3], |c| {
         c.payload = Some(Payload::Body(content::encode_body(
@@ -153,7 +153,7 @@ fn rehashed_tamper_fails_signature() {
 
 #[test]
 fn forged_author_fails_signature() {
-    let (log, enzo, _) = sample();
+    let (log, enzo, _) = sample().unwrap();
     let mut events = log.events().to_vec();
     events[2] = rewrite(&events[2], |c| c.author = enzo.id());
     rehash(&mut events[2]);
@@ -175,7 +175,8 @@ fn fields_and_kinds_from_newer_clients_survive_verbatim() {
             kind: SpaceKind::Group,
             privacy: Privacy::Closed,
         },
-    );
+    )
+    .unwrap();
     let mut content = SignedContent {
         v: 3,
         space: "sp_new".into(),
@@ -207,7 +208,7 @@ fn fields_and_kinds_from_newer_clients_survive_verbatim() {
 
 #[test]
 fn a_sequencer_cannot_move_an_event_before_what_its_author_saw() {
-    let (log, _, marina) = sample();
+    let (log, _, marina) = sample().unwrap();
     let mut relay = SpaceLog::new("sp_paraty");
     for e in &log.events()[..2] {
         relay.accept(e.clone()).unwrap();
@@ -256,7 +257,8 @@ fn words_signed_on_one_history_do_not_verify_on_another() {
             kind: SpaceKind::Group,
             privacy: Privacy::Closed,
         },
-    );
+    )
+    .unwrap();
     real.append(
         &enzo,
         2,
@@ -268,7 +270,8 @@ fn words_signed_on_one_history_do_not_verify_on_another() {
             media: None,
             forwarded: false,
         },
-    );
+    )
+    .unwrap();
     let mut fake = SpaceLog::new("sp_fork");
     fake.accept(real.events()[0].clone()).unwrap();
     fake.append(
@@ -282,7 +285,8 @@ fn words_signed_on_one_history_do_not_verify_on_another() {
             media: None,
             forwarded: false,
         },
-    );
+    )
+    .unwrap();
     let answer = Author::root(enzo.clone()).sign_event(
         "sp_fork",
         "ans",
@@ -309,7 +313,7 @@ fn words_signed_on_one_history_do_not_verify_on_another() {
 
 #[test]
 fn only_creation_and_self_join_may_skip_the_causal_link() {
-    let (log, enzo, _) = sample();
+    let (log, enzo, _) = sample().unwrap();
     let mut client = SpaceLog::new("sp_paraty");
     for e in log.events() {
         client.accept(e.clone()).unwrap();
@@ -357,7 +361,7 @@ fn only_creation_and_self_join_may_skip_the_causal_link() {
 
 #[test]
 fn removed_or_reordered_events_are_detected() {
-    let (log, _, _) = sample();
+    let (log, _, _) = sample().unwrap();
     let mut removed = log.events().to_vec();
     removed.remove(1);
     assert_eq!(
@@ -386,7 +390,7 @@ fn removed_or_reordered_events_are_detected() {
 
 #[test]
 fn events_from_another_space_are_rejected() {
-    let (log, _, _) = sample();
+    let (log, _, _) = sample().unwrap();
     assert_eq!(
         SpaceLog::from_events("sp_outro", log.events().to_vec()).unwrap_err(),
         LogError::WrongSpace { seq: 0 }
