@@ -1,17 +1,30 @@
 //! Time-derived state, card headlines, and portable snapshots.
 
-use super::*;
+use super::{clamp, hike_name, maptap_board, schedule, t, thousands, tr, ts, Value};
+use serde_json::json;
+use std::time::Duration;
 
 #[cfg(test)]
 mod tests;
 
+/// A rollback contributes no elapsed time; `abs_diff` preserves the full signed range.
+fn elapsed_millis(later: i64, earlier: i64) -> u64 {
+    if later > earlier {
+        later.abs_diff(earlier)
+    } else {
+        0
+    }
+}
+
 // ── leitura (com o tempo passando, no caso do bichinho) ──
 
 /// O estado como a interface deve ver agora (o bichinho sente fome com o tempo).
+#[must_use]
 pub fn view(app: &str, state: &Value, now: i64) -> Value {
     let mut v = state.clone();
     if app == "pet" && !state["released"].as_bool().unwrap_or(false) {
-        let h = ((now - state["updated"].as_i64().unwrap_or(now)).max(0) as f64) / 3_600_000.0;
+        let elapsed = elapsed_millis(now, state["updated"].as_i64().unwrap_or(now));
+        let h = Duration::from_millis(elapsed).as_secs_f64() / 3_600.0;
         let asleep = state["asleep"].as_bool().unwrap_or(false);
         v["fullness"] = json!(clamp(state["fullness"].as_f64().unwrap_or(50.0) - 6.0 * h).round());
         v["energy"] = json!(clamp(
@@ -50,6 +63,7 @@ pub(super) fn pet_mood(v: &Value) -> &'static str {
 }
 
 /// Linha e métricas para o cartão vivo da tela inicial.
+#[must_use]
 pub fn headline(app: &str, state: &Value, now: i64) -> (String, Vec<(String, f64)>) {
     let v = view(app, state, now);
     match app {
@@ -242,7 +256,7 @@ pub fn headline(app: &str, state: &Value, now: i64) -> (String, Vec<(String, f64
         }
 
         "countdown" => {
-            let left = (v["target"].as_i64().unwrap_or(now) - now).max(0);
+            let left = elapsed_millis(v["target"].as_i64().unwrap_or(now), now);
             let days = left / 86_400_000;
             (
                 tr!(
