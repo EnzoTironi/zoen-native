@@ -201,3 +201,53 @@ fn unknown_original_lane_stops_before_crypto_and_exact_association_repair_recove
     assert!(f.engine.mls_seal_outbox().unwrap());
     assert_eq!(f.engine.outbox_envelopes().len(), 2);
 }
+
+#[test]
+fn changed_sql_space_cannot_hide_invalid_head_from_precrypto_validation() {
+    let mut f = Fixture::with_privacies(":memory:", Privacy::EndToEnd, Privacy::Closed);
+    f.engine.create_mls_group("sp_fault_a").unwrap();
+    let first = f.message("sp_fault_a", 0);
+    let second = f.message("sp_fault_a", 1);
+    let before = provider_rows(&f.engine);
+    f.engine
+        .store
+        .conn()
+        .execute(
+            "UPDATE outbox SET space=?1 WHERE client_id=?2",
+            ("sp_fault_b", &first.client_id),
+        )
+        .unwrap();
+    let damaged = raw_queue(&f.engine);
+    assert!(matches!(
+        f.engine.mls_seal_outbox(),
+        Err(CoreError::Storage { .. })
+    ));
+    assert!(
+        provider_rows(&f.engine) == before,
+        "untrusted SQL Space hid an unresolved head before crypto"
+    );
+    assert!(f
+        .engine
+        .store
+        .meta(&format!("mls.sealed:{}", second.client_id))
+        .unwrap()
+        .is_none());
+    assert_eq!(raw_queue(&f.engine), damaged);
+    f.engine
+        .store
+        .conn()
+        .execute(
+            "UPDATE outbox SET space=?1 WHERE client_id=?2",
+            ("sp_fault_a", &first.client_id),
+        )
+        .unwrap();
+    assert!(f.engine.mls_seal_outbox().unwrap());
+    assert_eq!(
+        f.engine
+            .outbox_envelopes()
+            .iter()
+            .map(Envelope::client_id)
+            .collect::<Vec<_>>(),
+        [first.client_id.as_str(), second.client_id.as_str()]
+    );
+}
