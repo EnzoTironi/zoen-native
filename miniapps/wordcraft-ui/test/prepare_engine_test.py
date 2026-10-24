@@ -39,6 +39,19 @@ class Preparation(unittest.TestCase):
                 recipe.prepare(self.tree)
         self.assertFalse((self.tree / "crates").exists())
 
+    def test_browser_refuses_foreign_archive_before_any_source_mutation(self):
+        wrong = self.tree.parent / (self.tree.name + ".crate")
+        try:
+            wrong.write_bytes(b"not a pinned registry archive")
+            with patch.object(recipe, "REVISION", self.revision):
+                with self.assertRaisesRegex(ValueError, "archive mismatch"):
+                    recipe.prepare(self.tree, browser=True, eframe_crate=wrong, egui_crate=wrong)
+            self.assertFalse((self.tree / "crates").exists())
+            self.assertFalse((self.tree / "vendor").exists())
+            self.assertFalse(self.git("status", "--porcelain"))
+        finally:
+            wrong.unlink(missing_ok=True)
+
     def test_copies_genuine_bytes_and_refuses_reentry(self):
         with patch.object(recipe, "REVISION", self.revision):
             result = recipe.prepare(self.tree)

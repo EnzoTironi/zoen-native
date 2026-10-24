@@ -31,6 +31,7 @@ def inputs():
         if path.is_symlink() or path.stat().st_size != entry['bytes'] or sha(path) != entry['sha256']:
             raise ValueError('Shared input patch mismatch: ' + name)
         result.append(path)
+    result.append(HERE / 'patches/0004-word-canvas-input.patch')
     return result
 
 
