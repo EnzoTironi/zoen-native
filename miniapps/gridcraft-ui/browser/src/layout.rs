@@ -61,7 +61,7 @@ impl Layout {
         let top = self.close_button.map_or(self.insets.top, |r| {
             self.insets.top.max(r.y + r.height + 4.0)
         });
-        egui::SafeAreaInsets(egui::MarginF32 {
+        egui::SafeAreaInsets(egui::epaint::MarginF32 {
             top,
             right: self.insets.right,
             bottom: self.insets.bottom,
