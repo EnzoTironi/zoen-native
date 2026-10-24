@@ -41,7 +41,7 @@ pub(super) fn start(e: &Arc<Client>, cx: &Ctx) -> Worker {
             let mut summary = Summary::new(configured, status);
             if status == Agent::Ready {
                 for space in e.spaces() {
-                    reconcile(&e, &agent, &space.id, &mut summary).await;
+                    reconcile(&e, &agent, &device, &space.id, &mut summary).await;
                 }
             }
             observer.write(summary, &mut std::io::stdout().lock());
@@ -58,7 +58,13 @@ fn scan_error(counts: &mut Counts, error: &client_core::CoreError) {
         counts.core_error = Some(observation::failure(CoreStage::Scan, error));
     }
 }
-async fn reconcile(e: &Client, agent: &str, space: &str, summary: &mut Summary) {
+async fn reconcile(
+    e: &Client,
+    agent: &str,
+    worker_device: &str,
+    space: &str,
+    summary: &mut Summary,
+) {
     // Core omits exact authenticated queued/confirmed receipts. A crash after
     // installation replays the original through Runtime, never a second authority.
     match e.scan_owner_policy_inquiries(space, 0, 50) {
@@ -85,7 +91,7 @@ async fn reconcile(e: &Client, agent: &str, space: &str, summary: &mut Summary) 
                 counts.rechecked += 1;
                 // Incomplete directory blocks a recovery mutation, not the
                 // unchanged read-only Runtime options path. Preserve its error.
-                let welcome_attempt = e.owner_policy_welcome_attempt(&current);
+                let welcome_attempt = e.owner_policy_welcome_attempt(&current, worker_device);
                 let command = Command::PolicyContext {
                     agent: agent.into(),
                     signed: Box::new(current.signed().clone()),

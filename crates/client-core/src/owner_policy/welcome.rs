@@ -161,10 +161,14 @@ impl Client {
     pub fn owner_policy_welcome_attempt(
         &self,
         query: &OwnerPolicyInquiryControl,
+        worker_device: &str,
     ) -> R<OwnerPolicyWelcomeAttempt> {
         let (owner, channel) = self.device_directory_owner()?;
         self.with_device_directory_completion(&owner, &channel, |engine| {
             let mut attempt = engine.owner_policy_welcome_attempt(query)?;
+            if attempt.device != worker_device {
+                return Err(denied());
+            }
             attempt.connection = Some((owner.clone(), channel.clone()));
             Ok(attempt)
         })
