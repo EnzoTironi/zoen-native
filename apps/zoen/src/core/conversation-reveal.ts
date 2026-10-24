@@ -103,6 +103,7 @@ export class ConversationReveal {
   private contentHeight: number | null = null;
   private viewportHeight: number | null = null;
   private target: string | null = null;
+  private settledTarget: string | null = null;
   private data: readonly unknown[] | null = null;
   private committedData: readonly unknown[] | null = null;
   private commit = 0;
@@ -139,6 +140,7 @@ export class ConversationReveal {
     ++this.cancellation;
     ++this.revision;
     this.target = null;
+    this.settledTarget = null;
     this.commandLayout = null;
     this.engagementCommit = null;
     this.cancelFrame?.();
@@ -157,6 +159,8 @@ export class ConversationReveal {
   };
   onInset = ({ top, bottom }: { top: number; bottom: number }) => {
     if (!Number.isFinite(top) || !Number.isFinite(bottom)) return;
+    if (this.inset && (this.inset.top !== top || this.inset.bottom !== bottom))
+      this.resumeSettledTarget();
     this.inset = { top, bottom };
     this.trace('inset');
     this.schedule();
@@ -169,6 +173,7 @@ export class ConversationReveal {
   };
   onLayout = (height: number) => {
     if (!Number.isFinite(height) || height <= 0) return;
+    if (this.viewportHeight !== null && this.viewportHeight !== height) this.resumeSettledTarget();
     this.viewportHeight = height;
     this.trace('viewport');
     this.schedule();
@@ -193,7 +198,18 @@ export class ConversationReveal {
     this.schedule();
   };
 
-  private ready(): boolean {
+  private resumeSettledTarget() {
+    if (!this.settledTarget) return;
+    this.target = this.settledTarget;
+    this.settledTarget = null;
+    this.commandLayout = null;
+    this.engagementCommit = null;
+  }
+  // The SDK's effective inset callback and native onScroll are independent.
+  // Waiting for their equality before issuing the explicit search can deadlock:
+  // an inset-only update need not emit any scroll packet. Seek against measured
+  // native bounds, then require their convergence before claiming completion.
+  private canSeek(): boolean {
     const geometry = this.geometry;
     return Boolean(
       geometry &&
@@ -202,9 +218,17 @@ export class ConversationReveal {
       this.inset &&
       this.contentHeight !== null &&
       this.viewportHeight !== null &&
-      Math.abs((geometry.contentInset.top ?? 0) - this.inset.top) <= 1 &&
-      Math.abs(geometry.contentInset.bottom - this.inset.bottom) <= 1 &&
       Math.abs(geometry.layoutMeasurement.height - this.viewportHeight) <= 1,
+    );
+  }
+  private ready(): boolean {
+    const geometry = this.geometry;
+    return Boolean(
+      this.canSeek() &&
+      geometry &&
+      this.inset &&
+      Math.abs((geometry.contentInset.top ?? 0) - this.inset.top) <= 1 &&
+      Math.abs(geometry.contentInset.bottom - this.inset.bottom) <= 1,
     );
   }
   private measuredGeometry(): ConversationRevealGeometry | null {
@@ -259,6 +283,7 @@ export class ConversationReveal {
         commit: this.commit,
         engagementCommit: this.engagementCommit,
         ready: this.ready(),
+        seekReady: this.canSeek(),
         waiting,
         native: native
           ? {
@@ -287,7 +312,7 @@ export class ConversationReveal {
     this.cancelFrame?.();
     this.cancelFrame = null;
     const port = this.port;
-    if (!port || !this.target || !this.ready()) {
+    if (!port || !this.target || !this.canSeek()) {
       if (this.target) this.trace('wait');
       return;
     }
@@ -301,7 +326,7 @@ export class ConversationReveal {
         return;
       }
       const geometry = this.measuredGeometry();
-      if (!this.ready() || !geometry) {
+      if (!this.canSeek() || !geometry) {
         this.trace('wait-frame');
         return;
       }
@@ -328,12 +353,14 @@ export class ConversationReveal {
       // its native acknowledgement can finish the request. Index layouts may
       // still contain measured dimensions belonging to pre-pagination rows.
       if (
+        this.ready() &&
         item.measured &&
         atTarget &&
         visible &&
         (this.engagementCommit === null || this.commit > this.engagementCommit)
       ) {
         this.trace('retire');
+        this.settledTarget = id;
         this.target = null;
         this.commandLayout = null;
         this.engagementCommit = null;
