@@ -62,6 +62,9 @@ fn docx_lost_ack_cas_cold_history_and_export_keep_exact_original_selected_file()
     let base = word(&f, "create")?;
     let accepted = save(&f, &base, EDITED, "lost-ack")?;
     let newer = save(&f, &accepted, DOCX, "later")?;
+    // v3 intentionally restores v1's exact bytes; the foreign hash must be v2's.
+    assert_eq!(newer.sha256, base.sha256);
+    assert_ne!(accepted.sha256, base.sha256);
     let before = counts(&f);
     assert!(matches!(
         save(&f, &base, DOCX, "stale"),
@@ -88,7 +91,7 @@ fn docx_lost_ack_cas_cold_history_and_export_keep_exact_original_selected_file()
     assert_eq!(STANDARD.decode(old.data_base64).expect("base64"), DOCX);
     assert_eq!(old.current_version, 3);
     assert!(matches!(
-        client.app_binary_read(base.item_id.clone(), Some(1), Some(newer.sha256)),
+        client.app_binary_read(base.item_id.clone(), Some(1), Some(accepted.sha256.clone())),
         Err(CoreError::Stale { .. })
     ));
     assert_eq!(
