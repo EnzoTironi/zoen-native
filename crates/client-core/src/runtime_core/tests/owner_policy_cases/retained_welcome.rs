@@ -48,10 +48,19 @@ fn deliver_handshakes(owner: &mut Engine, worker: &mut DeviceCore, phase: &str) 
 fn cold_capsule_with_pruned_welcome_needs_its_own_fresh_welcome_not_worker_readiness() -> TestResult
 {
     let mut before_welcome = None;
-    let mut f = Fixture::new_observing_welcome(SPACE, |core| {
+    let mut public_stock = None;
+    let mut f = Fixture::new_with_key_package(SPACE, |core| {
+        let (batch, _) = core
+            .prepare_initial_key_packages()
+            .expect("retained actual initial batch");
+        assert_eq!(batch.packages().len(), 32);
+        let first = batch.packages()[0].clone();
+        public_stock = Some((batch.packages().to_vec(), batch.digest().to_owned()));
         before_welcome = Some(core.image().expect("retained native private package"));
+        first
     });
     let early = before_welcome.ok_or("pre-Welcome native image")?;
+    let (public_stock, original_digest) = public_stock.ok_or("initial public batch")?;
     let worker_key = Signer::generate();
     assert_ne!(worker_key.id(), f.agent_device.id());
     let worker_author = Author::device(&f.agent_root, worker_key.clone());
@@ -182,7 +191,14 @@ fn cold_capsule_with_pruned_welcome_needs_its_own_fresh_welcome_not_worker_readi
         ingest_at(&mut worker, vec![entry.clone()], "worker rejoin echo")?;
         ingest_at(&mut cold, vec![entry], "cold native rejoin event")?;
     }
-    let (fresh, _) = cold.prepare_initial_key_packages()?;
+    let retained = cold
+        .initial_key_package_publication()?
+        .ok_or("retained initial publication")?;
+    assert_eq!(retained.digest(), original_digest);
+    assert_eq!(retained.packages(), public_stock);
+    // Use a different, originally retained unused package. Initialization's
+    // acknowledged fixed batch is not a refill mechanism after consumption.
+    assert_ne!(public_stock[0], public_stock[1]);
     let clock = KeyPackageClaimClock::from_server_ms(crate::engine::now_ms())
         .ok_or("actual claim clock")?;
     let (_, targets, operation) = f
@@ -196,7 +212,7 @@ fn cold_capsule_with_pruned_welcome_needs_its_own_fresh_welcome_not_worker_readi
         Ok(vec![KeyPackageRecord {
             identity: f.agent_profile.id.clone(),
             device: f.agent_device.id(),
-            data: fresh.packages()[0].clone(),
+            data: public_stock[1].clone(),
         }]),
     );
     let after = cold.retained_head(SPACE)?.ok_or("retained source")?.seq;

@@ -46,6 +46,23 @@ impl Fixture {
     }
 
     fn new_observing_welcome(space_id: &str, before_welcome: impl FnOnce(&mut DeviceCore)) -> Self {
+        Self::new_with_key_package(space_id, |core| {
+            let package = core
+                .engine
+                .device()
+                .unwrap()
+                .key_packages(1, false)
+                .unwrap()
+                .remove(0);
+            before_welcome(core);
+            package
+        })
+    }
+
+    fn new_with_key_package(
+        space_id: &str,
+        package: impl FnOnce(&mut DeviceCore) -> Vec<u8>,
+    ) -> Self {
         let owner_root = Signer::generate();
         let owner_author = Author::device(&owner_root, Signer::generate());
         let owner_profile = profile(&owner_root, IdentityKind::Person);
@@ -121,15 +138,7 @@ impl Fixture {
         let (space, targets, operation) = fixture.owner.mls_to_claim(Some(clock)).unwrap().unwrap();
         assert_eq!(space, space_id);
         assert_eq!(targets, vec![fixture.agent_profile.id.clone()]);
-        let package = fixture
-            .core
-            .engine
-            .device()
-            .unwrap()
-            .key_packages(1, false)
-            .unwrap()
-            .remove(0);
-        before_welcome(&mut fixture.core);
+        let package = package(&mut fixture.core);
         fixture.owner.mls_claimed(
             space_id,
             &operation,
