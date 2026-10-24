@@ -5,6 +5,25 @@ use super::*;
 #[cfg(test)]
 mod fault_tests;
 
+/// These are local read outcomes, never a terminal refusal or permission to
+/// reconstruct, discard, re-sign or retry an unreadable signed intent.
+#[derive(Debug, PartialEq, Eq)]
+enum OutboxHeadFailure {
+    Missing,
+    Corrupt,
+    Read,
+}
+
+impl OutboxHeadFailure {
+    fn trace(&self) {
+        crate::net::tracing_like(match self {
+            Self::Missing => "outbox: retained head is missing; publication paused",
+            Self::Corrupt => "outbox: retained head is invalid; publication paused",
+            Self::Read => "outbox: retained head cannot be read; publication paused",
+        });
+    }
+}
+
 impl Engine {
     /// Upload availability is not write authority: signed/canonical admission still
     /// runs normally. This only resolves the File bytes an outbox intent references.
@@ -59,14 +78,38 @@ impl Engine {
     /// and a rate-limit reject retries the older ciphertext after a later one has been
     /// sequenced.
     pub fn outbox_envelopes_except(&self, sent: &HashMap<String, Option<u64>>) -> Vec<Envelope> {
+        let heads = match self.store.outbox_heads() {
+            Ok(heads) => heads,
+            Err(_) => {
+                crate::net::tracing_like("outbox: queue heads unavailable; publication paused");
+                return Vec::new();
+            }
+        };
+        self.outbox_envelopes_from_heads(sent, heads)
+    }
+
+    // Rows can disappear or become unreadable after the actual head query. Keep
+    // this snapshot's order, rather than treating an unresolved head as complete.
+    fn outbox_envelopes_from_heads(
+        &self,
+        sent: &HashMap<String, Option<u64>>,
+        heads: Vec<store::OutboxHead>,
+    ) -> Vec<Envelope> {
         let mut ready = HashMap::new();
         let mut media_dependencies = HashMap::new();
         // A Welcome goes out only once its commit is in: sent together, a commit held back
         // by the relay (rate limit) would let the Welcome arrive first and be refused.
-        let held = self.welcomes_behind_commits();
+        let held = match self.welcomes_behind_commits() {
+            Ok(held) => held,
+            Err(_) => {
+                crate::net::tracing_like(
+                    "outbox: handshake dependencies unavailable; publication paused",
+                );
+                return Vec::new();
+            }
+        };
         // Ahead of any in-flight application cap: a forked Space publishes nothing.
         let mut forked = HashMap::new();
-        let heads = self.store.outbox_heads().unwrap_or_default();
         let mut in_flight: HashMap<String, usize> = HashMap::new();
         for head in &heads {
             if sent
@@ -96,8 +139,21 @@ impl Engine {
             if p.last_error.as_deref() == Some(protocol::SEAL_REQUIRED) && !self.is_e2e(&p.space) {
                 continue;
             }
-            let Some(event) = self.store.outbox_get(&p.client_id).ok().flatten() else {
-                continue;
+            let event = match self.read_outbox_head(&p) {
+                Ok(event) => event,
+                Err(failure) => {
+                    failure.trace();
+                    // This existing index was populated from the original
+                    // signed append/reload. SQL metadata alone cannot guess a
+                    // lane after a missing/corrupt body, or reroute an intent.
+                    if !p.space.is_empty() && self.net.pending.get(&p.client_id) == Some(&p.space) {
+                        blocked.insert(p.space);
+                        continue;
+                    }
+                    // Nothing has been sent yet: discard the assembled offer
+                    // prefix too when the unresolved head has no known lane.
+                    return Vec::new();
+                }
             };
             // An offline creation has a predicted genesis link. Its descendants
             // must wait for confirmation: a retryable creation failure can otherwise
@@ -176,17 +232,28 @@ impl Engine {
     }
 
     /// Our queued Welcomes that wait behind a commit of ours still in the outbox.
-    pub(super) fn welcomes_behind_commits(&self) -> HashSet<String> {
+    fn read_outbox_head(&self, head: &store::OutboxHead) -> Result<Event, OutboxHeadFailure> {
+        match self.store.outbox_get(&head.client_id) {
+            Ok(Some(event)) if event.client_id == head.client_id && event.space == head.space => {
+                Ok(event)
+            }
+            Ok(Some(_)) | Err(store::StoreError::Json(_)) => Err(OutboxHeadFailure::Corrupt),
+            Ok(None) => Err(OutboxHeadFailure::Missing),
+            Err(_) => Err(OutboxHeadFailure::Read),
+        }
+    }
+
+    pub(super) fn welcomes_behind_commits(&self) -> store::Result<HashSet<String>> {
         let mut committing: HashSet<String> = HashSet::new();
         let mut held = HashSet::new();
-        for (client_id, space, kind) in self.store.outbox_handshakes().unwrap_or_default() {
+        for (client_id, space, kind) in self.store.outbox_handshakes()? {
             if kind == SealedKind::Commit.name() {
                 committing.insert(space);
             } else if kind == SealedKind::Welcome.name() && committing.contains(&space) {
                 held.insert(client_id);
             }
         }
-        held
+        Ok(held)
     }
 
     pub fn outbox_len(&self) -> u64 {

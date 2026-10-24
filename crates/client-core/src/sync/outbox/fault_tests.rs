@@ -3,6 +3,18 @@ use super::*;
 use event_log::content::Sealed;
 use rusqlite::{params, types::Value};
 
+struct OwnedDatabase(std::path::PathBuf);
+impl Drop for OwnedDatabase {
+    fn drop(&mut self) {
+        if self.0.exists() {
+            let removed = std::fs::remove_file(&self.0);
+            if !std::thread::panicking() {
+                removed.expect("owned SQLite fixture removed after closing Engine");
+            }
+        }
+    }
+}
+
 struct Fixture {
     engine: Engine,
     root: [u8; 32],
@@ -187,6 +199,20 @@ fn malformed_or_unreadable_head_blocks_only_its_reliably_associated_chat_without
             )),
             _ => unreachable!("explicit fixture faults"),
         }
+        let head = f
+            .engine
+            .store
+            .outbox_heads()
+            .unwrap()
+            .into_iter()
+            .find(|h| h.client_id == first.client_id)
+            .unwrap();
+        let expected = if matches!(fault, Value::Text(_)) {
+            OutboxHeadFailure::Corrupt
+        } else {
+            OutboxHeadFailure::Read
+        };
+        assert_eq!(f.engine.read_outbox_head(&head).unwrap_err(), expected);
         let broken = raw_queue(&f.engine);
         let offered = f.engine.outbox_envelopes();
         assert!(
@@ -262,8 +288,8 @@ fn malformed_other_chat_does_not_release_real_mls_welcome_ahead_of_its_commit() 
 
 #[test]
 fn exact_head_repair_and_cold_reopen_preserve_original_ids_order_signatures_and_retry_fields() {
-    let path = std::env::temp_dir().join(types::new_id("outbox-head-repair"));
-    let mut f = Fixture::new(path.to_str().unwrap(), Privacy::Closed);
+    let database = OwnedDatabase(std::env::temp_dir().join(types::new_id("outbox-head-repair")));
+    let mut f = Fixture::new(database.0.to_str().unwrap(), Privacy::Closed);
     f.message("sp_fault_b", 0);
     let first = f.message("sp_fault_a", 1);
     f.message("sp_fault_a", 2);
@@ -284,11 +310,106 @@ fn exact_head_repair_and_cold_reopen_preserve_original_ids_order_signatures_and_
     assert_eq!(raw_queue(&f.engine), original_rows);
     let key = f.device;
     drop(f);
-    let mut cold = Engine::open(path.to_str().unwrap()).unwrap();
+    let mut cold = Engine::open(database.0.to_str().unwrap()).unwrap();
     assert!(cold.unlock(Some(key.to_vec())).unwrap());
     assert_eq!(raw_queue(&cold), original_rows);
     assert_eq!(cold.outbox_envelopes(), healthy);
     assert_eq!(cold.outbox_len(), 3);
     drop(cold);
-    std::fs::remove_file(path).unwrap();
+    drop(database);
+}
+
+#[test]
+fn missing_after_head_query_blocks_its_original_lane_and_exact_row_restoration_recovers_order() {
+    let mut f = Fixture::new(":memory:", Privacy::Closed);
+    let independent = f.message("sp_fault_b", 0);
+    let first = f.message("sp_fault_a", 1);
+    f.message("sp_fault_a", 2);
+    let healthy = f.engine.outbox_envelopes();
+    let original_rows = raw_queue(&f.engine);
+    let row = original_rows
+        .iter()
+        .find(|r| r.0 == first.client_id)
+        .unwrap();
+    let heads = f.engine.store.outbox_heads().unwrap();
+    let head = heads
+        .iter()
+        .find(|h| h.client_id == first.client_id)
+        .unwrap();
+    f.engine.store.outbox_remove(&first.client_id).unwrap();
+    assert_eq!(
+        f.engine.read_outbox_head(head).unwrap_err(),
+        OutboxHeadFailure::Missing
+    );
+    let broken = raw_queue(&f.engine);
+    let offered = f.engine.outbox_envelopes_from_heads(&HashMap::new(), heads);
+    assert_eq!(
+        offered.iter().map(Envelope::client_id).collect::<Vec<_>>(),
+        [independent.client_id.as_str()]
+    );
+    assert_eq!(raw_queue(&f.engine), broken);
+    // Restore the exact retained row, including its original enqueue position.
+    // This is test fault repair, never an automatic runtime reconstruction.
+    f.engine.store.conn().execute("INSERT INTO outbox(client_id,space,json,attempts,last_error,failed,created_ms,queue_order) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)", params![row.0,row.1,row.2,row.3,row.4,row.5,row.6,row.7]).unwrap();
+    assert_eq!(raw_queue(&f.engine), original_rows);
+    assert_eq!(f.engine.outbox_envelopes(), healthy);
+}
+
+#[test]
+fn corrupt_row_cannot_change_its_cached_chat_association_to_release_a_partial_prefix() {
+    let mut f = Fixture::new(":memory:", Privacy::Closed);
+    f.message("sp_fault_b", 0);
+    let first = f.message("sp_fault_a", 1);
+    f.message("sp_fault_a", 2);
+    let healthy = f.engine.outbox_envelopes();
+    let json = original_json(&f.engine, &first);
+    f.engine
+        .store
+        .conn()
+        .execute(
+            "UPDATE outbox SET json='{invalid', space='sp_fault_b' WHERE client_id=?1",
+            [&first.client_id],
+        )
+        .unwrap();
+    let broken = raw_queue(&f.engine);
+    assert!(f.engine.outbox_envelopes().is_empty());
+    assert_eq!(raw_queue(&f.engine), broken);
+    f.engine
+        .store
+        .conn()
+        .execute(
+            "UPDATE outbox SET json=?1, space=?2 WHERE client_id=?3",
+            params![json, first.space, first.client_id],
+        )
+        .unwrap();
+    assert_eq!(f.engine.outbox_envelopes(), healthy);
+}
+
+#[test]
+fn unreadable_queue_or_handshake_metadata_never_becomes_an_empty_dependency_success() {
+    for projection in [
+        "SELECT queue_order FROM main.outbox",
+        "SELECT client_id,space,attempts,last_error,failed,created_ms,queue_order FROM main.outbox",
+    ] {
+        let mut f = Fixture::new(":memory:", Privacy::Closed);
+        f.message("sp_fault_b", 0);
+        f.message("sp_fault_a", 1);
+        let healthy = f.engine.outbox_envelopes();
+        let original = raw_queue(&f.engine);
+        // A temp read projection shadows only the owned fixture; actual durable
+        // table, signed bytes and queue positions remain untouched.
+        f.engine
+            .store
+            .conn()
+            .execute_batch(&format!("CREATE TEMP VIEW outbox AS {projection}"))
+            .unwrap();
+        assert!(f.engine.outbox_envelopes().is_empty());
+        f.engine
+            .store
+            .conn()
+            .execute_batch("DROP VIEW temp.outbox")
+            .unwrap();
+        assert_eq!(raw_queue(&f.engine), original);
+        assert_eq!(f.engine.outbox_envelopes(), healthy);
+    }
 }
