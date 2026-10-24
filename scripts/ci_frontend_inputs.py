@@ -1,0 +1,70 @@
+"""Reviewed inputs for the existing CI selector; no job-selection logic."""
+
+# Reviewed Cargo roots, test commands, client coverage and embedded-resource
+# recipes. Drift selects the full lane; refreshing a pin never bypasses tests.
+FRONTEND_CONTRACTS = {
+    "crates/miniapps/resources/countdown.manifest.json": "e4e75fe59826cc21cc32f60e844cae5e803b3ff4b093134599319716fe1adbd7",
+    "crates/miniapps/resources/deckcraft.manifest.json": "ba104825f8838605b8376d71c78e9c62621159c5d9530f7fb988327ae0d6a358",
+    "crates/miniapps/resources/excalidraw.manifest.json": "0c781ade300c8aa15102f71b12facfd6dbd541d609ccacae5a19a8701a43400a",
+    "crates/miniapps/resources/gridcraft.manifest.json": "c4829e83e00e5e7fbaf454fc98c3e1e5c4c8293e6d7debac0fd67d977d6eeb6e",
+    "crates/miniapps/resources/hike.manifest.json": "c0762587d7627c503e9a5f48ed0f3e1c1c45bf28fd00d97477523d159bcab5dd",
+    "crates/miniapps/resources/list.manifest.json": "1d7fe1009d8f024ec75ce76a3c1906fae87725ecd3511cba08b8f1d5c1795261",
+    "crates/miniapps/resources/maptap.manifest.json": "72aebc640b874a00bdc5d524a1d8f07905d2159d76d92fbaad6d73950d10d4cd",
+    "crates/miniapps/resources/pet.manifest.json": "7aaad3736d5c87b5a16f3af3e9d4cb8507505ff3420470c00e07221ee6d1b626",
+    "crates/miniapps/resources/poll.manifest.json": "5f44fa3e1bb71d062cf8ea9835262a6302838e60f1aada14eda564264d48fedc",
+    "crates/miniapps/resources/recipe.manifest.json": "883bfd891b0c53e44c9c828175de1a793708bf687382135e3b46c07785253942",
+    "crates/miniapps/resources/schedule.manifest.json": "592f54dc702801f6dfcf2ad233940e0233492677851a3f4c818da1feb008faf9",
+    "miniapps/hike/manifest.json": "914ae6e337aad530a133c2abb435e70dd4fe80e15b35815aa1a667a2d00e04d1",
+    "miniapps/schedule/manifest.json": "98c2f8e8e1bda22fbed394da8619fd173543a55f21472e57d3427b5d38c95a30",
+    "miniapps/gridcraft-ui/prepare-engine.py": "fdf549eaa51030840973c39ee7cd2ddd29eb2084c7c000444be39bd5715bc4d5",
+    "miniapps/gridcraft-ui/build-resource-manifest.mjs": "8914b2b78e8483905fc124271a05c646981641018387dca719a085812fa8a56b",
+    "miniapps/deckcraft-ui/build.py": "7c7174d17f521ba4f3d307cc21f6ef511dd54b85619383333cbf3878087b2434",
+    "miniapps/deckcraft-ui/build-runtime.mjs": "6af2fd64c6a5500387e2e668943dad5caffeaed6f9b12a9edc4978de4015f36f",
+    "miniapps/deckcraft-ui/build-resource-manifest.mjs": "b42a717513b924557cc5bdba395424763469b2813eede6fa1790fd18c3a30b27",
+    "crates/zoen-agentd/src/citizen/codex.rs": "5d35b3e9f1f29cfdd5380288a2810ee17c0809f4f71c7b40b773c709a3f3e314",
+    "crates/zoen-relay/src/lib.rs": "0a85a11509ff1968e85b09abefab3b979c5e19ba797624f2fb7a42ab1deb0981",
+    "Cargo.toml": "4059ed818d502e2493f51d45a356cde25deabcf34feb40f8509ba22a5e4f0d27",
+    ".github/workflows/ci.yml": "fd620ffc26625762df13419673a105463878c7f65ac4a0ba446728ee86536b5f",
+    ".github/workflows/expo.yml": "085e800264619bcc17f43b676a40b9ee682cb8e7dff845058b9ff4247e1bf7e7",
+    "apps/zoen/package.json": "d58538007aec677d34171d4a09f883973c1c8bf9440b141d5bc72f33b2dba14b",
+    "apps/zoen/src/miniapps/vendor/deckcraft-bootstrap.manifest.json": "a2622622d2e7157f09728d452b5f8056839b4fc49f846a60b0c024bda9a88ed5",
+    "apps/zoen/src/miniapps/vendor/runtime-support.manifest.json": "d227c6b524f0c8d47dc8a5a8304e449492183a01f564022fa49388bc56e7394e",
+    "apps/zoen/src/miniapps/vendor/excalidraw-ui.manifest.json": "9e58fab46099bb8ef146d5bef194bab99385095e0ce845bb3a0f442e84ae12d3",
+    "miniapps/deckcraft-ui/build-bootstrap.mjs": "ecf7c02ddf67fac3f3bbb566b00940c2c5becc5a8f94060bf410a0f9b74fb57e",
+    "miniapps/gridcraft-ui/build-bootstrap.mjs": "0ed258e83d06338d27393778c552a1094e694ca1a0f585c28dec11728ecc64ec",
+    "tools/miniapp-build/managed-binary-bootstrap.mjs": "217966d6b89e5165432bfd018c88c970d89a1225a2d8083bd0fe231206d84412",
+    "scripts/build-expo-core.mjs": "de33e30847a89300a242f7d0e8c15484fd2245815488138175ace8eec7011b41",
+    "scripts/build-expo-web-core.mjs": "9504ad593e1413ed9b8e36c4b79032df1336e7ad740adbac18b5e9361fa8dfd2",
+}
+RESOURCE_MANIFESTS = (
+    "apps/zoen/src/miniapps/vendor/deckcraft-bootstrap.manifest.json",
+    "apps/zoen/src/miniapps/vendor/excalidraw-ui.manifest.json",
+    "apps/zoen/src/miniapps/vendor/runtime-support.manifest.json",
+    "crates/miniapps/resources/countdown.manifest.json",
+    "crates/miniapps/resources/deckcraft.manifest.json",
+    "crates/miniapps/resources/excalidraw.manifest.json",
+    "crates/miniapps/resources/gridcraft.manifest.json",
+    "crates/miniapps/resources/hike.manifest.json",
+    "crates/miniapps/resources/list.manifest.json",
+    "crates/miniapps/resources/maptap.manifest.json",
+    "crates/miniapps/resources/pet.manifest.json",
+    "crates/miniapps/resources/poll.manifest.json",
+    "crates/miniapps/resources/recipe.manifest.json",
+    "crates/miniapps/resources/schedule.manifest.json",
+    "miniapps/hike/manifest.json",
+    "miniapps/schedule/manifest.json",
+)
+
+BUNDLE_MANIFESTS = (
+    "apps/zoen/src/miniapps/vendor/deckcraft-bootstrap.manifest.json",
+    "apps/zoen/src/miniapps/vendor/runtime-support.manifest.json",
+    "apps/zoen/src/miniapps/vendor/excalidraw-ui.manifest.json",
+)
+RUST_ROOTS = ("crates", "tools/uniffi-bindgen")  # Bound by the Cargo.toml pin.
+# Exact pinned bodies: Codex's disabled feature name and Apple's association
+# JSON key are not filesystem readers. Any change to either body disables skip.
+NON_INPUT_APP_LITERALS = frozenset({
+    "crates/zoen-agentd/src/citizen/codex.rs",
+    "crates/zoen-relay/src/lib.rs",
+})
+
