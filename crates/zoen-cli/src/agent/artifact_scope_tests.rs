@@ -75,6 +75,7 @@ fn scoped_discovery_and_dispatch_never_fall_back_to_other_space_tools_or_cached_
             reply,
         },
     );
+    let source = event.client_id.clone();
     db.append_event(event).unwrap();
     log.verify().unwrap();
     drop(db);

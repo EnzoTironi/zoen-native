@@ -41,7 +41,8 @@ pub(crate) fn scope(f: &mut Fixture, alter: impl FnOnce(&mut types::ReplyRef)) {
         .entries
         .last()
         .unwrap()
-        .id();
+        .id()
+        .to_owned();
 }
 
 #[test]
