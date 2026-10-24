@@ -1,6 +1,15 @@
 --- a/vendor/eframe-0.36.2/src/web/text_agent.rs
 +++ b/vendor/eframe-0.36.2/src/web/text_agent.rs
-@@ -68,16 +68,16 @@
+@@ -41,6 +41,8 @@
+         style.set_property("height", "1px")?;
+         style.set_property("caret-color", "transparent")?;
+         style.set_property("position", "absolute")?;
++        // No current editor owns this agent yet; retired geometry must not eat canvas touches.
++        style.set_property("pointer-events", "none")?;
+         style.set_property("top", &format!("{}px", canvas.offset_top()))?;
+         style.set_property("left", &format!("{}px", canvas.offset_left()))?;
+         // Prevent auto-zoom on mobile browsers (requires at least 16px).
+@@ -68,16 +70,16 @@
  
          // attach event listeners
  
@@ -22,7 +31,7 @@
  
          runner_ref.add_event_listener(&input, "input", {
              let input_state = Rc::clone(&input_state);
-@@ -131,14 +131,6 @@
+@@ -131,14 +133,6 @@
              .update(ime, canvas, zoom_factor)
      }
  
@@ -37,7 +46,7 @@
      pub fn has_focus(&self) -> bool {
          super::has_focus(&self.input)
      }
-@@ -150,6 +142,25 @@
+@@ -150,6 +144,25 @@
  
          log::trace!("Focusing text agent");
  
@@ -63,7 +72,7 @@
          if let Err(err) = super::focus_without_scroll(&self.input) {
              log::error!("failed to set focus: {}", super::string_from_js_value(&err));
          }
-@@ -184,6 +195,7 @@
+@@ -184,6 +197,7 @@
      last_text: String,
      ime_output: Option<egui::output::IMEOutput>,
      keydown_special_case: KeydownSpecialCase,
@@ -71,7 +80,7 @@
  }
  
  #[derive(Clone, Copy)]
-@@ -222,6 +234,7 @@
+@@ -222,6 +236,7 @@
              last_text: String::new(),
              ime_output: None,
              keydown_special_case: KeydownSpecialCase::None,
@@ -79,7 +88,20 @@
          }
      }
  
-@@ -279,9 +292,11 @@
+@@ -231,6 +246,12 @@
+         canvas: &web_sys::HtmlCanvasElement,
+         zoom_factor: f32,
+     ) -> Result<(), JsValue> {
++        // DOM hit-testing follows current IME ownership, even when the cached
++        // geometry is unchanged. Keep the buffer/composition and caret intact.
++        self.input.style().set_property(
++            "pointer-events",
++            if ime.is_some() { "auto" } else { "none" },
++        )?;
+         // Don't move the text agent unless the position actually changed:
+         if self.ime_output == ime {
+             return Ok(());
+@@ -279,9 +300,11 @@
      fn clear(&mut self) {
          self.input.set_value("");
          self.last_text.clear();
@@ -91,7 +113,7 @@
          if self
              .ime_output
              .as_ref()
-@@ -391,6 +406,7 @@
+@@ -391,6 +414,7 @@
      }
  
      fn handle_composition_end_event(&mut self, runner: &mut AppRunner) {
@@ -99,7 +121,7 @@
          let text = self.input.value();
  
          let commit_text = {
-@@ -422,7 +438,8 @@
+@@ -422,7 +446,8 @@
          if event.is_composing() || !matches!(special_case, KeydownSpecialCase::None) {
              true
          } else {

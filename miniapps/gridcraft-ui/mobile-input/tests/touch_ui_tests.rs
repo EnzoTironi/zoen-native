@@ -162,3 +162,45 @@ fn cancelled_contact_does_not_become_a_late_editor_admission() {
     tap(&mut h, at);
     assert!(admitted(&h), "cancellation does not poison a later real contact");
 }
+
+#[test]
+fn enter_retires_editor_before_rotation_and_a_fresh_b1_contact_owns_the_next_edit() {
+    let (mut h, mut bridge, scope, head) = harness();
+    let a1 = cell(&h, "A1");
+    tap(&mut h, a1);
+    tap(&mut h, a1);
+    assert!(admitted(&h));
+    text(&mut h, "11");
+    key(&mut h, Key::Enter);
+    assert!(h.state().editor.is_none());
+    assert!(h.output().platform_output.ime.is_none());
+    assert_eq!(h.state().session.doc().unwrap().selection.active,
+        gridcraft_engine::core::CellRef::parse("A2").unwrap());
+    h.set_size(egui::vec2(874.0, 402.0));
+    h.run_steps(2);
+    assert!(h.output().platform_output.ime.is_none());
+    let b1 = cell(&h, "B1");
+    tap(&mut h, b1);
+    assert!(!admitted(&h), "selection alone cannot activate a keyboard");
+    tap(&mut h, b1);
+    assert!(admitted(&h), "the new contact owns the current landscape editor");
+    assert_eq!(h.state().editor.as_ref().map(|editor| editor.cell),
+        Some(gridcraft_engine::core::CellRef::parse("B1").unwrap()));
+    text(&mut h, "22");
+    key(&mut h, Key::Enter);
+    assert_eq!(value(&h, "A1"), gridcraft_engine::core::Value::Number(11.0));
+    assert_eq!(value(&h, "B1"), gridcraft_engine::core::Value::Number(22.0));
+    h.state_mut().run("edit.undo", serde_json::json!({})).unwrap();
+    h.run_steps(2);
+    assert_eq!(value(&h, "A1"), gridcraft_engine::core::Value::Number(11.0));
+    assert_eq!(value(&h, "B1"), gridcraft_engine::core::Value::Empty);
+    bridge.freeze(&mut h.state_mut().session, true).unwrap();
+    let b1 = cell(&h, "B1");
+    tap(&mut h, b1);
+    tap(&mut h, b1);
+    assert!(h.state().editor.is_none());
+    assert!(!admitted(&h));
+    let proposal = bridge.snapshot(&mut h.state_mut().session,
+        Mutation { scope, base: head, mutation_id: "rotate".into() }).unwrap();
+    assert!(proposal.bytes.starts_with(b"PK"));
+}
