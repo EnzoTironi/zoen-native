@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { exerciseWord, inspectWord, reopenWord } from "./word-bootstrap-assertions.mjs";
 import { exerciseGrid, assertGridExport, reopenGrid } from "./grid-bootstrap-assertions.mjs";
+import { installPressFocusRefusal, observePressFocusRefusal } from "./press-focus-policy.mjs";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
@@ -10,6 +11,9 @@ import { build } from "../../../apps/zoen/node_modules/esbuild/lib/main.js";
 import { findBrowserExecutable } from "../../../tools/miniapp-build/browser-executable.ts";
 const [editor, modulePath, wasmPath, htmlPath, seedPath, output, playwrightPath, wordInspector] =
   process.argv.slice(2);
+const refusePressFocus = process.env.ZOEN_TEST_PRESS_FOCUS_REFUSAL === "1";
+if (refusePressFocus && editor !== "wordcraft")
+  throw Error("The press-focus regression currently exercises the real Word editor");
 if (
   !["deckcraft", "gridcraft", "wordcraft"].includes(editor) ||
   ![modulePath, wasmPath, htmlPath, seedPath, output, playwrightPath].every(
@@ -124,6 +128,7 @@ try {
     viewport: { width: 390, height: 844 },
     hasTouch: editor === "wordcraft",
   });
+  if (refusePressFocus) await installPressFocusRefusal(page, "wordcraft_canvas");
   page.on("pageerror", (e) => errors.push(String(e)));
   page.on("console", (e) => {
     if (e.type() === "error") consoleErrors.push(e.text());
@@ -135,6 +140,7 @@ try {
     editor === "deckcraft" ? ["pptx", "pdf"] : editor === "gridcraft" ? ["xlsx"] : ["docx"];
   for (const format of formats) await page.evaluate((f) => window.probe.share(f), format);
   const word = editor === "wordcraft" ? await exerciseWord(page, wordInspector, output) : undefined;
+  const pressFocusPolicy = refusePressFocus ? await observePressFocusRefusal(page) : undefined;
   const input = editor === "gridcraft" ? await exerciseGrid(page) : undefined;
   const result = await page.evaluate(() => ({
     states: window.probe.states,
@@ -220,6 +226,7 @@ try {
     fixtureBundleSha256: sha(bundled.outputFiles[0].contents),
     ...result,
     ...(word ? { word } : {}),
+    ...(pressFocusPolicy ? { pressFocusPolicy } : {}),
     input,
     reopened,
     requests,
