@@ -123,8 +123,8 @@ export class MutedChatsSession {
       accountScopeKey(this.owner) === accountScopeKey(this.port.scope()),
     );
   }
-  ticket(): MutedChatTicket | null {
-    return this.current()
+  ticket(observed: MutedChatsState = this.state): MutedChatTicket | null {
+    return observed === this.state && this.current()
       ? Object.freeze({ scope: this.state.scope, revision: this.revision })
       : null;
   }

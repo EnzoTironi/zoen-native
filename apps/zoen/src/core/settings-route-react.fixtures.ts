@@ -67,7 +67,7 @@ export async function settingsReactFixture(kind: SettingsKind) {
   const calls: any[] = [],
     routes: unknown[] = [],
     dialogs: unknown[] = [];
-  let confirm = async (_: unknown) => true;
+  let confirm: (options: unknown) => Promise<boolean> = async () => true;
   driver.opening = async () => structuredClone(snapshot);
   driver.operation = async (op) => {
     calls.push(op);
@@ -143,7 +143,7 @@ export async function settingsReactFixture(kind: SettingsKind) {
   const controls = new Map<string, Control>();
   const children = ({ children }: { children?: React.ReactNode }) =>
     React.createElement(React.Fragment, null, children);
-  const capture = (props: any) => {
+  const Capture = (props: any) => {
     const key = props.testID ?? props.label;
     React.useLayoutEffect(() => {
       if (key) controls.set(key, props);
@@ -158,7 +158,7 @@ export async function settingsReactFixture(kind: SettingsKind) {
       React.Fragment,
       null,
       props.rows.map((row: any) =>
-        React.createElement(capture, { ...row, key: row.id, testID: row.id }),
+        React.createElement(Capture, { ...row, key: row.id, testID: row.id }),
       ),
     );
   const flatList = (props: any) =>
@@ -187,7 +187,7 @@ export async function settingsReactFixture(kind: SettingsKind) {
       Text: () => null,
       ScrollView: children,
       FlatList: flatList,
-      Pressable: capture,
+      Pressable: Capture,
       ActivityIndicator: () => null,
       AppState: {
         get currentState() {
@@ -204,7 +204,7 @@ export async function settingsReactFixture(kind: SettingsKind) {
       Stack: { Screen: () => null },
       router: { push: (route: unknown) => routes.push(route) },
     },
-    '@expo/ui': { BottomSheet: capture, RNHostView: children },
+    '@expo/ui': { BottomSheet: Capture, RNHostView: children },
   };
   const load = (index: number): any => {
     if (modules.has(index)) return modules.get(index);
@@ -257,8 +257,8 @@ export async function settingsReactFixture(kind: SettingsKind) {
           EmptyState: () => null,
           Loading: () => null,
           Avatar: () => null,
-          NativeButton: capture,
-          IconButton: capture,
+          NativeButton: Capture,
+          IconButton: Capture,
         };
       if (name.endsWith('/components/authorize-device')) return { AuthorizeDevice: () => null };
       if (name.endsWith('/components/history-transfer')) return { HistoryTransfer: () => null };
@@ -294,8 +294,25 @@ export async function settingsReactFixture(kind: SettingsKind) {
       focused = value;
       for (const callback of focusListeners[value ? 'focus' : 'blur']) callback();
     },
-    reopen: async () => {
+    reopen: async (change?: 'owner' | 'device' | 'relay') => {
       await store.close();
+      if (change) {
+        const account = snapshot.account!;
+        if (change === 'owner') {
+          const next = 'e'.repeat(64);
+          snapshot.conversations = snapshot.conversations.map((chat) => ({
+            ...chat,
+            members: chat.members.map((member) =>
+              member.id === account.identity_id ? { ...member, id: next } : member,
+            ),
+          }));
+          snapshot.account = { ...account, identity_id: next };
+        } else if (change === 'device') {
+          const next = 'f'.repeat(64);
+          directory = directory.map((row) => (row.this_device ? { ...row, device_id: next } : row));
+          snapshot.account = { ...account, device_id: next };
+        } else snapshot.account = { ...account, relay_url: 'https://other-relay.example' };
+      }
       await store.open('account');
     },
     close: async () => {

@@ -94,4 +94,53 @@ for (const kind of ['devices', 'blocked', 'muted'] as const satisfies readonly S
       }
     });
   }
+  for (const transition of ['background', 'blur', 'reopen', 'owner', 'device', 'relay'] as const) {
+    test(`compiled ${kind} refuses the pending confirmation after ${transition} without redispatch`, async () => {
+      const f = await settingsReactFixture(kind);
+      try {
+        await f.render();
+        if (kind === 'devices') await f.act(() => f.button(`device-${f.other}`).onPress());
+        if (kind === 'muted') await f.act(() => f.button('muted-chat-chat-0').onPress());
+        let resolve!: (accepted: boolean) => void;
+        const response = new Promise<boolean>((done) => {
+          resolve = done;
+        });
+        f.confirm(() => response);
+        const action =
+          kind === 'devices'
+            ? 'device-revoke'
+            : kind === 'blocked'
+              ? `unblock-person-${f.person}`
+              : 'muted-chat-unmute';
+        const old = f.button(action);
+        await f.act(() => old.onPress());
+        assert.equal(f.dialogs.length, 1);
+        await f.act(async () => {
+          if (transition === 'background') {
+            f.foreground('background');
+            f.foreground('active');
+          } else if (transition === 'blur') {
+            f.focus(false);
+            f.focus(true);
+          } else await f.reopen(transition === 'reopen' ? undefined : transition);
+          resolve(true);
+          old.onPress();
+        });
+        assert.equal(
+          f.dialogs.length,
+          1,
+          'An old callback cannot adopt the replacement activation',
+        );
+        assert.deepEqual(
+          f.calls.filter((c) =>
+            ['unlink_device', 'unblock_person', 'set_chat_muted'].includes(c.op),
+          ),
+          [],
+        );
+        assert.deepEqual(f.errors, []);
+      } finally {
+        await f.close();
+      }
+    });
+  }
 }
