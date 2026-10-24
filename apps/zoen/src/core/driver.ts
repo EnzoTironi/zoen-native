@@ -4,6 +4,7 @@ import type { Command, CommandResult, CoreDriver, Snapshot } from './types';
 import { createNativeProfilePhotoDriver } from '../profile/native-driver';
 import type { MediaDriver } from '../media/types';
 import { nativeContactReader } from '../media/native-contact';
+import { nativeLocationReader, nativeLocationSearch } from '../media/native-location';
 import { Platform } from 'react-native';
 import { locale as appLocale } from '../i18n/index.ts';
 import { randomUUID } from 'expo-crypto';
@@ -17,7 +18,25 @@ function core() {
 }
 
 export function createDriver(): CoreDriver {
+  const location =
+    Platform.OS === 'ios' &&
+    NativeCore?.staticLocationVersion === 1 &&
+    typeof NativeCore.searchLocations === 'function' &&
+    typeof NativeCore.cancelLocationSearch === 'function'
+      ? nativeLocationSearch({
+          searchLocations: (request) => core().searchLocations!(request),
+          cancelLocationSearch: (binding) => core().cancelLocationSearch!(binding),
+        })
+      : undefined;
   const media: MediaDriver = {
+    searchLocations: location?.searchLocations,
+    cancelLocationSearch: location?.cancelLocationSearch,
+    readLocation:
+      Platform.OS === 'ios' &&
+      NativeCore?.staticLocationVersion === 1 &&
+      typeof NativeCore.readLocationFile === 'function'
+        ? nativeLocationReader({ readLocationFile: (request) => core().readLocationFile!(request) })
+        : undefined,
     recentAttachments:
       Platform.OS === 'ios' &&
       typeof NativeCore?.materializeRecentAttachment === 'function' &&

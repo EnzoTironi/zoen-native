@@ -7,7 +7,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import { AppState, Linking, Text, View } from 'react-native';
+import { AppState, Text, View } from 'react-native';
 import {
   KeyboardAwareScrollView,
   type KeyboardAwareScrollViewRef,
@@ -22,20 +22,12 @@ import { t } from '../i18n';
 import { useTheme } from '../theme';
 import type { ConversationAttachmentCategory } from './attachment-categories';
 import { captureArticleDraft, stageContactAttachment } from './attachment-route-actions';
-import {
-  appendAttachmentText,
-  articleText,
-  pollArguments,
-  type SharedContact,
-} from './attachment-content';
+import { articleText, pollArguments, type SharedContact } from './attachment-content';
 import { ArticleEditor } from './article-editor';
 import type { ArticleEditorHandle } from './article-editor.types';
-import {
-  chooseSharedContact,
-  chooseStaticLocation,
-  prepareContactFile,
-} from './attachment-route-platform';
+import { chooseSharedContact, prepareContactFile } from './attachment-route-platform';
 import { sensitiveCacheWork } from './cache-work';
+import { LocationPicker } from './location-picker';
 import { PollAttachmentFields } from './poll-attachment-fields';
 
 import type { AttachmentDestination } from './attachment-route-types';
@@ -53,6 +45,7 @@ export function AttachmentRoute({
   const dialogs = useDialogs();
   const client = useClient();
   const { store } = client;
+  const mediaDriver = store.driver.media;
   const { colors } = useTheme();
   const channel = useMemo(
     () =>
@@ -80,16 +73,13 @@ export function AttachmentRoute({
   const mounted = useRef(true),
     focused = useRef(false),
     foreground = useRef(AppState.currentState === 'active');
-  const locationAttempted = useRef(false);
-  const [heldLocation, setHeldLocation] = useState(false);
   const working = useRef(false),
     pollAttempted = useRef(false),
     contactAttempted = useRef(false);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null),
     [leaving, setLeaving] = useState(false);
-  const [source, setSource] = useState(false),
-    [location, setLocation] = useState<string | null>(null);
+  const [source, setSource] = useState(false);
   const editorGeneration = useMemo(() => ({ source }), [source]);
   const liveEditor = useRef<object | null>(null);
   useLayoutEffect(() => {
@@ -393,62 +383,25 @@ export function AttachmentRoute({
               <Text style={{ color: colors.secondary }}>{t('attachmentTabs.saved')}</Text>
             </>
           ) : null}
-          {kind === 'location' ? (
-            <>
-              <Text style={{ color: colors.secondary }}>{t('attachmentTabs.staticOnly')}</Text>
-              <NativeButton
-                label={t('attachmentTabs.chooseLocation')}
-                disabled={locked || heldLocation}
-                onPress={() => {
-                  void perform(async () => {
-                    if (locationAttempted.current) return;
-                    const value = await chooseStaticLocation(current);
-                    if (current() && value) setLocation(value);
-                  });
-                }}
-              />
-              {location ? (
-                <View style={{ gap: 12 }}>
-                  <Text selectable style={{ color: colors.text }}>
-                    {location}
-                  </Text>
-                  <NativeButton
-                    secondary
-                    label={t('attachmentTabs.preview')}
-                    disabled={locked}
-                    onPress={() => {
-                      if (current()) void Linking.openURL(location).catch(() => {});
-                    }}
-                  />
-                  <NativeButton
-                    label={t('attachmentTabs.addToMessage')}
-                    disabled={locked}
-                    onPress={() => {
-                      void perform(async () => {
-                        if (!channel) return;
-                        if (!locationAttempted.current) {
-                          channel.controller.setText(
-                            channel.scope,
-                            appendAttachmentText(
-                              channel.controller.getSnapshot(channel.scope).text,
-                              location,
-                            ),
-                          );
-                          locationAttempted.current = true;
-                          setHeldLocation(true);
-                        }
-                        await channel.controller.flush(channel.scope);
-                        if (current()) {
-                          routeClosed.current = true;
-                          setLeaving(true);
-                          router.back();
-                        }
-                      });
-                    }}
-                  />
-                </View>
-              ) : null}
-            </>
+          {kind === 'location' && mediaDriver ? (
+            <LocationPicker
+              key={JSON.stringify(target)}
+              media={mediaDriver}
+              channel={media}
+              current={() =>
+                current() &&
+                store.driver.media === mediaDriver &&
+                Boolean(media && store.mediaDrafts.isCurrent(media))
+              }
+              replyTo={() => channel?.controller.getSnapshot(channel.scope).replyTo ?? null}
+              onStaged={() => {
+                if (!current()) return;
+                disableGuard();
+                routeClosed.current = true;
+                setLeaving(true);
+                router.back();
+              }}
+            />
           ) : null}
           {kind === 'contact' ? (
             <>

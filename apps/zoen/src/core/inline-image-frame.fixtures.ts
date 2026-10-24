@@ -62,6 +62,8 @@ export const compiled = await build({
           path === './inline-file-image' ||
           path === './observed-file' ||
           path === './contact-file' ||
+          path === './location-file' ||
+          path === './native-location.ts' ||
           path === '../sites/open-file' ||
           path.startsWith('@babel/runtime/helpers/')
             ? undefined
@@ -151,6 +153,7 @@ export function fixture(
     messageSource?: { spaceId: string; entry: TimelineEntry };
     galleryCapability?: boolean;
     contactCapability?: boolean;
+    locationCapability?: boolean;
     galleryEntries?: readonly TimelineEntry[];
     actualGallery?: boolean;
     tile?: { width: number; height: number };
@@ -207,6 +210,11 @@ export function fixture(
       return file;
     },
     releaseLocalFile: async () => {},
+    readLocation: options.locationCapability
+      ? async () => {
+          throw Error('routing must not read location bytes');
+        }
+      : undefined,
     readContact: options.contactCapability
       ? async () => {
           throw Error('routing must not read contact bytes');
@@ -302,6 +310,7 @@ export function fixture(
     },
     'expo-image': { Image: 'Image' },
     'expo-sharing': {},
+    './location-attachment': { LocationAttachment: 'LocationAttachment' },
     './contact-attachment': { ContactAttachment: 'ContactAttachment' },
     'expo-router': { router: { push: (route: unknown) => navigationRequests.push(route) } },
     '../i18n/index.ts': { t: (key: string) => key, formatLocale: 'en-US' },

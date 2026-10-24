@@ -1,3 +1,5 @@
+import { LocationAttachment } from './location-attachment';
+import { isLocationFileMime } from './location-file';
 import { ContactAttachment } from './contact-attachment';
 import { isContactFileMime } from './contact-file';
 import { InlineFileImage } from './inline-file-image';
@@ -260,6 +262,19 @@ function FileAttachmentContent({
   const video = !renderAsFile && local?.info.mime.startsWith('video/');
   const imageFrame = inlineImageFrame(availableWidth, ratio);
   const outline = scheme === 'dark' ? '#FFFFFF1A' : '#0000001A';
+  if (info && isLocationFileMime(info.mime) && driver?.readLocation && !voice)
+    return (
+      <LocationAttachment
+        media={driver}
+        source={{ itemId, version, expectedHash: expectedHash ?? info.sha256 }}
+        spaceId={messageSource?.spaceId}
+        messageId={messageSource?.entry.id}
+        readiness={readiness}
+        message={message}
+        onActions={onActions}
+        isCurrent={current}
+      />
+    );
   if (info && isContactFileMime(info.mime) && driver?.readContact && !voice)
     return (
       <ContactAttachment
