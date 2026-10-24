@@ -3,6 +3,7 @@
 # Reviewed Cargo roots, test commands, client coverage and embedded-resource
 # recipes. Drift selects the full lane; refreshing a pin never bypasses tests.
 FRONTEND_CONTRACTS = {
+    "scripts/expo-cargo-artifacts.mjs": "cebc6836153781bb5b172f1f80be5f401d1bc4a45c1429e22d6f6f20500b99dd",
     "crates/miniapps/resources/photocraft.manifest.json": "a94d382e440280a5c4e529c0a48e01a81568c389ad2c4a21ba603c66ed7e5ccb",
     "crates/miniapps/resources/generated/photocraft-bootstrap.manifest.json": "5ad07267ab1f4ef54bf90417b3d732f52990f213a8443a800d527c0eb7c3b91a",
     "miniapps/photocraft-ui/build-bootstrap.mjs": "82497408552cb6b06f47e43f9dd0f7633bf4b04ecbfe76ebdd0ae75fc5b4c78a",
@@ -45,7 +46,7 @@ FRONTEND_CONTRACTS = {
     "miniapps/deckcraft-ui/build-bootstrap.mjs": "ecf7c02ddf67fac3f3bbb566b00940c2c5becc5a8f94060bf410a0f9b74fb57e",
     "miniapps/gridcraft-ui/build-bootstrap.mjs": "0ed258e83d06338d27393778c552a1094e694ca1a0f585c28dec11728ecc64ec",
     "tools/miniapp-build/managed-binary-bootstrap.mjs": "a6672dff3cd8b2c3d08545e122d5cdddf924756d3bdad4e364cbb7b28f57e3bb",
-    "scripts/build-expo-core.mjs": "af2c2f49e2c754b6d5d8be46bf9dd09fc4460b1b8b2613bc657251a6c57c2a64",
+    "scripts/build-expo-core.mjs": "99fa3265955b75ce881f413b4ef93832c1010aa948fd3e7b225e95ae1b9aef96",
     "scripts/build-expo-web-core.mjs": "9504ad593e1413ed9b8e36c4b79032df1336e7ad740adbac18b5e9361fa8dfd2",
 }
 RESOURCE_MANIFESTS = (
