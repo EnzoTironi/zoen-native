@@ -1,5 +1,6 @@
-import { router } from 'expo-router';
-import { Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { AppState, Text, View } from 'react-native';
 import { NativeButton } from '../components/primitives';
 import { useClient } from '../core/provider';
 import { useCoreQuery } from '../core/query';
@@ -35,6 +36,33 @@ function Discussion({
 }) {
   const { store } = useClient();
   const { colors } = useTheme();
+  const [activation, setActivation] = useState<object | null>(null);
+  const currentActivation = useRef<object | null>(null);
+  const focused = useRef(false);
+  const opened = useRef<object | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      focused.current = true;
+      const token = AppState.currentState === 'active' ? {} : null;
+      currentActivation.current = token;
+      setActivation(token);
+      return () => {
+        focused.current = false;
+        currentActivation.current = null;
+      };
+    }, []),
+  );
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      const token = state === 'active' && focused.current ? {} : null;
+      currentActivation.current = token;
+      setActivation(token);
+    });
+    return () => {
+      currentActivation.current = null;
+      subscription.remove();
+    };
+  }, []);
   const { data, error, retry } = useCoreQuery({
     op: 'item_discussion',
     space_id: spaceId,
@@ -53,7 +81,7 @@ function Discussion({
   return (
     <NativeButton
       secondary
-      disabled={!data?.root}
+      disabled={!data?.root || !activation}
       label={
         !data
           ? t('documents.loadingDiscussion')
@@ -62,7 +90,15 @@ function Discussion({
             : t('documents.discussion')
       }
       onPress={() => {
-        if (!data) return;
+        // One opening belongs to this visible activation, never a later return.
+        if (
+          !data ||
+          !activation ||
+          currentActivation.current !== activation ||
+          opened.current === activation ||
+          store.isSessionRetiring
+        )
+          return;
         const target = discussionTarget(
           store.getSnapshot(),
           store.sessionEpoch,
@@ -71,7 +107,10 @@ function Discussion({
           itemId,
           data,
         );
-        if (target) router.push({ pathname: '/thread/[space]/[root]', params: target });
+        if (target) {
+          opened.current = activation;
+          router.push({ pathname: '/thread/[space]/[root]', params: target });
+        }
       }}
     />
   );
