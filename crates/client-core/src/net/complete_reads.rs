@@ -129,9 +129,16 @@ pub(super) async fn submit(
     }
     let id = *next_id;
     *next_id = next_id.checked_add(1).ok_or("request id exhausted")?;
+    let profile_count = match &op {
+        Op::GetProfiles { ids } => Some(ids.len()),
+        _ => None,
+    };
     if let Err(e) = send(sink, &ClientFrame::Req { id, op }).await {
         done.fail(&e);
         return Err(e);
+    }
+    if let Some(count) = profile_count {
+        tracing_like(&format!("sealed profiles submitted asked={count}"));
     }
     remember_waiting(waiting, id, done);
     Ok(())
