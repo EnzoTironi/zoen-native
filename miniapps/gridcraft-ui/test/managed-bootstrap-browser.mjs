@@ -201,7 +201,7 @@ try {
       output,
     );
   await assert.rejects(
-    page.evaluate((f) => window.probe.share(f), editor === "deckcraft" ? "xlsx" : "pdf"),
+    page.evaluate((f) => window.probe.share(f), editor === "gridcraft" ? "pdf" : "xlsx"),
   );
   const reopened =
     editor === "gridcraft"
