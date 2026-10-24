@@ -70,6 +70,7 @@ External receipts are under
 | viewport-wasm-clippy-09 | WASM all-target Clippy passed |
 | primary-touch-wasm-clippy-17 | Final shared focus consumer Clippy passed |
 | primary-touch-wasm-build-18 | Final normal WASM release passed |
+| miniapps-word-resource-23 | Configured real resource: 5 tests passed, 0 ignored |
 | webkit-observe-close-21 | Capability assertions below passed; teardown remains RED |
 
 The browser run uses actual module/WASM, normal bootstrap, shared SDK/session and
