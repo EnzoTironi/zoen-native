@@ -188,9 +188,11 @@ impl ClientFrame {
                     },
                     pb_req::Op::FetchLink(id) => Op::FetchLink { id },
                     pb_req::Op::CompleteRead(r) => {
-                        if !r.valid() { return Err(bad("complete read request")); }
+                        if !r.valid() {
+                            return Err(bad("complete read request"));
+                        }
                         Op::CompleteRead(r)
-                    },
+                    }
                     pb_req::Op::Devices(_) => Op::Devices,
                     pb_req::Op::Unlink(device) => Op::Unlink { device },
                     pb_req::Op::SendDevice(m) => Op::SendDevice {

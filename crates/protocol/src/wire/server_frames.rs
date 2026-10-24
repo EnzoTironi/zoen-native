@@ -272,9 +272,11 @@ impl ServerFrame {
                         cursors: a.cursors.into_iter().map(|c| (c.space, c.seq)).collect(),
                     })),
                     pb_res::R::CompletePage(page) => {
-                        if !page.valid() { return Err(bad("complete read page")); }
+                        if !page.valid() {
+                            return Err(bad("complete read page"));
+                        }
                         Ok(Reply::CompletePage(page))
-                    },
+                    }
                     pb_res::R::Devices(ds) => Ok(Reply::Devices(
                         ds.devices
                             .into_iter()
