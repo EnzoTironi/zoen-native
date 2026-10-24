@@ -111,9 +111,23 @@ fn cold_capsule_with_pruned_welcome_needs_its_own_fresh_welcome_not_worker_readi
     };
     let pending = f.owner.request_account_policy_options(&scope)?;
     f.owner.mls_seal_outbox()?;
+    let inquiry_wire = f
+        .owner
+        .outbox_envelopes()
+        .into_iter()
+        .find(|envelope| envelope.client_id() == pending.source)
+        .ok_or("original sealed inquiry wire")?;
+    assert!(inquiry_wire.is_sealed());
     deliver_handshakes(&mut f.owner, &mut worker, "typed original inquiry")?;
     let query = worker.engine.owner_policy_inquiry(SPACE, &pending.source)?;
-    let complete = history(&f.owner)?;
+    let mut complete = history(&f.owner)?;
+    // The owner's readable log retains its signed inner event. Reuse the actual
+    // pre-send ciphertext for a source consumer, never Envelope::plain(inner).
+    let inquiry = complete
+        .iter_mut()
+        .find(|entry| entry.env.client_id() == pending.source)
+        .ok_or("canonical inquiry position")?;
+    inquiry.env = inquiry_wire;
 
     // Same credential/private KP and canonical chain, changing only the allowed
     // ciphertext retention cut. Full history proves this capsule could join.
