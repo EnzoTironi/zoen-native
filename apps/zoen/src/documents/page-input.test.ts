@@ -17,7 +17,7 @@ function deferred<T>() {
   });
   return { promise, resolve, reject };
 }
-function fixture(pending: Partial<PageInputPending> = {}) {
+function fixture(pending: Partial<PageInputPending> = {}, supportsWholeDocument = false) {
   let listener: ((status: PageInputStatus) => void) | undefined;
   let current: PageInputStatus = {
     session: 'native-session',
@@ -43,6 +43,7 @@ function fixture(pending: Partial<PageInputPending> = {}) {
   let reserves = 0;
   let detached = 0;
   const port: PageInputPort = {
+    supportsWholeDocument,
     async session() {
       return current.session;
     },
@@ -114,6 +115,78 @@ const options = {
   editContext: 'frozen-context',
   mode: 'rich' as const,
 };
+
+test('whole-document opens an explicit native target without sending document text through JS', async () => {
+  const f = fixture({}, true);
+  const editor = new PageInputEditor(f.port, {
+    ...options,
+    blockId: null,
+    mode: 'markdown',
+    target: 'document',
+  });
+  await editor.open();
+  assert.equal(f.requests[0]?.target, 'document');
+  assert.equal(f.requests[0]?.blockId, null);
+  assert.equal(f.requests[0]?.mode, 'markdown');
+  assert.equal(f.requests[0]?.editContext, options.editContext);
+  assert.equal('initialMarkdown' in f.requests[0]!, false);
+  await editor.close();
+});
+
+test('a retained whole-document capture is distinct from append despite the same null block id', async () => {
+  const f = fixture(
+    { hasRetainedCapture: true, blockId: null, mode: 'markdown', target: 'document' },
+    true,
+  );
+  const append = new PageInputEditor(f.port, { ...options, blockId: null, mode: 'markdown' });
+  await assert.rejects(append.open(), PageInputConflict);
+  assert.equal(f.reserves(), 0);
+  await append.close();
+  const recovery = new PageInputEditor(f.port, { ...options, resume: true });
+  await recovery.open();
+  assert.equal(f.requests[0]?.target, 'document');
+  assert.equal(f.requests[0]?.blockId, null);
+  assert.equal(f.requests[0]?.mode, 'markdown');
+  assert.equal(f.requests[0]?.resume, true);
+  await recovery.close();
+});
+
+test('switching the retained mode on the same block requires explicit recovery', async () => {
+  const f = fixture({ hasRetainedCapture: true, blockId: 'block', mode: 'markdown' });
+  const editor = new PageInputEditor(f.port, options);
+  await assert.rejects(editor.open(), PageInputConflict);
+  assert.equal(f.reserves(), 0);
+  await editor.close();
+});
+
+test('legacy native ports cannot accidentally turn a whole-document request into AppendNew', async () => {
+  const f = fixture();
+  const editor = new PageInputEditor(f.port, {
+    ...options,
+    blockId: null,
+    mode: 'markdown',
+    target: 'document',
+  });
+  await assert.rejects(editor.open(), /Update the app/);
+  assert.equal(f.reserves(), 0);
+  assert.equal(f.requests.length, 0);
+  await editor.close();
+});
+
+test('invalid explicit target shapes never reserve a native writer', async () => {
+  for (const override of [
+    { target: 'document' as const, blockId: 'block', mode: 'markdown' as const },
+    { target: 'document' as const, blockId: null, mode: 'rich' as const },
+    { target: 'block' as const, blockId: null },
+    { target: 'append' as const, blockId: 'block' },
+  ]) {
+    const f = fixture({}, true);
+    const editor = new PageInputEditor(f.port, { ...options, ...override });
+    await assert.rejects(editor.open(), /incompatible/);
+    assert.equal(f.reserves(), 0);
+    await editor.close();
+  }
+});
 
 test('recovery uses the retained target/mode and exact u64 revision; another target needs explicit recovery', async () => {
   const f = fixture({ hasRetainedCapture: true, blockId: 'other', mode: 'lossless-text' });

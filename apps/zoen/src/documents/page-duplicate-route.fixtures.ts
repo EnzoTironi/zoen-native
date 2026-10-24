@@ -80,6 +80,7 @@ export function fixture() {
     blocks: [originalBlock('before'), originalBlock(), originalBlock('after')],
   };
   const commands: Command[] = [],
+    pushes: unknown[] = [],
     exports: string[] = [],
     keys: string[] = [];
   const receipts = new Map<string, PageEditResult>();
@@ -172,7 +173,7 @@ export function fixture() {
       if (name === 'expo-router')
         return {
           Stack: { Screen: 'StackScreen' },
-          router: { push: () => {} },
+          router: { push: (route: unknown) => pushes.push(route) },
           useLocalSearchParams: () => ({ id: 'page' }),
           useFocusEffect: (read: () => void | (() => void)) => {
             h.react.useEffect(() => {
@@ -255,6 +256,7 @@ export function fixture() {
     blocks,
     button,
     commands,
+    pushes,
     exports,
     keys,
     read: () => page,
