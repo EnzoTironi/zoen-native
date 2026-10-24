@@ -1,0 +1,44 @@
+diff --git a/node_modules/@expo/ui/ios/Toggle/ToggleView.swift b/node_modules/@expo/ui/ios/Toggle/ToggleView.swift
+--- a/node_modules/@expo/ui/ios/Toggle/ToggleView.swift
++++ b/node_modules/@expo/ui/ios/Toggle/ToggleView.swift
+@@ -24,11 +24,14 @@
+     makeToggle(isOn: Binding(
+       get: { props.isOn ?? uncontrolled },
+       set: { newValue in
++        ZoenThemeInputProbe.record(.bindingSet, testID: props.testID)
+         uncontrolled = newValue
+         if props.isOn != newValue {
++          ZoenThemeInputProbe.record(.dispatchAttempt, testID: props.testID)
+           props.onIsOnChange([
+             "isOn": newValue
+           ])
++          ZoenThemeInputProbe.record(.dispatchReturned, testID: props.testID)
+         }
+       }
+     ))
+diff --git a/node_modules/@expo/ui/ios/Toggle/ZoenThemeInputProbe.swift b/node_modules/@expo/ui/ios/Toggle/ZoenThemeInputProbe.swift
+new file mode 100644
+--- /dev/null
++++ b/node_modules/@expo/ui/ios/Toggle/ZoenThemeInputProbe.swift
+@@ -0,0 +1,21 @@
++// Temporary #440 diagnostic; opt-in testID, no gesture or control-state changes.
++import OSLog
++
++@MainActor
++internal enum ZoenThemeInputProbe {
++  enum Stage: String, CaseIterable {
++    case bindingSet = "native-binding-set"
++    case dispatchAttempt = "native-dispatch-attempt"
++    case dispatchReturned = "native-dispatch-returned"
++  }
++  private static var counts: [Stage: Int] = [:]
++  private static let logger = Logger(subsystem: "com.zoen.theme-input", category: "Automatic")
++
++  static func record(_ stage: Stage, testID: String?) {
++    guard testID == "zoen-theme-automatic-probe" else { return }
++    let count = (counts[stage] ?? 0) + 1
++    guard count <= 8 else { return }
++    counts[stage] = count
++    logger.notice("[ZoenThemeInput] \(stage.rawValue, privacy: .public) count=\(count, privacy: .public)")
++  }
++}

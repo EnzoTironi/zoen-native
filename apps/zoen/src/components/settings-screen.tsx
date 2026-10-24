@@ -9,15 +9,20 @@ export function SettingsScreen({
   children,
   keyboardShouldPersistTaps = 'handled',
   automaticallyAdjustKeyboardInsets = false,
+  onTouchStart,
 }: {
   title: string;
   testID: string;
   children: ReactNode;
-} & Pick<ScrollViewProps, 'keyboardShouldPersistTaps' | 'automaticallyAdjustKeyboardInsets'>) {
+} & Pick<
+  ScrollViewProps,
+  'keyboardShouldPersistTaps' | 'automaticallyAdjustKeyboardInsets' | 'onTouchStart'
+>) {
   const { presentation: p } = useTheme();
   return (
     <ScrollView
       testID={testID}
+      onTouchStart={onTouchStart}
       style={{ flex: 1, backgroundColor: p.list.background }}
       contentInsetAdjustmentBehavior="automatic"
       keyboardShouldPersistTaps={keyboardShouldPersistTaps}
