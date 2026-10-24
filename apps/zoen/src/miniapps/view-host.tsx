@@ -23,7 +23,7 @@ export function MiniappView({
   onDocumentDiscard?: () => void;
 }) {
   const content =
-    props.spec.id === 'deckcraft' ? (
+    props.spec.id === 'deckcraft' || props.spec.id === 'gridcraft' ? (
       <DeckcraftView
         {...props}
         selectedHead={selectedHead}

@@ -1,0 +1,19 @@
+{
+  "id": "gridcraft",
+  "name": "GridCraft",
+  "resourceUri": "ui://zoen/gridcraft/index.html",
+  "mimeType": "text/html;profile=mcp-app",
+  "capabilities": [],
+  "allowedDomains": [],
+  "linkDomains": [],
+  "networkPurpose": "",
+  "permissions": {},
+  "csp": {
+    "connectDomains": [],
+    "resourceDomains": [],
+    "frameDomains": [],
+    "baseUriDomains": []
+  },
+  "sha256": "ed3ef4c79572ddc78b87bacc1924090cf0438ba0494fab0bca198329762ab183",
+  "bytes": 623816
+}

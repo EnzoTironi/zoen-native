@@ -6,6 +6,7 @@ export const GRIDCRAFT_ENGINE_REVISION = 'b8771d51fb4da60bd48c13cf313d6d6014dc5e
 const formats = Object.freeze({
   deckcraft: Object.freeze({
     id: 'deckcraft' as const,
+    messages: 'decks' as const,
     resourceUri: 'ui://zoen/deckcraft/index.html',
     engineRevision: DECKCRAFT_ENGINE_REVISION,
     maxDocumentBytes: 8 * 1024 * 1024,
@@ -13,6 +14,7 @@ const formats = Object.freeze({
   }),
   gridcraft: Object.freeze({
     id: 'gridcraft' as const,
+    messages: 'workbooks' as const,
     resourceUri: 'ui://zoen/gridcraft/index.html',
     engineRevision: GRIDCRAFT_ENGINE_REVISION,
     maxDocumentBytes: 8 * 1024 * 1024,
