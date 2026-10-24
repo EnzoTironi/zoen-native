@@ -1,3 +1,5 @@
+import type { StaticLocation } from '../../modules/zoen-core/src/ZoenLocation.types';
+export type { StaticLocation } from '../../modules/zoen-core/src/ZoenLocation.types';
 import type { FileDto } from '../core/generated/FileDto';
 import type { VoiceNativePort } from './voice-session';
 import type { MediaDraftPort } from './media-draft-types';
@@ -76,6 +78,9 @@ export interface MediaDriver {
   previewFile?(file: LocalMediaFile): Promise<void>;
   /** Read-only; the caller retains and releases the existing materialized-file lease. */
   readContact?(file: LocalMediaFile): Promise<ContactPreview>;
+  readLocation?(file: LocalMediaFile): Promise<StaticLocation>;
+  searchLocations?(binding: string, query: string): Promise<readonly StaticLocation[]>;
+  cancelLocationSearch?(binding: string): void;
   previewConversationMedia?(request: ConversationMediaRequest, signal: AbortSignal): Promise<void>;
   releaseLocalFile(uri: string): Promise<void>;
 }
