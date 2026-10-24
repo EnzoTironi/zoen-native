@@ -114,6 +114,7 @@ export class AuthenticatedTransport {
   /** The relay's signed name from its challenge: uploads are signed for it. */
   relayName = '';
   claimClock = '';
+  completeReads = false;
   private readonly core: TransportCore;
   private readonly vault: TransportVault;
   private readonly login: Login;
@@ -148,6 +149,7 @@ export class AuthenticatedTransport {
     this.socket = socket;
     this.ready = false;
     this.claimClock = '';
+    this.completeReads = false;
     this.claimReceipts = false;
     let phase: 'hello' | 'challenge' | 'auth' | 'ready' = 'hello';
     let incoming: Promise<void> = Promise.resolve();
@@ -203,6 +205,7 @@ export class AuthenticatedTransport {
             }
             phase = 'auth';
             this.relayName = frame.relay;
+            this.completeReads = frame.capabilities.includes('complete-set-reads-v1');
             this.claimReceipts = frame.capabilities.includes('key-package-claim-receipts');
             this.claimClock = this.claimReceipts ? frame.server_time_ms : '';
             const payload = await this.core.bytes({

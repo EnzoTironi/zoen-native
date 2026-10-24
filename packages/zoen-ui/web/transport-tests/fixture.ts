@@ -141,7 +141,7 @@ export function messagingCore() {
           downloads: [],
           uploads: [],
         });
-      if (operation.kind === 'claim_clock') return '';
+      if (operation.kind === 'claim_clock' || operation.kind === 'read_capability') return '';
       if (operation.kind === 'restore') return JSON.stringify([conversation]);
       if (operation.kind === 'decode_server') return new TextDecoder().decode(operation.bytes);
       if (operation.kind === 'bootstrap')

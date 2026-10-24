@@ -4,7 +4,7 @@ use super::*;
 use crate::{engine::Engine, net::RequestHandle};
 
 #[derive(Clone, PartialEq, Eq)]
-pub(super) struct DirectoryOwner {
+pub(crate) struct DirectoryOwner {
     identity: String,
     device: String,
     relay: String,
@@ -38,7 +38,7 @@ impl DirectoryOwner {
         list: Vec<protocol::DeviceRecord>,
     ) -> Result<Vec<DeviceDto>, CoreError> {
         self.check(engine)?;
-        engine.devices_arrived(list.clone());
+        engine.devices_arrived(list.clone())?;
         Ok(list
             .into_iter()
             .map(|record| DeviceDto {
@@ -77,7 +77,7 @@ impl Client {
         self.with_device_directory_completion(&owner, &channel, |engine| owner.list(engine, list))
     }
 
-    pub(super) fn with_device_directory_completion<T>(
+    pub(crate) fn with_device_directory_completion<T>(
         &self,
         owner: &DirectoryOwner,
         channel: &RequestHandle,
@@ -95,7 +95,7 @@ impl Client {
         apply(&mut engine)
     }
 
-    pub(super) fn device_directory_owner(
+    pub(crate) fn device_directory_owner(
         &self,
     ) -> Result<(DirectoryOwner, RequestHandle), CoreError> {
         let guard = self.net.lock().map_err(|_| directory_storage())?;

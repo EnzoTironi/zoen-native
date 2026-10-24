@@ -93,3 +93,66 @@ fn corrupt_revocation_cache_is_an_error_not_an_empty_authorization_set() {
     );
     assert!(engine.store.meta("devices.active").unwrap().is_none());
 }
+
+#[test]
+fn directory_install_uses_one_savepoint_and_retains_both_sets_on_sql_failure() {
+    let mut engine = engine();
+    let owner = DirectoryOwner::capture(&engine).unwrap();
+    let other = Signer::from_secret(&[79; 32]).id();
+    owner
+        .list(
+            &mut engine,
+            vec![record(&owner.device, false), record(&other, false)],
+        )
+        .unwrap();
+    let before = ["devices.active", "devices.revoked"].map(|key| engine.store.meta(key).unwrap());
+    let count = engine.store.event_count().unwrap();
+    let outbox = engine.store.outbox().unwrap();
+    engine.store.conn().execute_batch("CREATE TEMP TRIGGER fail_device_set BEFORE INSERT ON meta WHEN NEW.key='devices.revoked' BEGIN SELECT RAISE(ABORT,'synthetic directory write failure'); END;").unwrap();
+    assert!(owner
+        .list(
+            &mut engine,
+            vec![record(&owner.device, false), record(&other, true)]
+        )
+        .is_err());
+    assert_eq!(
+        ["devices.active", "devices.revoked"].map(|key| engine.store.meta(key).unwrap()),
+        before
+    );
+    assert_eq!(engine.store.event_count().unwrap(), count);
+    assert_eq!(engine.store.outbox().unwrap().len(), outbox.len());
+    engine
+        .store
+        .conn()
+        .execute_batch("DROP TRIGGER fail_device_set")
+        .unwrap();
+    owner
+        .list(
+            &mut engine,
+            vec![record(&owner.device, false), record(&other, true)],
+        )
+        .unwrap();
+    assert!(engine.revoked_devices().contains(&other));
+}
+#[test]
+fn malformed_or_oversized_legacy_complete_devices_do_not_clear_existing_sets() {
+    let mut engine = engine();
+    let owner = DirectoryOwner::capture(&engine).unwrap();
+    owner
+        .list(&mut engine, vec![record(&owner.device, false)])
+        .unwrap();
+    let before = ["devices.active", "devices.revoked"].map(|key| engine.store.meta(key).unwrap());
+    for list in [
+        vec![record("bad", false)],
+        vec![record(&owner.device, false), record(&owner.device, true)],
+        (0..=protocol::complete_reads::DEVICE_ROWS)
+            .map(|n| record(&format!("{n:064x}"), false))
+            .collect(),
+    ] {
+        assert!(owner.list(&mut engine, list).is_err());
+        assert_eq!(
+            ["devices.active", "devices.revoked"].map(|key| engine.store.meta(key).unwrap()),
+            before
+        );
+    }
+}

@@ -38,13 +38,27 @@ pub(super) async fn dispatch_reply(
             }
         };
     }
-    match waiting.remove(&id) {
+    let (waiter, result) = match waiting.remove(&id) {
+        Some(Waiting::Paged {
+            assembly,
+            done,
+            deadline,
+        }) => {
+            match complete_reads::page(id, result, assembly, done, deadline, sink, waiting).await? {
+                Some((waiter, result)) => (Some(waiter), result),
+                None => return Ok(()),
+            }
+        }
+        waiter => (waiter, result),
+    };
+    match waiter {
         Some(Waiting::External(tx)) => {
             let _ = tx.send(result);
         }
         Some(Waiting::Devices) => {
             if let Ok(Reply::Devices(list)) = result {
-                engine!(|engine| engine.devices_arrived(list));
+                engine!(|engine| engine.devices_arrived(list))
+                    .map_err(|e| Exit::Retry(e.to_string()))?;
             }
             if let Err(e) = flush(ctx, sink, sent).await {
                 return Err(Exit::Retry(e));
@@ -129,6 +143,7 @@ pub(super) async fn dispatch_reply(
                 return Err(Exit::Retry(e));
             }
         }
+        Some(Waiting::Paged { .. }) => return Err(Exit::Retry("nested complete read".into())),
         None => {}
     }
     Ok(())
