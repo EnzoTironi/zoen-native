@@ -218,7 +218,7 @@ async fn actual_grid_owner_review_worker_cas_and_lost_receipt_cold_recovery() {
         .expect("cold actual WASI read"),
     )
     .expect("cell");
-    assert_eq!(read["cell"]["value"], 7);
+    assert_eq!(read["cell"]["value"].as_f64(), Some(7.0));
     assert!(crate::deckcraft::call(
         &client,
         &worker,
