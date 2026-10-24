@@ -479,7 +479,7 @@ impl MediaDownloadRetries {
     }
 
     fn failed(&mut self, blob: &str, now: tokio::time::Instant) {
-        let tries = self.0.get(blob).map_or(1, |(_, n)| n + 1);
+        let tries = self.0.get(blob).map_or(1, |(_, n)| n.saturating_add(1));
         let wait =
             Duration::from_secs(2u64.saturating_pow(tries.min(8))).min(Duration::from_secs(300));
         self.0.insert(blob.into(), (now + wait, tries));
