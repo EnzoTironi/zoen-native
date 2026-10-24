@@ -26,6 +26,10 @@ test('ordinary messages keep measured text while Markdown candidates reach the r
     '[link](https://example.com)',
     '| Column |\n| --- |\n| Value |',
     '||spoiler||',
+    'See https://example.invalid/help',
+    'HTTP://example.invalid',
+    'Visit www.example.invalid.',
+    'Email person@example.invalid',
   ])
     assert.equal(messageMayContainMarkdown(text), true, text);
 });
@@ -202,4 +206,34 @@ test('iOS opts into the native media-free parser while other platforms retain ex
   }
   assert.equal(messageMayContainMarkdown('**Hello**!'), true);
   assert.equal(messageMayContainMarkdown('```c\nx < y; // ![literal](url)\n```', true), true);
+});
+
+test('bare links stay passive until the native link gesture crosses the existing navigation guard', () => {
+  const f = fixture();
+  for (const text of [
+    'https://example.invalid/help',
+    'www.example.invalid',
+    'person@example.invalid',
+  ]) {
+    const rendered = f.render({ text, color: '#fff', fontSize: 17, maxWidth: 300 });
+    assert.equal(rendered.props.markdown, text);
+    assert.equal(rendered.props.enableLinkPreview, false);
+    assert.equal((rendered.props.md4cFlags as { noMedia: boolean }).noMedia, true);
+    assert.deepEqual(f.opened, []);
+    const press = rendered.props.onLinkPress as (event: { url: string }) => void;
+    press({ url: 'javascript:alert(1)' });
+    press({ url: 'data:text/html,hello' });
+    press({ url: 'file:///private/example' });
+    assert.deepEqual(f.opened, []);
+  }
+  const { props } = f.render({
+    text: 'person@example.invalid',
+    color: '#fff',
+    fontSize: 17,
+    maxWidth: 300,
+  });
+  const press = props.onLinkPress as (event: { url: string }) => void;
+  press({ url: 'mailto:person@example.invalid' });
+  press({ url: 'http://www.example.invalid' });
+  assert.deepEqual(f.opened, ['mailto:person@example.invalid', 'http://www.example.invalid/']);
 });
