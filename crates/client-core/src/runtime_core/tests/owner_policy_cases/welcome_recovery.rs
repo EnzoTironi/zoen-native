@@ -1,6 +1,7 @@
 //! Real owner controls/group leaves; injected faults affect only this local test DB.
 use super::*;
 use crate::owner_policy::OwnerPolicyInquiryControl;
+use crate::Client;
 use std::collections::BTreeSet;
 
 fn candidate() -> StdResult<(Fixture, String, OwnerPolicyInquiryControl), Box<dyn std::error::Error>>
