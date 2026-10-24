@@ -150,15 +150,15 @@ async fn reconcile(e: &Client, agent: &str, space: &str, summary: &mut Summary) 
                         code,
                     }) => {
                         counts.runtime_error = Some(code);
-                        None;
+                        None
                     }
                     Err(error) => {
                         counts.ipc_error = Some(error);
-                        None;
+                        None
                     }
                     _ => {
                         counts.mismatched += 1;
-                        None;
+                        None
                     }
                 };
                 if let Some((result, installed)) = result {
