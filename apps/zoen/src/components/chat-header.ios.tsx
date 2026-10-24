@@ -32,7 +32,10 @@ export function ChatHeader(props: ChatHeaderProps) {
         headerBackButtonDisplayMode: 'minimal',
         headerBackground: undefined,
         headerTitle: () => (
-          <NavigationContainer scrollViewTag={props.scrollViewTag ?? 0}>
+          <NavigationContainer
+            scrollViewTag={props.scrollViewTag ?? 0}
+            metrics={props.navigationMetrics}
+          >
             <ChatTitle {...props} availableWidth={Math.max(88, width - (canCall ? 264 : 176))} />
           </NavigationContainer>
         ),
