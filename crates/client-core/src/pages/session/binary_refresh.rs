@@ -28,7 +28,7 @@ impl PageSession {
                 // Authenticate the current journal before reusing memory. A clean
                 // no-op still takes the acknowledgement path below exactly once.
                 if loaded == current.as_ref()
-                    && (!loaded.has_draft || live.content_hash() != shadow.content_hash())
+                    && (!loaded.has_draft || !live.editor_content_eq(shadow))
                 {
                     return Ok(());
                 }
@@ -97,7 +97,7 @@ impl PageSession {
         // The stronger exact-source semantic fence belongs only to the new Plan tag.
         if blocked.is_none()
             && journal.has_draft
-            && live.content_hash() == shadow.content_hash()
+            && live.editor_content_eq(&shadow)
             && self.write_author(engine).is_ok()
         {
             let acknowledged = journal.commit.as_ref().is_some_and(|id| {

@@ -66,7 +66,7 @@ async function render(options: Record<string, unknown> = {}) {
       throw Error(name);
     },
   });
-  const selected = block(String(options.kind ?? 'paragraph'));
+  const selected = options.block ?? block(String(options.kind ?? 'paragraph'));
   const tree = module.exports.PageBlocks({
     blocks: [selected],
     editable: true,
@@ -105,4 +105,21 @@ test('duplicate control is absent for historical/read-only/ordinary reading and 
   assert.equal(f.button!.props.disabled, true);
   f.button!.props.onPress();
   assert.deepEqual(f.duplicates, []);
+});
+
+test('complete heading/image projections expose the existing accessible Duplicate control', async () => {
+  for (const metadata of [
+    { kind: 'heading', level: 1, setext: true },
+    { kind: 'heading', level: 6, setext: false },
+    { kind: 'image', title: 'Title' },
+    { kind: 'image', title: '' },
+  ]) {
+    const source = { ...block(), ...metadata };
+    const f = await render({ block: source });
+    assert.ok(f.button);
+    f.button.props.onPress();
+    assert.deepEqual(f.duplicates, [source]);
+    for (const options of [{ historical: true }, { editable: false }, { organizing: false }])
+      assert.equal((await render({ block: source, ...options })).button, undefined);
+  }
 });

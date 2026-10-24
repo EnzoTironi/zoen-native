@@ -118,7 +118,7 @@ impl PageSession {
                 || journal.commit.is_some()
                 || journal.input.binding.is_some()
                 || journal.input.capture.is_some()
-                || live.content_hash() != shadow.content_hash()
+                || !live.editor_content_eq(shadow)
                 // A reverted/no-op human draft can have equal semantic content
                 // but still contain private Loro operations. Never publish those.
                 || live.version() != shadow.version())

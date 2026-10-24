@@ -71,7 +71,7 @@ impl PageSession {
                     == shadow.semantic_hash().map_err(plan_error)?
             }
             (SessionDocument::BinaryPage(live), SessionDocument::BinaryPage(shadow)) => {
-                live.content_hash() == shadow.content_hash()
+                live.editor_content_eq(shadow)
             }
             _ => return Err(invalid("session document kinds differ")),
         };

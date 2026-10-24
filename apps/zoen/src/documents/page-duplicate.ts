@@ -1,9 +1,16 @@
 import type { PageBlockDto } from '../core/generated/PageBlockDto';
 import { t } from '../i18n/index.ts';
 
-// Image title and heading setext syntax are not projected by PageBlockDto.
-// Do not silently invent defaults when duplicating those kinds or future ones.
+// Legacy projections without complete metadata and future kinds remain closed.
 export function canDuplicateBlock(block: PageBlockDto): boolean {
+  if (block.kind === 'heading')
+    return (
+      typeof block.setext === 'boolean' &&
+      Number.isInteger(block.level) &&
+      block.level >= 1 &&
+      block.level <= (block.setext ? 2 : 6)
+    );
+  if (block.kind === 'image') return typeof block.title === 'string';
   return ['paragraph', 'bullet', 'numbered', 'task', 'quote', 'code', 'raw', 'divider'].includes(
     block.kind,
   );

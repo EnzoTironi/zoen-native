@@ -220,26 +220,28 @@ impl PageSession {
             .collect();
         let edits: Vec<_> = changed
             .iter()
-            .map(|dto| BlockEdit {
-                id: dto.id.clone(),
-                kind: super::super::kind_from_dto(dto, current.get(&dto.id)),
-                text: dto.text.clone(),
-                spans: dto
-                    .spans
-                    .iter()
-                    .map(|span| documents::Span {
-                        start: span.start,
-                        end: span.end,
-                        key: span.key.clone(),
-                        value: span.value.clone(),
-                    })
-                    .collect(),
+            .map(|dto| {
+                Ok(BlockEdit {
+                    id: dto.id.clone(),
+                    kind: super::super::kind_from_dto(dto, current.get(&dto.id))?,
+                    text: dto.text.clone(),
+                    spans: dto
+                        .spans
+                        .iter()
+                        .map(|span| documents::Span {
+                            start: span.start,
+                            end: span.end,
+                            key: span.key.clone(),
+                            value: span.value.clone(),
+                        })
+                        .collect(),
+                })
             })
-            .collect();
+            .collect::<R<Vec<_>>>()?;
         let context_hash = drafts::context_hash(context);
         let (observed, base) = if let Some(prior) = journal.continuation(&context_hash) {
             desired
-                .apply(order, &edits)
+                .apply_editor(order, &edits)
                 .map_err(super::super::doc_err)?;
             let previous = Frontiers::decode(&prior.frontiers).map_err(plan_error)?;
             let observed = doc.at(&previous).map_err(super::super::doc_err)?;
@@ -255,13 +257,13 @@ impl PageSession {
                 })
                 .collect();
             observed
-                .apply(order, &complete)
+                .apply_editor(order, &complete)
                 .map_err(super::super::doc_err)?;
             (observed, base)
         } else {
             let base = desired.version();
             desired
-                .apply(order, &edits)
+                .apply_editor(order, &edits)
                 .map_err(super::super::doc_err)?;
             (desired, base)
         };

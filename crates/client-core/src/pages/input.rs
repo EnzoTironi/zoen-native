@@ -464,6 +464,8 @@ fn empty_block(id: String) -> PageBlockDto {
         lang: String::new(),
         url: String::new(),
         alt: String::new(),
+        setext: None,
+        title: None,
         text: String::new(),
         spans: Vec::new(),
     }
