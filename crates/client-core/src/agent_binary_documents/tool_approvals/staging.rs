@@ -81,7 +81,7 @@ impl Client {
         let artifact_title = e.item_state(&p.artifact)?.current().content.title();
         let detail = review_detail(&p, &artifact_title);
         let mut req = AgentRequest {
-            id: types::new_id("rq"),
+            id: types::new_id("rq")?,
             agent: turn.document.actor_id.clone(),
             title: operation,
             detail,

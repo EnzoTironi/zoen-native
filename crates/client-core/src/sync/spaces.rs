@@ -18,7 +18,7 @@ impl Engine {
                 reason: t("Entre na sua conta primeiro.", "Sign in first."),
             });
         }
-        let space = new_id("sp");
+        let space = new_id("sp")?;
         self.store.set_synced(&space)?;
         self.net.synced.insert(space.clone());
         self.append(
@@ -183,14 +183,14 @@ impl Engine {
         let me = self.me_id()?;
         let author = self.author_for(&me)?;
         let at = crate::engine::now_ms();
-        let client_id = new_ulid(at);
+        let client_id = new_ulid(at)?;
         let e = author.sign_event(
             space,
             &client_id,
             at,
             None,
             EventBody::MemberAdded { identity: me, role },
-        );
+        )?;
         self.store.set_meta(&format!("invite:{client_id}"), code)?;
         self.store.outbox_put(&e)?;
         self.store.set_synced(space)?;

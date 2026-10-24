@@ -44,6 +44,7 @@ pub struct PlanDoc {
 }
 
 impl PlanDoc {
+    #[must_use]
     pub fn total_cents(&self) -> i64 {
         self.sections
             .iter()
@@ -52,6 +53,7 @@ impl PlanDoc {
             .sum()
     }
 
+    #[must_use]
     pub fn line(&self, id: &str) -> Option<&PlanLine> {
         self.sections
             .iter()
@@ -173,23 +175,31 @@ pub struct VoiceMeta {
 
 impl VoiceMeta {
     /// Bars as 0…1.
+    #[must_use]
     pub fn bars(&self) -> Vec<f32> {
         self.levels
             .chars()
             .take(160)
-            .filter_map(|c| c.to_digit(16))
-            .map(|d| d as f32 / 15.0)
+            .filter_map(|c| c.to_digit(16).and_then(|digit| u8::try_from(digit).ok()))
+            .map(|digit| f32::from(digit) / 15.0)
             .collect()
     }
 
     /// 0…1 bars as hex digits (at most 160).
+    #[must_use]
     pub fn encode(levels: &[f32]) -> String {
         levels
             .iter()
             .take(160)
             .map(|l| {
-                let d = (l.clamp(0.0, 1.0) * 15.0).round() as u32;
-                char::from_digit(d, 16).unwrap_or('0')
+                let rounded = (l.clamp(0.0, 1.0) * 15.0).round();
+                for digit in (0_u8..=15).rev() {
+                    if rounded >= f32::from(digit) {
+                        return char::from(b"0123456789abcdef"[usize::from(digit)]);
+                    }
+                }
+                // A NaN sample keeps the existing silent-bar wire encoding.
+                '0'
             })
             .collect()
     }
@@ -198,6 +208,7 @@ impl VoiceMeta {
 impl FileDoc {
     /// A voice note: tagged as one, or an audio file recorded under `VoiceNotes/` (older
     /// web builds sent recordings named "Mensagem de voz.*" without the tag).
+    #[must_use]
     pub fn is_voice(&self) -> bool {
         self.mime.starts_with("audio/")
             && (self.voice.is_some()
@@ -208,6 +219,7 @@ impl FileDoc {
 
 impl ItemContent {
     /// A file or a typed document owned by an app; never a foreign Item reference.
+    #[must_use]
     pub fn owned_file(&self) -> Option<&FileDoc> {
         match self {
             Self::File(file) => Some(file),
@@ -216,6 +228,7 @@ impl ItemContent {
         }
     }
 
+    #[must_use]
     pub fn title(&self) -> String {
         match self {
             ItemContent::Text { text } => text.lines().next().unwrap_or_default().to_string(),

@@ -257,7 +257,7 @@ impl Client {
             Command::Replace(_) => crate::i18n::t("Atualizar site", "Update Site"),
         };
         let mut request = AgentRequest {
-            id: types::new_id("rq"),
+            id: types::new_id("rq")?,
             agent: actor.clone(),
             title: label.clone(),
             detail: label,

@@ -29,8 +29,8 @@ pub(super) async fn guard(
         .await
 }
 
-pub(super) async fn run() {
-    let w = World::new().await;
+pub(super) async fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let w = World::new().await?;
     account_policy_context::run(&w).await;
     let now = w.runtime.finance.reply_clock().await.unwrap();
     let mut expiring = w.signed.policy.clone();
@@ -74,7 +74,7 @@ pub(super) async fn run() {
             .unwrap(),
         OwnerPolicyInstallation::Refused(conflicting_digest)
     );
-    let mut binding = w.binding(&w.step(0).await);
+    let mut binding = w.binding(&w.step(0).await?);
     binding.policy_digest = digest.clone();
     assert_eq!(
         reopened.finance.reserve(&binding).await.unwrap_err(),
@@ -151,4 +151,5 @@ pub(super) async fn run() {
     reopened.finance.pool.close().await;
     w.finish().await;
     println!("owner scoped policy: actual commit/return loss -> cold expiry historical ACK, conflicting version refused, disabled latest stays closed, revoked original cannot install successor and current native directory denial stays unknown; zero financial/provider effects PASS");
+    Ok(())
 }

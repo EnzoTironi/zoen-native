@@ -1,9 +1,10 @@
 use super::*;
 
 #[tokio::test]
-async fn a_protocol_three_client_is_refused_before_authentication_or_linking() {
-    let test = TestRelay::new().await;
-    let primary = Author::device(&Signer::generate(), Signer::generate());
+async fn a_protocol_three_client_is_refused_before_authentication_or_linking(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let test = TestRelay::new().await?;
+    let primary = Author::device(&Signer::generate()?, Signer::generate()?);
     let mut current = connect(&test.ws_url, &primary).await;
     request(
         &mut current,
@@ -41,14 +42,16 @@ async fn a_protocol_three_client_is_refused_before_authentication_or_linking() {
     }
     assert!(recv(&mut old).await.is_none());
     test.close().await;
+    Ok(())
 }
 
 #[tokio::test]
-async fn an_unlinked_root_holder_cannot_return_with_a_fresh_certificate() {
-    let test = TestRelay::new().await;
-    let root = Signer::generate();
-    let primary = Author::device(&root, Signer::generate());
-    let lost = Author::device(&root, Signer::generate());
+async fn an_unlinked_root_holder_cannot_return_with_a_fresh_certificate(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let test = TestRelay::new().await?;
+    let root = Signer::generate()?;
+    let primary = Author::device(&root, Signer::generate()?);
+    let lost = Author::device(&root, Signer::generate()?);
     let mut controller = connect(&test.ws_url, &primary).await;
     request(
         &mut controller,
@@ -59,9 +62,13 @@ async fn an_unlinked_root_holder_cannot_return_with_a_fresh_certificate() {
     )
     .await
     .unwrap();
-    request(&mut controller, 2, link_op(&lost, &Signer::generate().id()))
-        .await
-        .unwrap();
+    request(
+        &mut controller,
+        2,
+        link_op(&lost, &Signer::generate()?.id()),
+    )
+    .await
+    .unwrap();
     let mut target = connect(&test.ws_url, &lost).await;
     request(
         &mut controller,
@@ -74,7 +81,7 @@ async fn an_unlinked_root_holder_cannot_return_with_a_fresh_certificate() {
     .unwrap();
     // A linked device retains the root secret. Minting a valid new certificate and
     // proving the new key now succeeds cryptographically, but grants no enrollment.
-    let fresh = Author::device(&root, Signer::generate());
+    let fresh = Author::device(&root, Signer::generate()?);
     let (mut attempted, result) = authenticate(&test.ws_url, &fresh).await;
     assert!(
         matches!(
@@ -98,7 +105,7 @@ async fn an_unlinked_root_holder_cannot_return_with_a_fresh_certificate() {
         ));
     }
     // Even an active sponsor cannot turn the old device's row back on.
-    let box_id = Signer::generate().id();
+    let box_id = Signer::generate()?.id();
     assert!(request(&mut controller, 4, link_op(&lost, &box_id))
         .await
         .is_err());
@@ -129,14 +136,16 @@ async fn an_unlinked_root_holder_cannot_return_with_a_fresh_certificate() {
     assert_eq!(handle, "ana_changed");
     let _ = controller.close(None).await;
     test.close().await;
+    Ok(())
 }
 
 #[tokio::test]
-async fn embedded_payloads_must_be_signed_by_the_authorized_session_device() {
-    let test = TestRelay::new().await;
-    let root = Signer::generate();
-    let primary = Author::device(&root, Signer::generate());
-    let lost = Author::device(&root, Signer::generate());
+async fn embedded_payloads_must_be_signed_by_the_authorized_session_device(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let test = TestRelay::new().await?;
+    let root = Signer::generate()?;
+    let primary = Author::device(&root, Signer::generate()?);
+    let lost = Author::device(&root, Signer::generate()?);
     let mut controller = connect(&test.ws_url, &primary).await;
     request(
         &mut controller,
@@ -147,11 +156,15 @@ async fn embedded_payloads_must_be_signed_by_the_authorized_session_device() {
     )
     .await
     .unwrap();
-    request(&mut controller, 2, link_op(&lost, &Signer::generate().id()))
-        .await
-        .unwrap();
+    request(
+        &mut controller,
+        2,
+        link_op(&lost, &Signer::generate()?.id()),
+    )
+    .await
+    .unwrap();
 
-    let profile_key = ProfileKey::generate();
+    let profile_key = ProfileKey::generate()?;
     let fields = ProfileFields {
         name: "Ana".into(),
         bio: String::new(),
@@ -178,7 +191,7 @@ async fn embedded_payloads_must_be_signed_by_the_authorized_session_device() {
         );
 
         // The active session can still publish its own signatures after revocation.
-        let public = AgreementKey::generate().public_hex();
+        let public = AgreementKey::generate()?.public_hex();
         let agreement = AgreementKeyRecord {
             identity: primary.identity.clone(),
             signed: sign_agreement(&primary, &public).unwrap(),
@@ -197,7 +210,7 @@ async fn embedded_payloads_must_be_signed_by_the_authorized_session_device() {
             Ok(Reply::Done)
         );
         let version = if revoked { 3 } else { 1 };
-        let ciphertext = seal_profile(&profile_key, &primary.identity, version, &fields);
+        let ciphertext = seal_profile(&profile_key, &primary.identity, version, &fields)?;
         let upload = SealedProfile {
             identity: primary.identity.clone(),
             version,
@@ -218,7 +231,7 @@ async fn embedded_payloads_must_be_signed_by_the_authorized_session_device() {
 
         // Another device's valid certificate and signatures cannot borrow this session's
         // authority, whether that device is still active or has already been revoked.
-        let public = AgreementKey::generate().public_hex();
+        let public = AgreementKey::generate()?.public_hex();
         let signed = sign_agreement(&lost, &public).unwrap();
         assert!(verify_agreement(&primary.identity, &public, &signed));
         assert_eq!(
@@ -231,7 +244,7 @@ async fn embedded_payloads_must_be_signed_by_the_authorized_session_device() {
             Err("agreement key is for another device".into())
         );
         let version = version + 1;
-        let ciphertext = seal_profile(&profile_key, &primary.identity, version, &fields);
+        let ciphertext = seal_profile(&profile_key, &primary.identity, version, &fields)?;
         let signed = sign_upload(&lost, version, &ciphertext).unwrap();
         assert!(verify_upload(
             &primary.identity,
@@ -271,14 +284,16 @@ async fn embedded_payloads_must_be_signed_by_the_authorized_session_device() {
     }
     let _ = controller.close(None).await;
     test.close().await;
+    Ok(())
 }
 
 #[tokio::test]
-async fn a_preopened_unregistered_socket_cannot_enroll_after_registration() {
-    let test = TestRelay::new().await;
-    let root = Signer::generate();
-    let first = Author::device(&root, Signer::generate());
-    let late = Author::device(&root, Signer::generate());
+async fn a_preopened_unregistered_socket_cannot_enroll_after_registration(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let test = TestRelay::new().await?;
+    let root = Signer::generate()?;
+    let first = Author::device(&root, Signer::generate()?);
+    let late = Author::device(&root, Signer::generate()?);
     let (mut controller, first_ready) = authenticate(&test.ws_url, &first).await;
     let (mut stale, late_ready) = authenticate(&test.ws_url, &late).await;
     assert!(matches!(
@@ -358,4 +373,5 @@ async fn a_preopened_unregistered_socket_cannot_enroll_after_registration() {
     assert_device_absent(&test, &late).await;
     let _ = controller.close(None).await;
     test.close().await;
+    Ok(())
 }

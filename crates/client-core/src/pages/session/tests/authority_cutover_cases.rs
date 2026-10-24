@@ -2,8 +2,9 @@
 
 use super::*;
 
-pub(super) fn plan_refresh_reuses_verified_payload_and_rechecks_after_reload() {
-    let mut f = Fixture::new();
+pub(super) fn plan_refresh_reuses_verified_payload_and_rechecks_after_reload(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
     let mut session = f.session();
     let initial = session.read(&f.engine).unwrap();
     let mut document = plan_doc(&session.shadow).unwrap().fork().unwrap();
@@ -20,7 +21,7 @@ pub(super) fn plan_refresh_reuses_verified_payload_and_rechecks_after_reload() {
     let mut page = f.page(&document);
     page.blob = Some(blob.clone());
     page.loro.clear();
-    let event = f.ordered(f.version(ItemContent::Page(page)));
+    let event = f.ordered(f.version(ItemContent::Page(page)))?;
     let fold = f.engine.plan_timeline(&f.item).unwrap();
     assert!(fold.acknowledges(
         &event.client_id,
@@ -63,11 +64,14 @@ pub(super) fn plan_refresh_reuses_verified_payload_and_rechecks_after_reload() {
     assert!(resumed.can_edit && resumed.save_error.is_none());
     assert_eq!(resumed.view, before.view);
     assert_eq!(resumed.content_hash, before.content_hash);
+
+    Ok(())
 }
 
-pub(super) fn pending_legacy_and_remote_cutover_never_expand_seed() {
-    for undo in [false, true] {
-        let mut f = Fixture::new();
+pub(super) fn pending_legacy_and_remote_cutover_never_expand_seed(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Ok(for undo in [false, true] {
+        let mut f = Fixture::new()?;
         let mut s = f.session();
         let read = s.read(&f.engine).unwrap();
         let original_manifest = f.engine.plan_timeline(&f.item).unwrap().manifest().unwrap();
@@ -107,7 +111,7 @@ pub(super) fn pending_legacy_and_remote_cutover_never_expand_seed() {
             blob: None,
             manifest: Some(PageManifest::PlanV1(original_manifest.clone())),
         };
-        f.ordered(f.version(ItemContent::Page(page)));
+        f.ordered(f.version(ItemContent::Page(page)))?;
         let fold = f.engine.plan_timeline(&f.item).unwrap();
         assert!(fold.frozen_at.is_some());
         assert!(fold.pending_legacy);
@@ -121,7 +125,7 @@ pub(super) fn pending_legacy_and_remote_cutover_never_expand_seed() {
         );
         assert!(fold.accepts_prefix(&original_manifest));
         if undo {
-            deliver(&mut f.engine, &legacy, Ingest::Confirmed);
+            deliver(&mut f.engine, &legacy, Ingest::Confirmed)?;
             assert!(matches!(
                 f.engine
                     .plan_timeline(&f.item)
@@ -146,11 +150,12 @@ pub(super) fn pending_legacy_and_remote_cutover_never_expand_seed() {
             .plan_timeline(&f.item)
             .unwrap()
             .accepts_prefix(&original_manifest));
-    }
+    })
 }
 
-pub(super) fn late_legacy_versions_never_ack_or_change_canonical_shadow() {
-    let mut f = Fixture::new();
+pub(super) fn late_legacy_versions_never_ack_or_change_canonical_shadow(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
     let mut s = f.session();
     let read = s.read(&f.engine).unwrap();
     apply(
@@ -162,7 +167,7 @@ pub(super) fn late_legacy_versions_never_ack_or_change_canonical_shadow() {
     )
     .unwrap();
     let reference = queued(s.commit(&mut f.engine, "cutover").unwrap());
-    f.ack(&reference);
+    f.ack(&reference)?;
     let canonical = s.read(&f.engine).unwrap();
     let shadow = plan_doc(&s.shadow)
         .unwrap()
@@ -172,12 +177,12 @@ pub(super) fn late_legacy_versions_never_ack_or_change_canonical_shadow() {
     let cipher = f.cipher();
     let mut legacy = original();
     legacy.title = "late incompatible title".into();
-    f.ordered(f.version(ItemContent::Plan(legacy)));
+    f.ordered(f.version(ItemContent::Plan(legacy)))?;
     f.ordered(EventBody::ItemReverted {
         item: f.item.clone(),
         to_version: 1,
         note: "late undo".into(),
-    });
+    })?;
     let fold = f.engine.plan_timeline(&f.item).unwrap();
     assert!(fold
         .slots
@@ -205,90 +210,95 @@ pub(super) fn late_legacy_versions_never_ack_or_change_canonical_shadow() {
         &fold.slots.last().unwrap().source.client_id,
         &fold.slots.last().unwrap().source.event_id
     ));
+
+    Ok(())
 }
 
-pub(super) fn reader_removed_actor_and_key_loss_refuse_mutation_but_keep_saved_read() {
-    for mode in [
-        "reader",
-        "reader-unchanged",
-        "removed",
-        "key-loss",
-        "pending-grant",
-    ] {
-        let mut f = Fixture::new();
-        let mut s = f.session();
-        let read = s.read(&f.engine).unwrap();
-        let edit = text_edit(&read, "private intent remains");
-        apply(&f, &mut s, &read, "accepted", std::slice::from_ref(&edit)).unwrap();
-        if mode == "reader-unchanged" {
-            let undo = apply(&f, &mut s, &read, "local-undo", &[]).unwrap();
-            assert_eq!(undo.current.content_hash, read.content_hash);
-            assert_eq!(
-                plan_doc(&s.live).unwrap().semantic_hash().unwrap(),
-                plan_doc(&s.shadow).unwrap().semantic_hash().unwrap()
-            );
-            assert!(journal(&s).has_draft);
-            assert!(journal(&s).commit.is_none());
-        }
-        let author = f.owner.clone();
-        let admin = if mode == "pending-grant" {
-            let admin = identity(&mut f.engine, "Admin");
-            f.ordered(EventBody::MemberAdded {
-                identity: admin.clone(),
-                role: Role::Owner,
-            });
-            Some(admin)
-        } else {
-            None
-        };
-        match mode {
-            "reader" | "reader-unchanged" | "pending-grant" => {
+pub(super) fn reader_removed_actor_and_key_loss_refuse_mutation_but_keep_saved_read(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Ok(
+        for mode in [
+            "reader",
+            "reader-unchanged",
+            "removed",
+            "key-loss",
+            "pending-grant",
+        ] {
+            let mut f = Fixture::new()?;
+            let mut s = f.session();
+            let read = s.read(&f.engine).unwrap();
+            let edit = text_edit(&read, "private intent remains");
+            apply(&f, &mut s, &read, "accepted", std::slice::from_ref(&edit)).unwrap();
+            if mode == "reader-unchanged" {
+                let undo = apply(&f, &mut s, &read, "local-undo", &[]).unwrap();
+                assert_eq!(undo.current.content_hash, read.content_hash);
+                assert_eq!(
+                    plan_doc(&s.live).unwrap().semantic_hash().unwrap(),
+                    plan_doc(&s.shadow).unwrap().semantic_hash().unwrap()
+                );
+                assert!(journal(&s).has_draft);
+                assert!(journal(&s).commit.is_none());
+            }
+            let author = f.owner.clone();
+            let admin = if mode == "pending-grant" {
+                let admin = identity(&mut f.engine, "Admin");
                 f.ordered(EventBody::MemberAdded {
-                    identity: author.clone(),
-                    role: Role::Reader,
-                });
-            }
-            "removed" => {
-                f.ordered(EventBody::MemberRemoved {
-                    identity: author.clone(),
-                });
-            }
-            "key-loss" => {
-                f.engine.signers.remove(&author);
-            }
-            _ => unreachable!(),
-        }
-        if mode == "pending-grant" {
-            // A different authenticated owner can queue an optimistic regrant; that
-            // projection still must not create ordered authority for this editor.
-            let writer = f.engine.author_for(admin.as_ref().unwrap()).unwrap();
-            f.engine
-                .append_synced(
-                    &f.space,
-                    &writer,
-                    1_800_000_000_000,
-                    EventBody::MemberAdded {
+                    identity: admin.clone(),
+                    role: Role::Owner,
+                })?;
+                Some(admin)
+            } else {
+                None
+            };
+            match mode {
+                "reader" | "reader-unchanged" | "pending-grant" => {
+                    f.ordered(EventBody::MemberAdded {
                         identity: author.clone(),
-                        role: Role::Member,
-                    },
-                )
-                .unwrap();
-        }
-        let readonly = s.read(&f.engine).unwrap();
-        assert!(!readonly.can_edit);
-        assert!(readonly.edit_context.is_empty());
-        if mode == "reader-unchanged" {
-            assert_eq!(readonly.view, read.view);
-        } else {
-            assert!(blocks(&readonly)
-                .iter()
-                .any(|b| b.plain_text() == "private intent remains"));
-        }
-        let before = exact(&f, &s);
-        assert!(apply(&f, &mut s, &read, "accepted", std::slice::from_ref(&edit)).is_err());
-        assert!(apply(&f, &mut s, &read, "new", &[edit]).is_err());
-        assert!(s.commit(&mut f.engine, "forbidden").is_err());
-        no_change(&f, &s, &before);
-        assert!(journal(&s).has_draft);
-    }
+                        role: Role::Reader,
+                    })?;
+                }
+                "removed" => {
+                    f.ordered(EventBody::MemberRemoved {
+                        identity: author.clone(),
+                    })?;
+                }
+                "key-loss" => {
+                    f.engine.signers.remove(&author);
+                }
+                _ => unreachable!(),
+            }
+            if mode == "pending-grant" {
+                // A different authenticated owner can queue an optimistic regrant; that
+                // projection still must not create ordered authority for this editor.
+                let writer = f.engine.author_for(admin.as_ref().unwrap()).unwrap();
+                f.engine
+                    .append_synced(
+                        &f.space,
+                        &writer,
+                        1_800_000_000_000,
+                        EventBody::MemberAdded {
+                            identity: author.clone(),
+                            role: Role::Member,
+                        },
+                    )
+                    .unwrap();
+            }
+            let readonly = s.read(&f.engine).unwrap();
+            assert!(!readonly.can_edit);
+            assert!(readonly.edit_context.is_empty());
+            if mode == "reader-unchanged" {
+                assert_eq!(readonly.view, read.view);
+            } else {
+                assert!(blocks(&readonly)
+                    .iter()
+                    .any(|b| b.plain_text() == "private intent remains"));
+            }
+            let before = exact(&f, &s);
+            assert!(apply(&f, &mut s, &read, "accepted", std::slice::from_ref(&edit)).is_err());
+            assert!(apply(&f, &mut s, &read, "new", &[edit]).is_err());
+            assert!(s.commit(&mut f.engine, "forbidden").is_err());
+            no_change(&f, &s, &before);
+            assert!(journal(&s).has_draft);
+        },
+    )
 }

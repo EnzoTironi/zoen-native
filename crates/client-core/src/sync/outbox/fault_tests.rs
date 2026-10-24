@@ -21,21 +21,27 @@ pub(super) struct Fixture {
     pub(super) device: [u8; 32],
 }
 
-fn sequence(engine: &Engine, env: Envelope) -> Sequenced {
+fn sequence(
+    engine: &Engine,
+    env: Envelope,
+) -> std::result::Result<Sequenced, Box<dyn std::error::Error>> {
     let (seq, prev) = engine.logs.get(env.space()).map_or_else(
         || (0, GENESIS_PREV.to_string()),
         |log| (log.next_seq(), log.head().unwrap().hash),
     );
-    Sequenced {
+    Ok(Sequenced {
         seq,
-        hash: chain_hash(env.space(), seq, &prev, &env.wire_hash()),
+        hash: chain_hash(env.space(), seq, &prev, &env.wire_hash())?,
         prev,
         env,
-    }
+    })
 }
 
 impl Fixture {
-    fn new(path: &str, second_privacy: Privacy) -> Self {
+    fn new(
+        path: &str,
+        second_privacy: Privacy,
+    ) -> std::result::Result<Self, Box<dyn std::error::Error>> {
         Self::with_privacies(path, Privacy::Closed, second_privacy)
     }
 
@@ -43,7 +49,7 @@ impl Fixture {
         path: &str,
         first_privacy: Privacy,
         second_privacy: Privacy,
-    ) -> Self {
+    ) -> std::result::Result<Self, Box<dyn std::error::Error>> {
         let mut engine = Engine::open(path).unwrap();
         let (root, device, _) = engine
             .create_account("Queue faults", "queue_faults", "http://127.0.0.1:1")
@@ -63,14 +69,14 @@ impl Fixture {
                     kind: SpaceKind::Group,
                     privacy,
                 },
-            ));
-            assert_eq!(engine.ingest(sequence(&engine, env)), Ingest::Applied);
+            )?);
+            assert_eq!(engine.ingest(sequence(&engine, env)?), Ingest::Applied);
         }
-        Self {
+        Ok(Self {
             engine,
             root,
             device,
-        }
+        })
     }
 
     pub(super) fn message(&mut self, space: &str, n: i64) -> Event {
@@ -92,10 +98,12 @@ impl Fixture {
             .unwrap()
     }
 
-    fn real_handshakes(&mut self) -> (Event, Event) {
+    fn real_handshakes(
+        &mut self,
+    ) -> std::result::Result<(Event, Event), Box<dyn std::error::Error>> {
         let space = "sp_fault_b";
         self.engine.create_mls_group(space).unwrap();
-        let peer_author = Author::device(&Signer::from_secret(&self.root), Signer::generate());
+        let peer_author = Author::device(&Signer::from_secret(&self.root), Signer::generate()?);
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
         ::mls::migrate(&mut conn).unwrap();
         let peer = ::mls::Device::new(
@@ -136,7 +144,7 @@ impl Fixture {
         }
         self.engine
             .queued_recovery_commit(vec![commit.clone(), welcome.clone()]);
-        (commit, welcome)
+        Ok((commit, welcome))
     }
 }
 
@@ -187,9 +195,10 @@ pub(super) fn set_json(engine: &Engine, event: &Event, json: Value) {
 }
 
 #[test]
-fn malformed_or_unreadable_head_blocks_only_its_reliably_associated_chat_without_mutating_queue() {
+fn malformed_or_unreadable_head_blocks_only_its_reliably_associated_chat_without_mutating_queue(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for fault in [Value::Text("{not JSON".into()), Value::Blob(vec![0])] {
-        let mut f = Fixture::new(":memory:", Privacy::Closed);
+        let mut f = Fixture::new(":memory:", Privacy::Closed)?;
         let independent = f.message("sp_fault_b", 0);
         let first = f.message("sp_fault_a", 1);
         let second = f.message("sp_fault_a", 2);
@@ -249,11 +258,13 @@ fn malformed_or_unreadable_head_blocks_only_its_reliably_associated_chat_without
             [first.client_id.as_str(), second.client_id.as_str()]
         );
     }
+    Ok(())
 }
 
 #[test]
-fn unreadable_head_without_retained_association_does_not_return_an_already_collected_prefix() {
-    let mut f = Fixture::new(":memory:", Privacy::Closed);
+fn unreadable_head_without_retained_association_does_not_return_an_already_collected_prefix(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new(":memory:", Privacy::Closed)?;
     f.message("sp_fault_b", 0);
     let first = f.message("sp_fault_a", 1);
     f.message("sp_fault_a", 2);
@@ -270,13 +281,15 @@ fn unreadable_head_without_retained_association_does_not_return_an_already_colle
     set_json(&f.engine, &first, Value::Text(original));
     f.engine.net.pending.insert(first.client_id, association);
     assert_eq!(f.engine.outbox_envelopes(), healthy);
+    Ok(())
 }
 
 #[test]
-fn malformed_other_chat_does_not_release_real_mls_welcome_ahead_of_its_commit() {
-    let mut f = Fixture::new(":memory:", Privacy::EndToEnd);
+fn malformed_other_chat_does_not_release_real_mls_welcome_ahead_of_its_commit(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new(":memory:", Privacy::EndToEnd)?;
     let first = f.message("sp_fault_a", 0);
-    let (commit, welcome) = f.real_handshakes();
+    let (commit, welcome) = f.real_handshakes()?;
     let healthy = f.engine.outbox_envelopes();
     assert!(healthy.iter().any(|e| e.client_id() == commit.client_id));
     assert!(healthy.iter().all(|e| e.client_id() != welcome.client_id));
@@ -292,12 +305,14 @@ fn malformed_other_chat_does_not_release_real_mls_welcome_ahead_of_its_commit() 
         "an unrelated parse failure cannot erase the Commit-to-Welcome dependency"
     );
     assert_eq!(raw_queue(&f.engine), broken);
+    Ok(())
 }
 
 #[test]
-fn exact_head_repair_and_cold_reopen_preserve_original_ids_order_signatures_and_retry_fields() {
-    let database = OwnedDatabase(std::env::temp_dir().join(types::new_id("outbox-head-repair")));
-    let mut f = Fixture::new(database.0.to_str().unwrap(), Privacy::Closed);
+fn exact_head_repair_and_cold_reopen_preserve_original_ids_order_signatures_and_retry_fields(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let database = OwnedDatabase(std::env::temp_dir().join(types::new_id("outbox-head-repair")?));
+    let mut f = Fixture::new(database.0.to_str().unwrap(), Privacy::Closed)?;
     f.message("sp_fault_b", 0);
     let first = f.message("sp_fault_a", 1);
     f.message("sp_fault_a", 2);
@@ -325,11 +340,13 @@ fn exact_head_repair_and_cold_reopen_preserve_original_ids_order_signatures_and_
     assert_eq!(cold.outbox_len(), 3);
     drop(cold);
     drop(database);
+    Ok(())
 }
 
 #[test]
-fn missing_after_head_query_blocks_its_original_lane_and_exact_row_restoration_recovers_order() {
-    let mut f = Fixture::new(":memory:", Privacy::Closed);
+fn missing_after_head_query_blocks_its_original_lane_and_exact_row_restoration_recovers_order(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new(":memory:", Privacy::Closed)?;
     let independent = f.message("sp_fault_b", 0);
     let first = f.message("sp_fault_a", 1);
     f.message("sp_fault_a", 2);
@@ -361,11 +378,13 @@ fn missing_after_head_query_blocks_its_original_lane_and_exact_row_restoration_r
     f.engine.store.conn().execute("INSERT INTO outbox(client_id,space,json,attempts,last_error,failed,created_ms,queue_order) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)", params![row.0,row.1,row.2,row.3,row.4,row.5,row.6,row.7]).unwrap();
     assert_eq!(raw_queue(&f.engine), original_rows);
     assert_eq!(f.engine.outbox_envelopes(), healthy);
+    Ok(())
 }
 
 #[test]
-fn corrupt_row_cannot_change_its_cached_chat_association_to_release_a_partial_prefix() {
-    let mut f = Fixture::new(":memory:", Privacy::Closed);
+fn corrupt_row_cannot_change_its_cached_chat_association_to_release_a_partial_prefix(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new(":memory:", Privacy::Closed)?;
     f.message("sp_fault_b", 0);
     let first = f.message("sp_fault_a", 1);
     f.message("sp_fault_a", 2);
@@ -391,15 +410,17 @@ fn corrupt_row_cannot_change_its_cached_chat_association_to_release_a_partial_pr
         )
         .unwrap();
     assert_eq!(f.engine.outbox_envelopes(), healthy);
+    Ok(())
 }
 
 #[test]
-fn unreadable_queue_or_handshake_metadata_never_becomes_an_empty_dependency_success() {
+fn unreadable_queue_or_handshake_metadata_never_becomes_an_empty_dependency_success(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for projection in [
         "SELECT queue_order FROM main.outbox",
         "SELECT client_id,space,attempts,last_error,failed,created_ms,queue_order FROM main.outbox",
     ] {
-        let mut f = Fixture::new(":memory:", Privacy::Closed);
+        let mut f = Fixture::new(":memory:", Privacy::Closed)?;
         f.message("sp_fault_b", 0);
         f.message("sp_fault_a", 1);
         let healthy = f.engine.outbox_envelopes();
@@ -420,11 +441,13 @@ fn unreadable_queue_or_handshake_metadata_never_becomes_an_empty_dependency_succ
         assert_eq!(raw_queue(&f.engine), original);
         assert_eq!(f.engine.outbox_envelopes(), healthy);
     }
+    Ok(())
 }
 
 #[test]
-fn deserializable_event_cannot_replace_signed_bytes_projection_signature_or_certificate() {
-    let mut f = Fixture::new(":memory:", Privacy::Closed);
+fn deserializable_event_cannot_replace_signed_bytes_projection_signature_or_certificate(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new(":memory:", Privacy::Closed)?;
     let independent = f.message("sp_fault_b", 0);
     let first = f.message("sp_fault_a", 1);
     f.message("sp_fault_a", 2);
@@ -492,4 +515,5 @@ fn deserializable_event_cannot_replace_signed_bytes_projection_signature_or_cert
     }
     set_json(&f.engine, &first, Value::Text(original));
     assert_eq!(f.engine.outbox_envelopes(), healthy);
+    Ok(())
 }

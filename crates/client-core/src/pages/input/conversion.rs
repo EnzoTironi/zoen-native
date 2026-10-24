@@ -42,10 +42,10 @@ pub(in crate::pages) fn page_edits(binding: &Binding, capture: &Capture) -> R<Ve
         let id = if out.is_empty() {
             match &binding.target {
                 PageInputTarget::Block { block_id } => block_id.clone(),
-                _ => types::new_id("block"),
+                _ => types::new_id("block")?,
             }
         } else {
-            types::new_id("block")
+            types::new_id("block")?
         };
         let mut b = empty_block(id);
         // Page's text codec uses U+2028 for an in-paragraph line break. Its

@@ -1,7 +1,10 @@
 use super::*;
 
-pub(super) async fn produce(test: &TestRelay, store: &ControlledStore) -> Value {
-    let a = test.register().await;
+pub(super) async fn produce(
+    test: &TestRelay,
+    store: &ControlledStore,
+) -> std::result::Result<Value, Box<dyn std::error::Error>> {
+    let a = test.register().await?;
     let profile: Value = sqlx::query_scalar("SELECT profile FROM identities WHERE id=$1")
         .bind(&a.identity)
         .fetch_one(&test.state.pool)
@@ -28,7 +31,7 @@ pub(super) async fn produce(test: &TestRelay, store: &ControlledStore) -> Value 
     }
     .encode();
     let plain = b"synthetic encrypted media native oracle";
-    let (key, sealed) = event_log::media::seal(plain);
+    let (key, sealed) = event_log::media::seal(plain)?;
     let sha = hex::encode(Sha256::digest(&sealed));
     let mut f = Fixture {
         test,
@@ -258,12 +261,14 @@ pub(super) async fn produce(test: &TestRelay, store: &ControlledStore) -> Value 
             wait_ns: policy::DEFAULT_INTERVAL_NS
         }
     );
-    json!({"schema":1,"scope":"native-media-http","relay":test.state.relay_name,"identity":a.identity,
+    Ok(
+        json!({"schema":1,"scope":"native-media-http","relay":test.state.relay_name,"identity":a.identity,
         "device":a.device,"certificate":a.cert,"profile":profile,"initial_registered":true,
         "quota":{"interval_ns":policy::DEFAULT_INTERVAL_NS.to_string(),"burst":policy::DEFAULT_BURST},"steps":f.steps,
         "control":{"hello_base64":STANDARD.encode(hello),"nonce":nonce,"auth_base64":STANDARD.encode(auth),"unlink_frame_base64":STANDARD.encode(unlink)},
         "decryption":{"key_hex":hex::encode(key),"plain_base64":STANDARD.encode(plain)},
-        "storage_failures":storage_failures})
+        "storage_failures":storage_failures}),
+    )
 }
 
 async fn storage_failure_cases(

@@ -172,9 +172,9 @@ pub(super) struct Fixture {
     directory: PathBuf,
 }
 impl Fixture {
-    pub(super) async fn new() -> Self {
+    pub(super) async fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
         let relay = relay().await;
-        let directory = std::env::temp_dir().join(types::new_id("zoen-link-owner"));
+        let directory = std::env::temp_dir().join(types::new_id("zoen-link-owner")?);
         std::fs::create_dir(&directory).unwrap();
         let client = Client::open(
             directory.join("owner.sqlite").to_string_lossy().into(),
@@ -191,12 +191,12 @@ impl Fixture {
             )
             .unwrap();
         client.lock().set_registered(true).unwrap();
-        Self {
+        Ok(Self {
             client: Some(client),
             vault,
             relay,
             directory,
-        }
+        })
     }
     pub(super) fn client(&self) -> &Arc<Client> {
         self.client.as_ref().unwrap()

@@ -3,13 +3,17 @@
 use super::*;
 
 pub(super) async fn linked_chat_preferences_bootstrap_is_signed_idempotent_and_survives_history_reopen(
-) {
-    assert_linked_preferences_survive_history_and_reopen(false).await;
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    assert_linked_preferences_survive_history_and_reopen(false).await?;
+
+    Ok(())
 }
 
-pub(super) async fn linked_chat_preferences_repair_legacy_missing_personal_after_verified_history()
-{
-    assert_linked_preferences_survive_history_and_reopen(true).await;
+pub(super) async fn linked_chat_preferences_repair_legacy_missing_personal_after_verified_history(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    assert_linked_preferences_survive_history_and_reopen(true).await?;
+
+    Ok(())
 }
 
 pub(super) fn linked_chat_preferences_bootstrap_storage_failure_rolls_back_before_vault_and_can_retry(
@@ -58,7 +62,8 @@ pub(super) fn linked_chat_preferences_bootstrap_storage_failure_rolls_back_befor
     assert!(vault.load(VAULT_DEVICE.into()).is_some());
 }
 
-pub(super) async fn linked_chat_preferences_never_reuse_another_identity_personal_space() {
+pub(super) async fn linked_chat_preferences_never_reuse_another_identity_personal_space(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let core = Client::open(":memory:".into(), "en-US".into()).unwrap();
     let vault = install_link(&core);
     let identity_key = vault.load(VAULT_IDENTITY.into());
@@ -100,7 +105,7 @@ pub(super) async fn linked_chat_preferences_never_reuse_another_identity_persona
         )
         .unwrap();
     }
-    let opened = encrypted_record(&core);
+    let opened = encrypted_record(&core)?;
     let receive = core.history_receive.begin(5_000).unwrap();
     core.commit_initial_history(vec![opened], 1, 0, &receive)
         .unwrap();
@@ -121,6 +126,8 @@ pub(super) async fn linked_chat_preferences_never_reuse_another_identity_persona
     assert!(!current.pinned && !current.muted);
     assert_eq!(vault.load(VAULT_IDENTITY.into()), identity_key);
     assert_eq!(vault.load(VAULT_DEVICE.into()), device_key);
+
+    Ok(())
 }
 
 pub(super) fn linked_chat_preferences_vault_rejection_cleans_the_new_bootstrap() {

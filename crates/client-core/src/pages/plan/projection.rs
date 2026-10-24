@@ -54,8 +54,8 @@ pub(crate) struct BeforeEvent {
     plan: PlanRead,
 }
 
-fn binding(event: &Event) -> String {
-    content_hash(&(
+fn binding(event: &Event) -> R<String> {
+    Ok(content_hash(&(
         content_hash_of(event),
         &event.space,
         &event.author,
@@ -66,7 +66,7 @@ fn binding(event: &Event) -> String {
         &event.device,
         &event.cert,
         &event.sig,
-    ))
+    ))?)
 }
 
 impl BeforeEvent {
@@ -75,7 +75,7 @@ impl BeforeEvent {
     }
 
     pub(crate) fn matches(&self, event: &Event) -> bool {
-        self.event == binding(event)
+        binding(event).is_ok_and(|hash| self.event == hash)
             && self
                 .ordered_address
                 .as_ref()
@@ -335,7 +335,7 @@ impl<'a> PlanReplay<'a> {
             PlanRead::Changed
         };
         Ok(BeforeEvent {
-            event: binding(event),
+            event: binding(event)?,
             ordered_address: matches!(mode, Mode::Confirmed)
                 .then(|| (event.seq, event.prev.clone(), event.hash.clone())),
             scope_valid,
@@ -468,7 +468,7 @@ impl<'a> PlanReplay<'a> {
             read.clone()
         } else {
             let folded = prefix.fold(item, |page| {
-                let key = content_hash(page);
+                let key = content_hash(page)?;
                 if let Some(payload) = self.payloads.get(&key) {
                     return Ok(payload.clone());
                 }

@@ -21,9 +21,13 @@ async fn waiting(pool: &PgPool, query: &str) {
     .expect("owned operation must reach its real SQL lock wait");
 }
 
-pub async fn exercise(pool: &PgPool, service: &Service, author: &Author) {
-    let site = types::new_secret_id("site");
-    let signed = request(author, &site, None, FIRST, 1);
+pub async fn exercise(
+    pool: &PgPool,
+    service: &Service,
+    author: &Author,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let site = types::new_secret_id("site")?;
+    let signed = request(author, &site, None, FIRST, 1)?;
     let mut blocker = pool.begin().await.unwrap();
     sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
         .bind(&site)
@@ -62,4 +66,5 @@ pub async fn exercise(pool: &PgPool, service: &Service, author: &Author) {
     blocker.commit().await.unwrap();
     assert!(publication.await.unwrap().is_ok());
     revocation.await.unwrap();
+    Ok(())
 }

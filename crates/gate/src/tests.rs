@@ -73,7 +73,7 @@ impl DecisionProvider for Spy {
 fn consent_req(cap: &str) -> Request {
     let (access, sensitivity) = classify(cap);
     Request {
-        declared: true,
+        declared: true.into(),
         access,
         sensitivity,
         explicitly_allowed_before: false,
@@ -83,7 +83,7 @@ fn consent_req(cap: &str) -> Request {
         },
         cost_cents: 0,
         budget_remaining_cents: 500,
-        verified: true,
+        verified: true.into(),
         uses: 9,
         trust: TrustLevel::Act,
         mode: ConsentMode::Trusted,

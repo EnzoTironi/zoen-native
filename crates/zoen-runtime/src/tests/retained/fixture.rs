@@ -14,27 +14,31 @@ pub(super) struct Fixture {
 }
 
 impl Fixture {
-    pub(super) async fn new() -> Self {
+    pub(super) async fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
         Self::build(false, false).await
     }
 
-    pub(super) async fn with_output() -> Self {
+    pub(super) async fn with_output() -> std::result::Result<Self, Box<dyn std::error::Error>> {
         Self::build(true, false).await
     }
 
-    pub(super) async fn with_managed_output() -> Self {
+    pub(super) async fn with_managed_output(
+    ) -> std::result::Result<Self, Box<dyn std::error::Error>> {
         Self::build(true, true).await
     }
 
-    async fn build(output: bool, managed: bool) -> Self {
-        let mut world = World::with_relay().await;
+    async fn build(
+        output: bool,
+        managed: bool,
+    ) -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        let mut world = World::with_relay().await?;
         if output {
             let capability = native::testing::output::provision(&world.runtime).await;
             Arc::get_mut(&mut world.runtime).unwrap().output_fixture = Some(capability);
         }
         let actor = world.agents[0].clone();
         let device = actor.device.clone().unwrap();
-        let second = Author::device(&world.agent_roots[0], Signer::generate());
+        let second = Author::device(&world.agent_roots[0], Signer::generate()?);
         let sqlx::types::Json(agent): sqlx::types::Json<Identity> =
             sqlx::query_scalar("SELECT profile FROM identities WHERE id=$1")
                 .bind(&actor.identity)
@@ -80,7 +84,9 @@ impl Fixture {
             second.key.secret(),
         );
         Arc::get_mut(&mut world.runtime).unwrap().native = Some(custody);
-        let managed_directory = managed.then(crate::tests::managed_images::Directory::new);
+        let managed_directory = managed
+            .then(crate::tests::managed_images::Directory::new)
+            .transpose()?;
         if let Some(directory) = &managed_directory {
             let runtime = match Arc::try_unwrap(world.runtime) {
                 Ok(runtime) => runtime,
@@ -99,7 +105,7 @@ impl Fixture {
             crate::tests::managed_images::replacement_anchor_refused(
                 &world, &actor, &agent, &owner,
             )
-            .await;
+            .await?;
         }
         let first_package =
             native::testing::provision_packages(&world.runtime, &actor.identity, &device)
@@ -141,7 +147,7 @@ impl Fixture {
             second,
             agent,
             owner,
-            space: new_id("retained-direct"),
+            space: new_id("retained-direct")?,
             head: None,
             managed_directory,
         };
@@ -151,13 +157,13 @@ impl Fixture {
                 kind: SpaceKind::Direct,
                 privacy: Privacy::EndToEnd,
             })
-            .await;
+            .await?;
         fixture
             .clear(EventBody::MemberAdded {
                 identity: fixture.agent.id.clone(),
                 role: Role::Member,
             })
-            .await;
+            .await?;
         let owner = fixture.device();
         owner.create_group(&fixture.space).unwrap();
         let commit = owner
@@ -176,11 +182,11 @@ impl Fixture {
             Opened::Commit { epoch: 1 }
         );
         drop(owner);
-        fixture.sealed(SealedKind::Commit, commit.commit).await;
+        fixture.sealed(SealedKind::Commit, commit.commit).await?;
         fixture
             .sealed(SealedKind::Welcome, commit.welcome.unwrap())
-            .await;
-        fixture
+            .await?;
+        Ok(fixture)
     }
 
     pub(super) fn device(&self) -> Device<'_> {
@@ -206,38 +212,50 @@ impl Fixture {
         entry
     }
 
-    pub(super) async fn clear(&mut self, body: EventBody) {
+    pub(super) async fn clear(
+        &mut self,
+        body: EventBody,
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let now = self.world.runtime.finance.reply_clock().await.unwrap();
         let event = self.world.owner.sign_event(
             &self.space,
-            &new_id("clear"),
+            &new_id("clear")?,
             now,
             self.head.clone(),
             body,
-        );
+        )?;
         self.append(Envelope::plain(&event)).await;
+        Ok(())
     }
 
-    pub(super) async fn sealed(&mut self, kind: SealedKind, data: Vec<u8>) {
+    pub(super) async fn sealed(
+        &mut self,
+        kind: SealedKind,
+        data: Vec<u8>,
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let now = self.world.runtime.finance.reply_clock().await.unwrap();
         let envelope = Envelope::sealed(
             &self.world.owner,
             &self.space,
-            &new_id("handshake"),
+            &new_id("handshake")?,
             now,
             self.head.as_ref(),
             Sealed::new(kind, SUITE_ID, data),
         );
         self.append(envelope).await;
+        Ok(())
     }
 
-    pub(super) async fn encrypted(&mut self, body: EventBody) -> String {
+    pub(super) async fn encrypted(
+        &mut self,
+        body: EventBody,
+    ) -> std::result::Result<String, Box<dyn std::error::Error>> {
         let now = self.world.runtime.finance.reply_clock().await.unwrap();
-        let client = new_id("inner");
-        let event = self
-            .world
-            .owner
-            .sign_event(&self.space, &client, now, self.head.clone(), body);
+        let client = new_id("inner")?;
+        let event =
+            self.world
+                .owner
+                .sign_event(&self.space, &client, now, self.head.clone(), body)?;
         let bytes = self
             .device()
             .seal(
@@ -257,14 +275,22 @@ impl Fixture {
             self.head.as_ref(),
             Sealed::new(SealedKind::Application, SUITE_ID, bytes),
         );
-        self.append(envelope).await.hash
+        Ok(self.append(envelope).await.hash)
     }
 
-    pub(super) async fn grant(&mut self, grant: &str) {
-        self.grant_until(grant, None).await;
+    pub(super) async fn grant(
+        &mut self,
+        grant: &str,
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        self.grant_until(grant, None).await?;
+        Ok(())
     }
 
-    pub(super) async fn grant_until(&mut self, grant: &str, expires_at_ms: Option<i64>) {
+    pub(super) async fn grant_until(
+        &mut self,
+        grant: &str,
+        expires_at_ms: Option<i64>,
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         self.encrypted(EventBody::GrantIssued {
             grant: Grant {
                 id: grant.into(),
@@ -275,19 +301,24 @@ impl Fixture {
                 expires_at_ms,
             },
         })
-        .await;
+        .await?;
+        Ok(())
     }
 
-    pub(super) async fn message(&mut self, text: &str) -> String {
-        self.encrypted(EventBody::MessagePosted {
-            message: new_id("message"),
-            text: text.into(),
-            attaches: None,
-            reply: None,
-            media: None,
-            forwarded: false,
-        })
-        .await
+    pub(super) async fn message(
+        &mut self,
+        text: &str,
+    ) -> std::result::Result<String, Box<dyn std::error::Error>> {
+        Ok(self
+            .encrypted(EventBody::MessagePosted {
+                message: new_id("message")?,
+                text: text.into(),
+                attaches: None,
+                reply: None,
+                media: None,
+                forwarded: false,
+            })
+            .await?)
     }
 
     pub(super) async fn sync(&self, second: bool) -> Result<ReplySync, RuntimeError> {

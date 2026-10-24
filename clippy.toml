@@ -1,0 +1,4 @@
+# Assertion failures in test functions are intentional evidence, not production recovery.
+# Helpers and production code still need explicit error handling.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true

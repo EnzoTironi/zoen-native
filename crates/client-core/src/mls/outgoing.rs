@@ -161,7 +161,7 @@ impl Engine {
                 reason: t("Entre na sua conta primeiro.", "Sign in first."),
             })?;
         let at_ms = crate::engine::now_ms();
-        let client_id = new_ulid(at_ms);
+        let client_id = new_ulid(at_ms)?;
         let seen = self.logs.get(space).and_then(|l| l.head());
         let (content, sig) = author.sign_sealed(space, &client_id, at_ms, seen.as_ref(), sealed);
         let e = event_from_content(

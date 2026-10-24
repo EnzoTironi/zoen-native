@@ -2,7 +2,8 @@
 
 use super::*;
 
-pub(super) fn another_author_or_a_removed_author_cannot_deduplicate_an_earlier_note() {
+pub(super) fn another_author_or_a_removed_author_cannot_deduplicate_an_earlier_note(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let e = seeded();
     let space = find_space(&e, "Paraty com a Marina");
     let root = e.send_message(space.id.clone(), "Root".into()).unwrap();
@@ -31,7 +32,7 @@ pub(super) fn another_author_or_a_removed_author_cannot_deduplicate_an_earlier_n
                 &space.id,
                 &me,
                 EventBody::MessagePosted {
-                    message: types::new_id("msg"),
+                    message: types::new_id("msg")?,
                     text: String::new(),
                     attaches: Some(item),
                     reply: Some(types::ReplyRef::thread(root.id)),
@@ -47,6 +48,8 @@ pub(super) fn another_author_or_a_removed_author_cannot_deduplicate_an_earlier_n
         .unwrap()
         .iter()
         .any(|x| x.id == original.id));
+
+    Ok(())
 }
 
 pub(super) fn invalid_voice_reply_targets_do_not_publish_audio_or_create_items() {
@@ -95,8 +98,9 @@ pub(super) fn only_writers_can_send_voice_notes() {
     }
 }
 
-pub(super) fn voice_versions_and_reverts_are_author_only_locally_and_on_replay() {
-    for legacy in [false, true] {
+pub(super) fn voice_versions_and_reverts_are_author_only_locally_and_on_replay(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Ok(for legacy in [false, true] {
         for hidden in [false, true] {
             let e = seeded();
             let space = find_space(&e, "Paraty com a Marina");
@@ -170,7 +174,7 @@ pub(super) fn voice_versions_and_reverts_are_author_only_locally_and_on_replay()
                 },
             ] {
                 assert!(engine.append(&space.id, &other, body.clone()).is_err());
-                ingest_as(&mut engine, &space.id, &other, body);
+                ingest_as(&mut engine, &space.id, &other, body)?;
                 assert_eq!(engine.state.items[&item].versions.len(), 2);
                 assert_eq!(engine.state.items[&item].current().content, current);
             }
@@ -181,5 +185,5 @@ pub(super) fn voice_versions_and_reverts_are_author_only_locally_and_on_replay()
             engine.restore_version(&item, 1, "Owner revert").unwrap();
             assert_eq!(engine.file_bytes(&item, None).unwrap(), Some(vec![7; 900]));
         }
-    }
+    })
 }

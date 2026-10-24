@@ -44,7 +44,7 @@ impl<S: Signer> Client<S> {
             SignedContent {
                 v: event_log::content::SEALED_CONTENT_VERSION,
                 space: space.into(),
-                client_id: types::new_ulid(now),
+                client_id: types::new_ulid(now).map_err(|error| error.to_string())?,
                 author: self.account.identity.clone(),
                 device: Some(self.account.device.clone()),
                 at_ms: now,
@@ -79,7 +79,12 @@ impl<S: Signer> Client<S> {
                 return Err("Pessoa não encontrada.".into());
             }
         }
-        let space = format!("sp_{}", types::new_ulid(now).to_ascii_lowercase());
+        let space = format!(
+            "sp_{}",
+            types::new_ulid(now)
+                .map_err(|error| error.to_string())?
+                .to_ascii_lowercase()
+        );
         let pending = self.clear_event(
             &space,
             EventBody::SpaceCreated {

@@ -53,7 +53,7 @@ impl Engine {
         handle: &str,
         relay_url: &str,
     ) -> R<([u8; 32], [u8; 32], [u8; 32])> {
-        self.create_account_as(name, handle, relay_url, Signer::generate(), None, false)
+        self.create_account_as(name, handle, relay_url, Signer::generate()?, None, false)
     }
 
     /// An Agent citizen's own account: its root key, a fresh certified device and the
@@ -92,6 +92,29 @@ impl Engine {
         agent: Option<(String, types::AgentOwnerProof)>,
         provider_signup: bool,
     ) -> R<([u8; 32], [u8; 32], [u8; 32])> {
+        let personal_agent = agent.is_none();
+        self.create_account_as_with_keys(
+            name,
+            handle,
+            relay_url,
+            root,
+            agent,
+            provider_signup,
+            || super::account_preparation::AccountKeys::generate(personal_agent),
+        )
+    }
+
+    pub(super) fn create_account_as_with_keys(
+        &mut self,
+        name: &str,
+        handle: &str,
+        relay_url: &str,
+        root: Signer,
+        agent: Option<(String, types::AgentOwnerProof)>,
+        provider_signup: bool,
+        prepare: impl FnOnce()
+            -> Result<super::account_preparation::AccountKeys, event_log::CryptoError>,
+    ) -> R<([u8; 32], [u8; 32], [u8; 32])> {
         if self.net.account.is_some() {
             return Err(CoreError::Invalid {
                 reason: t(
@@ -112,25 +135,24 @@ impl Engine {
                 reason: t("Diga seu nome.", "Tell us your name."),
             });
         }
-        // A real account replaces the demo story.
-        if !self.is_empty() {
-            self.wipe()?;
-        }
+        // Every fallible key constructor runs before any deletion or canonical write.
+        let prepared = prepare()?;
         let root_secret = root.secret();
-        let device = Signer::generate().secret();
-        let agreement = event_log::profile::AgreementKey::generate().secret();
-        self.install_prepared_account(
+        let device = prepared.device.secret();
+        let agreement = prepared.agreement.secret();
+        self.replace_prepared_account(
             PreparedAccount {
                 root: &root_secret,
                 device: &device,
                 agreement: &agreement,
+                profile_key: Some(&prepared.profile),
+                personal_agent_key: prepared.personal_agent.as_ref(),
                 name,
                 handle: &handle,
                 relay: relay_url.trim_end_matches('/'),
                 agent: agent.as_ref().map(|(owner, proof)| (owner.as_str(), proof)),
             },
             provider_signup,
-            |_| Ok(()),
         )?;
         Ok((root_secret, device, agreement))
     }
@@ -159,7 +181,7 @@ impl Engine {
     }
 
     /// Your on-device Zoen (local agent, local DM) until the agent runtime takes over.
-    pub(super) fn seed_personal_agent(&mut self, me: &str) -> R<()> {
+    pub(super) fn seed_personal_agent(&mut self, me: &str, key: Option<Signer>) -> R<()> {
         let at = crate::engine::now_ms();
         self.ensure_personal_space()?;
         let existing = self
@@ -173,7 +195,7 @@ impl Engine {
             .map(|person| person.id.clone());
         let zoen = match existing {
             Some(id) => id,
-            None => self.create_identity(
+            None => self.create_identity_with_signer(
                 Identity {
                     owner_proof: None,
                     id: String::new(),
@@ -189,6 +211,9 @@ impl Engine {
                     ),
                 },
                 true,
+                key.ok_or_else(|| CoreError::Storage {
+                    message: "personal agent key was not prepared".into(),
+                })?,
             )?,
         };
         if self.state.spaces.values().any(|space| {
@@ -216,7 +241,7 @@ impl Engine {
         let dm = match partial {
             Some(id) => id,
             None => {
-                let id = new_id("sp");
+                let id = new_id("sp")?;
                 self.append_at(
                     &id,
                     me,

@@ -57,7 +57,7 @@ fn account_with_vault(name: &str) -> (Arc<Client>, Arc<Vault>) {
 }
 
 impl Fixture {
-    fn new() -> Self {
+    fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
         let sender = account("history_author");
         let (reader, reader_vault) = account_with_vault("history_reader");
         let space = sender
@@ -132,15 +132,15 @@ impl Fixture {
             relay: event_log::SpaceLog::new(space),
             sequenced: HashSet::new(),
         };
-        fixture.catch_up();
-        fixture
+        fixture.catch_up()?;
+        Ok(fixture)
     }
 
-    fn catch_up(&mut self) {
+    fn catch_up(&mut self) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let pending = self.sender.lock().store.outbox().unwrap();
         for envelope in pending.into_iter().filter(|p| p.event.space == self.space) {
             if self.sequenced.insert(envelope.event.client_id.clone()) {
-                let event = self.relay.sequence(envelope.event);
+                let event = self.relay.sequence(envelope.event)?;
                 assert!(matches!(
                     self.reader.lock().ingest(Sequenced {
                         seq: event.seq,
@@ -152,6 +152,7 @@ impl Fixture {
                 ));
             }
         }
+        Ok(())
     }
 
     fn uploads(&self) -> HashMap<String, Vec<u8>> {

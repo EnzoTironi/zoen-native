@@ -337,7 +337,7 @@ mod tests {
         assert!(open_chunk(&key, 4, &sealed).is_none());
     }
 
-    fn fixture() -> (Author, Event, Event) {
+    fn fixture() -> Result<(Author, Event, Event), Box<dyn std::error::Error>> {
         let identity = Signer::from_secret(&[11; 32]);
         let author = Author::device(&identity, Signer::from_secret(&[12; 32]));
         let mut log = SpaceLog::new("sp_history");
@@ -349,7 +349,7 @@ mod tests {
                 kind: SpaceKind::Group,
                 privacy: Privacy::EndToEnd,
             },
-        );
+        )?;
         let opened = author.sign_event(
             log.space(),
             "msg_history",
@@ -363,7 +363,7 @@ mod tests {
                 media: None,
                 forwarded: false,
             },
-        );
+        )?;
         let (content, sig) = author.sign_sealed(
             log.space(),
             "msg_history",
@@ -380,16 +380,17 @@ mod tests {
             String::new(),
         )
         .unwrap();
-        let local = log.sequence(outer).clone();
+        let local = log.sequence(outer)?.clone();
         let mut opened = opened;
         opened.seq = local.seq;
         opened.sealed_wire = Some(event_log::content_hash_of(&local));
-        (author, local, opened)
+        Ok((author, local, opened))
     }
 
     #[test]
-    fn opened_history_requires_every_signed_outer_header_and_preserves_local_chain() {
-        let (author, local, opened) = fixture();
+    fn opened_history_requires_every_signed_outer_header_and_preserves_local_chain(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (author, local, opened) = fixture()?;
         let actual = opened_history_event(&local, opened.clone()).unwrap();
         assert_eq!(actual.hash, local.hash);
         assert_eq!(actual.prev, local.prev);
@@ -401,14 +402,14 @@ mod tests {
                 3,
                 local.seen.clone(),
                 opened.body.clone(),
-            ),
+            )?,
             author.sign_event(
                 &local.space,
                 "different",
                 2,
                 local.seen.clone(),
                 opened.body.clone(),
-            ),
+            )?,
             author.sign_event(
                 &local.space,
                 &local.client_id,
@@ -418,14 +419,14 @@ mod tests {
                     hash: "00".repeat(32),
                 }),
                 opened.body.clone(),
-            ),
+            )?,
             author.sign_event(
                 &local.space,
                 &local.client_id,
                 2,
                 local.seen.clone(),
                 EventBody::SpaceEncrypted,
-            ),
+            )?,
         ] {
             let mut changed = changed;
             changed.seq = local.seq;
@@ -438,5 +439,6 @@ mod tests {
         let mut wrong_device = opened;
         wrong_device.device = None;
         assert!(opened_history_event(&local, wrong_device).is_none());
+        Ok(())
     }
 }

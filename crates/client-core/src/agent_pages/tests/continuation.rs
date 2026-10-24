@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn completed_prefix_result_bytes_are_retained_when_the_next_write_is_recovered() {
-    let f = fixture();
+    let f = fixture().unwrap();
     let t = turn(&f);
     let c = command(&t);
     let (request, permit) = approved(&f, &t, &c);
@@ -64,7 +64,7 @@ fn completed_prefix_result_bytes_are_retained_when_the_next_write_is_recovered()
 
 #[test]
 fn completed_read_and_write_are_recovered_from_exact_shadow_and_publication_not_claimed_results() {
-    let f = fixture();
+    let f = fixture().unwrap();
     let t = turn(&f);
     let c = command(&t);
     let read = json!({"call":{"id":"read-before-write","name":tools::model_name("read_page",&f.page).unwrap(),"arguments":{"artifactId":f.page}},"result":serde_json::to_string(&t.snapshot).unwrap(),"is_error":false});
@@ -121,7 +121,7 @@ fn completed_read_and_write_are_recovered_from_exact_shadow_and_publication_not_
         .recover_page_tool_results(&request.id, &altered.to_string())
         .is_err());
     assert_eq!(counts(&f), before);
-    block(&f);
+    block(&f).unwrap();
     assert!(f
         .actor
         .agent
@@ -131,7 +131,7 @@ fn completed_read_and_write_are_recovered_from_exact_shadow_and_publication_not_
 
 #[test]
 fn missing_bounded_receipt_after_publication_is_stale_not_permission_to_reexecute() {
-    let f = fixture();
+    let f = fixture().unwrap();
     let t = turn(&f);
     let c = command(&t);
     let (request, permit) = approved(&f, &t, &c);

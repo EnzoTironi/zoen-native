@@ -52,7 +52,7 @@ fn ordinary_messages_keep_review_but_target_and_actor_role_or_rejoin_aba_do_not(
     let f = Fixture::new(SpaceKind::Community)?;
     let first = f.context()?;
     f.ordered(EventBody::MessagePosted {
-        message: types::new_id("message"),
+        message: types::new_id("message")?,
         text: "Unrelated canonical message".into(),
         attaches: None,
         reply: None,
@@ -183,7 +183,7 @@ fn pending_role_change_never_admits_a_reviewed_removal() -> TestResult<()> {
 
 #[test]
 fn permanent_refusal_survives_cold_reopen_and_confirmed_removal_clears_it() -> TestResult<()> {
-    let directory = std::env::temp_dir().join(types::new_id("membership-refusal"));
+    let directory = std::env::temp_dir().join(types::new_id("membership-refusal")?);
     std::fs::create_dir(&directory)?;
     let f = Fixture::at(
         directory.join("core.sqlite").to_string_lossy().into_owned(),
@@ -241,7 +241,7 @@ fn refusal_is_exact_writer_target_and_membership_cut_not_unrelated_or_old_histor
                 .removal_failed
         );
         f.ordered(EventBody::MessagePosted {
-            message: types::new_id("message"),
+            message: types::new_id("message")?,
             text: "ordinary message does not erase refusal".into(),
             attaches: None,
             reply: None,
@@ -309,7 +309,7 @@ fn enqueue_failure_keeps_projection_and_post_enqueue_read_failure_retains_exact_
 
 #[tokio::test]
 async fn actual_json_bridge_and_cold_reopen_keep_one_signed_pending_removal() -> TestResult<()> {
-    let directory = std::env::temp_dir().join(types::new_id("community-member-test"));
+    let directory = std::env::temp_dir().join(types::new_id("community-member-test")?);
     std::fs::create_dir(&directory)?;
     let f = Fixture::at(
         directory.join("core.sqlite").to_string_lossy().into_owned(),

@@ -3,10 +3,10 @@ use std::{collections::BTreeMap, path::PathBuf};
 
 struct Home(PathBuf);
 impl Home {
-    fn new() -> Self {
-        let home = std::env::temp_dir().join(types::new_id("image-provision"));
+    fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        let home = std::env::temp_dir().join(types::new_id("image-provision")?);
         std::fs::create_dir(&home).unwrap();
-        Self(home)
+        Ok(Self(home))
     }
     fn vault(&self) -> FileVault {
         FileVault {
@@ -55,8 +55,9 @@ fn config(home: &Home) -> Config {
     })).unwrap()
 }
 #[test]
-fn cold_retry_retains_the_same_dedicated_signer_code_and_capsule_without_client_state() {
-    let home = Home::new();
+fn cold_retry_retains_the_same_dedicated_signer_code_and_capsule_without_client_state(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let home = Home::new()?;
     let c = config(&home);
     let original = prepare(&c, &home.vault()).unwrap();
     let snapshot = home.snapshot();
@@ -76,14 +77,16 @@ fn cold_retry_retains_the_same_dedicated_signer_code_and_capsule_without_client_
     assert!(!home.0.join("zoen.sqlite").exists());
     assert!(!home.snapshot().contains_key("zoen.identity.v1"));
     assert!(!home.snapshot().contains_key("zoen.device.v1"));
+    Ok(())
 }
 #[test]
-fn foreign_device_and_malformed_original_never_replace_retained_setup() {
-    let home = Home::new();
+fn foreign_device_and_malformed_original_never_replace_retained_setup(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let home = Home::new()?;
     let mut c = config(&home);
     prepare(&c, &home.vault()).unwrap();
     let snapshot = home.snapshot();
-    c.device = Signer::generate().id();
+    c.device = Signer::generate()?.id();
     assert!(prepare(&c, &home.vault()).is_err());
     assert_eq!(home.snapshot(), snapshot);
     c.device.clear();
@@ -95,11 +98,13 @@ fn foreign_device_and_malformed_original_never_replace_retained_setup() {
     let broken = home.snapshot();
     assert!(prepare(&c, &home.vault()).is_err());
     assert_eq!(home.snapshot(), broken);
+    Ok(())
 }
 #[cfg(unix)]
 #[test]
-fn unreadable_symlink_original_is_not_absence_and_is_not_reseeded() {
-    let home = Home::new();
+fn unreadable_symlink_original_is_not_absence_and_is_not_reseeded(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let home = Home::new()?;
     let c = config(&home);
     prepare(&c, &home.vault()).unwrap();
     let snapshot = home.snapshot();
@@ -118,4 +123,5 @@ fn unreadable_symlink_original_is_not_absence_and_is_not_reseeded() {
         .file_type()
         .is_symlink());
     assert_eq!(std::fs::read(sentinel).unwrap(), b"preserve");
+    Ok(())
 }

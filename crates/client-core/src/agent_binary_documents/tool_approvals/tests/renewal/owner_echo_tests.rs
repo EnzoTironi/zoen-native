@@ -2,16 +2,17 @@
 use super::*;
 
 #[test]
-fn actual_owner_optimistic_renewed_decision_cannot_execute_before_canonical_echo() {
-    let f = fixture();
-    let (old, _) = expired_approved(&f, "read_deckcraft");
+fn actual_owner_optimistic_renewed_decision_cannot_execute_before_canonical_echo(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = fixture().unwrap();
+    let (old, _) = expired_approved(&f, "read_deckcraft").unwrap();
     let intent = request_again(&f, &old);
     let next = f
         .agent
         .stage_tool_review_successor(&old.id, &intent)
         .unwrap()
         .unwrap();
-    confirm_pending(&f);
+    confirm_pending(&f)?;
     let (profiles, history) = {
         let e = f.agent.lock();
         (
@@ -72,7 +73,7 @@ fn actual_owner_optimistic_renewed_decision_cannot_execute_before_canonical_echo
         let mut log =
             event_log::SpaceLog::from_events(&f.space, agent.logs[&f.space].events().to_vec())
                 .unwrap();
-        log.sequence(pending).clone()
+        log.sequence(pending)?.clone()
     };
     let echoed = protocol::Sequenced {
         seq: event.seq,
@@ -98,4 +99,5 @@ fn actual_owner_optimistic_renewed_decision_cannot_execute_before_canonical_echo
         .any(|row| row.event.client_id == event.client_id));
     assert!(f.agent.approved_tool_turn(&next.id, WORKER).is_ok());
     assert_v1(&f);
+    Ok(())
 }

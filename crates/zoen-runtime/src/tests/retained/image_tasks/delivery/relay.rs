@@ -10,7 +10,9 @@ pub(super) struct Relay {
     blobs: std::path::PathBuf,
 }
 impl Relay {
-    pub(super) async fn start(f: &Fixture) -> Self {
+    pub(super) async fn start(
+        f: &Fixture,
+    ) -> std::result::Result<Self, Box<dyn std::error::Error>> {
         let pool = sqlx::PgPool::connect(&f.world.db_url).await.unwrap();
         Self::start_with(f, pool, f.log.clone()).await
     }
@@ -18,9 +20,9 @@ impl Relay {
         f: &Fixture,
         pool: sqlx::PgPool,
         log: Arc<dyn zoen_relay::log::LogStore>,
-    ) -> Self {
+    ) -> std::result::Result<Self, Box<dyn std::error::Error>> {
         f.log.owner.maintain().await.unwrap();
-        let blobs = std::env::temp_dir().join(new_id("zoen-image-355-blobs"));
+        let blobs = std::env::temp_dir().join(new_id("zoen-image-355-blobs")?);
         std::fs::create_dir(&blobs).unwrap();
         let store = object_store::local::LocalFileSystem::new_with_prefix(&blobs).unwrap();
         let state = Arc::new(AppState {
@@ -57,12 +59,12 @@ impl Relay {
             .await
             .unwrap();
         });
-        Self {
+        Ok(Self {
             address,
             state,
             server,
             blobs,
-        }
+        })
     }
     pub(super) fn target(
         &self,

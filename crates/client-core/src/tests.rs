@@ -28,7 +28,7 @@ fn request_previews_use_the_action_title_and_preserve_message_bodies() {
 
 #[test]
 fn demo_receipts_reactions_and_threads_survive_reopen() {
-    seed_locale_cases::demo_receipts_reactions_and_threads_survive_reopen()
+    seed_locale_cases::demo_receipts_reactions_and_threads_survive_reopen().unwrap()
 }
 
 #[test]
@@ -63,7 +63,7 @@ fn budget_rejects_nonpositive_and_overflowing_increases_without_mutation() {
 
 #[test]
 fn everything_persists_and_reverifies_after_reopen() {
-    seed_locale_cases::everything_persists_and_reverifies_after_reopen()
+    seed_locale_cases::everything_persists_and_reverifies_after_reopen().unwrap()
 }
 
 #[test]
@@ -350,11 +350,12 @@ fn account_and_chats_survive_a_relaunch_after_search() {
 #[test]
 fn unconfirmed_genesis_holds_its_descendants_across_retry_and_relaunch() {
     transport_recovery_cases::unconfirmed_genesis_holds_its_descendants_across_retry_and_relaunch()
+        .unwrap()
 }
 
 #[test]
 fn permanently_rejected_genesis_fails_descendants_atomically_across_relaunch() {
-    transport_recovery_cases::permanently_rejected_genesis_fails_descendants_atomically_across_relaunch()
+    transport_recovery_cases::permanently_rejected_genesis_fails_descendants_atomically_across_relaunch().unwrap()
 }
 
 /// A relay that hides one message and rehashes the chain around the gap shows this device
@@ -362,7 +363,7 @@ fn permanently_rejected_genesis_fails_descendants_atomically_across_relaunch() {
 /// device refuses the forged history instead of showing it.
 #[test]
 fn a_device_refuses_a_relay_that_hides_a_message_and_rehashes() {
-    transport_recovery_cases::a_device_refuses_a_relay_that_hides_a_message_and_rehashes()
+    transport_recovery_cases::a_device_refuses_a_relay_that_hides_a_message_and_rehashes().unwrap()
 }
 
 #[test]
@@ -372,22 +373,25 @@ fn inline_replies_quote_and_thread_replies_gather_under_the_root() {
 
 #[test]
 fn immediate_cold_reopen_after_sync_stop() {
-    transport_recovery_cases::immediate_cold_reopen_after_sync_stop()
+    transport_recovery_cases::immediate_cold_reopen_after_sync_stop().unwrap()
 }
 
 #[test]
 fn immediate_cold_reopen_after_implicit_sync_drop() {
-    transport_recovery_cases::immediate_cold_reopen_after_implicit_sync_drop()
+    transport_recovery_cases::immediate_cold_reopen_after_implicit_sync_drop().unwrap()
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn immediate_cold_reopen_inside_an_unrelated_runtime() {
-    transport_recovery_cases::immediate_cold_reopen_inside_an_unrelated_runtime().await
+    transport_recovery_cases::immediate_cold_reopen_inside_an_unrelated_runtime()
+        .await
+        .unwrap()
 }
 
 #[test]
 fn callback_can_stop_and_destroy_its_core_before_immediate_reopen() {
     transport_recovery_cases::callback_can_stop_and_destroy_its_core_before_immediate_reopen()
+        .unwrap()
 }
 
 #[test]
@@ -402,28 +406,29 @@ fn failed_delivery_send_does_not_consume_the_watermark() {
 
 #[test]
 fn receipt_replay_survives_offline_reads_and_restarts() {
-    receipts_cases::receipt_replay_survives_offline_reads_and_restarts()
+    receipts_cases::receipt_replay_survives_offline_reads_and_restarts().unwrap()
 }
 
 #[test]
 fn ticks_follow_the_lowest_read_up_to_watermark() {
-    receipts_cases::ticks_follow_the_lowest_read_up_to_watermark()
+    receipts_cases::ticks_follow_the_lowest_read_up_to_watermark().unwrap()
 }
 
 #[test]
 fn edits_deletes_and_reactions_fold_over_the_original() {
-    conversation_edits_cases::edits_deletes_and_reactions_fold_over_the_original()
+    conversation_edits_cases::edits_deletes_and_reactions_fold_over_the_original().unwrap()
 }
 
 #[test]
 fn ana_replaces_and_removes_only_her_reaction_while_bias_survives_replay() {
     conversation_edits_cases::ana_replaces_and_removes_only_her_reaction_while_bias_survives_replay(
     )
+    .unwrap()
 }
 
 #[test]
 fn chat_prefs_live_in_my_personal_space_and_last_one_wins() {
-    conversation_edits_cases::chat_prefs_live_in_my_personal_space_and_last_one_wins()
+    conversation_edits_cases::chat_prefs_live_in_my_personal_space_and_last_one_wins().unwrap()
 }
 
 mod deckcraft_registration;

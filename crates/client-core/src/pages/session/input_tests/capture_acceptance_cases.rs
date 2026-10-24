@@ -2,8 +2,9 @@
 
 use super::*;
 
-pub(super) fn lossless_input_cold_recovery_preserves_kind_marks_and_exact_retry() {
-    let (_db, mut f, opened, mut block) = lossless_fixture();
+pub(super) fn lossless_input_cold_recovery_preserves_kind_marks_and_exact_retry(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (_db, mut f, opened, mut block) = lossless_fixture()?;
     let scope = input_scope(&f);
     let before_page = f.engine.page(&f.item).unwrap();
     let before_events = f.engine.store.event_count().unwrap();
@@ -81,10 +82,13 @@ pub(super) fn lossless_input_cold_recovery_preserves_kind_marks_and_exact_retry(
     assert_eq!(retry.edit.page.blocks, accepted_page.blocks);
     assert_eq!(f.engine.store.event_count().unwrap(), before_events);
     assert_eq!(f.engine.store.outbox_len().unwrap(), before_outbox);
+
+    Ok(())
 }
 
-pub(super) fn lossless_input_rejects_malformed_ranges_without_replacing_recovery() {
-    let (_db, mut f, opened, block) = lossless_fixture();
+pub(super) fn lossless_input_rejects_malformed_ranges_without_replacing_recovery(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (_db, mut f, opened, block) = lossless_fixture()?;
     let scope = input_scope(&f);
     let initial = lossless_payload(7, &block);
     let accepted = f
@@ -121,11 +125,14 @@ pub(super) fn lossless_input_rejects_malformed_ranges_without_replacing_recovery
     }
     f = reopen_input_fixture(f);
     assert_eq!(f.engine.page_input_load(&scope).unwrap(), accepted.current);
+
+    Ok(())
 }
 
-pub(super) fn page_and_plan_input_cold_reopen_preserve_exact_capture_and_private_journal() {
-    for kind in [ItemKind::Page, ItemKind::Plan] {
-        let (_db, mut f) = cold_input_fixture(kind);
+pub(super) fn page_and_plan_input_cold_reopen_preserve_exact_capture_and_private_journal(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Ok(for kind in [ItemKind::Page, ItemKind::Plan] {
+        let (_db, mut f) = cold_input_fixture(kind)?;
         let mut session = f.session();
         let pending = queued(
             session
@@ -176,12 +183,12 @@ pub(super) fn page_and_plan_input_cold_reopen_preserve_exact_capture_and_private
         assert_eq!(f.session().read(&f.engine).unwrap().view, private);
         assert_input_metadata(&f, &ack.current);
         assert!(f.cipher().unwrap().starts_with("v3:"));
-    }
+    })
 }
 
 pub(super) fn input_cas_sequence_and_reacquire_replay_exact_acceptance_without_replacing_newer_input(
-) {
-    let (_db, f) = cold_input_fixture(ItemKind::Page);
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (_db, f) = cold_input_fixture(ItemKind::Page)?;
     let scope = input_scope(&f);
     let opened = input_open(&f, WRITER_A);
     let payload = rich_payload(7, "lease A 😀e\u{301}");
@@ -324,10 +331,13 @@ pub(super) fn input_cas_sequence_and_reacquire_replay_exact_acceptance_without_r
         before,
         "eviction must reject rather than infer an old acceptance"
     );
+
+    Ok(())
 }
 
-pub(super) fn input_apply_sql_failure_and_lost_ack_cold_reopen_have_one_atomic_acceptance() {
-    let (_db, mut f) = cold_input_fixture(ItemKind::Page);
+pub(super) fn input_apply_sql_failure_and_lost_ack_cold_reopen_have_one_atomic_acceptance(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (_db, mut f) = cold_input_fixture(ItemKind::Page)?;
     let mut session = f.session();
     let pending = queued(
         session
@@ -452,4 +462,6 @@ pub(super) fn input_apply_sql_failure_and_lost_ack_cold_reopen_have_one_atomic_a
     assert_eq!(replay.edit.page.blocks, accepted_page.blocks);
     assert_eq!(journal_without_input(&f), accepted_journal);
     assert_eq!(f.cipher(), before);
+
+    Ok(())
 }

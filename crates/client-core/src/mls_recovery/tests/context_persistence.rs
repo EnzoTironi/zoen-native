@@ -1,8 +1,10 @@
 //! Preserved context persistence scenarios; stable test entries stay in the parent.
 use super::*;
 
-pub(super) fn context_and_commit_roll_back_together_and_wait_for_upload_after_restart() {
-    let path = std::env::temp_dir().join(format!("zoen-recovery-{}.db", types::new_ulid(now_ms())));
+pub(super) fn context_and_commit_roll_back_together_and_wait_for_upload_after_restart(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let path =
+        std::env::temp_dir().join(format!("zoen-recovery-{}.db", types::new_ulid(now_ms())?));
     let space = "recovery-transaction";
     let (root_secret, secret, agreement, commit, reference, genesis, uploaded_blob);
     {
@@ -26,7 +28,7 @@ pub(super) fn context_and_commit_roll_back_together_and_wait_for_upload_after_re
                     kind: SpaceKind::Group,
                     privacy: Privacy::EndToEnd,
                 },
-            ))
+            )?)?
             .clone();
         genesis = created.hash.clone();
         assert_eq!(
@@ -77,7 +79,7 @@ pub(super) fn context_and_commit_roll_back_together_and_wait_for_upload_after_re
         assert_eq!(ready.len(), 1);
         assert_eq!(ready[0].content(), commit.content());
         assert_eq!(ready[0].client_id(), commit.client_id());
-        previous = chain_hash(space, 1, &genesis, &commit.wire_hash());
+        previous = chain_hash(space, 1, &genesis, &commit.wire_hash())?;
         assert_eq!(
             engine.ingest(Sequenced {
                 seq: 1,
@@ -91,7 +93,7 @@ pub(super) fn context_and_commit_roll_back_together_and_wait_for_upload_after_re
         assert_eq!(engine.outbox_len(), 0);
         assert_eq!(engine.recovery_context(space).unwrap().blob, reference.blob);
         engine.device().unwrap().forget(space).unwrap();
-        let replacement = event_log::Signer::generate();
+        let replacement = event_log::Signer::generate()?;
         replacement_secret = replacement.secret();
         engine
             .install_restored_account(
@@ -147,7 +149,7 @@ pub(super) fn context_and_commit_roll_back_together_and_wait_for_upload_after_re
         let confirmation = Sequenced {
             seq: 2,
             prev: previous.clone(),
-            hash: chain_hash(space, 2, &previous, &external.wire_hash()),
+            hash: chain_hash(space, 2, &previous, &external.wire_hash())?,
             env: external,
         };
         for table in ["mls_recovery_pending", "outbox"] {
@@ -190,4 +192,6 @@ pub(super) fn context_and_commit_roll_back_together_and_wait_for_upload_after_re
     let _ = std::fs::remove_file(&path);
     let _ = std::fs::remove_file(path.with_extension("db-wal"));
     let _ = std::fs::remove_file(path.with_extension("db-shm"));
+
+    Ok(())
 }

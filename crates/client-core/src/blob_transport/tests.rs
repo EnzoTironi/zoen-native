@@ -4,7 +4,7 @@ use std::io::{Read, Write};
 #[tokio::test]
 async fn only_actual_exact_signed_put_success_constructs_a_receipt() {
     for status in [Some(201), Some(200), Some(204), Some(400), Some(403), None] {
-        let key = Signer::generate();
+        let key = Signer::generate().unwrap();
         let device = key.id();
         let bytes = vec![91; 4096];
         let sha = hex::encode(Sha256::digest(&bytes));
@@ -79,7 +79,7 @@ async fn changed_ciphertext_is_refused_before_any_network_attempt() {
             &http,
             "http://127.0.0.1:1",
             "test",
-            &Signer::generate(),
+            &Signer::generate().unwrap(),
             &"a".repeat(64),
             vec![1, 2, 3],
             1234

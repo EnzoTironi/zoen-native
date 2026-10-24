@@ -4,13 +4,18 @@ use event_log::{Author, Signer};
 use protocol::{Envelope, Sealed, SealedKind, Sequenced};
 use std::collections::BTreeSet;
 
-fn deliver(a: &mut Engine, b: &mut Engine, space: &str, env: Envelope) {
+fn deliver(
+    a: &mut Engine,
+    b: &mut Engine,
+    space: &str,
+    env: Envelope,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let log = &a.logs[space];
     let seq = log.next_seq();
     let prev = log.head().unwrap().hash;
     let frame = Sequenced {
         seq,
-        hash: event_log::chain_hash(space, seq, &prev, &env.wire_hash()),
+        hash: event_log::chain_hash(space, seq, &prev, &env.wire_hash())?,
         prev,
         env,
     };
@@ -22,6 +27,7 @@ fn deliver(a: &mut Engine, b: &mut Engine, space: &str, env: Envelope) {
         b.ingest(frame),
         Ingest::Applied | Ingest::Confirmed
     ));
+    Ok(())
 }
 
 fn sealed(e: &Engine, space: &str, event: &Event) -> Envelope {
@@ -41,10 +47,13 @@ fn sealed(e: &Engine, space: &str, event: &Event) -> Envelope {
 }
 
 #[test]
-fn encrypted_conflicts_and_membership_changes_reconcile_before_the_own_approval_echo() {
+fn encrypted_conflicts_and_membership_changes_reconcile_before_the_own_approval_echo(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for removal in [false, true] {
-        let path =
-            std::env::temp_dir().join(format!("{}.sqlite", new_id("zoen_encrypted_approval")));
+        let path = std::env::temp_dir().join(format!(
+            "{}.sqlite",
+            new_id("zoen_encrypted_approval").unwrap()
+        ));
         let path = path.to_str().unwrap();
         let mut a = Engine::open(path).unwrap();
         let (root, a_secret, _) = a
@@ -59,7 +68,7 @@ fn encrypted_conflicts_and_membership_changes_reconcile_before_the_own_approval_
             .unwrap()
             .id
             .clone();
-        let space = new_id("sp");
+        let space = new_id("sp").unwrap();
         a.append(
             &space,
             &owner,
@@ -85,7 +94,7 @@ fn encrypted_conflicts_and_membership_changes_reconcile_before_the_own_approval_
             &owner,
             EventBody::GrantIssued {
                 grant: Grant {
-                    id: new_id("gr"),
+                    id: new_id("gr").unwrap(),
                     grantor: owner.clone(),
                     grantee: Some(agent.clone()),
                     scope: GrantScope::Everywhere,
@@ -105,7 +114,7 @@ fn encrypted_conflicts_and_membership_changes_reconcile_before_the_own_approval_
         )
         .unwrap();
         let request = a.state.request_order[0].clone();
-        let b_author = Author::device(&root, Signer::generate());
+        let b_author = Author::device(&root, Signer::generate().unwrap());
         let mut b = Engine::open(":memory:").unwrap();
         b.store.put_identity(&a.identities[&owner], None).unwrap();
         b.store.set_meta("me", &owner).unwrap();
@@ -134,7 +143,7 @@ fn encrypted_conflicts_and_membership_changes_reconcile_before_the_own_approval_
         a.store.set_synced(&space).unwrap();
         a.net.synced.insert(space.clone());
         let encrypted = a.append(&space, &owner, EventBody::SpaceEncrypted).unwrap();
-        deliver(&mut a, &mut b, &space, Envelope::plain(&encrypted));
+        deliver(&mut a, &mut b, &space, Envelope::plain(&encrypted))?;
         // Both owner devices and the declared agent become actual MLS leaves.
         b.device().unwrap().forget(&space).unwrap();
         let b_package = b
@@ -143,7 +152,7 @@ fn encrypted_conflicts_and_membership_changes_reconcile_before_the_own_approval_
             .key_packages(1, false)
             .unwrap()
             .remove(0);
-        let agent_author = Author::device(&a.signers[&agent], Signer::generate());
+        let agent_author = Author::device(&a.signers[&agent], Signer::generate().unwrap());
         let mut agent_store = store::Store::in_memory().unwrap();
         ::mls::migrate(agent_store.conn_mut()).unwrap();
         let agent_device = ::mls::Device::new(
@@ -163,22 +172,22 @@ fn encrypted_conflicts_and_membership_changes_reconcile_before_the_own_approval_
         let env = Envelope::sealed(
             a.net.author.as_ref().unwrap(),
             &space,
-            &new_ulid(crate::engine::now_ms()),
+            &new_ulid(crate::engine::now_ms()).unwrap(),
             crate::engine::now_ms(),
             a.logs[&space].head().as_ref(),
             Sealed::new(SealedKind::Commit, ::mls::SUITE_ID, commit.commit),
         );
-        deliver(&mut a, &mut b, &space, env);
+        deliver(&mut a, &mut b, &space, env)?;
         let welcome = commit.welcome.unwrap();
         let env = Envelope::sealed(
             a.net.author.as_ref().unwrap(),
             &space,
-            &new_ulid(crate::engine::now_ms()),
+            &new_ulid(crate::engine::now_ms()).unwrap(),
             crate::engine::now_ms(),
             a.logs[&space].head().as_ref(),
             Sealed::new(SealedKind::Welcome, ::mls::SUITE_ID, welcome.clone()),
         );
-        deliver(&mut a, &mut b, &space, env);
+        deliver(&mut a, &mut b, &space, env)?;
         assert!(agent_device
             .join(
                 &space,
@@ -207,7 +216,7 @@ fn encrypted_conflicts_and_membership_changes_reconcile_before_the_own_approval_
                     },
                 )
                 .unwrap();
-            deliver(&mut a, &mut b, &space, Envelope::plain(&removed));
+            deliver(&mut a, &mut b, &space, Envelope::plain(&removed))?;
         } else {
             b.resolve_request(&request, false).unwrap();
             let denied = b
@@ -219,7 +228,7 @@ fn encrypted_conflicts_and_membership_changes_reconcile_before_the_own_approval_
                 .unwrap()
                 .event;
             let env = sealed(&b, &space, &denied);
-            deliver(&mut a, &mut b, &space, env);
+            deliver(&mut a, &mut b, &space, env)?;
         }
         let status = if removal {
             ReqStatus::Pending
@@ -230,7 +239,7 @@ fn encrypted_conflicts_and_membership_changes_reconcile_before_the_own_approval_
         assert!(a.items().is_empty());
         assert!(a.standing_decisions().is_empty());
         let env = sealed(&a, &space, &pending_approval);
-        deliver(&mut a, &mut b, &space, env);
+        deliver(&mut a, &mut b, &space, env)?;
         for e in [&a, &b] {
             assert_eq!(e.state.requests[&request].status, status);
             assert!(e.items().is_empty());
@@ -252,4 +261,5 @@ fn encrypted_conflicts_and_membership_changes_reconcile_before_the_own_approval_
             let _ = std::fs::remove_file(format!("{path}{suffix}"));
         }
     }
+    Ok(())
 }

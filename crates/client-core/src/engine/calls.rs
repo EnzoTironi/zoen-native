@@ -247,7 +247,7 @@ impl Engine {
             .0
             .clone();
         self.assert_call_peer_allowed(&callee)?;
-        let id = new_secret_id("call");
+        let id = new_secret_id("call")?;
         let at = now_ms();
         self.append_at(
             space,

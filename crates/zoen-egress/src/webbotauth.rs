@@ -46,6 +46,7 @@ impl std::fmt::Debug for SignedAgent {
 }
 
 /// RFC 7638 thumbprint of an Ed25519 public key as an OKP JWK.
+#[must_use]
 pub fn jwk_thumbprint(public: &[u8; 32]) -> String {
     // Members in lexicographic order, no whitespace.
     let canonical = format!(
@@ -55,13 +56,20 @@ pub fn jwk_thumbprint(public: &[u8; 32]) -> String {
     B64URL.encode(Sha256::digest(canonical.as_bytes()))
 }
 
-fn nonce() -> String {
-    let mut n = [0u8; 32];
-    getrandom::getrandom(&mut n).expect("os randomness");
-    B64.encode(n)
+fn nonce() -> Result<String, String> {
+    random_bytes(getrandom::getrandom).map(|bytes| B64.encode(bytes))
+}
+
+fn random_bytes(
+    fill: impl FnOnce(&mut [u8]) -> Result<(), getrandom::Error>,
+) -> Result<[u8; 32], String> {
+    let mut bytes = [0u8; 32];
+    fill(&mut bytes).map_err(|error| format!("Signing entropy unavailable: {error}"))?;
+    Ok(bytes)
 }
 
 /// `"name": value` lines plus the `@signature-params` line, joined by `\n`.
+#[must_use]
 pub fn signature_base(components: &[(String, String)], params: &str) -> String {
     let mut lines: Vec<String> = components
         .iter()
@@ -72,6 +80,7 @@ pub fn signature_base(components: &[(String, String)], params: &str) -> String {
 }
 
 impl SignedAgent {
+    #[must_use]
     pub fn from_seed(seed: [u8; 32], agent_url: &str) -> Self {
         SignedAgent {
             key: SigningKey::from_bytes(&seed),
@@ -79,38 +88,55 @@ impl SignedAgent {
         }
     }
 
-    pub fn generate(agent_url: &str) -> Self {
-        let mut seed = [0u8; 32];
-        getrandom::getrandom(&mut seed).expect("os randomness");
-        Self::from_seed(seed, agent_url)
+    /// # Errors
+    /// Returns an error when operating-system entropy is unavailable.
+    pub fn generate(agent_url: &str) -> Result<Self, String> {
+        Ok(Self::from_seed(
+            random_bytes(getrandom::getrandom)?,
+            agent_url,
+        ))
     }
 
+    #[must_use]
     pub fn agent_url(&self) -> &str {
         &self.agent_url
     }
 
+    #[must_use]
     pub fn public(&self) -> [u8; 32] {
         self.key.verifying_key().to_bytes()
     }
 
+    #[must_use]
     pub fn keyid(&self) -> String {
         jwk_thumbprint(&self.public())
     }
 
     /// The JWKS the directory serves.
+    #[must_use]
     pub fn jwks(&self) -> serde_json::Value {
         json!({ "keys": [ { "kty": "OKP", "crv": "Ed25519", "x": B64URL.encode(self.public()) } ] })
     }
 
     /// The `Signature-Agent`, `Signature-Input` and `Signature` headers for a request to
     /// `authority` (host, plus `:port` when not the scheme's default).
-    pub fn sign_request(&self, authority: &str, now_s: u64) -> Vec<(String, String)> {
+    /// # Errors
+    /// Refuses unavailable entropy or an expiration outside the timestamp range.
+    pub fn sign_request(
+        &self,
+        authority: &str,
+        now_s: u64,
+    ) -> Result<Vec<(String, String)>, String> {
+        let expires = now_s
+            .checked_add(VALIDITY_SECS)
+            .ok_or("Signature expiration overflow")?;
+        let nonce = nonce()?;
         let agent = format!("\"{}\"", self.agent_url);
         let params = format!(
             "(\"@authority\" \"signature-agent\");created={now_s};keyid=\"{}\";alg=\"ed25519\";expires={};nonce=\"{}\";tag=\"{TAG_REQUEST}\"",
             self.keyid(),
-            now_s + VALIDITY_SECS,
-            nonce(),
+            expires,
+            nonce,
         );
         let base = signature_base(
             &[
@@ -120,34 +146,40 @@ impl SignedAgent {
             &params,
         );
         let sig = self.key.sign(base.as_bytes());
-        vec![
+        Ok(vec![
             ("Signature-Agent".into(), agent),
             ("Signature-Input".into(), format!("sig1={params}")),
             (
                 "Signature".into(),
                 format!("sig1=:{}:", B64.encode(sig.to_bytes())),
             ),
-        ]
+        ])
     }
 
     /// The directory response to a request for `authority` (the agent origin's host):
     /// headers and body.
+    ///
+    /// # Errors
+    /// Refuses an expiration outside the timestamp range.
     pub fn directory_response(
         &self,
         authority: &str,
         now_s: u64,
-    ) -> (Vec<(String, String)>, String) {
+    ) -> Result<(Vec<(String, String)>, String), String> {
+        let expires = now_s
+            .checked_add(VALIDITY_SECS)
+            .ok_or("Signature expiration overflow")?;
         let params = format!(
             "(\"@authority\";req);created={now_s};keyid=\"{}\";alg=\"ed25519\";expires={};tag=\"{TAG_DIRECTORY}\"",
             self.keyid(),
-            now_s + VALIDITY_SECS,
+            expires,
         );
         let base = signature_base(
             &[("\"@authority\";req".into(), authority.to_ascii_lowercase())],
             &params,
         );
         let sig = self.key.sign(base.as_bytes());
-        (
+        Ok((
             vec![
                 ("Content-Type".into(), DIRECTORY_CONTENT_TYPE.into()),
                 ("Signature-Input".into(), format!("sig1={params}")),
@@ -158,7 +190,7 @@ impl SignedAgent {
                 ("Cache-Control".into(), "max-age=86400".into()),
             ],
             self.jwks().to_string(),
-        )
+        ))
     }
 }
 
@@ -185,6 +217,8 @@ fn param<'a>(params: &'a str, name: &str) -> Option<&'a str> {
 
 /// Checks a signed request the way a site would: the covered components, the tag, the time
 /// window, and the Ed25519 signature against a key in `jwks` with the matching thumbprint.
+/// # Errors
+/// Rejects malformed, expired, mismatched or unauthenticated signatures.
 pub fn verify_request(
     headers: &[(String, String)],
     authority: &str,
@@ -250,6 +284,8 @@ pub fn verify_request(
 }
 
 /// Checks a directory response's own signature (the `"@authority";req` form).
+/// # Errors
+/// Rejects malformed, expired, mismatched or unauthenticated signatures.
 pub fn verify_directory(
     headers: &[(String, String)],
     body: &str,
@@ -319,9 +355,9 @@ mod tests {
 
     #[test]
     fn a_signed_request_verifies_and_a_changed_one_does_not() {
-        let a = SignedAgent::generate("https://agents.zoen.test/");
+        let a = SignedAgent::generate("https://agents.zoen.test/").unwrap();
         let now = 1_800_000_000;
-        let h = a.sign_request("shop.example.com", now);
+        let h = a.sign_request("shop.example.com", now).unwrap();
         assert_eq!(h[0].1, "\"https://agents.zoen.test\"");
         assert!(h[1].1.contains("tag=\"web-bot-auth\""));
         let v = verify_request(&h, "shop.example.com", &a.jwks(), now + 10).unwrap();
@@ -330,18 +366,34 @@ mod tests {
         // Another site, too late, another key.
         assert!(verify_request(&h, "evil.example.com", &a.jwks(), now).is_err());
         assert!(verify_request(&h, "shop.example.com", &a.jwks(), now + 301).is_err());
-        let b = SignedAgent::generate("https://agents.zoen.test");
+        let b = SignedAgent::generate("https://agents.zoen.test").unwrap();
         assert!(verify_request(&h, "shop.example.com", &b.jwks(), now).is_err());
         // A swapped Signature-Agent.
-        let mut h2 = h.clone();
+        let mut h2 = h;
         h2[0].1 = "\"https://evil.test\"".into();
         assert!(verify_request(&h2, "shop.example.com", &a.jwks(), now).is_err());
     }
 
     #[test]
+    fn unavailable_entropy_never_returns_key_material() {
+        assert!(random_bytes(|_| Err(getrandom::Error::UNSUPPORTED)).is_err());
+    }
+
+    #[test]
+    fn overflowing_expiration_never_returns_a_signature() {
+        let agent = SignedAgent::from_seed([7; 32], "https://agents.zoen.test");
+        assert!(agent.sign_request("shop.example.com", u64::MAX).is_err());
+        assert!(agent
+            .directory_response("agents.zoen.test", u64::MAX)
+            .is_err());
+    }
+
+    #[test]
     fn the_directory_is_signed_by_its_own_key() {
-        let a = SignedAgent::generate("https://agents.zoen.test");
-        let (h, body) = a.directory_response("agents.zoen.test", 1_800_000_000);
+        let a = SignedAgent::generate("https://agents.zoen.test").unwrap();
+        let (h, body) = a
+            .directory_response("agents.zoen.test", 1_800_000_000)
+            .unwrap();
         let jwks = verify_directory(&h, &body, "agents.zoen.test", 1_800_000_001).unwrap();
         assert_eq!(jwks["keys"][0]["crv"], "Ed25519");
         assert!(verify_directory(&h, &body, "other.test", 1_800_000_001).is_err());

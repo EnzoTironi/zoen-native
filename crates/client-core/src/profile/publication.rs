@@ -79,7 +79,7 @@ impl Engine {
                 return Some(upload.sealed(&me));
             }
         }
-        let ciphertext = seal_profile(&key, &me, version, &fields);
+        let ciphertext = seal_profile(&key, &me, version, &fields).ok()?;
         if ciphertext.len() > MAX_CIPHERTEXT {
             return None;
         }

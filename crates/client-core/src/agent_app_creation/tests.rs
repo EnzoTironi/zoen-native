@@ -5,8 +5,8 @@ use crate::{
 };
 use types::{Capability, EventBody, Grant, GrantScope, TrustLevel};
 
-pub(super) fn setup() -> Fixture {
-    let f = fixture();
+pub(super) fn setup() -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
+    let f = fixture()?;
     let mut e = f.agent.lock();
     let actor = e.me_id().unwrap();
     e.append(
@@ -14,7 +14,7 @@ pub(super) fn setup() -> Fixture {
         &f.owner,
         EventBody::GrantIssued {
             grant: Grant {
-                id: types::new_id("creation_trust"),
+                id: types::new_id("creation_trust")?,
                 grantor: f.owner.clone(),
                 grantee: Some(actor),
                 scope: GrantScope::Space(f.space.clone()),
@@ -25,7 +25,7 @@ pub(super) fn setup() -> Fixture {
     )
     .unwrap();
     drop(e);
-    f
+    Ok(f)
 }
 pub(super) fn input(f: &Fixture, requested_title: &str) -> AgentToolApprovalInput {
     let e = f.agent.lock();
@@ -84,7 +84,7 @@ fn approve(f: &Fixture, request: &crate::AgentRequestDto) {
 
 #[test]
 fn staging_is_inert_deduplicated_and_approval_replays_one_native_creation() {
-    let f = setup();
+    let f = setup().unwrap();
     let before = f.agent.items().len();
     let request = stage(&f);
     assert_eq!(f.agent.items().len(), before);
@@ -135,7 +135,7 @@ fn staging_is_inert_deduplicated_and_approval_replays_one_native_creation() {
 #[test]
 fn denial_cancellation_and_modified_source_never_create_a_document() {
     for decision in [ToolRequestDecision::Deny, ToolRequestDecision::Cancel] {
-        let f = setup();
+        let f = setup().unwrap();
         let before = f.agent.items().len();
         let request = stage(&f);
         decide(
@@ -148,7 +148,7 @@ fn denial_cancellation_and_modified_source_never_create_a_document() {
         assert!(f.agent.approved_app_creation(&request.id).is_err());
         assert_eq!(f.agent.items().len(), before);
     }
-    let f = setup();
+    let f = setup().unwrap();
     let request = stage(&f);
     approve(&f, &request);
     let permit = f.agent.approved_app_creation(&request.id).unwrap();
@@ -172,7 +172,7 @@ fn denial_cancellation_and_modified_source_never_create_a_document() {
 
 #[test]
 fn unexpected_fields_different_executor_or_owner_binding_cannot_stage_a_creation() {
-    let f = setup();
+    let f = setup().unwrap();
     for change in 0..5 {
         let mut ask = input(&f, "Reviewed presentation");
         match change {
@@ -209,7 +209,7 @@ fn unexpected_fields_different_executor_or_owner_binding_cannot_stage_a_creation
 
 #[test]
 fn lost_journal_result_recovers_only_an_existing_native_receipt() {
-    let f = setup();
+    let f = setup().unwrap();
     let request = stage(&f);
     approve(&f, &request);
     let permit = f.agent.approved_app_creation(&request.id).unwrap();
@@ -240,8 +240,9 @@ fn lost_journal_result_recovers_only_an_existing_native_receipt() {
 }
 
 #[test]
-fn revoked_writer_and_expired_signed_request_cannot_create_or_reauthorize() {
-    let f = setup();
+fn revoked_writer_and_expired_signed_request_cannot_create_or_reauthorize(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = setup().unwrap();
     let request = stage(&f);
     approve(&f, &request);
     let permit = f.agent.approved_app_creation(&request.id).unwrap();
@@ -260,31 +261,33 @@ fn revoked_writer_and_expired_signed_request_cannot_create_or_reauthorize() {
     assert!(f.agent.execute_app_creation(&permit).is_err());
     assert_eq!(f.agent.items().len(), before);
 
-    let f = setup();
+    let f = setup().unwrap();
     let request = stage(&f);
     let e = f.agent.lock();
     let mut expired = e.state.requests[&request.id].req.clone();
-    expired.id = types::new_id("expired_creation");
+    expired.id = types::new_id("expired_creation").unwrap();
     expired.tool_proposal.as_mut().unwrap().expires_at_ms = crate::engine::now_ms() - 1;
     expired.content_hash = expired.tool_proposal_hash(&f.space).unwrap();
     let id = expired.id.clone();
     let observed = expired.content_hash.clone();
     let opened = expired.tool_proposal.as_ref().unwrap().expires_at_ms - 1000;
     drop(e);
-    shared::tests::append_at(&f, expired, opened);
+    shared::tests::append_at(&f, expired, opened)?;
     assert!(decide(&f, &id, &observed, ToolRequestDecision::ApproveOnce).is_err());
     assert!(f.agent.approved_app_creation(&id).is_err());
     assert_eq!(f.agent.items().len(), before);
+    Ok(())
 }
 
 #[test]
-fn renewed_creation_keeps_the_future_item_but_requires_its_own_signed_decision() {
+fn renewed_creation_keeps_the_future_item_but_requires_its_own_signed_decision(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use crate::agent_binary_documents::tests::renewal_history::{
         confirm_pending, expired_approved,
     };
-    let f = setup();
+    let f = setup().unwrap();
     let live = stage(&f);
-    let old = expired_approved(&f, live);
+    let old = expired_approved(&f, live).unwrap();
     let old_permit = f.agent.approved_app_creation(&old.id).unwrap();
     assert!(f.agent.execute_app_creation(&old_permit).is_err());
     decide(
@@ -316,7 +319,7 @@ fn renewed_creation_keeps_the_future_item_but_requires_its_own_signed_decision()
             .unwrap(),
         Some(next.clone())
     );
-    confirm_pending(&f);
+    confirm_pending(&f)?;
     approve(&f, &next);
     let permit = f.agent.approved_app_creation(&next.id).unwrap();
     let before = f.agent.items().len();
@@ -332,4 +335,5 @@ fn renewed_creation_keeps_the_future_item_but_requires_its_own_signed_decision()
     assert_eq!(replay["itemId"], created["itemId"]);
     assert_eq!(f.agent.items().len(), before + 1);
     assert!(f.agent.verify_all().iter().all(|result| result.valid));
+    Ok(())
 }

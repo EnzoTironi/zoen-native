@@ -27,7 +27,7 @@ struct Fixture {
 
 #[test]
 fn private_selection_reopens_encrypted_without_a_message_file_or_upload() {
-    selection_cases::private_selection_reopens_encrypted_without_a_message_file_or_upload()
+    selection_cases::private_selection_reopens_encrypted_without_a_message_file_or_upload().unwrap()
 }
 
 #[test]
@@ -43,7 +43,7 @@ fn second_file_failure_rolls_back_entire_batch_and_freezes_exact_retry() {
 
 #[test]
 fn accepted_cold_retry_returns_same_entries_and_preserves_a_newer_unsent_selection() {
-    publication_cases::accepted_cold_retry_returns_same_entries_and_preserves_a_newer_unsent_selection()
+    publication_cases::accepted_cold_retry_returns_same_entries_and_preserves_a_newer_unsent_selection().unwrap()
 }
 
 #[test]
@@ -79,7 +79,7 @@ fn accepted_retry_precedes_changed_writer_reply_and_clear_retains_receipt() {
 
 #[test]
 fn backup_restore_and_device_erase_never_carry_a_private_media_draft_to_another_account() {
-    save_receipts_cases::backup_restore_and_device_erase_never_carry_a_private_media_draft_to_another_account()
+    save_receipts_cases::backup_restore_and_device_erase_never_carry_a_private_media_draft_to_another_account().unwrap()
 }
 
 #[test]
@@ -93,7 +93,8 @@ fn voice_append_failure_rolls_back_chunks_keys_and_uploads_then_retries_once() {
 }
 
 #[test]
-fn history_export_remains_only_canonical_events_while_media_draft_is_private() {
+fn history_export_remains_only_canonical_events_while_media_draft_is_private(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     custody_cases::history_export_remains_only_canonical_events_while_media_draft_is_private()
 }
 
@@ -120,7 +121,7 @@ fn voice_save_ack_survives_realistic_float_normalization_and_identifies_newer_cu
 
 #[test]
 fn legacy_receipt_without_output_revision_preserves_cold_draft_but_cannot_guess_ack() {
-    save_receipts_cases::legacy_receipt_without_output_revision_preserves_cold_draft_but_cannot_guess_ack()
+    save_receipts_cases::legacy_receipt_without_output_revision_preserves_cold_draft_but_cannot_guess_ack().unwrap()
 }
 
 #[test]
@@ -131,44 +132,47 @@ fn media_contract_defaults_preserve_legacy_save_receipts_and_signed_bytes() {
 #[test]
 fn media_contract_file_album_preserves_real_mime_order_signature_and_retry() {
     album_publication_cases::media_contract_file_album_preserves_real_mime_order_signature_and_retry(
-    )
+    ).unwrap()
 }
 
 #[test]
 fn media_contract_transient_first_album_refusal_preserves_all_confirmed_members_after_reopen() {
-    album_publication_cases::media_contract_transient_first_album_refusal_preserves_all_confirmed_members_after_reopen()
+    album_publication_cases::media_contract_transient_first_album_refusal_preserves_all_confirmed_members_after_reopen().unwrap()
 }
 
 #[test]
 fn media_contract_single_media_transient_file_refusal_survives_cold_receiver() {
-    album_publication_cases::media_contract_single_media_transient_file_refusal_survives_cold_receiver()
+    album_publication_cases::media_contract_single_media_transient_file_refusal_survives_cold_receiver().unwrap()
 }
 
 #[test]
-fn media_contract_group_dependencies_wait_for_confirmed_files_and_do_not_block_other_spaces() {
+fn media_contract_group_dependencies_wait_for_confirmed_files_and_do_not_block_other_spaces(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     group_admission_cases::media_contract_group_dependencies_wait_for_confirmed_files_and_do_not_block_other_spaces()
 }
 
 #[test]
 fn media_contract_grouped_preexisting_confirmed_files_need_no_new_creation() {
     group_admission_cases::media_contract_grouped_preexisting_confirmed_files_need_no_new_creation()
+        .unwrap()
 }
 
 #[test]
 fn media_contract_permanent_file_refusal_fails_dependents_and_releases_later_heads() {
     refusals_cases::media_contract_permanent_file_refusal_fails_dependents_and_releases_later_heads(
     )
+    .unwrap()
 }
 
 #[test]
 fn media_contract_refused_duplicate_creation_cannot_poison_confirmed_file_reference() {
     refusals_cases::media_contract_refused_duplicate_creation_cannot_poison_confirmed_file_reference(
-    )
+    ).unwrap()
 }
 
 #[test]
 fn media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped() {
-    refusals_cases::media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped()
+    refusals_cases::media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped().unwrap()
 }
 
 #[test]
@@ -178,7 +182,7 @@ fn media_contract_group_failure_rolls_back_and_retains_frozen_options() {
 
 #[test]
 fn media_contract_rejects_invalid_options_and_foreign_authority_without_mutation() {
-    group_admission_cases::media_contract_rejects_invalid_options_and_foreign_authority_without_mutation()
+    group_admission_cases::media_contract_rejects_invalid_options_and_foreign_authority_without_mutation().unwrap()
 }
 
 #[test]
@@ -188,16 +192,17 @@ fn media_contract_rejects_invalid_group_index_and_duplicate_membership_atomicall
 
 #[test]
 fn media_contract_forwarded_group_is_rejected_and_single_forward_preserves_file_presentation() {
-    group_admission_cases::media_contract_forwarded_group_is_rejected_and_single_forward_preserves_file_presentation()
+    group_admission_cases::media_contract_forwarded_group_is_rejected_and_single_forward_preserves_file_presentation().unwrap()
 }
 
 #[test]
 fn media_contract_failed_local_metadata_remains_visible_after_revocation_and_cold_recovery() {
-    custody_cases::media_contract_failed_local_metadata_remains_visible_after_revocation_and_cold_recovery()
+    custody_cases::media_contract_failed_local_metadata_remains_visible_after_revocation_and_cold_recovery().unwrap()
 }
 
 #[test]
-fn media_contract_received_ordered_fixtures_use_the_same_cursor_as_browser() {
+fn media_contract_received_ordered_fixtures_use_the_same_cursor_as_browser(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let fixtures: Vec<serde_json::Value> = serde_json::from_str(include_str!(
         "../../../types/src/media-received-fixtures.json"
     ))
@@ -218,7 +223,7 @@ fn media_contract_received_ordered_fixtures_use_the_same_cursor_as_browser() {
                 )
                 .unwrap();
         }
-        media_contract_confirm_scope(&f);
+        media_contract_confirm_scope(&f)?;
         let items = f
             .engine
             .lock()
@@ -244,7 +249,7 @@ fn media_contract_received_ordered_fixtures_use_the_same_cursor_as_browser() {
             media_contract_receive(
                 &f,
                 types::EventBody::MessagePosted {
-                    message: types::new_id("msg"),
+                    message: types::new_id("msg").unwrap(),
                     text: format!("fixture-{index}"),
                     attaches: Some(items[index].clone()),
                     media: Some(media),
@@ -255,7 +260,8 @@ fn media_contract_received_ordered_fixtures_use_the_same_cursor_as_browser() {
                     forwarded: member["forwarded"].as_bool().unwrap_or(false),
                 },
                 false,
-            );
+            )
+            .unwrap();
         }
         let accepted = f
             .engine
@@ -281,38 +287,41 @@ fn media_contract_received_ordered_fixtures_use_the_same_cursor_as_browser() {
             scenario["name"]
         );
     }
+    Ok(())
 }
 
 #[test]
 fn media_contract_recovery_only_file_refuses_legacy_attachment_command() {
     recovery_authority_cases::media_contract_recovery_only_file_refuses_legacy_attachment_command()
+        .unwrap()
 }
 
 #[test]
 fn media_contract_recovery_only_file_refuses_new_version_before_writes() {
     recovery_authority_cases::media_contract_recovery_only_file_refuses_new_version_before_writes()
+        .unwrap()
 }
 
 #[test]
 fn media_contract_recovery_only_file_refuses_revert_command() {
-    recovery_authority_cases::media_contract_recovery_only_file_refuses_revert_command()
+    recovery_authority_cases::media_contract_recovery_only_file_refuses_revert_command().unwrap()
 }
 
 #[test]
 fn media_contract_recovery_only_file_refuses_signed_projection_and_ingest() {
     recovery_authority_cases::media_contract_recovery_only_file_refuses_signed_projection_and_ingest(
-    )
+    ).unwrap()
 }
 
 #[test]
 fn media_contract_recovery_bytes_can_be_explicitly_copied_to_a_fresh_file() {
     recovery_authority_cases::media_contract_recovery_bytes_can_be_explicitly_copied_to_a_fresh_file(
-    )
+    ).unwrap()
 }
 
 #[test]
 fn media_contract_recovery_reservation_yields_to_a_validated_file_creation() {
-    recovery_authority_cases::media_contract_recovery_reservation_yields_to_a_validated_file_creation()
+    recovery_authority_cases::media_contract_recovery_reservation_yields_to_a_validated_file_creation().unwrap()
 }
 
 // These projection/WS tests start AFTER the upload prerequisite succeeds. Actual

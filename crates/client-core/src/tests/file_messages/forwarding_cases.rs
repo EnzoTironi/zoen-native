@@ -103,16 +103,17 @@ pub(super) fn cross_chat_media_forwarding_copies_current_files_without_source_bi
     }
 }
 
-pub(super) fn destination_only_receiver_decrypts_forwarded_media_and_thumbnail() {
+pub(super) fn destination_only_receiver_decrypts_forwarded_media_and_thumbnail(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use crate::sync::Ingest;
     use protocol::{Envelope, Sequenced};
     let sender = media_peer("forward_author");
     let receiver = media_peer("forward_reader");
-    let source = media_space(&sender, None, "Private source");
-    let destination = media_space(&sender, Some(&receiver), "Forward destination");
+    let source = media_space(&sender, None, "Private source")?;
+    let destination = media_space(&sender, Some(&receiver), "Forward destination")?;
     let sent = send(&sender, &source, "video/mp4", None, false, "original").unwrap();
     let source_item = card(&sent).item_id.clone();
-    confirm_media_outbox(&sender, &source);
+    confirm_media_outbox(&sender, &source)?;
     let mut relay = sender.lock().logs[&destination].clone();
     let forwarded = sender
         .forward_message(source.clone(), sent.id, destination.clone())
@@ -121,7 +122,7 @@ pub(super) fn destination_only_receiver_decrypts_forwarded_media_and_thumbnail()
     let pending = sender.lock().store.outbox().unwrap();
     assert_eq!(pending.len(), 2);
     for event in pending {
-        relay.sequence(event.event);
+        relay.sequence(event.event)?;
     }
     for event in relay.events() {
         assert!(matches!(
@@ -168,6 +169,7 @@ pub(super) fn destination_only_receiver_decrypts_forwarded_media_and_thumbnail()
     );
     assert_eq!(receiver.file_thumbnail(item).unwrap(), Some(vec![9; 64]));
     assert!(receiver.verify_log(destination).valid);
+    Ok(())
 }
 
 pub(super) fn unavailable_or_corrupt_forwarded_media_does_not_write_a_partial_copy() {

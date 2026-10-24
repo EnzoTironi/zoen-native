@@ -33,15 +33,20 @@ pub fn armed(space: &str) -> bool {
     load().spaces.contains(space)
 }
 
-pub fn view(space: &str, reader: &str, from: u64, canonical: Vec<Sequenced>) -> Vec<Sequenced> {
+pub fn view(
+    space: &str,
+    reader: &str,
+    from: u64,
+    canonical: Vec<Sequenced>,
+) -> Result<Vec<Sequenced>, serde_json::Error> {
     if !armed(space) {
-        return canonical.into_iter().filter(|ev| ev.seq >= from).collect();
+        return Ok(canonical.into_iter().filter(|ev| ev.seq >= from).collect());
     }
     let reach = load().reach.contains(space);
-    let mut chain = cross(reader, &canonical);
-    append_held(space, reader, &mut chain);
-    chain = apply_far(chain, reach);
-    chain.into_iter().filter(|ev| ev.seq >= from).collect()
+    let mut chain = cross(reader, &canonical)?;
+    append_held(space, reader, &mut chain)?;
+    chain = apply_far(chain, reach)?;
+    Ok(chain.into_iter().filter(|ev| ev.seq >= from).collect())
 }
 
 pub(crate) fn observe(space: &str, pending: &[Pending], applied: &Applied) {
@@ -107,7 +112,7 @@ fn parse(text: &str) -> Switch {
     out
 }
 
-fn cross(reader: &str, events: &[Sequenced]) -> Vec<Sequenced> {
+fn cross(reader: &str, events: &[Sequenced]) -> Result<Vec<Sequenced>, serde_json::Error> {
     let mut out = Vec::new();
     let mut i = 0;
     while i < events.len() {
@@ -126,14 +131,18 @@ fn cross(reader: &str, events: &[Sequenced]) -> Vec<Sequenced> {
             if drop_own && ev.env.author() == reader {
                 continue;
             }
-            push_linked(&mut out, ev);
+            push_linked(&mut out, ev)?;
         }
         i = end;
     }
-    out
+    Ok(out)
 }
 
-fn append_held(space: &str, reader: &str, chain: &mut Vec<Sequenced>) {
+fn append_held(
+    space: &str,
+    reader: &str,
+    chain: &mut Vec<Sequenced>,
+) -> Result<(), serde_json::Error> {
     let held = HELD
         .lock()
         .expect("fork histories")
@@ -155,36 +164,37 @@ fn append_held(space: &str, reader: &str, chain: &mut Vec<Sequenced>) {
                 hash: String::new(),
                 env,
             },
-        );
+        )?;
     }
+    Ok(())
 }
 
-fn apply_far(chain: Vec<Sequenced>, reach: bool) -> Vec<Sequenced> {
+fn apply_far(chain: Vec<Sequenced>, reach: bool) -> Result<Vec<Sequenced>, serde_json::Error> {
     let Some(index) = chain.iter().position(is_far) else {
-        return chain;
+        return Ok(chain);
     };
     let checkpoint = &chain[index];
     let Some(seen) = checkpoint.env.seen() else {
-        return chain;
+        return Ok(chain);
     };
     let client = checkpoint.env.client_id();
     let mut out = Vec::new();
     for ev in chain.iter().filter(|ev| ev.seq <= seen.seq) {
-        push_linked(&mut out, ev);
+        push_linked(&mut out, ev)?;
     }
     let already = out.last().is_some_and(|ev| ev.env.client_id() == client);
     if !already {
-        push_linked(&mut out, checkpoint);
+        push_linked(&mut out, checkpoint)?;
     }
     if reach {
         for ev in chain
             .iter()
             .filter(|ev| ev.seq > seen.seq && ev.env.client_id() != client)
         {
-            push_linked(&mut out, ev);
+            push_linked(&mut out, ev)?;
         }
     }
-    out
+    Ok(out)
 }
 
 fn is_far(ev: &Sequenced) -> bool {
@@ -197,23 +207,24 @@ fn is_far(ev: &Sequenced) -> bool {
     }
 }
 
-fn push_linked(out: &mut Vec<Sequenced>, ev: &Sequenced) {
+fn push_linked(out: &mut Vec<Sequenced>, ev: &Sequenced) -> Result<(), serde_json::Error> {
     if linked(out.last(), ev) {
         out.push(ev.clone());
-        return;
+        return Ok(());
     }
     let seq = out.last().map(|prev| prev.seq + 1).unwrap_or(0);
     let prev = out
         .last()
         .map(|prev| prev.hash.clone())
         .unwrap_or_else(|| types::GENESIS_PREV.to_string());
-    let hash = event_log::chain_hash(ev.env.space(), seq, &prev, &ev.env.wire_hash());
+    let hash = event_log::chain_hash(ev.env.space(), seq, &prev, &ev.env.wire_hash())?;
     out.push(Sequenced {
         seq,
         prev,
         hash,
         env: ev.env.clone(),
     });
+    Ok(())
 }
 
 fn linked(prev: Option<&Sequenced>, ev: &Sequenced) -> bool {
@@ -268,23 +279,27 @@ mod tests {
         prev: Option<&Sequenced>,
         seen: Option<Seen>,
         body: EventBody,
-    ) -> Sequenced {
+    ) -> std::result::Result<Sequenced, Box<dyn std::error::Error>> {
         let seq = prev.map(|ev| ev.seq + 1).unwrap_or(0);
         let prev_hash = prev
             .map(|ev| ev.hash.clone())
             .unwrap_or_else(|| GENESIS_PREV.to_string());
-        let env = Envelope::plain(&author.sign_event(space, client, 1_700_000_000_000, seen, body));
-        let hash = chain_hash(space, seq, &prev_hash, &env.wire_hash());
-        Sequenced {
+        let env =
+            Envelope::plain(&author.sign_event(space, client, 1_700_000_000_000, seen, body)?);
+        let hash = chain_hash(space, seq, &prev_hash, &env.wire_hash())?;
+        Ok(Sequenced {
             seq,
             prev: prev_hash,
             hash,
             env,
-        }
+        })
     }
 
-    fn created(author: &Author, space: &str) -> Sequenced {
-        place(
+    fn created(
+        author: &Author,
+        space: &str,
+    ) -> std::result::Result<Sequenced, Box<dyn std::error::Error>> {
+        Ok(place(
             author,
             space,
             "created",
@@ -295,7 +310,7 @@ mod tests {
                 kind: SpaceKind::Group,
                 privacy: Privacy::Closed,
             },
-        )
+        )?)
     }
 
     fn seen_of(ev: &Sequenced) -> Seen {
@@ -305,7 +320,7 @@ mod tests {
         }
     }
 
-    fn linked_chain(chain: &[Sequenced]) {
+    fn linked_chain(chain: &[Sequenced]) -> std::result::Result<(), Box<dyn std::error::Error>> {
         for (i, ev) in chain.iter().enumerate() {
             let prev = if i == 0 {
                 GENESIS_PREV.to_string()
@@ -316,9 +331,10 @@ mod tests {
             assert_eq!(ev.prev, prev);
             assert_eq!(
                 ev.hash,
-                chain_hash(ev.env.space(), ev.seq, &ev.prev, &ev.env.wire_hash())
+                chain_hash(ev.env.space(), ev.seq, &ev.prev, &ev.env.wire_hash())?
             );
         }
+        Ok(())
     }
 
     fn ids(chain: &[Sequenced]) -> Vec<&str> {
@@ -346,13 +362,14 @@ mod tests {
     }
 
     #[test]
-    fn fork_histories_crosses_siblings_for_the_author_only() {
+    fn fork_histories_crosses_siblings_for_the_author_only(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let _armed = arm("sp-cross\n");
-        let owner = Author::root(Signer::generate());
-        let a = Author::root(Signer::generate());
-        let b = Author::root(Signer::generate());
+        let owner = Author::root(Signer::generate()?);
+        let a = Author::root(Signer::generate()?);
+        let b = Author::root(Signer::generate()?);
         let space = "sp-cross";
-        let head = created(&owner, space);
+        let head = created(&owner, space)?;
         let from_a = place(
             &a,
             space,
@@ -360,7 +377,7 @@ mod tests {
             Some(&head),
             Some(seen_of(&head)),
             message("a"),
-        );
+        )?;
         let from_b = place(
             &b,
             space,
@@ -368,28 +385,30 @@ mod tests {
             Some(&from_a),
             Some(seen_of(&head)),
             message("b"),
-        );
+        )?;
         let canonical = vec![head, from_a, from_b];
-        let for_a = view(space, a.identity.as_str(), 0, canonical.clone());
-        let for_b = view(space, b.identity.as_str(), 0, canonical.clone());
-        let for_owner = view(space, owner.identity.as_str(), 0, canonical.clone());
+        let for_a = view(space, a.identity.as_str(), 0, canonical.clone())?;
+        let for_b = view(space, b.identity.as_str(), 0, canonical.clone())?;
+        let for_owner = view(space, owner.identity.as_str(), 0, canonical.clone())?;
         assert_eq!(ids(&for_a), ["created", "from-b"]);
         assert_eq!(ids(&for_b), ["created", "from-a"]);
         assert_eq!(ids(&for_owner), ["created", "from-a", "from-b"]);
-        linked_chain(&for_a);
-        linked_chain(&for_b);
-        linked_chain(&for_owner);
-        let other = view("sp-other", a.identity.as_str(), 0, canonical);
+        linked_chain(&for_a)?;
+        linked_chain(&for_b)?;
+        linked_chain(&for_owner)?;
+        let other = view("sp-other", a.identity.as_str(), 0, canonical)?;
         assert_eq!(ids(&other), ["created", "from-a", "from-b"]);
+        Ok(())
     }
 
     #[test]
-    fn fork_histories_holds_a_causal_reject_for_the_other_member() {
+    fn fork_histories_holds_a_causal_reject_for_the_other_member(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let _armed = arm("sp-held\n");
-        let owner = Author::root(Signer::generate());
-        let other = Author::root(Signer::generate());
+        let owner = Author::root(Signer::generate()?);
+        let other = Author::root(Signer::generate()?);
         let space = "sp-held";
-        let head = created(&owner, space);
+        let head = created(&owner, space)?;
         let rejected = Envelope::plain(&other.sign_event(
             space,
             "held-b",
@@ -399,7 +418,7 @@ mod tests {
                 hash: "12".repeat(32),
             }),
             message("b"),
-        ));
+        )?);
         let pending = vec![Pending {
             env: rejected,
             target_known: true,
@@ -418,11 +437,11 @@ mod tests {
                 attempts: 1,
             },
         );
-        let for_owner = view(space, owner.identity.as_str(), 0, vec![head.clone()]);
-        let for_author = view(space, other.identity.as_str(), 0, vec![head]);
+        let for_owner = view(space, owner.identity.as_str(), 0, vec![head.clone()])?;
+        let for_author = view(space, other.identity.as_str(), 0, vec![head])?;
         assert_eq!(ids(&for_owner), ["created", "held-b"]);
         assert_eq!(ids(&for_author), ["created"]);
-        linked_chain(&for_owner);
+        linked_chain(&for_owner)?;
         observe(
             "sp-other",
             &pending,
@@ -443,13 +462,15 @@ mod tests {
             .lock()
             .expect("fork histories")
             .contains_key("sp-other"));
+        Ok(())
     }
 
     #[test]
-    fn fork_histories_withholds_a_far_checkpoint_until_reach() {
-        let owner = Author::root(Signer::generate());
+    fn fork_histories_withholds_a_far_checkpoint_until_reach(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let owner = Author::root(Signer::generate()?);
         let space = "sp-far";
-        let head = created(&owner, space);
+        let head = created(&owner, space)?;
         let fill_1 = place(
             &owner,
             space,
@@ -457,7 +478,7 @@ mod tests {
             Some(&head),
             Some(seen_of(&head)),
             message("1"),
-        );
+        )?;
         let fill_2 = place(
             &owner,
             space,
@@ -465,7 +486,7 @@ mod tests {
             Some(&fill_1),
             Some(seen_of(&fill_1)),
             message("2"),
-        );
+        )?;
         let checkpoint = place(
             &owner,
             space,
@@ -477,14 +498,14 @@ mod tests {
                 epoch: 1,
                 digest: "ab".repeat(32),
             },
-        );
+        )?;
         let canonical = vec![head, fill_1, fill_2, checkpoint];
         let early = {
             let _armed = arm("sp-far\n");
-            view(space, "reader", 0, canonical.clone())
+            view(space, "reader", 0, canonical.clone())?
         };
         assert_eq!(ids(&early), ["created", "far-cp"]);
-        linked_chain(&early);
+        linked_chain(&early)?;
         let upto = match early[1].env.body() {
             Some(EventBody::Checkpoint { upto, .. }) => upto.seq,
             other => panic!("checkpoint, got {other:?}"),
@@ -492,14 +513,15 @@ mod tests {
         assert!(upto > early.last().unwrap().seq);
         let late = {
             let _armed = arm("sp-far\nreach sp-far\n");
-            view(space, "reader", 0, canonical.clone())
+            view(space, "reader", 0, canonical.clone())?
         };
         assert_eq!(ids(&late), ["created", "far-cp", "fill-1", "fill-2"]);
-        linked_chain(&late);
+        linked_chain(&late)?;
         let tail = {
             let _armed = arm("sp-far\nreach sp-far\n");
-            view(space, "reader", 2, canonical)
+            view(space, "reader", 2, canonical)?
         };
         assert_eq!(ids(&tail), ["fill-1", "fill-2"]);
+        Ok(())
     }
 }

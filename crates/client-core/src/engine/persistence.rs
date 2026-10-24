@@ -183,8 +183,16 @@ impl Engine {
 
     // ── escrita de baixo nível ──
 
-    pub(crate) fn create_identity(&mut self, mut identity: Identity, local: bool) -> R<IdentityId> {
-        let signer = Signer::generate();
+    pub(crate) fn create_identity(&mut self, identity: Identity, local: bool) -> R<IdentityId> {
+        self.create_identity_with_signer(identity, local, Signer::generate()?)
+    }
+
+    pub(crate) fn create_identity_with_signer(
+        &mut self,
+        mut identity: Identity,
+        local: bool,
+        signer: Signer,
+    ) -> R<IdentityId> {
         identity.id = signer.id();
         if local && identity.kind == IdentityKind::Agent && identity.owner_proof.is_none() {
             identity.owner_proof = self
@@ -230,7 +238,7 @@ impl Engine {
             &body,
             EventBody::CallV1 { .. } | EventBody::CallTransportV1 { .. }
         ) {
-            let probe = signer.sign_event(space, "call-admission", at_ms, None, body.clone());
+            let probe = signer.sign_event(space, "call-admission", at_ms, None, body.clone())?;
             if !self.state.call_event_valid(&probe, &self.identities)
                 || !self.state.call_transport_valid(&probe)
             {
@@ -263,9 +271,9 @@ impl Engine {
         if is_new && !matches!(body, EventBody::SpaceCreated { .. }) {
             return Err(not_found(&t("Espaço", "Space")));
         }
-        let client_id = new_ulid(at_ms);
+        let client_id = new_ulid(at_ms)?;
         let seen = self.logs.get(space).and_then(SpaceLog::head);
-        let signed = signer.sign_event(space, &client_id, at_ms, seen, body);
+        let signed = signer.sign_event(space, &client_id, at_ms, seen, body)?;
         let empty = State::default();
         let scoped = self.space_projections.get(space).unwrap_or(&empty);
         let context =
@@ -278,12 +286,16 @@ impl Engine {
                 ),
             });
         }
-        let event = self
-            .logs
-            .entry(space.to_string())
-            .or_insert_with(|| SpaceLog::new(space))
-            .sequence(signed)
-            .clone();
+        // Prepare a new log before publishing it to the in-memory directory.
+        // A serialization failure must not create an empty phantom Space.
+        let event = if let Some(log) = self.logs.get_mut(space) {
+            log.sequence(signed)?.clone()
+        } else {
+            let mut log = SpaceLog::new(space);
+            let event = log.sequence(signed)?.clone();
+            self.logs.insert(space.to_owned(), log);
+            event
+        };
         if let Err(e) = self.store.append_event(&event) {
             // Mantém memória e disco iguais: desfaz o append em memória recarregando.
             self.reload()?;
@@ -332,20 +344,26 @@ impl Engine {
             .map_err(|e| CoreError::Storage {
                 message: e.to_string(),
             })?;
+        self.clear_local_store()?;
+        tx.commit().map_err(|e| CoreError::Storage {
+            message: e.to_string(),
+        })?;
+        self.reload()
+    }
+
+    /// Clears the canonical tables inside the transaction owned by the caller.
+    pub(crate) fn clear_local_store(&self) -> R<()> {
         self.store.wipe()?;
         self.store.wipe_sync()?;
         self.store.wipe_profiles()?;
-        ::mls::clear_recovery_markers(&tx).map_err(crate::mls::mls_err)?;
+        ::mls::clear_recovery_markers(self.store.conn()).map_err(crate::mls::mls_err)?;
         // `wipe` empties `meta` too: keep the format marker, or the next open takes this
         // device's fresh v2 logs for old demo data and erases them.
         self.store.set_meta(
             crate::sync::EVENT_FORMAT_META,
             crate::sync::EVENT_FORMAT_VALUE,
         )?;
-        tx.commit().map_err(|e| CoreError::Storage {
-            message: e.to_string(),
-        })?;
-        self.reload()
+        Ok(())
     }
 
     /// Who signs for `author` here: this device's key for the account, or a local

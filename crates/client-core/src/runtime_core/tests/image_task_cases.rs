@@ -30,8 +30,9 @@ pub(super) fn png(width: u32, height: u32) -> Vec<u8> {
     }
     bytes
 }
-pub(super) fn approved() -> (Fixture, String, String) {
-    let mut f = Fixture::new();
+pub(super) fn approved(
+) -> std::result::Result<(Fixture, String, String), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
     f.encrypted(
         EventBody::GrantIssued {
             grant: Grant {
@@ -44,8 +45,8 @@ pub(super) fn approved() -> (Fixture, String, String) {
             },
         },
         200,
-    );
-    f.message("Please create a sky image.");
+    )?;
+    f.message("Please create a sky image.")?;
     let source = f.core.engine.logs[SPACE]
         .events()
         .last()
@@ -58,7 +59,7 @@ pub(super) fn approved() -> (Fixture, String, String) {
         f.core.image_task(&request, crate::engine::now_ms()),
         Err(NativeError::Permission)
     ));
-    let frame = ordered(&f.owner, envelope);
+    let frame = ordered(&f.owner, envelope)?;
     assert_eq!(f.owner.ingest(frame.clone()), Ingest::Applied);
     f.core.ingest(vec![frame]).unwrap();
     let hash = f.core.engine.state.requests[&request]
@@ -79,7 +80,7 @@ pub(super) fn approved() -> (Fixture, String, String) {
             }),
         },
         crate::engine::now_ms(),
-    );
+    )?;
     assert_eq!(
         f.core
             .image_task(&request, crate::engine::now_ms())
@@ -87,11 +88,12 @@ pub(super) fn approved() -> (Fixture, String, String) {
             .input(),
         &input()
     );
-    (f, request, hash)
+    Ok((f, request, hash))
 }
 #[test]
-fn approved_image_task_produces_real_encrypted_filedoc_and_cold_native_image() {
-    let (mut f, request, hash) = approved();
+fn approved_image_task_produces_real_encrypted_filedoc_and_cold_native_image(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut f, request, hash) = approved().unwrap();
     let before = f.core.image().unwrap();
     let bytes = png(1024, 1024);
     let prepared = f
@@ -125,7 +127,7 @@ fn approved_image_task_produces_real_encrypted_filedoc_and_cold_native_image() {
         cold.engine.upload_done(&sha);
     }
     assert_eq!(cold.engine.outbox_envelopes(), vec![envelope.clone()]);
-    let frame = ordered(&f.owner, envelope);
+    let frame = ordered(&f.owner, envelope)?;
     assert_eq!(f.owner.ingest(frame.clone()), Ingest::Applied);
     cold.ingest(vec![frame]).unwrap();
     assert_eq!(cold.engine.state.items[&item].current().number, 1);
@@ -141,10 +143,12 @@ fn approved_image_task_produces_real_encrypted_filedoc_and_cold_native_image() {
         invalid.image().is_err(),
         "failed scratch workspace cannot be activated"
     );
+    Ok(())
 }
 #[test]
-fn image_task_permission_tracks_owner_review_expiry_device_scope_and_revocation() {
-    let (mut f, request, _) = approved();
+fn image_task_permission_tracks_owner_review_expiry_device_scope_and_revocation(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut f, request, _) = approved().unwrap();
     let facts = f
         .core
         .image_task(&request, crate::engine::now_ms())
@@ -159,7 +163,7 @@ fn image_task_permission_tracks_owner_review_expiry_device_scope_and_revocation(
             grant: "image-act".into(),
         },
         crate::engine::now_ms(),
-    );
+    )?;
     assert!(f
         .core
         .image_task(&request, crate::engine::now_ms())
@@ -167,12 +171,14 @@ fn image_task_permission_tracks_owner_review_expiry_device_scope_and_revocation(
     let mut cold = DeviceCore::restore(original, f.credential()).unwrap();
     cold.engine.net.account.as_mut().unwrap().device = "changed-device".into();
     assert!(cold.image_task(&request, crate::engine::now_ms()).is_err());
+    Ok(())
 }
 #[test]
-fn reply_only_trust_never_opens_an_image_review() {
-    let mut f = Fixture::new();
-    f.grant("reply-only", None);
-    f.message("Create an image");
+fn reply_only_trust_never_opens_an_image_review(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new().unwrap();
+    f.grant("reply-only", None)?;
+    f.message("Create an image").unwrap();
     let source = f.core.engine.logs[SPACE]
         .events()
         .last()
@@ -181,11 +187,13 @@ fn reply_only_trust_never_opens_an_image_review() {
         .clone();
     assert!(f.core.stage_image_task(SPACE, &source, input()).is_err());
     assert!(f.core.engine.state.requests.is_empty());
+    Ok(())
 }
 
 #[test]
-fn image_task_uses_sql_observed_trust_expiry_and_never_revives_an_older_grant() {
-    let (mut f, request, _) = approved();
+fn image_task_uses_sql_observed_trust_expiry_and_never_revives_an_older_grant(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut f, request, _) = approved().unwrap();
     let expiry = crate::engine::now_ms() + 30_000;
     f.encrypted(
         EventBody::GrantIssued {
@@ -199,7 +207,7 @@ fn image_task_uses_sql_observed_trust_expiry_and_never_revives_an_older_grant() 
             },
         },
         crate::engine::now_ms(),
-    );
+    )?;
     let facts = f.core.image_task(&request, expiry - 1).unwrap();
     assert!(facts.proposal().expires_at_ms > expiry);
     assert_eq!(
@@ -216,7 +224,7 @@ fn image_task_uses_sql_observed_trust_expiry_and_never_revives_an_older_grant() 
             grant: "image-short".into(),
         },
         crate::engine::now_ms(),
-    );
+    )?;
     assert!(f
         .core
         .engine
@@ -230,11 +238,13 @@ fn image_task_uses_sql_observed_trust_expiry_and_never_revives_an_older_grant() 
             .is_err(),
         "revoked newest baseline cannot revive older Act"
     );
+    Ok(())
 }
 
 #[test]
-fn image_task_tracks_downgrade_and_does_not_revive_expired_regrant() {
-    let (mut f, request, _) = approved();
+fn image_task_tracks_downgrade_and_does_not_revive_expired_regrant(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut f, request, _) = approved().unwrap();
     let at = crate::engine::now_ms();
     for (id, level, expiry, allowed) in [
         ("image-deny", TrustLevel::Listen, None, false),
@@ -258,14 +268,15 @@ fn image_task_tracks_downgrade_and_does_not_revive_expired_regrant() {
                 },
             },
             at,
-        );
+        )?;
         assert_eq!(f.core.image_task(&request, at).is_ok(), allowed, "{id}");
     }
+    Ok(())
 }
 
 #[test]
 fn referenced_image_exceeds_capsule_limit_without_inline_media_or_upload_ack() {
-    let (mut f, request, hash) = approved();
+    let (mut f, request, hash) = approved().unwrap();
     let mut bytes = Vec::new();
     {
         let mut encoder = png::Encoder::new(&mut bytes, 1024, 1024);
@@ -338,7 +349,7 @@ fn referenced_image_exceeds_capsule_limit_without_inline_media_or_upload_ack() {
 
 #[test]
 fn referenced_png_at_the_full_representable_response_boundary_stays_bounded() {
-    let (mut f, request, hash) = approved();
+    let (mut f, request, hash) = approved().unwrap();
     const MAXIMUM: usize = 12_533_760;
     let base = png(1024, 1024);
     let mut bytes = Vec::new();
@@ -375,8 +386,9 @@ fn referenced_png_at_the_full_representable_response_boundary_stays_bounded() {
 }
 
 #[test]
-fn identical_png_in_distinct_approved_tasks_keeps_independent_blob_keys_after_cold_restore() {
-    let (mut f, first_request, first_hash) = approved();
+fn identical_png_in_distinct_approved_tasks_keeps_independent_blob_keys_after_cold_restore(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut f, first_request, first_hash) = approved().unwrap();
     let bytes = png(1024, 1024);
     let first = f
         .core
@@ -386,12 +398,13 @@ fn identical_png_in_distinct_approved_tasks_keeps_independent_blob_keys_after_co
     for blob in first.blobs() {
         f.core.engine.upload_done(&blob.reference().blob);
     }
-    let frame = ordered(&f.owner, first.envelope().clone());
+    let frame = ordered(&f.owner, first.envelope().clone())?;
     assert_eq!(f.owner.ingest(frame.clone()), Ingest::Applied);
     f.core.ingest(vec![frame]).unwrap();
     let image = f.core.image().unwrap();
     f.core = DeviceCore::restore(image, f.credential()).unwrap();
-    f.message("Create the same image as a separate artifact.");
+    f.message("Create the same image as a separate artifact.")
+        .unwrap();
     let source = f.core.engine.logs[SPACE]
         .events()
         .last()
@@ -402,7 +415,7 @@ fn identical_png_in_distinct_approved_tasks_keeps_independent_blob_keys_after_co
     let second_request = review.id;
     let second_hash = review.tool_approval.unwrap().content_hash;
     assert_ne!(first_request, second_request);
-    let frame = ordered(&f.owner, envelope);
+    let frame = ordered(&f.owner, envelope)?;
     assert_eq!(f.owner.ingest(frame.clone()), Ingest::Applied);
     f.core.ingest(vec![frame]).unwrap();
     f.encrypted(
@@ -419,7 +432,7 @@ fn identical_png_in_distinct_approved_tasks_keeps_independent_blob_keys_after_co
             }),
         },
         crate::engine::now_ms(),
-    );
+    )?;
     let second = f
         .core
         .prepare_image_task_referenced(
@@ -460,4 +473,5 @@ fn identical_png_in_distinct_approved_tasks_keeps_independent_blob_keys_after_co
             .collect();
         assert_eq!(actual, bytes);
     }
+    Ok(())
 }

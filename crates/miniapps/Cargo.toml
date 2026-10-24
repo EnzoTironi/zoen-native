@@ -18,3 +18,6 @@ chrono-tz = { version = "0.10", default-features = false, features = ["std"] }
 
 zip = { version = "=8.6.0", default-features = false, features = ["deflate"] }
 quick-xml = "=0.41.0"
+
+[lints]
+workspace = true

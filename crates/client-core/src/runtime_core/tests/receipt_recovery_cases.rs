@@ -2,11 +2,12 @@
 
 use super::*;
 
-pub(super) fn lost_sync_marker_or_scope_cannot_downgrade_a_retained_sealed_reply() {
+pub(super) fn lost_sync_marker_or_scope_cannot_downgrade_a_retained_sealed_reply(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for case in ["sync-marker", "scope", "both"] {
-        let mut fixture = Fixture::new();
-        fixture.grant("marker-original-trust", None);
-        let trigger = fixture.message("Original marker request");
+        let mut fixture = Fixture::new()?;
+        fixture.grant("marker-original-trust", None)?;
+        let trigger = fixture.message("Original marker request")?;
         let original = fixture
             .core
             .reply(SPACE, &trigger, 400)
@@ -47,7 +48,7 @@ pub(super) fn lost_sync_marker_or_scope_cannot_downgrade_a_retained_sealed_reply
         let before = fixture.core.engine.logs[SPACE].head();
         assert!(
             matches!(
-                fixture.core.ingest(vec![ordered(&fixture.owner, plain)]),
+                fixture.core.ingest(vec![ordered(&fixture.owner, plain)?]),
                 Err(NativeError::History)
             ),
             "{case}"
@@ -61,12 +62,15 @@ pub(super) fn lost_sync_marker_or_scope_cannot_downgrade_a_retained_sealed_reply
         );
     }
     println!("JOURNEY actual persisted sync-marker loss and missing current scope projection cannot turn the original sealed Application into an accepted signed plaintext echo; original reference survives");
+
+    Ok(())
 }
 
-pub(super) fn native_receipt_survives_revocation_expiry_and_cold_replay_without_new_effects() {
-    let mut fixture = Fixture::new();
-    fixture.grant("receipt-original-trust", Some(1000));
-    let trigger = fixture.message("Original receipt source");
+pub(super) fn native_receipt_survives_revocation_expiry_and_cold_replay_without_new_effects(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = Fixture::new()?;
+    fixture.grant("receipt-original-trust", Some(1000))?;
+    let trigger = fixture.message("Original receipt source")?;
     let original = fixture
         .core
         .reply(SPACE, &trigger, 400)
@@ -80,7 +84,7 @@ pub(super) fn native_receipt_survives_revocation_expiry_and_cold_replay_without_
     let client_id = prepared.envelope().client_id().to_string();
     let key = super::reference::reference_key(&client_id);
     let reference = fixture.core.engine.store.meta(&key).unwrap().unwrap();
-    let accepted = ordered(&fixture.owner, prepared.envelope().clone());
+    let accepted = ordered(&fixture.owner, prepared.envelope().clone())?;
     assert_eq!(fixture.owner.ingest(accepted.clone()), Ingest::Applied);
     let first = fixture
         .core
@@ -100,7 +104,7 @@ pub(super) fn native_receipt_survives_revocation_expiry_and_cold_replay_without_
             grant: "receipt-original-trust".into(),
         },
         1100,
-    );
+    )?;
     assert!(matches!(
         fixture.core.refresh(&original, 1200),
         Err(NativeError::Permission)
@@ -136,9 +140,12 @@ pub(super) fn native_receipt_survives_revocation_expiry_and_cold_replay_without_
     ));
     assert!(cold.image().is_err());
     println!("JOURNEY exact retained receipt survives accepted native grant revoke/expiry and cold replay without provider/image changes, new outbox or usage; a different original refuses");
+
+    Ok(())
 }
 
-pub(super) fn receipt_refuses_different_duplicate_opening_and_missing_original_reference() {
+pub(super) fn receipt_refuses_different_duplicate_opening_and_missing_original_reference(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for case in [
         "duplicate-ciphertext",
         "pruned-duplicate",
@@ -148,9 +155,9 @@ pub(super) fn receipt_refuses_different_duplicate_opening_and_missing_original_r
         "changed-digest",
         "future-reference",
     ] {
-        let mut fixture = Fixture::new();
-        fixture.grant("duplicate-original-trust", None);
-        let trigger = fixture.message("Original duplicate source");
+        let mut fixture = Fixture::new()?;
+        fixture.grant("duplicate-original-trust", None)?;
+        let trigger = fixture.message("Original duplicate source")?;
         let original = fixture
             .core
             .reply(SPACE, &trigger, 400)
@@ -163,8 +170,8 @@ pub(super) fn receipt_refuses_different_duplicate_opening_and_missing_original_r
             .unwrap();
         let client_id = prepared.envelope().client_id().to_string();
         let key = super::reference::reference_key(&client_id);
-        let different = colliding_native_reply(&fixture, &prepared);
-        let accepted = ordered(&fixture.owner, prepared.envelope().clone());
+        let different = colliding_native_reply(&fixture, &prepared)?;
+        let accepted = ordered(&fixture.owner, prepared.envelope().clone())?;
         assert_eq!(fixture.owner.ingest(accepted.clone()), Ingest::Applied);
         fixture
             .core
@@ -230,13 +237,16 @@ pub(super) fn receipt_refuses_different_duplicate_opening_and_missing_original_r
         );
     }
     println!("JOURNEY receipt replay refuses another signed ciphertext or pruned duplicate, opaque opening, missing/future reference and changed original message/digest after actual cold store roundtrip");
+
+    Ok(())
 }
 
-pub(super) fn actual_maximum_text_reference_is_bounded_and_oversized_fields_refuse() {
+pub(super) fn actual_maximum_text_reference_is_bounded_and_oversized_fields_refuse(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let extreme_space = "\0".repeat(256);
-    let mut fixture = Fixture::new_in(&extreme_space);
-    fixture.grant(&"\0".repeat(256), None);
-    let trigger = fixture.message("Bounded original source");
+    let mut fixture = Fixture::new_in(&extreme_space)?;
+    fixture.grant(&"\0".repeat(256), None)?;
+    let trigger = fixture.message("Bounded original source")?;
     let original = fixture
         .core
         .reply(&extreme_space, &trigger, 400)
@@ -259,7 +269,7 @@ pub(super) fn actual_maximum_text_reference_is_bounded_and_oversized_fields_refu
         fixture.credential(),
     )
     .unwrap();
-    let accepted = ordered(&fixture.owner, prepared.envelope().clone());
+    let accepted = ordered(&fixture.owner, prepared.envelope().clone())?;
     assert_eq!(fixture.owner.ingest(accepted.clone()), Ingest::Applied);
     let receipt = cold
         .receive_reply(&original, &client_id, vec![accepted])
@@ -277,9 +287,9 @@ pub(super) fn actual_maximum_text_reference_is_bounded_and_oversized_fields_refu
         Err(NativeError::Bounds)
     ));
     assert!(cold.image().is_err());
-    let mut oversized = Fixture::new();
-    oversized.grant(&"g".repeat(257), None);
-    let trigger = oversized.message("Oversized original field");
+    let mut oversized = Fixture::new()?;
+    oversized.grant(&"g".repeat(257), None)?;
+    let trigger = oversized.message("Oversized original field")?;
     let original = oversized
         .core
         .reply(SPACE, &trigger, 400)
@@ -304,12 +314,15 @@ pub(super) fn actual_maximum_text_reference_is_bounded_and_oversized_fields_refu
         0
     );
     println!("JOURNEY actual 32768-byte UTF-8 reply with 256-byte JSON-escaped Space/grant fields produces reference_json={} publish={} image={} bytes; 135169-byte metadata and 257-byte field refuse without adopting or truncating", json.len(), wire.len(), prepared.image().as_bytes().len());
+
+    Ok(())
 }
 
-pub(super) fn receipt_delta_preserves_other_pending_and_refuses_real_new_join_or_row_changes() {
-    let mut fixture = Fixture::new();
-    fixture.grant("delta-original-trust", None);
-    let trigger = fixture.message("Original delta source");
+pub(super) fn receipt_delta_preserves_other_pending_and_refuses_real_new_join_or_row_changes(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = Fixture::new()?;
+    fixture.grant("delta-original-trust", None)?;
+    let trigger = fixture.message("Original delta source")?;
     let original = fixture
         .core
         .reply(SPACE, &trigger, 400)
@@ -347,7 +360,7 @@ pub(super) fn receipt_delta_preserves_other_pending_and_refuses_real_new_join_or
         .outbox_get(&joining.client_id)
         .unwrap()
         .unwrap();
-    let accepted = ordered(&fixture.owner, prepared.envelope().clone());
+    let accepted = ordered(&fixture.owner, prepared.envelope().clone())?;
     assert_eq!(fixture.owner.ingest(accepted.clone()), Ingest::Applied);
     fixture
         .core
@@ -396,4 +409,6 @@ pub(super) fn receipt_delta_preserves_other_pending_and_refuses_real_new_join_or
         Err(NativeError::History)
     ));
     println!("JOURNEY explicit delta-check refuses a separately generated genuinely signed joining event, retry-row change, unrelated removal and new orphan sealing metadata; actual target receipt preserves an existing other pending exactly");
+
+    Ok(())
 }

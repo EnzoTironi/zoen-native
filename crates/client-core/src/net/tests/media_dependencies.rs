@@ -3,96 +3,27 @@
 use super::*;
 use crate::{MediaDraftAssetInput, MediaDraftScope, PrivacyDto, SecretVault};
 
-#[derive(Default)]
-struct Vault(Mutex<HashMap<String, Vec<u8>>>);
-impl SecretVault for Vault {
-    fn load(&self, key: String) -> Option<Vec<u8>> {
-        self.0.lock().unwrap().get(&key).cloned()
-    }
-    fn save(&self, key: String, value: Vec<u8>) -> bool {
-        self.0.lock().unwrap().insert(key, value);
-        true
-    }
-    fn delete(&self, key: String) {
-        self.0.lock().unwrap().remove(&key);
-    }
-}
-struct Directory(std::path::PathBuf);
-impl Drop for Directory {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-async fn wire_barrier(socket: &mut RelaySocket, commands: &mpsc::UnboundedSender<Cmd>, name: &str) {
-    // Flush and request share the actual command FIFO. Every resulting Publish
-    // would be on this socket before the marker; no sleep infers its absence.
-    commands.send(Cmd::Flush).unwrap();
-    let (answer, answered) = oneshot::channel();
-    commands
-        .send(Cmd::Req {
-            op: Op::FetchLink { id: name.into() },
-            reply: answer,
-        })
-        .unwrap();
-    loop {
-        match request(socket).await {
-            ClientFrame::Req {
-                id,
-                op: Op::FetchLink { id: marker },
-            } if marker == name => {
-                reply(
-                    socket,
-                    ServerFrame::Res {
-                        id,
-                        result: Ok(Reply::Link(None)),
-                    },
-                )
-                .await;
-                break;
-            }
-            ClientFrame::Req { id, .. } => {
-                reply(
-                    socket,
-                    ServerFrame::Res {
-                        id,
-                        result: Ok(Reply::Done),
-                    },
-                )
-                .await
-            }
-            ClientFrame::Ping => {
-                reply(
-                    socket,
-                    ServerFrame::Pong {
-                        server_time_ms: None,
-                    },
-                )
-                .await
-            }
-            ClientFrame::Ephemeral { .. } => {}
-            other => panic!("unexpected publication before {name} barrier: {other:?}"),
-        }
-    }
-    assert!(matches!(answered.await.unwrap(), Ok(Reply::Link(None))));
-}
+mod support;
+use support::*;
 
 #[tokio::test(flavor = "current_thread")]
 async fn media_dependencies_ws_retry_keeps_ciphertext_and_cold_receiver_album() {
-    run_media_dependencies_ws(false).await;
+    run_media_dependencies_ws(false).await.unwrap();
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn media_dependencies_ws_terminal_member_wakes_later_heads_without_another_confirmation() {
-    run_media_dependencies_ws(true).await;
+    run_media_dependencies_ws(true).await.unwrap();
 }
 
-async fn run_media_dependencies_ws(terminal: bool) {
+async fn run_media_dependencies_ws(
+    terminal: bool,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("ws://{}", listener.local_addr().unwrap());
     let directory = Directory(
-        std::env::temp_dir().join(format!("zoen-media-wire-{}", Signer::generate().id())),
+        std::env::temp_dir().join(format!("zoen-media-wire-{}", Signer::generate()?.id())),
     );
     std::fs::create_dir(&directory.0).unwrap();
     let receiver_path = directory.0.join("receiver.sqlite");
@@ -112,7 +43,7 @@ async fn run_media_dependencies_ws(terminal: bool) {
     // Canonical membership precedes adding a real, independently persisted reader leaf.
     let setup_rows = sender.lock().store.outbox().unwrap();
     for row in setup_rows {
-        let frame = sequence(Envelope::plain(&row.event), &mut head);
+        let frame = sequence(Envelope::plain(&row.event), &mut head)?;
         assert_eq!(sender.lock().ingest(frame.clone()), Ingest::Confirmed);
         assert_eq!(receiver.ingest(frame), Ingest::Applied);
     }
@@ -133,7 +64,7 @@ async fn run_media_dependencies_ws(terminal: bool) {
             Sealed::new(SealedKind::Commit, SUITE_ID, adding.commit),
         ),
         &mut head,
-    );
+    )?;
     assert_eq!(sender.lock().ingest(commit.clone()), Ingest::Applied);
     assert_eq!(receiver.ingest(commit), Ingest::Applied);
     let welcome = sequence(
@@ -146,7 +77,7 @@ async fn run_media_dependencies_ws(terminal: bool) {
             Sealed::new(SealedKind::Welcome, SUITE_ID, adding.welcome.unwrap()),
         ),
         &mut head,
-    );
+    )?;
     assert_eq!(sender.lock().ingest(welcome.clone()), Ingest::Applied);
     assert_eq!(receiver.ingest(welcome), Ingest::Applied);
     assert!(sender.lock().ready_epoch(&space).is_some());
@@ -352,7 +283,7 @@ async fn run_media_dependencies_ws(terminal: bool) {
                             "group predecessor must be canonical first"
                         );
                     }
-                    let ev = sequence(env, &mut head);
+                    let ev = sequence(env, &mut head)?;
                     reply(
                         &mut socket,
                         ServerFrame::Accepted {
@@ -443,6 +374,7 @@ async fn run_media_dependencies_ws(terminal: bool) {
         }
         commands_tx.send(Cmd::Stop).unwrap();
         close_socket.await.unwrap();
+        Ok::<_, Box<dyn std::error::Error>>(())
     };
     let client = async {
         let mut backoff = Duration::from_millis(500);
@@ -450,11 +382,12 @@ async fn run_media_dependencies_ws(terminal: bool) {
         finished.send(()).unwrap();
         exit
     };
-    let (exit, ()) = tokio::time::timeout(Duration::from_secs(20), async {
+    let (exit, produced) = tokio::time::timeout(Duration::from_secs(20), async {
         tokio::join!(client, relay)
     })
     .await
     .expect("actual media WebSocket retry did not converge");
+    produced?;
     assert!(matches!(exit, Exit::Stop));
     ctx.engine.revoke();
     drop(ctx);
@@ -478,7 +411,7 @@ async fn run_media_dependencies_ws(terminal: bool) {
                 .count(),
             1
         );
-        return;
+        return Ok(());
     }
     let messages: Vec<_> = receiver
         .timeline(&space)
@@ -524,4 +457,6 @@ async fn run_media_dependencies_ws(terminal: bool) {
             .index,
         1
     );
+
+    Ok(())
 }

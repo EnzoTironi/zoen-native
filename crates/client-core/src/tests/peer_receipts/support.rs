@@ -16,8 +16,9 @@ pub(super) fn person(name: &str) -> Identity {
     }
 }
 
-pub(super) fn fixture() -> (Database, Arc<Client>, Conversation) {
-    let db = Database::new();
+pub(super) fn fixture(
+) -> std::result::Result<(Database, Arc<Client>, Conversation), Box<dyn std::error::Error>> {
+    let db = Database::new()?;
     let e = db.open();
     let (space, me, peer, outsider) = {
         let mut engine = e.lock();
@@ -26,7 +27,7 @@ pub(super) fn fixture() -> (Database, Arc<Client>, Conversation) {
         let outsider = engine.create_identity(person("Outsider"), true).unwrap();
         engine.store.set_meta("me", &me).unwrap();
         engine.me = Some(me.clone());
-        let space = types::new_id("sp");
+        let space = types::new_id("sp")?;
         engine
             .append(
                 &space,
@@ -82,7 +83,7 @@ pub(super) fn fixture() -> (Database, Arc<Client>, Conversation) {
         text,
         voice,
     };
-    (db, e, conversation)
+    Ok((db, e, conversation))
 }
 
 pub(super) fn entry(e: &Client, c: &Conversation, id: &str) -> TimelineEntry {
@@ -107,17 +108,21 @@ pub(super) fn assert_delivery(e: &Client, c: &Conversation, delivery: Delivery) 
     );
 }
 
-pub(super) fn membership(e: &Client, c: &Conversation, body: EventBody) {
+pub(super) fn membership(
+    e: &Client,
+    c: &Conversation,
+    body: EventBody,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut engine = e.lock();
     let signed = engine.author_for(&c.me).unwrap().sign_event(
         &c.space,
-        &types::new_id("membership"),
+        &types::new_id("membership")?,
         crate::engine::now_ms(),
         engine.logs[&c.space].head(),
         body,
-    );
+    )?;
     let mut relay = engine.logs[&c.space].clone();
-    let event = relay.sequence(signed).clone();
+    let event = relay.sequence(signed)?.clone();
     assert_eq!(
         engine.ingest(protocol::Sequenced {
             seq: event.seq,
@@ -127,6 +132,8 @@ pub(super) fn membership(e: &Client, c: &Conversation, body: EventBody) {
         }),
         crate::sync::Ingest::Applied
     );
+
+    Ok(())
 }
 
 pub(super) fn snapshot(e: &Client) -> ReceiptSnapshot {

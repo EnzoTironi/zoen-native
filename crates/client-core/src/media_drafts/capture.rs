@@ -154,7 +154,7 @@ impl Engine {
             };
             assets.push(asset);
         }
-        let revision = types::new_id("media_draft");
+        let revision = types::new_id("media_draft")?;
         let mut save_receipts = previous.save_receipts.clone();
         save_receipts.push(SaveReceipt {
             input_revision: expected.into(),

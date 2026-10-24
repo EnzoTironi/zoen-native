@@ -10,7 +10,7 @@ pub(super) async fn run(
     request: &AgentRequestDto,
     host: &mut Host,
     provider: &Provider,
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let account = owner.account().unwrap();
     let scope = OwnerPolicyScope {
         expected_identity_id: account.identity_id,
@@ -27,7 +27,7 @@ pub(super) async fn run(
         .agent_control(config.agent.clone(), "pause".into())
         .await
         .unwrap();
-    *host = Host::start(w, path).await;
+    *host = Host::start(w, path).await?;
     let model_cursor = w
         .scalar("SELECT coalesce(max(last_seq),0)::text FROM agent_space_cursors")
         .await;
@@ -140,4 +140,5 @@ pub(super) async fn run(
         .await
         .unwrap();
     println!("owner policy product: actual encrypted inquiry -> configured image quote/current signed version -> explicit digest confirm -> Runtime IPC install -> authenticated Installed receipt, zero attempts/provider sends PASS");
+    Ok(())
 }

@@ -115,7 +115,7 @@ mod tests {
 
     #[tokio::test]
     async fn cold_open_warns_about_unreadable_history_without_trusting_its_membership() {
-        let directory = std::env::temp_dir().join(types::new_id("integrity-cold-open"));
+        let directory = std::env::temp_dir().join(types::new_id("integrity-cold-open").unwrap());
         std::fs::create_dir_all(&directory).unwrap();
         let path = directory
             .join("account.sqlite")

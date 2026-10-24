@@ -45,7 +45,7 @@ pub(super) fn file_caption_is_signed_with_its_attachment_and_thread_before_recei
 }
 
 pub(super) fn clearing_file_caption_through_public_edit_reaches_signed_recipient_without_changing_file(
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use crate::sync::Ingest;
     use protocol::{Envelope, Sequenced};
     use std::collections::{HashMap, HashSet};
@@ -110,10 +110,10 @@ pub(super) fn clearing_file_caption_through_public_edit_reaches_signed_recipient
     let timeline_count = sender.timeline(space.clone()).unwrap().len();
     let mut relay = event_log::SpaceLog::new(space.clone());
     let mut sequenced = HashSet::new();
-    let mut catch_up = || {
+    let mut catch_up = || -> std::result::Result<(), Box<dyn std::error::Error>> {
         for pending in sender.lock().store.outbox().unwrap() {
             if pending.event.space == space && sequenced.insert(pending.event.client_id.clone()) {
-                let event = relay.sequence(pending.event);
+                let event = relay.sequence(pending.event)?;
                 assert!(matches!(
                     receiver.lock().ingest(Sequenced {
                         seq: event.seq,
@@ -125,8 +125,9 @@ pub(super) fn clearing_file_caption_through_public_edit_reaches_signed_recipient
                 ));
             }
         }
+        Ok(())
     };
-    catch_up();
+    catch_up()?;
     let uploads = sender.lock().pending_uploads(100);
     let wanted = receiver.lock().wanted_media();
     for wanted in wanted {
@@ -141,7 +142,7 @@ pub(super) fn clearing_file_caption_through_public_edit_reaches_signed_recipient
         sender
             .edit_message(space.clone(), sent.id.clone(), blank.into())
             .expect("the public FFI must allow clearing an ordinary file caption");
-        catch_up();
+        catch_up()?;
         let thread = receiver.thread(space.clone(), root.id.clone()).unwrap();
         let received = thread.iter().find(|entry| entry.id == sent.id).unwrap();
         assert_eq!(caption_card(received, "").item_id, item);
@@ -186,6 +187,7 @@ pub(super) fn clearing_file_caption_through_public_edit_reaches_signed_recipient
         );
         assert!(receiver.verify_log(space.clone()).valid);
     }
+    Ok(())
 }
 
 pub(super) fn blank_caption_edit_is_scoped_to_live_own_ordinary_files_and_enforces_caption_bounds()
@@ -253,9 +255,10 @@ pub(super) fn blank_caption_edit_is_scoped_to_live_own_ordinary_files_and_enforc
     }
 }
 
-pub(super) fn captioned_file_retries_survive_reopen_and_reject_caption_drift() {
+pub(super) fn captioned_file_retries_survive_reopen_and_reject_caption_drift(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use sha2::{Digest, Sha256};
-    let dir = std::env::temp_dir().join(types::new_id("caption-send"));
+    let dir = std::env::temp_dir().join(types::new_id("caption-send")?);
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("core.sqlite").to_string_lossy().to_string();
     let caption = "First caption 🐝";
@@ -306,6 +309,8 @@ pub(super) fn captioned_file_retries_survive_reopen_and_reject_caption_drift() {
     assert_eq!(storage(&e), blank_counts);
     drop(e);
     std::fs::remove_dir_all(dir).unwrap();
+
+    Ok(())
 }
 
 pub(super) fn file_caption_bounds_and_failed_receipt_leave_no_partial_file_or_message() {

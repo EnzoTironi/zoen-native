@@ -129,7 +129,10 @@ pub(super) fn media_peer(name: &str) -> Arc<Client> {
 }
 
 /// Sequence the actual signed queued events before the next fixture operation.
-pub(super) fn confirm_media_outbox(client: &Client, space: &str) {
+pub(super) fn confirm_media_outbox(
+    client: &Client,
+    space: &str,
+) -> std::result::Result<(), serde_json::Error> {
     let mut relay = client
         .lock()
         .logs
@@ -138,7 +141,7 @@ pub(super) fn confirm_media_outbox(client: &Client, space: &str) {
         .unwrap_or_else(|| event_log::SpaceLog::new(space));
     let pending = client.lock().store.outbox().unwrap();
     for pending in pending.into_iter().filter(|row| row.event.space == space) {
-        let event = relay.sequence(pending.event);
+        let event = relay.sequence(pending.event)?;
         assert!(matches!(
             client.lock().ingest(protocol::Sequenced {
                 seq: event.seq,
@@ -156,9 +159,14 @@ pub(super) fn confirm_media_outbox(client: &Client, space: &str) {
         .unwrap()
         .iter()
         .all(|row| row.event.space != space));
+    Ok(())
 }
 
-pub(super) fn media_space(author: &Client, reader: Option<&Client>, title: &str) -> String {
+pub(super) fn media_space(
+    author: &Client,
+    reader: Option<&Client>,
+    title: &str,
+) -> std::result::Result<String, serde_json::Error> {
     let members = reader
         .map(|client| client.account().unwrap().identity_id)
         .into_iter()
@@ -166,6 +174,6 @@ pub(super) fn media_space(author: &Client, reader: Option<&Client>, title: &str)
     let space = author
         .create_group_with(title.into(), members, PrivacyDto::Closed)
         .unwrap();
-    confirm_media_outbox(author, &space);
-    space
+    confirm_media_outbox(author, &space)?;
+    Ok(space)
 }

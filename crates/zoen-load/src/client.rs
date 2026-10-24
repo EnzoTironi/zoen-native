@@ -47,8 +47,8 @@ impl Conn {
         )
         .await
         .context("websocket")?;
-        let root = Signer::generate();
-        let author = Author::device(&root, Signer::generate());
+        let root = Signer::generate()?;
+        let author = Author::device(&root, Signer::generate()?);
         let mut c = Conn { ws, author };
         c.send(&ClientFrame::Hello {
             protocol: PROTOCOL_VERSION,
@@ -127,7 +127,7 @@ impl Conn {
         let now = now_ms();
         let e = self
             .author
-            .sign_event(space, &types::new_ulid(now), now, seen, body);
+            .sign_event(space, &types::new_ulid(now)?, now, seen, body)?;
         let env = Envelope::plain(&e);
         let client_id = env.client_id().to_string();
         // Like the app: a temporary refusal (a rate limit) means send the same envelope again
@@ -161,7 +161,7 @@ impl Conn {
 
     /// Creates a group Space with `members` in it; returns its id.
     pub async fn create_group(&mut self, members: &[String]) -> anyhow::Result<String> {
-        let space = types::new_id("sp");
+        let space = types::new_id("sp")?;
         let mut head = self
             .publish(
                 &space,
@@ -299,18 +299,18 @@ pub async fn run(conn: Conn, plan: Plan, mut rx: mpsc::Receiver<Publish>) -> any
                 let now = now_ms();
                 let e = author.sign_event(
                     &space,
-                    &types::new_ulid(now),
+                    &types::new_ulid(now)?,
                     now,
                     Some(head.clone()),
                     EventBody::MessagePosted {
-                        message: types::new_id("m"),
+                        message: types::new_id("m")?,
                         text: due_us.to_string(),
                         attaches: None,
                         reply: None,
                         media: None,
                         forwarded: false,
                     },
-                );
+                )?;
                 let env = Envelope::plain(&e);
                 if due_us >= measure_from_us {
                     pending.insert(env.client_id().to_string(), due_us);

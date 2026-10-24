@@ -18,10 +18,10 @@ async fn count(db: &Database, nodes: &Subspace) -> usize {
     .unwrap()
 }
 
-pub async fn run() {
+pub async fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let cluster = std::env::var("FDB_CLUSTER_FILE").unwrap();
     let db = Arc::new(Database::new(Some(&cluster)).unwrap());
-    let root = Subspace::all().subspace(&("zoen", types::new_id("registry")));
+    let root = Subspace::all().subspace(&("zoen", types::new_id("registry")?));
     let nodes = root.subspace(&("ownership", "nodes"));
     db.run(|trx, _| {
         let nodes = &nodes;
@@ -192,4 +192,5 @@ pub async fn run() {
     .await
     .unwrap();
     println!("ok  bounded cleanup reaches expired overflow entries and admission recovers");
+    Ok(())
 }

@@ -74,7 +74,7 @@ impl Client {
                     .provider_sign_in(relay_url, proof_token, name, account_vault(&vault)?)
                     .await?,
             ),
-            NewMutationId {} => encode(&types::new_id("client_edit")),
+            NewMutationId {} => encode(&types::new_id("client_edit")?),
             PageParseMarkdown { markdown } => {
                 encode(&crate::pages::parse_editor_markdown(&markdown)?)
             }

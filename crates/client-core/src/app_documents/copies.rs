@@ -150,7 +150,10 @@ impl Engine {
         caption: &str,
         item_id: Option<String>,
     ) -> R<String> {
-        let item = item_id.unwrap_or_else(|| new_id("it"));
+        let item = match item_id {
+            Some(item) => item,
+            None => new_id("it")?,
+        };
         let key = self.file_key(None)?;
         let file = self.file_doc(
             space,
@@ -186,7 +189,7 @@ impl Engine {
             me,
             EventBody::GrantIssued {
                 grant: Grant {
-                    id: new_id("gr"),
+                    id: new_id("gr")?,
                     grantor: me.into(),
                     grantee: Some(format!("app:{item}")),
                     scope: GrantScope::Item(item.clone()),
@@ -199,7 +202,7 @@ impl Engine {
             space,
             me,
             EventBody::MessagePosted {
-                message: new_id("msg"),
+                message: new_id("msg")?,
                 text: caption.into(),
                 attaches: Some(item.clone()),
                 reply: None,

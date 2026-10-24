@@ -43,12 +43,14 @@ impl<S: Signer> Client<S> {
         let content = SignedContent {
             v: 3,
             space: space.into(),
-            client_id: types::new_ulid(now_ms),
+            client_id: types::new_ulid(now_ms).map_err(|error| error.to_string())?,
             author: self.account.identity.clone(),
             device: Some(self.account.device.clone()),
             at_ms: now_ms,
             seen: self.head(space).as_ref().map(Into::into),
-            payload: Some(Payload::Body(event_log::content::encode_body(&body))),
+            payload: Some(Payload::Body(
+                event_log::content::encode_body(&body).map_err(|error| error.to_string())?,
+            )),
         }
         .encode();
         self.sign_content(content, false)
@@ -127,7 +129,7 @@ impl<S: Signer> Client<S> {
         self.queue_domain_body(
             space,
             EventBody::MessagePosted {
-                message: types::new_secret_id("msg"),
+                message: types::new_secret_id("msg").map_err(|error| error.to_string())?,
                 text: text.into(),
                 attaches: None,
                 reply,

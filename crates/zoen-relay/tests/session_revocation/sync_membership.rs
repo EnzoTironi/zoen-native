@@ -13,7 +13,11 @@ pub(super) struct History {
     release: Semaphore,
 }
 impl History {
-    fn push(rows: &mut Vec<Sequenced>, owner: &Author, body: EventBody) {
+    fn push(
+        rows: &mut Vec<Sequenced>,
+        owner: &Author,
+        body: EventBody,
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let seq = rows.len() as u64;
         let prev = rows
             .last()
@@ -25,19 +29,20 @@ impl History {
         });
         let event = owner.sign_event(
             SPACE,
-            &types::new_id("history"),
+            &types::new_id("history")?,
             1_000 + seq as i64,
             seen,
             body,
-        );
+        )?;
         let env = Envelope::plain(&event);
-        let hash = event_log::chain_hash(SPACE, seq, &prev, &env.wire_hash());
+        let hash = event_log::chain_hash(SPACE, seq, &prev, &env.wire_hash())?;
         rows.push(Sequenced {
             seq,
             prev,
             hash,
             env,
         });
+        Ok(())
     }
     async fn gate(&self, from: u64) {
         if from >= PAGE as u64 && !self.paused.swap(true, Ordering::SeqCst) {
@@ -77,10 +82,11 @@ impl History {
 }
 
 #[tokio::test]
-async fn removal_between_sync_pages_hides_the_final_plaintext_tail() {
-    let test = TestRelay::new().await;
-    let reader = Author::device(&Signer::generate(), Signer::generate());
-    let owner = Author::root(Signer::generate());
+async fn removal_between_sync_pages_hides_the_final_plaintext_tail(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let test = TestRelay::new().await?;
+    let reader = Author::device(&Signer::generate()?, Signer::generate()?);
+    let owner = Author::root(Signer::generate()?);
     let history = Arc::new(History {
         reader: reader.identity.clone(),
         rows: Default::default(),
@@ -98,7 +104,7 @@ async fn removal_between_sync_pages_hides_the_final_plaintext_tail() {
                 kind: types::SpaceKind::Group,
                 privacy: types::Privacy::Closed,
             },
-        );
+        )?;
         History::push(
             &mut rows.0,
             &owner,
@@ -106,10 +112,10 @@ async fn removal_between_sync_pages_hides_the_final_plaintext_tail() {
                 identity: reader.identity.clone(),
                 role: Role::Member,
             },
-        );
+        )?;
         while rows.0.len() < PAGE {
             let index = rows.0.len();
-            History::push(&mut rows.0, &owner, message(index));
+            History::push(&mut rows.0, &owner, message(index))?;
         }
     }
     *test.log.sync_spaces.lock().unwrap() = Some(vec![SPACE.into()]);
@@ -156,9 +162,9 @@ async fn removal_between_sync_pages_hides_the_final_plaintext_tail() {
             EventBody::MemberRemoved {
                 identity: reader.identity.clone(),
             },
-        );
+        )?;
         rows.1 = Some(PAGE as u64);
-        History::push(&mut rows.0, &owner, message(999_999));
+        History::push(&mut rows.0, &owner, message(999_999))?;
     }
     test.log
         .sync_members
@@ -189,6 +195,7 @@ async fn removal_between_sync_pages_hides_the_final_plaintext_tail() {
     }
     socket.close(None).await.unwrap();
     test.close().await;
+    Ok(())
 }
 
 fn message(i: usize) -> EventBody {

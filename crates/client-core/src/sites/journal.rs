@@ -144,7 +144,7 @@ mod tests {
     fn encrypted_intent_survives_reload_and_never_replaces_an_ambiguous_request() {
         let (client, scope, source) = super::super::tests::fixture();
         let mut e = client.lock();
-        let r = super::super::tests::review(&scope, &source);
+        let r = super::super::tests::review(&scope, &source).unwrap();
         e.site_begin_publication(&r).unwrap();
         e.reload_sync().unwrap();
         assert_eq!(
@@ -152,7 +152,7 @@ mod tests {
             Some(r.clone())
         );
         let mut competing = r.clone();
-        competing.mutation.request_id = types::new_secret_id("pub");
+        competing.mutation.request_id = types::new_secret_id("pub").unwrap();
         assert!(e.site_begin_publication(&competing).is_err());
         let raw: String = e
             .store

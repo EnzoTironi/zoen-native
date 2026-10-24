@@ -74,7 +74,12 @@ impl Engine {
     /// secret for the vault.
     #[cfg(test)]
     pub(crate) fn init_profile(&mut self, me: &str, name: &str) -> R<[u8; 32]> {
-        self.init_profile_with_agreement(me, name, AgreementKey::generate())
+        self.init_profile_with_agreement(
+            me,
+            name,
+            AgreementKey::generate()?,
+            ProfileKey::generate()?,
+        )
     }
 
     pub(crate) fn init_profile_with_agreement(
@@ -82,8 +87,8 @@ impl Engine {
         me: &str,
         name: &str,
         agreement: AgreementKey,
+        key: ProfileKey,
     ) -> R<[u8; 32]> {
-        let key = ProfileKey::generate();
         self.store.put_profile_key(me, &key.to_hex(), 1)?;
         let fields = ProfileFields {
             name: name.to_string(),
@@ -106,7 +111,7 @@ impl Engine {
         let me = self.me_id()?;
         if self.store.profile_key(&me)?.is_none() {
             let name = self.my_profile().map(|p| p.name).unwrap_or_default();
-            let key = ProfileKey::generate();
+            let key = ProfileKey::generate()?;
             self.store.put_profile_key(&me, &key.to_hex(), 1)?;
             let fields = ProfileFields {
                 name,
@@ -125,7 +130,7 @@ impl Engine {
                 Ok(None)
             }
             None => {
-                let a = AgreementKey::generate();
+                let a = AgreementKey::generate()?;
                 let s = a.secret();
                 self.net.profiles.agreement = Some(a);
                 Ok(Some(s))

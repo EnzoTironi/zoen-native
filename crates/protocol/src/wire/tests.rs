@@ -3,9 +3,9 @@ use crate::KeyPackageClaimClock;
 use event_log::{Author, Signer, SpaceLog};
 use types::{EventBody, Privacy, SpaceKind};
 
-fn signed() -> (Envelope, SpaceLog) {
-    let root = Signer::generate();
-    let phone = Author::device(&root, Signer::generate());
+fn signed() -> Result<(Envelope, SpaceLog), Box<dyn std::error::Error>> {
+    let root = Signer::generate()?;
+    let phone = Author::device(&root, Signer::generate()?);
     let mut log = SpaceLog::new("sp_1");
     let e = phone.sign_event(
         "sp_1",
@@ -17,14 +17,15 @@ fn signed() -> (Envelope, SpaceLog) {
             kind: SpaceKind::Group,
             privacy: Privacy::Closed,
         },
-    );
-    log.sequence(e.clone());
-    (Envelope::plain(&e), log)
+    )?;
+    log.sequence(e.clone())?;
+    Ok((Envelope::plain(&e), log))
 }
 
 #[test]
-fn a_published_envelope_crosses_the_wire_byte_for_byte_and_verifies() {
-    let (env, _) = signed();
+fn a_published_envelope_crosses_the_wire_byte_for_byte_and_verifies(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (env, _) = signed()?;
     let back = ClientFrame::decode(&ClientFrame::Publish { env: env.clone() }.encode()).unwrap();
     let ClientFrame::Publish { env: back } = back else {
         panic!("publish")
@@ -36,6 +37,7 @@ fn a_published_envelope_crosses_the_wire_byte_for_byte_and_verifies() {
     forged[at] ^= 1;
     let forged = Envelope::new(forged, back.sig.clone(), back.cert.clone(), None);
     assert!(forged.is_none_or(|f| f.verify().is_err()));
+    Ok(())
 }
 
 fn signed_statement() -> DeviceSigned {
@@ -56,8 +58,8 @@ fn sealed_profile() -> SealedProfile {
 }
 
 #[test]
-fn every_server_frame_roundtrips() {
-    let (env, log) = signed();
+fn every_server_frame_roundtrips() -> Result<(), Box<dyn std::error::Error>> {
+    let (env, log) = signed()?;
     let first = &log.events()[0];
     let profile = Identity {
         owner_proof: None,
@@ -188,6 +190,7 @@ fn every_server_frame_roundtrips() {
     for f in frames {
         assert_eq!(ServerFrame::decode(&f.encode()).unwrap(), f);
     }
+    Ok(())
 }
 
 #[test]

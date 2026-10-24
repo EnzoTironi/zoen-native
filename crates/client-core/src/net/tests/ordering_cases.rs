@@ -161,7 +161,8 @@ pub(super) async fn a_control_notice_is_dispatched_between_slow_maintenance_pass
     relay.join().unwrap();
 }
 
-pub(super) async fn member_seen_beyond_the_next_sequence_is_fetched_once_then_forks() {
+pub(super) async fn member_seen_beyond_the_next_sequence_is_fetched_once_then_forks(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("ws://{}", listener.local_addr().unwrap());
@@ -182,11 +183,11 @@ pub(super) async fn member_seen_beyond_the_next_sequence_is_fetched_once_then_fo
                 kind: SpaceKind::Group,
                 privacy: Privacy::Closed,
             },
-        )),
+        )?),
         &mut head,
-    );
+    )?;
     assert_eq!(engine.ingest(created), Ingest::Applied);
-    let peer = event_log::Author::root(event_log::Signer::generate());
+    let peer = event_log::Author::root(event_log::Signer::generate()?);
     let added = sequence(
         Envelope::plain(&author.sign_event(
             space,
@@ -197,9 +198,9 @@ pub(super) async fn member_seen_beyond_the_next_sequence_is_fetched_once_then_fo
                 identity: peer.identity.clone(),
                 role: Role::Member,
             },
-        )),
+        )?),
         &mut head,
-    );
+    )?;
     assert_eq!(engine.ingest(added), Ingest::Applied);
     let next = engine.next_seq(space);
     let bad = sequence(
@@ -219,9 +220,9 @@ pub(super) async fn member_seen_beyond_the_next_sequence_is_fetched_once_then_fo
                 media: None,
                 forwarded: false,
             },
-        )),
+        )?),
         &mut head,
-    );
+    )?;
     assert_eq!(bad.seq, next);
     let engine = Arc::new(Mutex::new(engine));
     let (cmd, mut commands) = mpsc::unbounded_channel();
@@ -337,4 +338,6 @@ pub(super) async fn member_seen_beyond_the_next_sequence_is_fetched_once_then_fo
         Some("Members see different groups in this chat (the server may have forked it).")
     );
     assert!(!stored, "the refused event was appended");
+
+    Ok(())
 }

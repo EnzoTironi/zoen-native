@@ -2,8 +2,9 @@
 
 use super::*;
 
-pub(super) fn outbox_insert_failure_keeps_draft_and_receipts() {
-    let mut f = Fixture::new();
+pub(super) fn outbox_insert_failure_keeps_draft_and_receipts(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
     let mut s = f.session();
     let read = s.read(&f.engine).unwrap();
     apply(
@@ -28,10 +29,13 @@ pub(super) fn outbox_insert_failure_keeps_draft_and_receipts() {
             ..
         }
     ));
+
+    Ok(())
 }
 
-pub(super) fn journal_failure_after_outbox_insert_rolls_back_event_and_projection() {
-    let mut f = Fixture::new();
+pub(super) fn journal_failure_after_outbox_insert_rolls_back_event_and_projection(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
     let mut s = f.session();
     let read = s.read(&f.engine).unwrap();
     let mut edit = text_edit(&read, "");
@@ -71,13 +75,16 @@ pub(super) fn journal_failure_after_outbox_insert_rolls_back_event_and_projectio
             ..
         }
     ));
-    f.ack(&reference);
+    f.ack(&reference)?;
     assert!(!s.read(&f.engine).unwrap().unsaved);
+
+    Ok(())
 }
 
-pub(super) fn lost_commit_response_reopens_one_exact_pending_source() {
-    let db = Database::new();
-    let mut f = Fixture::at(&db.path());
+pub(super) fn lost_commit_response_reopens_one_exact_pending_source(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let db = Database::new()?;
+    let mut f = Fixture::at(&db.path())?;
     let mut s = f.session();
     let read = s.read(&f.engine).unwrap();
     apply(
@@ -134,14 +141,17 @@ pub(super) fn lost_commit_response_reopens_one_exact_pending_source() {
         &[text_edit(&read, "one source")],
     )
     .unwrap();
-    f.ack(&CommitRef::Plan(reference));
+    f.ack(&CommitRef::Plan(reference))?;
     assert!(!s.read(&f.engine).unwrap().unsaved);
     drop(s);
     drop(f);
+
+    Ok(())
 }
 
-pub(super) fn only_complete_canonical_exact_source_acks() {
-    let mut f = Fixture::new();
+pub(super) fn only_complete_canonical_exact_source_acks(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
     let mut s = f.session();
     let read = s.read(&f.engine).unwrap();
     let accepted = apply(
@@ -156,8 +166,8 @@ pub(super) fn only_complete_canonical_exact_source_acks() {
     let event = f.pending(&reference);
     assert!(s.read(&f.engine).unwrap().unsaved);
     assert!(s.read(&f.engine).unwrap().pending_sync);
-    let wrong_client = f.signed_as(&f.owner, event.body.clone());
-    deliver(&mut f.engine, &wrong_client, Ingest::Applied);
+    let wrong_client = f.signed_as(&f.owner, event.body.clone())?;
+    deliver(&mut f.engine, &wrong_client, Ingest::Applied)?;
     assert!(s.read(&f.engine).unwrap().unsaved);
     assert!(journal(&s).commit.is_some());
     let mut different = event.body.clone();
@@ -175,20 +185,20 @@ pub(super) fn only_complete_canonical_exact_source_acks() {
         event.at_ms,
         event.seen.clone(),
         different,
-    );
+    )?;
     assert_ne!(
         plan::source(&f.space, &f.item, &wrong_digest, false).event_id,
         plan::source(&f.space, &f.item, &event, false).event_id
     );
     // A valid signature and matching CID do not acknowledge different content.
-    deliver(&mut f.engine, &wrong_digest, Ingest::Applied);
+    deliver(&mut f.engine, &wrong_digest, Ingest::Applied)?;
     assert_eq!(f.engine.store.outbox_len().unwrap(), 1);
     assert_eq!(f.pending(&reference), event);
     let still_pending = s.read(&f.engine).unwrap();
     assert!(still_pending.unsaved);
     assert!(still_pending.pending_sync);
     assert!(journal(&s).commit.is_some());
-    deliver(&mut f.engine, &event, Ingest::Confirmed);
+    deliver(&mut f.engine, &event, Ingest::Confirmed)?;
     assert_eq!(f.engine.store.outbox_len().unwrap(), 0);
     let final_read = s.read(&f.engine).unwrap();
     assert!(!final_read.unsaved);
@@ -206,11 +216,14 @@ pub(super) fn only_complete_canonical_exact_source_acks() {
             .unwrap(),
         blocks(&final_read)
     );
-    encrypted_exact_source_and_peer_readability();
+    encrypted_exact_source_and_peer_readability()?;
+
+    Ok(())
 }
 
-pub(super) fn semantically_refused_source_preserves_draft_and_visible_history() {
-    let mut f = Fixture::new();
+pub(super) fn semantically_refused_source_preserves_draft_and_visible_history(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
     let mut s = f.session();
     let read = s.read(&f.engine).unwrap();
     apply(
@@ -226,7 +239,7 @@ pub(super) fn semantically_refused_source_preserves_draft_and_visible_history() 
     let event = f.queue(f.version(ItemContent::Page(malformed)));
     expect_source(&f, &mut s, &event);
     let before = f.cipher();
-    deliver(&mut f.engine, &event, Ingest::Confirmed);
+    deliver(&mut f.engine, &event, Ingest::Confirmed)?;
     let current = s.read(&f.engine).unwrap();
     assert!(current.unsaved);
     assert!(current.save_error.is_some());
@@ -241,12 +254,15 @@ pub(super) fn semantically_refused_source_preserves_draft_and_visible_history() 
     assert_eq!(fold.slots.last().unwrap().source.client_id, event.client_id);
     let retry = queued(s.commit(&mut f.engine, "validated retry").unwrap());
     assert_ne!(f.pending(&retry).client_id, event.client_id);
-    f.ack(&retry);
+    f.ack(&retry)?;
     assert!(!s.read(&f.engine).unwrap().unsaved);
+
+    Ok(())
 }
 
-pub(super) fn waiting_blob_blocks_edit_ack_and_later_versions_until_ready() {
-    let mut f = Fixture::new();
+pub(super) fn waiting_blob_blocks_edit_ack_and_later_versions_until_ready(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
     let mut s = f.session();
     let read = s.read(&f.engine).unwrap();
     let mut edit = text_edit(&read, "");
@@ -268,7 +284,7 @@ pub(super) fn waiting_blob_blocks_edit_ack_and_later_versions_until_ready() {
         .conn()
         .execute("DELETE FROM media WHERE sha256 = ?1", [&blob.sha256])
         .unwrap();
-    f.ack(&reference);
+    f.ack(&reference)?;
     let waiting = s.read(&f.engine).unwrap();
     assert!(waiting.unsaved);
     assert!(!waiting.can_edit);
@@ -279,8 +295,8 @@ pub(super) fn waiting_blob_blocks_edit_ack_and_later_versions_until_ready() {
     assert!(apply(&f, &mut s, &read, "blocked", &[]).is_err());
     assert!(s.commit(&mut f.engine, "blocked").is_err());
     assert_eq!(f.cipher(), cipher);
-    let later = f.signed_as(&f.owner, event.body.clone());
-    deliver(&mut f.engine, &later, Ingest::Applied);
+    let later = f.signed_as(&f.owner, event.body.clone())?;
+    deliver(&mut f.engine, &later, Ingest::Applied)?;
     assert!(matches!(
         f.engine
             .plan_timeline(&f.item)
@@ -321,11 +337,14 @@ pub(super) fn waiting_blob_blocks_edit_ack_and_later_versions_until_ready() {
     assert!(!ready.unsaved);
     assert_eq!(ready.view, accepted.current.view);
     assert!(journal(&s).commit.is_none());
+
+    Ok(())
 }
 
-pub(super) fn newer_draft_survives_older_ack_and_permanent_transport_refusal() {
-    let db = Database::new();
-    let mut f = Fixture::at(&db.path());
+pub(super) fn newer_draft_survives_older_ack_and_permanent_transport_refusal(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let db = Database::new()?;
+    let mut f = Fixture::at(&db.path())?;
     let mut s = f.session();
     let read = s.read(&f.engine).unwrap();
     let first = apply(
@@ -345,7 +364,7 @@ pub(super) fn newer_draft_survives_older_ack_and_permanent_transport_refusal() {
         &[text_edit(&first.current, "newer text remains")],
     )
     .unwrap();
-    f.ack(&first_commit);
+    f.ack(&first_commit)?;
     let current = s.read(&f.engine).unwrap();
     assert!(current.unsaved);
     assert!(journal(&s).commit.is_none());
@@ -371,7 +390,7 @@ pub(super) fn newer_draft_survives_older_ack_and_permanent_transport_refusal() {
     let retry = queued(s.commit(&mut f.engine, "new validated source").unwrap());
     let event = f.pending(&retry);
     assert_ne!(event.client_id, failed.client_id);
-    f.ack(&retry);
+    f.ack(&retry)?;
     let current = s.read(&f.engine).unwrap();
     assert!(!current.unsaved);
     assert_eq!(current.view, newer.current.view);
@@ -388,4 +407,6 @@ pub(super) fn newer_draft_survives_older_ack_and_permanent_transport_refusal() {
     );
     drop(s);
     drop(f);
+
+    Ok(())
 }

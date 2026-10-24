@@ -79,7 +79,7 @@ impl Engine {
             title = t("Sem título", "Untitled");
         }
         let content = self.page_content(space, title, path, page.snapshot())?;
-        let item = new_id("it");
+        let item = new_id("it")?;
         self.append(
             space,
             &me,

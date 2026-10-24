@@ -171,7 +171,7 @@ impl Engine {
             space,
             author,
             EventBody::MessagePosted {
-                message: types::new_id("msg"),
+                message: types::new_id("msg")?,
                 text: text.to_string(),
                 attaches,
                 reply: Some(reply),

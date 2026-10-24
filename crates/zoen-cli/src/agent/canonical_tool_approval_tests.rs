@@ -143,7 +143,7 @@ pub(super) fn signed_owner_resolution(
     space: &str,
     request: &types::AgentRequest,
     owner: &str,
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let db = store::Store::open(path.join("agent.sqlite").to_str().unwrap()).unwrap();
     let key = db
         .identities()
@@ -167,7 +167,7 @@ pub(super) fn signed_owner_resolution(
         .filter(|pending| pending.event.space == space)
     {
         if !existing.contains(&pending.event.client_id) {
-            db.append_event(log.sequence(pending.event.clone()))
+            db.append_event(log.sequence(pending.event.clone())?)
                 .unwrap();
         }
         db.outbox_remove(&pending.event.client_id).unwrap();
@@ -191,16 +191,18 @@ pub(super) fn signed_owner_resolution(
                 tool_decision: Some(types::ToolDecision::ApproveOnce),
             }),
         },
-    );
+    )?;
     db.append_event(event).unwrap();
     log.verify().unwrap();
+    Ok(())
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[ignore = "explicit offline signed WASI component; no providers, credentials or services"]
-async fn offline_canonical_ask_owner_resume_receipt_and_cold_reopen() {
+async fn offline_canonical_ask_owner_resume_receipt_and_cold_reopen(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let worker = crate::deckcraft::tests::worker();
-    let fixture = crate::deckcraft::tests::fixture();
+    let fixture = crate::deckcraft::tests::fixture()?;
     let space = fixture
         .client
         .item(fixture.base.item_id.clone())
@@ -268,7 +270,7 @@ async fn offline_canonical_ask_owner_resume_receipt_and_cold_reopen() {
     let owner = fixture.owner.clone();
     drop(cx);
     drop(fixture);
-    signed_owner_resolution(&path, &space, &request, &owner);
+    signed_owner_resolution(&path, &space, &request, &owner)?;
     let client = reopen(&path, vault.clone());
     assert_eq!(client.approved_tool_sources(&space), vec![source.clone()]);
     // Reserve the same persistent attempt before execution, as the host does.
@@ -361,4 +363,5 @@ async fn offline_canonical_ask_owner_resume_receipt_and_cold_reopen() {
     assert_eq!(cold.item(item).unwrap().versions.len(), 2);
     drop(cold);
     std::fs::remove_dir_all(path).unwrap();
+    Ok(())
 }

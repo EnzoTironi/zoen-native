@@ -145,12 +145,12 @@ pub(super) fn unresolved_legacy_voice_markers_cannot_escape_their_source_chat_as
     }
 }
 
-pub(super) fn forwarded_voice_survives_cold_reopen_and_a_destination_only_peer_decrypts_new_chunks()
-{
+pub(super) fn forwarded_voice_survives_cold_reopen_and_a_destination_only_peer_decrypts_new_chunks(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use crate::sync::Ingest;
     use protocol::{Envelope, Sequenced};
 
-    let dir = std::env::temp_dir().join(types::new_id("voice-forward-cold"));
+    let dir = std::env::temp_dir().join(types::new_id("voice-forward-cold")?);
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("core.sqlite").to_string_lossy().to_string();
     let bytes = pcm_wav(8000);
@@ -158,11 +158,11 @@ pub(super) fn forwarded_voice_survives_cold_reopen_and_a_destination_only_peer_d
     let receiver = media_peer("cold_voice_reader");
     let (source_item, destination, forwarded, mut relay, before) = {
         let sender = media_account(&path, "cold_voice_author", vault.clone());
-        let source = media_space(&sender, None, "Private voice source");
-        let destination = media_space(&sender, Some(&receiver), "Cold voice destination");
+        let source = media_space(&sender, None, "Private voice source")?;
+        let destination = media_space(&sender, Some(&receiver), "Cold voice destination")?;
         let original = wav_note(&sender, &source, &bytes, None, false);
         let source_item = original.voice.unwrap().item_id;
-        confirm_media_outbox(&sender, &source);
+        confirm_media_outbox(&sender, &source)?;
         let relay = sender.lock().logs[&destination].clone();
         let before = sender.timeline(destination.clone()).unwrap().len();
         let forwarded = sender
@@ -187,7 +187,7 @@ pub(super) fn forwarded_voice_survives_cold_reopen_and_a_destination_only_peer_d
     let pending = sender.lock().store.outbox().unwrap();
     assert_eq!(pending.len(), 1);
     for event in pending {
-        relay.sequence(event.event);
+        relay.sequence(event.event)?;
     }
     for event in relay.events() {
         let envelope = Sequenced {
@@ -245,4 +245,6 @@ pub(super) fn forwarded_voice_survives_cold_reopen_and_a_destination_only_peer_d
     assert!(receiver.verify_log(destination).valid);
     drop(sender);
     std::fs::remove_dir_all(dir).unwrap();
+
+    Ok(())
 }

@@ -62,13 +62,15 @@ fn finish_test_link(core: &Client, vault: Arc<dyn SecretVault>) -> Result<Accoun
         &ExpectedIdentity::parse(None).unwrap(),
     )
 }
-fn path() -> std::path::PathBuf {
-    std::env::temp_dir().join(format!(
+fn path() -> std::result::Result<std::path::PathBuf, Box<dyn std::error::Error>> {
+    Ok(std::env::temp_dir().join(format!(
         "zoen-initial-history-{}.sqlite",
-        types::new_id("test")
-    ))
+        types::new_id("test")?
+    )))
 }
-fn encrypted_record(core: &Client) -> types::Event {
+fn encrypted_record(
+    core: &Client,
+) -> std::result::Result<types::Event, Box<dyn std::error::Error>> {
     use event_log::content::{Sealed, SealedKind};
     let identity = Signer::from_secret(&[21; 32]);
     let author = Author::device(&identity, Signer::from_secret(&[26; 32]));
@@ -82,7 +84,7 @@ fn encrypted_record(core: &Client) -> types::Event {
                 kind: SpaceKind::Group,
                 privacy: Privacy::EndToEnd,
             },
-        )
+        )?
         .clone();
     let mut opened = author.sign_event(
         log.space(),
@@ -97,7 +99,7 @@ fn encrypted_record(core: &Client) -> types::Event {
             media: None,
             forwarded: false,
         },
-    );
+    )?;
     let (content, sig) = author.sign_sealed(
         log.space(),
         "msg_initial",
@@ -114,13 +116,13 @@ fn encrypted_record(core: &Client) -> types::Event {
         String::new(),
     )
     .unwrap();
-    let local = log.sequence(outer).clone();
+    let local = log.sequence(outer)?.clone();
     opened.seq = local.seq;
     opened.sealed_wire = Some(event_log::content_hash_of(&local));
     let mut e = core.lock();
     e.store.append_events(&[genesis, local]).unwrap();
     e.reload().unwrap();
-    opened
+    Ok(opened)
 }
 
 fn owned_personal_spaces(core: &Client) -> Vec<String> {
@@ -150,8 +152,10 @@ impl Drop for PreferencesFile {
     }
 }
 
-async fn assert_linked_preferences_survive_history_and_reopen(legacy: bool) {
-    let file = PreferencesFile(path());
+async fn assert_linked_preferences_survive_history_and_reopen(
+    legacy: bool,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let file = PreferencesFile(path()?);
     let core = Client::open(file.0.to_string_lossy().into(), "en-US".into()).unwrap();
     let vault = install_link(&core);
     let account = core.account().unwrap();
@@ -174,7 +178,7 @@ async fn assert_linked_preferences_survive_history_and_reopen(legacy: bool) {
     } else {
         assert_eq!(owned_personal_spaces(&core).len(), 1);
     }
-    let opened = encrypted_record(&core);
+    let opened = encrypted_record(&core)?;
     let receive = core.history_receive.begin(5_000).unwrap();
     assert_eq!(
         core.commit_initial_history(vec![opened], 1, 0, &receive)
@@ -253,6 +257,8 @@ async fn assert_linked_preferences_survive_history_and_reopen(legacy: bool) {
     assert_eq!(reopened.timeline(target.clone()).unwrap().len(), 1);
     assert_eq!(reopened.client_request(prefs(true)).await.unwrap(), "null");
     assert_eq!(reopened.lock().logs[&personal].events().len(), 3);
+
+    Ok(())
 }
 
 #[tokio::test]
@@ -260,12 +266,14 @@ async fn linked_chat_preferences_bootstrap_is_signed_idempotent_and_survives_his
     preferences::linked_chat_preferences_bootstrap_is_signed_idempotent_and_survives_history_reopen(
     )
     .await
+    .unwrap()
 }
 
 #[tokio::test]
 async fn linked_chat_preferences_repair_legacy_missing_personal_after_verified_history() {
     preferences::linked_chat_preferences_repair_legacy_missing_personal_after_verified_history()
         .await
+        .unwrap()
 }
 
 #[test]
@@ -275,7 +283,9 @@ fn linked_chat_preferences_bootstrap_storage_failure_rolls_back_before_vault_and
 
 #[tokio::test]
 async fn linked_chat_preferences_never_reuse_another_identity_personal_space() {
-    preferences::linked_chat_preferences_never_reuse_another_identity_personal_space().await
+    preferences::linked_chat_preferences_never_reuse_another_identity_personal_space()
+        .await
+        .unwrap()
 }
 
 #[test]
@@ -285,17 +295,23 @@ fn linked_chat_preferences_vault_rejection_cleans_the_new_bootstrap() {
 
 #[tokio::test]
 async fn link_then_cold_reopen_before_history_retains_pending_and_same_keys() {
-    recovery::link_then_cold_reopen_before_history_retains_pending_and_same_keys().await
+    recovery::link_then_cold_reopen_before_history_retains_pending_and_same_keys()
+        .await
+        .unwrap()
 }
 
 #[tokio::test]
 async fn missing_or_forged_history_cannot_clear_pending_or_partially_import() {
-    recovery::missing_or_forged_history_cannot_clear_pending_or_partially_import().await
+    recovery::missing_or_forged_history_cannot_clear_pending_or_partially_import()
+        .await
+        .unwrap()
 }
 
 #[tokio::test]
 async fn durable_import_and_receipt_survive_reopen_before_relay_cleanup_or_ui_ack() {
-    recovery::durable_import_and_receipt_survive_reopen_before_relay_cleanup_or_ui_ack().await
+    recovery::durable_import_and_receipt_survive_reopen_before_relay_cleanup_or_ui_ack()
+        .await
+        .unwrap()
 }
 
 #[tokio::test]

@@ -149,7 +149,7 @@ impl Engine {
             .and_then(|proposal| self.image_generation_review(proposal))
             .ok_or_else(denied)?;
         let inquiry = OwnerPolicyInquiry {
-            id: types::new_id("policy_inquiry"),
+            id: types::new_id("policy_inquiry")?,
             owner: scope.expected_identity_id.clone(),
             agent: scope.agent_id.clone(),
             space: scope.space_id.clone(),

@@ -28,3 +28,6 @@ tempfile = "3"
 rcgen = { version = "0.14", default-features = false, features = ["ring", "pem"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12", "logging"] }
+
+[lints]
+workspace = true

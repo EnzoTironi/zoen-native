@@ -1,15 +1,23 @@
 //! Preserved initial welcome scenarios; stable test entries stay in the parent.
 use super::*;
 
-pub(super) fn live_direct_recipient_keeps_initial_welcome_before_recovery_context() {
-    initial_welcome_beats_recovery(false);
+pub(super) fn live_direct_recipient_keeps_initial_welcome_before_recovery_context(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    initial_welcome_beats_recovery(false)?;
+
+    Ok(())
 }
 
-pub(super) fn live_direct_recipient_keeps_initial_welcome_after_cold_reopen() {
-    initial_welcome_beats_recovery(true);
+pub(super) fn live_direct_recipient_keeps_initial_welcome_after_cold_reopen(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    initial_welcome_beats_recovery(true)?;
+
+    Ok(())
 }
 
-fn initial_welcome_beats_recovery(cold_reopen: bool) {
+fn initial_welcome_beats_recovery(
+    cold_reopen: bool,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let space = "direct-live-welcome-recovery-race";
     let mut owner = Engine::open(":memory:").unwrap();
     owner
@@ -17,7 +25,7 @@ fn initial_welcome_beats_recovery(cold_reopen: bool) {
         .unwrap();
     let path = std::env::temp_dir().join(format!(
         "zoen-initial-welcome-{}.db",
-        types::new_ulid(now_ms())
+        types::new_ulid(now_ms())?
     ));
     let mut peer = Engine::open(if cold_reopen {
         path.to_str().unwrap()
@@ -70,8 +78,8 @@ fn initial_welcome_beats_recovery(cold_reopen: bool) {
     ] {
         let frame = ordered(
             &owner,
-            Envelope::plain(&author.sign_event(space, cid, 1, seen(&owner, space), body)),
-        );
+            Envelope::plain(&author.sign_event(space, cid, 1, seen(&owner, space), body)?),
+        )?;
         assert_eq!(owner.ingest(frame.clone()), Ingest::Applied);
         assert_eq!(peer.ingest(frame), Ingest::Applied);
     }
@@ -91,7 +99,7 @@ fn initial_welcome_beats_recovery(cold_reopen: bool) {
         .unwrap()
         .1;
     owner.upload_done(&reference.blob);
-    let frame = ordered(&owner, Envelope::plain(&commit.event));
+    let frame = ordered(&owner, Envelope::plain(&commit.event))?;
     assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
     assert_eq!(peer.ingest(frame), Ingest::Applied);
     // Real publication waits for this Commit confirmation before submitting its
@@ -113,7 +121,7 @@ fn initial_welcome_beats_recovery(cold_reopen: bool) {
         assert!(!peer.mls_recovery_pass().unwrap());
         assert!(peer.store.outbox_handshakes().unwrap().is_empty());
     }
-    let frame = ordered(&owner, Envelope::plain(&welcome.event));
+    let frame = ordered(&owner, Envelope::plain(&welcome.event))?;
     assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
     assert_eq!(peer.ingest(frame), Ingest::Applied);
     let seed = owner
@@ -125,15 +133,15 @@ fn initial_welcome_beats_recovery(cold_reopen: bool) {
         .into_iter()
         .find(|e| e.client_id() == seed.id)
         .unwrap();
-    let frame = ordered(&owner, envelope);
+    let frame = ordered(&owner, envelope)?;
     assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
     assert_eq!(peer.ingest(frame), Ingest::Applied);
     assert!(peer.timeline(space).unwrap().iter().any(|e| matches!(&e.kind, crate::dto::EntryKind::Message { text, .. } if text == "original live direct seed")),
         "initial Welcome must remain usable after early recovery context; recovered_before_welcome={recovered_before_welcome}");
     drop(peer);
-    if cold_reopen {
+    Ok(if cold_reopen {
         for suffix in ["", "-wal", "-shm"] {
             let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
         }
-    }
+    })
 }

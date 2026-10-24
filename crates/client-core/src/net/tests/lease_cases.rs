@@ -1,7 +1,8 @@
 use super::*;
 
-pub(super) fn engine_lease_revocation_waits_for_current_work_and_finishes_storage_release() {
-    let path = std::env::temp_dir().join(types::new_id("lease-revoke"));
+pub(super) fn engine_lease_revocation_waits_for_current_work_and_finishes_storage_release(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let path = std::env::temp_dir().join(types::new_id("lease-revoke")?);
     let path = path.to_str().unwrap();
     let lease = EngineLease::new(Arc::new(Mutex::new(Engine::open(path).unwrap())));
     let (entered, active) = channel::channel();
@@ -43,10 +44,13 @@ pub(super) fn engine_lease_revocation_waits_for_current_work_and_finishes_storag
     revoker.join().unwrap();
     drop(reopened);
     std::fs::remove_file(path).unwrap();
+
+    Ok(())
 }
 
-pub(super) fn poisoned_engine_lease_still_revokes_and_releases_storage() {
-    let path = std::env::temp_dir().join(types::new_id("lease-poison"));
+pub(super) fn poisoned_engine_lease_still_revokes_and_releases_storage(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let path = std::env::temp_dir().join(types::new_id("lease-poison")?);
     let path = path.to_str().unwrap();
     let lease = EngineLease::new(Arc::new(Mutex::new(Engine::open(path).unwrap())));
     let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -71,13 +75,16 @@ pub(super) fn poisoned_engine_lease_still_revokes_and_releases_storage() {
     );
     drop(reopened);
     std::fs::remove_file(path).unwrap();
+
+    Ok(())
 }
 
-pub(super) fn blocked_media_upload_releases_storage_and_preserves_ciphertext() {
+pub(super) fn blocked_media_upload_releases_storage_and_preserves_ciphertext(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use std::io::Read;
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
-    let path = std::env::temp_dir().join(types::new_id("media-stop"));
+    let path = std::env::temp_dir().join(types::new_id("media-stop")?);
     let path = path.to_str().unwrap();
     let mut engine = Engine::open(path).unwrap();
     engine
@@ -182,4 +189,6 @@ pub(super) fn blocked_media_upload_releases_storage_and_preserves_ciphertext() {
     relay.join().unwrap();
     drop(reopened);
     std::fs::remove_file(path).unwrap();
+
+    Ok(())
 }

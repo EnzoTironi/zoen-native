@@ -5,7 +5,7 @@ fn queue_mode(f: &PageFixture) {
     e.store.set_synced(&f.actor.space).unwrap();
     e.net.synced.insert(f.actor.space.clone());
 }
-fn ack(f: &PageFixture, cid: &str) {
+fn ack(f: &PageFixture, cid: &str) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut e = f.actor.agent.lock();
     let p = e
         .store
@@ -20,16 +20,18 @@ fn ack(f: &PageFixture, cid: &str) {
     let env = protocol::Envelope::plain(&p.event);
     let frame = protocol::Sequenced {
         seq,
-        hash: event_log::chain_hash(&f.actor.space, seq, &prev, &env.wire_hash()),
+        hash: event_log::chain_hash(&f.actor.space, seq, &prev, &env.wire_hash())?,
         prev,
         env,
     };
     assert_eq!(e.ingest(frame), crate::sync::Ingest::Confirmed);
+    Ok(())
 }
 
 #[test]
-fn queued_is_not_confirmed_and_exact_receipt_survives_ack_and_later_head() {
-    let f = fixture();
+fn queued_is_not_confirmed_and_exact_receipt_survives_ack_and_later_head(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = fixture().unwrap();
     let t = turn(&f);
     let c = command(&t);
     let (request, permit) = approved(&f, &t, &c);
@@ -47,7 +49,7 @@ fn queued_is_not_confirmed_and_exact_receipt_survives_ack_and_later_head() {
         .agent
         .agent_page_turn(&f.page, &f.actor.source, &f.actor.owner)
         .is_err());
-    ack(&f, &accepted.client_id);
+    ack(&f, &accepted.client_id)?;
     let current = page(&f);
     let mut other = current.blocks.last().unwrap().clone();
     other.text = "Later human version".into();
@@ -77,7 +79,7 @@ fn queued_is_not_confirmed_and_exact_receipt_survives_ack_and_later_head() {
         .unwrap()
         .event
         .client_id;
-    ack(&f, &later);
+    ack(&f, &later)?;
     let permit = f.actor.agent.approved_page_tool_turn(&request.id).unwrap();
     let before = counts(&f);
     let replay = f.actor.agent.agent_page_replace(permit.turn(), &c).unwrap();
@@ -87,18 +89,19 @@ fn queued_is_not_confirmed_and_exact_receipt_survives_ack_and_later_head() {
     assert_eq!(replay.delivery, AgentPageDelivery::Confirmed);
     assert!(replay.replayed);
     assert_eq!(counts(&f), before);
+    Ok(())
 }
 
 #[test]
 fn lost_outer_response_and_process_cold_reopen_return_same_publication() {
-    let f = fixture();
+    let f = fixture().unwrap();
     let t = turn(&f);
     let c = command(&t);
     let (request, permit) = approved(&f, &t, &c);
     queue_mode(&f);
     // Discarding a completed API result models loss strictly after outer RELEASE.
     let accepted = f.actor.agent.agent_page_replace(permit.turn(), &c).unwrap();
-    let dir = std::env::temp_dir().join(types::new_id("page-command-cold"));
+    let dir = std::env::temp_dir().join(types::new_id("page-command-cold").unwrap());
     std::fs::create_dir(&dir).unwrap();
     let path = dir.join("state.sqlite");
     f.actor
@@ -132,7 +135,7 @@ fn lost_outer_response_and_process_cold_reopen_return_same_publication() {
 #[test]
 fn real_sql_faults_after_apply_publication_and_receipt_rollback_entire_command() {
     for fail_at in [1, 2, 3] {
-        let f = fixture();
+        let f = fixture().unwrap();
         let t = turn(&f);
         let c = command(&t);
         let (_, permit) = approved(&f, &t, &c);
@@ -159,7 +162,7 @@ fn real_sql_faults_after_apply_publication_and_receipt_rollback_entire_command()
         let accepted = f.actor.agent.agent_page_replace(permit.turn(), &c).unwrap();
         assert_eq!(accepted.observed_base_version, 1);
     }
-    let f = fixture();
+    let f = fixture().unwrap();
     let t = turn(&f);
     let c = command(&t);
     let (_, permit) = approved(&f, &t, &c);
@@ -173,7 +176,7 @@ fn real_sql_faults_after_apply_publication_and_receipt_rollback_entire_command()
 
 #[test]
 fn permanent_refusal_recovery_reports_the_original_cid_without_retrying_it() {
-    let f = fixture();
+    let f = fixture().unwrap();
     let t = turn(&f);
     let c = command(&t);
     let (_, permit) = approved(&f, &t, &c);
@@ -199,8 +202,9 @@ fn permanent_refusal_recovery_reports_the_original_cid_without_retrying_it() {
 }
 
 #[test]
-fn valid_member_same_cid_is_not_confirmation_and_does_not_mask_the_later_exact_echo() {
-    let f = fixture();
+fn valid_member_same_cid_is_not_confirmation_and_does_not_mask_the_later_exact_echo(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = fixture().unwrap();
     let t = turn(&f);
     let c = command(&t);
     let (_, permit) = approved(&f, &t, &c);
@@ -221,15 +225,15 @@ fn valid_member_same_cid_is_not_confirmation_and_does_not_mask_the_later_exact_e
             at,
             log.head(),
             EventBody::MessagePosted {
-                message: types::new_id("foreign_alias"),
+                message: types::new_id("foreign_alias").unwrap(),
                 text: "Valid foreign same-CID event".into(),
                 attaches: None,
                 reply: None,
                 media: None,
                 forwarded: false,
             },
-        );
-        let event = log.sequence(signed).clone();
+        )?;
+        let event = log.sequence(signed)?.clone();
         assert_eq!(
             e.ingest(protocol::Sequenced {
                 seq: event.seq,
@@ -250,18 +254,20 @@ fn valid_member_same_cid_is_not_confirmation_and_does_not_mask_the_later_exact_e
         AgentPageDelivery::Queued
     );
     assert!(f.actor.agent.timeline(f.actor.space.clone()).unwrap().iter().any(|m|m.author.id==f.actor.owner && matches!(&m.kind,crate::EntryKind::Message {text,..} if text=="Valid foreign same-CID event")));
-    ack(&f, &accepted.client_id);
+    ack(&f, &accepted.client_id)?;
     let before = counts(&f);
     let confirmed = f.actor.agent.agent_page_replace(permit.turn(), &c).unwrap();
     assert_eq!(confirmed.delivery, AgentPageDelivery::Confirmed);
     assert_eq!(confirmed.client_id, accepted.client_id);
     assert_eq!(counts(&f), before);
+    Ok(())
 }
 
 #[test]
-fn concurrent_peer_publication_does_not_turn_local_result_into_a_canonical_version() {
+fn concurrent_peer_publication_does_not_turn_local_result_into_a_canonical_version(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use base64::Engine as _;
-    let f = fixture();
+    let f = fixture().unwrap();
     let t = turn(&f);
     let c = command(&t);
     let (request, permit) = approved(&f, &t, &c);
@@ -312,7 +318,7 @@ fn concurrent_peer_publication_does_not_turn_local_result_into_a_canonical_versi
         .unwrap();
         let signed = e.author_for(&f.actor.owner).unwrap().sign_event(
             &f.actor.space,
-            &types::new_id("peer_page"),
+            &types::new_id("peer_page").unwrap(),
             crate::engine::now_ms(),
             log.head(),
             EventBody::ItemVersioned {
@@ -324,8 +330,8 @@ fn concurrent_peer_publication_does_not_turn_local_result_into_a_canonical_versi
                 }),
                 note: "Concurrent owner publication".into(),
             },
-        );
-        let event = log.sequence(signed).clone();
+        )?;
+        let event = log.sequence(signed)?.clone();
         assert_eq!(
             e.ingest(protocol::Sequenced {
                 seq: event.seq,
@@ -337,7 +343,7 @@ fn concurrent_peer_publication_does_not_turn_local_result_into_a_canonical_versi
         );
         assert_eq!(e.store.outbox_len().unwrap(), 1);
     }
-    ack(&f, &accepted.client_id);
+    ack(&f, &accepted.client_id)?;
     let current = page(&f);
     assert_eq!(current.version, 3);
     assert!(current.blocks.iter().any(|b| b.text == c.after.text));
@@ -361,7 +367,7 @@ fn concurrent_peer_publication_does_not_turn_local_result_into_a_canonical_versi
     );
     let wire = serde_json::to_value(&replay).unwrap();
     assert!(wire.get("version").is_none() && wire.get("contentSha256").is_none());
-    let dir = std::env::temp_dir().join(types::new_id("concurrent-page-cold"));
+    let dir = std::env::temp_dir().join(types::new_id("concurrent-page-cold").unwrap());
     std::fs::create_dir(&dir).unwrap();
     let path = dir.join("state.sqlite");
     f.actor
@@ -386,4 +392,5 @@ fn concurrent_peer_publication_does_not_turn_local_result_into_a_canonical_versi
     assert_eq!(cold.lock().store.event_count().unwrap(), events);
     drop(cold);
     std::fs::remove_dir_all(dir).unwrap();
+    Ok(())
 }

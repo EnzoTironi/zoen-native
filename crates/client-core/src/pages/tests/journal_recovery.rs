@@ -2,8 +2,9 @@
 
 use super::*;
 
-pub(super) fn closing_and_reopening_the_database_recovers_the_exact_edit_receipt_and_draft() {
-    let directory = std::env::temp_dir().join(new_id("zoen-page-reopen"));
+pub(super) fn closing_and_reopening_the_database_recovers_the_exact_edit_receipt_and_draft(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let directory = std::env::temp_dir().join(new_id("zoen-page-reopen")?);
     std::fs::create_dir_all(&directory).unwrap();
     let database = directory.join("page.sqlite");
     let path = database.to_str().unwrap();
@@ -23,6 +24,8 @@ pub(super) fn closing_and_reopening_the_database_recovers_the_exact_edit_receipt
     assert_eq!(journal_rows(&engine), encrypted);
     drop(engine);
     std::fs::remove_dir_all(directory).unwrap();
+
+    Ok(())
 }
 
 pub(super) fn an_editor_context_cannot_be_reused_on_another_page() {

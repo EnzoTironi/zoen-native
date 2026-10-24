@@ -2,8 +2,9 @@
 
 use super::*;
 
-pub(super) fn complete_captures_are_private_encrypted_and_survive_a_locked_cold_reopen() {
-    let dir = temp();
+pub(super) fn complete_captures_are_private_encrypted_and_survive_a_locked_cold_reopen(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = temp()?;
     let path = dir.join("device.sqlite");
     let f = fixture(path.to_str().unwrap());
     let before = counts(&f.engine);
@@ -47,10 +48,12 @@ pub(super) fn complete_captures_are_private_encrypted_and_survive_a_locked_cold_
             .any(|v| v == b"Private edited PDF snapshot a"));
     }
     std::fs::remove_dir_all(dir).unwrap();
+
+    Ok(())
 }
 
 pub(super) fn backup_restore_and_device_erase_exclude_private_pdf_journals_even_from_retained_snapshots(
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let f = fixture(":memory:");
     let a = stage(&f, "0", "editor", "a");
     // Confirm real membership/file history, so the restored device can access the same PDF.
@@ -60,7 +63,7 @@ pub(super) fn backup_restore_and_device_erase_exclude_private_pdf_journals_even_
         .into_iter()
         .filter(|p| p.event.space == f.scope.space_id)
     {
-        let event = relay.sequence(pending.event);
+        let event = relay.sequence(pending.event)?;
         assert!(matches!(
             f.engine.lock().ingest(protocol::Sequenced {
                 seq: event.seq,
@@ -73,7 +76,7 @@ pub(super) fn backup_restore_and_device_erase_exclude_private_pdf_journals_even_
     }
     let private = rows(&f);
     let snapshot = f.engine.lock().backup_snapshot().unwrap();
-    let dir = temp();
+    let dir = temp()?;
     let path = dir.join("backup.sqlite");
     std::fs::write(&path, snapshot).unwrap();
     let conn = rusqlite::Connection::open(&path).unwrap();
@@ -112,7 +115,7 @@ pub(super) fn backup_restore_and_device_erase_exclude_private_pdf_journals_even_
         .restore_snapshot(
             &header,
             &std::fs::read(&path).unwrap(),
-            event_log::Signer::generate(),
+            event_log::Signer::generate()?,
         )
         .unwrap();
     assert_eq!(
@@ -140,4 +143,6 @@ pub(super) fn backup_restore_and_device_erase_exclude_private_pdf_journals_even_
     assert!(f.engine.file_edit_draft(f.scope.clone()).is_err());
     drop(restored);
     std::fs::remove_dir_all(dir).unwrap();
+
+    Ok(())
 }

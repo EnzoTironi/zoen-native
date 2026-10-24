@@ -69,7 +69,7 @@ impl Client {
         let current = engine.page(&item_id)?;
         engine.page_apply_from(
             &item_id,
-            &types::new_id("page_edit"),
+            &types::new_id("page_edit")?,
             &current.edit_context,
             &order,
             &changed,

@@ -24,7 +24,7 @@ fn failed_message_or_receipt_write_rolls_back_files_keys_and_projection() {
 
 #[test]
 fn exact_file_send_retries_survive_cold_reopen_and_reject_intent_drift() {
-    sending_cases::exact_file_send_retries_survive_cold_reopen_and_reject_intent_drift()
+    sending_cases::exact_file_send_retries_survive_cold_reopen_and_reject_intent_drift().unwrap()
 }
 
 #[test]
@@ -33,7 +33,8 @@ fn file_caption_is_signed_with_its_attachment_and_thread_before_receiver_replay(
 }
 
 #[test]
-fn clearing_file_caption_through_public_edit_reaches_signed_recipient_without_changing_file() {
+fn clearing_file_caption_through_public_edit_reaches_signed_recipient_without_changing_file(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     captions_cases::clearing_file_caption_through_public_edit_reaches_signed_recipient_without_changing_file()
 }
 
@@ -44,7 +45,7 @@ fn blank_caption_edit_is_scoped_to_live_own_ordinary_files_and_enforces_caption_
 
 #[test]
 fn captioned_file_retries_survive_reopen_and_reject_caption_drift() {
-    captions_cases::captioned_file_retries_survive_reopen_and_reject_caption_drift()
+    captions_cases::captioned_file_retries_survive_reopen_and_reject_caption_drift().unwrap()
 }
 
 #[test]
@@ -53,7 +54,8 @@ fn file_caption_bounds_and_failed_receipt_leave_no_partial_file_or_message() {
 }
 
 #[test]
-fn file_message_sync_delivers_the_original_attachment_and_encrypted_chunks() {
+fn file_message_sync_delivers_the_original_attachment_and_encrypted_chunks(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     sending_cases::file_message_sync_delivers_the_original_attachment_and_encrypted_chunks()
 }
 
@@ -63,7 +65,8 @@ fn cross_chat_media_forwarding_copies_current_files_without_source_bindings() {
 }
 
 #[test]
-fn destination_only_receiver_decrypts_forwarded_media_and_thumbnail() {
+fn destination_only_receiver_decrypts_forwarded_media_and_thumbnail(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     forwarding_cases::destination_only_receiver_decrypts_forwarded_media_and_thumbnail()
 }
 

@@ -229,7 +229,7 @@ impl Client {
                 schema: SCHEMA,
                 public_origin: config.public_origin,
                 site_id: inspection.site_id,
-                request_id: types::new_secret_id("pub"),
+                request_id: types::new_secret_id("pub")?,
                 expected_head: inspection.head,
                 change: if unpublish {
                     Change::Unpublish

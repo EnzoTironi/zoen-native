@@ -345,9 +345,9 @@ impl NativeCustody {
                         return Err(RuntimeError::Denied);
                     }
                     let locator = ReplyRun {
-                        run: types::new_id("run"),
-                        attempt: types::new_id("attempt"),
-                        wake: types::new_id("wake"),
+                        run: types::new_id("run").map_err(|_| RuntimeError::Unavailable)?,
+                        attempt: types::new_id("attempt").map_err(|_| RuntimeError::Unavailable)?,
+                        wake: types::new_id("wake").map_err(|_| RuntimeError::Unavailable)?,
                     };
                     let request = ModelRequest {
                         context: zoen_models::AttemptContext {

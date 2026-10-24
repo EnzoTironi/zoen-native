@@ -1,6 +1,8 @@
 use super::*;
 
-pub(super) async fn queued_messages_round_trip(catch_up: CatchUp) {
+pub(super) async fn queued_messages_round_trip(
+    catch_up: CatchUp,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("ws://{}", listener.local_addr().unwrap());
@@ -23,15 +25,15 @@ pub(super) async fn queued_messages_round_trip(catch_up: CatchUp) {
                 kind: SpaceKind::Group,
                 privacy: Privacy::EndToEnd,
             },
-        )),
+        )?),
         &mut head,
-    );
+    )?;
     assert_eq!(engine.ingest(genesis), Ingest::Applied);
     engine.create_mls_group(space).unwrap();
 
     // A second enrolled leaf of the same identity can read both offline messages
     // and supplies a genuine MLS commit that this session has not caught up with.
-    let peer_author = Author::device(&Signer::from_secret(&root_secret), Signer::generate());
+    let peer_author = Author::device(&Signer::from_secret(&root_secret), Signer::generate()?);
     let mut peer_store = rusqlite::Connection::open_in_memory().unwrap();
     ::mls::migrate(&mut peer_store).unwrap();
     let peer_secret = peer_author.key.secret();
@@ -64,7 +66,7 @@ pub(super) async fn queued_messages_round_trip(catch_up: CatchUp) {
             Sealed::new(SealedKind::Commit, SUITE_ID, adding.commit),
         ),
         &mut head,
-    );
+    )?;
     assert_eq!(engine.ingest(commit), Ingest::Applied);
     let roster = [author.identity.clone()].into_iter().collect();
     let welcome = adding.welcome.unwrap();
@@ -79,7 +81,7 @@ pub(super) async fn queued_messages_round_trip(catch_up: CatchUp) {
             Sealed::new(SealedKind::Welcome, SUITE_ID, welcome),
         ),
         &mut head,
-    );
+    )?;
     assert_eq!(engine.ingest(welcome), Ingest::Applied);
     assert_eq!(engine.mls_status(space).unwrap().0, 1);
 
@@ -134,7 +136,7 @@ pub(super) async fn queued_messages_round_trip(catch_up: CatchUp) {
             Sealed::new(SealedKind::Commit, SUITE_ID, advance.commit),
         ),
         &mut head,
-    );
+    )?;
     let losing_commit = if matches!(
         catch_up,
         CatchUp::HandshakeCollision | CatchUp::StorageRefusal
@@ -354,7 +356,7 @@ pub(super) async fn queued_messages_round_trip(catch_up: CatchUp) {
                     assert_eq!(inner.content, original.content);
                     assert_eq!(inner.sig, original.sig);
                     assert!(readable.insert(env.client_id().to_string()));
-                    let ev = sequence(env, &mut head);
+                    let ev = sequence(env, &mut head)?;
                     reply(&mut socket, ServerFrame::Event { ev }).await;
                 }
                 ClientFrame::Req { id, .. } => {
@@ -456,10 +458,14 @@ pub(super) async fn queued_messages_round_trip(catch_up: CatchUp) {
         }
         cmd.send(Cmd::Stop).unwrap();
         stopped.await.unwrap();
+        Ok::<_, Box<dyn std::error::Error>>(())
     };
-    tokio::time::timeout(Duration::from_secs(10), async {
+    let (_, produced) = tokio::time::timeout(Duration::from_secs(10), async {
         tokio::join!(client, relay)
     })
     .await
     .expect("catch-up ordering stalled");
+    produced?;
+
+    Ok(())
 }

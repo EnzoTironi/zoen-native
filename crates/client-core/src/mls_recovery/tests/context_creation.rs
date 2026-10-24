@@ -1,7 +1,8 @@
 //! Preserved context creation scenarios; stable test entries stay in the parent.
 use super::*;
 
-pub(super) fn a_ready_group_creates_its_context_after_profiles_become_available() {
+pub(super) fn a_ready_group_creates_its_context_after_profiles_become_available(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let space = "late-profile-capability";
     let mut engine = Engine::open(":memory:").unwrap();
     engine
@@ -19,8 +20,8 @@ pub(super) fn a_ready_group_creates_its_context_after_profiles_become_available(
             kind: SpaceKind::Group,
             privacy: Privacy::EndToEnd,
         },
-    ));
-    let genesis = ordered(&engine, genesis);
+    )?);
+    let genesis = ordered(&engine, genesis)?;
     assert_eq!(engine.ingest(genesis), Ingest::Applied);
     engine.create_mls_group(space).unwrap();
     assert!(engine.ready_epoch(space).is_some());
@@ -47,9 +48,11 @@ pub(super) fn a_ready_group_creates_its_context_after_profiles_become_available(
         .any(|(_, id, kind)| id == space && kind == SealedKind::Commit.name()));
     assert!(!engine.pending_uploads(8).is_empty());
     assert!(!engine.mls_recovery_pass().unwrap());
+    Ok(())
 }
 
-pub(super) fn an_empty_claim_reply_resumes_context_creation_for_a_ready_group() {
+pub(super) fn an_empty_claim_reply_resumes_context_creation_for_a_ready_group(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let space = "empty-claim-context";
     let mut engine = Engine::open(":memory:").unwrap();
     engine
@@ -79,8 +82,8 @@ pub(super) fn an_empty_claim_reply_resumes_context_creation_for_a_ready_group() 
             },
         ),
     ] {
-        let env = Envelope::plain(&author.sign_event(space, cid, 1, seen(&engine, space), body));
-        assert_eq!(engine.ingest(ordered(&engine, env)), Ingest::Applied);
+        let env = Envelope::plain(&author.sign_event(space, cid, 1, seen(&engine, space), body)?);
+        assert_eq!(engine.ingest(ordered(&engine, env)?), Ingest::Applied);
     }
     engine.create_mls_group(space).unwrap();
     let (public, signed) = peer.agreement_to_publish().unwrap();
@@ -109,12 +112,14 @@ pub(super) fn an_empty_claim_reply_resumes_context_creation_for_a_ready_group() 
         "a ready group must resume creating its recovery context after an empty claim reply"
     );
     assert!(!engine.pending_uploads(8).is_empty());
+    Ok(())
 }
 
-pub(super) fn a_missing_group_recovers_when_its_validated_blob_arrives_later() {
+pub(super) fn a_missing_group_recovers_when_its_validated_blob_arrives_later(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let space = "late-recovery-blob";
-    let staged = staged_recovery(":memory:", space);
-    let mut engine = restored_receiver(&staged);
+    let staged = staged_recovery(":memory:", space)?;
+    let mut engine = restored_receiver(&staged)?;
     assert!(!engine.mls_recovery_pass().unwrap());
     assert!(!engine.mls_recovery_pass().unwrap());
     let reference = engine.recovery_context(space).unwrap();
@@ -124,12 +129,15 @@ pub(super) fn a_missing_group_recovers_when_its_validated_blob_arrives_later() {
     assert!(engine.mls_recovery_pass().unwrap());
     assert!(engine.device().unwrap().recovery_pending(space));
     assert!(engine.outbox_envelopes().is_empty());
+
+    Ok(())
 }
 
-pub(super) fn a_recovery_error_keeps_its_group_queued_through_a_future_retry() {
+pub(super) fn a_recovery_error_keeps_its_group_queued_through_a_future_retry(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let space = "future-recovery-retry";
-    let staged = staged_recovery(":memory:", space);
-    let mut engine = restored_receiver(&staged);
+    let staged = staged_recovery(":memory:", space)?;
+    let mut engine = restored_receiver(&staged)?;
     let reference = engine.recovery_context(space).unwrap();
     assert!(engine.recovery_context_arrived(&reference, &staged.context_blob));
     engine.net.profiles.agreement = None;
@@ -151,9 +159,12 @@ pub(super) fn a_recovery_error_keeps_its_group_queued_through_a_future_retry() {
         .insert(space.into(), Instant::now() - Duration::from_secs(1));
     assert!(engine.mls_recovery_pass().unwrap());
     assert!(engine.device().unwrap().recovery_pending(space));
+
+    Ok(())
 }
 
-pub(super) fn producing_one_context_preserves_the_other_queued_groups() {
+pub(super) fn producing_one_context_preserves_the_other_queued_groups(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut engine = Engine::open(":memory:").unwrap();
     engine
         .create_account("Ana", "ana", "http://relay.test")
@@ -171,8 +182,8 @@ pub(super) fn producing_one_context_preserves_the_other_queued_groups() {
                 kind: SpaceKind::Group,
                 privacy: Privacy::EndToEnd,
             },
-        ));
-        assert_eq!(engine.ingest(ordered(&engine, env)), Ingest::Applied);
+        )?);
+        assert_eq!(engine.ingest(ordered(&engine, env)?), Ingest::Applied);
         engine.create_mls_group(space).unwrap();
     }
     assert!(engine.mls_recovery_pass().unwrap());
@@ -186,9 +197,11 @@ pub(super) fn producing_one_context_preserves_the_other_queued_groups() {
         std::collections::BTreeSet::from(["first-context".into(), "second-context".into()])
     );
     assert!(!engine.mls_recovery_pass().unwrap());
+    Ok(())
 }
 
-pub(super) fn agreement_lookup_finishes_before_the_engine_requests_one_shot_key_packages() {
+pub(super) fn agreement_lookup_finishes_before_the_engine_requests_one_shot_key_packages(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut engine = Engine::open(":memory:").unwrap();
     engine
         .create_account("Ana", "ana", "http://relay.test")
@@ -218,8 +231,8 @@ pub(super) fn agreement_lookup_finishes_before_the_engine_requests_one_shot_key_
             },
         ),
     ] {
-        let env = Envelope::plain(&author.sign_event(space, cid, 1, seen(&engine, space), body));
-        assert_eq!(engine.ingest(ordered(&engine, env)), Ingest::Applied);
+        let env = Envelope::plain(&author.sign_event(space, cid, 1, seen(&engine, space), body)?);
+        assert_eq!(engine.ingest(ordered(&engine, env)?), Ingest::Applied);
     }
     engine.create_mls_group(space).unwrap();
     assert!(engine
@@ -269,4 +282,5 @@ pub(super) fn agreement_lookup_finishes_before_the_engine_requests_one_shot_key_
     );
     assert!(engine.device().unwrap().pending(space));
     assert_eq!(engine.uploads_pending(), 1);
+    Ok(())
 }

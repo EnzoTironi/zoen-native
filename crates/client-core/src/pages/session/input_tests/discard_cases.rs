@@ -3,9 +3,9 @@
 use super::*;
 
 pub(super) fn input_discard_guards_and_publication_ack_preserve_private_document_and_future_capture(
-) {
-    for kind in [ItemKind::Page, ItemKind::Plan] {
-        let (_db, mut f) = cold_input_fixture(kind);
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Ok(for kind in [ItemKind::Page, ItemKind::Plan] {
+        let (_db, mut f) = cold_input_fixture(kind)?;
         let mut session = f.session();
         let pending = queued(
             session
@@ -92,7 +92,7 @@ pub(super) fn input_discard_guards_and_publication_ack_preserve_private_document
         assert_eq!(journal_without_input(&f), journal);
         // The real ACK for a prior Share refreshes canonical/shadow state without
         // consuming the native checkpoint retained after that Share.
-        f.ack(&pending);
+        f.ack(&pending)?;
         assert_eq!(f.engine.page_input_load(&scope).unwrap(), captured.current);
         let after_ack = journal_without_input(&f);
         let view = f.session().read(&f.engine).unwrap().view;
@@ -141,21 +141,22 @@ pub(super) fn input_discard_guards_and_publication_ack_preserve_private_document
         assert_eq!(replay.current, b.current);
         assert_eq!(f.cipher(), cipher);
         assert_eq!(journal_without_input(&f), after_ack);
-    }
+    })
 }
 
-pub(super) fn plan_input_metadata_survives_pending_legacy_without_admitting_empty_release() {
-    for captured in [false, true] {
-        let (_db, mut f) = cold_input_fixture(ItemKind::Plan);
+pub(super) fn plan_input_metadata_survives_pending_legacy_without_admitting_empty_release(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Ok(for captured in [false, true] {
+        let (_db, mut f) = cold_input_fixture(ItemKind::Plan)?;
         // A confirmed legacy Plan with no applied CRDT draft can still hold
         // private native input; checkpointing must not change has_draft.
-        f.item = new_id("confirmed-input-plan");
+        f.item = new_id("confirmed-input-plan")?;
         f.ordered(EventBody::ItemCreated {
             item: f.item.clone(),
             kind: ItemKind::Plan,
             content: ItemContent::Plan(original()),
             origin: "confirmed metadata fixture".into(),
-        });
+        })?;
         let scope = input_scope(&f);
         let opened = input_open(&f, WRITER_A);
         let input = if captured {
@@ -198,7 +199,7 @@ pub(super) fn plan_input_metadata_survives_pending_legacy_without_admitting_empt
         assert_eq!(f.cipher(), cipher);
 
         // A purely optimistic creation has no authenticated document session.
-        f.item = new_id("pending-input-plan");
+        f.item = new_id("pending-input-plan")?;
         f.queue(EventBody::ItemCreated {
             item: f.item.clone(),
             kind: ItemKind::Plan,
@@ -218,5 +219,5 @@ pub(super) fn plan_input_metadata_survives_pending_legacy_without_admitting_empt
             .page_input_release_empty(&scope, WRITER_A, 0, "no-pending-authority")
             .is_err());
         assert!(f.cipher().is_none());
-    }
+    })
 }

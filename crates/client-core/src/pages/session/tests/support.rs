@@ -47,22 +47,29 @@ pub(super) fn identity(engine: &mut Engine, name: &str) -> String {
         .unwrap()
 }
 
-pub(super) fn envelope_frame(engine: &Engine, env: Envelope) -> Sequenced {
+pub(super) fn envelope_frame(
+    engine: &Engine,
+    env: Envelope,
+) -> std::result::Result<Sequenced, Box<dyn std::error::Error>> {
     let head = engine.logs.get(env.space()).and_then(|log| log.head());
     let seq = head.as_ref().map_or(0, |head| head.seq + 1);
     let prev = head.map_or_else(|| GENESIS_PREV.into(), |head| head.hash);
-    Sequenced {
+    Ok(Sequenced {
         seq,
-        hash: chain_hash(env.space(), seq, &prev, &env.wire_hash()),
+        hash: chain_hash(env.space(), seq, &prev, &env.wire_hash())?,
         prev,
         env,
-    }
+    })
 }
 
-pub(super) fn deliver(engine: &mut Engine, event: &Event, expected: Ingest) -> Event {
-    let frame = envelope_frame(engine, Envelope::plain(event));
+pub(super) fn deliver(
+    engine: &mut Engine,
+    event: &Event,
+    expected: Ingest,
+) -> std::result::Result<Event, Box<dyn std::error::Error>> {
+    let frame = envelope_frame(engine, Envelope::plain(event))?;
     assert_eq!(engine.ingest(frame), expected);
-    engine.logs[&event.space].events().last().unwrap().clone()
+    Ok(engine.logs[&event.space].events().last().unwrap().clone())
 }
 
 pub(super) fn blocks(read: &SessionRead) -> &[PlanBlock] {
@@ -173,7 +180,9 @@ pub(super) fn drop_trigger(f: &Fixture, name: &str) {
         .unwrap();
 }
 
-pub(super) fn edited_binary_fixture() -> (std::sync::Arc<Client>, String, PageSession) {
+pub(super) fn edited_binary_fixture(
+) -> std::result::Result<(std::sync::Arc<Client>, String, PageSession), Box<dyn std::error::Error>>
+{
     let public = Client::open(":memory:".into(), "en".into()).unwrap();
     public.seed_demo_if_empty().unwrap();
     let space = public
@@ -196,7 +205,7 @@ pub(super) fn edited_binary_fixture() -> (std::sync::Arc<Client>, String, PageSe
         .map(|p| p.event)
         .collect();
     for event in creations {
-        deliver(&mut engine, &event, Ingest::Confirmed);
+        deliver(&mut engine, &event, Ingest::Confirmed)?;
     }
     drop(engine);
     let read = public.page(id.clone()).unwrap();
@@ -214,10 +223,11 @@ pub(super) fn edited_binary_fixture() -> (std::sync::Arc<Client>, String, PageSe
     let engine = public.lock();
     let session = PageSession::open(&engine, &id).unwrap();
     drop(engine);
-    (public, id, session)
+    Ok((public, id, session))
 }
 
-pub(super) fn encrypted_exact_source_and_peer_readability() {
+pub(super) fn encrypted_exact_source_and_peer_readability(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut owner = Engine::open(":memory:").unwrap();
     owner
         .create_account("Ana", "ana", "http://relay.test")
@@ -228,24 +238,24 @@ pub(super) fn encrypted_exact_source_and_peer_readability() {
     let mut f = Fixture {
         owner: owner.me.clone().unwrap(),
         engine: owner,
-        space: new_id("mls-plan"),
-        item: new_id("mls-item"),
+        space: new_id("mls-plan")?,
+        item: new_id("mls-item")?,
     };
     f.ordered(EventBody::SpaceCreated {
         title: "Encrypted Plan".into(),
         kind: SpaceKind::Group,
         privacy: Privacy::EndToEnd,
-    });
+    })?;
     f.ordered(EventBody::MemberAdded {
         identity: peer.me.clone().unwrap(),
         role: Role::Member,
-    });
+    })?;
     f.ordered(EventBody::ItemCreated {
         item: f.item.clone(),
         kind: ItemKind::Plan,
         content: ItemContent::Plan(original()),
         origin: "authenticated legacy".into(),
-    });
+    })?;
     for event in f.engine.logs[&f.space].events() {
         assert_eq!(
             peer.ingest(Sequenced {
@@ -316,7 +326,7 @@ pub(super) fn encrypted_exact_source_and_peer_readability() {
         .unwrap();
     assert!(env.is_sealed());
     assert_ne!(env.content(), event.content.as_slice());
-    let frame = envelope_frame(&f.engine, env);
+    let frame = envelope_frame(&f.engine, env)?;
     assert_eq!(peer.ingest(frame.clone()), Ingest::Applied);
     assert_eq!(f.engine.ingest(frame), Ingest::Confirmed);
     let landed = f.engine.logs[&f.space].events().last().unwrap();
@@ -343,7 +353,7 @@ pub(super) fn encrypted_exact_source_and_peer_readability() {
             &f.space,
             &peer_author.identity,
             EventBody::MessagePosted {
-                message: new_id("peer-readable"),
+                message: new_id("peer-readable")?,
                 text: "peer after typed Plan".into(),
                 attaches: None,
                 reply: None,
@@ -358,16 +368,21 @@ pub(super) fn encrypted_exact_source_and_peer_readability() {
         .into_iter()
         .find(|e| e.client_id() == response.client_id)
         .unwrap();
-    let frame = envelope_frame(&peer, env);
+    let frame = envelope_frame(&peer, env)?;
     assert_eq!(f.engine.ingest(frame), Ingest::Applied);
     assert!(
         matches!(&f.engine.logs[&f.space].events().last().unwrap().body, EventBody::MessagePosted { text, .. } if text == "peer after typed Plan")
     );
+
+    Ok(())
 }
 
 pub(super) fn private_document_backup_source(
     kind: ItemKind,
-) -> (Fixture, crate::backup::Header, DocumentView, DocumentView) {
+) -> std::result::Result<
+    (Fixture, crate::backup::Header, DocumentView, DocumentView),
+    Box<dyn std::error::Error>,
+> {
     let mut engine = Engine::open(":memory:").unwrap();
     let (identity_secret, _, agreement_secret) = engine
         .create_account("Backup author", "backup_author", "http://127.0.0.1:1")
@@ -376,14 +391,14 @@ pub(super) fn private_document_backup_source(
     let mut f = Fixture {
         engine,
         owner: owner.clone(),
-        space: new_id("document-backup-space"),
-        item: new_id("document-backup-item"),
+        space: new_id("document-backup-space")?,
+        item: new_id("document-backup-item")?,
     };
     f.ordered(EventBody::SpaceCreated {
         title: "Document backup".into(),
         kind: SpaceKind::Group,
         privacy: Privacy::Public,
-    });
+    })?;
     let content = match kind {
         ItemKind::Page => {
             let page = Page::from_markdown("# Published page\n\nPublished paragraph\n").unwrap();
@@ -403,7 +418,7 @@ pub(super) fn private_document_backup_source(
         kind,
         content,
         origin: "Synthetic canonical backup fixture".into(),
-    });
+    })?;
     f.engine.store.set_synced(&f.space).unwrap();
     f.engine.net.synced.insert(f.space.clone());
     let mut session = f.session();
@@ -433,7 +448,7 @@ pub(super) fn private_document_backup_source(
         agreement_secret: hex::encode(agreement_secret),
         created_ms: 1,
     };
-    (f, header, observed.view, accepted.current.view)
+    Ok((f, header, observed.view, accepted.current.view))
 }
 
 pub(super) fn private_document_backup_edit(

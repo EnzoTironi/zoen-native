@@ -26,7 +26,7 @@ impl SecretVault for Vault {
     }
 }
 
-fn snapshot() -> (Header, Vec<u8>) {
+fn snapshot() -> std::result::Result<(Header, Vec<u8>), Box<dyn std::error::Error>> {
     let source = Client::open(":memory:".into(), "en".into()).unwrap();
     let vault = Arc::new(Vault::default());
     source
@@ -53,7 +53,7 @@ fn snapshot() -> (Header, Vec<u8>) {
             .get(&row.event.space)
             .cloned()
             .unwrap_or_else(|| event_log::SpaceLog::new(&row.event.space));
-        let event = log.sequence(row.event);
+        let event = log.sequence(row.event)?;
         assert_eq!(
             engine.ingest(protocol::Sequenced {
                 seq: event.seq,
@@ -75,11 +75,14 @@ fn snapshot() -> (Header, Vec<u8>) {
         created_ms: 1_700_000_000_000,
     };
     let database = source.lock().backup_snapshot().unwrap();
-    (header, database)
+    Ok((header, database))
 }
 
-fn change_database(database: &[u8], sql: &str) -> Vec<u8> {
-    let path = std::env::temp_dir().join(types::new_id("backup-structural-fixture"));
+fn change_database(
+    database: &[u8],
+    sql: &str,
+) -> std::result::Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let path = std::env::temp_dir().join(types::new_id("backup-structural-fixture")?);
     std::fs::write(&path, database).unwrap();
     let connection = rusqlite::Connection::open(&path).unwrap();
     connection
@@ -90,7 +93,7 @@ fn change_database(database: &[u8], sql: &str) -> Vec<u8> {
     drop(connection);
     let result = std::fs::read(&path).unwrap();
     std::fs::remove_file(path).unwrap();
-    result
+    Ok(result)
 }
 
 fn seeded_target() -> Arc<Client> {
@@ -160,8 +163,8 @@ async fn request(socket: &mut tokio::net::TcpStream) -> (String, String, Vec<u8>
     (path, headers, bytes[end..end + length].to_vec())
 }
 
-fn corrupt_table_page(database: &[u8]) -> Vec<u8> {
-    let path = std::env::temp_dir().join(types::new_id("backup-corrupt-page"));
+fn corrupt_table_page(database: &[u8]) -> std::result::Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let path = std::env::temp_dir().join(types::new_id("backup-corrupt-page")?);
     std::fs::write(&path, database).unwrap();
     let connection = rusqlite::Connection::open(&path).unwrap();
     let page: usize = connection
@@ -184,35 +187,35 @@ fn corrupt_table_page(database: &[u8]) -> Vec<u8> {
         "fixture must corrupt an actual B-tree page"
     );
     corrupt[start] = 0;
-    corrupt
+    Ok(corrupt)
 }
 
-async fn public_restore_case(case: &str) {
-    let (mut header, healthy) = snapshot();
+async fn public_restore_case(case: &str) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut header, healthy) = snapshot()?;
     let database = match case {
-        "empty" => change_database(&[], "CREATE TABLE removed (x); DROP TABLE removed;"),
-        "partial" => change_database(&healthy, "DROP TABLE events;"),
+        "empty" => change_database(&[], "CREATE TABLE removed (x); DROP TABLE removed;")?,
+        "partial" => change_database(&healthy, "DROP TABLE events;")?,
         "malformed" => b"authenticated bytes that are not SQLite".to_vec(),
-        "corrupt-page" => corrupt_table_page(&healthy),
-        "missing-column" => change_database(&healthy, "ALTER TABLE events DROP COLUMN json;"),
-        "view" => change_database(&healthy, "DROP TABLE events; CREATE VIEW events AS SELECT '' AS space, 0 AS seq, '' AS hash, 0 AS at_ms, '' AS json WHERE 0;"),
-        "invalid-row" => change_database(&healthy, "DROP TABLE media_keys; CREATE TABLE media_keys (plain_sha TEXT, blob_sha TEXT, key TEXT); INSERT INTO media_keys VALUES ('fixture', NULL, 'fixture');"),
-        "duplicate-row" => change_database(&healthy, "DROP TABLE synced_spaces; CREATE TABLE synced_spaces (space TEXT); INSERT INTO synced_spaces VALUES ('duplicate'), ('duplicate');"),
-        "profile-row-type" => change_database(&healthy, "UPDATE profile_keys SET fields='text instead of blob';"),
-        "synced-row-type" => change_database(&healthy, "UPDATE synced_spaces SET space=x'010203';"),
-        "profile-key-invalid" => change_database(&healthy, "UPDATE profile_keys SET key='invalid profile key';"),
-        "invalid-event" => change_database(&healthy, "UPDATE events SET json='{bad';"),
-        "invalid-signature" => change_database(&healthy, "UPDATE events SET json=json_set(json, '$.sig', '00') WHERE seq=1;"),
-        "indexed-event-drift" => change_database(&healthy, "UPDATE events SET at_ms=at_ms+1;"),
-        "missing-format" => change_database(&healthy, "DELETE FROM meta WHERE key='event_format';"),
-        "missing-root" => change_database(&healthy, &format!("DELETE FROM identities WHERE id='{}';", header.identity)),
+        "corrupt-page" => corrupt_table_page(&healthy)?,
+        "missing-column" => change_database(&healthy, "ALTER TABLE events DROP COLUMN json;")?,
+        "view" => change_database(&healthy, "DROP TABLE events; CREATE VIEW events AS SELECT '' AS space, 0 AS seq, '' AS hash, 0 AS at_ms, '' AS json WHERE 0;")?,
+        "invalid-row" => change_database(&healthy, "DROP TABLE media_keys; CREATE TABLE media_keys (plain_sha TEXT, blob_sha TEXT, key TEXT); INSERT INTO media_keys VALUES ('fixture', NULL, 'fixture');")?,
+        "duplicate-row" => change_database(&healthy, "DROP TABLE synced_spaces; CREATE TABLE synced_spaces (space TEXT); INSERT INTO synced_spaces VALUES ('duplicate'), ('duplicate');")?,
+        "profile-row-type" => change_database(&healthy, "UPDATE profile_keys SET fields='text instead of blob';")?,
+        "synced-row-type" => change_database(&healthy, "UPDATE synced_spaces SET space=x'010203';")?,
+        "profile-key-invalid" => change_database(&healthy, "UPDATE profile_keys SET key='invalid profile key';")?,
+        "invalid-event" => change_database(&healthy, "UPDATE events SET json='{bad';")?,
+        "invalid-signature" => change_database(&healthy, "UPDATE events SET json=json_set(json, '$.sig', '00') WHERE seq=1;")?,
+        "indexed-event-drift" => change_database(&healthy, "UPDATE events SET at_ms=at_ms+1;")?,
+        "missing-format" => change_database(&healthy, "DELETE FROM meta WHERE key='event_format';")?,
+        "missing-root" => change_database(&healthy, &format!("DELETE FROM identities WHERE id='{}';", header.identity))?,
         "agreement-short" => { header.agreement_secret = hex::encode([92; 31]); healthy.clone() },
         "agreement-invalid" => { header.agreement_secret = "not hex".into(); healthy.clone() },
         "root-short" => { header.identity_secret = hex::encode([91; 31]); healthy.clone() },
         "root-mismatch" => { header.identity_secret = hex::encode([91; 32]); healthy.clone() },
         "version" => { header.version += 1; healthy.clone() },
         "healthy" => healthy.clone(),
-        "compatible-columns" => change_database(&healthy, "ALTER TABLE identities DROP COLUMN secret; ALTER TABLE profile_keys DROP COLUMN seen_version; ALTER TABLE profile_keys DROP COLUMN fields; ALTER TABLE events ADD COLUMN future_optional TEXT; PRAGMA user_version=3;"),
+        "compatible-columns" => change_database(&healthy, "ALTER TABLE identities DROP COLUMN secret; ALTER TABLE profile_keys DROP COLUMN seen_version; ALTER TABLE profile_keys DROP COLUMN fields; ALTER TABLE events ADD COLUMN future_optional TEXT; PRAGMA user_version=3;")?,
         _ => unreachable!(),
     };
     let key = [93; 32];
@@ -344,24 +347,26 @@ async fn public_restore_case(case: &str) {
         assert!(target.lock().logs.values().flat_map(|log| log.events()).any(|event| matches!(&event.body, types::EventBody::MessagePosted { text, .. } if text == "Confirmed portable content")));
     }
     server.abort();
+
+    Ok(())
 }
 
 #[tokio::test]
 async fn structural_restore_authenticated_empty_sqlite_is_refused_without_side_effects() {
-    public_restore_case("empty").await;
+    public_restore_case("empty").await.unwrap();
 }
 #[tokio::test]
 async fn structural_restore_authenticated_partial_sqlite_is_refused_without_side_effects() {
-    public_restore_case("partial").await;
+    public_restore_case("partial").await.unwrap();
 }
 #[tokio::test]
 async fn structural_restore_authenticated_malformed_sqlite_is_refused_without_side_effects() {
-    public_restore_case("malformed").await;
+    public_restore_case("malformed").await.unwrap();
 }
 
 #[tokio::test]
 async fn structural_restore_authenticated_short_agreement_secret_is_refused_without_side_effects() {
-    public_restore_case("agreement-short").await;
+    public_restore_case("agreement-short").await.unwrap();
 }
 
 #[tokio::test]
@@ -373,7 +378,7 @@ async fn structural_restore_required_columns_real_tables_and_target_constraints_
         "invalid-row",
         "duplicate-row",
     ] {
-        public_restore_case(case).await;
+        public_restore_case(case).await.unwrap();
     }
 }
 #[tokio::test]
@@ -385,7 +390,7 @@ async fn structural_restore_canonical_history_root_and_format_are_validated_befo
         "missing-format",
         "missing-root",
     ] {
-        public_restore_case(case).await;
+        public_restore_case(case).await.unwrap();
     }
 }
 #[tokio::test]
@@ -396,21 +401,22 @@ async fn structural_restore_header_boundaries_precede_effects() {
         "root-mismatch",
         "version",
     ] {
-        public_restore_case(case).await;
+        public_restore_case(case).await.unwrap();
     }
 }
 #[tokio::test]
 async fn structural_restore_healthy_and_compatible_optional_columns_remain_accepted() {
     for case in ["healthy", "compatible-columns"] {
-        public_restore_case(case).await;
+        public_restore_case(case).await.unwrap();
     }
 }
 #[test]
-fn structural_restore_direct_rejects_invalid_input_before_target_wipe() {
-    let (header, healthy) = snapshot();
+fn structural_restore_direct_rejects_invalid_input_before_target_wipe(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (header, healthy) = snapshot()?;
     let databases = [
-        change_database(&[], "CREATE TABLE removed (x); DROP TABLE removed;"),
-        change_database(&healthy, "DROP TABLE events;"),
+        change_database(&[], "CREATE TABLE removed (x); DROP TABLE removed;").unwrap(),
+        change_database(&healthy, "DROP TABLE events;").unwrap(),
         b"not SQLite".to_vec(),
     ];
     for database in databases {
@@ -418,16 +424,18 @@ fn structural_restore_direct_rejects_invalid_input_before_target_wipe() {
         let before = target.lock().store.memory_image().unwrap();
         assert!(target
             .lock()
-            .restore_snapshot(&header, &database, event_log::Signer::generate())
+            .restore_snapshot(&header, &database, event_log::Signer::generate().unwrap())
             .is_err());
         assert_eq!(target.lock().store.memory_image().unwrap(), before);
         assert!(target.account().is_none());
     }
+    Ok(())
 }
 
 #[test]
-fn structural_restore_direct_requires_every_portable_table_before_wipe() {
-    let (header, healthy) = snapshot();
+fn structural_restore_direct_requires_every_portable_table_before_wipe(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (header, healthy) = snapshot()?;
     for table in [
         "identities",
         "events",
@@ -438,13 +446,13 @@ fn structural_restore_direct_requires_every_portable_table_before_wipe() {
         "synced_spaces",
         "media_keys",
     ] {
-        let database = change_database(&healthy, &format!("DROP TABLE {table};"));
+        let database = change_database(&healthy, &format!("DROP TABLE {table};")).unwrap();
         let target = seeded_target();
         let before = target.lock().store.memory_image().unwrap();
         assert!(
             target
                 .lock()
-                .restore_snapshot(&header, &database, event_log::Signer::generate())
+                .restore_snapshot(&header, &database, event_log::Signer::generate().unwrap())
                 .is_err(),
             "missing portable table {table}"
         );
@@ -455,17 +463,18 @@ fn structural_restore_direct_requires_every_portable_table_before_wipe() {
         );
         assert!(target.account().is_none());
     }
+    Ok(())
 }
 
 #[tokio::test]
 async fn structural_restore_portable_reader_profile_type_is_validated_before_effects() {
-    public_restore_case("profile-row-type").await;
+    public_restore_case("profile-row-type").await.unwrap();
 }
 #[tokio::test]
 async fn structural_restore_portable_reader_synced_type_is_validated_before_effects() {
-    public_restore_case("synced-row-type").await;
+    public_restore_case("synced-row-type").await.unwrap();
 }
 #[tokio::test]
 async fn structural_restore_portable_reader_profile_key_is_validated_before_effects() {
-    public_restore_case("profile-key-invalid").await;
+    public_restore_case("profile-key-invalid").await.unwrap();
 }

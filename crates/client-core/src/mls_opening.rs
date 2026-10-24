@@ -150,7 +150,8 @@ fn retained_application(store: &Store, event: &Event) -> Option<StoredOpening> {
         || envelope.at_ms() != event.at_ms
         || envelope.seen() != event.seen
         || envelope.sealed_kind() != Some(event_log::content::SealedKind::Application)
-        || event_log::chain_hash(&event.space, event.seq, &event.prev, &wire_hash) != event.hash
+        || event_log::chain_hash(&event.space, event.seq, &event.prev, &wire_hash).ok()?
+            != event.hash
     {
         return None;
     }

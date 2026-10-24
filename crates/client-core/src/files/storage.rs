@@ -147,7 +147,7 @@ impl Engine {
                 bytes,
                 thumbnail,
             },
-            &new_id("it"),
+            &new_id("it")?,
         )
     }
 
@@ -219,7 +219,7 @@ impl Engine {
         meta: VoiceMeta,
     ) -> R<TimelineEntry> {
         let me = self.me_id()?;
-        let item = new_id("it");
+        let item = new_id("it")?;
         let ext = match mime.split(';').next().unwrap_or_default() {
             "audio/webm" => "webm",
             "audio/ogg" => "ogg",

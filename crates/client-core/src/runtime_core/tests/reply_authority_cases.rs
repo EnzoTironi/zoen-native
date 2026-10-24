@@ -2,10 +2,11 @@
 
 use super::*;
 
-pub(super) fn prepared_reply_preserves_exact_native_outbox_through_cold_restore_and_confirmation() {
-    let mut fixture = Fixture::new();
-    fixture.grant("publication-owner-trust", Some(1000));
-    let trigger = fixture.message("Original reply request");
+pub(super) fn prepared_reply_preserves_exact_native_outbox_through_cold_restore_and_confirmation(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = Fixture::new()?;
+    fixture.grant("publication-owner-trust", Some(1000))?;
+    let trigger = fixture.message("Original reply request")?;
     let facts = fixture.core.reply(SPACE, &trigger, 400).unwrap();
     let original = facts.intent().clone();
     let frontier = facts.frontier().clone();
@@ -51,7 +52,7 @@ pub(super) fn prepared_reply_preserves_exact_native_outbox_through_cold_restore_
         .encode(),
         wire
     );
-    let frame = ordered(&fixture.owner, envelope);
+    let frame = ordered(&fixture.owner, envelope)?;
     assert_eq!(fixture.owner.ingest(frame.clone()), Ingest::Applied);
     let received = fixture.owner.logs[SPACE].events().last().unwrap();
     assert!(matches!(
@@ -67,13 +68,16 @@ pub(super) fn prepared_reply_preserves_exact_native_outbox_through_cold_restore_
         .iter()
         .all(|event| !matches!(event.body, EventBody::UsageRecorded { .. })));
     println!("JOURNEY prepared reply keeps certified sealed wire and own pending effect in complete cold image; actual accepted echo clears outbox without native usage charge");
+
+    Ok(())
 }
 
-pub(super) fn preparation_refuses_expired_replaced_revoked_and_reader_authority() {
+pub(super) fn preparation_refuses_expired_replaced_revoked_and_reader_authority(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for case in ["expired", "replaced", "revoked", "reader"] {
-        let mut fixture = Fixture::new();
-        fixture.grant("publication-original-trust", Some(1000));
-        let trigger = fixture.message("Original retained request");
+        let mut fixture = Fixture::new()?;
+        fixture.grant("publication-original-trust", Some(1000))?;
+        let trigger = fixture.message("Original retained request")?;
         let original = fixture
             .core
             .reply(SPACE, &trigger, 400)
@@ -83,7 +87,7 @@ pub(super) fn preparation_refuses_expired_replaced_revoked_and_reader_authority(
         match case {
             "expired" => {}
             "replaced" => {
-                fixture.grant("publication-replacement-trust", None);
+                fixture.grant("publication-replacement-trust", None)?;
             }
             "revoked" => {
                 fixture.encrypted(
@@ -91,13 +95,13 @@ pub(super) fn preparation_refuses_expired_replaced_revoked_and_reader_authority(
                         grant: "publication-original-trust".into(),
                     },
                     450,
-                );
+                )?;
             }
             "reader" => {
                 fixture.clear(EventBody::MemberAdded {
                     identity: fixture.agent_profile.id.clone(),
                     role: Role::Reader,
-                });
+                })?;
             }
             _ => unreachable!(),
         }
@@ -115,12 +119,15 @@ pub(super) fn preparation_refuses_expired_replaced_revoked_and_reader_authority(
         assert_eq!(restored.engine.store.outbox_len().unwrap(), 0);
     }
     println!("JOURNEY native reply preparation refuses actual expiry, replacement, revocation and reader role; failed scratch images cannot activate");
+
+    Ok(())
 }
 
-pub(super) fn concurrent_receipt_prefix_restores_only_the_matching_certified_device() {
-    let mut fixture = Fixture::new();
-    fixture.grant("concurrent-prefix-trust", None);
-    let trigger = fixture.message("Concurrent receipt input");
+pub(super) fn concurrent_receipt_prefix_restores_only_the_matching_certified_device(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = Fixture::new()?;
+    fixture.grant("concurrent-prefix-trust", None)?;
+    let trigger = fixture.message("Concurrent receipt input")?;
     let original = fixture
         .core
         .reply(SPACE, &trigger, 400)
@@ -133,7 +140,7 @@ pub(super) fn concurrent_receipt_prefix_restores_only_the_matching_certified_dev
         .unwrap();
     let cid = prepared.envelope().client_id().to_string();
     let pending = fixture.core.snapshot_outbox().unwrap();
-    let next = receipt_source_message(&mut fixture, 0);
+    let next = receipt_source_message(&mut fixture, 0)?;
     assert_eq!(next.env.seen(), prepared.envelope().seen());
     assert_ne!(next.env.author(), prepared.envelope().author());
     next.env.verify().unwrap();
@@ -145,7 +152,7 @@ pub(super) fn concurrent_receipt_prefix_restores_only_the_matching_certified_dev
         panic!("the concurrent owner message is not the reply receipt");
     };
     assert!(fixture.core.snapshot_outbox().unwrap() == pending);
-    let other = Fixture::new_in("other-certified-device");
+    let other = Fixture::new_in("other-certified-device")?;
     assert!(matches!(
         DeviceCore::restore(
             NativeImage::decode_bounded(prefix.image().as_bytes().to_vec()).unwrap(),
@@ -159,7 +166,7 @@ pub(super) fn concurrent_receipt_prefix_restores_only_the_matching_certified_dev
     )
     .unwrap();
     assert!(cold.snapshot_outbox().unwrap() == pending);
-    let accepted = ordered(&fixture.owner, prepared.envelope().clone());
+    let accepted = ordered(&fixture.owner, prepared.envelope().clone())?;
     assert_eq!(fixture.owner.ingest(accepted.clone()), Ingest::Applied);
     let ReplyReceipt::Accepted(receipt) = cold
         .receive_reply_progress(&original, &cid, vec![accepted.clone()])
@@ -172,12 +179,15 @@ pub(super) fn concurrent_receipt_prefix_restores_only_the_matching_certified_dev
     assert_eq!(receipt.publish_digest(), prepared.publish_digest());
     assert_eq!(cold.engine.store.outbox_len().unwrap(), 0);
     println!("JOURNEY concurrent same-prefix owner message preserves the original pending reply through cold restore; a different real certified agent is refused and only the original reply produces acceptance");
+
+    Ok(())
 }
 
-pub(super) fn preparation_bounds_text_and_never_reseals_an_existing_pending_reply() {
-    let mut fixture = Fixture::new();
-    fixture.grant("publication-bounded-trust", None);
-    let trigger = fixture.message("Original bounded request");
+pub(super) fn preparation_bounds_text_and_never_reseals_an_existing_pending_reply(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = Fixture::new()?;
+    fixture.grant("publication-bounded-trust", None)?;
+    let trigger = fixture.message("Original bounded request")?;
     let original = fixture
         .core
         .reply(SPACE, &trigger, 400)
@@ -235,12 +245,15 @@ pub(super) fn preparation_bounds_text_and_never_reseals_an_existing_pending_repl
         wire
     );
     println!("JOURNEY real 32 KiB UTF-8 reply fits native wire/image bounds; empty, oversized and repeated pending preparation refuse without resealing");
+
+    Ok(())
 }
 
-pub(super) fn failed_reply_sealing_discards_scratch_and_preserves_committed_image() {
-    let mut fixture = Fixture::new();
-    fixture.grant("publication-sealing-trust", None);
-    let trigger = fixture.message("Original sealing request");
+pub(super) fn failed_reply_sealing_discards_scratch_and_preserves_committed_image(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = Fixture::new()?;
+    fixture.grant("publication-sealing-trust", None)?;
+    let trigger = fixture.message("Original sealing request")?;
     let original = fixture
         .core
         .reply(SPACE, &trigger, 400)
@@ -265,11 +278,14 @@ pub(super) fn failed_reply_sealing_discards_scratch_and_preserves_committed_imag
         .unwrap();
     prepared.envelope().verify().unwrap();
     println!("JOURNEY real sealed outbox write failure poisons scratch after native append; prior committed image remains usable with no loose native effect");
+
+    Ok(())
 }
 
-pub(super) fn no_default_or_optimistic_grant_can_start_a_reply() {
-    let mut fixture = Fixture::new();
-    let trigger = fixture.message("No explicit grant yet");
+pub(super) fn no_default_or_optimistic_grant_can_start_a_reply(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = Fixture::new()?;
+    let trigger = fixture.message("No explicit grant yet")?;
     assert!(matches!(
         fixture.core.reply(SPACE, &trigger, 400),
         Err(NativeError::Permission)
@@ -289,7 +305,7 @@ pub(super) fn no_default_or_optimistic_grant_can_start_a_reply() {
                 expires_at_ms: None,
             },
         },
-    );
+    )?;
     fixture.core.engine.store.outbox_put(&pending).unwrap();
     fixture.core.engine.reload().unwrap();
     assert!(fixture
@@ -303,17 +319,20 @@ pub(super) fn no_default_or_optimistic_grant_can_start_a_reply() {
         fixture.core.reply(SPACE, &trigger, 400),
         Err(NativeError::Permission)
     ));
-    fixture.grant("real-owner-trust", None);
-    let real = fixture.message("Explicit opened owner trust");
+    fixture.grant("real-owner-trust", None)?;
+    let real = fixture.message("Explicit opened owner trust")?;
     assert!(fixture.core.reply(SPACE, &real, 400).is_ok());
     println!("JOURNEY native optimistic overlay and default trust excluded from ordered reply permission");
+
+    Ok(())
 }
 
-pub(super) fn revoke_replacement_reader_and_opaque_history_stop_the_original_reply() {
+pub(super) fn revoke_replacement_reader_and_opaque_history_stop_the_original_reply(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for case in ["revoke", "replace", "reader", "opaque", "unsupported"] {
-        let mut fixture = Fixture::new();
-        fixture.grant("initial-trust", None);
-        let trigger = fixture.message("Initial retained request");
+        let mut fixture = Fixture::new()?;
+        fixture.grant("initial-trust", None)?;
+        let trigger = fixture.message("Initial retained request")?;
         let original = fixture
             .core
             .reply(SPACE, &trigger, 400)
@@ -327,16 +346,16 @@ pub(super) fn revoke_replacement_reader_and_opaque_history_stop_the_original_rep
                         grant: "initial-trust".into(),
                     },
                     450,
-                );
+                )?;
             }
             "replace" => {
-                fixture.grant("replacement-trust", None);
+                fixture.grant("replacement-trust", None)?;
             }
             "reader" => {
                 fixture.clear(EventBody::MemberAdded {
                     identity: fixture.agent_profile.id.clone(),
                     role: Role::Reader,
-                });
+                })?;
             }
             "unsupported" => {
                 fixture.encrypted(
@@ -353,7 +372,7 @@ pub(super) fn revoke_replacement_reader_and_opaque_history_stop_the_original_rep
                         },
                     },
                     450,
-                );
+                )?;
             }
             "opaque" => {
                 let author = fixture.owner.net.author.as_ref().unwrap();
@@ -365,7 +384,7 @@ pub(super) fn revoke_replacement_reader_and_opaque_history_stop_the_original_rep
                     fixture.owner.logs[SPACE].head().as_ref(),
                     Sealed::new(SealedKind::Application, ::mls::SUITE_ID, vec![1, 2, 3]),
                 );
-                let frame = ordered(&fixture.owner, envelope);
+                let frame = ordered(&fixture.owner, envelope)?;
                 fixture.core.ingest(vec![frame]).unwrap();
             }
             _ => unreachable!(),
@@ -379,10 +398,13 @@ pub(super) fn revoke_replacement_reader_and_opaque_history_stop_the_original_rep
         );
     }
     println!("JOURNEY exact grant revoke/replacement, Reader role, opaque and unsupported history deny refresh");
+
+    Ok(())
 }
 
-pub(super) fn certified_device_and_owner_proof_are_required_without_root_fallback() {
-    let fixture = Fixture::new();
+pub(super) fn certified_device_and_owner_proof_are_required_without_root_fallback(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let fixture = Fixture::new()?;
     let mut agent = fixture.agent_profile.clone();
     agent.owner_proof = None;
     assert!(matches!(
@@ -408,7 +430,7 @@ pub(super) fn certified_device_and_owner_proof_are_required_without_root_fallbac
             fixture.agent_profile.clone(),
             fixture.owner_profile.clone(),
             fixture.agent_cert.clone(),
-            Signer::generate().secret()
+            Signer::generate()?.secret()
         ),
         Err(NativeError::Credential)
     ));
@@ -423,7 +445,7 @@ pub(super) fn certified_device_and_owner_proof_are_required_without_root_fallbac
         ),
         Err(NativeError::Credential)
     ));
-    let agent_root = Signer::generate();
+    let agent_root = Signer::generate()?;
     let owner_author = fixture.owner.net.author.as_ref().unwrap();
     let mut agent = profile(&agent_root, IdentityKind::Agent);
     agent.owner = Some(fixture.owner_profile.id.clone());
@@ -441,4 +463,6 @@ pub(super) fn certified_device_and_owner_proof_are_required_without_root_fallbac
         Err(NativeError::Credential)
     ));
     println!("JOURNEY unsigned owner, false certificate, wrong device, non-Person owner and Agent root fallback refused");
+
+    Ok(())
 }

@@ -318,6 +318,38 @@ impl From<store::StoreError> for CoreError {
     }
 }
 
+impl From<serde_json::Error> for CoreError {
+    fn from(error: serde_json::Error) -> Self {
+        Self::Storage {
+            message: error.to_string(),
+        }
+    }
+}
+
+impl From<event_log::AppendError> for CoreError {
+    fn from(error: event_log::AppendError) -> Self {
+        Self::Storage {
+            message: error.to_string(),
+        }
+    }
+}
+
+impl From<event_log::CryptoError> for CoreError {
+    fn from(error: event_log::CryptoError) -> Self {
+        Self::Storage {
+            message: error.to_string(),
+        }
+    }
+}
+
+impl From<types::IdError> for CoreError {
+    fn from(error: types::IdError) -> Self {
+        Self::Storage {
+            message: error.to_string(),
+        }
+    }
+}
+
 fn not_found(what: &str) -> CoreError {
     CoreError::NotFound {
         what: what.to_string(),
@@ -406,7 +438,8 @@ mod tests {
             protocol::Sequenced::decode(&hex::decode(fixture[name].as_str().unwrap()).unwrap())
                 .unwrap()
         };
-        let path = std::env::temp_dir().join(format!("zoen-v3-upgrade-{}.db", new_id("test")));
+        let path =
+            std::env::temp_dir().join(format!("zoen-v3-upgrade-{}.db", new_id("test").unwrap()));
         let pending;
         {
             let e = Engine::open(path.to_str().unwrap()).unwrap();
