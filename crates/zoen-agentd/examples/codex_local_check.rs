@@ -86,7 +86,8 @@ async fn main() -> Result<()> {
     let receipt = json!({
         "status":if accepted {"PASS_PRODUCTION_CODEX_ADAPTER"}else{"FAIL_PRESERVED_OPERATOR_ATTEMPT"},
         "scope":"One synthetic production Brain turn, not Runtime/Gate/relay/native acceptance",
-        "adapterTurnsDispatched":1,
+        "brainThinkCalls":1,
+        "completedInference":accepted,
         "requestedModel":std::env::var("ZOEN_CODEX_MODEL").ok(),
         "exactSyntheticReply":accepted,
         "offeredTools":0,
