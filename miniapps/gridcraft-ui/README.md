@@ -94,6 +94,11 @@ notices. It deliberately writes an endpoint-neutral default manifest. Deployment
 must supply `ZOEN_GRIDCRAFT_RESOURCE_MANIFEST_JSON` with the exact qualified HTML,
 module, WASM hashes/byte lengths and HTTPS locations. A changed manifest is a
 native compilation input; it must not reuse another deployment's native artifact.
+`build-resource-manifest.mjs VERIFIED_RUNTIME_JSON SEALED_ASSET_DIRECTORY OUTPUT_JSON`
+uses the shared runtime descriptor parser, verifies the actual sealed JS/WASM byte
+lengths and digests, then binds them to this checkout's exact generated Grid HTML.
+It refuses a missing, symlinked, wrong-sized or changed asset before writing output;
+it does not read Rust pins, publish assets, rebuild WASM or enable the default profile.
 Package the compiled graph's notices as described in `NOTICE.md`, including the
 actual embedded font alternatives. Do not infer a license review from compilation.
 
