@@ -11,6 +11,7 @@ mod browser_policy;
 mod wire;
 pub use wire::*;
 mod archive;
+mod edit;
 mod export;
 pub mod profile;
 #[cfg(test)]
@@ -85,6 +86,12 @@ impl HostBridge {
         let mut value = self.status();
         // Inspect the accepted document, even while a proposal is awaiting canonical ACK.
         value["text"] = json!(self.session.doc.plain_text(StoryRef::Body));
+        value["paragraphs"] =
+            json!(self.session.doc.body.iter().enumerate().filter_map(|(index,block)| {
+            let wordcraft_doc::Block::Para(p)=block.as_ref() else { return None; };
+            Some(json!({"paragraph":index,"text":p.text,"runs":p.runs,"properties":p.props}))
+        }).collect::<Vec<_>>());
+        value["styles"] = json!(self.session.doc.styles);
         value
     }
 
@@ -104,21 +111,12 @@ impl HostBridge {
         if let Some(proposal) = self.retry(&command.mutation, &fingerprint)? {
             return Ok(proposal);
         }
-        let Action::TextReplace(params) = &command.action;
-        profile::validate_text(&params.text)?;
         // This worker exposes NO Session/UI/file command dispatcher. Both human and agent
         // callers use this closed operation, translated into the genuine engine commands.
         // Work on an isolated Session so errors/proposals cannot mutate the accepted state.
         let mut next = Session::new(self.session.doc.clone());
         next.author.clone_from(&self.scope.actor_id);
-        next.run("select.all", &json!({"whole":true}))
-            .map_err(|_| failure("engine_selection"))?;
-        next.run("text.insert", &json!({"text":params.text,"raw":true}))
-            .map_err(|_| failure("engine_edit"))?;
-        let text = next.doc.plain_text(StoryRef::Body);
-        if text != params.text {
-            return Err(failure("engine_text_mismatch"));
-        }
+        edit::apply(&mut next, &command.action)?;
         self.prepare_document(
             command.mutation,
             fingerprint,

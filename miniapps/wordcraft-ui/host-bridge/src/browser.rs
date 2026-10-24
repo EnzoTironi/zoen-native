@@ -200,16 +200,25 @@ impl BrowserBridge {
         if self.dirty_unchecked(s) {
             return Err(failure("local_changes"));
         }
+        if self.paused || s.managed_frozen || s.recording.is_some() {
+            return Err(failure("presentation_paused"));
+        }
         let id = command.mutation.mutation_id.clone();
-        let proposal = self
-            .host
-            .as_mut()
-            .ok_or_else(|| failure("not_open"))?
-            .execute(command)?;
+        // Execute on this actual Session: replacing it would destroy the user's Undo.
+        // Only an immutable proposal crosses the canonical persistence boundary.
+        let proposal = crate::edit::transaction(s, |s| {
+            crate::edit::apply(s, &command.action)?;
+            self.host
+                .as_mut()
+                .ok_or_else(|| failure("not_open"))?
+                .prepare_document(
+                    command.mutation,
+                    fingerprint.clone(),
+                    &s.doc,
+                    json!({"kind":"command","action":command.action}),
+                )
+        })?;
         s.managed_frozen = true;
-        let doc = profile::parse(&proposal.bytes)?;
-        s.set_document(doc);
-        self.document_id = s.document_id();
         self.pending = Some(Entry {
             kind: PendingKind::Agent,
             id,

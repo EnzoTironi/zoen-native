@@ -59,17 +59,7 @@ pub struct Command {
     pub mutation: Mutation,
     pub action: Action,
 }
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(tag = "command", content = "params", deny_unknown_fields)]
-pub enum Action {
-    #[serde(rename = "text.replace")]
-    TextReplace(TextReplace),
-}
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub struct TextReplace {
-    pub text: String,
-}
+pub use zoen_word_profile::action::{Action, TextReplace};
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Accept {

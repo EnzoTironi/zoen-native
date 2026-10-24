@@ -50,7 +50,7 @@ fn real_writer_and_wasip2_exports_have_the_same_closed_profile_without_exposing_
     );
     assert_eq!(
         crate::binary::agent_tools::tools_for(crate::binary::Format::Wordcraft).len(),
-        2
+        4
     );
 }
 #[test]

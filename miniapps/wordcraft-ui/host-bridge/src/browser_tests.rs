@@ -133,9 +133,11 @@ fn actual_manual_model_ack_preserves_undo_and_exact_accepted_export() -> Result<
     Ok(())
 }
 #[test]
-fn rich_model_cannot_be_silently_normalized_and_manual_draft_blocks_agent() -> Result<()> {
+fn opaque_model_cannot_be_silently_normalized_and_manual_draft_blocks_agent() -> Result<()> {
     let (mut b, mut s, bytes) = opened("Original")?;
-    s.doc.core.title = "not in accepted plain profile".into();
+    s.doc
+        .passthrough
+        .insert("customXml/private.xml".into(), b"opaque".to_vec());
     let retained = s.doc.clone();
     assert!(b.snapshot(&mut s, mutation(&bytes, "rich")).is_err());
     assert_eq!(s.doc, retained);
@@ -153,7 +155,9 @@ fn rich_model_cannot_be_silently_normalized_and_manual_draft_blocks_agent() -> R
         .err(),
         Some(failure("local_changes"))
     );
+    s.managed_frozen = true;
     assert!(s.run("format.bold", &json!({})).is_err());
+    s.managed_frozen = false;
     assert!(s.run("file.open", &json!({"path":"untrusted"})).is_err());
     assert_eq!(s.doc, retained);
     Ok(())
@@ -263,3 +267,6 @@ fn typed_soft_break_refuses_before_mutation_while_real_paste_paragraphs_stay_sup
     );
     Ok(())
 }
+
+#[path = "browser_rich_tests.rs"]
+mod rich;

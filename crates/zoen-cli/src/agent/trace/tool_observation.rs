@@ -21,6 +21,8 @@ const KINDS: &[&str] = &[
     "gridcraft_cell_set",
     "read_wordcraft",
     "wordcraft_text_replace",
+    "wordcraft_edit_range",
+    "wordcraft_format_range",
     "deckcraft_text_set",
     "deckcraft_slide_notes",
     "deckcraft_shape_insert",

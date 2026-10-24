@@ -10,6 +10,7 @@ wordcraft-doc = { git = "https://github.com/storytold/wordcraft", rev = "d1b0bfc
 wordcraft-docx = { git = "https://github.com/storytold/wordcraft", rev = "d1b0bfc3f9dd83126b162a42b667facecb003b7f" }
 zip = { version = "=8.6.0", default-features = false, features = ["deflate"] }
 quick-xml = "=0.41.0"
+serde = { version = "1", features = ["derive"] }
 
 [lints.rust]
 unsafe_code = "forbid"

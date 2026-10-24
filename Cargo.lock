@@ -8356,6 +8356,7 @@ name = "zoen-word-profile"
 version = "0.1.0"
 dependencies = [
  "quick-xml",
+ "serde",
  "wordcraft-doc",
  "wordcraft-docx",
  "zip 8.6.0",

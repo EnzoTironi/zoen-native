@@ -181,7 +181,7 @@ fn wrong_ack_and_stale_base_do_not_advance_accepted_document() -> Result<()> {
 }
 
 #[test]
-fn lenient_reader_extra_parts_and_rich_document_are_not_editable() -> Result<()> {
+fn lenient_reader_extra_parts_are_refused_and_rich_document_is_preserved() -> Result<()> {
     let original = profile::encode("Text")?;
     for (name, data) in [
         ("word/vbaProject.bin", b"macro".as_slice()),
@@ -194,12 +194,9 @@ fn lenient_reader_extra_parts_and_rich_document_are_not_editable() -> Result<()>
         );
     }
     let mut rich = wordcraft_doc::Document::from_text("Text");
-    rich.core.title = "Not in the plain profile".into();
+    rich.core.title = "Preserved document metadata".into();
     let rich_bytes = wordcraft_docx::write(&rich).map_err(|_| failure("fixture_docx"))?;
-    assert_eq!(
-        profile::parse(&rich_bytes).err(),
-        Some(failure("unsupported_document_profile"))
-    );
+    assert_eq!(profile::parse(&rich_bytes)?, rich);
     // ZipWriter rejects duplicate names. Forge equal-length local/central names in a
     // genuine writer package so the parser, rather than the fixture builder, refuses it.
     let mut reader =
