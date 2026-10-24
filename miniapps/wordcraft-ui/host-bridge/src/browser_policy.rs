@@ -24,6 +24,12 @@ pub fn command_policy(s: &Session, id: &str, params: &Value) -> Result<(), CmdEr
             if let Some(text) = params.get("text") {
                 let text = text.as_str().ok_or_else(denied)?;
                 profile::validate_text(text).map_err(|_| denied())?;
+                // Typed LF is a manual line break upstream, not a paragraph separator.
+                // Keep the strict DOCX grammar: Enter and Paste Text use their actual
+                // upstream paragraph commands instead of normalizing a different model.
+                if id == "text.insert" && text.contains('\n') {
+                    return Err(denied());
+                }
                 let current = s.doc.plain_text(wordcraft_doc::StoryRef::Body).len();
                 // Deletion/Undo remain available if an upstream generated operation exceeded
                 // the profile. A save still validates the entire actual model and writer.

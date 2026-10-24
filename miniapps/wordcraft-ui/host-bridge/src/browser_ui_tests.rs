@@ -138,3 +138,34 @@ fn actual_composition_and_pointer_gesture_are_visible_to_host_without_text_paylo
     );
     Ok(())
 }
+
+#[test]
+fn actual_keyboard_tab_enter_and_ime_create_the_same_plain_document_profile() -> Result<()> {
+    let (mut h, mut b, bytes) = harness()?;
+    click_canvas(&mut h)?;
+    key(&mut h, Key::A, Modifiers::COMMAND);
+    h.input_mut().events.push(Event::Text("First".into()));
+    h.run_steps(2);
+    key(&mut h, Key::Tab, Modifiers::NONE);
+    h.input_mut()
+        .events
+        .push(Event::Ime(egui::ImeEvent::Commit("日本語".into())));
+    h.run_steps(2);
+    key(&mut h, Key::Enter, Modifiers::NONE);
+    h.input_mut().events.push(Event::Text("Last".into()));
+    h.run_steps(2);
+    assert_eq!(
+        h.state().session.doc.plain_text(StoryRef::Body),
+        "First\t日本語\nLast"
+    );
+    assert_eq!(h.state().session.doc.body.len(), 2);
+    let proposal = b.snapshot(
+        &mut h.state_mut().session,
+        mutation(&bytes, "tab-enter-ime"),
+    )?;
+    assert_eq!(
+        profile::parse(&proposal.bytes)?.plain_text(StoryRef::Body),
+        "First\t日本語\nLast"
+    );
+    Ok(())
+}

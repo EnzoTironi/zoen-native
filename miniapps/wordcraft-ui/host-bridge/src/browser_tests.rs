@@ -47,7 +47,12 @@ fn insert(s: &mut Session, text: &str) -> Result<()> {
 #[test]
 fn actual_manual_model_ack_preserves_undo_and_exact_accepted_export() -> Result<()> {
     let (mut b, mut s, bytes) = opened("Original")?;
-    insert(&mut s, "Manual Olá\t日本語\n")?;
+    s.run("select.all", &json!({"whole":true}))
+        .map_err(|_| failure("fixture_selection"))?;
+    // Real Paste Text maps transferred LF to paragraph separators. Raw typed LF
+    // is an upstream soft break and is deliberately not normalized on checkpoint.
+    s.run("edit.pasteText", &json!({"text":"Manual Olá\t日本語\n"}))
+        .map_err(|_| failure("fixture_paste"))?;
     assert_eq!(b.status(&s)?["dirty"], true);
     let proposal = b.snapshot(&mut s, mutation(&bytes, "manual-1"))?;
     assert_eq!(
@@ -214,6 +219,47 @@ fn exact_agent_proposal_visible_document_replay_and_ack_use_one_head() -> Result
     assert_eq!(
         b.execute(&mut s, request)?.metadata["acceptedHead"],
         json!(head("2", &proposal.bytes))
+    );
+    Ok(())
+}
+
+#[test]
+fn typed_soft_break_refuses_before_mutation_while_real_paste_paragraphs_stay_supported()
+-> Result<()> {
+    let (mut b, mut s, bytes) = opened("Original")?;
+    let original = s.doc.clone();
+    assert!(
+        s.run(
+            "text.insert",
+            &json!({"text":"different\nsemantics","raw":true})
+        )
+        .is_err()
+    );
+    assert_eq!(s.doc, original);
+    assert!(!s.managed_frozen);
+    assert_eq!(b.status(&s)?["dirty"], false);
+    assert_eq!(
+        b.export(
+            &s,
+            &Export {
+                scope: scope(),
+                head: head("1", &bytes),
+                format: ExportFormat::Docx
+            }
+        )?
+        .bytes,
+        bytes
+    );
+    s.run("select.all", &json!({"whole":true}))
+        .map_err(|_| failure("fixture_selection"))?;
+    s.run("edit.pasteText", &json!({"text":"First\nSecond"}))
+        .map_err(|_| failure("fixture_paste"))?;
+    assert_eq!(s.doc.body.len(), 2);
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "First\nSecond");
+    let proposal = b.snapshot(&mut s, mutation(&bytes, "paste-paragraphs"))?;
+    assert_eq!(
+        profile::parse(&proposal.bytes)?.plain_text(StoryRef::Body),
+        "First\nSecond"
     );
     Ok(())
 }
