@@ -145,8 +145,12 @@ export function deckcraftInputOrderQaLabel(value: DeckcraftInputOrderQa | null) 
  * telemetry handler and a separate QA token, never the canonical RPC nonce.
  * Parent must gate this exact configured runtime and active frame document.
  */
-export function deckcraftInputOrderQaScript(session: string) {
-  if (!TOKEN.test(session)) throw new Error('Invalid QA document token');
+export function deckcraftInputOrderQaScript(
+  session: string,
+  canvasId: 'deckcraft_canvas' | 'wordcraft_canvas' = 'deckcraft_canvas',
+) {
+  if (!TOKEN.test(session) || !['deckcraft_canvas', 'wordcraft_canvas'].includes(canvasId))
+    throw new Error('Invalid QA document token');
   return `(function(){
 const session=${JSON.stringify(session)};
 const marker=${JSON.stringify(MARKER)};
@@ -163,7 +167,7 @@ const emit=()=>{
 };
 const changed=()=>{clearTimeout(timer);timer=setTimeout(emit,250);};
 const elements=()=>{
-  const canvas=document.getElementById('deckcraft_canvas'),input=canvas?.nextElementSibling;
+  const canvas=document.getElementById(${JSON.stringify(canvasId)}),input=canvas?.nextElementSibling;
   return canvas?.tagName==='CANVAS'&&input?.tagName==='INPUT'&&input.type==='text'&&
     input.previousElementSibling===canvas&&input.parentElement===canvas.parentElement?{input,canvas}:null;
 };
