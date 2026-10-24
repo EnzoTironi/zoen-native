@@ -378,9 +378,50 @@ export function createDeckcraftSession(options: Options) {
     tail = operation;
     return operation;
   };
+  const refresh = (observedVersion?: number): Promise<void> => {
+    try {
+      lifetime.check();
+    } catch (failure) {
+      return Promise.reject(failure);
+    }
+    // Higher-head Undo is qualified for Word; other editors retain their current lifecycle.
+    if (editor !== 'wordcraft' || selected || !opened || retiring) return Promise.resolve();
+    queued++;
+    publish();
+    const operation = tail
+      .catch(() => {})
+      .then(async () => {
+        lifetime.check();
+        if (retiring) return;
+        const response = await current.callAppTool(
+          'refresh_document',
+          observedVersion === undefined ? {} : { version: observedVersion },
+        );
+        lifetime.check();
+        if (response.isError) throw new Error(t(`${messages}.saveFailed`));
+        if (!recoveryRequired) {
+          phase = 'saved';
+          error = null;
+          reason = null;
+        }
+      })
+      .catch((failure: unknown) => {
+        // A local draft/pending receipt remains in the same Session for explicit recovery.
+        recoveryRequired = true;
+        if (live) error = t(`${messages}.saveFailed`);
+        throw failure;
+      })
+      .finally(() => {
+        queued--;
+        publish();
+      });
+    tail = operation;
+    return operation;
+  };
   publish();
   return {
     controller,
+    refresh,
     get opened() {
       return opened;
     },

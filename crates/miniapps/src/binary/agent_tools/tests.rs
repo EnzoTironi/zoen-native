@@ -107,3 +107,53 @@ fn word_tools_keep_exact_head_text_profile_and_actor_binding_closed() {
     assert_ne!(Some(alias), model_name("wordcraft_text_replace", "other"));
     assert!(!recognizes("wordcraft_command"));
 }
+
+#[test]
+fn rich_word_range_tools_bind_exact_styles_and_reject_ambiguous_commands() -> Result<(), String> {
+    let range = json!({"start":{"paragraph":0,"offset":0},"end":{"paragraph":0,"offset":4}});
+    let mut format = json!({"artifactId":"it_word_abc","version":3,"sha256":"a".repeat(64),"range":range,"format":{"bold":true,"italic":false,"size":18,"alignment":"center"}});
+    let (_, _, action) = command("wordcraft_format_range", &format)?;
+    assert_eq!(
+        action,
+        Some(
+            json!({"command":"range.format","params":{"range":range,"format":{"bold":true,"italic":false,"size":18.0,"alignment":"center"}}})
+        )
+    );
+    let alias =
+        model_name("wordcraft_format_range", "it_word_abc").ok_or("missing bounded alias")?;
+    assert_eq!(alias.len(), 64);
+    assert!(is_model_name(&alias));
+    assert!(!is_read("wordcraft_format_range"));
+    for bad in [
+        json!({}),
+        json!({"bold":null}),
+        json!({"bold":true,"path":"/tmp/doc"}),
+        json!({"size":18.1}),
+        json!({"color":"#fff"}),
+        json!({"lineSpacing":0}),
+        json!({"alignment":"invalid"}),
+    ] {
+        format["format"] = bad;
+        assert!(command("wordcraft_format_range", &format).is_err());
+    }
+    format["format"] = json!({"bold":true});
+    for bad in [
+        json!({"start":{"paragraph":0,"offset":2},"end":{"paragraph":0,"offset":1}}),
+        json!({"start":{"paragraph":0,"offset":0},"end":{"paragraph":0,"offset":0}}),
+        json!({"start":{"paragraph":-1,"offset":0},"end":{"paragraph":0,"offset":1}}),
+    ] {
+        format["range"] = bad;
+        assert!(command("wordcraft_format_range", &format).is_err());
+    }
+    let edit = json!({"artifactId":"it_word_abc","version":3,"sha256":"a".repeat(64),"range":range,"text":"New text\nSecond paragraph"});
+    let (_, _, action) = command("wordcraft_edit_range", &edit)?;
+    assert_eq!(
+        action,
+        Some(
+            json!({"command":"text.edit","params":{"range":range,"text":"New text\nSecond paragraph"}})
+        )
+    );
+    assert!(command("wordcraft_format_range", &edit).is_err());
+    assert!(command("gridcraft_cell_set", &edit).is_err());
+    Ok(())
+}

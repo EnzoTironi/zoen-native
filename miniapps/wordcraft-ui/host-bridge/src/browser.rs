@@ -1,12 +1,12 @@
 //! Ephemeral adapter for the actual upstream canvas. Core remains the only durable authority.
 use super::browser_policy::command_policy;
 use crate::{
-    Accept, Action, Command, Export, Head, HostBridge, Mutation, Open, Proposal, Result,
-    TextReplace, failure, hash, profile,
+    Accept, Command, Export, Head, HostBridge, Mutation, Open, Proposal, Result, failure, hash,
+    profile,
 };
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicU64, Ordering};
-use wordcraft_doc::{Document, StoryRef};
+use wordcraft_doc::Document;
 use wordcraft_engine::Session;
 
 static NEXT_BINDING: AtomicU64 = AtomicU64::new(1);
@@ -103,6 +103,17 @@ impl BrowserBridge {
         }
         let host = HostBridge::open(request.clone(), bytes)?;
         let doc = profile::parse(bytes)?;
+        if self.host.is_some() {
+            // A canonical revision of this artifact is an edit, not a new canvas owner.
+            // The upstream reset clears stale transient state while preserving Undo.
+            s.receive_managed_document(doc.clone())
+                .map_err(|_| failure("engine_refresh"))?;
+            self.accepted = Some(doc);
+            self.host = Some(host);
+            self.last = None;
+            s.managed_frozen = self.paused;
+            return self.status(s);
+        }
         let binding = NEXT_BINDING
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
             .map_err(|_| failure("document_generation_exhausted"))?;
@@ -114,7 +125,7 @@ impl BrowserBridge {
         next.autosave = false;
         next.prefs.detect_language = false;
         next.prefs.autocorrect.enabled = false;
-        next.view.focus_mode = true;
+        next.view.focus_mode = false;
         next.view.ruler = false;
         next.view.mode = wordcraft_engine::layout::ViewMode::Web;
         self.document_id = next.document_id();
@@ -152,6 +163,11 @@ impl BrowserBridge {
                 Err(failure("proposal_pending"))
             };
         }
+        let current: Head = serde_json::from_value(self.host()?.status()["head"].clone())
+            .map_err(|_| failure("invalid_head"))?;
+        if m.base != current {
+            return Err(failure("stale_head"));
+        }
         Ok(None)
     }
     /// Snapshot the actual upstream document. Never turn unsupported rich state into plain text.
@@ -165,21 +181,17 @@ impl BrowserBridge {
         if let Some(proposal) = self.admission(s, &m, &fingerprint)? {
             return Ok(proposal);
         }
-        let actual = wordcraft_docx::write(&s.doc).map_err(|_| failure("docx_write"))?;
-        let doc = profile::parse(&actual)?;
-        let text = doc.plain_text(StoryRef::Body);
         let id = m.mutation_id.clone();
-        let mut proposal = self
+        let proposal = self
             .host
             .as_mut()
             .ok_or_else(|| failure("not_open"))?
-            .execute(Command {
-                mutation: m,
-                action: Action::TextReplace(TextReplace { text }),
-            })?;
-        // Both the model above and the final engine writer are checked. This is an explicit
-        // plain-text checkpoint, never a lossy rich-document normalization path.
-        proposal.metadata["operation"] = json!({"kind":"humanCheckpoint"});
+            .prepare_document(
+                m,
+                fingerprint.clone(),
+                &s.doc,
+                json!({"kind":"humanCheckpoint"}),
+            )?;
         self.pending = Some(Entry {
             kind: PendingKind::Manual,
             id,
@@ -204,16 +216,25 @@ impl BrowserBridge {
         if self.dirty_unchecked(s) {
             return Err(failure("local_changes"));
         }
+        if self.paused || s.managed_frozen || s.recording.is_some() {
+            return Err(failure("presentation_paused"));
+        }
         let id = command.mutation.mutation_id.clone();
-        let proposal = self
-            .host
-            .as_mut()
-            .ok_or_else(|| failure("not_open"))?
-            .execute(command)?;
+        // Execute on this actual Session: replacing it would destroy the user's Undo.
+        // Only an immutable proposal crosses the canonical persistence boundary.
+        let proposal = crate::edit::transaction(s, |s| {
+            crate::edit::apply(s, &command.action)?;
+            self.host
+                .as_mut()
+                .ok_or_else(|| failure("not_open"))?
+                .prepare_document(
+                    command.mutation,
+                    fingerprint.clone(),
+                    &s.doc,
+                    json!({"kind":"command","action":command.action}),
+                )
+        })?;
         s.managed_frozen = true;
-        let doc = profile::parse(&proposal.bytes)?;
-        s.set_document(doc);
-        self.document_id = s.document_id();
         self.pending = Some(Entry {
             kind: PendingKind::Agent,
             id,

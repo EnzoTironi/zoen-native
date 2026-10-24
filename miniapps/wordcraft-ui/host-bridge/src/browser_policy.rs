@@ -6,13 +6,40 @@ fn denied() -> CmdError {
     CmdError::Disabled("This action is unavailable in this document.".into())
 }
 /// # Errors
-/// Refuses commands outside the declared plain document editor or a frozen input lease.
+/// Refuses commands outside the managed rich document editor or a frozen input lease.
 pub fn command_policy(s: &Session, id: &str, params: &Value) -> Result<(), CmdError> {
     let read = matches!(id, "document.inspect" | "edit.undoHistory");
     if s.managed_frozen && !read {
         return Err(denied());
     }
     if id.starts_with("caret.") || id.starts_with("select.") || read {
+        return Ok(());
+    }
+    if matches!(
+        id,
+        "format.bold"
+            | "format.italic"
+            | "format.underline"
+            | "format.strikethrough"
+            | "format.font"
+            | "format.size"
+            | "format.color"
+            | "format.highlight"
+            | "format.clear"
+            | "format.growFont"
+            | "format.shrinkFont"
+            | "para.align"
+            | "para.alignLeft"
+            | "para.alignCenter"
+            | "para.alignRight"
+            | "para.justify"
+            | "para.style"
+            | "para.spacing"
+            | "para.lineSpacing"
+            | "para.single"
+            | "para.double"
+            | "para.oneAndHalf"
+    ) {
         return Ok(());
     }
     match id {
@@ -24,16 +51,11 @@ pub fn command_policy(s: &Session, id: &str, params: &Value) -> Result<(), CmdEr
             if let Some(text) = params.get("text") {
                 let text = text.as_str().ok_or_else(denied)?;
                 profile::validate_text(text).map_err(|_| denied())?;
-                // Typed LF is a manual line break upstream, not a paragraph separator.
-                // Keep the strict DOCX grammar: Enter and Paste Text use their actual
-                // upstream paragraph commands instead of normalizing a different model.
-                if id == "text.insert" && text.contains('\n') {
-                    return Err(denied());
-                }
                 let current = s.doc.plain_text(wordcraft_doc::StoryRef::Body).len();
                 // Deletion/Undo remain available if an upstream generated operation exceeded
                 // the profile. A save still validates the entire actual model and writer.
                 if current
+                    .saturating_sub(s.selected_text().len())
                     .checked_add(text.len())
                     .is_none_or(|n| n > profile::MAX_TEXT)
                 {

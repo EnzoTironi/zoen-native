@@ -97,7 +97,7 @@ fn actual_pdf_keeps_original_before_ack_then_exports_accepted_and_selected_cold_
     assert!(contents(&selected)?.contains("Original histórico"));
     assert!(!contents(&selected)?.contains("Replacement"));
     assert_eq!(
-        historical.inspect()["text"],
+        historical.inspect()?["text"],
         "Original histórico Olá office\nSecond paragraph"
     );
     Ok(())
@@ -128,7 +128,7 @@ fn pdf_rejects_foreign_scope_head_and_unknown_format_without_changing_document()
             .is_err()
     );
     assert_eq!(bridge.status(), before);
-    assert_eq!(bridge.inspect()["text"], "Private accepted text");
+    assert_eq!(bridge.inspect()?["text"], "Private accepted text");
     Ok(())
 }
 
@@ -176,7 +176,7 @@ fn pdf_refuses_missing_font_glyphs_without_losing_unicode_docx_or_pending_input(
         cold.export(&pdf_request(&original)?).err().as_deref(),
         Some("pdf_missing_glyph")
     );
-    assert_eq!(cold.inspect()["text"], "Original Olá 日本語 👩🏽‍💻 \u{10ffff}");
+    assert_eq!(cold.inspect()?["text"], "Original Olá 日本語 👩🏽‍💻 \u{10ffff}");
     Ok(())
 }
 

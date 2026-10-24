@@ -4,6 +4,7 @@ members = [
   "crates/types",
   "crates/localization",
   "crates/miniapps",
+  "crates/wordcraft-profile",
   "crates/device-link",
   "crates/event-log",
   "crates/grants",

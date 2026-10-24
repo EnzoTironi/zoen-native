@@ -52,6 +52,10 @@ fn input(fixture: &Fixture, turn: &AgentBinaryTurn, tool: &str) -> AgentToolAppr
         json!({"artifactId":fixture.base.item_id})
     } else if tool == "photocraft_transform" {
         json!({"artifactId":fixture.base.item_id,"version":fixture.base.version,"sha256":fixture.base.sha256,"action":"rotate_clockwise"})
+    } else if tool == "wordcraft_format_range" {
+        json!({"artifactId":fixture.base.item_id,"version":fixture.base.version,"sha256":fixture.base.sha256,"range":{"start":{"paragraph":0,"offset":0},"end":{"paragraph":0,"offset":1}},"format":{"bold":true,"alignment":"center"}})
+    } else if tool == "wordcraft_edit_range" {
+        json!({"artifactId":fixture.base.item_id,"version":fixture.base.version,"sha256":fixture.base.sha256,"range":{"start":{"paragraph":0,"offset":0},"end":{"paragraph":0,"offset":1}},"text":"Revised"})
     } else if tool == "wordcraft_text_replace" {
         json!({"artifactId":fixture.base.item_id,"version":fixture.base.version,"sha256":fixture.base.sha256,"text":"WASI real\nOlá 日本語 👩🏽‍💻\ttexto\n"})
     } else if tool == "gridcraft_cell_set" {
@@ -239,3 +243,6 @@ mod gridcraft_cases;
 mod photocraft_cases;
 #[path = "wordcraft_cases.rs"]
 mod wordcraft_cases;
+
+#[path = "wordcraft_rich_cases.rs"]
+mod word_rich;
