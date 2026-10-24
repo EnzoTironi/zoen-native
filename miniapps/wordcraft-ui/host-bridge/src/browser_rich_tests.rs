@@ -1,6 +1,6 @@
 //! Same real Session: human formatting → agent edit/style → exact ACK → Undo/export/cold.
 use super::*;
-fn request(base: Head, id: &str, action: serde_json::Value) -> Result<Command> {
+fn request(base: &Head, id: &str, action: &serde_json::Value) -> Result<Command> {
     serde_json::from_value(
         json!({"mutation":{"scope":scope(),"base":base,"mutationId":id},"action":action}),
     )
@@ -43,9 +43,9 @@ fn rich_manual_agent_ack_cold_docx_pdf_and_undo_keep_one_actual_document() -> Re
     let depth = s.edit_snapshot().undo_depth();
     let document_id = s.document_id();
     let command = request(
-        head("2", &human.bytes),
+        &head("2", &human.bytes),
         "agent-format",
-        json!({"command":"range.format","params":{"range":range(0,5),"format":{"paragraphStyle":"Heading1","bold":true,"size":18,"color":"204080","alignment":"center","spaceAfter":12,"lineSpacing":1.5}}}),
+        &json!({"command":"range.format","params":{"range":range(0,5),"format":{"paragraphStyle":"Heading1","bold":true,"size":18,"color":"204080","alignment":"center","spaceAfter":12,"lineSpacing":1.5}}}),
     )?;
     let styled = b.execute(&mut s, command.clone())?;
     assert_eq!(
@@ -94,9 +94,9 @@ fn rich_manual_agent_ack_cold_docx_pdf_and_undo_keep_one_actual_document() -> Re
     assert_eq!(s.doc, styled_model);
     ack(&mut b, &mut s, "agent-format", "3", &styled)?;
     let edit = request(
-        head("3", &styled.bytes),
+        &head("3", &styled.bytes),
         "agent-edit",
-        json!({"command":"text.edit","params":{"range":range(0,5),"text":"Edited title"}}),
+        &json!({"command":"text.edit","params":{"range":range(0,5),"text":"Edited title"}}),
     )?;
     let edited = b.execute(&mut s, edit)?;
     ack(&mut b, &mut s, "agent-edit", "4", &edited)?;
@@ -241,7 +241,7 @@ fn invalid_unicode_stale_scope_and_lossy_serialization_roll_back_actual_session(
         ),
     ] {
         assert!(
-            b.execute(&mut s, request(head("1", &bytes), id, action)?)
+            b.execute(&mut s, request(&head("1", &bytes), id, &action)?)
                 .is_err(),
             "{id}"
         );
@@ -255,11 +255,11 @@ fn invalid_unicode_stale_scope_and_lossy_serialization_roll_back_actual_session(
     }
     let action =
         json!({"command":"range.format","params":{"range":range(0,4),"format":{"bold":true}}});
-    let mut foreign = request(head("1", &bytes), "foreign", action.clone())?;
+    let mut foreign = request(&head("1", &bytes), "foreign", &action)?;
     foreign.mutation.scope.artifact_id = "other".into();
     assert!(b.execute(&mut s, foreign).is_err());
     assert!(
-        b.execute(&mut s, request(head("0", &bytes), "stale", action)?)
+        b.execute(&mut s, request(&head("0", &bytes), "stale", &action)?)
             .is_err()
     );
     assert_eq!(s.doc, before);
@@ -280,29 +280,7 @@ fn higher_head_headless_agent_refresh_undo_is_a_new_human_cas_edit() -> Result<(
     let human = browser.snapshot(&mut canvas, mutation(&original, "human"))?;
     ack(&mut browser, &mut canvas, "human", "2", &human)?;
     let manual = canvas.doc.clone();
-    // The real agent path has an isolated headless worker. It does not call the canvas dispatcher.
-    let mut worker_scope = scope();
-    worker_scope.actor_kind = ActorKind::Agent;
-    worker_scope.actor_id = "reviewed-agent".into();
-    let mut worker = HostBridge::open(
-        Open {
-            scope: worker_scope.clone(),
-            head: head("2", &human.bytes),
-        },
-        &human.bytes,
-    )?;
-    let mut worker_command = request(
-        head("2", &human.bytes),
-        "remote-agent",
-        json!({"command":"range.format","params":{"range":range(0,6),"format":{"bold":true,"alignment":"center"}}}),
-    )?;
-    worker_command.mutation.scope = worker_scope.clone();
-    let change = worker.execute(worker_command)?;
-    worker.accept(&Accept {
-        scope: worker_scope,
-        mutation_id: "remote-agent".into(),
-        head: head("3", &change.bytes),
-    })?;
+    let change = accepted_headless_format(&human)?;
     let remote = profile::parse(&change.bytes)?;
     browser.open(
         &mut canvas,
@@ -388,4 +366,31 @@ fn higher_head_headless_agent_refresh_undo_is_a_new_human_cas_edit() -> Result<(
         undo.bytes
     );
     Ok(())
+}
+
+fn accepted_headless_format(human: &Proposal) -> Result<Proposal> {
+    // The real agent path has an isolated headless worker. It does not call the canvas dispatcher.
+    let mut worker_scope = scope();
+    worker_scope.actor_kind = ActorKind::Agent;
+    worker_scope.actor_id = "reviewed-agent".into();
+    let mut worker = HostBridge::open(
+        Open {
+            scope: worker_scope.clone(),
+            head: head("2", &human.bytes),
+        },
+        &human.bytes,
+    )?;
+    let mut worker_command = request(
+        &head("2", &human.bytes),
+        "remote-agent",
+        &json!({"command":"range.format","params":{"range":range(0,6),"format":{"bold":true,"alignment":"center"}}}),
+    )?;
+    worker_command.mutation.scope = worker_scope.clone();
+    let change = worker.execute(worker_command)?;
+    worker.accept(&Accept {
+        scope: worker_scope,
+        mutation_id: "remote-agent".into(),
+        head: head("3", &change.bytes),
+    })?;
+    Ok(change)
 }

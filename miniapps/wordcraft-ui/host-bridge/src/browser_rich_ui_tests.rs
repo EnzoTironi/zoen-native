@@ -1,4 +1,4 @@
-//! Genuine WordApp keyboard input and canonical agent refresh share the same model.
+//! Genuine `WordApp` keyboard input and canonical agent refresh share the same model.
 use super::*;
 #[test]
 fn actual_wordapp_typing_agent_style_refresh_and_keyboard_undo_preserve_current_head() -> Result<()>
@@ -53,7 +53,7 @@ fn actual_wordapp_typing_agent_style_refresh_and_keyboard_undo_preserve_current_
         !h.state().canvas.page_rects.is_empty(),
         "actual upstream UI must lay out the rich revision"
     );
-    assert!(h.state().session.doc == profile::parse(&proposed.bytes)?);
+    assert_eq!(h.state().session.doc, profile::parse(&proposed.bytes)?);
     key(&mut h, Key::Z, Modifiers::COMMAND);
     assert!(
         h.state().session.doc == manual,
