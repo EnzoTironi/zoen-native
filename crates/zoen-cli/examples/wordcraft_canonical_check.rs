@@ -23,6 +23,7 @@ use zoen_agentd::{deckcraft::DeckcraftWorker, Needs, ToolManifest};
 type Result<T> = std::result::Result<T, String>;
 const REVISION: &str = "d1b0bfc3f9dd83126b162a42b667facecb003b7f";
 const LIMIT: usize = 512 * 1024;
+const TEXT: &str = "Canonical DOCX\nOlá 日本語 👩🏽‍💻\tretained\n";
 fn sha(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
@@ -149,7 +150,7 @@ async fn proposal(
             && !worker.supports("gridcraft"),
         "worker format confusion",
     )?;
-    let req = request(base, "Canonical DOCX\nOlá 日本語 👩🏽‍💻\tretained\n");
+    let req = request(base, TEXT);
     let result = worker
         .run_for("wordcraft", &req, seed)
         .await
@@ -169,12 +170,12 @@ async fn proposal(
         "worker retry changed original",
     )?;
     for text in ["before\u{fffe}after", "before\u{ffff}after"] {
+        let rejected = worker
+            .run_for("wordcraft", &request(base, text), seed)
+            .await;
         require(
-            worker
-                .run_for("wordcraft", &request(base, text), seed)
-                .await
-                .is_err(),
-            "lossy XML input produced proposal",
+            matches!(rejected,Err(ref reason) if reason=="Presentation worker refused: unsupported_text"),
+            "XML-invalid text did not return its exact profile refusal",
         )?;
     }
     let intent = sha(&serde_json::to_vec(&req["command"]["action"]).map_err(|_| "invalid intent")?);
@@ -256,6 +257,25 @@ fn recover(
     )?;
     Ok(retry)
 }
+async fn reopen_worker(
+    worker: &DeckcraftWorker,
+    accepted: &AppBinaryDocumentDto,
+    bytes: &[u8],
+) -> Result<()> {
+    let mut open = request(accepted, TEXT);
+    open["command"] = Value::Null;
+    let result = worker
+        .run_for("wordcraft", &open, bytes)
+        .await
+        .map_err(|_| "accepted bytes cannot cold-open in engine")?;
+    require(
+        result.bytes.is_empty()
+            && result.metadata["text"] == TEXT
+            && result.metadata["head"]["version"] == accepted.version.to_string()
+            && result.metadata["head"]["sha256"] == accepted.sha256,
+        "canonical accepted bytes or selected head changed in engine",
+    )
+}
 async fn check(paths: &[PathBuf]) -> Result<()> {
     let component = read(&paths[0], 64 * 1024 * 1024)?;
     let seed = read(&paths[1], LIMIT)?;
@@ -281,8 +301,9 @@ async fn check(paths: &[PathBuf]) -> Result<()> {
         .map_err(|_| "later canonical save failed")?;
     drop(client);
     let retry = recover(&path, vault, &base, &bytes, &intent)?;
+    reopen_worker(&worker, &retry, &bytes).await?;
     std::fs::write(paths[2].join("accepted.docx"), &bytes).map_err(|_| "output unavailable")?;
-    let receipt = json!({"status":"PASS","scope":"Actual signed Word worker -> ordinary local canonical encrypted Item/FileDoc/CAS receipts -> later version -> cold original ACK observation and selected source bytes. Synthetic local account; not certified agent approval, browser/catalogue or native acceptance.","componentSha256":sha(&component),"seedSha256":sha(&seed),"acceptedSha256":sha(&bytes),"workerCompileMs":compile_ms,"acceptedVersion":retry.version,"currentVersion":retry.current_version,"xmlLossyInputsRefused":true,"foreignEngineRefused":true,"formatIsolation":true});
+    let receipt = json!({"status":"PASS","scope":"Actual signed Word worker -> ordinary local canonical encrypted Item/FileDoc/CAS receipts -> later version -> cold original ACK observation and selected source bytes. Synthetic local account; not certified agent approval, browser/catalogue or native acceptance.","componentSha256":sha(&component),"seedSha256":sha(&seed),"acceptedSha256":sha(&bytes),"workerCompileMs":compile_ms,"acceptedVersion":retry.version,"currentVersion":retry.current_version,"xmlLossyInputsRefused":true,"acceptedColdEngineRead":true,"foreignEngineRefused":true,"formatIsolation":true});
     std::fs::write(
         paths[2].join("result.json"),
         serde_json::to_vec_pretty(&receipt).map_err(|_| "receipt invalid")?,
