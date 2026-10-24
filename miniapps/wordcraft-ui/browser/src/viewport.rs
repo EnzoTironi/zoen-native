@@ -2,7 +2,18 @@
 use wordcraft_ui_egui::WordApp;
 
 pub(crate) fn show(app: &mut WordApp, ui: &mut egui::Ui) {
-    app.ui(ui);
+    // eframe's root Ui covers the viewport, not its host-provided safe area.
+    // Intersecting also supports a parent that has already consumed the insets.
+    let safe = ui.available_rect_before_wrap().intersect(ui.ctx().content_rect());
+    if safe.is_positive() {
+        ui.scope_builder(
+            egui::UiBuilder::new().id_salt("managed_word_canvas").max_rect(safe),
+            |ui| {
+                ui.set_clip_rect(ui.clip_rect().intersect(safe));
+                app.ui(ui);
+            },
+        );
+    }
 }
 
 #[cfg(test)]
