@@ -24,7 +24,7 @@ export default function Devices() {
       }),
     [session],
   );
-  const ticket = session.ticket();
+  const ticket = session.ticket(state);
   const selected = state.devices.find((device) => device.device_id === state.selected) ?? null;
   return (
     <SettingsScreen title={t('settings.devices')} testID="devices-screen">

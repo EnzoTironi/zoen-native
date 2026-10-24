@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import * as flowModule from '../profile/blocked-people.ts';
+import * as ownership from './account-scope.ts';
 import { createLocalization } from '../i18n/runtime.ts';
 import { settings } from '../i18n/catalogs/settings.ts';
 import { chat } from '../i18n/catalogs/chat.ts';
@@ -204,6 +205,7 @@ function fixture(locale: 'en' | 'pt-BR' = 'en') {
         }),
       };
     if (name === './blocked-people') return flowModule;
+    if (name.endsWith('/core/account-scope')) return ownership;
     if (name.endsWith('/use-blocked-people')) return load('hook');
     if (name.endsWith('/blocked-people-view')) return load('view');
     if (name.endsWith('/use-profile-photo')) return { useProfilePhoto: () => undefined };
