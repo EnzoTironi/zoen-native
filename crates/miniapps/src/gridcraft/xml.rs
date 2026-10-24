@@ -158,7 +158,8 @@ impl Profile {
                         if let Some(c) = value.resolve_char_ref().map_err(|_| INVALID)? {
                             c
                         } else {
-                            match value.as_ref() {
+                            let name: &[u8] = value.as_ref();
+                            match name {
                                 b"amp" => '&',
                                 b"lt" => '<',
                                 b"gt" => '>',
@@ -248,7 +249,7 @@ fn attributes(
             .map_err(|_| INVALID)?
             .to_owned();
         let value = attr
-            .decode_and_unescape_value(reader.decoder())
+            .decoded_and_normalized_value(reader.decoder())
             .map_err(|_| INVALID)?
             .into_owned();
         if out.insert(key, value).is_some() {
