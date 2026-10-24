@@ -386,8 +386,11 @@ export function createDeckcraftSession(options: Options) {
     }
     // Higher-head Undo is qualified for Word; other editors retain their current lifecycle.
     if (editor !== 'wordcraft' || selected || !opened || retiring) return Promise.resolve();
-    queued++;
-    publish();
+    // A canonical notification is observational, not a user-requested pause.
+    // Core publishes our save before its ACK reaches the guest. Blocking the
+    // frame here can blur live input while the guest is waiting to recognize
+    // that own head. The guest serializes refresh with saves and freezes only
+    // when it actually needs to review a higher head; failures still fence recovery.
     const operation = tail
       .catch(() => {})
       .then(async () => {
@@ -412,7 +415,6 @@ export function createDeckcraftSession(options: Options) {
         throw failure;
       })
       .finally(() => {
-        queued--;
         publish();
       });
     tail = operation;

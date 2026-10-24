@@ -194,7 +194,12 @@ test('authority mismatch and retirement during a download never reopen or publis
   );
   const refreshing = retiring.session.refresh();
   await tick();
-  assert.equal(retiring.states.at(-1)?.blocked, true);
+  assert.equal(retiring.port.status().frozen, true);
+  assert.throws(
+    () => retiring.port.type(changed),
+    /input frozen/,
+    'a real higher-head download still fences engine input without hiding the frame',
+  );
   await retiring.close();
   release();
   await assert.rejects(refreshing);
