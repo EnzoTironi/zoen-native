@@ -1,4 +1,4 @@
-//! Headless adapter over the pinned WordCraft Session, using the existing binary host ABI.
+//! Headless adapter over the pinned `WordCraft` Session, using the existing binary host ABI.
 //! Proposals are inert bytes. Only the canonical host can authorize and persist a new head.
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -12,13 +12,15 @@ pub mod profile;
 mod tests;
 
 pub type Result<T> = std::result::Result<T, String>;
+#[must_use]
 pub fn failure(code: &str) -> String {
     code.to_owned()
 }
+#[must_use]
 pub fn hash(bytes: &[u8]) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut encoded = String::with_capacity(64);
-    for &byte in Sha256::digest(bytes).iter() {
+    for &byte in &Sha256::digest(bytes) {
         encoded.push(char::from(HEX[usize::from(byte >> 4)]));
         encoded.push(char::from(HEX[usize::from(byte & 15)]));
     }
@@ -41,6 +43,9 @@ pub struct HostBridge {
 }
 
 impl HostBridge {
+    /// Open exact supplied bytes; the caller retains canonical authorization.
+    /// # Errors
+    /// Refuses malformed scope/head, hash mismatch or an unsupported DOCX profile.
     pub fn open(request: Open, bytes: &[u8]) -> Result<Self> {
         if !wire::identifier(&request.scope.artifact_id)
             || !wire::identifier(&request.scope.actor_id)
@@ -52,7 +57,7 @@ impl HostBridge {
             return Err(failure("invalid_document_hash"));
         }
         let mut session = Session::new(profile::parse(bytes)?);
-        session.author = request.scope.actor_id.clone();
+        session.author.clone_from(&request.scope.actor_id);
         Ok(Self {
             scope: request.scope,
             head: request.head,
@@ -63,12 +68,14 @@ impl HostBridge {
         })
     }
 
+    #[must_use]
     pub fn status(&self) -> Value {
         json!({"engineRevision":profile::ENGINE_REVISION,"scope":self.scope,"head":self.head,
             "pendingMutationId":self.pending.as_ref().map(|p|&p.command.mutation.mutation_id),
             "profile":"plain-text-v1"})
     }
 
+    #[must_use]
     pub fn inspect(&self) -> Value {
         let mut value = self.status();
         // Inspect the accepted document, even while a proposal is awaiting canonical ACK.
@@ -83,6 +90,9 @@ impl HostBridge {
         Ok(())
     }
 
+    /// Generate an inert proposal through the actual engine commands.
+    /// # Errors
+    /// Refuses stale scope/head/intent, pending conflicts, invalid text or engine failure.
     pub fn execute(&mut self, command: Command) -> Result<Proposal> {
         let mutation = &command.mutation;
         self.scope(&mutation.scope)?;
@@ -118,7 +128,7 @@ impl HostBridge {
         // callers use this closed operation, translated into the genuine engine commands.
         // Work on an isolated Session so errors/proposals cannot mutate the accepted state.
         let mut next = Session::new(self.session.doc.clone());
-        next.author = self.scope.actor_id.clone();
+        next.author.clone_from(&self.scope.actor_id);
         next.run("select.all", &json!({"whole":true}))
             .map_err(|_| failure("engine_selection"))?;
         next.run("text.insert", &json!({"text":params.text,"raw":true}))
@@ -143,7 +153,10 @@ impl HostBridge {
         Ok(proposal)
     }
 
-    pub fn accept(&mut self, receipt: Accept) -> Result<Value> {
+    /// Observe an exact canonical host receipt, never persist or authorize it here.
+    /// # Errors
+    /// Refuses mismatched scope, proposal, next version or document hash.
+    pub fn accept(&mut self, receipt: &Accept) -> Result<Value> {
         self.scope(&receipt.scope)?;
         if self.pending.is_none() {
             return if self.last.as_ref().is_some_and(|p| {
@@ -174,15 +187,18 @@ impl HostBridge {
         let doc = profile::parse(&pending.proposal.bytes)?;
         let mut pending = self.pending.take().ok_or_else(|| failure("no_proposal"))?;
         self.session = Session::new(doc);
-        self.session.author = self.scope.actor_id.clone();
-        self.accepted_bytes = pending.proposal.bytes.clone();
+        self.session.author.clone_from(&self.scope.actor_id);
+        self.accepted_bytes.clone_from(&pending.proposal.bytes);
         self.head = receipt.head.clone();
         pending.proposal.metadata["acceptedHead"] = json!(receipt.head);
         self.last = Some(pending);
         Ok(self.status())
     }
 
-    pub fn export(&self, request: Export) -> Result<Proposal> {
+    /// Export the exact accepted bytes, without adopting an unacknowledged proposal.
+    /// # Errors
+    /// Refuses another scope or an unobserved accepted head.
+    pub fn export(&self, request: &Export) -> Result<Proposal> {
         self.scope(&request.scope)?;
         if request.head != self.head {
             return Err(failure("stale_head"));

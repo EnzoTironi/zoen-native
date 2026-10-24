@@ -22,6 +22,8 @@ pub struct Head {
     pub sha256: String,
 }
 impl Head {
+    /// # Errors
+    /// Refuses noncanonical decimal versions, overflow or a non-lowercase SHA-256.
     pub fn number(&self) -> Result<u64> {
         if self.version.is_empty()
             || self.version.len() > 20

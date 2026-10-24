@@ -38,7 +38,7 @@ fn command(base: Head, id: &str, text: &str) -> Command {
     }
 }
 fn exported(bridge: &HostBridge, head: Head) -> Result<Proposal> {
-    bridge.export(Export {
+    bridge.export(&Export {
         scope: scope(),
         head,
         format: ExportFormat::Docx,
@@ -88,7 +88,7 @@ fn actual_engine_proposal_ack_and_cold_docx_preserve_unicode_and_selected_versio
     assert_eq!(bridge.inspect()["text"], "Original\nOlá 👩🏽‍💻");
     assert_eq!(bridge.execute(request.clone())?.bytes, proposal.bytes);
     let accepted = head("2", &proposal.bytes);
-    bridge.accept(Accept {
+    bridge.accept(&Accept {
         scope: scope(),
         mutation_id: "edit-1".into(),
         head: accepted.clone(),
@@ -131,7 +131,7 @@ fn pending_and_accepted_mutation_ids_cannot_change_intent_or_scope() -> Result<(
         bridge.execute(foreign).err(),
         Some(failure("scope_changed"))
     );
-    bridge.accept(Accept {
+    bridge.accept(&Accept {
         scope: scope(),
         mutation_id: "same-id".into(),
         head: head("2", &proposal.bytes),
@@ -172,7 +172,7 @@ fn wrong_ack_and_stale_base_do_not_advance_accepted_document() -> Result<()> {
         },
     ] {
         assert_eq!(
-            bridge.accept(receipt).err(),
+            bridge.accept(&receipt).err(),
             Some(failure("receipt_mismatch"))
         );
         assert_eq!(exported(&bridge, base.clone())?.bytes, bytes);

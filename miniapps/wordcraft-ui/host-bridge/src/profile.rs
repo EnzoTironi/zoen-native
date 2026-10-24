@@ -12,6 +12,8 @@ const MAX_INFLATED: usize = 4 * MAX_PART;
 const MAX_PARTS: usize = 32;
 pub const MAX_TEXT: usize = 32 * 1024;
 
+/// # Errors
+/// Refuses oversized text or controls outside LF/tab.
 pub fn validate_text(text: &str) -> Result<()> {
     if text.len() > MAX_TEXT
         || text
@@ -77,6 +79,9 @@ fn parts(bytes: &[u8]) -> Result<BTreeMap<String, Vec<u8>>> {
     Ok(result)
 }
 
+/// Encode this declared plain-text format using the actual pinned writer.
+/// # Errors
+/// Refuses unsupported text, writer errors or a package exceeding profile bounds.
 pub fn encode(text: &str) -> Result<Vec<u8>> {
     validate_text(text)?;
     let bytes =
@@ -85,6 +90,9 @@ pub fn encode(text: &str) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
+/// Parse only packages equal to the complete canonical plain writer output.
+/// # Errors
+/// Refuses malformed/oversized ZIP, unsupported parts/markup or reader/writer failure.
 pub fn parse(bytes: &[u8]) -> Result<Document> {
     // The upstream reader is lenient and preserves macros/unknown parts. Bound the package
     // first, then compare EVERY uncompressed part with the actual canonical plain writer.
