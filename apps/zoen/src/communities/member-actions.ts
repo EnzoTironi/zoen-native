@@ -79,8 +79,9 @@ export class MemberActionsSession {
   retire() {
     this.activate(null);
   }
-  ticket(): MemberActionTicket | null {
-    return this.owner &&
+  ticket(observed: MemberActionsState = this.state): MemberActionTicket | null {
+    return observed === this.state &&
+      this.owner &&
       this.state.selected &&
       accountScopeKey(this.owner) === accountScopeKey(this.port.scope())
       ? Object.freeze({

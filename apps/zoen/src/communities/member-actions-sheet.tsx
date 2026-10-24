@@ -20,7 +20,8 @@ export function MemberActionsSheet({
   const { confirm } = useDialogs();
   const context = state.context;
   const member = context?.member;
-  const ticket = session.ticket();
+  // The rendered snapshot is a real Compiler dependency, not a mutable class read.
+  const ticket = session.ticket(state);
   return (
     <Host
       style={{ position: 'absolute' }}
