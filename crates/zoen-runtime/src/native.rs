@@ -216,7 +216,7 @@ impl NativeCustody {
                 .unwrap_or(0)
                 .checked_add(1)
                 .ok_or(RuntimeError::InvalidBinding)?,
-            capsule: types::new_id("capsule"),
+            capsule: types::new_id("capsule").map_err(|_| RuntimeError::Unavailable)?,
             image_bytes: bytes.len() as u32,
             image_digest: hash(bytes),
             chunks: bytes.len().div_ceil(CHUNK_BYTES) as u32,

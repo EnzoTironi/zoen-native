@@ -127,7 +127,7 @@ impl Conn {
         let now = now_ms();
         let e = self
             .author
-            .sign_event(space, &types::new_ulid(now), now, seen, body);
+            .sign_event(space, &types::new_ulid(now)?, now, seen, body);
         let env = Envelope::plain(&e);
         let client_id = env.client_id().to_string();
         // Like the app: a temporary refusal (a rate limit) means send the same envelope again
@@ -161,7 +161,7 @@ impl Conn {
 
     /// Creates a group Space with `members` in it; returns its id.
     pub async fn create_group(&mut self, members: &[String]) -> anyhow::Result<String> {
-        let space = types::new_id("sp");
+        let space = types::new_id("sp")?;
         let mut head = self
             .publish(
                 &space,
@@ -299,11 +299,11 @@ pub async fn run(conn: Conn, plan: Plan, mut rx: mpsc::Receiver<Publish>) -> any
                 let now = now_ms();
                 let e = author.sign_event(
                     &space,
-                    &types::new_ulid(now),
+                    &types::new_ulid(now)?,
                     now,
                     Some(head.clone()),
                     EventBody::MessagePosted {
-                        message: types::new_id("m"),
+                        message: types::new_id("m")?,
                         text: due_us.to_string(),
                         attaches: None,
                         reply: None,
