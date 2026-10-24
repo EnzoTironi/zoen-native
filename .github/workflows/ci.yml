@@ -89,6 +89,9 @@ jobs:
       - name: Staged file size hook contracts
         run: python3 -m unittest discover -s scripts/git-hooks -p 'test_*.py' -v
 
+      - name: Exported Grid workbook reader contracts
+        run: python3 -m unittest discover -s miniapps/gridcraft-ui/test -p test_xlsx_export.py -v
+
       - name: Documentation CI scope regression tests
         run: python3 -m unittest discover -s scripts/tests -p 'test_ci_documentation_scope.py' -v
 
