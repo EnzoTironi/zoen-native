@@ -48,7 +48,8 @@ fn an_already_projected_image_requires_its_original_review_and_upload_ack() {
 }
 
 #[test]
-fn revoked_trust_refuses_a_prepared_image_without_changing_its_upload_barrier() {
+fn revoked_trust_refuses_a_prepared_image_without_changing_its_upload_barrier(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (mut f, request, approval) = approved().unwrap();
     let prepared = f
         .core
@@ -66,7 +67,7 @@ fn revoked_trust_refuses_a_prepared_image_without_changing_its_upload_barrier() 
             grant: "image-act".into(),
         },
         crate::engine::now_ms(),
-    );
+    )?;
     assert!(matches!(
         f.core
             .image_output_file(&request, &approval, &envelope, crate::engine::now_ms()),
@@ -79,4 +80,5 @@ fn revoked_trust_refuses_a_prepared_image_without_changing_its_upload_barrier() 
     for chunk in chunks {
         assert!(f.core.image_output_upload_pending(&chunk.blob).unwrap());
     }
+    Ok(())
 }

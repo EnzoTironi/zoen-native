@@ -75,9 +75,9 @@ pub(super) fn push(
     author: &Author,
     id: &str,
     body: EventBody,
-) {
-    let signed = author.sign_event(log.space(), id, AT + log.len() as i64, log.head(), body);
-    let event = log.sequence(signed);
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let signed = author.sign_event(log.space(), id, AT + log.len() as i64, log.head(), body)?;
+    let event = log.sequence(signed)?;
     assert_eq!(
         engine.ingest(protocol::Sequenced {
             seq: event.seq,
@@ -87,6 +87,7 @@ pub(super) fn push(
         }),
         Ingest::Applied
     );
+    Ok(())
 }
 
 pub(super) fn file(bytes: &[u8], version: u8) -> (FileDoc, Vec<u8>) {

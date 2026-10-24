@@ -10,7 +10,8 @@ fn digest_field(digest: &mut Sha256, bytes: &[u8]) {
 }
 
 #[test]
-fn missing_canonical_bytes_block_both_native_authority_consumers_until_repaired() {
+fn missing_canonical_bytes_block_both_native_authority_consumers_until_repaired(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new().unwrap();
     let item = "native-confirmed-plan";
     let document = PlanDoc {
@@ -107,7 +108,7 @@ fn missing_canonical_bytes_block_both_native_authority_consumers_until_repaired(
         detail: String::new(),
         audience: SPACE.into(),
         action: ActionClass::Money { cents: 27 },
-        content_hash: content_hash(&(&line.text, line.cost_cents)),
+        content_hash: content_hash(&(&line.text, line.cost_cents))?,
         item: Some(item.into()),
         line: Some(line.id.clone()),
         proposal: None,
@@ -121,8 +122,8 @@ fn missing_canonical_bytes_block_both_native_authority_consumers_until_repaired(
         EventBody::RequestOpened {
             request: request.clone(),
         },
-    );
-    let frame = ordered(&fixture.owner, Envelope::plain(&event));
+    )?;
+    let frame = ordered(&fixture.owner, Envelope::plain(&event))?;
     assert_eq!(fixture.owner.ingest(frame.clone()), Ingest::Applied);
     fixture.core.ingest(vec![frame]).unwrap();
     fixture
@@ -137,7 +138,7 @@ fn missing_canonical_bytes_block_both_native_authority_consumers_until_repaired(
         fixture.core.engine.state.requests[&request.id].status,
         crate::engine::ReqStatus::Approved
     );
-    fixture.grant("native-after-approved-plan", Some(1000));
+    fixture.grant("native-after-approved-plan", Some(1000))?;
     let trigger = fixture
         .message("Certified owner message after the decision")
         .unwrap();
@@ -169,7 +170,7 @@ fn missing_canonical_bytes_block_both_native_authority_consumers_until_repaired(
         let line = &foreign_document.sections[0].lines[0];
         let mut foreign_request = request.clone();
         foreign_request.title = "Unrelated duplicate request".into();
-        foreign_request.content_hash = content_hash(&(&line.text, line.cost_cents));
+        foreign_request.content_hash = content_hash(&(&line.text, line.cost_cents))?;
         let mut bodies = vec![
             EventBody::SpaceCreated {
                 title: "Unrelated retained history".into(),
@@ -216,8 +217,8 @@ fn missing_canonical_bytes_block_both_native_authority_consumers_until_repaired(
                 at_ms,
                 fixture.owner.logs.get(&other).and_then(SpaceLog::head),
                 body,
-            );
-            let frame = ordered(&fixture.owner, Envelope::plain(&event));
+            )?;
+            let frame = ordered(&fixture.owner, Envelope::plain(&event))?;
             assert_eq!(fixture.owner.ingest(frame.clone()), Ingest::Applied);
             fixture.core.ingest(vec![frame]).unwrap();
         }
@@ -267,4 +268,5 @@ fn missing_canonical_bytes_block_both_native_authority_consumers_until_repaired(
     assert_eq!(recovered.intent().grant_digest, grant_digest);
     assert_eq!(recovered.intent().trigger_digest, trigger_digest);
     assert!(fixture.core.reply_reference(&client_id).unwrap().is_some());
+    Ok(())
 }

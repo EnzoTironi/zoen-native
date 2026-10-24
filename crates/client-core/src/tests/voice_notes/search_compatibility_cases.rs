@@ -138,7 +138,8 @@ pub(super) fn legacy_two_event_voice_replies_still_replay_once() {
     assert!(thread[1].voice.is_some());
 }
 
-pub(super) fn voice_reply_syncs_its_metadata_and_encrypted_bytes_and_survives_replay() {
+pub(super) fn voice_reply_syncs_its_metadata_and_encrypted_bytes_and_survives_replay(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use crate::sync::Ingest;
     use protocol::{Envelope, Sequenced};
 
@@ -156,7 +157,7 @@ pub(super) fn voice_reply_syncs_its_metadata_and_encrypted_bytes_and_survives_re
         "the voice and its thread destination must be atomic"
     );
     for event in pending {
-        relay.sequence(event.event);
+        relay.sequence(event.event)?;
     }
     let receiver = Client::open(":memory:".into(), "en".into()).unwrap();
     for event in relay.events() {
@@ -201,4 +202,5 @@ pub(super) fn voice_reply_syncs_its_metadata_and_encrypted_bytes_and_survives_re
     assert_eq!(thread.len(), 2);
     assert_eq!(thread[1].id, sent.id);
     assert!(receiver.verify_log(space).valid);
+    Ok(())
 }

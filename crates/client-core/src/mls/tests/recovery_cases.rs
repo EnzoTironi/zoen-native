@@ -12,9 +12,9 @@ pub(super) fn a_crash_after_fork_meta_still_reports_the_fork_after_reopen(
     let space = "prefix-crash";
     let device_secret = {
         let (mut engine, author, device_secret) = member(&path);
-        start_space(&mut engine, &author, space);
+        start_space(&mut engine, &author, space)?;
         let peer = Author::root(Signer::generate()?);
-        add_member(&mut engine, &author, space, &peer);
+        add_member(&mut engine, &author, space, &peer)?;
         let mut stored = BTreeMap::new();
         stored.insert(
             device_key(&peer),
@@ -61,9 +61,9 @@ pub(super) fn a_pending_claim_settles_through_a_pruned_stub(
     let peer = Author::root(Signer::generate()?);
     Ok(
         for (space, mismatch) in [("prefix-pruned-match", false), ("prefix-pruned-fork", true)] {
-            start_space(&mut engine, &author, space);
-            add_member(&mut engine, &author, space, &peer);
-            let frame = pruned_frame(&engine, &author, space);
+            start_space(&mut engine, &author, space)?;
+            add_member(&mut engine, &author, space, &peer)?;
+            let frame = pruned_frame(&engine, &author, space)?;
             let claimed = if mismatch {
                 "11".repeat(32)
             } else {
@@ -111,9 +111,9 @@ pub(super) fn concurrent_sealed_siblings_send_until_a_member_proves_a_fork(
     let space = "sp-sealed-siblings";
     let device_secret = {
         let (mut engine, author, device_secret) = member(&path);
-        start_space(&mut engine, &author, space);
+        start_space(&mut engine, &author, space)?;
         let peer = Author::root(Signer::generate()?);
-        add_member(&mut engine, &author, space, &peer);
+        add_member(&mut engine, &author, space, &peer)?;
 
         let first = ordered(
             &engine,
@@ -125,7 +125,7 @@ pub(super) fn concurrent_sealed_siblings_send_until_a_member_proves_a_fork(
                 seen(&engine, space).as_ref(),
                 Sealed::new(SealedKind::Application, SUITE_ID, vec![1]),
             ),
-        );
+        )?;
         assert_eq!(engine.ingest(first), Ingest::Applied);
         assert_eq!(integrity(&engine, space), None);
 
@@ -161,7 +161,7 @@ pub(super) fn concurrent_sealed_siblings_send_until_a_member_proves_a_fork(
                 Some(&head),
                 Sealed::new(SealedKind::Application, SUITE_ID, vec![3, 3, 3]),
             ),
-        );
+        )?;
         let got = engine.ingest(frame.clone());
         assert!(
             matches!(got, Ingest::Applied),
@@ -207,7 +207,7 @@ pub(super) fn concurrent_sealed_siblings_send_until_a_member_proves_a_fork(
                 Some(&diverged),
                 Sealed::new(SealedKind::Application, SUITE_ID, vec![4, 4, 4, 4]),
             ),
-        );
+        )?;
         conflicting.env.verify().unwrap();
         let got = engine.ingest(conflicting);
         assert!(matches!(got, Ingest::Invalid(_)), "{got:?}");

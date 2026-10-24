@@ -79,7 +79,7 @@ fn initial_welcome_beats_recovery(
         let frame = ordered(
             &owner,
             Envelope::plain(&author.sign_event(space, cid, 1, seen(&owner, space), body)?),
-        );
+        )?;
         assert_eq!(owner.ingest(frame.clone()), Ingest::Applied);
         assert_eq!(peer.ingest(frame), Ingest::Applied);
     }
@@ -99,7 +99,7 @@ fn initial_welcome_beats_recovery(
         .unwrap()
         .1;
     owner.upload_done(&reference.blob);
-    let frame = ordered(&owner, Envelope::plain(&commit.event));
+    let frame = ordered(&owner, Envelope::plain(&commit.event))?;
     assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
     assert_eq!(peer.ingest(frame), Ingest::Applied);
     // Real publication waits for this Commit confirmation before submitting its
@@ -121,7 +121,7 @@ fn initial_welcome_beats_recovery(
         assert!(!peer.mls_recovery_pass().unwrap());
         assert!(peer.store.outbox_handshakes().unwrap().is_empty());
     }
-    let frame = ordered(&owner, Envelope::plain(&welcome.event));
+    let frame = ordered(&owner, Envelope::plain(&welcome.event))?;
     assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
     assert_eq!(peer.ingest(frame), Ingest::Applied);
     let seed = owner
@@ -133,7 +133,7 @@ fn initial_welcome_beats_recovery(
         .into_iter()
         .find(|e| e.client_id() == seed.id)
         .unwrap();
-    let frame = ordered(&owner, envelope);
+    let frame = ordered(&owner, envelope)?;
     assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
     assert_eq!(peer.ingest(frame), Ingest::Applied);
     assert!(peer.timeline(space).unwrap().iter().any(|e| matches!(&e.kind, crate::dto::EntryKind::Message { text, .. } if text == "original live direct seed")),

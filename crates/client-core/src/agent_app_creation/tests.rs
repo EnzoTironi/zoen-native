@@ -280,7 +280,8 @@ fn revoked_writer_and_expired_signed_request_cannot_create_or_reauthorize(
 }
 
 #[test]
-fn renewed_creation_keeps_the_future_item_but_requires_its_own_signed_decision() {
+fn renewed_creation_keeps_the_future_item_but_requires_its_own_signed_decision(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use crate::agent_binary_documents::tests::renewal_history::{
         confirm_pending, expired_approved,
     };
@@ -318,7 +319,7 @@ fn renewed_creation_keeps_the_future_item_but_requires_its_own_signed_decision()
             .unwrap(),
         Some(next.clone())
     );
-    confirm_pending(&f);
+    confirm_pending(&f)?;
     approve(&f, &next);
     let permit = f.agent.approved_app_creation(&next.id).unwrap();
     let before = f.agent.items().len();
@@ -334,4 +335,5 @@ fn renewed_creation_keeps_the_future_item_but_requires_its_own_signed_decision()
     assert_eq!(replay["itemId"], created["itemId"]);
     assert_eq!(f.agent.items().len(), before + 1);
     assert!(f.agent.verify_all().iter().all(|result| result.valid));
+    Ok(())
 }

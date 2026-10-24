@@ -92,7 +92,7 @@ pub(super) fn input_discard_guards_and_publication_ack_preserve_private_document
         assert_eq!(journal_without_input(&f), journal);
         // The real ACK for a prior Share refreshes canonical/shadow state without
         // consuming the native checkpoint retained after that Share.
-        f.ack(&pending);
+        f.ack(&pending)?;
         assert_eq!(f.engine.page_input_load(&scope).unwrap(), captured.current);
         let after_ack = journal_without_input(&f);
         let view = f.session().read(&f.engine).unwrap().view;

@@ -75,25 +75,25 @@ pub(super) fn blob_publication_and_two_first_writers_converge_without_cas(
                 1_800_000_000_000,
             )
             .unwrap();
-        deliver(&mut shorter.engine, &legacy_event, Ingest::Applied);
+        deliver(&mut shorter.engine, &legacy_event, Ingest::Applied)?;
         for event in if shorter_first {
             [&short_event, &long_event]
         } else {
             [&long_event, &short_event]
         } {
-            deliver(&mut receiver.engine, event, Ingest::Applied);
+            deliver(&mut receiver.engine, event, Ingest::Applied)?;
             let short_expected = if event.client_id == short_event.client_id {
                 Ingest::Confirmed
             } else {
                 Ingest::Applied
             };
-            deliver(&mut shorter.engine, event, short_expected);
+            deliver(&mut shorter.engine, event, short_expected)?;
             let long_expected = if event.client_id == long_event.client_id {
                 Ingest::Confirmed
             } else {
                 Ingest::Applied
             };
-            deliver(&mut longer.engine, event, long_expected);
+            deliver(&mut longer.engine, event, long_expected)?;
         }
         assert_eq!(short_event.seen, short_seen);
         assert_eq!(long_event.seen, long_seen);

@@ -9,14 +9,15 @@ fn frame(e: &Event) -> protocol::Sequenced {
     }
 }
 
-fn confirm_pending(e: &mut Engine) {
+fn confirm_pending(e: &mut Engine) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for pending in e.store.outbox().unwrap() {
         let space = &pending.event.space;
         let mut log =
             event_log::SpaceLog::from_events(space, e.logs[space].events().to_vec()).unwrap();
-        let event = log.sequence(pending.event).clone();
+        let event = log.sequence(pending.event)?.clone();
         assert_eq!(e.ingest(frame(&event)), crate::sync::Ingest::Confirmed);
     }
+    Ok(())
 }
 
 #[test]
@@ -78,7 +79,8 @@ fn a_newer_standing_decision_stops_an_interrupted_batch_after_restart() {
 }
 
 #[test]
-fn an_ordered_denial_wins_over_an_optimistic_approval_before_its_echo() {
+fn an_ordered_denial_wins_over_an_optimistic_approval_before_its_echo(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (chat, mut e) = Chat::create().unwrap();
     e.agent_create_plan(
         &chat.space,
@@ -119,8 +121,8 @@ fn an_ordered_denial_wins_over_an_optimistic_approval_before_its_echo() {
                 standing_grant: None,
             }),
         },
-    );
-    let denied = log.sequence(signed).clone();
+    )?;
+    let denied = log.sequence(signed)?.clone();
     assert_eq!(
         e.ingest(protocol::Sequenced {
             seq: denied.seq,
@@ -137,7 +139,7 @@ fn an_ordered_denial_wins_over_an_optimistic_approval_before_its_echo() {
         .grants
         .iter()
         .any(|g| g.grant.id == format!("gr_standing_{}", r.req.id)));
-    let losing = log.sequence(pending).clone();
+    let losing = log.sequence(pending)?.clone();
     assert_eq!(
         e.ingest(protocol::Sequenced {
             seq: losing.seq,
@@ -156,10 +158,12 @@ fn an_ordered_denial_wins_over_an_optimistic_approval_before_its_echo() {
     assert_eq!(e.state.requests[&r.req.id].status, ReqStatus::Denied);
     assert!(e.items().is_empty());
     assert_eq!(e.agent_profile(&chat.agent).budget_spent_cents, Some(37));
+    Ok(())
 }
 
 #[test]
-fn ordered_agent_removal_invalidates_an_optimistic_approval_before_its_echo() {
+fn ordered_agent_removal_invalidates_an_optimistic_approval_before_its_echo(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (chat, mut e) = Chat::create().unwrap();
     e.agent_create_plan(
         &chat.space,
@@ -195,7 +199,7 @@ fn ordered_agent_removal_invalidates_an_optimistic_approval_before_its_echo() {
     let mut log =
         event_log::SpaceLog::from_events(&chat.space, e.logs[&chat.space].events().to_vec())
             .unwrap();
-    let losing = log.sequence(pending).clone();
+    let losing = log.sequence(pending)?.clone();
     assert_eq!(
         e.ingest(protocol::Sequenced {
             seq: losing.seq,
@@ -213,10 +217,12 @@ fn ordered_agent_removal_invalidates_an_optimistic_approval_before_its_echo() {
     assert_eq!(e.state.requests[&id].status, ReqStatus::Pending);
     assert!(e.items().is_empty());
     assert_eq!(e.agent_profile(&chat.agent).budget_spent_cents, Some(37));
+    Ok(())
 }
 
 #[test]
-fn another_member_cannot_preempt_or_revoke_an_approval_generated_grant() {
+fn another_member_cannot_preempt_or_revoke_an_approval_generated_grant(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for standing in [false, true] {
         let (chat, mut e) = Chat::create().unwrap();
         let stranger = e
@@ -270,7 +276,7 @@ fn another_member_cannot_preempt_or_revoke_an_approval_generated_grant() {
             },
         )
         .unwrap();
-        confirm_pending(&mut e);
+        confirm_pending(&mut e)?;
         ingest_signed(
             &mut e,
             &chat.space,
@@ -314,6 +320,7 @@ fn another_member_cannot_preempt_or_revoke_an_approval_generated_grant() {
             TrustLevelDto::Listen
         );
     }
+    Ok(())
 }
 
 #[test]

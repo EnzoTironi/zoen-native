@@ -103,7 +103,8 @@ pub(super) fn cross_chat_media_forwarding_copies_current_files_without_source_bi
     }
 }
 
-pub(super) fn destination_only_receiver_decrypts_forwarded_media_and_thumbnail() {
+pub(super) fn destination_only_receiver_decrypts_forwarded_media_and_thumbnail(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use crate::sync::Ingest;
     use protocol::{Envelope, Sequenced};
     let sender = seeded();
@@ -120,7 +121,7 @@ pub(super) fn destination_only_receiver_decrypts_forwarded_media_and_thumbnail()
     let pending = sender.lock().store.outbox().unwrap();
     assert_eq!(pending.len(), 2);
     for event in pending {
-        relay.sequence(event.event);
+        relay.sequence(event.event)?;
     }
     let receiver = Client::open(":memory:".into(), "en".into()).unwrap();
     for event in relay.events() {
@@ -168,6 +169,7 @@ pub(super) fn destination_only_receiver_decrypts_forwarded_media_and_thumbnail()
     );
     assert_eq!(receiver.file_thumbnail(item).unwrap(), Some(vec![9; 64]));
     assert!(receiver.verify_log(destination).valid);
+    Ok(())
 }
 
 pub(super) fn unavailable_or_corrupt_forwarded_media_does_not_write_a_partial_copy() {

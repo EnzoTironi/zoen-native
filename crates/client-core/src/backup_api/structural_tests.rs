@@ -26,7 +26,7 @@ impl SecretVault for Vault {
     }
 }
 
-fn snapshot() -> (Header, Vec<u8>) {
+fn snapshot() -> std::result::Result<(Header, Vec<u8>), Box<dyn std::error::Error>> {
     let source = Client::open(":memory:".into(), "en".into()).unwrap();
     let vault = Arc::new(Vault::default());
     source
@@ -53,7 +53,7 @@ fn snapshot() -> (Header, Vec<u8>) {
             .get(&row.event.space)
             .cloned()
             .unwrap_or_else(|| event_log::SpaceLog::new(&row.event.space));
-        let event = log.sequence(row.event);
+        let event = log.sequence(row.event)?;
         assert_eq!(
             engine.ingest(protocol::Sequenced {
                 seq: event.seq,
@@ -75,7 +75,7 @@ fn snapshot() -> (Header, Vec<u8>) {
         created_ms: 1_700_000_000_000,
     };
     let database = source.lock().backup_snapshot().unwrap();
-    (header, database)
+    Ok((header, database))
 }
 
 fn change_database(
@@ -191,7 +191,7 @@ fn corrupt_table_page(database: &[u8]) -> std::result::Result<Vec<u8>, Box<dyn s
 }
 
 async fn public_restore_case(case: &str) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let (mut header, healthy) = snapshot();
+    let (mut header, healthy) = snapshot()?;
     let database = match case {
         "empty" => change_database(&[], "CREATE TABLE removed (x); DROP TABLE removed;")?,
         "partial" => change_database(&healthy, "DROP TABLE events;")?,
@@ -411,8 +411,9 @@ async fn structural_restore_healthy_and_compatible_optional_columns_remain_accep
     }
 }
 #[test]
-fn structural_restore_direct_rejects_invalid_input_before_target_wipe() {
-    let (header, healthy) = snapshot();
+fn structural_restore_direct_rejects_invalid_input_before_target_wipe(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (header, healthy) = snapshot()?;
     let databases = [
         change_database(&[], "CREATE TABLE removed (x); DROP TABLE removed;").unwrap(),
         change_database(&healthy, "DROP TABLE events;").unwrap(),
@@ -428,11 +429,13 @@ fn structural_restore_direct_rejects_invalid_input_before_target_wipe() {
         assert_eq!(target.lock().store.memory_image().unwrap(), before);
         assert!(target.account().is_none());
     }
+    Ok(())
 }
 
 #[test]
-fn structural_restore_direct_requires_every_portable_table_before_wipe() {
-    let (header, healthy) = snapshot();
+fn structural_restore_direct_requires_every_portable_table_before_wipe(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (header, healthy) = snapshot()?;
     for table in [
         "identities",
         "events",
@@ -460,6 +463,7 @@ fn structural_restore_direct_requires_every_portable_table_before_wipe() {
         );
         assert!(target.account().is_none());
     }
+    Ok(())
 }
 
 #[tokio::test]

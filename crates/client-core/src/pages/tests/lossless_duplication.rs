@@ -24,8 +24,9 @@ fn duplicated(original: &PageDto) -> Vec<PageBlockDto> {
 }
 
 #[test]
-fn every_kind_duplicates_undoes_replays_exports_and_recovers_cold() {
-    let directory = std::env::temp_dir().join(new_id("lossless-page"));
+fn every_kind_duplicates_undoes_replays_exports_and_recovers_cold(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let directory = std::env::temp_dir().join(new_id("lossless-page")?);
     std::fs::create_dir_all(&directory).unwrap();
     let path = directory
         .join("client.sqlite")
@@ -138,10 +139,12 @@ fn every_kind_duplicates_undoes_replays_exports_and_recovers_cold() {
     assert_eq!(replay.page.blocks, copies);
     drop(client);
     std::fs::remove_dir_all(directory).unwrap();
+    Ok(())
 }
 
 #[test]
-fn absent_legacy_metadata_preserves_content_and_exact_old_receipt_fingerprint() {
+fn absent_legacy_metadata_preserves_content_and_exact_old_receipt_fingerprint(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use sha2::{Digest, Sha256};
     // Original field order/types, deliberately independent of the extended DTO serializer.
     #[derive(serde::Serialize)]
@@ -158,7 +161,7 @@ fn absent_legacy_metadata_preserves_content_and_exact_old_receipt_fingerprint() 
         text: &'a str,
         spans: &'a [TextSpanDto],
     }
-    let directory = std::env::temp_dir().join(new_id("legacy-page-fields"));
+    let directory = std::env::temp_dir().join(new_id("legacy-page-fields")?);
     std::fs::create_dir_all(&directory).unwrap();
     let path = directory
         .join("client.sqlite")
@@ -248,6 +251,7 @@ fn absent_legacy_metadata_preserves_content_and_exact_old_receipt_fingerprint() 
     );
     drop(client);
     std::fs::remove_dir_all(directory).unwrap();
+    Ok(())
 }
 
 #[test]

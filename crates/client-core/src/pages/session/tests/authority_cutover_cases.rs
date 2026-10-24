@@ -125,7 +125,7 @@ pub(super) fn pending_legacy_and_remote_cutover_never_expand_seed(
         );
         assert!(fold.accepts_prefix(&original_manifest));
         if undo {
-            deliver(&mut f.engine, &legacy, Ingest::Confirmed);
+            deliver(&mut f.engine, &legacy, Ingest::Confirmed)?;
             assert!(matches!(
                 f.engine
                     .plan_timeline(&f.item)
@@ -167,7 +167,7 @@ pub(super) fn late_legacy_versions_never_ack_or_change_canonical_shadow(
     )
     .unwrap();
     let reference = queued(s.commit(&mut f.engine, "cutover").unwrap());
-    f.ack(&reference);
+    f.ack(&reference)?;
     let canonical = s.read(&f.engine).unwrap();
     let shadow = plan_doc(&s.shadow)
         .unwrap()

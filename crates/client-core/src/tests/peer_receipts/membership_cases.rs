@@ -236,9 +236,9 @@ pub(super) fn confirmed_removal_discards_new_and_deferred_marks_so_rejoin_cannot
                 crate::engine::now_ms(),
                 engine.logs[&c.space].head(),
                 body,
-            );
+            )?;
             let mut relay = engine.logs[&c.space].clone();
-            let event = relay.sequence(signed).clone();
+            let event = relay.sequence(signed)?.clone();
             assert_eq!(
                 engine.ingest(protocol::Sequenced {
                     seq: event.seq,

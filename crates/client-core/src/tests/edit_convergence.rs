@@ -160,7 +160,8 @@ fn assert_replica(engine: &Engine, expected: &[TimelineEntry]) {
 }
 
 #[test]
-fn pending_signed_edits_converge_with_confirmed_remote_history_across_cold_reopen() {
+fn pending_signed_edits_converge_with_confirmed_remote_history_across_cold_reopen(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let database = Database::new().unwrap();
     let local_path = database.path("local.sqlite");
     let remote_path = database.path("remote.sqlite");
@@ -220,8 +221,8 @@ fn pending_signed_edits_converge_with_confirmed_remote_history_across_cold_reope
             post(NEIGHBOR, "Mensagem vizinha", None),
         ),
     ] {
-        let signed = by.sign_event(SPACE, id, AT + relay.len() as i64, relay.head(), body);
-        let event = relay.sequence(signed);
+        let signed = by.sign_event(SPACE, id, AT + relay.len() as i64, relay.head(), body)?;
+        let event = relay.sequence(signed)?;
         assert_eq!(local.ingest(frame(event)), Ingest::Applied);
         assert_eq!(remote.ingest(frame(event)), Ingest::Applied);
     }
@@ -257,9 +258,9 @@ fn pending_signed_edits_converge_with_confirmed_remote_history_across_cold_reope
                     text: edited.into(),
                 },
             },
-        );
+        )?;
         local.store.outbox_put(&signed).unwrap();
-        confirmed_edits.push(relay.sequence(signed).clone());
+        confirmed_edits.push(relay.sequence(signed)?.clone());
     }
     // Stage real durable signed intents; this fixture does not test public edit-command admission.
     local.reload().unwrap();
@@ -294,4 +295,5 @@ fn pending_signed_edits_converge_with_confirmed_remote_history_across_cold_reope
         assert!(reopened.store.outbox().unwrap().is_empty());
         reopened.logs[SPACE].verify().unwrap();
     }
+    Ok(())
 }

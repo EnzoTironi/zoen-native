@@ -20,38 +20,45 @@ mod readiness_cases;
 mod recovery_cases;
 
 #[test]
-fn direct_seed_waits_for_missing_package_then_reaches_the_same_recipient() {
-    readiness_cases::direct_seed_waits_for_missing_package_then_reaches_the_same_recipient();
+fn direct_seed_waits_for_missing_package_then_reaches_the_same_recipient(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    readiness_cases::direct_seed_waits_for_missing_package_then_reaches_the_same_recipient()
 }
 
 #[test]
-fn group_existing_reader_can_receive_while_another_identity_has_no_package() {
-    readiness_cases::group_existing_reader_can_receive_while_another_identity_has_no_package();
+fn group_existing_reader_can_receive_while_another_identity_has_no_package(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    readiness_cases::group_existing_reader_can_receive_while_another_identity_has_no_package()
 }
 
 #[test]
-fn fifty_one_members_reconcile_in_two_durable_claim_batches() {
-    readiness_cases::fifty_one_members_reconcile_in_two_durable_claim_batches();
+fn fifty_one_members_reconcile_in_two_durable_claim_batches(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    readiness_cases::fifty_one_members_reconcile_in_two_durable_claim_batches()
 }
 
 #[test]
-fn unsupported_claims_in_one_chat_do_not_block_another_chats_removal() {
-    readiness_cases::unsupported_claims_in_one_chat_do_not_block_another_chats_removal();
+fn unsupported_claims_in_one_chat_do_not_block_another_chats_removal(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    readiness_cases::unsupported_claims_in_one_chat_do_not_block_another_chats_removal()
 }
 
 #[test]
-fn an_obsolete_stale_rejection_cannot_release_a_current_epoch_block() {
-    outbox_cases::an_obsolete_stale_rejection_cannot_release_a_current_epoch_block();
+fn an_obsolete_stale_rejection_cannot_release_a_current_epoch_block(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    outbox_cases::an_obsolete_stale_rejection_cannot_release_a_current_epoch_block()
 }
 
 #[test]
-fn rejected_outer_signature_keeps_the_own_event_pending() {
-    outbox_cases::rejected_outer_signature_keeps_the_own_event_pending();
+fn rejected_outer_signature_keeps_the_own_event_pending(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    outbox_cases::rejected_outer_signature_keeps_the_own_event_pending()
 }
 
 #[test]
-fn rejected_pruned_history_preserves_the_mls_group() {
-    outbox_cases::rejected_pruned_history_preserves_the_mls_group();
+fn rejected_pruned_history_preserves_the_mls_group(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    outbox_cases::rejected_pruned_history_preserves_the_mls_group()
 }
 
 /// Twelve sealed pages, delivered in the worst order the publish window allows.

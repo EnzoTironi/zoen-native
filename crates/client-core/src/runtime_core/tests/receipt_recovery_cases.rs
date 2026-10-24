@@ -6,7 +6,7 @@ pub(super) fn lost_sync_marker_or_scope_cannot_downgrade_a_retained_sealed_reply
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for case in ["sync-marker", "scope", "both"] {
         let mut fixture = Fixture::new()?;
-        fixture.grant("marker-original-trust", None);
+        fixture.grant("marker-original-trust", None)?;
         let trigger = fixture.message("Original marker request")?;
         let original = fixture
             .core
@@ -48,7 +48,7 @@ pub(super) fn lost_sync_marker_or_scope_cannot_downgrade_a_retained_sealed_reply
         let before = fixture.core.engine.logs[SPACE].head();
         assert!(
             matches!(
-                fixture.core.ingest(vec![ordered(&fixture.owner, plain)]),
+                fixture.core.ingest(vec![ordered(&fixture.owner, plain)?]),
                 Err(NativeError::History)
             ),
             "{case}"
@@ -69,7 +69,7 @@ pub(super) fn lost_sync_marker_or_scope_cannot_downgrade_a_retained_sealed_reply
 pub(super) fn native_receipt_survives_revocation_expiry_and_cold_replay_without_new_effects(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new()?;
-    fixture.grant("receipt-original-trust", Some(1000));
+    fixture.grant("receipt-original-trust", Some(1000))?;
     let trigger = fixture.message("Original receipt source")?;
     let original = fixture
         .core
@@ -84,7 +84,7 @@ pub(super) fn native_receipt_survives_revocation_expiry_and_cold_replay_without_
     let client_id = prepared.envelope().client_id().to_string();
     let key = super::reference::reference_key(&client_id);
     let reference = fixture.core.engine.store.meta(&key).unwrap().unwrap();
-    let accepted = ordered(&fixture.owner, prepared.envelope().clone());
+    let accepted = ordered(&fixture.owner, prepared.envelope().clone())?;
     assert_eq!(fixture.owner.ingest(accepted.clone()), Ingest::Applied);
     let first = fixture
         .core
@@ -104,7 +104,7 @@ pub(super) fn native_receipt_survives_revocation_expiry_and_cold_replay_without_
             grant: "receipt-original-trust".into(),
         },
         1100,
-    );
+    )?;
     assert!(matches!(
         fixture.core.refresh(&original, 1200),
         Err(NativeError::Permission)
@@ -156,7 +156,7 @@ pub(super) fn receipt_refuses_different_duplicate_opening_and_missing_original_r
         "future-reference",
     ] {
         let mut fixture = Fixture::new()?;
-        fixture.grant("duplicate-original-trust", None);
+        fixture.grant("duplicate-original-trust", None)?;
         let trigger = fixture.message("Original duplicate source")?;
         let original = fixture
             .core
@@ -171,7 +171,7 @@ pub(super) fn receipt_refuses_different_duplicate_opening_and_missing_original_r
         let client_id = prepared.envelope().client_id().to_string();
         let key = super::reference::reference_key(&client_id);
         let different = colliding_native_reply(&fixture, &prepared)?;
-        let accepted = ordered(&fixture.owner, prepared.envelope().clone());
+        let accepted = ordered(&fixture.owner, prepared.envelope().clone())?;
         assert_eq!(fixture.owner.ingest(accepted.clone()), Ingest::Applied);
         fixture
             .core
@@ -245,7 +245,7 @@ pub(super) fn actual_maximum_text_reference_is_bounded_and_oversized_fields_refu
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let extreme_space = "\0".repeat(256);
     let mut fixture = Fixture::new_in(&extreme_space)?;
-    fixture.grant(&"\0".repeat(256), None);
+    fixture.grant(&"\0".repeat(256), None)?;
     let trigger = fixture.message("Bounded original source")?;
     let original = fixture
         .core
@@ -269,7 +269,7 @@ pub(super) fn actual_maximum_text_reference_is_bounded_and_oversized_fields_refu
         fixture.credential(),
     )
     .unwrap();
-    let accepted = ordered(&fixture.owner, prepared.envelope().clone());
+    let accepted = ordered(&fixture.owner, prepared.envelope().clone())?;
     assert_eq!(fixture.owner.ingest(accepted.clone()), Ingest::Applied);
     let receipt = cold
         .receive_reply(&original, &client_id, vec![accepted])
@@ -288,7 +288,7 @@ pub(super) fn actual_maximum_text_reference_is_bounded_and_oversized_fields_refu
     ));
     assert!(cold.image().is_err());
     let mut oversized = Fixture::new()?;
-    oversized.grant(&"g".repeat(257), None);
+    oversized.grant(&"g".repeat(257), None)?;
     let trigger = oversized.message("Oversized original field")?;
     let original = oversized
         .core
@@ -321,7 +321,7 @@ pub(super) fn actual_maximum_text_reference_is_bounded_and_oversized_fields_refu
 pub(super) fn receipt_delta_preserves_other_pending_and_refuses_real_new_join_or_row_changes(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new()?;
-    fixture.grant("delta-original-trust", None);
+    fixture.grant("delta-original-trust", None)?;
     let trigger = fixture.message("Original delta source")?;
     let original = fixture
         .core
@@ -360,7 +360,7 @@ pub(super) fn receipt_delta_preserves_other_pending_and_refuses_real_new_join_or
         .outbox_get(&joining.client_id)
         .unwrap()
         .unwrap();
-    let accepted = ordered(&fixture.owner, prepared.envelope().clone());
+    let accepted = ordered(&fixture.owner, prepared.envelope().clone())?;
     assert_eq!(fixture.owner.ingest(accepted.clone()), Ingest::Applied);
     fixture
         .core

@@ -3,7 +3,8 @@ use super::*;
 use crate::sync::replay_probe::{projection, Home};
 
 #[test]
-fn encrypted_ordinary_pages_are_single_pass_and_cold_reopen_retains_exact_source() {
+fn encrypted_ordinary_pages_are_single_pass_and_cold_reopen_retains_exact_source(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let home = Home(std::env::temp_dir().join(types::new_id("sealed-page-catchup").unwrap()));
     std::fs::create_dir(&home.0).unwrap();
     let path = home.0.join("peer.sqlite");
@@ -11,7 +12,7 @@ fn encrypted_ordinary_pages_are_single_pass_and_cold_reopen_retains_exact_source
     let (mut peer, _, peer_secret) = member(path.to_str().unwrap());
     owner.net.profiles.supported = true;
     let space = "sp_encrypted_page_catchup";
-    for frame in claim_group(&mut owner, space, std::slice::from_mut(&mut peer)) {
+    for frame in claim_group(&mut owner, space, std::slice::from_mut(&mut peer))? {
         assert_eq!(peer.ingest(frame), Ingest::Applied);
     }
     owner
@@ -22,7 +23,7 @@ fn encrypted_ordinary_pages_are_single_pass_and_cold_reopen_retains_exact_source
     let (_, targets, operation) = owner.mls_to_claim(clock).unwrap().unwrap();
     let records = claimed_records(std::slice::from_mut(&mut peer), &targets);
     owner.mls_claimed(space, &operation, Ok(records));
-    relay_ready_to_peer(&mut owner, &mut peer);
+    relay_ready_to_peer(&mut owner, &mut peer)?;
     assert_eq!(owner.outbox_len(), 0);
     assert_eq!(peer.outbox_len(), 0);
     assert!(peer.device().unwrap().has_group(space));
@@ -35,7 +36,7 @@ fn encrypted_ordinary_pages_are_single_pass_and_cold_reopen_retains_exact_source
             .unwrap();
         expected.push((item, markdown));
     }
-    let frames = relay_ready_to_peer(&mut owner, &mut peer);
+    let frames = relay_ready_to_peer(&mut owner, &mut peer)?;
     assert_eq!(frames.len(), 8);
     assert!(frames.iter().all(|frame| frame.env.is_sealed()));
     for (item, markdown) in &expected {
@@ -64,4 +65,5 @@ fn encrypted_ordinary_pages_are_single_pass_and_cold_reopen_retains_exact_source
     eprintln!(
         "encrypted page catch-up work: pages=8 full_replay_steps={work} cold_projection_exact=true"
     );
+    Ok(())
 }

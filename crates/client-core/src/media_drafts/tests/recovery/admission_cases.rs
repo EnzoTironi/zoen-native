@@ -2,7 +2,8 @@
 
 use super::*;
 
-pub(super) fn failed_media_recovery_rejects_pending_confirmed_foreign_scope_and_revoked_access() {
+pub(super) fn failed_media_recovery_rejects_pending_confirmed_foreign_scope_and_revoked_access(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for case in [
         "pending",
         "confirmed",
@@ -14,7 +15,7 @@ pub(super) fn failed_media_recovery_rejects_pending_confirmed_foreign_scope_and_
         "reader",
     ] {
         let f = fixture(":memory:");
-        let sent = refused(&f, &["a"], "separate");
+        let sent = refused(&f, &["a"], "separate")?;
         let revision = read(&f).revision;
         let mut scope = f.scope.clone();
         match case {
@@ -33,7 +34,7 @@ pub(super) fn failed_media_recovery_rejects_pending_confirmed_foreign_scope_and_
             "confirmed" => {
                 let pending = f.engine.lock().store.outbox().unwrap();
                 for row in pending {
-                    confirm_failed_id(&f, &row.event.client_id);
+                    confirm_failed_id(&f, &row.event.client_id)?;
                 }
             }
             "account" => scope.expected_identity_id = "another".into(),
@@ -76,6 +77,7 @@ pub(super) fn failed_media_recovery_rejects_pending_confirmed_foreign_scope_and_
         assert_eq!(public_state(&f), before, "{case}");
         assert_eq!(rows(&f), private, "{case}");
     }
+    Ok(())
 }
 
 pub(super) fn failed_media_recovery_revalidates_actual_signed_outbox_device_and_complete_group(
@@ -90,7 +92,7 @@ pub(super) fn failed_media_recovery_revalidates_actual_signed_outbox_device_and_
             "partial_confirmation",
         ] {
             let f = fixture(":memory:");
-            let sent = refused(&f, &["a", "b"], "grouped");
+            let sent = refused(&f, &["a", "b"], "grouped")?;
             {
                 let engine = f.engine.lock();
                 let mut event = engine
@@ -174,7 +176,7 @@ pub(super) fn failed_media_recovery_revalidates_actual_signed_outbox_device_and_
             if case == "partial_confirmation" {
                 let pending = f.engine.lock().store.outbox().unwrap();
                 for row in pending.into_iter().take(2) {
-                    confirm_failed_id(&f, &row.event.client_id);
+                    confirm_failed_id(&f, &row.event.client_id)?;
                 }
             }
             let before = public_state(&f);
@@ -187,10 +189,10 @@ pub(super) fn failed_media_recovery_revalidates_actual_signed_outbox_device_and_
 }
 
 pub(super) fn failed_media_recovery_missing_corrupt_chunks_and_private_storage_failure_rollback_every_copy(
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for case in ["missing", "corrupt", "asset_write", "record_write"] {
         let f = fixture(":memory:");
-        let sent = refused(&f, &["a", "b"], "grouped");
+        let sent = refused(&f, &["a", "b"], "grouped")?;
         {
             let engine = f.engine.lock();
             match case {
@@ -209,12 +211,13 @@ pub(super) fn failed_media_recovery_missing_corrupt_chunks_and_private_storage_f
         assert_eq!(public_state(&f), before, "{case}");
         assert_eq!(counts(&f.engine), count, "{case}");
     }
+    Ok(())
 }
 
 pub(super) fn failed_voice_recovery_imports_only_final_render_as_a_new_source_without_invented_editor(
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let f = fixture(":memory:");
-    media_contract_confirm_scope(&f);
+    media_contract_confirm_scope(&f)?;
     let draft = save(
         &f,
         "0",
@@ -258,4 +261,5 @@ pub(super) fn failed_voice_recovery_imports_only_final_render_as_a_new_source_wi
             .is_err(),
         "new source still requires explicit authenticated preparation"
     );
+    Ok(())
 }

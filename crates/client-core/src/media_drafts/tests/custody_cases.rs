@@ -2,7 +2,8 @@
 
 use super::*;
 
-pub(super) fn history_export_remains_only_canonical_events_while_media_draft_is_private() {
+pub(super) fn history_export_remains_only_canonical_events_while_media_draft_is_private(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut f = fixture(":memory:");
     f.scope.space_id = f
         .engine
@@ -47,7 +48,7 @@ pub(super) fn history_export_remains_only_canonical_events_while_media_draft_is_
                 .unwrap_or_else(|| (0, types::GENESIS_PREV.into()));
             let frame = protocol::Sequenced {
                 seq,
-                hash: event_log::chain_hash(env.space(), seq, &prev, &env.wire_hash()),
+                hash: event_log::chain_hash(env.space(), seq, &prev, &env.wire_hash())?,
                 prev,
                 env,
             };
@@ -73,6 +74,7 @@ pub(super) fn history_export_remains_only_canonical_events_while_media_draft_is_
     let after = serde_json::to_string(&f.engine.lock().history_bundle()).unwrap();
     assert_eq!(after, before);
     assert!(!after.contains("Private"));
+    Ok(())
 }
 
 pub(super) fn media_contract_failed_local_metadata_remains_visible_after_revocation_and_cold_recovery(
@@ -82,7 +84,7 @@ pub(super) fn media_contract_failed_local_metadata_remains_visible_after_revocat
             let dir = temp()?;
             let path = dir.join("refused.sqlite");
             let f = fixture(path.to_str().unwrap());
-            media_contract_confirm_scope(&f);
+            media_contract_confirm_scope(&f)?;
             let draft = save(
                 &f,
                 "0",

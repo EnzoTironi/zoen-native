@@ -122,11 +122,11 @@ pub(super) fn continuation_does_not_replace_unseen_remote_fields_or_blocks(
             .unwrap();
         let event = f.signed_as(&f.owner, f.version(ItemContent::Page(f.page(&remote))))?;
         if remote_first {
-            deliver(&mut f.engine, &event, Ingest::Applied);
+            deliver(&mut f.engine, &event, Ingest::Applied)?;
         }
         apply(&f, &mut s, &read, "first", &[text_edit(&read, "own first")]).unwrap();
         if !remote_first {
-            deliver(&mut f.engine, &event, Ingest::Applied);
+            deliver(&mut f.engine, &event, Ingest::Applied)?;
         }
         let accepted = apply(
             &f,

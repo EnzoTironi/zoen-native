@@ -157,22 +157,25 @@ fn catch_up_retry_keeps_handshake_refusals_terminal_and_rate_hints_bounded() {
     profile_clock_cases::catch_up_retry_keeps_handshake_refusals_terminal_and_rate_hints_bounded();
 }
 
-fn sequence(env: Envelope, head: &mut Option<Seen>) -> Sequenced {
+fn sequence(
+    env: Envelope,
+    head: &mut Option<Seen>,
+) -> std::result::Result<Sequenced, Box<dyn std::error::Error>> {
     let seq = head.as_ref().map_or(0, |h| h.seq + 1);
     let prev = head
         .as_ref()
         .map_or_else(|| GENESIS_PREV.to_string(), |h| h.hash.clone());
-    let hash = chain_hash(env.space(), seq, &prev, &env.wire_hash());
+    let hash = chain_hash(env.space(), seq, &prev, &env.wire_hash())?;
     *head = Some(Seen {
         seq,
         hash: hash.clone(),
     });
-    Sequenced {
+    Ok(Sequenced {
         seq,
         prev,
         hash,
         env,
-    }
+    })
 }
 
 #[tokio::test(flavor = "current_thread")]

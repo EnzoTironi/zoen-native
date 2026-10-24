@@ -65,7 +65,7 @@ fn deliver_owner(f: &mut Fixture) -> TestResult {
             envelope.is_sealed(),
             "policy must never travel in clear JSON"
         );
-        let frame = ordered(&f.owner, envelope);
+        let frame = ordered(&f.owner, envelope)?;
         assert_eq!(f.owner.ingest(frame.clone()), Ingest::Confirmed);
         f.core.ingest(vec![frame])?;
     }
@@ -75,7 +75,7 @@ fn deliver_agent(f: &mut Fixture) -> TestResult {
     f.core.engine.mls_seal_outbox()?;
     for envelope in f.core.engine.outbox_envelopes() {
         assert!(envelope.is_sealed());
-        let frame = ordered(&f.owner, envelope);
+        let frame = ordered(&f.owner, envelope)?;
         f.core.ingest(vec![frame.clone()])?;
         assert_eq!(f.owner.ingest(frame), Ingest::Applied);
     }
@@ -169,7 +169,7 @@ fn owner_policy_stays_pending_until_exact_confirmed_host_receipt_and_replays_one
     // the native publisher must refuse its unprepared own echo.
     f.core.engine.mls_seal_outbox()?;
     let envelope = f.core.engine.outbox_envelopes().remove(0);
-    let frame = ordered(&f.owner, envelope);
+    let frame = ordered(&f.owner, envelope)?;
     assert_eq!(f.owner.ingest(frame.clone()), Ingest::Applied);
     assert!(matches!(
         f.core.ingest(vec![frame]),
@@ -295,7 +295,7 @@ fn policy_quote_reads_only_confirmed_image_review_without_act_or_approval() -> T
         f.core.owner_policy_image_context(&signed, now).is_err(),
         "unconfirmed request is not context"
     );
-    let frame = ordered(&f.owner, envelope);
+    let frame = ordered(&f.owner, envelope)?;
     assert_eq!(f.owner.ingest(frame.clone()), Ingest::Applied);
     f.core.ingest(vec![frame])?;
     let before = f.core.image()?;
@@ -317,7 +317,7 @@ fn policy_quote_reads_only_confirmed_image_review_without_act_or_approval() -> T
             grant: "image-review-act".into(),
         },
         now,
-    );
+    )?;
     assert_eq!(
         f.core.owner_policy_image_context(&signed, now)?,
         image_task_cases::input(),
@@ -350,7 +350,7 @@ fn authenticated_options_prepare_exact_money_and_successor_of_expired_disabled_p
     use chrono::Datelike;
     use types::owner_policy_context::OwnerPolicyOptions;
     let (mut f, request, hash, envelope) = super::image_review_cases::pending().unwrap();
-    let frame = ordered(&f.owner, envelope);
+    let frame = ordered(&f.owner, envelope)?;
     assert_eq!(f.owner.ingest(frame.clone()), Ingest::Applied);
     f.core.ingest(vec![frame])?;
     f.owner.set_registered(true)?;

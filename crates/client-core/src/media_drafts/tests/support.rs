@@ -141,7 +141,7 @@ pub(super) fn media_contract_refused_duplicate_creation(
     presentation: &str,
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let f = fixture(":memory:");
-    media_contract_confirm_scope(&f);
+    media_contract_confirm_scope(&f)?;
     let draft = save(
         &f,
         "0",
@@ -171,7 +171,7 @@ pub(super) fn media_contract_refused_duplicate_creation(
         })
         .unwrap()
         .event;
-    media_contract_confirm_id(&f, &file.client_id);
+    media_contract_confirm_id(&f, &file.client_id)?;
     let duplicate = f
         .engine
         .lock()
@@ -209,7 +209,7 @@ pub(super) fn media_contract_refused_duplicate_creation(
         .outbox_envelopes()
         .iter()
         .any(|env| env.client_id() == sent.entries[0].id));
-    media_contract_confirm_id(&f, &sent.entries[0].id);
+    media_contract_confirm_id(&f, &sent.entries[0].id)?;
     assert_eq!(
         f.engine
             .timeline(f.scope.space_id.clone())
@@ -224,7 +224,9 @@ pub(super) fn media_contract_refused_duplicate_creation(
     Ok(())
 }
 
-pub(super) fn media_contract_confirm_scope(f: &Fixture) {
+pub(super) fn media_contract_confirm_scope(
+    f: &Fixture,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let pending = f.engine.lock().store.outbox().unwrap();
     let mut relay = f
         .engine
@@ -237,7 +239,7 @@ pub(super) fn media_contract_confirm_scope(f: &Fixture) {
         .into_iter()
         .filter(|row| row.event.space == f.scope.space_id && !row.failed)
     {
-        let event = relay.sequence(row.event);
+        let event = relay.sequence(row.event)?;
         let _ = f.engine.lock().ingest(protocol::Sequenced {
             seq: event.seq,
             prev: event.prev.clone(),
@@ -245,13 +247,17 @@ pub(super) fn media_contract_confirm_scope(f: &Fixture) {
             env: protocol::Envelope::plain(event),
         });
     }
+    Ok(())
 }
 
-pub(super) fn media_contract_confirm_id(f: &Fixture, id: &str) {
+pub(super) fn media_contract_confirm_id(
+    f: &Fixture,
+    id: &str,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut engine = f.engine.lock();
     let pending = engine.store.outbox_get(id).unwrap().unwrap();
     let mut relay = engine.logs[&pending.space].clone();
-    let event = relay.sequence(pending);
+    let event = relay.sequence(pending)?;
     assert_eq!(
         engine.ingest(protocol::Sequenced {
             seq: event.seq,
@@ -261,6 +267,7 @@ pub(super) fn media_contract_confirm_id(f: &Fixture, id: &str) {
         }),
         crate::sync::Ingest::Confirmed
     );
+    Ok(())
 }
 
 pub(super) fn media_contract_receive(
@@ -302,7 +309,7 @@ pub(super) fn media_contract_recovered_writer_at(
     path: &str,
 ) -> std::result::Result<(Fixture, String), Box<dyn std::error::Error>> {
     let f = fixture(path);
-    media_contract_confirm_scope(&f);
+    media_contract_confirm_scope(&f)?;
     let draft = save(
         &f,
         "0",

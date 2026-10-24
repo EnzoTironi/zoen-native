@@ -6,7 +6,7 @@ pub(super) fn generic_ingest_refuses_colliding_ciphertext_plaintext_pruning_and_
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for case in ["ciphertext", "plaintext", "pruned", "timestamp"] {
         let mut fixture = Fixture::new()?;
-        fixture.grant("echo-original-trust", None);
+        fixture.grant("echo-original-trust", None)?;
         let trigger = fixture.message("Original source request")?;
         let original = fixture
             .core
@@ -55,7 +55,7 @@ pub(super) fn generic_ingest_refuses_colliding_ciphertext_plaintext_pruning_and_
         if case == "pruned" {
             assert_eq!(envelope.wire_hash(), expected.wire_hash());
         }
-        let frame = ordered(&fixture.owner, envelope);
+        let frame = ordered(&fixture.owner, envelope)?;
         if case == "ciphertext" {
             assert_eq!(fixture.owner.ingest(frame.clone()), Ingest::Applied);
             let actual = fixture.owner.logs[SPACE].events().last().unwrap();
@@ -95,7 +95,7 @@ pub(super) fn own_echo_requires_valid_original_inner_and_historical_sealing_copy
         "missing-native-pending",
     ] {
         let mut fixture = Fixture::new()?;
-        fixture.grant("copy-original-trust", None);
+        fixture.grant("copy-original-trust", None)?;
         let trigger = fixture.message("Retained source request")?;
         let original = fixture
             .core
@@ -198,7 +198,7 @@ pub(super) fn own_echo_requires_valid_original_inner_and_historical_sealing_copy
             }
             _ => unreachable!(),
         }
-        let frame = ordered(&fixture.owner, envelope.clone());
+        let frame = ordered(&fixture.owner, envelope.clone())?;
         let before = fixture.core.engine.logs[SPACE].head();
         assert!(
             matches!(fixture.core.ingest(vec![frame]), Err(NativeError::History)),
@@ -221,7 +221,7 @@ pub(super) fn own_echo_requires_valid_original_inner_and_historical_sealing_copy
 pub(super) fn exact_old_epoch_echo_survives_real_commit_cold_restore_and_replay(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new()?;
-    fixture.grant("historical-trust", None);
+    fixture.grant("historical-trust", None)?;
     let trigger = fixture.message("Original history")?;
     let original = fixture
         .core
@@ -249,7 +249,7 @@ pub(super) fn exact_old_epoch_echo_survives_real_commit_cold_restore_and_replay(
         fixture.owner.logs[SPACE].head().as_ref(),
         Sealed::new(SealedKind::Commit, ::mls::SUITE_ID, commit.commit),
     );
-    let commit_frame = ordered(&fixture.owner, commit_envelope);
+    let commit_frame = ordered(&fixture.owner, commit_envelope)?;
     assert_eq!(fixture.owner.ingest(commit_frame.clone()), Ingest::Applied);
     fixture.core.ingest(vec![commit_frame]).unwrap();
     assert_eq!(
@@ -273,7 +273,7 @@ pub(super) fn exact_old_epoch_echo_survives_real_commit_cold_restore_and_replay(
     let client_id = envelope.client_id().to_string();
     let reference_key = super::reference::reference_key(&client_id);
     let reference = cold.engine.store.meta(&reference_key).unwrap().unwrap();
-    let accepted = ordered(&fixture.owner, envelope);
+    let accepted = ordered(&fixture.owner, envelope)?;
     assert_eq!(fixture.owner.ingest(accepted.clone()), Ingest::Applied);
     assert!(
         matches!(&fixture.owner.logs[SPACE].events().last().unwrap().body, EventBody::MessagePosted { text, .. } if text == "Historical native result")
@@ -323,7 +323,7 @@ pub(super) fn exact_old_epoch_echo_survives_real_commit_cold_restore_and_replay(
 pub(super) fn later_colliding_echo_invalidates_an_entire_partially_ingested_batch(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new()?;
-    fixture.grant("batch-original-trust", None);
+    fixture.grant("batch-original-trust", None)?;
     let trigger = fixture.message("Original batch source")?;
     let original = fixture
         .core
@@ -350,9 +350,9 @@ pub(super) fn later_colliding_echo_invalidates_an_entire_partially_ingested_batc
             digest,
         },
     )?;
-    let first = ordered(&fixture.owner, Envelope::plain(&preceding));
+    let first = ordered(&fixture.owner, Envelope::plain(&preceding))?;
     assert_eq!(fixture.owner.ingest(first.clone()), Ingest::Applied);
-    let second = ordered(&fixture.owner, different);
+    let second = ordered(&fixture.owner, different)?;
     assert!(matches!(
         fixture.core.ingest(vec![first.clone(), second]),
         Err(NativeError::History)
@@ -380,7 +380,7 @@ pub(super) fn later_colliding_echo_invalidates_an_entire_partially_ingested_batc
 pub(super) fn own_echo_is_context_only_and_mismatching_mls_sender_cannot_refresh(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new()?;
-    fixture.grant("explicit-trust", None);
+    fixture.grant("explicit-trust", None)?;
     let trigger = fixture.message("Owner's original request")?;
     let original = fixture
         .core
@@ -392,7 +392,7 @@ pub(super) fn own_echo_is_context_only_and_mismatching_mls_sender_cannot_refresh
         .core
         .prepare_reply(&original, "Agent's retained own reply", 450)
         .unwrap();
-    let frame = ordered(&fixture.owner, prepared.envelope().clone());
+    let frame = ordered(&fixture.owner, prepared.envelope().clone())?;
     assert_eq!(fixture.owner.ingest(frame.clone()), Ingest::Applied);
     fixture.core.ingest(vec![frame.clone()]).unwrap();
     let own = frame.hash;
@@ -448,7 +448,7 @@ pub(super) fn own_echo_is_context_only_and_mismatching_mls_sender_cannot_refresh
         Sealed::new(SealedKind::Application, ::mls::SUITE_ID, ciphertext),
     );
     envelope.verify().unwrap();
-    let frame = ordered(&fixture.owner, envelope);
+    let frame = ordered(&fixture.owner, envelope)?;
     fixture.core.ingest(vec![frame]).unwrap();
     assert!(matches!(
         fixture.core.refresh(&original, 600),

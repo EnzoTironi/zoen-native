@@ -35,7 +35,11 @@ fn reopen(path: &str, secret: &[u8; 32]) -> Engine {
     engine
 }
 
-fn closed_space(engine: &mut Engine, peer: &Author, space: &str) {
+fn closed_space(
+    engine: &mut Engine,
+    peer: &Author,
+    space: &str,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let owner = engine.net.author.clone().unwrap();
     ingest_signed(
         engine,
@@ -46,14 +50,18 @@ fn closed_space(engine: &mut Engine, peer: &Author, space: &str) {
             kind: SpaceKind::Group,
             privacy: Privacy::Closed,
         },
-    );
-    add_member(engine, &owner, space, peer);
+    )?;
+    add_member(engine, &owner, space, peer)?;
+    Ok(())
 }
 
-fn encrypted_pair(database: &Database, space: &str) -> (Engine, [u8; 32], Engine, [u8; 32]) {
+fn encrypted_pair(
+    database: &Database,
+    space: &str,
+) -> std::result::Result<(Engine, [u8; 32], Engine, [u8; 32]), Box<dyn std::error::Error>> {
     let (mut owner, _, owner_secret) = member(&database.path("owner.sqlite"));
     let (mut peer, _, peer_secret) = member(&database.path("peer.sqlite"));
-    let initial = claim_group(&mut owner, space, std::slice::from_mut(&mut peer));
+    let initial = claim_group(&mut owner, space, std::slice::from_mut(&mut peer))?;
     for frame in initial {
         assert_eq!(peer.ingest(frame), Ingest::Applied);
     }
@@ -65,10 +73,10 @@ fn encrypted_pair(database: &Database, space: &str) -> (Engine, [u8; 32], Engine
     owner
         .commit_now(space, &[records[0].data.clone()], &Default::default())
         .unwrap();
-    relay_ready_to_peer(&mut owner, &mut peer);
+    relay_ready_to_peer(&mut owner, &mut peer)?;
     assert!(owner.ready_epoch(space).is_some());
     assert!(peer.device().unwrap().has_group(space));
-    (owner, owner_secret, peer, peer_secret)
+    Ok((owner, owner_secret, peer, peer_secret))
 }
 
 // Compare the actual sealed provider state, including the sender/receiver ratchets.
@@ -134,7 +142,7 @@ fn assert_sealed_receive_rollback(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let database = Database::new()?;
     let space = "sealed-receive-retention";
-    let (mut owner, _, mut peer, secret) = encrypted_pair(&database, space);
+    let (mut owner, _, mut peer, secret) = encrypted_pair(&database, space)?;
     let message = owner
         .send_message(space, "Retry the same encrypted envelope")
         .unwrap();
@@ -144,7 +152,7 @@ fn assert_sealed_receive_rollback(
         .into_iter()
         .find(|envelope| envelope.sealed_kind() == Some(SealedKind::Application))
         .unwrap();
-    let frame = ordered(&owner, envelope);
+    let frame = ordered(&owner, envelope)?;
     assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
     let before = provider_rows(&peer);
     let count_before = peer.store.event_count().unwrap();
@@ -267,8 +275,9 @@ fn pending_confirmation_another_certified_device_cannot_ack_this_devices_event()
 }
 
 #[test]
-fn pending_confirmation_same_signer_with_different_signed_bytes_is_not_our_receipt() {
-    confirmation_cases::pending_confirmation_same_signer_with_different_signed_bytes_is_not_our_receipt();
+fn pending_confirmation_same_signer_with_different_signed_bytes_is_not_our_receipt(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    confirmation_cases::pending_confirmation_same_signer_with_different_signed_bytes_is_not_our_receipt()
 }
 
 #[test]
@@ -289,8 +298,9 @@ fn pending_confirmation_exact_signed_echo_cleans_a_crash_window_on_cold_reopen()
 }
 
 #[test]
-fn pending_confirmation_outbox_read_failure_never_appends_or_guesses_an_ack() {
-    confirmation_cases::pending_confirmation_outbox_read_failure_never_appends_or_guesses_an_ack();
+fn pending_confirmation_outbox_read_failure_never_appends_or_guesses_an_ack(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    confirmation_cases::pending_confirmation_outbox_read_failure_never_appends_or_guesses_an_ack()
 }
 
 #[test]

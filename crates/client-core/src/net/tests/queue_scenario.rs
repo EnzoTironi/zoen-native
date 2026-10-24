@@ -27,7 +27,7 @@ pub(super) async fn queued_messages_round_trip(
             },
         )?),
         &mut head,
-    );
+    )?;
     assert_eq!(engine.ingest(genesis), Ingest::Applied);
     engine.create_mls_group(space).unwrap();
 
@@ -66,7 +66,7 @@ pub(super) async fn queued_messages_round_trip(
             Sealed::new(SealedKind::Commit, SUITE_ID, adding.commit),
         ),
         &mut head,
-    );
+    )?;
     assert_eq!(engine.ingest(commit), Ingest::Applied);
     let roster = [author.identity.clone()].into_iter().collect();
     let welcome = adding.welcome.unwrap();
@@ -81,7 +81,7 @@ pub(super) async fn queued_messages_round_trip(
             Sealed::new(SealedKind::Welcome, SUITE_ID, welcome),
         ),
         &mut head,
-    );
+    )?;
     assert_eq!(engine.ingest(welcome), Ingest::Applied);
     assert_eq!(engine.mls_status(space).unwrap().0, 1);
 
@@ -136,7 +136,7 @@ pub(super) async fn queued_messages_round_trip(
             Sealed::new(SealedKind::Commit, SUITE_ID, advance.commit),
         ),
         &mut head,
-    );
+    )?;
     let losing_commit = if matches!(
         catch_up,
         CatchUp::HandshakeCollision | CatchUp::StorageRefusal
@@ -356,7 +356,7 @@ pub(super) async fn queued_messages_round_trip(
                     assert_eq!(inner.content, original.content);
                     assert_eq!(inner.sig, original.sig);
                     assert!(readable.insert(env.client_id().to_string()));
-                    let ev = sequence(env, &mut head);
+                    let ev = sequence(env, &mut head)?;
                     reply(&mut socket, ServerFrame::Event { ev }).await;
                 }
                 ClientFrame::Req { id, .. } => {
@@ -458,12 +458,14 @@ pub(super) async fn queued_messages_round_trip(
         }
         cmd.send(Cmd::Stop).unwrap();
         stopped.await.unwrap();
+        Ok::<_, Box<dyn std::error::Error>>(())
     };
-    tokio::time::timeout(Duration::from_secs(10), async {
+    let (_, produced) = tokio::time::timeout(Duration::from_secs(10), async {
         tokio::join!(client, relay)
     })
     .await
     .expect("catch-up ordering stalled");
+    produced?;
 
     Ok(())
 }

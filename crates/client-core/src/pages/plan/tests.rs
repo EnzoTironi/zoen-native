@@ -62,23 +62,30 @@ fn add_identity(engine: &mut Engine, name: &str) -> String {
         .unwrap()
 }
 
-fn frame(engine: &Engine, event: &Event) -> Sequenced {
+fn frame(
+    engine: &Engine,
+    event: &Event,
+) -> std::result::Result<Sequenced, Box<dyn std::error::Error>> {
     let head = engine.logs.get(&event.space).and_then(|log| log.head());
     let seq = head.as_ref().map_or(0, |head| head.seq + 1);
     let prev = head.map_or_else(|| GENESIS_PREV.into(), |head| head.hash);
     let env = Envelope::plain(event);
-    Sequenced {
+    Ok(Sequenced {
         seq,
-        hash: chain_hash(&event.space, seq, &prev, &env.wire_hash()),
+        hash: chain_hash(&event.space, seq, &prev, &env.wire_hash())?,
         prev,
         env,
-    }
+    })
 }
 
-fn deliver(engine: &mut Engine, event: &Event, expected: Ingest) -> Event {
-    let frame = frame(engine, event);
+fn deliver(
+    engine: &mut Engine,
+    event: &Event,
+    expected: Ingest,
+) -> std::result::Result<Event, Box<dyn std::error::Error>> {
+    let frame = frame(engine, event)?;
     assert_eq!(engine.ingest(frame), expected);
-    engine.logs[&event.space].events().last().unwrap().clone()
+    Ok(engine.logs[&event.space].events().last().unwrap().clone())
 }
 
 impl Fixture {
@@ -131,7 +138,7 @@ impl Fixture {
         body: EventBody,
     ) -> std::result::Result<Event, Box<dyn std::error::Error>> {
         let event = self.signed_as(actor, body)?;
-        Ok(deliver(&mut self.engine, &event, Ingest::Applied))
+        Ok(deliver(&mut self.engine, &event, Ingest::Applied)?)
     }
 
     fn ordered(

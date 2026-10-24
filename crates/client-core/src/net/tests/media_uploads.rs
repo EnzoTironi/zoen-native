@@ -52,7 +52,8 @@ async fn public_voice_upload_refusal_retains_voice_metadata_controls_and_bytes_a
 }
 
 #[test]
-fn terminal_upload_rolls_back_outbox_and_blob_together() {
+fn terminal_upload_rolls_back_outbox_and_blob_together(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let sender = Client::open(":memory:".into(), "en".into()).unwrap();
     sender
         .create_account(
@@ -71,7 +72,7 @@ fn terminal_upload_rolls_back_outbox_and_blob_together() {
         assert_eq!(
             sender
                 .lock()
-                .ingest(sequence(Envelope::plain(&row.event), &mut head)),
+                .ingest(sequence(Envelope::plain(&row.event), &mut head)?),
             Ingest::Confirmed
         );
     }
@@ -145,10 +146,12 @@ fn terminal_upload_rolls_back_outbox_and_blob_together() {
             .delivery,
         crate::Delivery::Failed
     );
+    Ok(())
 }
 
 #[test]
-fn failed_nonfile_attachment_keeps_its_canonical_app_card_after_cold_reopen() {
+fn failed_nonfile_attachment_keeps_its_canonical_app_card_after_cold_reopen(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let directory = Directory(std::env::temp_dir().join(types::new_id("failed-app-card").unwrap()));
     std::fs::create_dir(&directory.0).unwrap();
     let path = directory.0.join("sender.sqlite");
@@ -172,7 +175,7 @@ fn failed_nonfile_attachment_keeps_its_canonical_app_card_after_cold_reopen() {
         assert_eq!(
             sender
                 .lock()
-                .ingest(sequence(Envelope::plain(&row.event), &mut head)),
+                .ingest(sequence(Envelope::plain(&row.event), &mut head)?),
             Ingest::Confirmed
         );
     }
@@ -186,7 +189,7 @@ fn failed_nonfile_attachment_keeps_its_canonical_app_card_after_cold_reopen() {
     assert_eq!(
         sender
             .lock()
-            .ingest(sequence(Envelope::plain(&created), &mut head)),
+            .ingest(sequence(Envelope::plain(&created), &mut head)?),
         Ingest::Confirmed
     );
     let sent = sender
@@ -215,6 +218,7 @@ fn failed_nonfile_attachment_keeps_its_canonical_app_card_after_cold_reopen() {
     let sender = Client::open(path.to_str().unwrap().into(), "en".into()).unwrap();
     assert!(sender.unlock(vault).unwrap());
     check(&sender);
+    Ok(())
 }
 
 fn http_request(socket: &mut std::net::TcpStream) -> (String, Vec<u8>) {

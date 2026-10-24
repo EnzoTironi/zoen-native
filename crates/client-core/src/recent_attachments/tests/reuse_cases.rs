@@ -2,7 +2,8 @@
 use super::*;
 
 #[test]
-pub(super) fn selection_revalidates_deletion_membership_version_hash_and_account_without_writes() {
+pub(super) fn selection_revalidates_deletion_membership_version_hash_and_account_without_writes(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for change in [
         "delete",
         "membership",
@@ -13,9 +14,9 @@ pub(super) fn selection_revalidates_deletion_membership_version_hash_and_account
         "name",
         "mime",
     ] {
-        let f = fixture();
+        let f = fixture()?;
         let (item, message) = add(&f, "application/pdf", "source.pdf", false).unwrap();
-        confirm(&f);
+        confirm(&f)?;
         let mut source = selected(&f);
         let mut asset = input(&source, "copied");
         let mut scope = f.scope.clone();
@@ -67,13 +68,15 @@ pub(super) fn selection_revalidates_deletion_membership_version_hash_and_account
             "null"
         );
     }
+    Ok(())
 }
 
 #[test]
-pub(super) fn accepted_copy_has_exact_retry_receipt_and_fresh_destination_file_and_keys() {
-    let f = fixture();
+pub(super) fn accepted_copy_has_exact_retry_receipt_and_fresh_destination_file_and_keys(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = fixture()?;
     let (item, message) = add(&f, "application/pdf", "source.pdf", false).unwrap();
-    confirm(&f);
+    confirm(&f)?;
     let source = selected(&f);
     let save = || {
         f.core.save_media_draft_with_recent_sources(
@@ -114,11 +117,13 @@ pub(super) fn accepted_copy_has_exact_retry_receipt_and_fresh_destination_file_a
         (old.mime.as_str(), old.sha256.as_str())
     );
     assert_ne!(new.chunks[0].key, old.chunks[0].key);
+    Ok(())
 }
 
 #[test]
-pub(super) fn unconfirmed_and_recovery_only_sources_never_become_publishable_recent_files() {
-    let f = fixture();
+pub(super) fn unconfirmed_and_recovery_only_sources_never_become_publishable_recent_files(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = fixture()?;
     let (item, message) = add(&f, "application/pdf", "refused.pdf", true).unwrap();
     assert!(list(&f, RecentAttachmentKind::File).items.is_empty());
     receive(
@@ -177,14 +182,16 @@ pub(super) fn unconfirmed_and_recovery_only_sources_never_become_publishable_rec
         )
         .is_err());
     assert_eq!(counts(&f), before);
+    Ok(())
 }
 
 #[test]
-pub(super) fn all_source_bindings_are_validated_before_any_member_is_staged() {
-    let f = fixture();
+pub(super) fn all_source_bindings_are_validated_before_any_member_is_staged(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = fixture()?;
     add(&f, "application/pdf", "first.pdf", false).unwrap();
     add(&f, "application/pdf", "second.pdf", false).unwrap();
-    confirm(&f);
+    confirm(&f)?;
     let rows = list(&f, RecentAttachmentKind::File).items;
     let mut invalid_second = binding(&rows[1], "second");
     invalid_second.reference.version += 1;
@@ -222,14 +229,15 @@ pub(super) fn all_source_bindings_are_validated_before_any_member_is_staged() {
         )
         .is_err());
     assert_eq!(counts(&f), before);
+    Ok(())
 }
 
 #[tokio::test]
 pub(super) async fn json_contract_keeps_metadata_bounded_and_rejects_unknown_or_forged_scope_fields(
-) {
-    let f = fixture();
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = fixture()?;
     add(&f, "application/pdf", "source.pdf", false).unwrap();
-    confirm(&f);
+    confirm(&f)?;
     let request = serde_json::json!({"op":"recent_attachments","scope":f.scope,"kind":"file","query":"","cursor":null,"limit":1});
     let output: serde_json::Value =
         serde_json::from_str(&f.core.client_request(request.to_string()).await.unwrap()).unwrap();
@@ -253,4 +261,5 @@ pub(super) async fn json_contract_keeps_metadata_bounded_and_rejects_unknown_or_
         .client_request(unknown_ref.to_string())
         .await
         .is_err());
+    Ok(())
 }

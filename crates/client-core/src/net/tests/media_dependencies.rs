@@ -43,7 +43,7 @@ async fn run_media_dependencies_ws(
     // Canonical membership precedes adding a real, independently persisted reader leaf.
     let setup_rows = sender.lock().store.outbox().unwrap();
     for row in setup_rows {
-        let frame = sequence(Envelope::plain(&row.event), &mut head);
+        let frame = sequence(Envelope::plain(&row.event), &mut head)?;
         assert_eq!(sender.lock().ingest(frame.clone()), Ingest::Confirmed);
         assert_eq!(receiver.ingest(frame), Ingest::Applied);
     }
@@ -64,7 +64,7 @@ async fn run_media_dependencies_ws(
             Sealed::new(SealedKind::Commit, SUITE_ID, adding.commit),
         ),
         &mut head,
-    );
+    )?;
     assert_eq!(sender.lock().ingest(commit.clone()), Ingest::Applied);
     assert_eq!(receiver.ingest(commit), Ingest::Applied);
     let welcome = sequence(
@@ -77,7 +77,7 @@ async fn run_media_dependencies_ws(
             Sealed::new(SealedKind::Welcome, SUITE_ID, adding.welcome.unwrap()),
         ),
         &mut head,
-    );
+    )?;
     assert_eq!(sender.lock().ingest(welcome.clone()), Ingest::Applied);
     assert_eq!(receiver.ingest(welcome), Ingest::Applied);
     assert!(sender.lock().ready_epoch(&space).is_some());
@@ -283,7 +283,7 @@ async fn run_media_dependencies_ws(
                             "group predecessor must be canonical first"
                         );
                     }
-                    let ev = sequence(env, &mut head);
+                    let ev = sequence(env, &mut head)?;
                     reply(
                         &mut socket,
                         ServerFrame::Accepted {
@@ -374,6 +374,7 @@ async fn run_media_dependencies_ws(
         }
         commands_tx.send(Cmd::Stop).unwrap();
         close_socket.await.unwrap();
+        Ok::<_, Box<dyn std::error::Error>>(())
     };
     let client = async {
         let mut backoff = Duration::from_millis(500);
@@ -381,11 +382,12 @@ async fn run_media_dependencies_ws(
         finished.send(()).unwrap();
         exit
     };
-    let (exit, ()) = tokio::time::timeout(Duration::from_secs(20), async {
+    let (exit, produced) = tokio::time::timeout(Duration::from_secs(20), async {
         tokio::join!(client, relay)
     })
     .await
     .expect("actual media WebSocket retry did not converge");
+    produced?;
     assert!(matches!(exit, Exit::Stop));
     ctx.engine.revoke();
     drop(ctx);

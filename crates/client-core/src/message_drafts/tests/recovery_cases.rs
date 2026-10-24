@@ -161,7 +161,8 @@ pub(super) fn storage_failure_rolls_back_send_and_keeps_exact_previous_draft_for
 }
 
 #[test]
-pub(super) fn unsent_text_never_enters_signed_peer_history_and_atomic_send_replays_once() {
+pub(super) fn unsent_text_never_enters_signed_peer_history_and_atomic_send_replays_once(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use crate::sync::Ingest;
     use protocol::{Envelope, Sequenced};
     let f = fixture(":memory:");
@@ -210,7 +211,7 @@ pub(super) fn unsent_text_never_enters_signed_peer_history_and_atomic_send_repla
         .into_iter()
         .filter(|pending| pending.event.space == f.scope.space_id)
     {
-        let event = relay.sequence(pending.event);
+        let event = relay.sequence(pending.event)?;
         assert_eq!(
             peer.engine.lock().ingest(Sequenced {
                 seq: event.seq,
@@ -243,10 +244,12 @@ pub(super) fn unsent_text_never_enters_signed_peer_history_and_atomic_send_repla
             .count(),
         1
     );
+    Ok(())
 }
 
 #[test]
-pub(super) fn backup_and_new_device_restore_exclude_device_local_drafts() {
+pub(super) fn backup_and_new_device_restore_exclude_device_local_drafts(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let f = fixture(":memory:");
     save(&f, "0", "Never portable", None);
     let old_row = row(&f);
@@ -258,7 +261,7 @@ pub(super) fn backup_and_new_device_restore_exclude_device_local_drafts() {
         .into_iter()
         .filter(|p| p.event.space == f.scope.space_id)
     {
-        let event = relay.sequence(pending.event);
+        let event = relay.sequence(pending.event)?;
         assert!(matches!(
             f.engine.lock().ingest(protocol::Sequenced {
                 seq: event.seq,
@@ -328,6 +331,7 @@ pub(super) fn backup_and_new_device_restore_exclude_device_local_drafts() {
     assert!(restored.lock().message_draft(&f.scope).is_err());
     drop(restored);
     std::fs::remove_dir_all(dir).unwrap();
+    Ok(())
 }
 
 #[test]

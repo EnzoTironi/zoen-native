@@ -32,7 +32,7 @@ pub(super) async fn terminal_upload(
     let mut head = None;
     let setup = sender.lock().store.outbox().unwrap();
     for row in setup {
-        let frame = sequence(Envelope::plain(&row.event), &mut head);
+        let frame = sequence(Envelope::plain(&row.event), &mut head)?;
         assert_eq!(sender.lock().ingest(frame.clone()), Ingest::Confirmed);
         assert_eq!(receiver.ingest(frame), Ingest::Applied);
     }
@@ -279,11 +279,12 @@ pub(super) async fn terminal_upload(
         space: space.clone(),
         close_socket,
     });
-    let (exit, ()) = tokio::time::timeout(Duration::from_secs(10), async {
+    let (exit, produced) = tokio::time::timeout(Duration::from_secs(10), async {
         tokio::join!(client, relay)
     })
     .await
     .expect("upload refusal did not reach durable quiescence");
+    produced?;
     assert!(matches!(exit, Exit::Stop));
     worker.abort();
     let _ = worker.await;

@@ -285,7 +285,8 @@ pub(super) fn unauthorized_owner_hash_and_receipt_checks_precede_missing_payload
 }
 
 #[test]
-pub(super) fn storage_errors_preserve_the_stable_projection_and_raw_decision_for_retry() {
+pub(super) fn storage_errors_preserve_the_stable_projection_and_raw_decision_for_retry(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new().unwrap();
     let agent = agent(&mut fixture).unwrap();
     let (page, bytes, wanted, _, document) = missing_blob(
@@ -314,7 +315,7 @@ pub(super) fn storage_errors_preserve_the_stable_projection_and_raw_decision_for
         .conn()
         .execute_batch("ALTER TABLE media RENAME TO temporarily_unavailable_media")
         .unwrap();
-    let incoming = frame(&fixture.engine, &signed);
+    let incoming = frame(&fixture.engine, &signed)?;
     assert!(matches!(
         fixture.engine.ingest(incoming.clone()),
         Ingest::Invalid(_)
@@ -357,4 +358,5 @@ pub(super) fn storage_errors_preserve_the_stable_projection_and_raw_decision_for
         fixture.engine.state.requests[&request.id].status,
         ReqStatus::Approved
     );
+    Ok(())
 }

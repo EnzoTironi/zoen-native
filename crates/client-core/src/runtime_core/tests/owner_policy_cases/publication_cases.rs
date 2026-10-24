@@ -129,7 +129,7 @@ fn control_echo_rejects_missing_or_changed_producer_proof_and_signed_header() ->
             f.core = DeviceCore::restore(f.core.image()?, f.credential())?;
         }
         let head = f.core.engine.logs[&scope.space_id].head();
-        let frame = ordered(&f.owner, echo);
+        let frame = ordered(&f.owner, echo)?;
         assert!(
             matches!(f.core.ingest(vec![frame]), Err(NativeError::History)),
             "{case}"
@@ -194,7 +194,7 @@ fn failed_control_reference_write_rolls_back_outbox_ratchet_and_remains_retryabl
 #[test]
 fn explicit_options_refusal_is_a_retained_non_model_control_after_cold_restore() -> TestResult {
     let (mut f, request, hash, envelope) = super::super::image_review_cases::pending().unwrap();
-    let frame = ordered(&f.owner, envelope);
+    let frame = ordered(&f.owner, envelope)?;
     assert_eq!(f.owner.ingest(frame.clone()), Ingest::Applied);
     f.core.ingest(vec![frame])?;
     f.owner.set_registered(true)?;
@@ -228,7 +228,7 @@ fn accepted_control_replay_keeps_exact_original_after_outbox_removal_and_cold_re
 {
     for case in ["reference", "opening", "position", "pruned", "timestamp"] {
         let (mut f, scope, _, envelope) = receipt()?;
-        let original = ordered(&f.owner, envelope.clone());
+        let original = ordered(&f.owner, envelope.clone())?;
         deliver_agent(&mut f)?;
         assert_eq!(f.core.engine.store.outbox_len()?, 0);
         f.core = DeviceCore::restore(f.core.image()?, f.credential())?;

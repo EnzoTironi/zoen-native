@@ -13,7 +13,7 @@ pub(super) fn peer_external_commit_storage_failure_keeps_the_cursor_epoch_and_co
     let external = Envelope::plain(&recovered.store.outbox().unwrap()[0].event);
     let reference = RecoveryRef::parse(external.recovery().unwrap()).unwrap();
     recovered.upload_done(&reference.blob);
-    let frame = ordered(&peer, external);
+    let frame = ordered(&peer, external)?;
     let before = (
         peer.logs[space].next_seq(),
         seen(&peer, space),
@@ -107,7 +107,7 @@ pub(super) fn peer_application_processing_failure_keeps_the_same_frame_readable_
     let external = Envelope::plain(&recovered.store.outbox().unwrap()[0].event);
     let reference = RecoveryRef::parse(external.recovery().unwrap()).unwrap();
     recovered.upload_done(&reference.blob);
-    let frame = ordered(&peer, external);
+    let frame = ordered(&peer, external)?;
     assert_eq!(peer.ingest(frame.clone()), Ingest::Applied);
     assert_eq!(recovered.ingest(frame), Ingest::Confirmed);
     recovered.send_message(space, "readable on retry").unwrap();
@@ -117,7 +117,7 @@ pub(super) fn peer_application_processing_failure_keeps_the_same_frame_readable_
         .into_iter()
         .find(|env| env.sealed_kind() == Some(SealedKind::Application))
         .unwrap();
-    let frame = ordered(&peer, application);
+    let frame = ordered(&peer, application)?;
     let before = (
         peer.logs[space].next_seq(),
         peer.store.cursors().unwrap(),

@@ -5,7 +5,7 @@ use super::*;
 pub(super) fn failed_opening_record_rolls_back_log_and_ratchet_and_discards_workspace(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new()?;
-    fixture.grant("retained-trust", None);
+    fixture.grant("retained-trust", None)?;
     let trigger = fixture.message("Known original request")?;
     let original = fixture
         .core
@@ -36,7 +36,7 @@ pub(super) fn failed_opening_record_rolls_back_log_and_ratchet_and_discards_work
         )
         .unwrap();
     fixture.owner.mls_seal_outbox().unwrap();
-    let frame = ordered(&fixture.owner, fixture.owner.outbox_envelopes().remove(0));
+    let frame = ordered(&fixture.owner, fixture.owner.outbox_envelopes().remove(0))?;
     assert!(matches!(
         fixture.core.ingest(vec![frame.clone()]),
         Err(NativeError::History)
@@ -65,7 +65,7 @@ pub(super) fn failed_opening_record_rolls_back_log_and_ratchet_and_discards_work
 pub(super) fn conflicting_actual_member_checkpoint_parks_live_and_cold_core(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new()?;
-    fixture.grant("explicit-trust", None);
+    fixture.grant("explicit-trust", None)?;
     let trigger = fixture.message("Original request")?;
     let original = fixture
         .core
@@ -94,7 +94,7 @@ pub(super) fn conflicting_actual_member_checkpoint_parks_live_and_cold_core(
 pub(super) fn diverged_member_checkpoint_parks_live_and_cold_core(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new()?;
-    fixture.grant("explicit-trust", None);
+    fixture.grant("explicit-trust", None)?;
     let trigger = fixture.message("Original request")?;
     let original = fixture
         .core
@@ -138,14 +138,14 @@ pub(super) fn diverged_member_checkpoint_parks_live_and_cold_core(
     assert_eq!(
         fixture
             .owner
-            .ingest(ordered(&fixture.owner, Envelope::plain(&on_owner))),
+            .ingest(ordered(&fixture.owner, Envelope::plain(&on_owner))?),
         Ingest::Applied
     );
     assert_eq!(
         fixture
             .core
             .engine
-            .ingest(ordered(&fixture.core.engine, Envelope::plain(&on_core),)),
+            .ingest(ordered(&fixture.core.engine, Envelope::plain(&on_core),)?),
         Ingest::Applied
     );
     assert!(fixture.core.engine.state.spaces[SPACE]
@@ -170,7 +170,7 @@ pub(super) fn diverged_member_checkpoint_parks_live_and_cold_core(
     let got = fixture
         .core
         .engine
-        .ingest(ordered(&fixture.core.engine, Envelope::plain(&checkpoint)));
+        .ingest(ordered(&fixture.core.engine, Envelope::plain(&checkpoint))?);
     assert!(matches!(got, Ingest::Invalid(_)));
     assert!(fixture.core.engine.logs[SPACE]
         .events()
@@ -200,7 +200,7 @@ pub(super) fn diverged_member_checkpoint_parks_live_and_cold_core(
 pub(super) fn sealed_member_seen_ahead_marks_the_fork_and_parks_send(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new()?;
-    fixture.grant("sealed-fork-trust", None);
+    fixture.grant("sealed-fork-trust", None)?;
     let trigger = fixture.message("Original request")?;
     let original = fixture
         .core
@@ -217,7 +217,7 @@ pub(super) fn sealed_member_seen_ahead_marks_the_fork_and_parks_send(
     let mut late = ordered(
         &fixture.core.engine,
         sealed_frame(&author, "sealed-gap", Some(&ahead)),
-    );
+    )?;
     late.seq = next + 3;
     let gapped = fixture.core.engine.ingest(late);
     assert!(
@@ -232,14 +232,14 @@ pub(super) fn sealed_member_seen_ahead_marks_the_fork_and_parks_send(
     let refused = fixture.core.engine.ingest(ordered(
         &fixture.core.engine,
         sealed_frame(&stranger, "sealed-stranger", Some(&ahead)),
-    ));
+    )?);
     assert!(matches!(refused, Ingest::Invalid(_)), "{refused:?}");
     let mut forged = sealed_frame(&author, "sealed-forged", Some(&ahead));
     forged.sig = "00".repeat(64);
     let forged = fixture
         .core
         .engine
-        .ingest(ordered(&fixture.core.engine, forged));
+        .ingest(ordered(&fixture.core.engine, forged)?);
     assert!(matches!(forged, Ingest::Invalid(_)), "{forged:?}");
     assert!(fixture.core.engine.state.spaces[SPACE]
         .integrity_error
@@ -258,7 +258,7 @@ pub(super) fn sealed_member_seen_ahead_marks_the_fork_and_parks_send(
     let got = fixture.core.engine.ingest(ordered(
         &fixture.core.engine,
         sealed_frame(&author, "sealed-ahead", Some(&ahead)),
-    ));
+    )?);
     assert!(matches!(got, Ingest::Invalid(_)), "{got:?}");
     assert!(fixture.core.engine.logs[SPACE]
         .events()

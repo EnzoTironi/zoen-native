@@ -37,11 +37,14 @@ pub(super) fn a_removal_during_held_recovery_survives_restart_and_repairs_before
             identity: fixture.peer.identity.clone(),
         },
     )?);
-    assert_eq!(engine.ingest(ordered(&engine, removal)), Ingest::Applied);
+    assert_eq!(engine.ingest(ordered(&engine, removal)?), Ingest::Applied);
     assert!(engine.device().unwrap().recovery_pending(space));
     assert!(engine.outbox_envelopes().is_empty());
     engine.upload_done(&reference.blob);
-    assert_eq!(engine.ingest(ordered(&engine, external)), Ingest::Confirmed);
+    assert_eq!(
+        engine.ingest(ordered(&engine, external)?),
+        Ingest::Confirmed
+    );
     assert!(!engine.device().unwrap().recovery_pending(space));
     assert!(engine.device().unwrap().needs_reconciliation(space));
     assert!(engine
@@ -80,7 +83,7 @@ pub(super) fn a_removal_during_held_recovery_survives_restart_and_repairs_before
     let reference = RecoveryRef::parse(repair.recovery().unwrap()).unwrap();
     assert!(engine.outbox_envelopes().is_empty());
     engine.upload_done(&reference.blob);
-    assert_eq!(engine.ingest(ordered(&engine, repair)), Ingest::Confirmed);
+    assert_eq!(engine.ingest(ordered(&engine, repair)?), Ingest::Confirmed);
     assert!(!engine.device().unwrap().needs_reconciliation(space));
     assert_eq!(
         engine.device().unwrap().roster(space).unwrap(),

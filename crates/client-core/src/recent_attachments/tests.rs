@@ -25,7 +25,7 @@ struct Fixture {
     scope: MediaDraftScope,
     source: String,
 }
-fn fixture() -> Fixture {
+fn fixture() -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
     let core = Client::open(":memory:".into(), "en".into()).unwrap();
     core.create_account(
         "Recent author".into(),
@@ -51,10 +51,10 @@ fn fixture() -> Fixture {
             thread_root_id: None,
         },
     };
-    confirm(&f);
-    f
+    confirm(&f)?;
+    Ok(f)
 }
-fn confirm(f: &Fixture) {
+fn confirm(f: &Fixture) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let pending = f.core.lock().store.outbox().unwrap();
     for row in pending.into_iter().filter(|row| !row.failed) {
         let mut core = f.core.lock();
@@ -63,7 +63,7 @@ fn confirm(f: &Fixture) {
             .get(&row.event.space)
             .cloned()
             .unwrap_or_else(|| event_log::SpaceLog::new(&row.event.space));
-        let event = relay.sequence(row.event);
+        let event = relay.sequence(row.event)?;
         let _ = core.ingest(protocol::Sequenced {
             seq: event.seq,
             prev: event.prev.clone(),
@@ -71,6 +71,7 @@ fn confirm(f: &Fixture) {
             env: protocol::Envelope::plain(event),
         });
     }
+    Ok(())
 }
 fn receive(
     f: &Fixture,
@@ -177,8 +178,9 @@ fn counts(f: &Fixture) -> Vec<i64> {
 }
 
 #[test]
-fn classifications_follow_current_file_presentation_and_all_author_music_without_voice() {
-    let f = fixture();
+fn classifications_follow_current_file_presentation_and_all_author_music_without_voice(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = fixture()?;
     let (report, _) = add(&f, "application/pdf", "report.pdf", false).unwrap();
     add(&f, "image/png", "photo.png", false).unwrap();
     add(&f, "video/mp4", "movie.mp4", false).unwrap();
@@ -207,7 +209,7 @@ fn classifications_follow_current_file_presentation_and_all_author_music_without
             false,
         )
         .unwrap();
-    confirm(&f);
+    confirm(&f)?;
     let other = {
         let mut core = f.core.lock();
         let mut identity = core.identities[&f.scope.expected_identity_id].clone();
@@ -271,13 +273,15 @@ fn classifications_follow_current_file_presentation_and_all_author_music_without
         .iter()
         .any(|row| row.author_title == "Other author"));
     assert!(music.items.iter().all(|row| row.mime == "audio/mpeg"));
+    Ok(())
 }
 
 #[test]
-fn current_source_resolution_does_not_probe_history_as_versions_increase() {
-    let f = fixture();
+fn current_source_resolution_does_not_probe_history_as_versions_increase(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = fixture()?;
     let (item, _) = add(&f, "application/pdf", "history.pdf", false).unwrap();
-    confirm(&f);
+    confirm(&f)?;
     let original = {
         let core = f.core.lock();
         let ItemContent::File(file) = &core.state.items[&item].current().content else {
@@ -335,13 +339,15 @@ fn current_source_resolution_does_not_probe_history_as_versions_increase() {
         128
     );
     assert!(f.core.lock().file_info_at(&item, Some(257)).is_err());
+    Ok(())
 }
 
 #[test]
-fn accepted_voice_history_survives_rename_revert_and_signed_replay() {
-    let f = fixture();
+fn accepted_voice_history_survives_rename_revert_and_signed_replay(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = fixture()?;
     let (item, _) = add(&f, "audio/mpeg", "ordinary.mp3", false).unwrap();
-    confirm(&f);
+    confirm(&f)?;
     assert_eq!(list(&f, RecentAttachmentKind::Audio).items.len(), 1);
     let ordinary = {
         let core = f.core.lock();
@@ -388,11 +394,13 @@ fn accepted_voice_history_survives_rename_revert_and_signed_replay() {
     f.core.lock().reload().unwrap();
     assert!(f.core.lock().state.items[&item].has_voice_history);
     assert!(list(&f, RecentAttachmentKind::Audio).items.is_empty());
+    Ok(())
 }
 
 #[test]
-fn bounded_search_filters_before_limit_and_cursors_bind_scope_kind_query_and_generation() {
-    let f = fixture();
+fn bounded_search_filters_before_limit_and_cursors_bind_scope_kind_query_and_generation(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = fixture()?;
     for index in 0..65 {
         add(
             &f,
@@ -405,7 +413,7 @@ fn bounded_search_filters_before_limit_and_cursors_bind_scope_kind_query_and_gen
         )
         .unwrap();
     }
-    confirm(&f);
+    confirm(&f)?;
     let mut cursor = None;
     let mut ids = std::collections::HashSet::new();
     loop {
@@ -474,7 +482,7 @@ fn bounded_search_filters_before_limit_and_cursors_bind_scope_kind_query_and_gen
         )
         .is_err());
     add(&f, "application/pdf", "new.pdf", false).unwrap();
-    confirm(&f);
+    confirm(&f)?;
     assert!(matches!(
         f.core.recent_attachments(
             f.scope.clone(),
@@ -507,13 +515,15 @@ fn bounded_search_filters_before_limit_and_cursors_bind_scope_kind_query_and_gen
             1
         )
         .is_err());
+    Ok(())
 }
 
 #[test]
-fn disposable_acceleration_repairs_absence_and_refuses_corrupt_rows_explicitly() {
-    let f = fixture();
+fn disposable_acceleration_repairs_absence_and_refuses_corrupt_rows_explicitly(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = fixture()?;
     add(&f, "application/pdf", "source.pdf", false).unwrap();
-    confirm(&f);
+    confirm(&f)?;
     assert_eq!(list(&f, RecentAttachmentKind::File).items.len(), 1);
     f.core
         .lock()
@@ -547,6 +557,7 @@ fn disposable_acceleration_repairs_absence_and_refuses_corrupt_rows_explicitly()
         1,
         "corrupt projection is repaired, never a false empty"
     );
+    Ok(())
 }
 
 mod reuse_cases;

@@ -79,7 +79,7 @@ impl Fixture {
         body: EventBody,
     ) -> std::result::Result<Event, Box<dyn std::error::Error>> {
         let event = self.signed_as(&self.owner, body)?;
-        Ok(deliver(&mut self.engine, &event, Ingest::Applied))
+        Ok(deliver(&mut self.engine, &event, Ingest::Applied)?)
     }
     pub(super) fn queue(&mut self, body: EventBody) -> Event {
         let author = self.engine.author_for(&self.owner).unwrap();
@@ -127,7 +127,10 @@ impl Fixture {
         };
         self.engine.store.outbox_get(client_id).unwrap().unwrap()
     }
-    pub(super) fn ack(&mut self, reference: &CommitRef) -> Event {
+    pub(super) fn ack(
+        &mut self,
+        reference: &CommitRef,
+    ) -> std::result::Result<Event, Box<dyn std::error::Error>> {
         let event = self.pending(reference);
         deliver(&mut self.engine, &event, Ingest::Confirmed)
     }

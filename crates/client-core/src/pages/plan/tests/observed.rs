@@ -105,7 +105,8 @@ fn divergent_hash_on_each_writer_appends_nothing() {
 }
 
 #[test]
-fn pure_confirmation_keeps_the_binding_and_the_saved_edit_uses_it() {
+fn pure_confirmation_keeps_the_binding_and_the_saved_edit_uses_it(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new().unwrap();
     let item = new_id("confirmed-binding").unwrap();
     let creation = fixture.queue(EventBody::ItemCreated {
@@ -116,7 +117,7 @@ fn pure_confirmation_keeps_the_binding_and_the_saved_edit_uses_it() {
     });
     let pending = fixture.engine.plan_page(&item).unwrap();
     assert_eq!(pending.source, PlanPageReadSourceDto::LocalPendingLegacy);
-    deliver(&mut fixture.engine, &creation, Ingest::Confirmed);
+    deliver(&mut fixture.engine, &creation, Ingest::Confirmed)?;
     let confirmed = fixture.engine.plan_page(&item).unwrap();
     assert_eq!(confirmed.source, PlanPageReadSourceDto::DocumentSession);
     assert_eq!(confirmed.content_hash, pending.content_hash);
@@ -129,6 +130,7 @@ fn pure_confirmation_keeps_the_binding_and_the_saved_edit_uses_it() {
         fixture.engine.plan_page(&item).unwrap().content_hash,
         pending.content_hash
     );
+    Ok(())
 }
 
 #[test]

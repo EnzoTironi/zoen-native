@@ -114,7 +114,10 @@ fn readers_and_removed_members_cannot_change_cached_pages_or_journals() {
     admission::readers_and_removed_members_cannot_change_cached_pages_or_journals()
 }
 
-fn confirm_pending(engine: &Client, item: &str) -> String {
+fn confirm_pending(
+    engine: &Client,
+    item: &str,
+) -> std::result::Result<String, Box<dyn std::error::Error>> {
     let mut e = engine.lock();
     let pending = e
         .store
@@ -130,7 +133,7 @@ fn confirm_pending(engine: &Client, item: &str) -> String {
     let head = e.logs[&space].head().unwrap();
     let seq = head.seq + 1;
     let env = protocol::Envelope::plain(&pending.event);
-    let hash = event_log::chain_hash(&space, seq, &head.hash, &env.wire_hash());
+    let hash = event_log::chain_hash(&space, seq, &head.hash, &env.wire_hash())?;
     let result = e.ingest(protocol::Sequenced {
         seq,
         prev: head.hash,
@@ -138,11 +141,12 @@ fn confirm_pending(engine: &Client, item: &str) -> String {
         env,
     });
     assert_eq!(result, crate::sync::Ingest::Confirmed);
-    pending.event.client_id
+    Ok(pending.event.client_id)
 }
 
 #[test]
-fn newer_draft_waits_for_ack_and_survives_a_permanent_refusal() {
+fn newer_draft_waits_for_ack_and_survives_a_permanent_refusal(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     publication::newer_draft_waits_for_ack_and_survives_a_permanent_refusal()
 }
 

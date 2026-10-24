@@ -33,7 +33,8 @@ struct Fixture {
 }
 
 #[test]
-fn legacy_binary_bytes_context_and_journal_remain_unchanged() {
+fn legacy_binary_bytes_context_and_journal_remain_unchanged(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let public = Client::open(":memory:".into(), "en".into()).unwrap();
     public.seed_demo_if_empty().unwrap();
     let space = public
@@ -132,7 +133,7 @@ fn legacy_binary_bytes_context_and_journal_remain_unchanged() {
             ..
         }
     ));
-    let frame = envelope_frame(&e, Envelope::plain(&event));
+    let frame = envelope_frame(&e, Envelope::plain(&event))?;
     assert_eq!(e.ingest(frame), Ingest::Confirmed);
     assert!(!session.read(&e).unwrap().unsaved);
     edit.text = "public binary driver".into();
@@ -168,15 +169,18 @@ fn legacy_binary_bytes_context_and_journal_remain_unchanged() {
         .blocks
         .iter()
         .any(|b| b.text.contains("public binary driver")));
+    Ok(())
 }
 
 #[test]
-fn binary_offline_commit_preserves_the_existing_page_contract() {
+fn binary_offline_commit_preserves_the_existing_page_contract(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     binary_compatibility_cases::binary_offline_commit_preserves_the_existing_page_contract()
 }
 
 #[test]
-fn binary_replay_keeps_the_exact_pre_upgrade_payload() {
+fn binary_replay_keeps_the_exact_pre_upgrade_payload(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     binary_compatibility_cases::binary_replay_keeps_the_exact_pre_upgrade_payload()
 }
 
@@ -193,7 +197,8 @@ fn plan_refresh_reuses_verified_payload_and_rechecks_after_reload() {
 }
 
 #[test]
-fn binary_failed_publication_preserves_the_existing_visible_error() {
+fn binary_failed_publication_preserves_the_existing_visible_error(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     binary_compatibility_cases::binary_failed_publication_preserves_the_existing_visible_error()
 }
 

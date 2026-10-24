@@ -3,9 +3,9 @@
 use super::*;
 
 pub(super) fn media_contract_group_dependencies_wait_for_confirmed_files_and_do_not_block_other_spaces(
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let f = fixture(":memory:");
-    media_contract_confirm_scope(&f);
+    media_contract_confirm_scope(&f)?;
     let other_space = f
         .engine
         .create_group_with("Other space".into(), vec![], PrivacyDto::Closed)
@@ -18,7 +18,7 @@ pub(super) fn media_contract_group_dependencies_wait_for_confirmed_files_and_do_
             ..f.scope.clone()
         },
     };
-    media_contract_confirm_scope(&other);
+    media_contract_confirm_scope(&other)?;
     let draft = save(
         &f,
         "0",
@@ -85,7 +85,7 @@ pub(super) fn media_contract_group_dependencies_wait_for_confirmed_files_and_do_
             .all(|env| sent.entries.iter().all(|entry| env.client_id() != entry.id)),
         "a socket write cannot confirm the referenced File"
     );
-    media_contract_confirm_id(&f, &first_file);
+    media_contract_confirm_id(&f, &first_file)?;
     let offered = f.engine.lock().outbox_envelopes();
     assert!(offered
         .iter()
@@ -99,7 +99,7 @@ pub(super) fn media_contract_group_dependencies_wait_for_confirmed_files_and_do_
         .unwrap()
         .client_id()
         .to_string();
-    media_contract_confirm_id(&f, &second_file);
+    media_contract_confirm_id(&f, &second_file)?;
     let written = HashMap::from([(sent.entries[0].id.clone(), None)]);
     let offered = f.engine.lock().outbox_envelopes_except(&written);
     assert!(
@@ -109,13 +109,14 @@ pub(super) fn media_contract_group_dependencies_wait_for_confirmed_files_and_do_
         "confirmed File bytes and a sent predecessor still do not confirm its group position"
     );
     assert!(offered.iter().any(|env| env.client_id() == independent.id));
-    media_contract_confirm_id(&f, &sent.entries[0].id);
+    media_contract_confirm_id(&f, &sent.entries[0].id)?;
     assert!(f
         .engine
         .lock()
         .outbox_envelopes()
         .iter()
         .any(|env| env.client_id() == sent.entries[1].id));
+    Ok(())
 }
 
 pub(super) fn media_contract_grouped_preexisting_confirmed_files_need_no_new_creation(
@@ -138,7 +139,7 @@ pub(super) fn media_contract_grouped_preexisting_confirmed_files_need_no_new_cre
         })
         .collect();
     media_contract_upload_all(&f);
-    media_contract_confirm_scope(&f);
+    media_contract_confirm_scope(&f)?;
     let original_file = f.engine.file_info_at(items[0].clone(), None).unwrap();
     media_contract_receive(
         &f,
@@ -201,7 +202,7 @@ pub(super) fn media_contract_grouped_preexisting_confirmed_files_need_no_new_cre
             .collect::<Vec<_>>(),
         [ids[0].as_str()]
     );
-    media_contract_confirm_id(&f, &ids[0]);
+    media_contract_confirm_id(&f, &ids[0])?;
     assert_eq!(
         f.engine
             .lock()

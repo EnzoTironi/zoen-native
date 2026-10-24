@@ -15,7 +15,7 @@ pub(super) fn pending(
             },
         },
         200,
-    );
+    )?;
     fixture.message("Create an image after I review it.")?;
     let source = fixture.core.engine.logs[SPACE]
         .events()
@@ -36,7 +36,8 @@ pub(super) fn pending(
 }
 
 #[test]
-fn only_the_original_current_pending_review_can_be_offered_after_cold_reopen() {
+fn only_the_original_current_pending_review_can_be_offered_after_cold_reopen(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (mut fixture, request, content_hash, envelope) = pending().unwrap();
     let now = crate::engine::now_ms();
     fixture
@@ -64,7 +65,7 @@ fn only_the_original_current_pending_review_can_be_offered_after_cold_reopen() {
         .core
         .image_review_ready(&request, &content_hash, &envelope, now)
         .unwrap();
-    let frame = ordered(&fixture.owner, envelope.clone());
+    let frame = ordered(&fixture.owner, envelope.clone())?;
     assert_eq!(fixture.owner.ingest(frame.clone()), Ingest::Applied);
     fixture.core.ingest(vec![frame]).unwrap();
     assert!(matches!(
@@ -73,17 +74,19 @@ fn only_the_original_current_pending_review_can_be_offered_after_cold_reopen() {
             .image_review_ready(&request, &content_hash, &envelope, now),
         Err(NativeError::NotReady)
     ));
+    Ok(())
 }
 
 #[test]
-fn fresh_revocation_refuses_review_publication_without_clearing_its_original() {
+fn fresh_revocation_refuses_review_publication_without_clearing_its_original(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (mut fixture, request, content_hash, envelope) = pending().unwrap();
     fixture.encrypted(
         EventBody::GrantRevoked {
             grant: "image-review-act".into(),
         },
         crate::engine::now_ms(),
-    );
+    )?;
     let queued = fixture.core.engine.store.outbox().unwrap();
     assert!(fixture
         .core
@@ -105,4 +108,5 @@ fn fresh_revocation_refuses_review_publication_without_clearing_its_original() {
             .find(|row| row.event.client_id == envelope.client_id())
             .map(|row| row.event)
     );
+    Ok(())
 }

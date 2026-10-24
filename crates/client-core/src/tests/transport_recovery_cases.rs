@@ -282,17 +282,19 @@ pub(super) fn a_device_refuses_a_relay_that_hides_a_message_and_rehashes(
         Some(hidden.hash.as_str())
     );
 
-    let shown = |ev: &types::Event, seq: u64, prev: &str| Sequenced {
-        seq,
-        prev: prev.to_string(),
-        hash: chain_hash("sp_fork", seq, prev, &content_hash_of(ev)),
-        env: Envelope::plain(ev),
+    let shown = |ev: &types::Event, seq: u64, prev: &str| {
+        Ok::<_, serde_json::Error>(Sequenced {
+            seq,
+            prev: prev.to_string(),
+            hash: chain_hash("sp_fork", seq, prev, &content_hash_of(ev))?,
+            env: Envelope::plain(ev),
+        })
     };
     assert!(matches!(
-        e.lock().ingest(shown(&genesis, 0, &genesis.prev)),
+        e.lock().ingest(shown(&genesis, 0, &genesis.prev)?),
         crate::sync::Ingest::Applied
     ));
-    match e.lock().ingest(shown(&reply, 1, &genesis.hash)) {
+    match e.lock().ingest(shown(&reply, 1, &genesis.hash)?) {
         crate::sync::Ingest::Invalid(why) => assert!(why.contains("história"), "{why}"),
         _ => panic!("the forged history was accepted"),
     }

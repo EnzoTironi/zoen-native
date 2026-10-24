@@ -72,7 +72,7 @@ pub(crate) fn expired_approved(
 
 /// Sequence this fixture's actual outbox, so renewed permissions cannot rely
 /// on a locally optimistic ordering. No network transport or authority bypass.
-pub(crate) fn confirm_pending(f: &Fixture) {
+pub(crate) fn confirm_pending(f: &Fixture) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut e = f.agent.lock();
     let rows = e.store.outbox().unwrap();
     for row in rows
@@ -81,7 +81,7 @@ pub(crate) fn confirm_pending(f: &Fixture) {
     {
         let mut log =
             event_log::SpaceLog::from_events(&f.space, e.logs[&f.space].events().to_vec()).unwrap();
-        let event = log.sequence(row.event).clone();
+        let event = log.sequence(row.event)?.clone();
         assert_eq!(
             e.ingest(protocol::Sequenced {
                 seq: event.seq,
@@ -92,4 +92,5 @@ pub(crate) fn confirm_pending(f: &Fixture) {
             crate::sync::Ingest::Confirmed
         );
     }
+    Ok(())
 }

@@ -14,7 +14,7 @@ pub(super) struct Relay<'a> {
     pub(super) close_socket: oneshot::Receiver<()>,
 }
 
-pub(super) async fn drive(input: Relay<'_>) {
+pub(super) async fn drive(input: Relay<'_>) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let Relay {
         listener,
         retrying,
@@ -112,7 +112,7 @@ pub(super) async fn drive(input: Relay<'_>) {
             match request(&mut socket).await {
                 ClientFrame::Publish { env } => {
                     let cid = env.client_id().to_string();
-                    let ev = sequence(env, &mut head);
+                    let ev = sequence(env, &mut head)?;
                     assert_eq!(receiver.ingest(ev.clone()), Ingest::Applied);
                     reply(
                         &mut socket,
@@ -162,7 +162,10 @@ pub(super) async fn drive(input: Relay<'_>) {
                 other => panic!("unexpected relay request: {other:?}"),
             }
         }
+        Ok::<_, Box<dyn std::error::Error>>(())
     };
-    tokio::join!(marker, wire);
+    let (_, produced) = tokio::join!(marker, wire);
+    produced?;
     close_socket.await.unwrap();
+    Ok(())
 }
