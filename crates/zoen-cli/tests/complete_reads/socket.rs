@@ -12,15 +12,10 @@ pub(super) struct Reader {
     device: String,
 }
 impl Reader {
-    pub(super) async fn open(w: &World, who: &str) -> Self {
+    pub(super) async fn open(w: &World, who: &str, account: client_core::AccountDto) -> Self {
+        // The live Client owns SQLite exclusively. This independent authenticated
+        // socket shares its already-read public account, never a second DB handle.
         let home = w.dir.join(who);
-        let client = Client::open(
-            home.join("zoen.sqlite").to_string_lossy().into_owned(),
-            "en".into(),
-        )
-        .unwrap();
-        let account = client.account().unwrap();
-        drop(client);
         let key: [u8; 32] = std::fs::read(home.join("vault/zoen.device.v1"))
             .unwrap()
             .try_into()

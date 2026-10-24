@@ -127,7 +127,7 @@ async fn complete_agent_state_and_cli_inspection_keep_257_existing_cursors_acros
         tokio::time::sleep(Duration::from_millis(25)).await;
     }
     assert_eq!(cursors(agent.0.agent_state().await.unwrap()), expected);
-    let mut reader = socket::Reader::open(&w, "citizen").await;
+    let mut reader = socket::Reader::open(&w, "citizen", agent.0.account().unwrap()).await;
     let (first, mut stage) = reader.begin().await;
     assert_eq!(first.cursors.len(), protocol::complete_reads::PAGE_ROWS);
     assert!(!first.complete);
