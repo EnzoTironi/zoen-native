@@ -11,6 +11,7 @@ const CROCKFORD: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
 /// A readable prefix plus a lowercase ULID: `sp_01jq3…` (ADR 0017). Ids made later sort
 /// later, across devices to the millisecond and on one device strictly.
+#[must_use]
 pub fn new_id(prefix: &str) -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -21,6 +22,7 @@ pub fn new_id(prefix: &str) -> String {
 
 /// 128 random bits in hex, for ids that double as a capability (invite links): never a
 /// ULID, whose leading characters are a guessable timestamp.
+#[must_use]
 pub fn new_secret_id(prefix: &str) -> String {
     let mut bytes = [0u8; 16];
     getrandom::getrandom(&mut bytes).expect("fonte de entropia do sistema");
@@ -55,6 +57,7 @@ pub fn new_ulid(now_ms: i64) -> String {
 
 /// When a ULID-based id was made (ms since the epoch), or `None` for ids from before
 /// ADR 0017 (random hex) and anything else.
+#[must_use]
 pub fn id_time_ms(id: &str) -> Option<i64> {
     let ulid = id.rsplit('_').next()?;
     if ulid.len() != 26 {
