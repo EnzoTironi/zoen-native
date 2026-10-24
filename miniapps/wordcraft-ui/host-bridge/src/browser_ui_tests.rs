@@ -5,11 +5,11 @@ use crate::{
     browser_tests::{head, mutation, opened, scope},
 };
 use egui::{Event, Key, Modifiers, PointerButton};
-use wordcraft_ui_egui::WordApp;
+use wordcraft_ui_egui::{Services, WordApp};
 type Harness = egui_kittest::Harness<'static, WordApp>;
 fn harness() -> Result<(Harness, BrowserBridge, Vec<u8>)> {
     let (bridge, session, bytes) = opened("Original")?;
-    let app = WordApp::new(session, Default::default());
+    let app = WordApp::new(session, Services::default());
     let mut h = egui_kittest::Harness::builder()
         .with_size(egui::vec2(390.0, 844.0))
         .build_ui_state(
