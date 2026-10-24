@@ -302,8 +302,8 @@ async function fixture(platform = "android", options = {}) {
           }));
           builder.onResolve({ filter: /.*/ }, ({ path, importer }) =>
             importer === detail && path.startsWith(".")
-              ? path === "./deck-version-selection"
-                ? { path: join(app, "src/miniapps/deck-version-selection.ts") }
+              ? ["./deck-version-selection", "./binary-formats"].includes(path)
+                ? { path: join(app, "src/miniapps", `${path}.ts`) }
                 : {
                     path: path === "./view-host" ? "fixture:view" : "fixture:ports",
                     namespace: "fixture",
