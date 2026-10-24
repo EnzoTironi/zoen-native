@@ -33,7 +33,10 @@ pub fn validate_text(text: &str) -> Result<()> {
 fn inert(parts: &std::collections::BTreeMap<String, Vec<u8>>) -> Result<()> {
     use quick_xml::events::Event;
     for (name, bytes) in parts {
-        if !name.ends_with(".rels") {
+        if !std::path::Path::new(name)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("rels"))
+        {
             continue;
         }
         let mut xml = quick_xml::Reader::from_reader(bytes.as_slice());

@@ -18,6 +18,9 @@ fn long(bytes: &[u8], offset: usize) -> Result<u32> {
     Ok(u32::from_le_bytes([field[0], field[1], field[2], field[3]]))
 }
 
+/// Validate bounded ZIP32 records before either codec can inflate/deduplicate them.
+/// # Errors
+/// Refuses malformed/duplicate parts, unsupported ZIP records and expansion limits.
 pub fn preflight(
     bytes: &[u8],
     max_parts: usize,
