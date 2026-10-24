@@ -397,6 +397,7 @@ async fn checked(
             &t.id,
             selection,
         ),
+        TurnOutcome::ProposeAgent { .. } if scoped => false,
         TurnOutcome::ProposeAgent { spec, confirmation } => {
             selected_proposal(e, cx, space, t, &spec, confirmation.as_deref(), selection)
         }

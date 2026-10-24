@@ -210,6 +210,11 @@ impl<'a> SpaceTools<'a> {
     }
 
     pub(super) fn check_selection(&self) -> Result<(), String> {
+        // Also fence the normal backlog after async provider/worker responses.
+        // A scoped source never relies on the optional CLI source selector.
+        self.e
+            .agent_artifact_request(&self.space, self.source, self.serving)
+            .map_err(|e| e.to_string())?;
         if let Some(selection) = self.selection {
             selection.check(self.e)?;
         }
