@@ -27,10 +27,15 @@ export async function reloadPhotos(owner: PhotoReloadOwner, requestPermission = 
     )
       request.needsReconciliation = true;
     owner.publish({ permission });
+    const retainedCopies = () =>
+      (request.journal?.retained() ?? []).filter((item) =>
+        owner.state().selected.some((selected) => selected.id === item.id),
+      );
     if (!permission.granted) {
+      request.needsReconciliation = false;
       owner.publish({
         items: [],
-        selected: [],
+        selected: retainedCopies(),
         albums: [],
         hasMore: false,
         screen: 'grid',
@@ -54,10 +59,11 @@ export async function reloadPhotos(owner: PhotoReloadOwner, requestPermission = 
       const checked = await owner.port.permission();
       if (!owner.current(request) || epoch !== request.epoch) return;
       if (!checked.granted) {
+        request.needsReconciliation = false;
         owner.publish({
           permission: checked,
           items: [],
-          selected: [],
+          selected: retainedCopies(),
           albums: [],
           hasMore: false,
           screen: 'grid',
@@ -72,7 +78,13 @@ export async function reloadPhotos(owner: PhotoReloadOwner, requestPermission = 
         void owner.reload();
         return;
       }
-      const projection = reconcilePhotoSelection(owner.state(), retained, refreshed, items);
+      const durable = retainedCopies();
+      const immutable = new Map(durable.map((item) => [item.id, item]));
+      const verified = [
+        ...refreshed.filter((item) => !immutable.has(item.id)),
+        ...durable.filter((item) => retained.has(item.id)),
+      ];
+      const projection = reconcilePhotoSelection(owner.state(), retained, verified, items);
       if (!projection) {
         void owner.reload();
         return;

@@ -9,7 +9,11 @@ import type {
 import { sensitiveCacheWork } from './cache-work';
 import { contentValue } from './media-draft-contract';
 import { MediaDraftFailure, type MediaDraftChannel } from './media-draft-channel';
-import type { MediaDraftAttachments, MediaDraftIngest } from './media-draft-types';
+import type {
+  MaterializedMediaDraftAsset,
+  MediaDraftAttachments,
+  MediaDraftIngest,
+} from './media-draft-types';
 
 type Captions = PhotoPickerState['captions'];
 type Desired = { selected: readonly PhotoLibraryItem[]; captions: Captions };
@@ -21,6 +25,7 @@ export class AttachmentGalleryJournal {
   private stopped = false;
   private copies = new Map<string, Copy>();
   private leases = new Map<string, string>();
+  private previews = new Map<string, Promise<MaterializedMediaDraftAsset>>();
   private port: PhotoPickerPort | null = null;
   private readonly baseline: MediaDraftAttachments | null;
   constructor(
@@ -233,12 +238,27 @@ export class AttachmentGalleryJournal {
       throw new MediaDraftFailure('conflict');
     const files: AttachmentAsset[] = [];
     for (const entry of value.gallery.entries) {
-      const file = await this.channel.materialize(entry.asset_id);
+      let pending = this.previews.get(entry.asset_id);
+      if (!pending) {
+        pending = this.channel.materialize(entry.asset_id);
+        this.previews.set(entry.asset_id, pending);
+        void pending.catch(() => {
+          if (this.previews.get(entry.asset_id) === pending) this.previews.delete(entry.asset_id);
+        });
+      }
+      const file = await pending;
       if (!this.current()) throw new MediaDraftFailure('closed');
       this.leases.set(file.uri, file.id);
       files.push(file);
     }
     return files;
+  }
+  retained() {
+    return this.restore().selected;
+  }
+  async preview(selected: readonly PhotoLibraryItem[]) {
+    const files = await this.materialize(selected);
+    return Object.fromEntries(selected.map((item, index) => [item.id, files[index]!.uri]));
   }
   owns() {
     const value = this.attachments();

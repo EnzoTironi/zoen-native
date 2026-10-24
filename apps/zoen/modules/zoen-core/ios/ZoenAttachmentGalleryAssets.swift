@@ -12,7 +12,8 @@ struct GalleryItem:Equatable {
     video=(value["mime"] as? String ?? "").hasPrefix("video/") || value["type"] as? String == "video"
     let w=(value["width"] as? Double).flatMap{$0.isFinite && $0>0 && $0<=100000 ? $0:nil} ?? 1
     let h=(value["height"] as? Double).flatMap{$0.isFinite && $0>0 && $0<=100000 ? $0:nil} ?? 1
-    if source=="photos" {guard id.hasPrefix("ph://"),id.count>5 else{throw GalleryFailure.invalid};photoId=String(id.dropFirst(5));uri=nil}
+    if source=="photos" {guard id.hasPrefix("ph://"),id.count>5 else{throw GalleryFailure.invalid}}
+    if source=="photos", !(value["retained"] as? Bool ?? false) {photoId=String(id.dropFirst(5));uri=nil}
     else {
       photoId=nil
       let raw=value["uri"] as? String ?? ""

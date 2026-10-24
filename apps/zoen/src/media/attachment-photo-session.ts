@@ -6,6 +6,7 @@ import {
   type PhotoPickerState,
   type Request,
 } from './attachment-photo-types.ts';
+import { prepareGalleryPreview } from './attachment-gallery-preview.ts';
 import { reloadPhotos } from './attachment-photo-reload.ts';
 import {
   canApprovePhotoSelection,
@@ -75,6 +76,7 @@ export class AttachmentPhotoSession {
         ...(restored ? { selected: restored.selected, captions: restored.captions } : {}),
       });
       if (restored?.selected.length) request.needsReconciliation = true;
+      this.journalSelection(false);
       void this.reload(true);
     });
   }
@@ -119,14 +121,19 @@ export class AttachmentPhotoSession {
       this.finish(request, []);
     }
   }
-  private journalSelection() {
+  private journalSelection(save = true) {
     const request = this.request;
-    if (!request?.journal || !this.current(request)) return;
-    void request.journal
-      .update(this.state.selected, this.state.captions, this.port)
-      .catch((error) => {
-        if (this.current(request)) this.publish({ error });
-      });
+    if (!request) return;
+    prepareGalleryPreview(
+      {
+        request,
+        state: this.getSnapshot,
+        current: () => this.current(request),
+        publish: (patch) => this.publish(patch),
+        port: this.port,
+      },
+      save,
+    );
   }
   setCaptions(captions: PhotoPickerState['captions']) {
     if (!this.isInteractive(this.state.token)) return;
@@ -153,7 +160,10 @@ export class AttachmentPhotoSession {
     if (!request || !this.current(request)) return;
     try {
       await request.journal?.retry();
-      if (this.current(request)) await this.reload();
+      if (this.current(request)) {
+        this.journalSelection(false);
+        await this.reload();
+      }
     } catch (error) {
       if (this.current(request)) this.publish({ error });
     }

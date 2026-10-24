@@ -150,6 +150,19 @@ export function AttachmentPhotoKeyboard({
       (state.permission !== null || state.error !== null),
     presentation.closing || !state.visible,
   );
+  const displayItem = (photo: (typeof state.items)[number]) => {
+    const retained = Object.hasOwn(state.previewUris, photo.id);
+    const item = retained ? (state.selected.find((item) => item.id === photo.id) ?? photo) : photo;
+    return {
+      id: item.id,
+      type: item.mediaType,
+      name: item.filename,
+      duration: item.duration,
+      width: item.width,
+      height: item.height,
+      ...(retained ? { retained: true, uri: state.previewUris[item.id] } : {}),
+    };
+  };
   const model = JSON.stringify({
     revision,
     columns: width > height ? 5 : 3,
@@ -188,22 +201,8 @@ export function AttachmentPhotoKeyboard({
         }
       : null,
     previewId: state.previewId,
-    items: state.items.map((item) => ({
-      id: item.id,
-      type: item.mediaType,
-      name: item.filename,
-      duration: item.duration,
-      width: item.width,
-      height: item.height,
-    })),
-    selectedItems: state.selected.map((item) => ({
-      id: item.id,
-      type: item.mediaType,
-      name: item.filename,
-      duration: item.duration,
-      width: item.width,
-      height: item.height,
-    })),
+    items: state.items.map(displayItem),
+    selectedItems: state.selected.map(displayItem),
     selected: state.selected.map((item) => item.id),
     grouped: existingOptions ? existingOptions.grouping === 'grouped' : true,
     sendOptions:

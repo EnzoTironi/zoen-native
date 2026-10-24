@@ -20,6 +20,7 @@ export type PhotoPickerState = Readonly<{
   error: unknown;
   screen: 'grid' | 'albums' | 'preview' | 'selected';
   previewId: string | null;
+  previewUris: Readonly<Record<string, string | null>>;
   captions: Readonly<{ forced: string | null; items: Readonly<Record<string, string>> }>;
   category: 'photos' | 'document' | 'audio';
 }>;
@@ -89,6 +90,7 @@ export const empty: PhotoPickerState = {
   error: null,
   screen: 'grid',
   previewId: null,
+  previewUris: {},
   captions: { forced: null, items: {} },
   category: 'photos',
 };

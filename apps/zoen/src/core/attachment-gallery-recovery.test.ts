@@ -394,3 +394,125 @@ test('ordinary composer caption/removal can finish a recovered gallery without c
   assert.equal(content(cold).items[0].caption, 'Per-item after reopen');
   assert.equal(cold.sent.length, 0);
 });
+
+test('captured gallery previews and explicit Send use the same retained asset after the Photos item changes', async () => {
+  const f = fixture();
+  const port = photoPort();
+  let exports = 0;
+  const exportPhoto = port.materialize;
+  port.materialize = async (...args) => {
+    exports++;
+    return exportPhoto(...args);
+  };
+  const session = connect(f, port);
+  const { done } = await begin(f);
+  session.select(image);
+  await tick();
+  await f.channel.flush();
+  await tick();
+  const uri = session.getSnapshot().previewUris[image.id];
+  assert.ok(uri, 'selected pixels must come from the authorized durable journal copy');
+  assert.notEqual(uri, 'file:///gallery-owned.jpg', 'never reuse the disposable Photos export');
+  for (let i = 0; i < 100; i++) session.setCaptions({ forced: String(i), items: {} });
+  await tick();
+  await f.channel.flush();
+  await tick();
+  assert.equal(
+    f.materializations.length,
+    1,
+    'caption metadata never re-materializes captured pixels',
+  );
+  session.retire();
+  await done;
+  const cold = fixture(f.durable());
+  port.load = async () => [{ ...image, filename: 'externally-edited.jpg', width: 999 }];
+  port.refresh = async () => [{ ...image, filename: 'externally-edited.jpg', width: 999 }];
+  const restored = connect(cold, port);
+  let handed: { uri: string }[] = [];
+  cold.nativePhotoPicker(
+    (remaining, current, admission) =>
+      restored.open(remaining, current, admission?.journal).then((files) => {
+        handed = files;
+        return files;
+      }),
+    () => restored.retire(),
+  );
+  const reopened = await begin(cold);
+  await tick();
+  assert.equal(restored.getSnapshot().selected[0]?.filename, 'waterfall.jpg');
+  const retainedUri = restored.getSnapshot().previewUris[image.id];
+  assert.ok(retainedUri);
+  await restored.approve();
+  await restored.dismissed(restored.getSnapshot().token);
+  await reopened.done;
+  assert.equal(exports, 1, 'no re-export of an externally changed PHAsset');
+  assert.equal(handed[0]?.uri, retainedUri, 'handoff consumes the exact displayed cache lease');
+  assert.equal(cold.sent.length, 0);
+});
+
+test('cold retained selection survives Photos deletion or permission removal without reading a replacement', async () => {
+  const f = fixture();
+  const session = connect(f);
+  const { done } = await begin(f);
+  session.select(image);
+  await tick();
+  await f.channel.flush();
+  session.retire();
+  await done;
+  for (const denied of [false, true]) {
+    const cold = fixture(f.durable());
+    const port = photoPort();
+    port.load = async () => [];
+    port.refresh = async () => [];
+    if (denied)
+      port.permission = async () => ({
+        granted: false,
+        status: 'denied' as PhotoLibraryPermission['status'],
+        canAskAgain: false,
+        accessPrivileges: 'none',
+      });
+    port.materialize = async () => {
+      throw Error('must never resolve original Photos id');
+    };
+    const restored = connect(cold, port);
+    const reopened = await begin(cold);
+    await tick();
+    assert.deepEqual(
+      restored.getSnapshot().selected.map((item) => item.id),
+      [image.id],
+    );
+    assert.ok(restored.getSnapshot().previewUris[image.id]);
+    assert.equal(restored.canApprove(), true);
+    restored.cancel();
+    await reopened.done;
+    assert.equal(cold.sent.length, 0);
+  }
+});
+
+test('late durable preview lease after account retirement never appears in the old or replacement session', async () => {
+  const f = fixture();
+  let release!: () => void;
+  f.gateMaterialize(
+    new Promise<void>((yes) => {
+      release = yes;
+    }),
+  );
+  const session = connect(f);
+  const { done } = await begin(f);
+  session.select(image);
+  await tick();
+  await f.channel.flush();
+  await tick();
+  assert.equal(session.getSnapshot().previewUris[image.id], null);
+  f.retire();
+  session.retire();
+  release();
+  await done;
+  await tick();
+  assert.deepEqual(session.getSnapshot().previewUris, {});
+  assert.equal(f.sent.length, 0);
+  assert.ok(
+    f.released.some((uri) => uri.startsWith('file:///cache/fresh-')),
+    'closed channel releases its late materialization',
+  );
+});

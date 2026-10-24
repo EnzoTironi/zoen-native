@@ -106,6 +106,8 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
     loseSendAck = false,
     holdCancellation = false;
   let saveGate: Promise<void> | null = null;
+  let materializeGate: Promise<void> | null = null;
+  const materializations: string[] = [];
   let sendCalls = 0;
   const sendReceipts = new Map<string, { entries: never; draft: MediaDraftDto }>();
   const released: string[] = [],
@@ -156,6 +158,8 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
     },
     materialize: async (_scope, expected, id) => {
       assert.equal(expected, durable.revision);
+      materializations.push(id);
+      if (materializeGate) await materializeGate;
       if (failMaterialize) throw new Error('Preview unavailable');
       const asset = durable.assets.find((asset) => asset.id === id);
       assert.ok(asset);
@@ -399,6 +403,10 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
       preferredPhotoUri = uri;
     },
     channel,
+    materializations,
+    gateMaterialize: (gate: Promise<void>) => {
+      materializeGate = gate;
+    },
     render,
     unmount,
     released,
