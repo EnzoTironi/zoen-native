@@ -91,6 +91,9 @@ pub struct DispatchDescriptor {
     pub max_request_bytes: u64,
     pub max_response_bytes: u64,
     pub requested_output_tokens: u64,
+    /// None preserves the existing chat wire contract. Images cannot use chat prices.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<crate::ImageDispatch>,
 }
 
 /// No content or secret credential is passed to the authority. The digest binds the

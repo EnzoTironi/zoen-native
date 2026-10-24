@@ -16,9 +16,8 @@ use std::{
 
 use futures_util::{SinkExt, StreamExt};
 use protocol::{
-    auth_message, blob_put_message, ClientFrame, EphemeralKind, ErrorCode, KeyPackageClaimClock,
-    Op, Reply, ServerFrame, CAPABILITIES, KEY_PACKAGE_CLAIM_TTL_MS, MIN_PROTOCOL_VERSION,
-    PROTOCOL_VERSION,
+    auth_message, ClientFrame, EphemeralKind, ErrorCode, KeyPackageClaimClock, Op, Reply,
+    ServerFrame, CAPABILITIES, KEY_PACKAGE_CLAIM_TTL_MS, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION,
 };
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio_tungstenite::tungstenite::Message;
@@ -247,7 +246,11 @@ impl Net {
 
 impl Drop for Net {
     fn drop(&mut self) {
-        self.engine.with(|engine| engine.net.file_demands.clear());
+        self.engine.with(|engine| {
+            if engine.net.file_demands.clear().is_err() {
+                tracing_like("media: historical demand state unavailable at shutdown");
+            }
+        });
         let _ = self.cmd.send(Cmd::Stop);
         if let Some(rt) = self.rt.take() {
             // Safe from inside another async runtime too.
@@ -257,11 +260,16 @@ impl Drop for Net {
     }
 }
 
+#[derive(Clone)]
 pub struct RequestHandle {
     cmd: mpsc::UnboundedSender<Cmd>,
 }
 
 impl RequestHandle {
+    pub(crate) fn same_channel(&self, other: &Self) -> bool {
+        self.cmd.same_channel(&other.cmd)
+    }
+
     pub async fn send(self, op: Op) -> Result<Reply, String> {
         let (tx, rx) = oneshot::channel();
         self.cmd

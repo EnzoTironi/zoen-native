@@ -41,6 +41,9 @@ pub enum NativeError {
 
 type Result<T> = std::result::Result<T, NativeError>;
 
+mod image_tasks;
+pub use crate::files::NativeFileBlob;
+pub use image_tasks::{ImageTaskFacts, PreparedImageTask};
 mod key_packages;
 pub use key_packages::InitialKeyPackages;
 mod publication;
@@ -231,26 +234,6 @@ fn direct_writers(state: &State, space: &str, owner: &str, agent: &str) -> bool 
             && state.writer(space, owner)
             && state.writer(space, agent)
     })
-}
-
-fn latest_trust<'a>(
-    state: &'a State,
-    space: &str,
-    owner: &str,
-    agent: &str,
-) -> Option<&'a GrantState> {
-    // A revoked newest grant cannot revive an earlier, more permissive grant.
-    state
-        .grants
-        .iter()
-        .rev()
-        .find(|g| {
-            g.grant.grantor == owner
-                && g.grant.grantee.as_deref() == Some(agent)
-                && g.grant.scope == GrantScope::Space(space.into())
-                && matches!(g.grant.capability, Capability::Trust(_))
-        })
-        .filter(|g| !g.revoked)
 }
 
 fn limit_pages(store: &Store) -> Result<()> {

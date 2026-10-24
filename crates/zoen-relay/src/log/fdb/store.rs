@@ -2,6 +2,42 @@ use super::*;
 
 #[async_trait]
 impl LogStore for FdbLog {
+    async fn managed_publication_observation(
+        &self,
+        condition: &relay_admission::managed_images::PublishCondition,
+        env: &Envelope,
+    ) -> Result<Option<Sequenced>, StoreError> {
+        self.observed_managed_publication(condition, env).await
+    }
+
+    fn managed_device(&self, device: &str) -> Option<Arc<crate::managed_devices::ManagedDevice>> {
+        self.managed_devices
+            .get()
+            .and_then(|registry| registry.get(device))
+    }
+    async fn managed_checkpoint(
+        &self,
+        deployment: &relay_admission::managed_images::Deployment,
+    ) -> Result<Option<relay_admission::managed_images::Checkpoint>, StoreError> {
+        self.managed_store_checkpoint(deployment).await
+    }
+    async fn append_managed_effect(
+        &self,
+        env: &Envelope,
+        target_known: bool,
+        checkpoint: &relay_admission::managed_images::Checkpoint,
+    ) -> Result<super::super::ManagedPublication, Reject> {
+        self.append_registered_local(env, target_known, checkpoint)
+            .await
+    }
+
+    async fn runtime_cell(
+        &self,
+        namespace: &str,
+        witness: &str,
+    ) -> Result<Option<String>, StoreError> {
+        self.bound_runtime_cell(namespace, witness).await
+    }
     async fn ready(&self) -> bool {
         self.owner.ready().await && self.forwarding.get().is_none_or(|f| f.connected())
     }
@@ -13,52 +49,7 @@ impl LogStore for FdbLog {
         fields(batch = tracing::field::Empty, attempts = tracing::field::Empty)
     )]
     async fn append(&self, env: &Envelope, target_known: bool) -> Result<Sequencing, Reject> {
-        if !env.valid_invite() {
-            return Err(Reject::no("invalid invite code"));
-        }
-        if !self.forwarding_available() {
-            return Err(Reject::retry("cell forwarding unavailable"));
-        }
-        let _count = self
-            .routing_count
-            .clone()
-            .try_acquire_owned()
-            .map_err(|_| Reject::retry("relay routing capacity reached"))?;
-        let _bytes = self
-            .routing_bytes
-            .clone()
-            .try_acquire_many_owned(
-                env.retained_len()
-                    .saturating_add(1024)
-                    .min(u32::MAX as usize) as u32,
-            )
-            .map_err(|_| Reject::retry("relay routing capacity reached"))?;
-        tokio::time::timeout(std::time::Duration::from_secs(6), async {
-            // At most one retry after a stale route or uncertain RPC result. The same
-            // envelope/client_id reaches durable dedupe on either owner.
-            for attempt in 0..2 {
-                let fence = self
-                    .owner
-                    .resolve(env.space(), || self.forwarding_available())
-                    .await?;
-                let result = if fence.owner == self.owner.node {
-                    self.append_fenced(env, target_known, fence).await
-                } else if let Some(forwarder) = self.forwarding.get() {
-                    forwarder.append(env, &fence).await
-                } else {
-                    return Err(Reject::retry(
-                        "partition owner requires the cell forwarding bus",
-                    ));
-                };
-                match result {
-                    Err(r) if !r.permanent && attempt == 0 => continue,
-                    result => return result,
-                }
-            }
-            unreachable!("bounded attempts return")
-        })
-        .await
-        .unwrap_or_else(|_| Err(Reject::retry("relay routing deadline exceeded")))
+        self.append_routed(env, target_known).await
     }
 
     async fn read(
@@ -80,6 +71,62 @@ impl LogStore for FdbLog {
                         .map(|(_, v)| Sequenced::decode(&v).map_err(|e| custom(e.to_string())))
                         .collect::<Result<Vec<_>, _>>()
                 }
+            })
+            .await
+            .map_err(store_err)
+    }
+
+    async fn read_visible(
+        &self,
+        space: &str,
+        who: &str,
+        from: u64,
+        limit: usize,
+    ) -> Result<Option<VisiblePage>, StoreError> {
+        let from = i64::try_from(from).map_err(|_| StoreError("invalid history cursor".into()))?;
+        self.cell
+            .db
+            .run(|trx, _| async move {
+                // Snapshot reads share one FDB read version: a removal committed
+                // before this version clamps the range, while an earlier admitted
+                // page cannot include events committed after that read version.
+                let through = if self.cell.role_in(&trx, space, who).await?.is_some() {
+                    None
+                } else {
+                    let Some(value) = trx
+                        .get(&self.cell.space_key(space, ("gone", who)), true)
+                        .await?
+                    else {
+                        return Ok(None);
+                    };
+                    let last = unpack::<i64>(&value).map_err(|error| custom(error.to_string()))?;
+                    if last < 0 {
+                        return Err(custom("invalid removal boundary"));
+                    }
+                    Some(last)
+                };
+                if through.is_some_and(|last| from > last) {
+                    return Ok(Some(VisiblePage {
+                        events: Vec::new(),
+                        through: through.map(|v| v as u64),
+                    }));
+                }
+                let begin = self.cell.space_key(space, ("log", from));
+                let end = match through.and_then(|last| last.checked_add(1)) {
+                    Some(after) => self.cell.space_key(space, ("log", after)),
+                    None => self.cell.space_range(space, "log").range().1,
+                };
+                let events = Cell::scan(&trx, (begin, end), limit, true)
+                    .await?
+                    .into_iter()
+                    .map(|(_, bytes)| {
+                        Sequenced::decode(&bytes).map_err(|error| custom(error.to_string()))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(Some(VisiblePage {
+                    events,
+                    through: through.map(|v| v as u64),
+                }))
             })
             .await
             .map_err(store_err)
@@ -221,7 +268,7 @@ impl LogStore for FdbLog {
             .map_err(|_| "relay routing capacity reached".to_string())?;
         let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(6);
         tokio::time::timeout_at(deadline, async {
-            let code = random_code();
+            let code = random_code().map_err(|error| error.to_string())?;
             for attempt in 0..2 {
                 let fence = invite_routing::resolve(
                     deadline,
@@ -250,7 +297,7 @@ impl LogStore for FdbLog {
                     result => return result,
                 }
             }
-            unreachable!("bounded attempts return")
+            Err("partition ownership is changing".into())
         })
         .await
         .unwrap_or_else(|_| Err("relay routing deadline exceeded".into()))
@@ -291,7 +338,7 @@ impl LogStore for FdbLog {
                             trx.clear_range(&b, &e);
                         }
                     }
-                    let code = random_code();
+                    let code = random_code().map_err(|error| custom(error.to_string()))?;
                     let key = root.pack(&("ainv", code_hash(&code)));
                     if trx.get(&key, false).await?.is_some() {
                         return Ok(Err("invite code collision"));

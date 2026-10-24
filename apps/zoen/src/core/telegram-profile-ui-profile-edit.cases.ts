@@ -42,6 +42,7 @@ test('You retains Appearance, all settings and the actual Edit Profile entry aft
   assert.deepEqual(
     Array.from(settings, (row: any) => row.id),
     [
+      'settings-account-budget',
       'settings-appearance',
       'settings-general',
       'settings-permissions',

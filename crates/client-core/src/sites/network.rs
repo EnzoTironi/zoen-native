@@ -59,10 +59,8 @@ fn configuration(config: &Configuration, relay: &str, audience: &str) -> R<()> {
     Ok(())
 }
 async fn json<T: DeserializeOwned>(mut response: reqwest::Response, maximum: usize) -> R<T> {
-    if !response.status().is_success()
-        || response
-            .content_length()
-            .is_some_and(|n| n > maximum as u64)
+    let maximum_u64 = u64::try_from(maximum).map_err(|_| invalid())?;
+    if !response.status().is_success() || response.content_length().is_some_and(|n| n > maximum_u64)
     {
         return Err(unavailable());
     }
@@ -133,18 +131,22 @@ impl Client {
                     &scope.space_id,
                     &source.item_id,
                     &config.public_origin,
-                ),
+                )
+                .map_err(|_| invalid())?,
                 public_origin: config.public_origin.clone(),
                 before: None,
                 signature: String::new(),
             };
+            let signing_bytes = signed
+                .signing_bytes(&config.audience)
+                .map_err(|_| invalid())?;
             signed.signature = e
                 .net
                 .author
                 .as_ref()
                 .ok_or_else(forbidden)?
                 .key
-                .sign(&signed.signing_bytes(&config.audience));
+                .sign(&signing_bytes);
             signed
         };
         let response = http()?

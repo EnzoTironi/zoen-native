@@ -31,7 +31,9 @@ use zoen_relay::{
 };
 
 struct BlockedLog {
+    managed_registry: std::sync::OnceLock<zoen_relay::managed_devices::ManagedDevices>,
     sync_spaces: std::sync::Mutex<Option<Vec<String>>>,
+    sync_history: std::sync::Mutex<Option<Arc<sync_membership::History>>>,
     sync_members: std::sync::Mutex<std::collections::BTreeSet<(String, String)>>,
     block_presence: AtomicBool,
     presence_entered: Notify,
@@ -83,6 +85,14 @@ impl Drop for Reading<'_> {
 
 #[async_trait]
 impl LogStore for BlockedLog {
+    fn managed_device(
+        &self,
+        device: &str,
+    ) -> Option<Arc<zoen_relay::managed_devices::ManagedDevice>> {
+        self.managed_registry
+            .get()
+            .and_then(|registry| registry.get(device))
+    }
     async fn append(&self, env: &Envelope, _: bool) -> Result<Sequencing, Reject> {
         self.reading.store(true, Ordering::Release);
         let _reading = Reading(&self.reading, &self.cancelled);
@@ -115,11 +125,32 @@ impl LogStore for BlockedLog {
         self.entered.notify_one();
         answer.await.unwrap_or_else(|_| Err(Reject::unavailable()))
     }
-    async fn read(&self, _: &str, _: u64, _: usize) -> Result<Vec<Sequenced>, StoreError> {
+    async fn read(&self, _: &str, from: u64, limit: usize) -> Result<Vec<Sequenced>, StoreError> {
+        let history = self.sync_history.lock().unwrap().clone();
+        if let Some(history) = history {
+            return Ok(history.raw(from, limit).await);
+        }
         if self.sync_spaces.lock().unwrap().is_some() {
             return Ok(Vec::new());
         }
         unreachable!("spaces_of never returns")
+    }
+    async fn read_visible(
+        &self,
+        space: &str,
+        who: &str,
+        from: u64,
+        limit: usize,
+    ) -> Result<Option<zoen_relay::log::VisiblePage>, StoreError> {
+        let history = self.sync_history.lock().unwrap().clone();
+        if let Some(history) = history {
+            return Ok(history.visible(who, from, limit).await);
+        }
+        let _ = (space, who);
+        Ok(Some(zoen_relay::log::VisiblePage {
+            events: self.read(space, from, limit).await?,
+            through: None,
+        }))
     }
     async fn role(&self, space: &str, identity: &str) -> Result<Option<Role>, StoreError> {
         Ok(self
@@ -308,7 +339,9 @@ impl TestRelay {
                 .unwrap()
         };
         let log = Arc::new(BlockedLog {
+            managed_registry: Default::default(),
             sync_spaces: Default::default(),
+            sync_history: Default::default(),
             sync_members: Default::default(),
             block_presence: AtomicBool::new(false),
             presence_entered: Notify::new(),
@@ -432,9 +465,19 @@ mod admission;
 mod concurrent_revocation;
 #[path = "session_revocation/enrollment.rs"]
 mod enrollment;
+#[path = "session_revocation/mailbox.rs"]
+mod mailbox;
+#[path = "session_revocation/managed_admission.rs"]
+mod managed_admission;
 #[path = "session_revocation/presence.rs"]
 mod presence;
 #[path = "session_revocation/profiles.rs"]
 mod profiles;
 #[path = "session_revocation/receipts.rs"]
 mod receipts;
+#[path = "session_revocation/reconciliation.rs"]
+mod reconciliation;
+#[path = "session_revocation/response_loss.rs"]
+mod response_loss;
+#[path = "session_revocation/sync_membership.rs"]
+mod sync_membership;

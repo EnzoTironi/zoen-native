@@ -48,12 +48,13 @@ impl Client {
     }
 
     /// The history box: from the device database if an earlier try got it, else from the
-    /// relay (one-time), kept until the bundle is in.
+    /// relay (immutable until its original expiry), kept until the bundle is in.
     pub(super) async fn history_manifest(
         &self,
         receive: &mut HistoryReceive,
+        owner: &owner::LinkOwner,
     ) -> Result<HistoryBox, CoreError> {
-        if let Some(json) = self.lock().store.meta(META_HISTORY)? {
+        if let Some(json) = owner.with(self, |engine| Ok(engine.store.meta(META_HISTORY)?))? {
             let m: HistoryBox = serde_json::from_str(&json)
                 .map_err(|_| invalid("Invalid retained history manifest."))?;
             if !valid_history_manifest(&m) {
@@ -61,8 +62,7 @@ impl Client {
             }
             return Ok(m);
         }
-        let peer = {
-            let e = self.lock();
+        let peer = owner.with(self, |e| {
             let primary = e.store.meta(META_PRIMARY)?.ok_or_else(|| {
                 invalid(t(
                     "Este aparelho não foi vinculado.",
@@ -74,13 +74,13 @@ impl Client {
                 .peers
                 .get(&primary)
                 .cloned()
-                .ok_or_else(|| invalid("peer"))?
-        };
+                .ok_or_else(|| invalid("peer"))
+        })?;
         let secret = peer.secret().ok_or_else(|| invalid("peer"))?;
         let id = link::box_id(&secret, "history");
         let sealed = loop {
             match receive
-                .wait(self.request(Op::FetchLink { id: id.clone() }))
+                .wait(owner.request(self, Op::FetchLink { id: id.clone() }))
                 .await?
             {
                 Reply::Link(Some(b)) => break b,
@@ -97,7 +97,8 @@ impl Client {
         if sealed.len() > 65_536 {
             return Err(invalid("The history manifest is too large."));
         }
-        let sk = hex::decode(&peer.my_hpke_secret).unwrap_or_default();
+        let sk =
+            hex::decode(&peer.my_hpke_secret).map_err(|_| invalid("Invalid retained peer key."))?;
         let plain = link::open(&sk, &secret, "history", &sealed)
             .ok_or_else(|| invalid(t("O histórico não abriu.", "The history didn't open.")))?;
         let m: HistoryBox = serde_json::from_slice(&plain).map_err(|e| invalid(e.to_string()))?;
@@ -105,14 +106,31 @@ impl Client {
             return Err(invalid("Invalid history manifest."));
         }
         receive.check()?;
-        self.lock()
-            .store
-            .set_meta(META_HISTORY, &serde_json::to_string(&m).unwrap_or_default())?;
+        let encoded = serde_json::to_string(&m).map_err(|error| invalid(error.to_string()))?;
+        owner.with(self, |engine| {
+            receive.check()?;
+            engine.store.set_meta(META_HISTORY, &encoded)?;
+            Ok(())
+        })?;
         Ok(m)
     }
 
-    /// Import and completion marker share one SQLite commit. A missing relay record
-    /// is pending work, never an empty successful history transfer.
+    /// Import and completion marker share the existing SQLite transaction.
+    pub(super) fn commit_initial_history_owned(
+        &self,
+        owner: &owner::LinkOwner,
+        events: Vec<types::Event>,
+        chunks: u32,
+        resumed: u32,
+        receive: &HistoryReceive,
+    ) -> Result<HistoryDto, CoreError> {
+        owner.with(self, |engine| {
+            history_commit::commit(engine, events, chunks, resumed, receive)
+        })
+    }
+
+    // Local import fixtures exercise the same transaction without forging a Net.
+    #[cfg(test)]
     pub(super) fn commit_initial_history(
         &self,
         events: Vec<types::Event>,
@@ -120,78 +138,6 @@ impl Client {
         resumed: u32,
         receive: &HistoryReceive,
     ) -> Result<HistoryDto, CoreError> {
-        receive.check()?;
-        let mut e = self.lock();
-        let mut positions = BTreeSet::new();
-        let mut opened = Vec::new();
-        for event in events {
-            receive.check()?;
-            if !positions.insert((event.space.clone(), event.seq)) {
-                return Err(invalid("The history repeats a relay position."));
-            }
-            let local = e
-                .logs
-                .get(&event.space)
-                .and_then(|log| {
-                    usize::try_from(event.seq)
-                        .ok()
-                        .and_then(|index| log.events().get(index))
-                })
-                .ok_or_else(|| {
-                    invalid(t(
-                        "O histórico aguarda os registros verificados do servidor.",
-                        "History is waiting for the verified relay records.",
-                    ))
-                })?;
-            if local.sealed_wire.is_some() {
-                // A retry after a former partial import must be the exact same opened event.
-                let mut anchored = event;
-                anchored.prev = local.prev.clone();
-                anchored.hash = local.hash.clone();
-                if &anchored != local {
-                    return Err(invalid("An opened history entry does not match."));
-                }
-                continue;
-            }
-            let event = link::opened_history_event(local, event).ok_or_else(|| {
-                invalid("A history entry does not match the signed relay record.")
-            })?;
-            opened.push(event);
-        }
-        let receipt = HistoryDto {
-            messages: opened.len() as u32,
-            chunks,
-            resumed,
-        };
-        {
-            let tx = e
-                .store
-                .conn()
-                .unchecked_transaction()
-                .map_err(|err| CoreError::Storage {
-                    message: err.to_string(),
-                })?;
-            for event in opened {
-                receive.check()?;
-                if !e.store.replace_event(&event)? {
-                    return Err(invalid("A history relay record disappeared."));
-                }
-            }
-            e.store.set_meta(
-                META_HISTORY_COMPLETE,
-                &serde_json::to_string(&receipt).map_err(|err| invalid(err.to_string()))?,
-            )?;
-            for n in 0..chunks {
-                e.store.meta_delete(&chunk_meta(n as usize))?;
-            }
-            e.store.meta_delete(META_HISTORY)?;
-            e.store.meta_delete(META_INITIAL_HISTORY_PENDING)?;
-            receive.check()?;
-            tx.commit().map_err(|err| CoreError::Storage {
-                message: err.to_string(),
-            })?;
-        }
-        e.reload()?;
-        Ok(receipt)
+        history_commit::commit(&mut self.lock(), events, chunks, resumed, receive)
     }
 }

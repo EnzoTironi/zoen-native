@@ -199,7 +199,7 @@ export default function Item() {
           ) : !oldReady ? (
             <Loading />
           ) : pastPage.data ? (
-            <PageBlocks blocks={pastPage.data.blocks} />
+            <PageBlocks historical page={pastPage.data} blocks={pastPage.data.blocks} />
           ) : past.data?.plan ? (
             <PlanVersion plan={past.data.plan} />
           ) : past.data?.file?.mime === 'text/html' ? (
@@ -283,7 +283,7 @@ export default function Item() {
           ) : item.kind_id === 'page' ? (
             page ? (
               <>
-                <PageBlocks blocks={page.blocks} />
+                <PageBlocks page={page} blocks={page.blocks} />
                 <NativeButton
                   secondary
                   label={t('documents.openPage')}

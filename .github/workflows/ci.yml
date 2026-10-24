@@ -41,6 +41,13 @@ jobs:
           ZOEN_CI_EVENT: ${{ github.event_name }}
         run: python3 scripts/ci-documentation-scope.py --base "$ZOEN_CI_BASE" --head "$ZOEN_CI_HEAD" --event "$ZOEN_CI_EVENT"
 
+      - name: Changed authored file size limit
+        env:
+          ZOEN_CI_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          ZOEN_CI_HEAD: ${{ github.sha }}
+          ZOEN_CI_EVENT: ${{ github.event_name }}
+        run: python3 scripts/check-changed-file-sizes.py --base "$ZOEN_CI_BASE" --head "$ZOEN_CI_HEAD" --event "$ZOEN_CI_EVENT"
+
   documentation-integrity:
     needs: change-scope
     if: needs.change-scope.outputs.documentation_only == 'true'
@@ -119,6 +126,9 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '24'
+
+      - name: Observed UI action choice guard (no device or provider)
+        run: node --test scripts/tests/qa-observed-choice.test.mjs scripts/tests/qa-argent-choice.test.mjs
 
       - name: Expo Core shared-target entrypoint contracts
         run: |
@@ -269,6 +279,7 @@ jobs:
           (cd packages/zoen-ui && node web/server.mjs > ../../web.log 2>&1 &)
           for _ in $(seq 1 60); do curl -sf http://127.0.0.1:4174/ >/dev/null && curl -s http://127.0.0.1:8790/ >/dev/null && break; sleep 1; done
           cd packages/zoen-ui/web/e2e && npm i --no-save playwright-core@1.64.1
+          CHROME="$(command -v google-chrome)" node --test delete-message.test.mjs
           RELAY=http://127.0.0.1:8790 ZOEN_CLI="$GITHUB_WORKSPACE/target/debug/zoen" CHROME="$(command -v google-chrome)" node two-people.mjs
 
       - name: Logs and screenshots

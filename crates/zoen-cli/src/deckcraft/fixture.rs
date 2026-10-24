@@ -3,6 +3,13 @@
 use super::*;
 
 pub(crate) fn fixture_at(path: std::path::PathBuf, root: [u8; 32]) -> Fixture {
+    fixture_with_privacy_at(path, root, types::Privacy::Closed)
+}
+pub(crate) fn fixture_with_privacy_at(
+    path: std::path::PathBuf,
+    root: [u8; 32],
+    privacy: types::Privacy,
+) -> Fixture {
     let owner_path = path.join("owner.sqlite");
     let owner_vault = Arc::new(Vault::default());
     let human = Client::open(owner_path.to_str().unwrap().into(), "en".into()).unwrap();
@@ -61,7 +68,7 @@ pub(crate) fn fixture_at(path: std::path::PathBuf, root: [u8; 32]) -> Fixture {
             types::EventBody::SpaceCreated {
                 title: "Worker test".into(),
                 kind: types::SpaceKind::Group,
-                privacy: types::Privacy::Closed,
+                privacy,
             },
         ),
         (

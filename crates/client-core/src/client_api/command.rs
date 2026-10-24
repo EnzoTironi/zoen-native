@@ -5,6 +5,68 @@ use super::*;
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub(super) enum Command {
+    StartOwnerPolicyDirect {
+        expected_identity_id: String,
+        expected_device_id: String,
+        agent_id: String,
+    },
+    RequestAccountPolicyOptions {
+        scope: crate::owner_policy::OwnerPolicyScope,
+    },
+    FindAccountPolicyOptions {
+        scope: crate::owner_policy::OwnerPolicyScope,
+    },
+    FindOwnerPolicyOptions {
+        scope: crate::owner_policy::OwnerPolicyScope,
+        request_id: String,
+        expected_hash: String,
+    },
+    RequestOwnerPolicyOptions {
+        scope: crate::owner_policy::OwnerPolicyScope,
+        request_id: String,
+        expected_hash: String,
+    },
+    OwnerPolicyOptions {
+        scope: crate::owner_policy::OwnerPolicyScope,
+        source: String,
+    },
+    PrepareOwnerPolicy {
+        scope: crate::owner_policy::OwnerPolicyScope,
+        source: String,
+        options_digest: String,
+        limit_units: String,
+        max_attempt_units: String,
+        enabled: bool,
+    },
+    FindOwnerPolicySubmission {
+        scope: crate::owner_policy::OwnerPolicyScope,
+        policy_digest: String,
+    },
+    ReviewOwnerPolicy {
+        scope: crate::owner_policy::OwnerPolicyScope,
+        policy_json: String,
+    },
+    SubmitOwnerPolicy {
+        scope: crate::owner_policy::OwnerPolicyScope,
+        policy_json: String,
+        confirmation_digest: String,
+    },
+    OwnerPolicyStatus {
+        scope: crate::owner_policy::OwnerPolicyScope,
+        source: String,
+    },
+    SiteToolReview {
+        expected_identity_id: String,
+        expected_device_id: String,
+        request_id: String,
+        expected_hash: String,
+    },
+    StageImageGeneration {
+        scope: crate::image_tasks::ImageTaskScope,
+        source_id: String,
+        serving_id: String,
+        input: crate::image_tasks::ImageTaskInput,
+    },
     SiteRead {
         scope: crate::sites::SiteScope,
         item_id: String,

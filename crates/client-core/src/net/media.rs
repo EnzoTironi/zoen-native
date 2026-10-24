@@ -23,6 +23,7 @@ pub(super) async fn media_worker(
 
     let Ok(http) = crate::https::client()
         .timeout(Duration::from_secs(60))
+        .redirect(reqwest::redirect::Policy::none())
         .build()
     else {
         tracing_like("media: no HTTP client");
@@ -38,24 +39,16 @@ pub(super) async fn media_worker(
         let batch = uploads.len();
         let mut upload_failed = false;
         for (sha, bytes) in uploads {
-            let ts = now_ms();
-            let sig = key.sign(&blob_put_message(&sha, ts, &relay));
-            let res = http
-                .put(format!("{base}/v1/blobs/{sha}"))
-                .header("x-zoen-device", key.id())
-                .header("x-zoen-ts", ts.to_string())
-                .header("x-zoen-sig", sig)
-                .body(bytes)
-                .send()
-                .await;
+            let res =
+                crate::blob_transport::put(&http, &base, &relay, &key, &sha, bytes, now_ms()).await;
             match res {
-                Ok(r) if r.status().is_success() => engine!(|engine| engine.upload_done(&sha)),
-                Ok(r) if matches!(r.status().as_u16(), 400 | 413) => {
+                Ok(receipt) => engine!(|engine| engine.upload_done(receipt.blob())),
+                Err(crate::blob_transport::BlobUploadError::Refused(status @ (400 | 413))) => {
                     // The relay will never take it (corrupt or too big): don't loop forever.
                     tracing_like(&format!(
                         "media: upload {} refused ({})",
                         &sha[..12],
-                        r.status()
+                        status
                     ));
                     match engine!(|engine| engine.upload_refused(&sha)) {
                         Ok(spaces) => {
@@ -71,15 +64,6 @@ pub(super) async fn media_worker(
                             break;
                         }
                     }
-                }
-                Ok(r) => {
-                    tracing_like(&format!(
-                        "media: upload {} failed ({})",
-                        &sha[..12],
-                        r.status()
-                    ));
-                    upload_failed = true;
-                    break;
                 }
                 Err(e) => {
                     tracing_like(&format!("media: upload failed: {e}"));

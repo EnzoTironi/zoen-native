@@ -9,5 +9,6 @@ export type SettingsRow = {
   leading?: ReactNode;
   iconColor?: string;
   supportingText?: string;
+  disabled?: boolean;
   onPress: () => void;
 };

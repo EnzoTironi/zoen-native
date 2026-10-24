@@ -1,3 +1,9 @@
+mod arithmetic;
+mod images;
+mod obligation;
+pub use images::{ImageEndpointPolicy, ImagePriceProfile, ImagePriceQuote};
+pub(crate) use obligation::BoundPrice;
+
 use crate::{hash, RuntimeError};
 use serde::{Deserialize, Serialize};
 use zoen_models::{DispatchRequest, ModelAttemptResult, Operation, UsageEvidence, CHAT_PROFILE};
@@ -53,6 +59,7 @@ impl PriceProfile {
         let d = &request.descriptor;
         if request.profile != CHAT_PROFILE
             || d.operation != Operation::ChatCompletion
+            || d.image.is_some()
             || request.context.price_version != self.version
             || d.endpoint != self.endpoint
             || d.model != self.model
@@ -76,17 +83,10 @@ impl PriceProfile {
     }
 
     fn cost(&self, input: u64, output: u64) -> Result<i64, RuntimeError> {
-        let value = u128::from(input)
-            .checked_mul(u128::from(self.input_units_per_million))
-            .and_then(|a| {
-                u128::from(output)
-                    .checked_mul(u128::from(self.output_units_per_million))
-                    .and_then(|b| a.checked_add(b))
-            })
-            .and_then(|v| v.checked_add(999_999))
-            .ok_or(RuntimeError::InvalidProfile)?
-            / 1_000_000;
-        i64::try_from(value).map_err(|_| RuntimeError::InvalidProfile)
+        arithmetic::million_token_cost(&[
+            (input, self.input_units_per_million),
+            (output, self.output_units_per_million),
+        ])
     }
 
     pub(crate) fn charge(&self, result: &ModelAttemptResult) -> Result<Option<i64>, RuntimeError> {
@@ -119,3 +119,6 @@ impl PriceProfile {
         self.cost(input, output).map(Some)
     }
 }
+
+#[cfg(test)]
+mod image_tests;

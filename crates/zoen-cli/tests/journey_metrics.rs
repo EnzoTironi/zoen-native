@@ -7,6 +7,8 @@
 //!   ZOEN_TEST_PG=... cargo test -p zoen-cli --test journey_metrics
 
 mod common;
+#[path = "common/metrics_fixture.rs"]
+mod metrics_fixture;
 use common::*;
 use sqlx::{Connection, PgConnection};
 use std::io::{Read, Write};
@@ -77,7 +79,7 @@ async fn mau_and_messages_per_user_over_simulated_days() {
     ));
     set_day(&clock, base_ms, 0);
     let clock_s = clock.to_string_lossy().to_string();
-    let w = World::with_env(
+    let w = World::with_prepared_env(
         "metrics",
         &[
             ("ZOEN_ADMIN_TOKEN", TOKEN),
@@ -85,6 +87,7 @@ async fn mau_and_messages_per_user_over_simulated_days() {
             ("ZOEN_METRICS_TEST_HANDLES", "qa_"),
             ("RUST_LOG", "debug,sqlx=debug"),
         ],
+        metrics_fixture::prepare,
     )
     .await;
     let day = |n: i32| set_day(&clock, base_ms, n);
@@ -110,14 +113,8 @@ async fn mau_and_messages_per_user_over_simulated_days() {
     );
 
     // Day 0: four people and a QA account sign up.
-    for (h, n) in [
-        ("ana", "Ana"),
-        ("bruno", "Bruno"),
-        ("carla", "Carla"),
-        ("davi", "Davi"),
-        ("qa_bot", "QA"),
-    ] {
-        w.init(h, n);
+    for (handle, _) in metrics_fixture::PEOPLE {
+        w.zoen(handle, &["sync"]);
     }
     assert_eq!(
         w.count(&format!(
@@ -213,11 +210,15 @@ async fn mau_and_messages_per_user_over_simulated_days() {
         "3 of 4: {r:#}"
     );
     // Reached two people in week 1: Ana (wrote again once Carla was in) and Carla. Bruno only
-    // wrote before Carla joined. The sketch is 64 bits, so a collision may hide one (1/64).
+    // wrote before Carla joined. The offline fixture pins distinct peer slots before
+    // the relay starts; collision behavior has separate explicit analytics unit tests.
     let two = r["growth"]["activation_2_people_week1_pct"]
         .as_f64()
         .unwrap();
-    assert!(two == 50.0 || two == 25.0, "{r:#}");
+    assert_eq!(
+        two, 50.0,
+        "Ana and Carla each reached two distinct peers: {r:#}"
+    );
     assert!(
         r["growth"]["invited_time_to_first_message_median_s"].is_number(),
         "{r:#}"

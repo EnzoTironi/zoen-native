@@ -40,6 +40,13 @@ impl CheapTierAuthority {
 #[async_trait]
 impl DispatchAuthority for CheapTierAuthority {
     async fn admit(&self, r: &DispatchRequest) -> Result<Admission, AdmissionError> {
+        // This staging quota is chat-only, never image billing authority.
+        if r.profile != CHEAP_CHAT_PROFILE
+            || r.descriptor.operation != Operation::ChatCompletion
+            || r.descriptor.image.is_some()
+        {
+            return Err(AdmissionError::Denied);
+        }
         if !self
             .seen
             .lock()
@@ -229,3 +236,6 @@ pub fn system_prompt(def: &Definition) -> String {
     s.push_str(&def.state.to_string());
     s
 }
+
+#[cfg(test)]
+mod tests;

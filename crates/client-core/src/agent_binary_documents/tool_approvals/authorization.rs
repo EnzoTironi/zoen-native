@@ -7,7 +7,10 @@ impl Engine {
         let Some(p) = &req.tool_proposal else {
             return false;
         };
-        let action = if matches!(p.canonical_tool.as_str(), "read_deckcraft" | "read_page") {
+        let action = if matches!(
+            p.canonical_tool.as_str(),
+            "read_deckcraft" | "read_page" | "read_site"
+        ) {
             ActionClass::Reply
         } else {
             ActionClass::Reversible

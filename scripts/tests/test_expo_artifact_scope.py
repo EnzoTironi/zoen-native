@@ -30,6 +30,10 @@ class Repository:
         self.root = Path(directory)
         self.root.mkdir(parents=True)
         self.git("init", "-q")
+        # A detached Git maintenance process can race TemporaryDirectory cleanup.
+        # These tiny owned fixtures need neither automatic GC nor maintenance.
+        self.git("config", "gc.auto", "0")
+        self.git("config", "maintenance.auto", "false")
         self.git("config", "user.name", "Scope test")
         self.git("config", "user.email", "scope@example.invalid")
         self.write("Cargo.toml", '[workspace]\nresolver="2"\nmembers=' + json.dumps(list(PACKAGES.values())) + "\n")

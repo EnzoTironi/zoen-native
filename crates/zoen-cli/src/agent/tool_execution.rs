@@ -65,8 +65,11 @@ impl ToolHost for SpaceTools<'_> {
     fn requires_native_review(&self, call: &ToolCall) -> bool {
         let current = self.fresh();
         current
-            .page_binding(call)
-            .is_some_and(|(_, tool)| tool == "replace_page_block")
+            .site_binding(call)
+            .is_some_and(|(_, tool)| tool != "read_site")
+            || current
+                .page_binding(call)
+                .is_some_and(|(_, tool)| tool == "replace_page_block")
             || current.names.iter().any(|(definition, _, tool)| {
                 definition.name == call.name && tool == client_core::agent_app_creation::TOOL
             })
@@ -108,6 +111,30 @@ impl SpaceTools<'_> {
         call: &ToolCall,
     ) -> Option<zoen_agentd::PublicArtifactReferences> {
         self.check_selection().ok()?;
+        if let Some((item, tool)) = self.site_binding(call) {
+            let command = client_core::agent_sites::parse(tool, &call.arguments).ok()?;
+            let (artifact, version, hash) = match command {
+                client_core::agent_sites::Command::Read(c) => (c.artifact_id, c.version, c.sha256),
+                client_core::agent_sites::Command::Replace(c) => {
+                    (c.artifact_id, c.version, c.sha256)
+                }
+                client_core::agent_sites::Command::Create(_) => return None,
+            };
+            if artifact != item {
+                return None;
+            }
+            self.e
+                .agent_site_read(item, version, &hash, self.source, self.serving)
+                .ok()?;
+            self.check_selection().ok()?;
+            // Only the native-verified locator/hash are public. Replacement HTML
+            // remains semantic Gate input and retains credential/content checks.
+            return zoen_agentd::PublicArtifactReferences::new(
+                tool.into(),
+                item.into(),
+                Some(hash),
+            );
+        }
         if let Some((item, tool)) = self.page_binding(call) {
             let references = (|| {
                 let parsed = client_core::agent_page_tools::parse(tool, &call.arguments).ok()?;
@@ -161,6 +188,12 @@ impl SpaceTools<'_> {
     }
     fn current_call(&self, call: &ToolCall) -> Result<String, String> {
         self.check_selection()?;
+        if call.name == image_tools::TOOL {
+            return self.image_stage(call);
+        }
+        if client_core::agent_sites::is_model_name(&call.name) {
+            return self.site_call(call);
+        }
         if client_core::agent_app_creation::is_model_name(&call.name) {
             return Err("Presentation creation requires its exact native approval".into());
         }

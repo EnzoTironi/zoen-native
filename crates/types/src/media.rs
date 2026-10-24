@@ -28,6 +28,34 @@ pub struct AttachmentSendOptions {
     pub grouping: AttachmentGrouping,
 }
 
+#[derive(Debug)]
+pub enum MediaMetadataError {
+    InvalidIntent,
+    Encoding(serde_json::Error),
+}
+
+impl std::fmt::Display for MediaMetadataError {
+    fn fmt(&self, output: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidIntent => {
+                output.write_str("Invalid attachment count, index or mutation sequence.")
+            }
+            Self::Encoding(error) => {
+                write!(output, "Could not encode attachment metadata: {error}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for MediaMetadataError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Encoding(error) => Some(error),
+            Self::InvalidIntent => None,
+        }
+    }
+}
+
 impl AttachmentSendOptions {
     pub fn is_default(&self) -> bool {
         *self == Self::default()
@@ -38,7 +66,11 @@ impl AttachmentSendOptions {
     }
 
     /// The sender derives the album id from the entire ordered immutable intent.
-    /// Callers validate the count and uniqueness before reaching this helper.
+    /// Count, index and unique immutable mutations are checked before encoding.
+    ///
+    /// # Errors
+    /// Rejects an invalid intent or a metadata encoding failure. Failure never
+    /// degrades a grouped intent into separate messages or default presentation.
     pub fn metadata(
         &self,
         author: &str,
@@ -47,11 +79,22 @@ impl AttachmentSendOptions {
         thread: bool,
         ordered_mutations: &[&str],
         index: usize,
-    ) -> Option<MessageMedia> {
-        if self.is_default() {
-            return None;
+    ) -> Result<Option<MessageMedia>, MediaMetadataError> {
+        if !self.validate_count(ordered_mutations.len())
+            || index >= ordered_mutations.len()
+            || ordered_mutations
+                .iter()
+                .enumerate()
+                .any(|(position, mutation)| {
+                    mutation.is_empty() || ordered_mutations[..position].contains(mutation)
+                })
+        {
+            return Err(MediaMetadataError::InvalidIntent);
         }
-        let group = (self.grouping == AttachmentGrouping::Grouped).then(|| {
+        if self.is_default() {
+            return Ok(None);
+        }
+        let group = if self.grouping == AttachmentGrouping::Grouped {
             let bytes = serde_json::to_vec(&(
                 "zoen.media.album.v1",
                 author,
@@ -60,17 +103,20 @@ impl AttachmentSendOptions {
                 thread,
                 ordered_mutations,
             ))
-            .expect("serializing strings cannot fail");
-            MediaGroup {
+            .map_err(MediaMetadataError::Encoding)?;
+            Some(MediaGroup {
                 id: format!("album_{}", hex::encode(Sha256::digest(bytes))),
-                index: index as u32,
-                count: ordered_mutations.len() as u32,
-            }
-        });
-        Some(MessageMedia {
+                index: u32::try_from(index).map_err(|_| MediaMetadataError::InvalidIntent)?,
+                count: u32::try_from(ordered_mutations.len())
+                    .map_err(|_| MediaMetadataError::InvalidIntent)?,
+            })
+        } else {
+            None
+        };
+        Ok(Some(MessageMedia {
             presentation: self.presentation,
             group,
-        })
+        }))
     }
 }
 
@@ -199,14 +245,21 @@ mod tests {
         };
         let first = options
             .metadata("alice", "room", None, false, &["one", "two"], 0)
+            .unwrap()
             .unwrap();
         let second = options
             .metadata("alice", "room", None, false, &["one", "two"], 1)
+            .unwrap()
             .unwrap();
         assert!(first.is_valid());
         assert_eq!(
             first.group.as_ref().unwrap().id,
             second.group.as_ref().unwrap().id
+        );
+        assert_eq!(
+            first.group.as_ref().unwrap().id,
+            "album_9e65b44aa17a8c112d3a1d59ab5df83d2af5af80a279133ebd946368a5af8139",
+            "valid immutable intents retain their original canonical hash bytes"
         );
         assert_eq!(
             (
@@ -216,10 +269,18 @@ mod tests {
             (1, 2)
         );
         for changed in [
-            options.metadata("bob", "room", None, false, &["one", "two"], 0),
-            options.metadata("alice", "other", None, false, &["one", "two"], 0),
-            options.metadata("alice", "room", Some("root"), true, &["one", "two"], 0),
-            options.metadata("alice", "room", None, false, &["two", "one"], 0),
+            options
+                .metadata("bob", "room", None, false, &["one", "two"], 0)
+                .unwrap(),
+            options
+                .metadata("alice", "other", None, false, &["one", "two"], 0)
+                .unwrap(),
+            options
+                .metadata("alice", "room", Some("root"), true, &["one", "two"], 0)
+                .unwrap(),
+            options
+                .metadata("alice", "room", None, false, &["two", "one"], 0)
+                .unwrap(),
         ] {
             assert_ne!(
                 first.group.as_ref().unwrap().id,
@@ -230,6 +291,52 @@ mod tests {
         assert!(!options.validate_count(11));
         assert!(AttachmentSendOptions::default()
             .metadata("alice", "room", None, false, &["one"], 0)
+            .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn invalid_album_intent_is_an_error_instead_of_default_metadata() {
+        let grouped = AttachmentSendOptions {
+            grouping: AttachmentGrouping::Grouped,
+            ..Default::default()
+        };
+        for (mutations, index) in [
+            (vec![], 0),
+            (vec!["one"], 0),
+            (vec!["one", "two"], 2),
+            (vec!["one", "two"], usize::MAX),
+            (vec!["same", "same"], 0),
+            (vec!["", "two"], 0),
+            (
+                vec!["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"],
+                0,
+            ),
+        ] {
+            assert!(matches!(
+                grouped.metadata("alice", "room", None, false, &mutations, index),
+                Err(MediaMetadataError::InvalidIntent)
+            ));
+        }
+        assert!(matches!(
+            AttachmentSendOptions::default().metadata("alice", "room", None, false, &[], 0),
+            Err(MediaMetadataError::InvalidIntent)
+        ));
+        let ten = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
+        let last = grouped
+            .metadata("alice", "room", None, false, &ten, 9)
+            .unwrap()
+            .unwrap();
+        assert!(last.is_valid());
+        assert_eq!(last.group.unwrap().count, 10);
+        let single_file = AttachmentSendOptions {
+            presentation: AttachmentPresentation::File,
+            ..Default::default()
+        }
+        .metadata("alice", "room", None, false, &["one"], 0)
+        .unwrap()
+        .unwrap();
+        assert!(single_file.is_valid());
+        assert!(single_file.group.is_none());
     }
 }

@@ -67,13 +67,14 @@ async fn fixture() -> (Fixture, Arc<Vault>) {
     (
         Fixture {
             world,
-            log,
+            log: Arc::new(log),
             store,
             second,
             agent,
             owner,
             space: new_id("managed-ingress"),
             head: None,
+            managed_directory: None,
         },
         vault,
     )

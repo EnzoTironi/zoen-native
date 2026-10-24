@@ -11,7 +11,7 @@ fn query(author: &Author, site: &str, before: Option<String>) -> SignedInspectio
         before,
         signature: String::new(),
     };
-    request.signature = author.key.sign(&request.signing_bytes(AUDIENCE));
+    request.signature = author.key.sign(&request.signing_bytes(AUDIENCE).unwrap());
     request
 }
 

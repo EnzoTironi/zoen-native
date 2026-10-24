@@ -17,10 +17,12 @@ pub mod call_transport;
 pub mod calls;
 pub mod media;
 pub use media::{
-    AttachmentGrouping, AttachmentPresentation, AttachmentSendOptions, MediaGroup, MessageMedia,
+    AttachmentGrouping, AttachmentPresentation, AttachmentSendOptions, MediaGroup,
+    MediaMetadataError, MessageMedia,
 };
 pub mod annotation;
 pub mod owner_budget;
+pub mod owner_policy_context;
 pub use annotation::Annotation;
 pub mod reply;
 pub use reply::ReplyRef;
@@ -43,8 +45,8 @@ pub use authority::{
 };
 mod events;
 pub use events::{
-    BackgroundSpec, ChainLink, ChatPrefs, Event, EventBody, MediaRef, ProfileKeyShare, Seen,
-    EVENT_FORMAT, GENESIS_PREV,
+    BackgroundSpec, ChainLink, ChatPrefs, Event, EventBody, MediaRef, OwnerPolicyOutcome,
+    ProfileKeyShare, Seen, EVENT_FORMAT, GENESIS_PREV,
 };
 
 #[cfg(test)]

@@ -20,6 +20,12 @@ It inspects blobs in Git's index, including added, modified and renamed files.
 Unstaged edits, untracked files and unchanged historical files are not inspected.
 Symlinks, submodules and deleted files are skipped. No tokenizer or network is used.
 
+CI also applies the same size/exclusion policy to added and modified blobs between
+the proposed base and head commits, including authored destinations of renames.
+This prevents a skipped local hook from silently admitting a new oversized file.
+It does not inspect unchanged historical files or alter the staged-only local hook.
+The whole-repository compliance audit remains a separate task in issue #208.
+
 Git cannot identify whether an agent or person wrote individual lines. The policy
 therefore covers all maintained text and excludes artifacts by explicit repository
 conventions in `.githooks/pre-commit`:

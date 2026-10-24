@@ -84,10 +84,14 @@ def exempt(path, oid=None):
 
 
 def staged_candidates():
+    return diff_candidates(("--cached",))
+
+
+def diff_candidates(revisions):
     # --no-renames represents a rename as delete/add; only its new blob is checked.
     fields = git(
-        "diff", "--cached", "--raw", "--no-abbrev", "--no-renames",
-        "--diff-filter=ACMT", "-z", "--",
+        "diff", "--raw", "--no-abbrev", "--no-renames",
+        "--diff-filter=ACMT", "-z", *revisions, "--",
     ).split(b"\0")
     candidates = []
     for index in range(0, len(fields) - 1, 2):
@@ -136,9 +140,8 @@ def is_binary(oid):
     return b"\0" in prefix
 
 
-def main():
+def check_candidates(candidates):
     try:
-        candidates = staged_candidates()
         sizes = object_sizes(candidates)
         violations = [
             (path, sizes[oid]) for path, oid in candidates
@@ -170,6 +173,14 @@ def main():
         file=sys.stderr,
     )
     return 1
+
+
+def main():
+    try:
+        return check_candidates(staged_candidates())
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        print("pre-commit: unable to check staged file sizes: " + str(error), file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

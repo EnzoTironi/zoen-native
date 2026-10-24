@@ -13,6 +13,7 @@ client-types = ["dep:ts-rs"]
 types.workspace = true
 event-log.workspace = true
 hex.workspace = true
+hmac = "0.12.1"
 prost.workspace = true
 serde.workspace = true
 serde_json.workspace = true

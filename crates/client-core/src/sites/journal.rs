@@ -125,7 +125,9 @@ impl Engine {
                 mutation: review.mutation.clone(),
                 signature: String::new(),
             };
-            if receipt != &Receipt::for_mutation(&identity, &review.configuration.audience) {
+            let expected = Receipt::for_mutation(&identity, &review.configuration.audience)
+                .map_err(|_| invalid())?;
+            if receipt != &expected {
                 return Err(storage());
             }
             record.receipt = Some(receipt.clone());
@@ -167,7 +169,7 @@ mod tests {
                 && !raw.contains("Private")
         );
         let prepared = e.site_prepare(&r, &r.relay_url, &r.configuration).unwrap();
-        let receipt = Receipt::for_mutation(&prepared.signed, &r.configuration.audience);
+        let receipt = Receipt::for_mutation(&prepared.signed, &r.configuration.audience).unwrap();
         let mut wrong = receipt.clone();
         wrong.head = "0".repeat(64);
         assert!(e.site_publication_result(&r, Some(&wrong)).is_err());

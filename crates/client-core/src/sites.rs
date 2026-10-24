@@ -87,7 +87,10 @@ fn stale() -> CoreError {
     }
 }
 fn html_valid(html: &str) -> R<()> {
-    if html.is_empty() || html.len() as u64 > MAX_HTML_BYTES || html.contains('\0') {
+    if html.is_empty()
+        || u64::try_from(html.len()).map_err(|_| invalid())? > MAX_HTML_BYTES
+        || html.contains('\0')
+    {
         return Err(invalid());
     }
     Ok(())
@@ -283,6 +286,7 @@ impl Engine {
                     &review.source.item_id,
                     &config.public_origin,
                 )
+                .map_err(|_| invalid())?
             || !secret_id(&mutation.request_id, "pub_")
             || mutation.expected_head.as_deref().is_some_and(|v| !hex64(v))
         {
@@ -324,7 +328,10 @@ impl Engine {
             mutation: mutation.clone(),
             signature: String::new(),
         };
-        signed.signature = author.key.sign(&signed.signing_bytes(&config.audience));
+        let signing_bytes = signed
+            .signing_bytes(&config.audience)
+            .map_err(|_| invalid())?;
+        signed.signature = author.key.sign(&signing_bytes);
         Ok(SitePrepared {
             relay_url: relay.into(),
             configuration: config.clone(),
@@ -344,7 +351,12 @@ impl Client {
         let audience = self
             .net
             .lock()
-            .unwrap_or_else(|p| p.into_inner())
+            .map_err(|_| CoreError::Invalid {
+                reason: crate::i18n::t(
+                    "A conexão precisa ser restabelecida antes de publicar.",
+                    "Reconnect before publishing.",
+                ),
+            })?
             .as_ref()
             .and_then(|net| {
                 net.authenticated_relay_name(&relay, &scope.identity_id, &scope.device_id)

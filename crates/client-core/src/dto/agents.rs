@@ -21,11 +21,39 @@ pub struct ToolApprovalDto {
     pub version: u32,
     pub operation: String,
     pub expires_ms: i64,
+    /// Native read-only preview kind; never an execution permit.
+    #[uniffi(default = None)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "client-types", ts(optional))]
+    pub preview_kind: Option<String>,
     /// Presentation of the signed review lineage, never a permit or effect receipt.
     #[uniffi(default = None)]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "client-types", ts(optional))]
     pub review: Option<ToolReviewDto>,
+    #[uniffi(default = None)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "client-types", ts(optional))]
+    pub canonical_tool: Option<String>,
+    /// Exact signed generation facts, never a provider capability or a cost estimate.
+    #[uniffi(default = None)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "client-types", ts(optional))]
+    pub image: Option<ImageToolReview>,
+}
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+pub struct ImageToolReview {
+    pub prompt: String,
+    pub size: String,
+    pub quality: String,
+    pub background: String,
+    pub definition_version: String,
+    pub price_digest: String,
+    pub max_image_bytes: u64,
+    pub source_id: String,
+    pub source_sha256: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum, serde::Serialize, serde::Deserialize)]

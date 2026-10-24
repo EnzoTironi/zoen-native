@@ -222,6 +222,7 @@ export default function Page() {
         />
       ) : (
         <PageBlocks
+          page={page}
           blocks={page.blocks}
           editable={page.can_edit && !pending.current && !pendingInput}
           busy={busy}

@@ -59,15 +59,20 @@ export const compiled = await build({
         builder.onResolve({ filter: /./ }, ({ path }) =>
           path === './inline-image-frame' ||
           path === './file-attachment-content' ||
+          path === './inline-file-image' ||
+          path === './observed-file' ||
           path === '../sites/open-file' ||
           path.startsWith('@babel/runtime/helpers/')
             ? undefined
             : { path, external: true },
         );
-        builder.onLoad({ filter: /file-attachment-content\.tsx$/ }, ({ path }) => ({
-          contents: transformAttachment(readFileSync(path, 'utf8'), path),
-          loader: 'tsx',
-        }));
+        builder.onLoad(
+          { filter: /(file-attachment-content|inline-file-image)\.tsx$/ },
+          ({ path }) => ({
+            contents: transformAttachment(readFileSync(path, 'utf8'), path),
+            loader: 'tsx',
+          }),
+        );
       },
     },
   ],
@@ -248,7 +253,8 @@ export function fixture(
     },
   } as unknown as ClientStore;
   const snapshot = { account: null };
-  const jsx = (type: unknown, props: Record<string, unknown>) => ({ type, props });
+  const jsx = (type: unknown, props: Record<string, unknown>): unknown =>
+    typeof type === 'function' ? type(props) : { type, props };
   const ports: Record<string, unknown> = {
     react: {
       useState: (initial: unknown) => {
@@ -267,7 +273,14 @@ export function fixture(
       },
       useEffect: effect,
       useLayoutEffect: effect,
-      useCallback: (work: unknown) => work,
+      useCallback: (work: unknown, deps: readonly unknown[]) => {
+        const current = slot();
+        if (!same(current.deps, deps)) {
+          current.deps = deps;
+          current.value = work;
+        }
+        return current.value;
+      },
     },
     'react/compiler-runtime': {
       c: (size: number) =>
@@ -284,6 +297,7 @@ export function fixture(
     'expo-sharing': {},
     'expo-router': { router: { push: (route: unknown) => navigationRequests.push(route) } },
     '../i18n/index.ts': { t: (key: string) => key, formatLocale: 'en-US' },
+    '../i18n': { t: (key: string) => key },
     '../components/message-interaction': { MessagePressable: 'MessagePressable' },
     '../core/provider': {
       useClient: () => ({ store, snapshot, mode: 'account' }),

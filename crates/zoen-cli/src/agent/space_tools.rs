@@ -42,6 +42,13 @@ impl<'a> SpaceTools<'a> {
         source: &'a str,
     ) -> Self {
         let mut names: Vec<(ToolDef, String, String)> = Vec::new();
+        if image_tools::configured() {
+            names.push((
+                image_tools::definition(),
+                space.into(),
+                image_tools::TOOL.into(),
+            ));
+        }
         if deckcraft.is_some() && e.can_create_agent_app(space, source, serving) {
             if let Some(definition) = client_core::agent_app_creation::definition(space) {
                 let definition: ToolDef =
@@ -52,6 +59,9 @@ impl<'a> SpaceTools<'a> {
                     client_core::agent_app_creation::TOOL.into(),
                 ));
             }
+        }
+        if let Err(reason) = site_tools::discover(e, space, source, serving, &mut names) {
+            say(reason);
         }
         let binary_items: std::collections::BTreeSet<_> = e
             .items()
@@ -187,6 +197,26 @@ impl<'a> SpaceTools<'a> {
     ) -> Result<client_core::AgentRequestDto, String> {
         self.check_selection()?;
         let prior = self.e.tool_approval_requests(&self.space, self.source);
+        if let Some((_, tool)) = self.site_binding(&ask.call) {
+            let dto = self
+                .e
+                .stage_site_tool_approval(
+                    &self.space,
+                    self.source,
+                    self.serving,
+                    client_core::AgentToolApprovalInput {
+                        canonical_tool: tool.into(),
+                        arguments: ask.call.arguments.clone(),
+                        worker_binding: client_core::agent_sites::executor_binding(),
+                        continuation_json: serde_json::to_string(ask)
+                            .map_err(|_| "Invalid Site continuation")?,
+                        gate_rule: ask.rule.clone(),
+                    },
+                )
+                .map_err(|error| error.to_string())?;
+            self.check_selection()?;
+            return self.register_staged(dto, &prior);
+        }
         if client_core::agent_app_creation::model_name(&self.space).as_deref()
             == Some(&ask.call.name)
             && self.names.iter().any(|(definition, _, tool)| {
@@ -440,8 +470,7 @@ impl<'a> SpaceTools<'a> {
                     .steps
                     .push((self.source.into(), progress.steps.clone())),
             }
-            let drop = state.steps.len().saturating_sub(JOURNAL_KEEP);
-            state.steps.drain(..drop);
+            image_tools::trim_completed(&mut state.steps);
             Ok(true)
         })
         .map(|_| ())
@@ -457,8 +486,7 @@ impl<'a> SpaceTools<'a> {
                 Some((_, steps)) => steps.push(step),
                 None => state.steps.push((self.source.to_string(), vec![step])),
             }
-            let drop = state.steps.len().saturating_sub(JOURNAL_KEEP);
-            state.steps.drain(..drop);
+            image_tools::trim_completed(&mut state.steps);
             Ok(true)
         });
         if result.is_err() {

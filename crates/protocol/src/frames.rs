@@ -133,7 +133,8 @@ pub enum Op {
         sealed: Vec<u8>,
         device: Option<DeviceCertificate>,
     },
-    /// Takes the link box under `id`, if it is there yet. The one op a device being linked
+    /// Reads the original link box under `id` until its publication expires. Repeated
+    /// reads return the same sealed bytes without extending TTL. The one op a device being linked
     /// (signed in as itself, not registered) may use besides registering.
     FetchLink {
         id: String,
@@ -154,6 +155,8 @@ pub enum Op {
     /// Agent citizens (migration 0028): the runtime's own state and cursors, or an
     /// owner's control over an agent it answers for.
     Agent(AgentRequest),
+    /// Read-only proof of this relay's actual runtime SQL/FDB pairing.
+    RuntimeBinding(crate::runtime_binding::Request),
     /// Relay-only transport allocation; no call consent or media permission.
     CallTurn {
         space: SpaceId,
@@ -259,6 +262,7 @@ impl Op {
             Op::Agent(AgentRequest::Control { .. }) => "agent_control",
             Op::Agent(AgentRequest::Status { .. }) => "agent_status",
             Op::CallTurn { .. } => "call_turn",
+            Op::RuntimeBinding(_) => "runtime_binding",
         }
     }
 }
@@ -300,6 +304,7 @@ pub enum Reply {
     Devices(Vec<DeviceRecord>),
     AgentState(AgentStateRecord),
     CallTurn(crate::turn::TurnCredentials),
+    RuntimeBinding(crate::runtime_binding::Proof),
 }
 
 /// One of an identity's devices, as the directory has it.

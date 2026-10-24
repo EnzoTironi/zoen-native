@@ -403,6 +403,7 @@ mod tests {
         let pending = vec![Pending {
             env: rejected,
             target_known: true,
+            managed: None,
             fence: Fence {
                 partition: partition_of(space),
                 owner: "test".into(),

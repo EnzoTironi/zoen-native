@@ -152,6 +152,19 @@ impl DeviceCore {
                     return Err(NativeError::History);
                 }
             }
+            if let Some((accepted, expected)) = self
+                .engine
+                .owner_policy_accepted_envelope(entry.env.space(), client_id)
+                .map_err(|_| NativeError::History)?
+            {
+                if expected != entry.env
+                    || accepted.seq != entry.seq
+                    || accepted.prev != entry.prev
+                    || accepted.hash != entry.hash
+                {
+                    return Err(NativeError::History);
+                }
+            }
             return Ok(());
         };
         let expected = self.pending_envelope(&pending, reference.as_ref())?;
@@ -204,6 +217,14 @@ impl DeviceCore {
             {
                 return Err(NativeError::History);
             }
+            expected
+        } else if let Some(expected) = self.image_task_pending_envelope(pending)? {
+            expected
+        } else if let Some(expected) = self
+            .engine
+            .owner_policy_pending_envelope(pending)
+            .map_err(|_| NativeError::History)?
+        {
             expected
         } else if crate::mls::must_seal(&pending.body)
             && !matches!(&pending.body, EventBody::Sealed { kind } if kind == SealedKind::Commit.name() || kind == SealedKind::Welcome.name())
