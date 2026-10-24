@@ -3,7 +3,7 @@ use super::*;
 use crate::owner_policy::OwnerPolicyContextRejection;
 use std::collections::BTreeSet;
 
-fn history(owner: &Engine) -> TestResult<Vec<Sequenced>> {
+fn history(owner: &Engine) -> StdResult<Vec<Sequenced>, Box<dyn std::error::Error>> {
     Ok(owner
         .logs
         .get(SPACE)
@@ -39,7 +39,8 @@ fn deliver_handshakes(owner: &mut Engine, worker: &mut DeviceCore) -> TestResult
 }
 
 #[test]
-fn cold_capsule_with_pruned_welcome_needs_its_own_fresh_welcome_not_worker_readiness() -> TestResult {
+fn cold_capsule_with_pruned_welcome_needs_its_own_fresh_welcome_not_worker_readiness() -> TestResult
+{
     let mut before_welcome = None;
     let mut f = Fixture::new_observing_welcome(SPACE, |core| {
         before_welcome = Some(core.image().expect("retained native private package"));
