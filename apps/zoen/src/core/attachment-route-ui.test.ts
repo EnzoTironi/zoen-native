@@ -100,7 +100,7 @@ test('compiled mode toggle captures once, never sends, and fences a retained old
   assert.equal(nodes(tree).find((node) => node.type === 'ArticleEditor')!.props.source, true);
 });
 
-test('compiled Location requires explicit preview selection and adds one link to the same draft without sending', async () => {
+test('compiled Location stages one reviewed GeoJSON in the existing journal, preserving text/reply and never sending', async () => {
   const f = fixture('location');
   f.render();
   await f.tick();
@@ -111,12 +111,33 @@ test('compiled Location requires explicit preview selection and adds one link to
   tree = f.render();
   assert.equal(f.counts().geoReads, 1);
   assert.equal(f.read().text, '**old draft**');
+  assert.equal(f.readMedia().content_json, 'null', 'selection is transient until Add');
+  const caption = nodes(tree).find(
+    (node) => node.type === 'Field' && node.props.label === 'attachmentTabs.locationCaption',
+  )!;
+  assert.ok(
+    caption,
+    'the reviewed location accepts its own attachment caption without replacing message text',
+  );
+  caption.props.onChangeText('Reviewed caption');
+  tree = f.render();
   const add = f.button(tree, 'attachmentTabs.addToMessage');
   add.props.onPress();
   add.props.onPress();
   await f.tick();
-  assert.equal(f.read().text, '**old draft**\n\nhttps://maps.apple.com/?ll=1,2');
+  assert.equal(f.prepared.length, 1);
+  assert.deepEqual(JSON.parse(f.prepared[0]!), {
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: [2, 1] },
+    properties: {},
+  });
+  const saved = JSON.parse(f.readMedia().content_json);
+  assert.equal(saved.reply_to, 'synthetic-reply');
+  assert.equal(saved.items[0].caption, 'Reviewed caption');
+  assert.equal(f.readMedia().assets[0]!.mime, 'application/geo+json');
+  assert.equal(f.read().text, '**old draft**');
   assert.equal(f.counts().sends, 0);
+  assert.equal(f.counts().backs, 1);
 });
 
 test('compiled Poll validation never creates on render/typing; explicit unconfirmed result is held, not resent', async () => {

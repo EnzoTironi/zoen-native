@@ -4,6 +4,10 @@ import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
 import * as content from '../media/attachment-content.ts';
 import * as categories from '../media/attachment-categories.ts';
+import { LocationSelection } from '../media/location-selection.ts';
+import { MediaDraftChannel } from '../media/media-draft-channel.ts';
+import type { MediaDraftDto, MediaDraftPort } from '../media/media-draft-types.ts';
+import type { StaticLocation } from '../media/types.ts';
 import * as actions from '../media/attachment-route-actions.ts';
 import {
   NormalMessageDrafts,
@@ -22,7 +26,10 @@ const compile = (path: string, suffix = '') =>
     plugins: [['babel-plugin-react-compiler', { target: '19' }]],
     caller: { name: 'metro', platform: 'ios', isDev: false, supportsStaticESM: false },
   }).code as string;
-const routeCode = compile('../media/attachment-route.tsx');
+const routeCode = compile(
+  process.env.ZOEN_ATTACHMENT_ROUTE_SOURCE ?? '../media/attachment-route.tsx',
+);
+const locationPickerCode = compile('../media/location-picker.tsx');
 const pollFieldsCode = compile('../media/poll-attachment-fields.tsx');
 export const editorCode = compile('../media/article-editor.tsx');
 export type Element = { type: unknown; props: Record<string, any> };
@@ -129,8 +136,9 @@ export function fixture(kind = 'article') {
   let owner = { mode: 'account', identityId: 'synthetic-owner', deviceId: 'synthetic-device' };
   let phase = 'ready';
   let member = true;
-  let foregroundListener: ((state: string) => void) | undefined;
-  let focusCleanup: (() => void) | undefined;
+  const foregroundListeners = new Set<(state: string) => void>();
+  const focusCleanups = new Set<() => void>();
+  let uuid = 0;
   let stored: NormalDraftSnapshot = {
     revision: '0',
     text: '**old draft**',
@@ -160,8 +168,65 @@ export function fixture(kind = 'article') {
   });
   const channel = { scope, controller };
   const state = () => ({ phase, owner });
+  let mediaStored: MediaDraftDto = {
+    revision: '0',
+    content_json: 'null',
+    assets: [],
+    attempted: false,
+  };
+  const prepared: string[] = [];
+  const searches: string[] = [];
+  let gpsGate: Promise<StaticLocation | null> | null = null;
+  let searchGate: Promise<readonly StaticLocation[]> | null = null;
+  const mediaPort: MediaDraftPort = {
+    load: async () => mediaStored,
+    save: async (_, expected, content, assets) => {
+      assert.equal(expected, mediaStored.revision);
+      mediaStored = {
+        revision: String(Number(expected) + 1),
+        content_json: content,
+        assets: assets.map((a) => ({
+          id: a.id,
+          name: a.name,
+          mime: a.mime,
+          size: 120,
+          sha256: 'a'.repeat(64),
+        })),
+        attempted: false,
+      };
+      return { accepted_revision: mediaStored.revision, draft: mediaStored };
+    },
+    materialize: async () => {
+      throw Error('not used');
+    },
+    release: async () => {},
+    send: async () => {
+      sends++;
+      throw Error('picker must not send');
+    },
+  };
+  const mediaChannel = new MediaDraftChannel(
+    {
+      expected_identity_id: scope.owner.identityId,
+      expected_device_id: scope.owner.deviceId,
+      space_id: scope.spaceId,
+      thread_root_id: null,
+    },
+    mediaPort,
+  );
+  const mediaDriver = {
+    readLocation: async () => {
+      throw Error('not a received file');
+    },
+    searchLocations: async (_binding: string, query: string) => {
+      searches.push(query);
+      return searchGate ?? [{ longitude: 4, latitude: 3, label: 'Chosen place' }];
+    },
+    cancelLocationSearch: () => {},
+  };
   const store = {
     sessionEpoch: 7,
+    driver: { media: mediaDriver },
     isSessionRetiring: false,
     getSnapshot: state,
     messageDrafts: {
@@ -169,7 +234,11 @@ export function fixture(kind = 'article') {
       isCurrent: (value: unknown) =>
         value === channel && owner.identityId === scope.owner.identityId,
     },
-    mediaDrafts: { channel: () => null },
+    mediaDrafts: {
+      channel: () => mediaChannel,
+      isCurrent: (value: unknown) =>
+        value === mediaChannel && owner.identityId === scope.owner.identityId,
+    },
     refresh: async () => {},
     request: async (request: any) => {
       assert.equal(request.op, 'install_app');
@@ -197,9 +266,13 @@ export function fixture(kind = 'article') {
         Linking: { openURL: async () => {} },
         AppState: {
           currentState: 'active',
-          addEventListener: (_: string, listener: typeof foregroundListener) => {
-            foregroundListener = listener;
-            return { remove() {} };
+          addEventListener: (_: string, listener: (state: string) => void) => {
+            foregroundListeners.add(listener);
+            return {
+              remove() {
+                foregroundListeners.delete(listener);
+              },
+            };
           },
         },
       };
@@ -216,8 +289,12 @@ export function fixture(kind = 'article') {
         useLocalSearchParams: () => ({}),
         useFocusEffect: (read: () => void | (() => void)) =>
           h.effect(() => {
-            focusCleanup = read() ?? undefined;
-            return focusCleanup;
+            const cleanup = read() ?? (() => {});
+            focusCleanups.add(cleanup);
+            return () => {
+              focusCleanups.delete(cleanup);
+              cleanup();
+            };
           }, []),
         usePreventRemove: (enabled: boolean, action: (value: any) => void) => {
           guard = { enabled, action };
@@ -226,7 +303,7 @@ export function fixture(kind = 'article') {
           };
         },
       };
-    if (name === 'expo-crypto') return { randomUUID: () => 'synthetic-id' };
+    if (name === 'expo-crypto') return { randomUUID: () => `synthetic-id-${++uuid}` };
     if (name === '../../components/dialogs')
       return { useDialogs: () => ({ confirm: async () => true }) };
     if (name === '../../core/provider')
@@ -243,6 +320,17 @@ export function fixture(kind = 'article') {
     if (name === '../../media/attachment-categories') return categories;
     if (name === '../../media/attachment-content') return content;
     if (name === '../../media/attachment-route-actions') return actions;
+    if (name === '../../media/location-map') return { LocationMap: 'LocationMap' };
+    if (name === '../../media/location-selection') return { LocationSelection };
+    if (name === '../../media/location-picker') {
+      const picker = { exports: {} };
+      runInNewContext(locationPickerCode, {
+        module: picker,
+        exports: picker.exports,
+        require: routeDependency,
+      });
+      return picker.exports;
+    }
     if (name === '../../media/article-editor') return { ArticleEditor: 'ArticleEditor' };
     if (name === '../../media/attachment-route-platform')
       return {
@@ -250,9 +338,17 @@ export function fixture(kind = 'article') {
           geoReads++;
           return content.staticLocation(1, 2);
         },
+        chooseStaticPoint: async () => {
+          geoReads++;
+          return gpsGate ?? { latitude: 1, longitude: 2 };
+        },
         chooseSharedContact: async () => {
           contactReads++;
           return content.sharedContact('Synthetic', ['+000']);
+        },
+        prepareLocationFile: async (text: string) => {
+          prepared.push(text);
+          return { uri: 'file:///location.geojson', release: async () => {} };
         },
         prepareContactFile: async () => {
           throw Error('not used');
@@ -311,15 +407,30 @@ export function fixture(kind = 'article') {
       stack?.props.options.headerLeft?.(),
       stack?.props.options.headerRight?.(),
     ].filter(Boolean);
-    const result = [...candidates, ...headers].find((node) => node.props.label === label);
+    const result = [...candidates, ...headers].find(
+      (node) => node.type === 'NativeButton' && node.props.label === label,
+    );
     assert.ok(result, label);
     return result;
   };
   return {
-    render,
+    render: () => {
+      if (kind === 'location') render();
+      return render();
+    },
     button,
     counts: () => ({ backs, sends, polls, geoReads, contactReads, captured, reveals }),
     read: () => stored,
+    readMedia: () => mediaStored,
+    prepared,
+    searches,
+    mediaChannel,
+    gpsGate: (gate: Promise<StaticLocation | null>) => {
+      gpsGate = gate;
+    },
+    searchGate: (gate: Promise<readonly StaticLocation[]>) => {
+      searchGate = gate;
+    },
     native: (text: string) => {
       nativeText = text;
     },
@@ -328,11 +439,20 @@ export function fixture(kind = 'article') {
     failPoll: () => {
       pollError = true;
     },
-    blur: () => focusCleanup?.(),
-    background: () => foregroundListener?.('background'),
-    foreground: () => foregroundListener?.('active'),
+    blur: () => {
+      for (const cleanup of focusCleanups) cleanup();
+    },
+    background: () => {
+      for (const listener of foregroundListeners) listener('background');
+    },
+    foreground: () => {
+      for (const listener of foregroundListeners) listener('active');
+    },
     revoke: () => {
       member = false;
+    },
+    replaceMedia: () => {
+      store.driver.media = { ...mediaDriver };
     },
     replaceOwner: () => {
       owner = { ...owner, identityId: 'different-owner' };

@@ -10,6 +10,8 @@ import { useTheme } from '../theme';
 import type { AttachmentDraftItem, AttachmentDraftState } from './attachment-draft';
 import { sensitiveCacheWork } from './cache-work';
 import { createDraftVideoThumbnails } from './draft-video-thumbnail';
+import { DraftLocationSummary } from './draft-location-summary';
+import { isLocationFileMime } from './location-file';
 import { formatFileSize } from './file-size';
 
 const draftVideoThumbnail = createDraftVideoThumbnails((uri) =>
@@ -48,7 +50,9 @@ export function DraftThumbnail({
   }, [item.uri, item.accepted, video]);
   return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-      {!item.accepted && ((photo && item.uri) || thumbnail) ? (
+      {!item.accepted && isLocationFileMime(item.mime) && item.uri && item.sha256 ? (
+        <DraftLocationSummary uri={item.uri} sha256={item.sha256} />
+      ) : !item.accepted && ((photo && item.uri) || thumbnail) ? (
         <Image
           source={photo ? { uri: item.uri } : thumbnail}
           cachePolicy="none"

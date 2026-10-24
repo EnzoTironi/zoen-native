@@ -16,6 +16,10 @@ declare class ZoenCoreModule extends NativeModule<{
   onPageInputStatus: (event: { json: string }) => void;
 }> {
   readonly sitePreviewVersion?: number;
+  readonly staticLocationVersion?: number;
+  searchLocations?(request: string): Promise<string>;
+  cancelLocationSearch?(binding: string): Promise<void>;
+  readLocationFile?(request: string): Promise<string>;
   startCall?(spaceId: string, video: boolean): Promise<void>;
   callAudioReply?(ticket: string, success: boolean): Promise<void>;
   callPresentation?(): Promise<string>;
