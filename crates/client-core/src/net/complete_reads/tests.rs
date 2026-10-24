@@ -103,7 +103,7 @@ impl Fixture {
                             }
                         } else {
                             assert_eq!(request.kind, Kind::Devices as i32);
-                            let mut records = vec![
+                            let mut records = [
                                 Device {
                                     device: device.clone(),
                                     revoked: false,

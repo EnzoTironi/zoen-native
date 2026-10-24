@@ -321,3 +321,43 @@ async fn negotiated_read_expiry_is_explicit_and_does_not_pin_its_pool_afterward(
     drop(reader);
     test.close().await;
 }
+
+#[tokio::test]
+async fn corrupt_empty_device_key_refuses_the_whole_read_instead_of_disappearing_before_the_first_page(
+) {
+    let test = TestRelay::new().await;
+    let root = Signer::generate();
+    let author = Author::device(&root, Signer::generate());
+    let mut socket = capable(&test, &author).await;
+    request(
+        &mut socket,
+        70,
+        Op::Register {
+            profile: profile(&author, "corrupt_directory"),
+        },
+    )
+    .await
+    .unwrap();
+    // Deliberately corrupt legacy storage: this is NOT a certified enrollment
+    // or a way for a public request to mint a device. The original SQL schema
+    // permits an empty key, and read keyset sentinels must not hide that row.
+    sqlx::query("INSERT INTO devices(device,identity,cert) VALUES ('',$1,'corrupt-fixture-only')")
+        .bind(&author.identity)
+        .execute(&test.state.pool)
+        .await
+        .unwrap();
+    for (id, op) in [
+        (71, Op::CompleteRead(Request::begin(Kind::Devices))),
+        (72, Op::Devices),
+    ] {
+        let error = request(&mut socket, id, op).await.unwrap_err();
+        assert!(error.contains(reads::PROFILE_EXCEEDED), "{error}");
+    }
+    assert!(
+        zoen_relay::db::devices_of(&test.state.pool, &author.identity)
+            .await
+            .is_err()
+    );
+    drop(socket);
+    test.close().await;
+}

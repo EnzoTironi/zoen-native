@@ -95,7 +95,7 @@ pub(super) async fn devices(
     // LIMIT bounds rows; CASE bounds each returned SQL field before allocation.
     // The raw indexed key still determines order, and malformed old rows refuse
     // the whole set instead of disappearing from its active/revoked projection.
-    let rows:Vec<(Option<String>,bool)>=sqlx::query_as("SELECT CASE WHEN octet_length(device)=64 THEN device ELSE NULL END,revoked_at IS NOT NULL FROM devices WHERE identity=$1 AND device COLLATE \"C\">$2 COLLATE \"C\" ORDER BY device COLLATE \"C\" LIMIT $3")
+    let rows:Vec<(Option<String>,bool)>=sqlx::query_as("SELECT CASE WHEN octet_length(device)=64 THEN device ELSE NULL END,revoked_at IS NOT NULL FROM devices WHERE identity=$1 AND ($2='' OR device COLLATE \"C\">$2 COLLATE \"C\") ORDER BY device COLLATE \"C\" LIMIT $3")
         .bind(identity).bind(last).bind(reads::PAGE_ROWS as i64).fetch_all(&mut **tx).await.map_err(|e|e.to_string())?;
     rows.into_iter()
         .map(|(device, revoked)| {

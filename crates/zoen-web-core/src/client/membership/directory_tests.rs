@@ -23,7 +23,7 @@ fn fixture() -> Client<HostSigner> {
     client
 }
 fn page(client: &Client<HostSigner>, ordinal: u32, previous: &[u8], cut: u8) -> Page {
-    let mut list = vec![
+    let mut list = [
         Device {
             device: client.account.device.clone(),
             revoked: false,
