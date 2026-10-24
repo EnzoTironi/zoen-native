@@ -63,9 +63,12 @@ pub(super) fn check(bytes: &[u8]) -> Result<Checked, Error> {
     {
         return Err(Error::UnsupportedProfile);
     }
-    if model.format_version != FORMAT_VERSION
-        || serde_json::to_value(model).map_err(|_| Error::InvalidDocument)? != value
-    {
+    // Match the native writer's f32 JSON spelling. `to_value` first widens f32
+    // to f64 and can reject an otherwise exact native metadata round-trip.
+    let known_json = serde_json::to_vec(&model).map_err(|_| Error::InvalidDocument)?;
+    let known_value: Value =
+        serde_json::from_slice(&known_json).map_err(|_| Error::InvalidDocument)?;
+    if model.format_version != FORMAT_VERSION || known_value != value {
         return Err(Error::UnsupportedProfile);
     }
     let document = value
