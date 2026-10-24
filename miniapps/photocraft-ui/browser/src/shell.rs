@@ -1,5 +1,4 @@
 use crate::{api, layout::Theme};
-use eframe::App as _;
 use photocraft_engine::Session;
 use photocraft_ui_egui::{PhotocraftApp, Services};
 use photocraft_zoen_host::browser::BrowserBridge;
@@ -56,7 +55,7 @@ impl eframe::App for Shell {
             }
             return;
         }
-        api::drain(&mut self.bridge, &mut self.app);
+        api::drain(&mut self.bridge, &mut self.app, api::Phase::BeforeInput);
         if let Some(theme) = api::layout().and_then(|l| l.theme) {
             let theme = match theme {
                 Theme::Dark => photocraft_ui_egui::theme::ThemeKind::Pro,
@@ -94,9 +93,10 @@ impl eframe::App for Shell {
         );
         crate::viewport::show(ui, |ui| {
             ui.add_enabled_ui(!self.app.session.managed_frozen, |ui| {
-                self.app.ui(ui, frame)
+                self.app.ui(ui, frame);
             });
         });
+        api::drain(&mut self.bridge, &mut self.app, api::Phase::AfterInput);
         ui.ctx().output_mut(|o| {
             o.commands
                 .retain(|command| !matches!(command, egui::OutputCommand::OpenUrl(_)));

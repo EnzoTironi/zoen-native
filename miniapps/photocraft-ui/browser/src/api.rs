@@ -199,19 +199,43 @@ pub(crate) fn changed(bridge: &photocraft_zoen_host::browser::BrowserBridge, app
         let _ = f.call1(&JsValue::NULL, &JsValue::from_str(&status));
     }
 }
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Phase {
+    BeforeInput,
+    AfterInput,
+}
 pub(crate) fn drain(
     bridge: &mut photocraft_zoen_host::browser::BrowserBridge,
     app: &mut PhotocraftApp,
+    phase: Phase,
 ) {
     let work = QUEUE.with(|q| {
         let mut q = q.borrow_mut();
+        let pause = bridge.is_open()
+            && q.pending
+                .front()
+                .is_some_and(|p| matches!(&p.request, Request::Freeze(Freeze { frozen: true })));
+        let hidden = q
+            .ctx
+            .as_ref()
+            .is_some_and(|ctx| ctx.input(|input| input.viewport().visible() == Some(false)));
+        // Trusted final pointer events may already be queued for this frame.
+        // Consume them in the real UI before deciding whether a pause is safe.
+        let required = if pause && !hidden {
+            Phase::AfterInput
+        } else {
+            Phase::BeforeInput
+        };
+        if phase != required {
+            return None;
+        }
         let p = q.pending.pop_front();
         if let Some(p) = &p {
             q.bytes = q.bytes.saturating_sub(p.bytes.len());
         }
-        p
+        p.map(|p| (p, pause && hidden))
     });
-    let Some(mut work) = work else {
+    let Some((mut work, input_unavailable)) = work else {
         return;
     };
     let interaction = app.host_interaction()
@@ -225,6 +249,10 @@ pub(crate) fn drain(
         metadata,
     };
     let result = match work.request {
+        Request::Freeze(Freeze { frozen: true }) if input_unavailable => {
+            // Hidden AppRunner logic retains input until the next visible UI.
+            Err("human_interaction".into())
+        }
         Request::Open(_) | Request::Command(_) | Request::Snapshot(_) if interaction => {
             Err("human_interaction".into())
         }
