@@ -157,6 +157,8 @@ pub struct MlsNet {
     rejoin: HashSet<SpaceId>,
     pub(crate) recovery_retry_at: HashMap<SpaceId, Instant>,
     recovery_dirty: Mutex<HashSet<SpaceId>>,
+    /// Transient download hints from recovery classification, never group authority.
+    pub(crate) recovery_downloads: HashMap<SpaceId, crate::mls_recovery::ContextRef>,
 }
 
 impl MlsNet {
@@ -427,3 +429,5 @@ pub(crate) fn must_seal(body: &EventBody) -> bool {
 
 #[cfg(test)]
 mod tests;
+
+pub(crate) use readiness::ReadinessRejection;

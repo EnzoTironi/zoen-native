@@ -1,11 +1,13 @@
 /** Raw input stays native. This port carries ownership and retention metadata only. */
 export type PageInputMode = 'rich' | 'markdown' | 'lossless-text';
+export type PageInputTarget = 'document' | 'append' | 'block';
 export type PageInputOperation = 'apply' | 'discard';
 export type PageInputPending = {
   revision: string;
   hasRetainedCapture: boolean;
   blockId: string | null;
   mode: PageInputMode | null;
+  target?: PageInputTarget;
 };
 export type PageInputStatus = {
   session: string;
@@ -14,6 +16,7 @@ export type PageInputStatus = {
   itemId: string;
   blockId: string | null;
   mode: PageInputMode;
+  target?: PageInputTarget;
   resuming: boolean;
   revision: string;
   statusVersion: string;
@@ -36,8 +39,10 @@ export type PageInputOpen = {
   revision: string;
   editContext: string;
   mode: PageInputMode;
+  target?: PageInputTarget;
 };
 export interface PageInputPort {
+  readonly supportsWholeDocument?: boolean;
   session(): Promise<string>;
   load(session: string, itemId: string): Promise<PageInputPending>;
   reserve(session: string, itemId: string): Promise<string>;
@@ -54,6 +59,7 @@ export type PageInputOptions = {
   blockId: string | null;
   editContext: string;
   mode: PageInputMode;
+  target?: PageInputTarget;
   resume?: boolean;
 };
 
@@ -102,25 +108,43 @@ export class PageInputEditor {
     this.allocation ??= (async () => {
       const session = await this.port.session();
       const pending = await this.port.load(session, this.options.itemId);
+      const requestedTarget =
+        this.options.target ?? (this.options.blockId === null ? 'append' : 'block');
+      const retainedTarget = pending.target ?? (pending.blockId === null ? 'append' : 'block');
       if (
         pending.hasRetainedCapture &&
-        pending.blockId !== this.options.blockId &&
+        (retainedTarget !== requestedTarget ||
+          pending.blockId !== this.options.blockId ||
+          pending.mode !== this.options.mode) &&
         !this.options.resume
       )
-        throw new PageInputConflict('Recover the existing input before editing another block.');
+        throw new PageInputConflict(
+          'Recover the existing input before changing its target or mode.',
+        );
       const resume = pending.hasRetainedCapture;
       if (resume && !pending.mode)
         throw new PageInputConflict('The retained input has no editor mode.');
+      const target = resume ? retainedTarget : requestedTarget;
+      const blockId = resume ? pending.blockId : this.options.blockId;
+      const mode = resume ? pending.mode! : this.options.mode;
+      if (
+        (target === 'block') !== (blockId !== null) ||
+        (target === 'document' && mode !== 'markdown')
+      )
+        throw new PageInputConflict('The input target and editor mode are incompatible.');
+      if (target === 'document' && !this.port.supportsWholeDocument)
+        throw new Error('Update the app to edit the whole document.');
       const id = await this.port.reserve(session, this.options.itemId);
       return {
         session,
         id,
         itemId: this.options.itemId,
-        blockId: resume ? pending.blockId : this.options.blockId,
+        blockId,
         resume,
         revision: pending.revision,
         editContext: this.options.editContext,
-        mode: resume ? pending.mode! : this.options.mode,
+        mode,
+        ...(this.port.supportsWholeDocument ? { target } : {}),
       };
     })();
     const task = (async () => {

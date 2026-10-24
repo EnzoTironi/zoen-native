@@ -150,6 +150,7 @@ impl TestRelay {
                 .unwrap()
         };
         let state = Arc::new(AppState {
+            read_snapshots: zoen_relay::read_snapshots::Resources::new(&pool),
             auth: zoen_relay::auth::Service::disabled(),
             turn: zoen_relay::turn::Service::disabled(),
             analytics: analytics::Analytics::load(&pool).await.unwrap(),

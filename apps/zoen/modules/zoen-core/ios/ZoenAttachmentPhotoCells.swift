@@ -94,6 +94,7 @@ final class PhotoLayout: UICollectionViewLayout {
 @MainActor
 final class PhotoCell: UICollectionViewCell {
   private let image = AttachmentThumbnailView()
+  private var retainedView: GalleryAssetView?
   private let check = UIButton(type: .custom)
   private let badge = UIView()
   private let orderLabel = UILabel()
@@ -144,6 +145,13 @@ final class PhotoCell: UICollectionViewCell {
     updateSelection(order: order, appearance: appearance)
     let seconds = max(0, item["duration"] as? Double ?? 0)
     duration.text = "\(Int(seconds) / 60):\(String(format: "%02d", Int(seconds) % 60))"; duration.isHidden = item["type"] as? String != "video"
+    if item["retained"] as? Bool == true {
+      guard loadThumbnail, let retained = try? GalleryItem(value:item,source:"photos") else { return }
+      let view = GalleryAssetView(item:retained,targetPixels:360)
+      view.isUserInteractionEnabled=false;contentView.insertSubview(view,aboveSubview:image)
+      retainedView=view;view.frame=contentView.bounds
+      return
+    }
     guard loadThumbnail, let asset = PHAsset.fetchAssets(withLocalIdentifiers: [String(id.dropFirst(5))], options: nil).firstObject else { return }
     let options = PHImageRequestOptions()
     options.deliveryMode = .opportunistic; options.resizeMode = .fast; options.isNetworkAccessAllowed = false
@@ -164,6 +172,7 @@ final class PhotoCell: UICollectionViewCell {
   override func layoutSubviews() {
     super.layoutSubviews()
     image.frame = contentView.bounds
+    retainedView?.frame = contentView.bounds
     check.frame = CGRect(x: bounds.width - 44, y: 0, width: 44, height: 44)
     let pixel = 1 / max(1, traitCollection.displayScale)
     let inset = 0.75 + 2 - pixel
@@ -174,6 +183,7 @@ final class PhotoCell: UICollectionViewCell {
     duration.frame = CGRect(x: 4, y: bounds.height - 22, width: max(0, bounds.width - 10), height: 18); duration.textAlignment = .right
   }
   func cancel() {
+    retainedView?.retire();retainedView?.removeFromSuperview();retainedView=nil
     if let request { manager?.cancelImageRequest(request) }
     request = nil; callback = nil; activation = nil; image.activate = nil; identifier = nil
   }

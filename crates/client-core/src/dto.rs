@@ -2,8 +2,10 @@
 
 mod agents;
 mod apps;
+mod community;
 pub use agents::*;
 pub use apps::*;
+pub use community::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]

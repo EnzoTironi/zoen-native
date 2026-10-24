@@ -30,6 +30,11 @@ use crate::{
     sync::{VAULT_DEVICE, VAULT_IDENTITY},
     AccountDto, Client, CoreError,
 };
+#[cfg(test)]
+pub(crate) use directory::transport_tests::{
+    online as directory_test_online, relay as directory_test_relay,
+};
+pub(crate) use directory::DirectoryOwner;
 
 const VAULT_PEERS: &str = "link.peers";
 const META_HISTORY: &str = "link.history";

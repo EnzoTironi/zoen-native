@@ -56,6 +56,12 @@ pub enum ImageHostProgress {
 }
 
 impl ImageRuntimeHost {
+    /// Public certified device selected by the operator, never a caller locator.
+    /// It identifies a recovery request, not MLS readiness or output authority.
+    pub fn configured_device(&self) -> &str {
+        &self.config.device
+    }
+
     pub fn configured(
         runtime: Arc<RuntimeAuthority>,
         vault: Arc<dyn SecretVault>,
@@ -89,11 +95,13 @@ impl ImageRuntimeHost {
     pub async fn owner_policy_options(
         &self,
         signed: &types::owner_policy_context::SignedOwnerPolicyInquiry,
-    ) -> Result<types::owner_policy_context::OwnerPolicyOptions, RuntimeError> {
+    ) -> Result<types::owner_policy_context::OwnerPolicyOptions, OwnerPolicyContextFailure> {
         self.runtime
             .native
             .as_ref()
-            .ok_or(RuntimeError::CoreAuthorityUnavailable)?
+            .ok_or(
+                OwnerPolicyContextStage::Credential.failed(RuntimeError::CoreAuthorityUnavailable),
+            )?
             .owner_policy_options(&self.runtime, &self.config, &self.definition, signed)
             .await
     }

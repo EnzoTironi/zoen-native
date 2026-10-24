@@ -14,7 +14,13 @@ public class ZoenCoreModule: Module {
     Name("ZoenCore")
     Events("onChange", "onPageInputStatus", "onCallState", "onCallAudio")
     Constant("sitePreviewVersion") { 2 }
+    Constant("pageInputVersion") { 2 }
     zoenSitePreviewDefinition()
+    Constant("staticLocationVersion") { 1 }
+    zoenLocationMapDefinition()
+    zoenLocationSearchDefinition(sessionOwner)
+    zoenLocationCancelDefinition()
+    zoenLocationReadDefinition(sessionOwner)
 
     // Reuse the exact pinned Telegram mosaic already used by selected previews.
     // Pure, bounded geometry only: no media bytes, authority or persistent state.
@@ -94,11 +100,8 @@ public class ZoenCoreModule: Module {
     Constant("failedMediaRecoveryVersion") { 1 }
     Constant("nativePushPresentationVersion") { 1 }
     Constant("navigationContainerVersion") { 1 }
-    View(ZoenNavigationContainer.self) {
-      ViewName("NavigationContainer")
-      Prop("scrollViewTag") { (view: ZoenNavigationContainer, value: Int) in view.scrollViewTag = value }
-      OnViewDidUpdateProps { (view: ZoenNavigationContainer) in view.bind() }
-    }
+    Constant("navigationMetricsVersion") { 1 }
+    zoenNavigationContainerDefinition()
     View(ZoenComposerGlassSurface.self) {
       ViewName("ComposerGlassSurface")
       Prop("isDark") { (view: ZoenComposerGlassSurface, value: Bool) in view.isDark = value }
@@ -250,6 +253,7 @@ public class ZoenCoreModule: Module {
       let presenter = await MainActor.run { self.appContext?.utilities?.currentViewController() }
       try await self.session.previewRecentAttachment(request, presentationId: presentationId, presenter: presenter)
     }
+    zoenContactReadDefinition(sessionOwner)
     AsyncFunction("previewLocalFile") { (uri: String) async throws in
       let presenter = await MainActor.run { self.appContext?.utilities?.currentViewController() }
       try await self.session.previewLocalFile(uri, presenter: presenter)

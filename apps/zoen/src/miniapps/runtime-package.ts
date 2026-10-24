@@ -8,7 +8,7 @@ export type RuntimeAsset = Readonly<{
 }>;
 export type RuntimePackage = Readonly<{
   schema: 1;
-  engine: 'deckcraft';
+  engine: 'deckcraft' | 'gridcraft' | 'wordcraft' | 'photocraft';
   revision: string;
   abi: 'zoen-host-v1';
   module: RuntimeAsset;
@@ -51,7 +51,10 @@ export function parseRuntimePackage(value: unknown): RuntimePackage {
   const input = record(value, ['schema', 'engine', 'revision', 'abi', 'module', 'wasm']);
   if (
     input.schema !== 1 ||
-    input.engine !== 'deckcraft' ||
+    (input.engine !== 'deckcraft' &&
+      input.engine !== 'gridcraft' &&
+      input.engine !== 'wordcraft' &&
+      input.engine !== 'photocraft') ||
     input.abi !== 'zoen-host-v1' ||
     typeof input.revision !== 'string' ||
     !/^[a-f0-9]{40}$/.test(input.revision)
@@ -90,7 +93,7 @@ export function parseRuntimePackage(value: unknown): RuntimePackage {
     throw invalid();
   return Object.freeze({
     schema: 1,
-    engine: 'deckcraft',
+    engine: input.engine,
     revision: input.revision,
     abi: 'zoen-host-v1',
     module,

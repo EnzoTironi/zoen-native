@@ -6,12 +6,21 @@ use std::io::{self, Write};
 use zoen_agentd::{ToolCall, ToolDef, ToolObservation, ToolStep};
 
 const EVENT: &str = "zoen.agent.tools.v1";
-const KINDS: [&str; 11] = [
+const KINDS: &[&str] = &[
     "create_site",
     "read_site",
     "replace_site_source",
     "create_deckcraft",
+    "create_gridcraft",
+    "create_wordcraft",
+    "create_photocraft",
+    "read_photocraft",
+    "photocraft_transform",
     "read_deckcraft",
+    "read_gridcraft",
+    "gridcraft_cell_set",
+    "read_wordcraft",
+    "wordcraft_text_replace",
     "deckcraft_text_set",
     "deckcraft_slide_notes",
     "deckcraft_shape_insert",
@@ -37,9 +46,10 @@ fn public_kind(host: &SpaceTools<'_>, name: &str) -> Option<Value> {
         &fresh
     };
     let (_, item, kind) = current.names.iter().find(|(def, _, _)| def.name == name)?;
-    if kind == client_core::agent_app_creation::TOOL && item == &host.space {
-        return (client_core::agent_app_creation::model_name(&host.space).as_deref() == Some(name))
-            .then(|| json!({"kind":kind}));
+    if client_core::agent_app_creation::is_model_name(kind) && item == &host.space {
+        return (client_core::agent_app_creation::model_name_for(kind, &host.space).as_deref()
+            == Some(name))
+        .then(|| json!({"kind":kind}));
     }
     if kind == "create_site" && item == &host.space {
         return (client_core::agent_sites::model_name(kind, item).as_deref() == Some(name))

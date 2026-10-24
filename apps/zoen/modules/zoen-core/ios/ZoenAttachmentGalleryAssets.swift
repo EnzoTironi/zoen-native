@@ -5,14 +5,19 @@ import UIKit
 
 enum GalleryFailure:Error {case invalid}
 struct GalleryItem:Equatable {
+  let location:ZoenDraftLocationSource?
+  let locationErrorLabel:String
   let id:String;let name:String;let video:Bool;let uri:URL?;let photoId:String?;let dimensions:CGSize
   init(value:[String:Any],source:String)throws {
     guard let id=value["id"] as? String,!id.isEmpty,id.utf8.count<=2048 else{throw GalleryFailure.invalid}
+    location=try ZoenDraftLocationSource.decode(value,source:source)
+    locationErrorLabel=String((value["locationErrorLabel"] as? String ?? NSLocalizedString("This location could not be opened.",comment:"Invalid draft location preview")).prefix(256))
     self.id=id;name=String((value["name"] as? String ?? "").prefix(255))
     video=(value["mime"] as? String ?? "").hasPrefix("video/") || value["type"] as? String == "video"
     let w=(value["width"] as? Double).flatMap{$0.isFinite && $0>0 && $0<=100000 ? $0:nil} ?? 1
     let h=(value["height"] as? Double).flatMap{$0.isFinite && $0>0 && $0<=100000 ? $0:nil} ?? 1
-    if source=="photos" {guard id.hasPrefix("ph://"),id.count>5 else{throw GalleryFailure.invalid};photoId=String(id.dropFirst(5));uri=nil}
+    if source=="photos" {guard id.hasPrefix("ph://"),id.count>5 else{throw GalleryFailure.invalid}}
+    if source=="photos", !(value["retained"] as? Bool ?? false) {photoId=String(id.dropFirst(5));uri=nil}
     else {
       photoId=nil
       let raw=value["uri"] as? String ?? ""
@@ -80,6 +85,7 @@ struct GalleryItem:Equatable {
     if let request{manager.cancelImageRequest(request)}
     videoThumbnail.cancel()
     generation=UUID();let ticket=generation;retry.isHidden=true
+    if item.location != nil { return }
     if let id=item.photoId,let asset=PHAsset.fetchAssets(withLocalIdentifiers:[id],options:nil).firstObject {
       let options=PHImageRequestOptions();options.isNetworkAccessAllowed=allowNetwork;options.deliveryMode = .opportunistic
       options.progressHandler={[weak self] value,_,_,_ in Task{@MainActor [weak self] in guard let self,!retired,generation==ticket else{return};progress.isHidden=false;progress.progress=Float(min(1,max(0,value)))}}
@@ -111,12 +117,14 @@ struct GalleryItem:Equatable {
       } else {retry.isHidden=false}
     }
   }
+  func hideMediaStatus(){fallback.isHidden=true;progress.isHidden=true;retry.isHidden=true;image.isHidden=true}
   func promoteStatus(){for view in [fallback,progress,retry]{bringSubviewToFront(view)}}
   func retire(){guard !retired else{return};retired=true;generation=UUID();videoThumbnail.cancel();if let request{manager.cancelImageRequest(request)};request=nil;loaded=nil}
 }
 
 @MainActor final class GalleryMediaView:GalleryAssetView,UIScrollViewDelegate {
   private let zoom=UIScrollView()
+  private var locationPreview:ZoenDraftLocationGallery?
   private var player:AVPlayer?
   private var playerLayer:AVPlayerLayer?
   private let conversation:Bool
@@ -133,6 +141,7 @@ struct GalleryItem:Equatable {
   var active=false {didSet{
     guard !retired else{return}
     if active,conversation,item.video,playback == nil,let uri=item.uri {install(AVPlayerItem(url:uri),autoplay:false)}
+    locationPreview?.setActive(active)
     playback?.setActive(active);if !active{stop()};refreshVideoPresentation()
   }}
   var isZoomed:Bool{abs(zoom.zoomScale-1)>0.01}
@@ -148,9 +157,13 @@ struct GalleryItem:Equatable {
     zoom.addGestureRecognizer(tap);zoom.addGestureRecognizer(double)
     play.setImage(ZoenTelegramAttachmentGlyph.image(.play),for:.normal);play.backgroundColor=UIColor.black.withAlphaComponent(0.3);play.layer.cornerRadius=30;play.tintColor = .white
     play.accessibilityLabel=item.name;play.addAction(UIAction{[weak self] _ in self?.playVideo()},for:.touchUpInside);play.isHidden = !item.video;addSubview(play)
+    if let source=item.location {
+      let preview=ZoenDraftLocationGallery(url:item.uri,source:source,errorText:item.locationErrorLabel)
+      locationPreview=preview;addSubview(preview);hideMediaStatus();zoom.isHidden=true;play.isHidden=true
+    }
   }
   required init?(coder:NSCoder){return nil}
-  override func layoutSubviews(){super.layoutSubviews();zoom.frame=bounds;if !isZoomed{image.frame=zoom.bounds};playerLayer?.frame=bounds;videoControls?.frame=bounds;play.frame=CGRect(x:bounds.midX-30,y:bounds.midY-30,width:60,height:60)}
+  override func layoutSubviews(){super.layoutSubviews();locationPreview?.frame=bounds;zoom.frame=bounds;if !isZoomed{image.frame=zoom.bounds};playerLayer?.frame=bounds;videoControls?.frame=bounds;play.frame=CGRect(x:bounds.midX-30,y:bounds.midY-30,width:60,height:60)}
   func viewForZooming(in scrollView:UIScrollView)->UIView?{image}
   func scrollViewDidZoom(_ scrollView:UIScrollView){zoomChanged?(isZoomed)}
   @objc private func singleTap(){if conversation{toggle?()}else if item.video,let player,player.rate>0{player.pause();play.isHidden=false}else{toggle?()}}
@@ -210,6 +223,7 @@ struct GalleryItem:Equatable {
     // Preserve the last rendered conversation frame through a user dismissal;
     // authority/player work retires now, and the parent removes this surface.
     if conversation,player != nil,let snapshot=snapshotView(afterScreenUpdates:false){snapshot.frame=bounds;addSubview(snapshot)}
+    locationPreview?.retire();locationPreview=nil
     playback?.retire();videoControls?.retire()
     super.retire();stop();if let videoRequest{videoManager.cancelImageRequest(videoRequest)};videoRequest=nil;playerStatus=nil;player?.replaceCurrentItem(with:nil);player=nil;playerLayer?.removeFromSuperlayer();playerLayer=nil;playback=nil;videoControls=nil;toggle=nil;zoomChanged=nil
   }

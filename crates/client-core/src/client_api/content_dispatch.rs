@@ -213,6 +213,19 @@ impl Client {
                 data_base64,
                 mutation_id,
             } => encode(&self.app_binary_create(space_id, title, data_base64, mutation_id)?),
+            AppBinaryCreateFor {
+                app_id,
+                space_id,
+                title,
+                data_base64,
+                mutation_id,
+            } => encode(&self.app_binary_create_for(
+                app_id,
+                space_id,
+                title,
+                data_base64,
+                mutation_id,
+            )?),
             AppBinarySave {
                 item_id,
                 expected_version,

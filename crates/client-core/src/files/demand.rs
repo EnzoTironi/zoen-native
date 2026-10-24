@@ -151,11 +151,13 @@ impl Engine {
             if !self.net.synced.contains(&it.space) {
                 continue;
             }
-            if matches!(&it.current().content, ItemContent::App(_))
-                && !self
-                    .me
-                    .as_deref()
-                    .is_some_and(|me| self.is_member(&it.space, me))
+            // `synced` records catch-up, not continuing read authority. This
+            // list also admits HTTP completions, including current File chunks
+            // that would otherwise bypass a revoked foreground demand.
+            if !self
+                .me
+                .as_deref()
+                .is_some_and(|me| self.is_member(&it.space, me))
             {
                 continue;
             }

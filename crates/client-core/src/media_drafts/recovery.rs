@@ -174,6 +174,7 @@ impl Engine {
                 Content::Attachments {
                     reply_to,
                     items: attachments,
+                    gallery: None,
                     options: AttachmentSendOptions {
                         presentation: media
                             .as_ref()

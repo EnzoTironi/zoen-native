@@ -4,7 +4,9 @@ use crate::{
     dto::*,
     engine::{ReqStatus, State},
 };
-use miniapps::deckcraft::{self, agent_tools};
+use miniapps::binary::{self, agent_tools};
+#[cfg(test)]
+use miniapps::deckcraft;
 use serde_json::{json, Value};
 use types::{
     ActionClass, AgentRequest, Capability, EventBody, RequestResolution, ToolDecision,
@@ -23,7 +25,7 @@ fn stale() -> CoreError {
 }
 fn malformed() -> CoreError {
     CoreError::Invalid {
-        reason: "Unsupported or invalid reviewed presentation action.".into(),
+        reason: "Unsupported or invalid reviewed binary App action.".into(),
     }
 }
 fn digest(value: &str) -> bool {
@@ -75,8 +77,9 @@ fn parsed(p: &ToolProposal) -> R<(Value, Option<Value>)> {
     if p.schema == 2 {
         return crate::agent_pages::approvals::parsed(p);
     }
+    let format = agent_tools::format(&p.canonical_tool).ok_or_else(malformed)?;
     if p.schema != 1
-        || p.engine_revision != deckcraft::ENGINE_REVISION
+        || p.engine_revision != format.revision()
         || !digest(&p.worker_binding)
         || !digest(&p.source_sha256)
         || !digest(&p.task_sha256)
@@ -168,6 +171,15 @@ pub(crate) fn command_intent(p: &ToolProposal, action: Option<&Value>) -> R<Stri
     .map_err(|_| malformed())?))
 }
 
+pub(crate) fn mutation_id(p: &ToolProposal, intent: &str) -> String {
+    let prefix = match agent_tools::format(&p.canonical_tool) {
+        Some(binary::Format::Gridcraft) => "gridcmd",
+        Some(binary::Format::Wordcraft) => "wordcmd",
+        Some(binary::Format::Photocraft) => "photocmd",
+        _ => "deckcmd",
+    };
+    format!("{prefix}_{intent}")
+}
 pub(crate) fn operation(tool: &str) -> String {
     use crate::i18n::t;
     match tool {
@@ -176,8 +188,17 @@ pub(crate) fn operation(tool: &str) -> String {
         "replace_site_source" => t("Atualizar site", "Update Site"),
         "generate_image" => t("Criar imagem", "Create image"),
         "read_page" => t("Ler página", "Read Page"),
+        "create_gridcraft" => t("Criar planilha", "Create spreadsheet"),
+        "create_photocraft" => t("Criar imagem", "Create image"),
+        "read_photocraft" => t("Ler imagem", "Read image"),
+        "photocraft_transform" => t("Transformar imagem", "Transform image"),
+        "create_wordcraft" => t("Criar documento", "Create document"),
+        "read_wordcraft" => t("Ler documento", "Read document"),
+        "wordcraft_text_replace" => t("Substituir texto", "Replace text"),
         "create_deckcraft" => t("Criar apresentação", "Create presentation"),
         "replace_page_block" => t("Substituir bloco da página", "Replace Page block"),
+        "read_gridcraft" => t("Ler planilha", "Read spreadsheet"),
+        "gridcraft_cell_set" => t("Alterar célula", "Set cell"),
         "read_deckcraft" => t("Ler apresentação", "Read presentation"),
         "deckcraft_text_set" => t("Substituir texto", "Replace shape text"),
         "deckcraft_slide_notes" => t("Atualizar notas do slide", "Update slide notes"),
@@ -199,7 +220,19 @@ pub(crate) fn review_detail(p: &ToolProposal, title: &str) -> String {
             crate::i18n::t("Depois", "After"),
             args["after"]["text"].as_str().unwrap_or_default()
         ),
-        "read_deckcraft" => heading,
+        "read_deckcraft" | "read_gridcraft" | "read_wordcraft" | "read_photocraft" => heading,
+        "photocraft_transform" => format!(
+            "{}\n{}",
+            heading,
+            args["action"].as_str().unwrap_or_default()
+        ),
+        "gridcraft_cell_set" => format!(
+            "{}\n{}!{}\n{}",
+            heading,
+            args["sheet"].as_str().unwrap_or_default(),
+            args["cell"].as_str().unwrap_or_default(),
+            args["input"].as_str().unwrap_or_default()
+        ),
         "deckcraft_slide_new" => format!(
             "{}\n{}\n{}",
             heading,

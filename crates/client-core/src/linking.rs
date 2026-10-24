@@ -15,6 +15,7 @@ use crate::sync::AccountMeta;
 use crate::CoreError;
 
 type R<T> = Result<T, CoreError>;
+mod observation;
 
 const META_ACTIVE: &str = "devices.active";
 const META_REVOKED: &str = "devices.revoked";
@@ -184,7 +185,23 @@ impl Engine {
     }
 
     /// The relay's list of our devices.
-    pub(crate) fn devices_arrived(&mut self, list: Vec<DeviceRecord>) {
+    pub(crate) fn devices_arrived(&mut self, list: Vec<DeviceRecord>) -> R<()> {
+        if list.len() > protocol::complete_reads::DEVICE_ROWS {
+            return Err(CoreError::Invalid {
+                reason: protocol::complete_reads::PROFILE_EXCEEDED.into(),
+            });
+        }
+        let mut seen = BTreeSet::new();
+        for record in &list {
+            if record.device.len() != 64
+                || !record.device.bytes().all(|b| b.is_ascii_hexdigit())
+                || !seen.insert(record.device.clone())
+            {
+                return Err(CoreError::Invalid {
+                    reason: protocol::complete_reads::INVALID.into(),
+                });
+            }
+        }
         let active: BTreeSet<String> = list
             .iter()
             .filter(|d| !d.revoked)
@@ -195,19 +212,23 @@ impl Engine {
             .filter(|d| d.revoked)
             .map(|d| d.device.clone())
             .collect();
-        let _ = self.store.set_meta(
-            META_ACTIVE,
-            &serde_json::to_string(&active).unwrap_or_default(),
-        );
-        let _ = self.store.set_meta(
-            META_REVOKED,
-            &serde_json::to_string(&revoked).unwrap_or_default(),
-        );
-        if let Err(e) = self.mls_siblings() {
-            tracing_like(&format!("sibling devices: {e}"));
-        }
+        let active = serde_json::to_string(&active).map_err(|e| CoreError::Storage {
+            message: e.to_string(),
+        })?;
+        let revoked = serde_json::to_string(&revoked).map_err(|e| CoreError::Storage {
+            message: e.to_string(),
+        })?;
+        // Reuse the existing Engine savepoint + reload-on-failure boundary. Both
+        // sets and any sibling publication either persist together or retain the
+        // previous complete projection. No partial page invokes this method.
+        self.atomic_agent_action(|engine| {
+            engine.store.set_meta(META_ACTIVE, &active)?;
+            engine.store.set_meta(META_REVOKED, &revoked)?;
+            engine.mls_siblings()
+        })?;
         let spaces: Vec<SpaceId> = self.net.synced.iter().cloned().collect();
         self.net.mls.mark_dirty(spaces);
+        Ok(())
     }
 
     pub(crate) fn revoked_devices(&self) -> BTreeSet<String> {
@@ -235,41 +256,51 @@ impl Engine {
 
     /// Our other linked devices missing from a group we are in: ask for their leaf once.
     pub(crate) fn mls_siblings(&mut self) -> R<()> {
+        let spaces: Vec<SpaceId> = self.net.synced.iter().cloned().collect();
+        for space in spaces {
+            self.mls_siblings_in(&space)?;
+        }
+        Ok(())
+    }
+
+    /// A directory can arrive before this device's own Welcome. Revisit only
+    /// the existing dirty group, using the same retained directory and intent.
+    pub(crate) fn mls_siblings_in(&mut self, space: &str) -> R<()> {
+        if !self.is_e2e(space) || !self.net.synced.contains(space) {
+            return Ok(());
+        }
         let Some(mine) = self.net.account.as_ref().map(|a| a.device.clone()) else {
             return Ok(());
         };
-        let me = self.me_id()?;
         let revoked = self.revoked_devices();
         let siblings: Vec<String> = set_of(self.store.meta(META_ACTIVE)?)
             .into_iter()
-            .filter(|d| *d != mine && !revoked.contains(d))
+            .filter(|device| *device != mine && !revoked.contains(device))
             .collect();
         if siblings.is_empty() {
             return Ok(());
         }
-        let spaces: Vec<SpaceId> = self
-            .net
-            .synced
-            .iter()
-            .filter(|s| self.is_e2e(s))
-            .cloned()
-            .collect();
-        for space in spaces {
-            let listed = self.mls_roster(&space).is_some_and(|r| r.contains_key(&me));
-            let Some(leaves) = self.mls_leaves(&space) else {
-                continue;
-            };
-            if !listed {
+        let me = self.me_id()?;
+        let listed = self.mls_roster(space).is_some_and(|r| r.contains_key(&me));
+        let Some(leaves) = self.mls_leaves(space) else {
+            return Ok(());
+        };
+        if !listed {
+            return Ok(());
+        }
+        for device in siblings {
+            let asked = format!("link.asked:{space}:{device}");
+            if leaves.contains(&(me.clone(), device.clone())) || self.store.meta(&asked)?.is_some()
+            {
                 continue;
             }
-            for d in &siblings {
-                let asked = format!("link.asked:{space}:{d}");
-                if leaves.contains(&(me.clone(), d.clone())) || self.store.meta(&asked)?.is_some() {
-                    continue;
-                }
-                self.append(&space, &me, EventBody::DeviceJoining { device: d.clone() })?;
-                self.store.set_meta(&asked, "1")?;
-            }
+            // The existing savepoint also restores the optimistic projection
+            // on failure: a durable suppression marker cannot outlive its intent.
+            self.atomic_agent_action(|engine| {
+                engine.append(space, &me, EventBody::DeviceJoining { device })?;
+                engine.store.set_meta(&asked, "1")?;
+                Ok(())
+            })?;
         }
         Ok(())
     }

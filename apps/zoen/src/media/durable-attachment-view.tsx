@@ -5,6 +5,7 @@ import { AttachmentApproval, supportsMediaApproval } from './attachment-approval
 import type { AttachmentComposerField } from './attachment-composer';
 import { MAX_ATTACHMENT_ITEMS, type AttachmentDraftState } from './attachment-draft';
 import { AttachmentDraftStrip } from './attachment-draft-strip';
+import { isLocationFileMime } from './location-file';
 import { mediaPlayback } from './playback-owner';
 
 import type { useDurableAttachmentController } from './use-durable-attachment-controller';
@@ -72,6 +73,7 @@ export function renderDurableAttachment(
         name: asset?.name ?? '',
         mime: asset?.mime ?? 'application/octet-stream',
         size: asset?.size ?? 0,
+        sha256: state?.value?.assets.find((asset) => asset.id === item.asset_id)?.sha256,
         mutationId: item.mutation_id,
         caption: item.caption,
         attempted: retry,
@@ -117,6 +119,7 @@ export function renderDurableAttachment(
             void channel
               .save({
                 ...next,
+                ...(next.gallery ? { gallery: { ...next.gallery, forced_caption: false } } : {}),
                 items: next.items.map((item) =>
                   item.mutation_id === selected.mutationId ? { ...item, caption } : item,
                 ),
@@ -182,7 +185,11 @@ export function renderDurableAttachment(
                   canReview
                     ? (id) => {
                         const item = items.find((item) => item.mutationId === id);
-                        if (supportsMediaApproval && item && /^(image|video)\//.test(item.mime))
+                        if (
+                          supportsMediaApproval &&
+                          item &&
+                          (/^(image|video)\//.test(item.mime) || isLocationFileMime(item.mime))
+                        )
                           openApproval(id);
                         else void review.open(id);
                       }

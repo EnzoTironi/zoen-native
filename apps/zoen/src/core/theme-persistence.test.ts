@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import * as themeInputProbe from '../theme/input-probe.ts';
+import { nativeSwitch } from './theme-native-switch.fixtures.ts';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname } from 'node:path';
@@ -35,6 +37,7 @@ const ports = new Set([
   'react/jsx-runtime',
   'react-native',
   './preferences',
+  './theme/input-probe',
   './i18n/index.ts',
 ]);
 const output = await build({
@@ -89,9 +92,17 @@ function deferred<T>() {
   });
   return { promise, resolve, reject };
 }
-function fixture() {
+function fixture(probeEnabled = false) {
   let cursor = 0,
     compilerCursor = 0;
+  const traces: string[] = [];
+  const probe = {
+    ...themeInputProbe,
+    THEME_INPUT_PROBE: probeEnabled,
+    reportThemeInput: themeInputProbe.createThemeInputProbe(probeEnabled, (line) =>
+      traces.push(line),
+    ),
+  };
   const hooks: unknown[] = [],
     caches: unknown[][] = [],
     effects: (() => unknown)[] = [];
@@ -150,6 +161,7 @@ function fixture() {
         isReduceMotionEnabled: async () => false,
       },
     },
+    './theme/input-probe': probe,
     './i18n/index.ts': { t: (key: string) => key },
     './preferences': {
       preferences: {
@@ -216,11 +228,15 @@ function fixture() {
     },
     '@expo/ui': { Host: 'Host', Switch: 'Switch', Slider: 'Slider' },
     '@expo/ui/swift-ui/modifiers': Object.fromEntries(
-      ['accessibilityLabel', 'accessibilityValue', 'foregroundStyle', 'frame'].map((name) => [
-        name,
-        (value: unknown) => ({ name, value }),
-      ]),
+      [
+        'accessibilityLabel',
+        'accessibilityValue',
+        'accessibilityHint',
+        'foregroundStyle',
+        'frame',
+      ].map((name) => [name, (value: unknown) => ({ name, value })]),
     ),
+    '../theme/input-probe': probe,
     '../i18n': { t: (key: string) => key },
     '../theme': { useTheme: () => currentTheme },
     '../theme/sky': { resolveSkyTheme },
@@ -244,7 +260,16 @@ function fixture() {
     currentTheme = draw();
     return settingsModule.exports.ThemeSettings();
   }
-  return { draw, drawSettings, settle, reads, writes, failed, saved };
+  function automaticSwitch() {
+    const row = nodes(drawSettings()).find(
+      (node) => node.props.label === 'settings.themeAutomatic',
+    )!;
+    assert.equal(typeof row.type, 'function');
+    const host = (row.type as (props: Record<string, any>) => Element)(row.props);
+    const control = nodes(host).find((node) => node.type === 'Switch')!;
+    return nativeSwitch(control.props);
+  }
+  return { draw, drawSettings, automaticSwitch, settle, reads, writes, failed, saved, traces };
 }
 
 test('successful Night/appearance writes never hide an unsaved Day customization', async () => {
@@ -411,5 +436,58 @@ test('cold provider restoration recovers each selected preset and its own saved 
     assert.equal(restored.presentation.chat.outgoing.fill, '#123456');
     assert.equal(restored.presentation.typography.message.fontSize, 23);
     assert.equal(f.writes.length, 0, 'restoration must not mutate any existing preference');
+  }
+});
+
+test('installed iOS Switch native event reaches actual Automatic preference and persists both directions', async () => {
+  const f = fixture();
+  f.draw().setPreference('night');
+  await f.settle();
+  const off = f.automaticSwitch();
+  assert.equal(off.props.isOn, false);
+  off.props.onIsOnChange({ nativeEvent: { isOn: true } });
+  let current = await f.settle();
+  assert.equal(current.preference, 'auto');
+  assert.equal(f.saved.get('appearance'), 'auto');
+  assert.equal(f.automaticSwitch().props.isOn, true);
+  // An obsolete disk read must not undo the native event.
+  f.reads.get('appearance')!.resolve('day');
+  current = await f.settle();
+  assert.equal(current.preference, 'auto');
+  f.automaticSwitch().props.onIsOnChange({ nativeEvent: { isOn: false } });
+  current = await f.settle();
+  assert.equal(current.preference, 'night');
+  assert.equal(f.saved.get('appearance'), 'night');
+});
+
+test('opt-in Automatic probe observes callback and actual provider commit without changing selection or storing diagnostics', async () => {
+  for (const enabled of [false, true]) {
+    const f = fixture(enabled);
+    f.draw().setPreference('night');
+    await f.settle();
+    f.traces.length = 0;
+    const screen = f.drawSettings();
+    const control = f.automaticSwitch();
+    assert.equal(control.props.testID, enabled ? 'zoen-theme-automatic-probe' : undefined);
+    assert.equal(typeof screen.props.onTouchStart, enabled ? 'function' : 'undefined');
+    screen.props.onTouchStart?.();
+    control.props.onIsOnChange({ nativeEvent: { isOn: true } });
+    const current = await f.settle();
+    assert.equal(current.preference, 'auto');
+    assert.equal(f.saved.get('appearance'), 'auto');
+    assert.deepEqual(
+      [...f.saved.keys()],
+      ['appearance'],
+      'probe never creates preference or diagnostic records',
+    );
+    const stages = f.traces.map((line) =>
+      line.replace(/^\[ZoenThemeInput\] /, '').replace(/ count=\d+$/, ''),
+    );
+    assert.deepEqual(
+      stages,
+      enabled
+        ? ['screen-touch-start', 'js-callback', 'preference-request', 'preference-committed']
+        : [],
+    );
   }
 });

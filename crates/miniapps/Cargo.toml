@@ -10,6 +10,7 @@ publish.workspace = true
 types.workspace = true
 localization.workspace = true
 serde_json.workspace = true
+serde.workspace = true
 sha2.workspace = true
 url = "2.5"
 base64 = "0.22"
@@ -17,3 +18,4 @@ chrono = { version = "0.4", default-features = false, features = ["std"] }
 chrono-tz = { version = "0.10", default-features = false, features = ["std"] }
 
 zip = { version = "=8.6.0", default-features = false, features = ["deflate"] }
+quick-xml = "=0.41.0"

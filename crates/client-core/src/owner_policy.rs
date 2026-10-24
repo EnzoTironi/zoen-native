@@ -1,17 +1,29 @@
 //! Explicit owner-wide spending policy, sent through the existing encrypted DM.
 //! A queued submission never proves installation in the Runtime authority.
+mod context_rejection;
 mod control;
 mod image_context;
+mod observation;
 mod options;
 mod publication;
+mod welcome;
 use crate::{
     engine::{Engine, R},
     Client, CoreError,
 };
+use context_rejection::ContextAdmissionFailure;
+pub use context_rejection::OwnerPolicyContextRejection;
 pub use control::OwnerPolicySubmission;
-pub use options::{OwnerPolicyContext, OwnerPolicyInquiryControl, OwnerPolicyOptionsStatus};
+pub use observation::{
+    WorkerConnectionState, WorkerDirectoryState, WorkerGroupObservation, WorkerGroupState,
+};
+pub use options::{
+    OwnerPolicyContext, OwnerPolicyInquiryControl, OwnerPolicyInquiryCounts,
+    OwnerPolicyInquiryScan, OwnerPolicyOptionsStatus,
+};
 use serde::{Deserialize, Serialize};
 use types::{owner_budget::OwnerPeriodPolicy, EventBody, IdentityKind, Privacy, SpaceKind};
+pub use welcome::OwnerPolicyWelcomeAttempt;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]

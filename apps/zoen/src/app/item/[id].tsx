@@ -1,3 +1,4 @@
+import { isBinaryEditorId } from '../../miniapps/binary-formats';
 import { t, formatLocale } from '../../i18n/index.ts';
 import { useState } from 'react';
 import { Redirect, Stack, router, useLocalSearchParams } from 'expo-router';
@@ -9,6 +10,7 @@ import { EmptyState, Loading, NativeButton, Surface } from '../../components/pri
 import { useDialogs } from '../../components/dialogs';
 import { PlanBlocks, PlanVersion } from '../../documents/plan-blocks';
 import { ArtifactDiscussion } from '../../documents/artifact-discussion';
+import { DeckVersionAction } from '../../miniapps/deck-version-action';
 import { PageVersionExportAction } from '../../documents/page-version-export-action';
 import { PageBlocks } from '../../documents/page-blocks';
 import { clearPlanUndo, rememberPlanUndo, usePlanUndo } from '../../documents/plan-undo';
@@ -174,6 +176,11 @@ export default function Item() {
               />
               {pastPage.data && pastPage.data.version === selected && !oldError ? (
                 <PageVersionExportAction page={pastPage.data} />
+              ) : null}
+              {past.data?.version === selected &&
+              isBinaryEditorId(past.data.app?.app_id) &&
+              !oldError ? (
+                <DeckVersionAction item={past.data} />
               ) : null}
               {canRestore && oldReady ? (
                 <NativeButton

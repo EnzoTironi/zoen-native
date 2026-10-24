@@ -29,6 +29,8 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
     input,
     initialEnd,
     searchReveal,
+    navigationMetrics,
+    onSearchContentLayout,
     normalDraft,
     editing,
     reply,
@@ -76,6 +78,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
       <ChatHeader
         id={id}
         scrollViewTag={nativeScrollTag}
+        navigationMetrics={navigationMetrics}
         title={chat.title}
         counterpart={chat.counterpart}
         activityLabel={activityLabel}
@@ -336,6 +339,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
                   groupChat={chat.kind !== 'Direct'}
                   item={items.find((item) => item.id === messageCard(entry)?.item_id)}
                   highlighted={entry.id === selectedSearchId}
+                  onRevealLayout={entry.id === selectedSearchId ? onSearchContentLayout : undefined}
                   disabled={searchState.active}
                   reactionPending={actions.busy}
                   onReply={actions.reply}

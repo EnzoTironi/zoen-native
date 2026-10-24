@@ -84,6 +84,9 @@ enum Mode {
     MlsRefused,
     AdvanceRefused,
     HoldAdvances,
+    Paged,
+    PageLost,
+    PageForeign,
 }
 struct Relay {
     url: String,
@@ -135,7 +138,14 @@ async fn relay(mode: Mode) -> Relay {
                         nonce: "host-startup".into(),
                         relay: "host-startup".into(),
                         protocol: protocol::PROTOCOL_VERSION,
-                        capabilities: vec![],
+                        capabilities: if matches!(
+                            mode,
+                            Mode::Paged | Mode::PageLost | Mode::PageForeign
+                        ) {
+                            vec![protocol::complete_reads::CAPABILITY.into()]
+                        } else {
+                            vec![]
+                        },
                         server_time_ms: None,
                     }
                     .encode()
@@ -156,7 +166,7 @@ async fn relay(mode: Mode) -> Relay {
                 ));
                 ws.send(Message::Binary(
                     ServerFrame::Ready {
-                        identity,
+                        identity: identity.clone(),
                         registered: true,
                     }
                     .encode()
@@ -164,6 +174,7 @@ async fn relay(mode: Mode) -> Relay {
                 ))
                 .await
                 .unwrap();
+                let mut page_digest = Vec::new();
                 let mut logs: BTreeMap<String, Vec<Sequenced>> = BTreeMap::new();
                 while let Some(Ok(Message::Binary(bytes))) = ws.next().await {
                     let response = match ClientFrame::decode(&bytes).unwrap() {
@@ -185,6 +196,27 @@ async fn relay(mode: Mode) -> Relay {
                                 } else {
                                     Ok(Reply::Done)
                                 },
+                            }
+                        }
+                        ClientFrame::Req {
+                            id,
+                            op: Op::CompleteRead(r),
+                        } => {
+                            if r.kind == protocol::complete_reads::Kind::AgentState as i32
+                                && r.ordinal == 0
+                            {
+                                let _ = tx.send(AgentRequest::State);
+                            }
+                            ServerFrame::Res {
+                                id,
+                                result: paged::response(
+                                    mode,
+                                    r,
+                                    &identity,
+                                    &device,
+                                    &mut page_digest,
+                                    &remote,
+                                ),
                             }
                         }
                         ClientFrame::Req {
@@ -458,3 +490,5 @@ async fn actual_marker_creation_failure_keeps_startup_failed_after_seed() {
     assert!(prepared(&citizen.0, &readiness).await.is_err());
     assert!(!home.marker().is_file());
 }
+
+mod paged;

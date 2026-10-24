@@ -173,6 +173,7 @@ fn shared_session_does_not_activate_public_plan_page_writers() {
 mod admission;
 mod collaborative_edits;
 mod journal_recovery;
+mod lossless_duplication;
 mod publication;
 
 mod version_exports;

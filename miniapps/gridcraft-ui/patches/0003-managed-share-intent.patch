@@ -1,0 +1,53 @@
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index af26abb..2311d68 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -177,6 +177,8 @@ pub struct Notice {
+ /// Host services the platform shell provides (file pickers, opening URLs).
+ #[derive(Default)]
+ pub struct Services {
++    /// Managed host intent only; the host flushes and exports an accepted version.
++    pub host_export_intent: Option<Box<dyn Fn(&str) -> bool>>,
+     /// Desktop: discover configured printers on a worker.
+     pub printers: Option<printing::Discover>,
+     /// Desktop: submit the PDF with the chosen settings on a worker.
+@@ -395,6 +397,11 @@ impl SheetApp {
+     }
+
+     fn run_command(&mut self, id: &str, params: Json) -> Result<Json, String> {
++        if matches!(id, "file.save" | "file.saveAs")
++            && let Some(export) = &self.services.host_export_intent
++        {
++            return if export("xlsx") { Ok(Json::Null) } else { Err("The host cannot share this document yet.".into()) };
++        }
+         if let Some(policy) = self.session.command_policy {
+             policy(&self.session, id, &params).map_err(|error| error.to_string())?;
+         }
+diff --git a/crates/ui-egui/src/tabs.rs b/crates/ui-egui/src/tabs.rs
+index bc6fcc1..07b7f9e 100644
+--- a/crates/ui-egui/src/tabs.rs
++++ b/crates/ui-egui/src/tabs.rs
+@@ -259,7 +259,8 @@ pub fn sheet_tabs(app: &mut SheetApp, ui: &mut Ui) {
+
+ pub fn status_bar(app: &mut SheetApp, ui: &mut Ui) {
+     let t = Tokens::get(ui.ctx());
+-    egui::Panel::bottom("status_bar").exact_size(26.0).frame(egui::Frame::NONE.fill(t.status_bar).inner_margin(egui::Margin::symmetric(12, 0))).show(
++    let height=if app.services.host_export_intent.is_some() {44.0}else{26.0};
++    egui::Panel::bottom("status_bar").exact_size(height).frame(egui::Frame::NONE.fill(t.status_bar).inner_margin(egui::Margin::symmetric(12, 0))).show(
+         ui,
+         |ui| {
+             ui.horizontal_centered(|ui| {
+@@ -295,6 +296,13 @@ pub fn status_bar(app: &mut SheetApp, ui: &mut Ui) {
+                     }
+                 }
+                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
++                    if let Some(export) = &app.services.host_export_intent {
++                        let label=app.ui.language.tr("Share");
++                        let response=crate::widgets::icon_button(ui,Icon::Share,t.text_dim,label,vec2(44.0,44.0));
++                        response.widget_info(||egui::WidgetInfo::labeled(egui::WidgetType::Button,true,label));
++                        if response.clicked() {let _=export("xlsx");}
++                        ui.add_space(4.0);
++                    }
+                     // Zoom percentage and slider.
+                     let zoom = app.session.active().and_then(|d| d.wb.active().map(|s| s.zoom)).unwrap_or(100);
+                     let zl = ui.add(

@@ -302,10 +302,12 @@ async function fixture(platform = "android", options = {}) {
           }));
           builder.onResolve({ filter: /.*/ }, ({ path, importer }) =>
             importer === detail && path.startsWith(".")
-              ? {
-                  path: path === "./view-host" ? "fixture:view" : "fixture:ports",
-                  namespace: "fixture",
-                }
+              ? ["./deck-version-selection", "./binary-formats"].includes(path)
+                ? { path: join(app, "src/miniapps", `${path}.ts`) }
+                : {
+                    path: path === "./view-host" ? "fixture:view" : "fixture:ports",
+                    namespace: "fixture",
+                  }
               : undefined,
           );
         },
@@ -373,6 +375,5 @@ function documentPort() {
 function current(f) {
   return f.qa.tree.state.routes[f.qa.tree.state.index];
 }
-
 
 export { fixture, deferred, documentPort, current };

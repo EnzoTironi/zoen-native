@@ -10,12 +10,36 @@ export const cargoTooling = [
   'cargo_guard_configuration.py',
 ];
 
+// Shared by native cache inputs, guarded Cargo builds and external batch recipes.
+export const managedAppResourceInputs = [
+  {
+    id: 'deckcraft',
+    environment: 'ZOEN_DECKCRAFT_RESOURCE_MANIFEST_JSON',
+    html: 'crates/miniapps/resources/deckcraft.html',
+  },
+  {
+    id: 'gridcraft',
+    environment: 'ZOEN_GRIDCRAFT_RESOURCE_MANIFEST_JSON',
+    html: 'crates/miniapps/resources/generated/gridcraft.html',
+  },
+  {
+    id: 'wordcraft',
+    environment: 'ZOEN_WORDCRAFT_RESOURCE_MANIFEST_JSON',
+    html: 'crates/miniapps/resources/generated/wordcraft.html',
+  },
+  {
+    id: 'photocraft',
+    environment: 'ZOEN_PHOTOCRAFT_RESOURCE_MANIFEST_JSON',
+    html: 'crates/miniapps/resources/generated/photocraft.html',
+  },
+];
+
 const defaultInputEnvironment = [
   'SDKROOT',
   'DEVELOPER_DIR',
   'LIBRARY_PATH',
   'DYLD_LIBRARY_PATH',
-  'ZOEN_DECKCRAFT_RESOURCE_MANIFEST_JSON',
+  ...managedAppResourceInputs.map(({ environment }) => environment),
 ];
 
 async function sha256(path) {

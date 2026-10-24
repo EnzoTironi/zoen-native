@@ -2,6 +2,7 @@ use super::*;
 use ring::rand::{SecureRandom, SystemRandom};
 use std::path::{Path, PathBuf};
 mod publish;
+mod release;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
@@ -179,10 +180,11 @@ fn generation_retirement_drains_effects_and_rejects_old_checkpoint() -> TestResu
         writer.reconcile(&retirement.next, &retirement.next)?,
         Recovery::BothAfter
     );
-    assert!(matches!(
-        writer.reader().generation_guard(&before),
-        Err(AnchorError::Unreconciled)
-    ));
+    assert_eq!(
+        writer.reader().generation_guard(&before).err(),
+        Some(AnchorError::Unreconciled),
+        "retired generation must not admit its old checkpoint"
+    );
     let _new_effect = writer.reader().generation_guard(&retirement.next)?;
     Ok(())
 }

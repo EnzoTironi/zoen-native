@@ -48,8 +48,14 @@ fn signed_trust(fixture: &Fixture, level: TrustLevel) {
 }
 
 fn input(fixture: &Fixture, turn: &AgentBinaryTurn, tool: &str) -> AgentToolApprovalInput {
-    let arguments = if tool == "read_deckcraft" {
+    let arguments = if agent_tools::is_read(tool) {
         json!({"artifactId":fixture.base.item_id})
+    } else if tool == "photocraft_transform" {
+        json!({"artifactId":fixture.base.item_id,"version":fixture.base.version,"sha256":fixture.base.sha256,"action":"rotate_clockwise"})
+    } else if tool == "wordcraft_text_replace" {
+        json!({"artifactId":fixture.base.item_id,"version":fixture.base.version,"sha256":fixture.base.sha256,"text":"WASI real\nOlá 日本語 👩🏽‍💻\ttexto\n"})
+    } else if tool == "gridcraft_cell_set" {
+        json!({"artifactId":fixture.base.item_id,"version":fixture.base.version,"sha256":fixture.base.sha256,"sheet":"Sheet1","cell":"A1","input":"7"})
     } else {
         json!({"artifactId":fixture.base.item_id,"version":fixture.base.version,"sha256":fixture.base.sha256,"slideId":1,"text":"Synthetic reviewed notes"})
     };
@@ -225,3 +231,11 @@ mod recovery;
 mod renewal;
 
 mod trust_revocation;
+
+#[path = "gridcraft_cases.rs"]
+mod gridcraft_cases;
+
+#[path = "photocraft_cases.rs"]
+mod photocraft_cases;
+#[path = "wordcraft_cases.rs"]
+mod wordcraft_cases;

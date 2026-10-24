@@ -4,6 +4,9 @@ use serde_json::{json, Value};
 use std::io::{Cursor, Read, Write};
 use std::sync::{Arc, Mutex};
 use types::Role;
+mod gridcraft_cases;
+mod photocraft_cases;
+mod wordcraft_cases;
 const ORIGINAL: &[u8] = include_bytes!("fixtures/original.deckcraft");
 const CHANGED: &[u8] = include_bytes!("fixtures/changed.deckcraft");
 #[derive(Default)]

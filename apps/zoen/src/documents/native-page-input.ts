@@ -1,6 +1,7 @@
 import type { PageInputOpen, PageInputPort, PageInputStatus } from './page-input';
 
 interface NativePageInputModule {
+  readonly pageInputVersion?: number;
   pageInputSession(): Promise<string>;
   loadPageInput(session: string, itemId: string): Promise<string>;
   reservePageInput(session: string, itemId: string): Promise<string>;
@@ -35,6 +36,7 @@ export function createNativePageInputPort(
   )
     return undefined;
   return {
+    supportsWholeDocument: native.pageInputVersion === 2,
     session: () => native.pageInputSession(),
     load: async (session, itemId) => JSON.parse(await native.loadPageInput(session, itemId)),
     reserve: (session, itemId) => native.reservePageInput(session, itemId),

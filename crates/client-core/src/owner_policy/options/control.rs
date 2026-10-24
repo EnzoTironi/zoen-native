@@ -26,13 +26,78 @@ impl OwnerPolicyInquiryControl {
         &self.digest
     }
 }
+/// Read-only discovery evidence from the same eligibility fold; never an approval.
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub struct OwnerPolicyInquiryCounts {
+    pub candidates: u64,
+    pub rejected: u64,
+    pub already_reported: u64,
+}
+pub struct OwnerPolicyInquiryScan {
+    pub inquiries: Vec<OwnerPolicyInquiryControl>,
+    pub counts: OwnerPolicyInquiryCounts,
+}
 impl Engine {
+    pub(crate) fn scan_owner_policy_inquiries(
+        &self,
+        space: &str,
+        after_seq: u64,
+        limit: u32,
+    ) -> R<OwnerPolicyInquiryScan> {
+        if !(1..=50).contains(&limit) {
+            return Err(invalid());
+        }
+        self.owner_policy_agent(space)?;
+        let mut scan = OwnerPolicyInquiryScan {
+            inquiries: Vec::new(),
+            counts: OwnerPolicyInquiryCounts::default(),
+        };
+        for event in self.logs.get(space).ok_or_else(denied)?.events() {
+            if event.seq <= after_seq
+                || !matches!(event.body, EventBody::OwnerPolicyOptionsRequested { .. })
+            {
+                continue;
+            }
+            scan.counts.candidates = scan.counts.candidates.saturating_add(1);
+            match self.owner_policy_inquiry(space, &event.client_id) {
+                Ok(query) => {
+                    if self.owner_policy_options_reported(&query)? {
+                        scan.counts.already_reported =
+                            scan.counts.already_reported.saturating_add(1);
+                    } else {
+                        scan.inquiries.push(query);
+                    }
+                }
+                Err(CoreError::Forbidden { .. }) => {
+                    scan.counts.rejected = scan.counts.rejected.saturating_add(1)
+                }
+                Err(error) => return Err(error),
+            }
+            if scan.inquiries.len() == limit as usize {
+                break;
+            }
+        }
+        Ok(scan)
+    }
     pub(crate) fn owner_policy_inquiry(
         &self,
         space: &str,
         source: &str,
     ) -> R<OwnerPolicyInquiryControl> {
-        let agent = self.owner_policy_agent(space)?;
+        let current = self.owner_policy_authenticated_original(space, source)?;
+        self.owner_policy_agent(space)?;
+        self.owner_policy_context_input(&current.signed.inquiry, crate::engine::now_ms())?;
+        Ok(current)
+    }
+
+    /// Pure current scope and original cryptographic association. No readiness,
+    /// quote, options, publication or Runtime admission is returned by this seam.
+    pub(in crate::owner_policy) fn owner_policy_authenticated_original(
+        &self,
+        space: &str,
+        source: &str,
+    ) -> R<OwnerPolicyInquiryControl> {
+        let agent = self.owner_policy_agent_scope(space)?;
         let owner = self
             .identities
             .get(&agent)
@@ -64,7 +129,6 @@ impl Engine {
         {
             return Err(denied());
         }
-        self.owner_policy_context_input(&signed.inquiry, crate::engine::now_ms())?;
         Ok(OwnerPolicyInquiryControl {
             source: source.into(),
             sequence: event.seq,
@@ -72,7 +136,10 @@ impl Engine {
             digest: event_log::owner_policy_inquiry::digest(&signed.inquiry).ok_or_else(invalid)?,
         })
     }
-    fn owner_policy_options_reported(&self, query: &OwnerPolicyInquiryControl) -> R<bool> {
+    pub(in crate::owner_policy) fn owner_policy_options_reported(
+        &self,
+        query: &OwnerPolicyInquiryControl,
+    ) -> R<bool> {
         let pending = self.store.outbox()?;
         Ok(pending
             .iter()
@@ -168,32 +235,19 @@ impl Client {
         after_seq: u64,
         limit: u32,
     ) -> R<Vec<OwnerPolicyInquiryControl>> {
-        if !(1..=50).contains(&limit) {
-            return Err(invalid());
-        }
-        let engine = self.lock();
-        engine.owner_policy_agent(space)?;
-        let mut queries = Vec::new();
-        for event in engine.logs.get(space).ok_or_else(denied)?.events() {
-            if event.seq <= after_seq
-                || !matches!(event.body, EventBody::OwnerPolicyOptionsRequested { .. })
-            {
-                continue;
-            }
-            match engine.owner_policy_inquiry(space, &event.client_id) {
-                Ok(query) => {
-                    if !engine.owner_policy_options_reported(&query)? {
-                        queries.push(query);
-                    }
-                }
-                Err(CoreError::Forbidden { .. }) => continue,
-                Err(error) => return Err(error),
-            }
-            if queries.len() == limit as usize {
-                break;
-            }
-        }
-        Ok(queries)
+        Ok(self
+            .scan_owner_policy_inquiries(space, after_seq, limit)?
+            .inquiries)
+    }
+    /// Same authority checks and bounded result, with payload-free diagnostic counts.
+    pub fn scan_owner_policy_inquiries(
+        &self,
+        space: &str,
+        after_seq: u64,
+        limit: u32,
+    ) -> R<OwnerPolicyInquiryScan> {
+        self.lock()
+            .scan_owner_policy_inquiries(space, after_seq, limit)
     }
     /// Explicit verified Runtime refusal only. Ambiguous/unavailable stays pending.
     pub fn refuse_owner_policy_options(&self, query: &OwnerPolicyInquiryControl) -> R<()> {

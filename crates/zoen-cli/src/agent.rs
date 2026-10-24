@@ -529,3 +529,14 @@ mod canonical_read_recovery_tests;
 #[cfg(test)]
 #[path = "agent/canonical_provider_acceptance_tests.rs"]
 mod canonical_provider_acceptance_tests;
+
+#[cfg(test)]
+#[path = "agent/gridcraft_tests.rs"]
+mod gridcraft_tests;
+
+#[cfg(test)]
+#[path = "agent/wordcraft_creation_tests.rs"]
+mod wordcraft_creation_tests;
+#[cfg(test)]
+#[path = "agent/wordcraft_worker_tests.rs"]
+mod wordcraft_worker_tests;

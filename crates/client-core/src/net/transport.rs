@@ -127,9 +127,21 @@ pub(super) async fn flush(
     if !ctx.status.borrow().synced {
         return Ok(());
     }
-    let envs = ctx
-        .engine(|engine| engine.outbox_envelopes_except(sent))
+    let (envs, pending) = ctx
+        .engine(|engine| {
+            (
+                engine.outbox_envelopes_except(sent),
+                engine.net.pending.len(),
+            )
+        })
         .ok_or_else(|| "offline".to_string())?;
+    if pending != 0 {
+        tracing_like(&format!(
+            "publication offer pending={pending} offered={} in_flight={}",
+            envs.len(),
+            sent.len()
+        ));
+    }
     for env in envs {
         if let std::collections::hash_map::Entry::Vacant(entry) =
             sent.entry(env.client_id().to_string())
@@ -140,6 +152,7 @@ pub(super) async fn flush(
             });
             entry.insert(epoch);
             send(sink, &ClientFrame::Publish { env }).await?;
+            tracing_like(&format!("publication submitted in_flight={}", sent.len()));
         }
     }
     Ok(())

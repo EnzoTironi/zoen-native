@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import { Stack, router, usePreventRemove } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
 import type { PageDto } from '../core/types';
-import type { PageInputMode, PageInputPort } from './page-input';
+import type { PageInputMode, PageInputPort, PageInputTarget } from './page-input';
 import { PageInputConflict, PageInputEditor } from './page-input';
 import { PageInputView } from './page-input-view';
 import { BlockEditor } from '../components/block-editor';
@@ -18,12 +18,14 @@ export function DurablePageEditor({
   port,
   mode,
   resume,
+  target,
 }: {
   page: PageDto;
   blockId: string;
   port: PageInputPort;
   mode?: PageInputMode;
   resume: boolean;
+  target?: PageInputTarget;
 }) {
   const [session, setSession] = useState<{
     page: PageDto;
@@ -38,6 +40,7 @@ export function DurablePageEditor({
       port={port}
       mode={session.mode}
       resume={resume}
+      target={target}
       onMode={(nextPage, nextMode) => {
         setSession((value) => ({ page: nextPage, mode: nextMode, serial: value.serial + 1 }));
       }}
@@ -51,6 +54,7 @@ function Editor({
   port,
   mode,
   resume,
+  target,
   onMode,
 }: {
   page: PageDto;
@@ -58,18 +62,20 @@ function Editor({
   port: PageInputPort;
   mode?: PageInputMode;
   resume: boolean;
+  target?: PageInputTarget;
   onMode(page: PageDto, mode: PageInputMode): void;
 }) {
   const { store } = useClient();
   const { colors } = useTheme();
   const dialogs = useDialogs();
-  const original = page.blocks.find((block) => block.id === blockId);
+  const original =
+    target === 'document' ? undefined : page.blocks.find((block) => block.id === blockId);
   const canRich =
     !original ||
     (['paragraph', 'heading', 'bullet', 'numbered'].includes(original.kind) &&
       original.spans.every((span) => ['b', 'i', 's', 'a'].includes(span.key)));
   const selectedMode =
-    mode ??
+    (target === 'document' ? 'markdown' : mode) ??
     (original &&
     (!['paragraph', 'heading', 'bullet', 'numbered'].includes(original.kind) ||
       original.spans.some((span) => !['b', 'i', 's', 'a'].includes(span.key)))
@@ -79,7 +85,8 @@ function Editor({
     () =>
       new PageInputEditor(port, {
         itemId: page.item_id,
-        blockId: blockId === 'new' ? null : blockId,
+        blockId: target === 'document' || blockId === 'new' ? null : blockId,
+        target,
         editContext: page.edit_context,
         mode: selectedMode,
         resume,
@@ -216,7 +223,9 @@ function Editor({
   const pendingOperation = status?.operation;
   return (
     <ScrollView
+      style={{ flex: 1 }}
       contentInsetAdjustmentBehavior="automatic"
+      automaticallyAdjustKeyboardInsets
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={{
         padding: 24,
@@ -227,7 +236,14 @@ function Editor({
       }}
     >
       <Stack.Screen
-        options={{ title: original ? t('documents.editBlock') : t('documents.newBlock') }}
+        options={{
+          title:
+            (status?.target ?? target) === 'document'
+              ? t('documents.editMarkdown')
+              : original
+                ? t('documents.editBlock')
+                : t('documents.newBlock'),
+        }}
       />
       {status?.token ? (
         <>

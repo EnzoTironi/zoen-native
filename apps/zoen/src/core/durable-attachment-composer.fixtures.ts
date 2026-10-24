@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import type { AttachmentApprovalProps } from '../media/attachment-approval.types.ts';
+import * as locationFile from '../media/location-file.ts';
 import * as attachmentCategories from '../media/attachment-categories.ts';
 import type { AttachmentComposerOptions } from '../media/attachment-composer.tsx';
 import type { AttachmentAsset } from '../media/attachment-draft.ts';
@@ -12,7 +13,8 @@ import type {
   PhotoPickerSubmission,
 } from '../media/attachment-photo-session.ts';
 import { AttachmentReview } from '../media/attachment-review.ts';
-import { MediaDraftChannel } from '../media/media-draft-channel.ts';
+import * as mediaDraftContract from '../media/media-draft-contract.ts';
+import { MediaDraftChannel, MediaDraftFailure } from '../media/media-draft-channel.ts';
 import type { MediaDraftDto, MediaDraftPort, MediaDraftScope } from '../media/media-draft-types.ts';
 import { PlaybackCoordinator } from '../media/playback-owner.ts';
 
@@ -24,6 +26,8 @@ export type Result = {
   pick(kind: string): Promise<void>;
   field?: {
     value: string;
+    position: number;
+    total: number;
     editable: boolean;
     onChange(text: string): void;
     onSend(finalCaption?: string): void;
@@ -52,7 +56,7 @@ export const compiled = await build({
         builder.onResolve(
           {
             filter:
-              /^\.\/(?:use-durable-attachment-(?:controller)|durable-attachment-(?:types|view|pick|commands|contract|review))$/,
+              /^\.\/(?:use-durable-attachment-(?:controller)|durable-attachment-(?:types|view|pick|commands|contract|review)|attachment-gallery-journal)$/,
           },
           ({ path }) => ({
             path: fileURLToPath(
@@ -105,6 +109,8 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
     loseSendAck = false,
     holdCancellation = false;
   let saveGate: Promise<void> | null = null;
+  let materializeGate: Promise<void> | null = null;
+  const materializations: string[] = [];
   let sendCalls = 0;
   const sendReceipts = new Map<string, { entries: never; draft: MediaDraftDto }>();
   const released: string[] = [],
@@ -155,6 +161,8 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
     },
     materialize: async (_scope, expected, id) => {
       assert.equal(expected, durable.revision);
+      materializations.push(id);
+      if (materializeGate) await materializeGate;
       if (failMaterialize) throw new Error('Preview unavailable');
       const asset = durable.assets.find((asset) => asset.id === id);
       assert.ok(asset);
@@ -195,6 +203,7 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
   };
   const coordinator = new PlaybackCoordinator();
   const channel = new MediaDraftChannel(owner, port, () => active);
+  let observedChannel = channel;
   const store = {
     driver: {
       media: {
@@ -216,7 +225,7 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
       sessionCleanups.add(cleanup);
       return () => sessionCleanups.delete(cleanup);
     },
-    mediaDrafts: { isCurrent: (candidate: unknown) => active && candidate === channel },
+    mediaDrafts: { isCurrent: (candidate: unknown) => active && candidate === observedChannel },
     refresh: async () => {},
   };
   const same = (left?: readonly unknown[], right?: readonly unknown[]) =>
@@ -247,9 +256,18 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
   let nextPhotoSubmission: PhotoPickerSubmission | null = null;
   let photoSubmission: PhotoPickerSubmission | null = null;
   const photoAdmissions: (PhotoPickerAdmission | undefined)[] = [];
+  let nativePhotoCancel: (() => void) | undefined;
+  let nativePhotoPick:
+    | ((
+        remaining: number,
+        current: () => boolean,
+        admission?: PhotoPickerAdmission,
+      ) => Promise<AttachmentAsset[]>)
+    | null = null;
   const photoPicker = {
     pick: async (_remaining: number, _current: () => boolean, admission?: PhotoPickerAdmission) => {
       photoAdmissions.push(admission);
+      if (nativePhotoPick) return nativePhotoPick(_remaining, _current, admission);
       const intent = nextPhotoSubmission;
       nextPhotoSubmission = null;
       photoSubmission = null;
@@ -257,13 +275,16 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
       photoSubmission = intent;
       return files;
     },
-    cancel: () => {},
+    cancel: () => nativePhotoCancel?.(),
     view: null,
     preferredUri: () => preferredPhotoUri,
     submission: () => photoSubmission,
   };
   const ports: Record<string, unknown> = {
     './attachment-categories': attachmentCategories,
+    './media-draft-channel': { MediaDraftFailure },
+    './media-draft-contract': mediaDraftContract,
+    'expo-media-library': { MediaType: { IMAGE: 'image', VIDEO: 'video' } },
     react: {
       useMemo: memo,
       useCallback: (read: unknown, deps: readonly unknown[]) => memo(() => read, deps),
@@ -327,6 +348,7 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
       },
     },
     './attachment-draft-strip': { AttachmentDraftStrip: 'AttachmentDraftStrip' },
+    './location-file': locationFile,
     './attachment-approval': {
       AttachmentApproval: 'AttachmentApproval',
       supportsMediaApproval: true,
@@ -363,11 +385,12 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
     disabled: false,
     suspended: false,
   };
-  const render = (patch: Partial<AttachmentComposerOptions> = {}) => {
+  const render = (patch: Partial<AttachmentComposerOptions> = {}, target = channel) => {
+    observedChannel = target;
     options = { ...options, ...patch };
     cursor = 0;
     effects = [];
-    const result = module.exports.useDurableAttachmentComposer(options, channel);
+    const result = module.exports.useDurableAttachmentComposer(options, target);
     for (const commit of effects) commit();
     return result;
   };
@@ -375,10 +398,21 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
     for (const current of slots) current.cleanup?.();
   };
   return {
+    nativePhotoPicker: (pick: NonNullable<typeof nativePhotoPick>, cancel?: () => void) => {
+      nativePhotoPick = pick;
+      nativePhotoCancel = cancel;
+    },
+    nativePhotoSubmission: (intent: PhotoPickerSubmission) => {
+      photoSubmission = intent;
+    },
     preferPhoto: (uri: string | null) => {
       preferredPhotoUri = uri;
     },
     channel,
+    materializations,
+    gateMaterialize: (gate: Promise<void>) => {
+      materializeGate = gate;
+    },
     render,
     unmount,
     released,

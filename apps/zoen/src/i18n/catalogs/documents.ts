@@ -3,6 +3,7 @@ import { defineFeature } from '../catalog.ts';
 export const documents = defineFeature(
   {
     defaultMarkdownBasename: 'page',
+    projectFile: 'Project',
     pageImageUnavailable: 'Image not available in this chat.',
     pageImageHistoricalUnavailable: 'The original image cannot be verified for this version.',
     discussion: 'Discuss in chat',
@@ -102,6 +103,8 @@ export const documents = defineFeature(
     theBlockWillBeRemovedFromYourDraft: 'The block will be removed from your draft.',
     deleteBlock: 'Delete block',
     blockDeleted: 'Block deleted',
+    blockDuplicated: 'Block duplicated',
+    duplicateBlockPosition: 'Duplicate block %{position}',
     addABlock: 'Add a block',
     finishOrganizing: 'Finish organizing',
     organizeBlocks: 'Organize blocks',
@@ -190,6 +193,7 @@ export const documents = defineFeature(
     loadingDiscussion: 'Carregando comentários…',
     retryDiscussion: 'Tentar carregar comentários novamente',
     defaultMarkdownBasename: 'pagina',
+    projectFile: 'Projeto',
     pageImageUnavailable: 'Imagem indisponível nesta conversa.',
     pageImageHistoricalUnavailable: 'Não é possível verificar a imagem original desta versão.',
     recoverEditorInput: 'Recuperar texto do editor',
@@ -286,6 +290,8 @@ export const documents = defineFeature(
     theBlockWillBeRemovedFromYourDraft: 'O bloco será removido do seu rascunho.',
     deleteBlock: 'Apagar bloco',
     blockDeleted: 'Bloco apagado',
+    blockDuplicated: 'Bloco duplicado',
+    duplicateBlockPosition: 'Duplicar bloco %{position}',
     addABlock: 'Adicionar um bloco',
     finishOrganizing: 'Concluir organização',
     organizeBlocks: 'Organizar blocos',

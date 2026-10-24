@@ -1,5 +1,7 @@
 import type { CallToolResult } from '@modelcontextprotocol/client';
 import type { AppBinaryDocumentDto } from '../core/generated/AppBinaryDocumentDto';
+import { binaryEditorFormat, type BinaryEditorId } from './binary-formats.ts';
+export { DECKCRAFT_ENGINE_REVISION } from './binary-formats.ts';
 import {
   CANONICAL_SCENE_CHUNK_BYTES as CHUNK,
   decode64,
@@ -8,7 +10,6 @@ import {
 } from './canonical-scene.ts';
 
 export const MAX_BINARY_DOCUMENT_BYTES = 8 * 1024 * 1024;
-export const DECKCRAFT_ENGINE_REVISION = 'a31b990d32f2c8562f1588562f922960c3fde48b';
 export const canonicalBinaryTools = new Set([
   'app_binary_read',
   'app_binary_read_chunk',
@@ -27,6 +28,7 @@ export type BinarySave = Readonly<{
   intent_sha256: string;
 }>;
 type Options = {
+  editor?: BinaryEditorId;
   itemId: string;
   check: () => void;
   id: () => string;
@@ -52,10 +54,11 @@ function encodeDocument(bytes: Uint8Array) {
   for (let i = 0; i < bytes.length; i += CHUNK) chunks.push(encode64(bytes.subarray(i, i + CHUNK)));
   return chunks.join('');
 }
-function validated(doc: AppBinaryDocumentDto, item: string) {
+function validated(doc: AppBinaryDocumentDto, item: string, editor: BinaryEditorId) {
+  const format = binaryEditorFormat(editor);
   if (
     doc.item_id !== item ||
-    doc.kind !== 'deckcraft' ||
+    doc.kind !== format.id ||
     !version(doc.version) ||
     !version(doc.current_version) ||
     doc.current_version < doc.version ||
@@ -63,10 +66,10 @@ function validated(doc: AppBinaryDocumentDto, item: string) {
     !token(doc.author_id) ||
     !token(doc.actor_id) ||
     !['human', 'agent'].includes(doc.actor_kind) ||
-    doc.engine_revision !== DECKCRAFT_ENGINE_REVISION ||
+    doc.engine_revision !== format.engineRevision ||
     !integer(doc.byte_length) ||
     doc.byte_length < 1 ||
-    doc.byte_length > MAX_BINARY_DOCUMENT_BYTES ||
+    doc.byte_length > format.maxDocumentBytes ||
     typeof doc.data_base64 !== 'string' ||
     doc.data_base64.length !== Math.ceil(doc.byte_length / 3) * 4
   )
@@ -120,7 +123,7 @@ export class CanonicalBinaryHost {
   private read: { id: string; bytes: Uint8Array; metadata: Record<string, unknown> } | null = null;
   private readonly options: Options;
   constructor(options: Options) {
-    this.options = options;
+    this.options = { ...options, editor: binaryEditorFormat(options.editor).id };
     if (!token(options.itemId)) throw new Error('Invalid App Item.');
     this.check();
   }
@@ -179,7 +182,7 @@ export class CanonicalBinaryHost {
     );
     this.check();
     if (generation !== this.readGeneration) throw new Error('This App read was replaced.');
-    const bytes = validated(doc, this.options.itemId);
+    const bytes = validated(doc, this.options.itemId, this.options.editor ?? 'deckcraft');
     if (selected && (doc.version !== args.version || doc.sha256 !== args.sha256)) {
       bytes.fill(0);
       throw new Error('The selected App version changed.');
@@ -231,7 +234,7 @@ export class CanonicalBinaryHost {
       !digest(args.sha256) ||
       !integer(args.bytes) ||
       args.bytes < 1 ||
-      args.bytes > MAX_BINARY_DOCUMENT_BYTES ||
+      args.bytes > binaryEditorFormat(this.options.editor).maxDocumentBytes ||
       !digest(args.documentSha256) ||
       !digest(args.intentSha256)
     )
@@ -329,7 +332,11 @@ export class CanonicalBinaryHost {
         upload.attempted = true;
         const accepted = await this.options.save(input);
         this.check();
-        const verified = validated(accepted, this.options.itemId);
+        const verified = validated(
+          accepted,
+          this.options.itemId,
+          this.options.editor ?? 'deckcraft',
+        );
         verified.fill(0);
         if (
           accepted.version !== upload.base + 1 ||

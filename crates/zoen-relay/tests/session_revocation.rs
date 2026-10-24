@@ -31,6 +31,9 @@ use zoen_relay::{
 };
 
 struct BlockedLog {
+    // Every live Session retains this log through AppState. Keep the scheduling
+    // lease through background socket teardown even if its fixture panics.
+    _snapshot_test_lease: Arc<snapshot_test_lease::Lease>,
     managed_registry: std::sync::OnceLock<zoen_relay::managed_devices::ManagedDevices>,
     sync_spaces: std::sync::Mutex<Option<Vec<String>>>,
     sync_history: std::sync::Mutex<Option<Arc<sync_membership::History>>>,
@@ -301,7 +304,11 @@ async fn connect(url: &str, author: &Author) -> Socket {
     socket
 }
 
+#[path = "session_revocation/snapshot_test_lease.rs"]
+mod snapshot_test_lease;
+
 struct TestRelay {
+    _snapshot_test_lease: Arc<snapshot_test_lease::Lease>,
     state: Arc<AppState>,
     log: Arc<BlockedLog>,
     ws_url: String,
@@ -313,6 +320,15 @@ struct TestRelay {
 
 impl TestRelay {
     async fn new() -> Self {
+        Self::with_snapshot_test_lease(snapshot_test_lease::shared().await).await
+    }
+
+    async fn exclusive_snapshots() -> Self {
+        Self::with_snapshot_test_lease(snapshot_test_lease::exclusive().await).await
+    }
+
+    async fn with_snapshot_test_lease(lease: snapshot_test_lease::Lease) -> Self {
+        let lease = Arc::new(lease);
         let admin_url = std::env::var("ZOEN_TEST_PG").expect("set ZOEN_TEST_PG");
         let database = format!(
             "zoen_t_read_revoke_{}",
@@ -339,6 +355,7 @@ impl TestRelay {
                 .unwrap()
         };
         let log = Arc::new(BlockedLog {
+            _snapshot_test_lease: lease.clone(),
             managed_registry: Default::default(),
             sync_spaces: Default::default(),
             sync_history: Default::default(),
@@ -354,6 +371,7 @@ impl TestRelay {
             finished: Arc::default(),
         });
         let state = Arc::new(AppState {
+            read_snapshots: zoen_relay::read_snapshots::Resources::new(&pool),
             auth: zoen_relay::auth::Service::disabled(),
             turn: zoen_relay::turn::Service::disabled(),
             analytics: analytics::Analytics::load(&pool).await.unwrap(),
@@ -387,6 +405,7 @@ impl TestRelay {
             .unwrap();
         });
         Self {
+            _snapshot_test_lease: lease,
             state,
             log,
             ws_url: format!("ws://{address}/v1/sync"),
@@ -399,6 +418,7 @@ impl TestRelay {
 
     async fn close(mut self) {
         self.server.abort();
+        self.state.read_snapshots.close().await;
         self.state.pool.close().await;
         self.state.session_auth.close().await;
         self.state.delivery_auth.close().await;
@@ -481,3 +501,6 @@ mod reconciliation;
 mod response_loss;
 #[path = "session_revocation/sync_membership.rs"]
 mod sync_membership;
+
+#[path = "session_revocation/complete_reads.rs"]
+mod complete_reads;

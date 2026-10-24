@@ -316,7 +316,7 @@ export function attachmentKeyboardAction(
       void Linking.openSettings();
       break;
     case 'retry':
-      void session.reload();
+      void session.retry();
       break;
     case 'album':
       if (event.id === '' || state.albums.some((album) => album.id === event.id))

@@ -55,6 +55,9 @@ impl PageSession {
         use super::super::input::*;
         validate_writer(writer)?;
         validate_target(&target)?;
+        if target == PageInputTarget::WholeDocument && mode != PageInputMode::Markdown {
+            return Err(invalid("whole-document input requires Markdown"));
+        }
         if context.len() > MAX_CONTEXT_BYTES || self.input_state().revision != revision {
             return Err(invalid("stale input revision or oversized context"));
         }
@@ -70,6 +73,7 @@ impl PageSession {
             b.writer_id = writer.into();
         } else {
             let it = engine.item_state(&self.item)?;
+            let mut base_document = None;
             let base_block = match (&self.tag, &self.live, &self.journal) {
                 (
                     DocumentTag::BinaryPageV1,
@@ -85,6 +89,16 @@ impl PageSession {
                         .map_err(super::super::doc_err)?;
                     match &target {
                         PageInputTarget::AppendNew => None,
+                        PageInputTarget::WholeDocument => {
+                            let blocks = base
+                                .blocks()
+                                .iter()
+                                .map(super::super::block_dto)
+                                .collect::<Vec<_>>();
+                            whole_document::seed(&blocks)?;
+                            base_document = Some(blocks);
+                            None
+                        }
                         PageInputTarget::Block { block_id } => {
                             Some(TaggedBlock::Page(super::super::block_dto(
                                 &base
@@ -112,6 +126,9 @@ impl PageSession {
                     let base = doc.at(&revision).map_err(plan_error)?;
                     match &target {
                         PageInputTarget::AppendNew => None,
+                        PageInputTarget::WholeDocument => {
+                            return Err(invalid("whole-document input requires a canonical Page"));
+                        }
                         PageInputTarget::Block { block_id } => Some(TaggedBlock::Plan(
                             (&base
                                 .blocks()
@@ -132,12 +149,23 @@ impl PageSession {
                 target,
                 base_edit_context: context.into(),
                 base_block,
+                base_document,
                 mode,
             });
         }
         state.next()?;
         self.save_input(engine, state)?;
-        self.input_state().dto()
+        let mut opened = self.input_state().dto()?;
+        if let (Some(binding), Some(blocks)) = (
+            opened.binding.as_mut(),
+            self.input_state()
+                .binding
+                .as_ref()
+                .and_then(|b| b.base_document.as_deref()),
+        ) {
+            binding.base_document_markdown = Some(whole_document::seed(blocks)?);
+        }
+        Ok(opened)
     }
 
     pub(in crate::pages) fn input_checkpoint(
@@ -310,6 +338,10 @@ impl PageSession {
         let mut order: Vec<String> = base.blocks().into_iter().map(|b| b.id).collect();
         let at = match &binding.target {
             PageInputTarget::AppendNew => order.len(),
+            PageInputTarget::WholeDocument => {
+                order.clear();
+                0
+            }
             PageInputTarget::Block { block_id } => {
                 let i = order
                     .iter()
@@ -324,6 +356,19 @@ impl PageSession {
         };
         for (offset, b) in changed.iter().enumerate() {
             order.insert(at + offset, b.id.clone());
+        }
+        if binding.target == PageInputTarget::WholeDocument {
+            let original = binding
+                .base_document
+                .as_ref()
+                .ok_or_else(|| invalid("missing whole-document base"))?;
+            let original: std::collections::HashMap<_, _> = original
+                .iter()
+                .map(|block| (block.id.as_str(), block))
+                .collect();
+            // Order contains the complete observed intent; only actually edited
+            // blocks may generate CRDT writes over concurrent unobserved changes.
+            changed.retain(|block| original.get(block.id.as_str()).copied() != Some(block));
         }
         if let SessionJournal::BinaryPage(j) = &self.journal {
             if j.receipt(id).is_some() {

@@ -1,0 +1,26 @@
+{
+  "scope": "Unmodified small engine exports copied from retained browser receipts; not evidence of a native UI journey or identity binding.",
+  "files": {
+    "touch-export.xlsx": {
+      "source": "zoen-grid-focus-contract-v471/green-browser-15/touch.xlsx",
+      "engineSource": "6d05c8452c7dde7449c8fb0b81e0d2b3bf395563",
+      "receipt": "zoen-grid-focus-contract-v471/green-browser-15/result.json",
+      "description": "Real browser trusted-touch Grid export; A1=11, B2=22. Synthetic Core bridge; no iPhone/Item authority claim.",
+      "bytes": 4056,
+      "sha256": "1a93accb751cc157d0f8e7bc089f509e8986ebadce0448b19041534cb33c1686",
+      "receiptSha256": "3dfe4f2d4e40a889187e0dc095532cd631f0566f8b28a2fbf5ff7f2b37dfb486",
+      "upstreamPin": "b8771d51fb4da60bd48c13cf313d6d6014dc5e66",
+      "sourceResult": "PASS_SYNCHRONOUS_CURRENT_EDITOR"
+    },
+    "formula-export.xlsx": {
+      "source": "zoen-gridcraft-editor-v461/browser-render-02/command.xlsx",
+      "receipt": "zoen-gridcraft-editor-v461/browser-render-02/result.json",
+      "description": "Real pinned Grid browser export after cell.set; A1=7, A2 formula A1*2 with cached14. Synthetic Core bridge.",
+      "bytes": 4063,
+      "sha256": "d3f134ede3113fd434ca38aa250be0b228e893e0b4a9f63986b2260042d70c86",
+      "receiptSha256": "6c2fea6eeabf5454bf756bf0f11af5192008604be6126fc94a26baf360a826fc",
+      "upstreamPin": "b8771d51fb4da60bd48c13cf313d6d6014dc5e66",
+      "sourceResult": "PASS"
+    }
+  }
+}

@@ -14,7 +14,7 @@ import { t } from '../i18n';
 import { useTheme } from '../theme';
 import type { ConversationAttachmentCategory } from './attachment-categories';
 import { conversationAttachmentCategories } from './attachment-categories';
-import type { AttachmentComposerOptions } from './attachment-composer';
+import type { AttachmentComposerField, AttachmentComposerOptions } from './attachment-composer';
 import { useAttachmentPhotoPicker } from './attachment-photo-picker';
 import { type AttachmentPickKind } from './attachment-picker';
 import { sensitiveCacheWork } from './cache-work';
@@ -91,6 +91,7 @@ export function useDurableAttachmentController(
       focused: false,
       foreground: AppState.currentState !== 'background' && AppState.currentState !== 'inactive',
       picking: false,
+      pickerAdmission: null as object | null,
       submitting: false,
       approval: null as ApprovalPresentation | null,
       previews: new Map<string, Preview>(),
@@ -129,6 +130,10 @@ export function useDurableAttachmentController(
     store.driver.media?.drafts?.preview && store.driver.media?.drafts?.cancelPreview,
   );
   const [restoreEpoch, setRestoreEpoch] = useState(0);
+  const [pickerAnchor, setPickerAnchor] = useState<{
+    channel: MediaDraftChannel | null;
+    field: AttachmentComposerField | undefined;
+  } | null>(null);
   const [local, setLocal] = useState<{
     channel: MediaDraftChannel | null;
     picking: boolean;
@@ -293,25 +298,38 @@ export function useDurableAttachmentController(
   function closeApproval() {
     return actions.closeApproval({ runtime, publish, review, retireApproval, failure });
   }
-  function pick(kind: AttachmentPickKind) {
-    return pickOperations.pick(
-      {
-        channel,
-        current,
-        runtime,
-        state,
-        review,
-        failure,
-        publish,
-        photos,
-        store,
-        admission,
-        openApproval,
-        edit,
-        send,
-      },
-      kind,
-    );
+  async function pick(kind: AttachmentPickKind, field?: AttachmentComposerField) {
+    // Admission also covers review drain before picking starts. A duplicate
+    // callback cannot release the original native field's retained projection.
+    if (!current() || runtime.pickerAdmission) return;
+    const token = { channel, field };
+    runtime.pickerAdmission = token;
+    setPickerAnchor(token);
+    try {
+      await pickOperations.pick(
+        {
+          channel,
+          current,
+          runtime,
+          state,
+          review,
+          failure,
+          publish,
+          photos,
+          store,
+          admission,
+          openApproval,
+          edit,
+          send,
+        },
+        kind,
+      );
+    } finally {
+      if (runtime.pickerAdmission === token) {
+        runtime.pickerAdmission = null;
+        setPickerAnchor((current) => (current === token ? null : current));
+      }
+    }
   }
   function cancel() {
     return actions.cancel({
@@ -364,6 +382,7 @@ export function useDurableAttachmentController(
     failure,
     send,
     pick,
+    pickerAnchor,
     photos,
     canReview,
     openApproval,

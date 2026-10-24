@@ -118,7 +118,7 @@ impl PageSession {
                 || journal.commit.is_some()
                 || journal.input.binding.is_some()
                 || journal.input.capture.is_some()
-                || live.content_hash() != shadow.content_hash()
+                || !live.editor_content_eq(shadow)
                 // A reverted/no-op human draft can have equal semantic content
                 // but still contain private Loro operations. Never publish those.
                 || live.version() != shadow.version())
@@ -275,7 +275,12 @@ impl Engine {
             session.write_author(self)?;
             let base = session.agent_shadow(self, true)?;
             if base.version != command.version
-                || base.prefix_sha256 != command.prefix_sha256
+                || !tools::prefix_matches(
+                    &self.state,
+                    &command.artifact_id,
+                    command.version,
+                    &command.prefix_sha256,
+                )
                 || base.content_sha256 != command.content_sha256
                 || base
                     .blocks
@@ -325,7 +330,12 @@ impl Engine {
             }
             let base = session.agent_shadow(engine, true)?;
             if base.version != command.version
-                || base.prefix_sha256 != command.prefix_sha256
+                || !tools::prefix_matches(
+                    &engine.state,
+                    item,
+                    command.version,
+                    &command.prefix_sha256,
+                )
                 || base.content_sha256 != command.content_sha256
                 || base.blocks.iter().find(|b| b.id == command.before.id) != Some(&command.before)
             {

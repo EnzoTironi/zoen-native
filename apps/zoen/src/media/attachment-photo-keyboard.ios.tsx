@@ -1,6 +1,6 @@
 import { randomUUID } from 'expo-crypto';
 import { isLiquidGlassAvailable } from 'expo-glass-effect';
-import { useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { useWindowDimensions } from 'react-native';
 import { t } from '../i18n';
 import { attachmentKeyboardAction } from './attachment-photo-keyboard-actions';
@@ -31,14 +31,10 @@ export function AttachmentPhotoKeyboard({
   existingOptions,
   routes,
 }: AttachmentPhotoKeyboardProps) {
-  const [draft, setDraft] = useState<AttachmentCaptionDraft>({
-    token: state.token,
-    forced: null,
-    items: {},
-  });
-  const currentDraft =
-    draft.token === state.token ? draft : { token: state.token, forced: null, items: {} };
-  if (draft.token !== state.token) setDraft(currentDraft);
+  const currentDraft: AttachmentCaptionDraft = { token: state.token, ...state.captions };
+  const setDraft = (next: AttachmentCaptionDraft) => {
+    if (next.token === state.token) session.setCaptions(next);
+  };
   const gallery = state.screen === 'preview' || state.screen === 'selected';
   const recentActive = state.category !== 'photos' && recent !== undefined;
   const recentSelection = recentActive ? recent.state.selected : [];
@@ -71,7 +67,23 @@ export function AttachmentPhotoKeyboard({
   const presentation = owner.presentation?.id === request.id ? owner.presentation : request;
   const renderOwner = useMemo(
     () => ({
-      state,
+      // Caption text does not replace the observed native input owner.
+      state: {
+        token: state.token,
+        visible: state.visible,
+        busy: state.busy,
+        permission: state.permission,
+        items: state.items,
+        selected: state.selected,
+        albums: state.albums,
+        albumId: state.albumId,
+        loading: state.loading,
+        hasMore: state.hasMore,
+        error: state.error,
+        screen: state.screen,
+        previewId: state.previewId,
+        category: state.category,
+      },
       request,
       owner,
       recent: recent?.state,
@@ -80,7 +92,28 @@ export function AttachmentPhotoKeyboard({
       routes,
       revision: randomUUID(),
     }),
-    [state, request, owner, recent?.state, sendAsFileAllowed, existingOptions, routes],
+    [
+      state.token,
+      state.visible,
+      state.busy,
+      state.permission,
+      state.items,
+      state.selected,
+      state.albums,
+      state.albumId,
+      state.loading,
+      state.hasMore,
+      state.error,
+      state.screen,
+      state.previewId,
+      state.category,
+      request,
+      owner,
+      recent?.state,
+      sendAsFileAllowed,
+      existingOptions,
+      routes,
+    ],
   );
   const revision = renderOwner.revision;
   const committed = useRef<object | null>(null);
@@ -103,7 +136,11 @@ export function AttachmentPhotoKeyboard({
     liveRequest.current === request.id &&
     closedRequest.current !== request.id &&
     (!keyboard || keyboard.isCurrent(request.id)) &&
-    session.isInteractive(state.token);
+    session.isInteractive(state.token) &&
+    session.getSnapshot().screen === state.screen &&
+    session.getSnapshot().previewId === state.previewId &&
+    session.getSnapshot().selected === state.selected &&
+    session.getSnapshot().category === state.category;
   const binding = useKeyboardPanelBinding(
     presentation,
     owner.enabled &&
@@ -113,6 +150,19 @@ export function AttachmentPhotoKeyboard({
       (state.permission !== null || state.error !== null),
     presentation.closing || !state.visible,
   );
+  const displayItem = (photo: (typeof state.items)[number]) => {
+    const retained = Object.hasOwn(state.previewUris, photo.id);
+    const item = retained ? (state.selected.find((item) => item.id === photo.id) ?? photo) : photo;
+    return {
+      id: item.id,
+      type: item.mediaType,
+      name: item.filename,
+      duration: item.duration,
+      width: item.width,
+      height: item.height,
+      ...(retained ? { retained: true, uri: state.previewUris[item.id] } : {}),
+    };
+  };
   const model = JSON.stringify({
     revision,
     columns: width > height ? 5 : 3,
@@ -151,22 +201,8 @@ export function AttachmentPhotoKeyboard({
         }
       : null,
     previewId: state.previewId,
-    items: state.items.map((item) => ({
-      id: item.id,
-      type: item.mediaType,
-      name: item.filename,
-      duration: item.duration,
-      width: item.width,
-      height: item.height,
-    })),
-    selectedItems: state.selected.map((item) => ({
-      id: item.id,
-      type: item.mediaType,
-      name: item.filename,
-      duration: item.duration,
-      width: item.width,
-      height: item.height,
-    })),
+    items: state.items.map(displayItem),
+    selectedItems: state.selected.map(displayItem),
     selected: state.selected.map((item) => item.id),
     grouped: existingOptions ? existingOptions.grouping === 'grouped' : true,
     sendOptions:
@@ -327,7 +363,7 @@ export function AttachmentPhotoKeyboard({
         // approval of a previously queued Camera/Files/Audio intent.
         if (event.reason !== 'closed') {
           keyboard?.retire();
-          session.cancel();
+          session.retire();
           return;
         }
         keyboard?.closed(event.token);

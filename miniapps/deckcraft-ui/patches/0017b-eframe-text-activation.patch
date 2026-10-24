@@ -1,6 +1,6 @@
 --- /dev/null
 +++ b/vendor/eframe-0.36.2/src/web/text_input_activation.rs
-@@ -0,0 +1,228 @@
+@@ -0,0 +1,239 @@
 +//! A primary contact has one release-family owner. This is not a gesture clock:
 +//! egui remains responsible for click/drag thresholds and textual admission.
 +
@@ -105,6 +105,17 @@
 +/// The runner clears before logic and consumes after that same synchronous run.
 +pub(crate) fn clear_custom(ctx: &egui::Context) {
 +    ctx.data_mut(|data| data.remove::<Option<(u64, egui::Id)>>(egui::Id::new(ACTIVATION)));
++}
++
++/// The output-level predicate used by AppRunner, also exercised by the native UI harness.
++pub(crate) fn accepted_output_text(
++    ctx: &egui::Context,
++    ime: Option<&egui::output::IMEOutput>,
++) -> bool {
++    // A focus handoff interrupts the previous composition, but still advertises
++    // the newly admitted editor. AppRunner must clear that composition before
++    // focusing the current owner in this same trusted user callback.
++    accepted_current_text(ctx, ime.is_some())
 +}
 +
 +pub(crate) fn accepted_current_text(ctx: &egui::Context, ime: bool) -> bool {
@@ -411,31 +422,65 @@
          // We sometimes miss blur/focus events due to the text agent, so let's just poll each frame:
          self.update_focus();
          // We might have received a screenshot
-@@ -412,14 +425,25 @@
+@@ -412,21 +425,11 @@
  
          super::set_cursor_icon(self.canvas(), cursor_icon);
  
 -        if self.has_focus() {
-+        let accepted_text = super::text_input_activation::accepted_current_text(
-+            &self.egui_ctx,
-+            ime.as_ref()
-+                .is_some_and(|ime| !ime.should_interrupt_composition),
-+        );
+-            // The eframe app has focus.
+-            if let Some(ime) = ime {
+-                if ime.should_interrupt_composition {
+-                    self.text_agent.interrupt_ime_composition();
+-                }
+-                // We are editing text: give the focus to the text agent.
+-                self.text_agent.focus();
+-            } else {
+-                // We are not editing text - give the focus to the canvas.
+-                self.text_agent.blur();
+-                super::focus_without_scroll(self.canvas()).ok();
+-            }
+-        }
+-
++        let accepted_text =
++            super::text_input_activation::accepted_output_text(&self.egui_ctx, ime.as_ref());
 +        let activate = self.pointer_callback && self.allow_text_activation && accepted_text;
++        // Mobile focus uses the element's geometry immediately. Publish this
++        // frame's owner before activation, never the preceding title/editor.
+         if let Err(err) = self
+             .text_agent
+             .update(ime, self.canvas(), self.egui_ctx.zoom_factor())
+@@ -436,6 +439,34 @@
+                 super::string_from_js_value(&err)
+             );
+         }
++
 +        if activate {
++            // The old editor's composition cannot veto a real focus handoff.
++            // Honor its explicit interruption before the new owner's gesture.
++            if ime
++                .as_ref()
++                .is_some_and(|ime| ime.should_interrupt_composition)
++            {
++                self.text_agent.interrupt_ime_composition();
++            }
 +            // Synchronous user activation, tied to the target admitted in this run.
 +            self.text_agent.focus_from_user_gesture();
 +        } else if self.has_focus() {
-             // The eframe app has focus.
-             if let Some(ime) = ime {
-                 if ime.should_interrupt_composition {
-                     self.text_agent.interrupt_ime_composition();
-                 }
-                 // We are editing text: give the focus to the text agent.
--                self.text_agent.focus();
++            // The eframe app has focus.
++            if let Some(ime) = ime {
++                if ime.should_interrupt_composition {
++                    self.text_agent.interrupt_ime_composition();
++                }
++                // We are editing text: give the focus to the text agent.
 +                if !self.pointer_callback {
 +                    self.text_agent.focus();
 +                }
-             } else {
-                 // We are not editing text - give the focus to the canvas.
-                 self.text_agent.blur();
++            } else {
++                // We are not editing text - give the focus to the canvas.
++                self.text_agent.blur();
++                super::focus_without_scroll(self.canvas()).ok();
++            }
++        }
+     }
+ }
+ 

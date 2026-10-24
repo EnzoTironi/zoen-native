@@ -10,6 +10,7 @@ import { useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { t } from '../i18n';
 import { useTheme } from '../theme';
+import { THEME_INPUT_PROBE, reportThemeInput } from '../theme/input-probe';
 import { resolveSkyTheme } from '../theme/sky';
 import {
   DEFAULT_THEME_CUSTOMIZATION,
@@ -164,8 +165,10 @@ function Toggle({
   hint,
   value,
   onChange,
+  probe = false,
 }: {
   label: string;
+  probe?: boolean;
   hint?: string;
   value: boolean;
   onChange(value: boolean): void;
@@ -179,11 +182,18 @@ function Toggle({
         justifyContent: 'center',
       }}
     >
-      <Host matchContents style={{ width: '100%' }}>
+      <Host
+        matchContents={process.env.EXPO_OS === 'ios' ? { vertical: true } : true}
+        style={{ width: '100%' }}
+      >
         <Switch
           label={label}
           value={value}
-          onValueChange={onChange}
+          testID={probe ? 'zoen-theme-automatic-probe' : undefined}
+          onValueChange={(next) => {
+            if (probe) reportThemeInput('js-callback');
+            onChange(next);
+          }}
           modifiers={
             process.env.EXPO_OS === 'ios'
               ? [
@@ -272,7 +282,11 @@ export function ThemeSettings() {
     setPreference(profile);
   }
   return (
-    <SettingsScreen title={t('settings.appearance')} testID="theme-settings-screen">
+    <SettingsScreen
+      title={t('settings.appearance')}
+      testID="theme-settings-screen"
+      onTouchStart={THEME_INPUT_PROBE ? () => reportThemeInput('screen-touch-start') : undefined}
+    >
       <Block>
         <ScrollView
           horizontal
@@ -326,8 +340,12 @@ export function ThemeSettings() {
         <Toggle
           label={t('settings.themeAutomatic')}
           hint={t('settings.skyFollowsLocalTime')}
+          probe={THEME_INPUT_PROBE}
           value={preference === 'auto'}
-          onChange={(enabled) => setPreference(enabled ? 'auto' : editing)}
+          onChange={(enabled) => {
+            if (THEME_INPUT_PROBE) reportThemeInput('preference-request');
+            setPreference(enabled ? 'auto' : editing);
+          }}
         />
       </Block>
       <Block title={t('settings.themeColors')}>

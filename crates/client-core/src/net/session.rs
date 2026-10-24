@@ -55,7 +55,7 @@ pub(super) async fn session_with_repair_policy(
     if let Err(e) = send(&mut sink, &hello).await {
         return Exit::Retry(e);
     }
-    let (nonce, relay, profiles, advertised_clock) = match recv(&mut stream).await {
+    let (nonce, relay, profiles, advertised_clock, complete_reads) = match recv(&mut stream).await {
         Ok(ServerFrame::Challenge {
             nonce,
             relay,
@@ -75,6 +75,9 @@ pub(super) async fn session_with_repair_policy(
                         .map(ClaimClockSample::new)
                 })
                 .flatten(),
+            capabilities
+                .iter()
+                .any(|c| c == protocol::complete_reads::CAPABILITY),
         ),
         Ok(ServerFrame::Challenge { protocol, .. }) => {
             return Exit::Blocked(format!(
@@ -108,6 +111,7 @@ pub(super) async fn session_with_repair_policy(
     };
     // A Challenge sample belongs to this authenticated socket only. A later Pong
     // cannot enable a capability or clock that its Challenge did not advertise.
+    let read_owner = complete_reads.then(|| (identity.clone(), key.id()));
     let clock_negotiated = advertised_clock.is_some();
     let mut claim_clock = advertised_clock;
     if !relay_knows_me || !registered {
@@ -161,6 +165,7 @@ pub(super) async fn session_with_repair_policy(
     let mut sent: HashMap<String, Option<u64>> = HashMap::new();
     let mut waiting: HashMap<u64, Waiting> = HashMap::new();
     let mut next_id: u64 = 1;
+    let mut deferred_reads = complete_reads::Deferred::new();
     let mut dirty: HashSet<String> = HashSet::new();
     let mut deferred_receipts = DeferredReceipts::default();
     let tick = tokio::time::sleep(Duration::ZERO);
@@ -193,7 +198,19 @@ pub(super) async fn session_with_repair_policy(
         return Exit::Retry(e);
     }
     loop {
+        if let Err(e) = complete_reads::drain(&mut sink,&mut waiting,&mut next_id,&mut deferred_reads).await { break Exit::Retry(e); }
         tokio::select! {
+            _ = async {
+                match complete_reads::deadline(&waiting) {
+                    Some(deadline) => tokio::time::sleep_until(deadline).await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                // A silent missing page cannot hold this connection's read lane
+                // forever. Closing releases the server snapshot and settles every
+                // waiter without publishing or installing an incomplete set.
+                break Exit::Retry("complete_read_expired".into());
+            }
             frame = stream.next() => {
                 let frame = match frame {
                     None => break Exit::Retry("relay closed the connection".into()),
@@ -231,9 +248,8 @@ pub(super) async fn session_with_repair_policy(
                     ctx.notify_connection();
                 }
                 Some(Cmd::Req { op, reply }) => {
-                    let id = next_id; next_id += 1;
-                    if let Err(e) = send(&mut sink, &ClientFrame::Req { id, op }).await { let _ = reply.send(Err(e.clone())); break Exit::Retry(e) }
-                    waiting.insert(id, Waiting::External(reply));
+                    let (op, waiter) = complete_reads::start(op, Waiting::External(reply), read_owner.as_ref());
+                    if let Err(e)=complete_reads::submit(op,waiter,&mut sink,&mut waiting,&mut next_id,&mut deferred_reads).await { break Exit::Retry(e); }
                 }
                 Some(Cmd::Ephemeral { space, kind }) => {
                     if let Err(e) = send(&mut sink, &ClientFrame::Ephemeral { space, kind }).await { break Exit::Retry(e) }
@@ -255,6 +271,8 @@ pub(super) async fn session_with_repair_policy(
                     opening: &mut opening, claim_clock: &claim_clock,
                     claim_refusal_reported: &mut claim_refusal_reported,
                     media_kick: &media_kick,
+                    read_owner: read_owner.as_ref(),
+                    deferred_reads: &mut deferred_reads,
                 }).await { break exit; }
                 // A slow pass must leave time to drive the socket, rather than build a
                 // burst of overdue scans over the same pending work.
@@ -288,10 +306,11 @@ pub(super) async fn session_with_repair_policy(
         cursor_repair.abandon_transport(repair_expired, tokio::time::Instant::now());
     // Include unsent claims if writing a batch failed before their waiting entry existed.
     engine!(|engine| engine.mls_claims_disconnected());
+    for (_, w) in deferred_reads {
+        w.fail("offline");
+    }
     for (_, w) in waiting {
-        if let Waiting::External(tx) = w {
-            let _ = tx.send(Err("offline".into()));
-        }
+        w.fail("offline");
     }
     if !dirty.is_empty() {
         if let Some(l) = &ctx.listener {

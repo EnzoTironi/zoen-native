@@ -15,17 +15,16 @@ impl CanonicalPermit {
             .check_selection()
             .map_err(|_| Refusal::selection(Phase::SelectionBefore))?;
         let result = match schema {
-            1 => tools
-                .e
-                .approved_tool_turn(
-                    request,
-                    tools
-                        .deckcraft
-                        .ok_or_else(Refusal::executor)?
-                        .binding_sha256(),
-                )
-                .map(Self::Deck)
-                .map_err(|error| Refusal::core(Phase::DeckPermit, error)),
+            1 => {
+                let binding = tools
+                    .binary_binding(request)
+                    .map_err(|_| Refusal::executor())?;
+                tools
+                    .e
+                    .approved_tool_turn(request, binding)
+                    .map(Self::Deck)
+                    .map_err(|error| Refusal::core(Phase::DeckPermit, error))
+            }
             2 => tools
                 .e
                 .approved_page_tool_turn(request)
@@ -113,6 +112,22 @@ pub(super) fn is_model_name(name: &str) -> bool {
     })
 }
 impl SpaceTools<'_> {
+    /// This only selects a configured fixed component; approved_tool_turn and
+    /// recover_tool_results independently revalidate the signed canonical request.
+    fn binary_binding(&self, request: &str) -> Result<&str, String> {
+        let requests = self.e.tool_approval_requests(&self.space, self.source);
+        let proposal = requests
+            .iter()
+            .find(|r| r.id == request)
+            .and_then(|r| r.tool_proposal.as_ref())
+            .ok_or("Canonical request unavailable")?;
+        let format = client_core::binary_agent_tools::format(&proposal.canonical_tool)
+            .ok_or("Unsupported binary App tool")?;
+        self.deckcraft
+            .ok_or("Binary App executor unavailable")?
+            .binding_for(format.id())
+    }
+
     pub(super) fn page_binding(&self, call: &ToolCall) -> Option<(&str, &str)> {
         self.names
             .iter()
@@ -182,13 +197,9 @@ impl SpaceTools<'_> {
     ) -> Result<String, String> {
         self.check_selection()?;
         let result = match schema {
-            1 => self.e.recover_tool_results(
-                request,
-                self.deckcraft
-                    .ok_or("The presentation executor is unavailable")?
-                    .binding_sha256(),
-                steps,
-            ),
+            1 => self
+                .e
+                .recover_tool_results(request, self.binary_binding(request)?, steps),
             2 => self.e.recover_page_tool_results(request, steps),
             3 => self.e.recover_app_creation_results(request, steps),
             5 => self.e.recover_site_tool_results(request, steps),

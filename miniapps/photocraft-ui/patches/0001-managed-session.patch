@@ -1,0 +1,154 @@
+diff --git a/crates/engine/src/jobs.rs b/crates/engine/src/jobs.rs
+index 0ee0573..ba1bec4 100644
+--- a/crates/engine/src/jobs.rs
++++ b/crates/engine/src/jobs.rs
+@@ -714,6 +714,7 @@ impl Session {
+ 
+     /// Run the command `id`: inline, or (with `background`) as a job when it is one.
+     pub(crate) fn dispatch(&mut self, id: &str, params: Value, background: bool) -> Result<Started> {
++        if let Some(policy) = self.managed_policy { policy(self, id, &params)?; }
+         let spec = crate::commands::find(id).ok_or_else(|| EngineError::UnknownCommand(id.to_string()))?;
+         // Params are named fields: anything but an object (or null, meaning none) is a caller
+         // mistake, not "use every default".
+diff --git a/crates/engine/src/lib.rs b/crates/engine/src/lib.rs
+index ba75569..416648c 100644
+--- a/crates/engine/src/lib.rs
++++ b/crates/engine/src/lib.rs
+@@ -436,8 +436,14 @@ pub struct CopiedStyle {
+ /// or fill layer) is known only when they run.
+ pub const PRECHECKED: &[&str] = &["layer.new.layer", "layer.new.group", "layer.new.groupFromLayers", "layer.new.layerFromBackground"];
+ 
++pub type ManagedPolicy = fn(&Session, &str, &Value) -> Result<()>;
++
+ #[derive(Default)]
+ pub struct Session {
++    /// Ephemeral embedding policy/binding, not a document or authorization record.
++    pub managed_policy: Option<ManagedPolicy>,
++    pub managed_binding: Option<u64>,
++    pub managed_frozen: bool,
+     docs: Vec<DocState>,
+     active: Option<usize>,
+     pub tools: ToolState,
+@@ -743,6 +749,9 @@ impl Session {
+ 
+     /// [`Self::disabled_reason`] for a call with `params`.
+     pub fn disabled_reason_with(&self, id: &str, params: &Value) -> Option<String> {
++        if let Some(policy) = self.managed_policy && policy(self, id, params).is_err() {
++            return Some("This action is unavailable in this document.".into());
++        }
+         let Some(s) = commands::find(id) else { return Some(format!("unknown command `{id}`")) };
+         self.precondition(s, &channel_cmds::inject_target(self, id, params.clone())).err().or_else(|| self.job_conflict(id, s.journal))
+     }
+@@ -788,6 +797,7 @@ impl Session {
+ 
+     /// Apply an undoable edit to the active document.
+     pub fn edit<R>(&mut self, label: &str, f: impl FnOnce(&mut Document, &mut Option<LayerId>) -> Result<R>) -> Result<R> {
++        if self.managed_frozen { return Err(EngineError::Other("managed canvas is paused".into())); }
+         // Every mutation path (linked-file refresh, transform, place) re-renders smart objects
+         // through this entry; the requesting session's authority must reach those renders.
+         let _authorization = crate::jobs::render_authorization_scope(self.authorize);
+@@ -920,6 +930,7 @@ impl Session {
+     }
+ 
+     pub fn undo(&mut self) -> bool {
++        if self.managed_frozen { return false; }
+         // A background job is computing from the current state: it must not move under it.
+         if self.active_job().is_some() {
+             return false;
+@@ -946,6 +957,7 @@ impl Session {
+     }
+ 
+     pub fn redo(&mut self) -> bool {
++        if self.managed_frozen { return false; }
+         if self.active_job().is_some() {
+             return false;
+         }
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index 89f293a..3c4f72f 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -864,6 +864,13 @@ pub struct PhotocraftApp {
+ }
+ 
+ impl PhotocraftApp {
++    /// Do not checkpoint or replace a live upstream gesture, dialog or composition.
++    pub fn host_interaction(&self) -> bool {
++        self.drag.is_some() || self.live_stroke.is_some() || !self.ui.dialogs.is_empty()
++            || self.ui.text_edit.is_some() || self.ui.transform.is_some()
++            || self.ui.cam_transform.is_some() || self.ui.pen.is_some()
++            || self.live_adjust.is_some() || self.session.active_job().is_some()
++    }
+     pub fn new(session: Session, services: Services) -> Self {
+         let mut app = Self {
+             session,
+@@ -1068,6 +1075,9 @@ impl PhotocraftApp {
+ 
+     /// Run an engine command, reporting errors in the status bar.
+     pub fn run(&mut self, id: &str, params: Value) -> Result<Value, String> {
++        if let Some(policy) = self.session.managed_policy {
++            policy(&self.session, id, &params).map_err(|_|"This action is unavailable in this document.".to_owned())?;
++        }
+         if let Some(result) = delete_layer_prompt::intercept(self, id, &params) {
+             return result;
+         }
+@@ -1884,7 +1884,7 @@
+ }
+ 
+ impl eframe::App for PhotocraftApp {
+-    fn on_exit(&mut self) {
++    fn on_exit(&mut self, #[cfg(target_arch = "wasm32")] _gl: Option<&eframe::glow::Context>) {
+         if let Err(err) = tool_memory::save_on_exit(self) {
+             log::warn!("Preferences: could not save the final tool selection: {err}");
+         }
+diff --git a/crates/format/src/store.rs b/crates/format/src/store.rs
+--- a/crates/format/src/store.rs
++++ b/crates/format/src/store.rs
+@@ -541,10 +541,12 @@
+             Err(e) => return Err(e.into()),
+         }
+     }
+-    let (tmp, mut file) = temporary.ok_or_else(|| {
++    let (tmp, file) = temporary.ok_or_else(|| {
+         FormatError::Io(std::io::Error::new(std::io::ErrorKind::AlreadyExists, format!("could not create a temporary file beside {}", path.display())))
+     })?;
+     let result = (|| -> Result<()> {
++        {
++        let mut file = file;
+         // The parent may have changed between validation and create_new. Check the new file's
+         // resolved location before putting document bytes into it.
+         if std::fs::canonicalize(&tmp)? != tmp {
+@@ -553,7 +555,7 @@
+         validate_bundle_file(root, path)?;
+         file.write_all(data)?;
+         file.sync_all()?;
+-        drop(file);
++        }
+         // Preserve the existing mode where possible, as the generic atomic writer does.
+         if let Ok(permissions) = std::fs::metadata(path).map(|m| m.permissions()) {
+             let _ = std::fs::set_permissions(&tmp, permissions);
+diff --git a/crates/engine/src/display_color.rs b/crates/engine/src/display_color.rs
+--- a/crates/engine/src/display_color.rs
++++ b/crates/engine/src/display_color.rs
+@@ -107,6 +107,7 @@
+ }
+ 
+ /// Pixels per piece [`par_pixels`] hands to one thread.
++#[cfg(not(target_arch = "wasm32"))]
+ const PAR_PIXELS: usize = 16 * 1024;
+ 
+ /// `f` over matching pieces of `dst` and `src`, in parallel off wasm. The display encodes run on
+diff --git a/crates/engine/src/file_cmds.rs b/crates/engine/src/file_cmds.rs
+--- a/crates/engine/src/file_cmds.rs
++++ b/crates/engine/src/file_cmds.rs
+@@ -1013,9 +1013,11 @@
+ }
+ 
+ /// Subfolders below a batch input folder are walked at most this deep ("Include All Subfolders").
++#[cfg(not(target_arch = "wasm32"))]
+ pub(crate) const MAX_SUBFOLDER_DEPTH: usize = 32;
+ /// A batch over subfolders lists at most this many files; a larger tree is an error, not a run
+ /// that silently stops partway.
++#[cfg(not(target_arch = "wasm32"))]
+ pub(crate) const MAX_SUBFOLDER_FILES: usize = 100_000;
+ 
+ /// [`batch_inputs`] for the commands whose Photoshop dialog has "Include All Subfolders" (Batch,

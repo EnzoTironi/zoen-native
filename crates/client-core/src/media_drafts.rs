@@ -12,6 +12,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use zeroize::Zeroizing;
 
+mod gallery;
 mod recovery;
 
 pub const MEDIA_DRAFT_REVISION_ZERO: &str = "0";
@@ -88,6 +89,8 @@ enum Content {
             skip_serializing_if = "types::AttachmentSendOptions::is_default"
         )]
         options: types::AttachmentSendOptions,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gallery: Option<gallery::Gallery>,
     },
     Voice {
         reply_to: Option<String>,
@@ -224,9 +227,17 @@ fn references(content: &Option<Content>) -> R<Vec<&str>> {
         return Err(invalid());
     }
     match content {
-        Content::Attachments { items, options, .. } => {
+        Content::Attachments {
+            items,
+            options,
+            gallery,
+            ..
+        } => {
             if !options.validate_count(items.len()) {
                 return Err(invalid());
+            }
+            if let Some(gallery) = gallery {
+                gallery.validate(items)?;
             }
             let mut mutations = HashSet::new();
             for item in items {
@@ -313,6 +324,20 @@ fn validate(record: &Record) -> R<()> {
             return Err(invalid());
         }
         total = total.checked_add(asset.size).ok_or_else(invalid)?;
+    }
+    if let Some(Content::Attachments {
+        gallery: Some(gallery),
+        ..
+    }) = &record.content
+    {
+        for entry in &gallery.entries {
+            if !record.assets.iter().any(|asset| {
+                asset.id == entry.asset_id
+                    && (asset.mime.starts_with("image/") || asset.mime.starts_with("video/"))
+            }) {
+                return Err(invalid());
+            }
+        }
     }
     match &record.content {
         Some(Content::Attachments { .. }) if total > MAX_ASSET_BYTES as u64 => {

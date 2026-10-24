@@ -1,3 +1,5 @@
+import type { StaticLocation } from '../../modules/zoen-core/src/ZoenLocation.types';
+export type { StaticLocation } from '../../modules/zoen-core/src/ZoenLocation.types';
 import type { FileDto } from '../core/generated/FileDto';
 import type { VoiceNativePort } from './voice-session';
 import type { MediaDraftPort } from './media-draft-types';
@@ -44,6 +46,12 @@ export type LocalMediaFile = {
   info: FileDto;
 };
 
+/** Transient, whitelisted projection of the actual authorized contact bytes. */
+export type ContactPreview = Readonly<{
+  name: string;
+  phones: readonly Readonly<{ label: string; value: string }>[];
+}>;
+
 /** Candidates only: native reconstructs and authorizes the signed album. */
 export type ConversationMediaRequest = Readonly<{
   spaceId: string;
@@ -68,6 +76,11 @@ export interface MediaDriver {
   materializeFile(itemId: string, version?: number): Promise<LocalMediaFile | null>;
   /** Resolves after the native viewer closes, while retaining its own preview copy. */
   previewFile?(file: LocalMediaFile): Promise<void>;
+  /** Read-only; the caller retains and releases the existing materialized-file lease. */
+  readContact?(file: LocalMediaFile): Promise<ContactPreview>;
+  readLocation?(file: LocalMediaFile): Promise<StaticLocation>;
+  searchLocations?(binding: string, query: string): Promise<readonly StaticLocation[]>;
+  cancelLocationSearch?(binding: string): void;
   previewConversationMedia?(request: ConversationMediaRequest, signal: AbortSignal): Promise<void>;
   releaseLocalFile(uri: string): Promise<void>;
 }

@@ -142,11 +142,12 @@ pub(super) fn voice_reply_syncs_its_metadata_and_encrypted_bytes_and_survives_re
     use crate::sync::Ingest;
     use protocol::{Envelope, Sequenced};
 
-    let sender = seeded();
-    let space = find_space(&sender, "Zoen").id;
+    let sender = media_peer("voice_author");
+    let receiver = media_peer("voice_reader");
+    let space = media_space(&sender, Some(&receiver), "Voice receipt");
     let root = sender.send_message(space.clone(), "Root".into()).unwrap();
+    confirm_media_outbox(&sender, &space);
     let mut relay = sender.lock().logs[&space].clone();
-    sender.lock().net.synced.insert(space.clone());
     let sent = note(&sender, &space, Some(root.id.clone())).unwrap();
     let voice = sent.voice.as_ref().unwrap();
     let pending = sender.lock().store.outbox().unwrap();
@@ -158,7 +159,6 @@ pub(super) fn voice_reply_syncs_its_metadata_and_encrypted_bytes_and_survives_re
     for event in pending {
         relay.sequence(event.event);
     }
-    let receiver = Client::open(":memory:".into(), "en".into()).unwrap();
     for event in relay.events() {
         let envelope = Sequenced {
             seq: event.seq,

@@ -50,6 +50,7 @@ extension ZoenSession {
     return try ZoenMediaFiles.json(["revision": String(loaded.revision),
       "hasRetainedCapture": loaded.capture != nil,
       "blockId": loaded.binding.flatMap { pageInputBlockId($0.target) } as Any? ?? NSNull(),
+      "target": loaded.binding.map { pageInputTargetName($0.target) } as Any? ?? NSNull(),
       "mode": mode as Any? ?? NSNull()])
   }
 
@@ -83,11 +84,18 @@ extension ZoenSession {
       if request.resume {
         guard loaded.capture != nil, let binding = loaded.binding,
               pageInputModeName(binding.mode) == request.mode,
+              pageInputTargetName(binding.target) == request.target.rawValue,
               pageInputBlockId(binding.target) == request.blockId else { throw ZoenPageInputLease.Failure.changed }
         target = binding.target; context = binding.baseEditContext; inputMode = binding.mode
       } else {
         guard loaded.capture == nil else { throw ZoenPageInputLease.Failure.changed }
-        target = request.blockId.map { .block(blockId: $0) } ?? .appendNew
+        switch request.target {
+        case .document: target = .wholeDocument
+        case .append: target = .appendNew
+        case .block:
+          guard let blockId = request.blockId else { throw ZoenPageInputLease.Failure.unsupported }
+          target = .block(blockId: blockId)
+        }
         context = request.editContext
         switch request.mode {
         case "rich": inputMode = .rawRich
@@ -98,8 +106,12 @@ extension ZoenSession {
       }
       let opened = try engine.pageInputOpen(scope: scope, expectedRevision: revision,
         writerId: UUID().uuidString, target: target, mode: inputMode, observedEditContext: context)
-      guard let binding = opened.binding else { throw ZoenPageInputLease.Failure.changed }
-      let block = try ZoenPageInputOpenRequest.seedBlock(binding.baseBlockJson)
+      guard let binding = opened.binding, binding.target == target, binding.mode == inputMode else {
+        throw ZoenPageInputLease.Failure.changed
+      }
+      let block: [String: Any]?
+      if request.target == .document { block = nil }
+      else { block = try ZoenPageInputOpenRequest.seedBlock(binding.baseBlockJson) }
       if request.mode == "rich", let block {
         guard let kind = block["kind"] as? String, ["paragraph", "heading", "bullet", "numbered"].contains(kind),
               let spans = block["spans"] as? [[String: Any]],
@@ -132,7 +144,19 @@ extension ZoenSession {
 
   private func completePageInputOpen(_ record: ZoenPageInputRecord) async throws -> String {
     _ = try currentPageInput(record.request.session, id: record.request.id)
-    let block = try ZoenPageInputOpenRequest.seedBlock(record.binding.baseBlockJson)
+    let block: [String: Any]?
+    if record.request.target == .document {
+      guard record.request.mode == "markdown", case .wholeDocument = record.binding.target,
+            let markdown = record.binding.baseDocumentMarkdown else {
+        throw ZoenPageInputLease.Failure.unsupported
+      }
+      // The exact Core binding owns this seed at its base edit context. Never
+      // substitute the current document or text from the JavaScript request.
+      record.initialMarkdown = markdown
+      block = nil
+    } else {
+      block = try ZoenPageInputOpenRequest.seedBlock(record.binding.baseBlockJson)
+    }
     if record.request.mode != "lossless-text", let block {
       let request = try ZoenMediaFiles.json(["op": "page_block_markdown", "block": block])
       let encoded = try await record.engine.clientRequest(request: request)
@@ -171,14 +195,16 @@ extension ZoenSession {
     var value: [String: Any] = [
       "session": record.request.session, "id": record.request.id, "token": record.token as Any? ?? NSNull(),
       "itemId": record.scope.itemId, "blockId": pageInputBlockId(record.binding.target) as Any? ?? NSNull(),
+      "target": pageInputTargetName(record.binding.target),
       "resuming": record.request.resume, "mode": record.request.mode,
       "revision": status.revision, "statusVersion": status.statusVersion, "sequence": status.sequence as Any? ?? NSNull(),
       "hasRetainedCapture": status.retained, "retentionPending": status.unretained,
       "failed": status.failed, "sealed": status.sealed, "completed": status.completed,
       "operation": status.operation?.rawValue as Any? ?? NSNull()
     ]
-    // Only canonical initial content crosses JS, once. Captures/selection/IME never do.
-    if includeSeed { value["initialMarkdown"] = record.initialMarkdown }
+    // Legacy rich/block seeds cross JS once. Whole-document seed and all live
+    // capture/selection/IME bytes remain in the native producer/journal.
+    if includeSeed, record.request.target != .document { value["initialMarkdown"] = record.initialMarkdown }
     return try ZoenMediaFiles.json(value)
   }
 
@@ -342,7 +368,14 @@ private func pageInputModeName(_ mode: PageInputMode) -> String {
 private func pageInputBlockId(_ target: PageInputTarget) -> String? {
   switch target {
   case .block(let blockId): blockId
-  case .appendNew: nil
+  case .appendNew, .wholeDocument: nil
   }
 }
 
+private func pageInputTargetName(_ target: PageInputTarget) -> String {
+  switch target {
+  case .block: "block"
+  case .appendNew: "append"
+  case .wholeDocument: "document"
+  }
+}

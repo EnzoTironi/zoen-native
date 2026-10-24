@@ -5,7 +5,7 @@ import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promi
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { cargoTooling, ExpoCargoArtifacts } from './expo-cargo-artifacts.mjs';
+import { cargoTooling, ExpoCargoArtifacts, managedAppResourceInputs } from './expo-cargo-artifacts.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const moduleRoot = join(root, 'apps/zoen/modules/zoen-core');
@@ -53,7 +53,8 @@ async function inputs(directory) {
   for (const entry of entries) {
     const path = join(directory, entry.name);
     if (entry.isDirectory()) result.push(...(await inputs(path)));
-    else if (/\.(rs|toml|json|html|deckcraft)$/.test(path)) result.push(path);
+    // Canonical starter documents are embedded by Rust include_bytes!.
+    else if (/\.(rs|toml|json|html|deckcraft|xlsx|docx)$/.test(path)) result.push(path);
   }
   return result;
 }
@@ -115,7 +116,9 @@ async function sourceInputs() {
       androidAbis,
       // The registry is compiled into Rust. A config-only change must not reuse
       // native artifacts from another verified code package or deployment URL.
-      deckcraftResourceManifest: process.env.ZOEN_DECKCRAFT_RESOURCE_MANIFEST_JSON ?? null,
+      resourceManifests: Object.fromEntries(
+        managedAppResourceInputs.map(({ id, environment }) => [id, process.env[environment] ?? null]),
+      ),
     }),
   );
   // The browser core evolves independently. Hash the actual native dependency

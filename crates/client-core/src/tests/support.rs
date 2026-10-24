@@ -114,3 +114,58 @@ pub(super) fn book(
         format!(r#"{{"serviceId":"{svc}","startMs":{start},"note":"alergia a lâmina"}}"#),
     )
 }
+
+/// A real unlocked recipient; replaying a log alone grants no media authority.
+pub(super) fn media_account(path: &str, name: &str, vault: Arc<MemVault>) -> Arc<Client> {
+    let client = Client::open(path.into(), "en".into()).unwrap();
+    client
+        .create_account(name.into(), name.into(), "http://127.0.0.1:1".into(), vault)
+        .unwrap();
+    client
+}
+
+pub(super) fn media_peer(name: &str) -> Arc<Client> {
+    media_account(":memory:", name, Arc::new(MemVault::default()))
+}
+
+/// Sequence the actual signed queued events before the next fixture operation.
+pub(super) fn confirm_media_outbox(client: &Client, space: &str) {
+    let mut relay = client
+        .lock()
+        .logs
+        .get(space)
+        .cloned()
+        .unwrap_or_else(|| event_log::SpaceLog::new(space));
+    let pending = client.lock().store.outbox().unwrap();
+    for pending in pending.into_iter().filter(|row| row.event.space == space) {
+        let event = relay.sequence(pending.event);
+        assert!(matches!(
+            client.lock().ingest(protocol::Sequenced {
+                seq: event.seq,
+                prev: event.prev.clone(),
+                hash: event.hash.clone(),
+                env: protocol::Envelope::plain(event),
+            }),
+            crate::sync::Ingest::Confirmed
+        ));
+    }
+    assert!(client
+        .lock()
+        .store
+        .outbox()
+        .unwrap()
+        .iter()
+        .all(|row| row.event.space != space));
+}
+
+pub(super) fn media_space(author: &Client, reader: Option<&Client>, title: &str) -> String {
+    let members = reader
+        .map(|client| client.account().unwrap().identity_id)
+        .into_iter()
+        .collect();
+    let space = author
+        .create_group_with(title.into(), members, PrivacyDto::Closed)
+        .unwrap();
+    confirm_media_outbox(author, &space);
+    space
+}

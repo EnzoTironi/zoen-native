@@ -65,7 +65,11 @@ pub(super) async fn dispatch_frame(
                 let _ = repair_deadline.send_replace(cursor_repair.abort_deadline());
             }
             if r == Ingest::Confirmed {
-                sent.remove(&client_id);
+                let tracked = sent.remove(&client_id).is_some();
+                tracing_like(&format!(
+                    "publication confirmed tracked={tracked} in_flight={}",
+                    sent.len()
+                ));
             }
             match r {
                 Ingest::Confirmed => {
@@ -112,7 +116,13 @@ pub(super) async fn dispatch_frame(
                 return Err(Exit::Retry(e.to_string()));
             }
         }
-        ServerFrame::Accepted { .. } => {}
+        ServerFrame::Accepted { client_id, .. } => {
+            tracing_like(&format!(
+                "publication accepted tracked={} in_flight={}",
+                sent.contains_key(&client_id),
+                sent.len()
+            ));
+        }
         ServerFrame::Rejected {
             space,
             client_id,
@@ -268,7 +278,11 @@ pub(super) async fn dispatch_frame(
             .await?;
         }
         ServerFrame::ProfileChanged { identity, .. } => {
-            engine!(|engine| engine.profile_changed(&identity))
+            let own = engine!(|engine| {
+                engine.profile_changed(&identity);
+                engine.me.as_deref() == Some(identity.as_str())
+            });
+            tracing_like(&format!("sealed profile invalidated own={own}"));
         }
         ServerFrame::KeyPackagesLow { device, remaining } => {
             engine!(|engine| engine.mls_key_packages_low(&device, remaining))

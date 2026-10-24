@@ -5,7 +5,12 @@ import {
   hash,
   CANONICAL_SCENE_CHUNK_BYTES as CHUNK,
 } from './canonical-scene.ts';
-import { DECKCRAFT_ENGINE_REVISION, MAX_BINARY_DOCUMENT_BYTES } from './canonical-binary.ts';
+import {
+  binaryEditorFormat,
+  binaryExportAllowed,
+  type BinaryEditorId,
+  type BinaryExportFormat,
+} from './binary-formats.ts';
 import { deckcraftInteractionRefusal, type DeckcraftFeedbackReason } from './deckcraft-feedback.ts';
 
 type Scope = { artifactId: string; actorId: string; actorKind: 'human' | 'agent' };
@@ -17,6 +22,7 @@ export type DeckcraftBindings = {
   zoenHostRetire: () => void;
 };
 type Options = {
+  editor?: BinaryEditorId;
   app: Pick<App, 'callServerTool'>;
   engine: DeckcraftBindings;
   itemId: string;
@@ -73,13 +79,14 @@ export class DeckcraftDocument {
   private live = true;
   private paused = false;
   private opened = false;
+  private readOnly = false;
   private binding: Scope | null = null;
   private pending: { metadata: Record<string, unknown>; bytes: Uint8Array } | null = null;
   private tail: Promise<unknown> = Promise.resolve();
   private timer: ReturnType<typeof setTimeout> | null = null;
   private readonly options: Options;
   constructor(options: Options) {
-    this.options = options;
+    this.options = { ...options, editor: binaryEditorFormat(options.editor).id };
     if (!token(options.itemId)) throw new Error('Invalid document Item.');
   }
   private check() {
@@ -120,7 +127,10 @@ export class DeckcraftDocument {
   private async engine(op: string, input?: unknown, bytes = new Uint8Array()) {
     this.check();
     // Check before wasm-bindgen copies the Uint8Array or its JSON String.
-    if (!(bytes instanceof Uint8Array) || bytes.byteLength > MAX_BINARY_DOCUMENT_BYTES)
+    if (
+      !(bytes instanceof Uint8Array) ||
+      bytes.byteLength > binaryEditorFormat(this.options.editor).maxDocumentBytes
+    )
       throw new Error('Document input is too large.');
     const envelope = JSON.stringify(input === undefined ? { op } : { op, input });
     if (envelope.length > 65_536 || new TextEncoder().encode(envelope).length > 65_536)
@@ -131,11 +141,14 @@ export class DeckcraftDocument {
       typeof response.metadata !== 'string' ||
       response.metadata.length > 65_536 ||
       !(response.bytes instanceof Uint8Array) ||
-      response.bytes.byteLength > (op === 'export' ? 16 * 1024 * 1024 : MAX_BINARY_DOCUMENT_BYTES)
+      response.bytes.byteLength >
+        (op === 'export'
+          ? 16 * 1024 * 1024
+          : binaryEditorFormat(this.options.editor).maxDocumentBytes)
     )
       throw new Error('Invalid engine response.');
     const metadata = record(JSON.parse(response.metadata));
-    if (metadata.engineRevision !== DECKCRAFT_ENGINE_REVISION)
+    if (metadata.engineRevision !== binaryEditorFormat(this.options.editor).engineRevision)
       throw new Error('The document engine revision changed.');
     if (this.binding && !scopeEqual(scope(metadata.scope, this.options.itemId), this.binding))
       throw new Error('The document authority changed.');
@@ -151,10 +164,10 @@ export class DeckcraftDocument {
         Number(read.currentVersion) < read.version ||
         !digest(read.sha256) ||
         !positive(read.bytes) ||
-        read.bytes > MAX_BINARY_DOCUMENT_BYTES ||
+        read.bytes > binaryEditorFormat(this.options.editor).maxDocumentBytes ||
         read.chunkBytes !== CHUNK ||
         !token(read.transferId) ||
-        read.engineRevision !== DECKCRAFT_ENGINE_REVISION
+        read.engineRevision !== binaryEditorFormat(this.options.editor).engineRevision
       )
         throw new Error('Invalid canonical document.');
       this.binding = scope(read.scope, this.options.itemId);
@@ -177,9 +190,15 @@ export class DeckcraftDocument {
           { scope: this.binding, head: { version: String(read.version), sha256: read.sha256 } },
           bytes,
         );
+        this.readOnly = read.readOnly === true;
+        if (this.readOnly) {
+          if (!(await this.engine('freeze', { frozen: true })).metadata.frozen)
+            throw new Error('The historical document did not acknowledge read-only mode.');
+          this.paused = true;
+        }
         this.opened = true;
         this.options.engine.zoenHostOnChange((encoded) => {
-          if (!this.live || this.paused) return;
+          if (!this.live || this.paused || this.readOnly) return;
           try {
             if (record(JSON.parse(encoded)).dirty) this.schedule();
           } catch (error) {
@@ -250,7 +269,7 @@ export class DeckcraftDocument {
       accepted.sha256 !== p.sha256 ||
       !positive(receipt.currentVersion) ||
       Number(receipt.currentVersion) < Number(accepted.version) ||
-      receipt.engineRevision !== DECKCRAFT_ENGINE_REVISION
+      receipt.engineRevision !== binaryEditorFormat(this.options.editor).engineRevision
     )
       throw new Error('The save did not accept this proposal.');
     await this.engine('accept', { scope: this.binding, mutationId: p.mutationId, head: accepted });
@@ -263,6 +282,7 @@ export class DeckcraftDocument {
   }
   private async saveCurrent() {
     if (!this.opened || !this.binding) throw new Error('The document is not open.');
+    if (this.readOnly) throw new Error('This historical document is read-only.');
     // A failed/lost response retries the exact old bytes and mutation before taking a new snapshot.
     await this.persist();
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -292,6 +312,7 @@ export class DeckcraftDocument {
    * original draft, and a background flush can explicitly resume the same document. */
   flush(): Promise<void> {
     return this.serial(async () => {
+      if (this.readOnly) return;
       this.paused = true;
       if (this.timer) {
         clearTimeout(this.timer);
@@ -320,13 +341,16 @@ export class DeckcraftDocument {
   }
   resume(): Promise<void> {
     return this.serial(async () => {
+      if (this.readOnly) return;
       await this.engine('freeze', { frozen: false });
       this.paused = false;
       if ((await this.engine('status')).metadata.dirty) this.schedule();
     });
   }
-  export(format: 'pptx' | 'pdf', selected: Head) {
+  export(format: BinaryExportFormat, selected: Head) {
     return this.serial(async () => {
+      if (!binaryExportAllowed(this.options.editor ?? 'deckcraft', format))
+        throw new Error('Invalid document export format.');
       if (!this.binding) throw new Error('The document is not open.');
       selected = head(selected);
       const source = await this.tool('app_binary_export_source', {
@@ -401,9 +425,9 @@ export async function attachDeckcraftDocument(options: Options & { app: App }) {
       return { content: [] };
     }
     if (name === 'prepare_document_export') {
-      if (!['pptx', 'pdf'].includes(String(args.format)))
+      if (!binaryExportAllowed(options.editor ?? 'deckcraft', args.format))
         throw new Error('Invalid document export format.');
-      const output = await document.export(args.format as 'pptx' | 'pdf', head(args.head));
+      const output = await document.export(args.format, head(args.head));
       clearExport();
       const id = options.id();
       if (!token(id)) throw new Error('Invalid export identifier.');

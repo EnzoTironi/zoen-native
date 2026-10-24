@@ -1,0 +1,19 @@
+{
+  "purpose": "Independent standards-shaped XLSX fixtures for Core storage/CAS tests; not a fake engine and not claimed Session-generated",
+  "files": {
+    "managed-grid-base.xlsx": {
+      "bytes": 1360,
+      "sha256": "3ee0e409e9211872f607b8b5436890812a86e3948d10589187c0314a2d52fe99",
+      "A1": 7,
+      "B1Formula": "A1*2",
+      "B1CachedValue": 14
+    },
+    "managed-grid-changed.xlsx": {
+      "bytes": 1360,
+      "sha256": "bd06aff7540f9a8bde371aafbb9a5217f66e3cfbedf838ae2e07b9bea01e0d33",
+      "A1": 9,
+      "B1Formula": "A1*2",
+      "B1CachedValue": 18
+    }
+  }
+}

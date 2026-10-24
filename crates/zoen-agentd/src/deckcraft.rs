@@ -3,7 +3,7 @@
 //! already-authorized snapshot and must CAS-save the exact returned proposal.
 use crate::{
     manifest::SignedManifest,
-    wasm::{WasmLimits, WasmTier, WasmTool},
+    wasm::{CompilationCache, WasmLimits, WasmTier, WasmTool},
 };
 use bytes::Bytes;
 use ed25519_dalek::VerifyingKey;
@@ -16,9 +16,15 @@ pub const METADATA_LIMIT: usize = 64 * 1024;
 pub const ENGINE_REVISION: &str = "a31b990d32f2c8562f1588562f922960c3fde48b";
 pub const WORKER_ID: &str = "deckcraft-canonical-v1";
 pub struct DeckcraftWorker {
+    primary: Worker,
+    companions: Vec<Worker>,
+}
+struct Worker {
     tier: WasmTier,
     tool: WasmTool,
     binding_sha256: String,
+    app: &'static str,
+    revision: &'static str,
 }
 pub struct DeckcraftReply {
     pub metadata: Value,
@@ -32,29 +38,120 @@ impl DeckcraftWorker {
         manifest: &SignedManifest,
         component: &[u8],
     ) -> Result<Self, String> {
+        Self::load_for("deckcraft", trusted, manifest, component)
+    }
+    pub fn load_for(
+        app: &str,
+        trusted: Vec<VerifyingKey>,
+        manifest: &SignedManifest,
+        component: &[u8],
+    ) -> Result<Self, String> {
+        Self::load_for_configured(app, trusted, manifest, component, None)
+    }
+    /// Optional operator-owned compilation cache; actor/CAS/manifest checks and
+    /// the original per-run limits are identical to the uncached constructor.
+    pub fn load_for_cached(
+        app: &str,
+        trusted: Vec<VerifyingKey>,
+        manifest: &SignedManifest,
+        component: &[u8],
+        cache: &CompilationCache,
+    ) -> Result<Self, String> {
+        Self::load_for_configured(app, trusted, manifest, component, Some(cache))
+    }
+    fn load_for_configured(
+        app: &str,
+        trusted: Vec<VerifyingKey>,
+        manifest: &SignedManifest,
+        component: &[u8],
+        cache: Option<&CompilationCache>,
+    ) -> Result<Self, String> {
+        let (app, id, revision) = match app {
+            "deckcraft" => ("deckcraft", WORKER_ID, ENGINE_REVISION),
+            "gridcraft" => (
+                "gridcraft",
+                "gridcraft-canonical-v1",
+                "b8771d51fb4da60bd48c13cf313d6d6014dc5e66",
+            ),
+            "wordcraft" => (
+                "wordcraft",
+                "wordcraft-canonical-v1",
+                "d1b0bfc3f9dd83126b162a42b667facecb003b7f",
+            ),
+            "photocraft" => (
+                "photocraft",
+                "photocraft-canonical-v1",
+                "9b9643764f3fb77d9f0e48d7510983ae50621e11",
+            ),
+            _ => return Err("Unsupported binary App worker".into()),
+        };
         let spec = manifest.verify(&trusted).map_err(|e| e.to_string())?;
-        if spec.id != WORKER_ID
-            || spec.version != ENGINE_REVISION
+        if spec.id != id
+            || spec.version != revision
             || !spec.egress.is_empty()
             || !spec.secrets.is_empty()
         {
             return Err("Invalid DeckCraft worker manifest".into());
         }
-        let tier = WasmTier::new(trusted, 1, 256 * 1024 * 1024).map_err(|e| e.to_string())?;
+        let tier = match cache {
+            Some(cache) => WasmTier::with_compilation_cache(trusted, 1, 256 * 1024 * 1024, cache),
+            None => WasmTier::new(trusted, 1, 256 * 1024 * 1024),
+        }
+        .map_err(|e| e.to_string())?;
         let tool = tier.load(manifest, component).map_err(|e| e.to_string())?;
         let binding_sha256 = hex::encode(Sha256::digest(
             serde_json::to_vec(manifest).map_err(|_| "Invalid worker binding")?,
         ));
         Ok(Self {
-            tier,
-            tool,
-            binding_sha256,
+            primary: Worker {
+                tier,
+                tool,
+                binding_sha256,
+                app,
+                revision,
+            },
+            companions: Vec::new(),
         })
     }
+    /// Retains the original single-Deck API; production dispatch uses binding_for.
     pub fn binding_sha256(&self) -> &str {
-        &self.binding_sha256
+        &self.primary.binding_sha256
+    }
+    pub fn combine(mut self, other: Self) -> Result<Self, String> {
+        let incoming = std::iter::once(&other.primary).chain(&other.companions);
+        if self.companions.len() + other.companions.len() + 2 > 4
+            || incoming
+                .clone()
+                .any(|worker| self.select(worker.app).is_ok())
+        {
+            return Err("Duplicate or unsupported binary worker configuration".into());
+        }
+        self.companions.push(other.primary);
+        self.companions.extend(other.companions);
+        Ok(self)
+    }
+    fn select(&self, app: &str) -> Result<&Worker, String> {
+        std::iter::once(&self.primary)
+            .chain(&self.companions)
+            .find(|worker| worker.app == app)
+            .ok_or_else(|| "The binary App executor is not configured".into())
+    }
+    pub fn supports(&self, app: &str) -> bool {
+        self.select(app).is_ok()
+    }
+    pub fn binding_for(&self, app: &str) -> Result<&str, String> {
+        Ok(&self.select(app)?.binding_sha256)
     }
     pub async fn run(&self, metadata: &Value, document: &[u8]) -> Result<DeckcraftReply, String> {
+        self.run_for(self.primary.app, metadata, document).await
+    }
+    pub async fn run_for(
+        &self,
+        app: &str,
+        metadata: &Value,
+        document: &[u8],
+    ) -> Result<DeckcraftReply, String> {
+        let worker = self.select(app)?;
         if document.is_empty() || document.len() > DOCUMENT_LIMIT {
             return Err("DeckCraft isolated executor limit: 512 KiB".into());
         }
@@ -66,10 +163,10 @@ impl DeckcraftWorker {
         input.extend_from_slice(&(metadata.len() as u32).to_le_bytes());
         input.extend_from_slice(&metadata);
         input.extend_from_slice(document);
-        let output = self
+        let output = worker
             .tier
             .run(
-                &self.tool,
+                &worker.tool,
                 Bytes::from(input),
                 WasmLimits {
                     fuel: 2_000_000_000,
@@ -82,10 +179,14 @@ impl DeckcraftWorker {
         if output.stopped.is_some() {
             return Err("The isolated presentation worker did not complete".into());
         }
-        decode_reply(&output.stdout)
+        decode_reply_for(&output.stdout, worker.revision)
     }
 }
+#[cfg(test)]
 fn decode_reply(bytes: &[u8]) -> Result<DeckcraftReply, String> {
+    decode_reply_for(bytes, ENGINE_REVISION)
+}
+fn decode_reply_for(bytes: &[u8], revision: &str) -> Result<DeckcraftReply, String> {
     let prefix = bytes.get(..4).ok_or("Invalid DeckCraft worker frame")?;
     let length =
         u32::from_le_bytes(prefix.try_into().map_err(|_| "Invalid worker prefix")?) as usize;
@@ -121,7 +222,7 @@ fn decode_reply(bytes: &[u8]) -> Result<DeckcraftReply, String> {
         .filter(|v| v.is_object())
         .ok_or("Invalid worker metadata")?
         .clone();
-    if metadata.get("engineRevision").and_then(Value::as_str) != Some(ENGINE_REVISION) {
+    if metadata.get("engineRevision").and_then(Value::as_str) != Some(revision) {
         return Err("Worker engine revision changed".into());
     }
     Ok(DeckcraftReply {
@@ -177,5 +278,25 @@ mod tests {
             .err()
             .unwrap();
         assert_eq!(error, "Presentation worker refused: invalid_command");
+    }
+    #[test]
+    fn binary_worker_response_revision_cannot_be_substituted_across_formats() {
+        let grid = "b8771d51fb4da60bd48c13cf313d6d6014dc5e66";
+        let bytes = frame(
+            json!({"ok":true,"metadata":{"engineRevision":grid}}),
+            b"xlsx",
+        );
+        assert_eq!(
+            decode_reply_for(&bytes, grid)
+                .expect("exact grid revision")
+                .bytes,
+            b"xlsx"
+        );
+        assert!(decode_reply_for(&bytes, ENGINE_REVISION).is_err());
+        let deck = frame(
+            json!({"ok":true,"metadata":{"engineRevision":ENGINE_REVISION}}),
+            b"deck",
+        );
+        assert!(decode_reply_for(&deck, grid).is_err());
     }
 }

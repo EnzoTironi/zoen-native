@@ -69,7 +69,7 @@ impl ReviewedBrain {
     clippy::too_many_arguments,
     reason = "explicit independent offline fixture counters"
 )]
-fn context(
+pub(super) fn context(
     e: &Arc<Client>,
     worker: Arc<zoen_agentd::deckcraft::DeckcraftWorker>,
     journal: &Path,

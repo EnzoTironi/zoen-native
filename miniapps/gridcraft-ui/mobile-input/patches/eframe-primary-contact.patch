@@ -1,0 +1,308 @@
+--- a/vendor/eframe-0.36.2/src/web/events.rs
++++ b/vendor/eframe-0.36.2/src/web/events.rs
+@@ -7,6 +7,7 @@
+     push_touches, text_from_keyboard_event, translate_key,
+ };
+ 
++use super::text_input_activation::Family;
+ use js_sys::Reflect;
+ use web_sys::{Document, EventTarget, ShadowRoot};
+ 
+@@ -91,6 +92,7 @@
+     // See https://github.com/emilk/egui/issues/3157
+     install_mousemove(runner_ref, &document)?;
+     install_pointerup(runner_ref, &document)?;
++    install_pointercancel(runner_ref, &document)?;
+     install_pointerdown(runner_ref, &canvas)?;
+     install_mouseleave(runner_ref, &canvas)?;
+ 
+@@ -528,6 +530,22 @@
+     }
+ 
+     Ok(())
++}
++
++// WebKit touch does not give a focusable canvas the mouse default focus action.
++// Establish only canvas focus during an admitted real touch; the existing release
++// owner/IME checks still decide whether a text agent may become active. An input
++// that already owns focus (including composition) is left untouched.
++fn focus_canvas_for_primary_touch(runner: &AppRunner, trusted: bool) {
++    if trusted
++        && !runner.has_focus()
++        && let Err(error) = super::focus_without_scroll(runner.canvas())
++    {
++        log::error!(
++            "failed to focus canvas for primary touch: {}",
++            super::string_from_js_value(&error)
++        );
++    }
+ }
+ 
+ fn install_pointerdown(runner_ref: &WebRunner, target: &EventTarget) -> Result<(), JsValue> {
+@@ -548,14 +566,25 @@
+                     modifiers,
+                 };
+                 should_stop_propagation = (runner.web_options.should_stop_propagation)(&egui_event);
+-                runner.input.raw.events.push(egui_event);
+-
+-                // In Safari we are only allowed to write to the clipboard during the
+-                // event callback, which is why we run the app logic here and now:
+-                runner.logic();
+-
+-                // Make sure we paint the output of the above logic call asap:
+-                runner.needs_repaint.repaint_asap();
++                let admit = event.pointer_type() != "touch"
++                    || runner.input.primary_contact.start(
++                        Family::Pointer,
++                        event.pointer_id(),
++                        event.is_primary(),
++                    );
++                if admit {
++                    if event.pointer_type() == "touch" && button == egui::PointerButton::Primary {
++                        focus_canvas_for_primary_touch(runner, event.is_trusted());
++                    }
++                    runner.input.raw.events.push(egui_event);
++
++                    // In Safari we are only allowed to write to the clipboard during the
++                    // event callback, which is why we run the app logic here and now:
++                    runner.logic_from_pointer(false);
++
++                    // Make sure we paint the output of the above logic call asap:
++                    runner.needs_repaint.repaint_asap();
++                }
+             }
+ 
+             // Use web options to tell if the web event should be propagated to parent elements based on the egui event.
+@@ -582,6 +611,17 @@
+                 egui::pos2(event.client_x() as f32, event.client_y() as f32),
+             ) && let Some(button) = button_from_mouse_event(&event)
+             {
++                let release = if event.pointer_type() == "touch" {
++                    runner
++                        .input
++                        .primary_contact
++                        .end(Family::Pointer, event.pointer_id())
++                } else {
++                    Some(true)
++                };
++                let Some(allow_text_activation) = release else {
++                    return;
++                };
+                 let modifiers = runner.input.modifiers;
+                 let egui_event = egui::Event::PointerButton {
+                     pos,
+@@ -595,18 +635,11 @@
+                     (runner.web_options.should_prevent_default)(&egui_event);
+                 runner.input.raw.events.push(egui_event);
+ 
+-                // Previously on iOS, the canvas would not receive focus on
+-                // any touch event, which resulted in the on-screen keyboard
+-                // not working when focusing on a text field in an egui app.
+-                // This attempts to fix that by forcing the focus on any
+-                // click on the canvas.
+-                super::focus_without_scroll(runner.canvas()).ok();
+-
+                 // In Safari we are only allowed to do certain things
+                 // (like playing audio, start a download, etc)
+                 // on user action, such as a click.
+                 // So we need to run the app logic here and now:
+-                runner.logic();
++                runner.logic_from_pointer(allow_text_activation);
+ 
+                 // Make sure we paint the output of the above logic call asap:
+                 runner.needs_repaint.repaint_asap();
+@@ -619,6 +652,24 @@
+                 if should_stop_propagation {
+                     event.stop_propagation();
+                 }
++            }
++        },
++    )
++}
++
++fn install_pointercancel(runner_ref: &WebRunner, target: &EventTarget) -> Result<(), JsValue> {
++    runner_ref.add_event_listener(
++        target,
++        "pointercancel",
++        |event: web_sys::PointerEvent, runner| {
++            if event.pointer_type() == "touch" {
++                let ctx = runner.egui_ctx().clone();
++                super::text_input_activation::cancel_primary(
++                    &ctx,
++                    &mut runner.input.primary_contact,
++                    &mut runner.input.raw.events,
++                );
++                runner.needs_repaint.repaint_asap();
+             }
+         },
+     )
+@@ -701,7 +752,8 @@
+         |event: web_sys::TouchEvent, runner| {
+             let mut should_stop_propagation = true;
+             let mut should_prevent_default = true;
+-            if let Some((pos, _)) = primary_touch_pos(runner, &event) {
++            let mut admitted = false;
++            if let Some((pos, touch)) = primary_touch_pos(runner, &event) {
+                 let egui_event = egui::Event::PointerButton {
+                     pos,
+                     button: egui::PointerButton::Primary,
+@@ -710,10 +762,21 @@
+                 };
+                 should_stop_propagation = (runner.web_options.should_stop_propagation)(&egui_event);
+                 should_prevent_default = (runner.web_options.should_prevent_default)(&egui_event);
+-                runner.input.raw.events.push(egui_event);
++                admitted = runner.input.primary_contact.start(
++                    Family::Touch,
++                    touch.identifier(),
++                    event.touches().length() == 1,
++                );
++                if admitted {
++                    focus_canvas_for_primary_touch(runner, event.is_trusted());
++                    runner.input.raw.events.push(egui_event);
++                }
+             }
+ 
+             push_touches(runner, egui::TouchPhase::Start, &event);
++            if admitted {
++                runner.logic_from_pointer(false);
++            }
+             runner.needs_repaint.repaint_asap();
+ 
+             // Use web options to tell if the web event should be propagated to parent elements based on the egui event.
+@@ -730,6 +793,12 @@
+ 
+ fn install_touchmove(runner_ref: &WebRunner, target: &EventTarget) -> Result<(), JsValue> {
+     runner_ref.add_event_listener(target, "touchmove", |event: web_sys::TouchEvent, runner| {
++        if runner.input.primary_touch.is_none() {
++            return;
++        }
++        if event.touches().length() > 1 {
++            runner.input.primary_contact.block();
++        }
+         if let Some((pos, touch)) = primary_touch_pos(runner, &event)
+             && is_interested_in_pointer_event(
+                 runner,
+@@ -758,50 +827,62 @@
+ 
+ fn install_touchend(runner_ref: &WebRunner, target: &EventTarget) -> Result<(), JsValue> {
+     runner_ref.add_event_listener(target, "touchend", |event: web_sys::TouchEvent, runner| {
+-        if let Some((pos, touch)) = primary_touch_pos(runner, &event)
+-            && is_interested_in_pointer_event(
+-                runner,
+-                egui::pos2(touch.client_x() as f32, touch.client_y() as f32),
+-            )
+-        {
+-            // First release mouse to click:
+-            let mut should_stop_propagation = true;
+-            let mut should_prevent_default = true;
+-            let egui_event = egui::Event::PointerButton {
+-                pos,
+-                button: egui::PointerButton::Primary,
+-                pressed: false,
+-                modifiers: runner.input.modifiers,
+-            };
+-            should_stop_propagation &= (runner.web_options.should_stop_propagation)(&egui_event);
+-            should_prevent_default &= (runner.web_options.should_prevent_default)(&egui_event);
+-            runner.input.raw.events.push(egui_event);
+-            // Then remove hover effect:
+-            should_stop_propagation &=
+-                (runner.web_options.should_stop_propagation)(&egui::Event::PointerGone);
+-            should_prevent_default &=
+-                (runner.web_options.should_prevent_default)(&egui::Event::PointerGone);
+-            runner.input.raw.events.push(egui::Event::PointerGone);
+-
+-            push_touches(runner, egui::TouchPhase::End, &event);
+-
+-            runner.needs_repaint.repaint_asap();
+-
+-            // Use web options to tell if the web event should be propagated to parent elements based on the egui event.
+-            if should_stop_propagation {
+-                event.stop_propagation();
+-            }
+-
+-            if should_prevent_default {
+-                event.prevent_default();
+-            }
+-
+-            // Fix virtual keyboard IOS
+-            // Need call focus at the same time of event
+-            if runner.text_agent.has_focus() {
+-                runner.text_agent.set_focus(false);
+-                runner.text_agent.set_focus(true);
+-            }
++        if runner.input.primary_touch.is_none() {
++            return;
++        }
++        let primary = primary_touch_pos(runner, &event);
++        let mut release = None;
++        let mut interested = false;
++        let mut should_stop_propagation = true;
++        let mut should_prevent_default = true;
++        if let Some((pos, touch)) = primary {
++            // A secondary finger ending must not release the primary pointer.
++            let primary_ended = (0..event.changed_touches().length())
++                .filter_map(|i| event.changed_touches().get(i))
++                .any(|ended| ended.identifier() == touch.identifier());
++            if primary_ended {
++                release = runner
++                    .input
++                    .primary_contact
++                    .end(Family::Touch, touch.identifier());
++                interested = is_interested_in_pointer_event(
++                    runner,
++                    egui::pos2(touch.client_x() as f32, touch.client_y() as f32),
++                );
++                if release.is_some() && interested {
++                    let egui_event = egui::Event::PointerButton {
++                        pos,
++                        button: egui::PointerButton::Primary,
++                        pressed: false,
++                        modifiers: runner.input.modifiers,
++                    };
++                    should_stop_propagation &=
++                        (runner.web_options.should_stop_propagation)(&egui_event);
++                    should_prevent_default &=
++                        (runner.web_options.should_prevent_default)(&egui_event);
++                    runner.input.raw.events.push(egui_event);
++                }
++                // Preserve hover cleanup; PointerButton was emitted by only one family.
++                runner.input.raw.events.push(egui::Event::PointerGone);
++                if event.touches().length() == 0 {
++                    runner.input.primary_touch = None;
++                }
++            }
++        }
++        push_touches(runner, egui::TouchPhase::End, &event);
++        if let Some(allow_text_activation) = release.filter(|_| interested) {
++            runner.logic_from_pointer(allow_text_activation);
++        }
++        runner.needs_repaint.repaint_asap();
++        should_stop_propagation &=
++            (runner.web_options.should_stop_propagation)(&egui::Event::PointerGone);
++        should_prevent_default &=
++            (runner.web_options.should_prevent_default)(&egui::Event::PointerGone);
++        if should_stop_propagation {
++            event.stop_propagation();
++        }
++        if should_prevent_default {
++            event.prevent_default();
+         }
+     })
+ }
+@@ -811,6 +892,16 @@
+         target,
+         "touchcancel",
+         |event: web_sys::TouchEvent, runner| {
++            let ctx = runner.egui_ctx().clone();
++            super::text_input_activation::cancel_primary(
++                &ctx,
++                &mut runner.input.primary_contact,
++                &mut runner.input.raw.events,
++            );
++            if event.touches().length() == 0 {
++                runner.input.primary_touch = None;
++            }
++            runner.needs_repaint.repaint_asap();
+             push_touches(runner, egui::TouchPhase::Cancel, &event);
+             event.stop_propagation();
+             event.prevent_default();

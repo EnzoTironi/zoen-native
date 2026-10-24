@@ -1,0 +1,19 @@
+{
+  "id": "wordcraft",
+  "name": "WordCraft",
+  "resourceUri": "ui://zoen/wordcraft/index.html",
+  "mimeType": "text/html;profile=mcp-app",
+  "capabilities": [],
+  "allowedDomains": [],
+  "linkDomains": [],
+  "networkPurpose": "",
+  "permissions": {},
+  "csp": {
+    "connectDomains": [],
+    "resourceDomains": [],
+    "frameDomains": [],
+    "baseUriDomains": []
+  },
+  "sha256": "d4fb275b01fa760a5f97fb54a071ae0940d6d083b72aee7e1048a338b0e35801",
+  "bytes": 624492
+}

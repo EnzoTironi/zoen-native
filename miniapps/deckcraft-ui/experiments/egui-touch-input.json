@@ -19,10 +19,6 @@
       "src/text_selection/touch_input_tests.rs"
     ]
   },
-  "patch": {
-    "path": "patches/0018-egui-touch-input.patch",
-    "sha256": "8e44a72c2d5ecd7684668c67ee429d39e7cb31ab615428ae7b5a849ce4069882"
-  },
   "sourceFiles": [
     {
       "path": "Cargo.toml",
@@ -37,7 +33,17 @@
     {
       "path": "crates/ui-egui/src/host_phone_landscape_tests.rs",
       "before": "7ec0046ffd9dc5f93f01a30089ca5eb2055027771b6712db46e860d7ce67277d",
-      "after": "dc20b3f4f2e3c020e15e2e58eef4f309e91231f08feb535f433e1c170a1e8cb3"
+      "after": "4af586cb9b2c6b6ea1ae620f608260e5c64a94e547ebb1b9ac0f76451746c389"
+    }
+  ],
+  "patches": [
+    {
+      "path": "patches/0018-egui-touch-input.patch",
+      "sha256": "8e44a72c2d5ecd7684668c67ee429d39e7cb31ab615428ae7b5a849ce4069882"
+    },
+    {
+      "path": "patches/0019-notes-owner-contract.patch",
+      "sha256": "26fbece645281bf6f49905c7c597c7358c9e8af2ebee3ff31468459098bb7c3c"
     }
   ]
 }

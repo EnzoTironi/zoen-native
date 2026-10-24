@@ -6,6 +6,8 @@ use client_core::{
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
+mod failure;
+
 type Result<T> = std::result::Result<T, &'static str>;
 
 pub(crate) fn validate_args(args: &[String]) -> Result<()> {
@@ -201,17 +203,38 @@ pub(crate) async fn inspect(client: &Client, timeout_ms: u64) -> Result<String> 
     }
     preflight(client)?;
     let (bound, _) = scope(client)?;
-    let deadline = tokio::time::Instant::now()
+    let started = tokio::time::Instant::now();
+    let deadline = started
         .checked_add(std::time::Duration::from_millis(timeout_ms))
         .ok_or("agent_inspect_timeout_out_of_range")?;
     client
         .wait_until_settled(timeout_ms)
         .await
         .map_err(|_| "agent_inspect_sync_unsettled")?;
+    let before_state = started.elapsed();
+    let state_started = tokio::time::Instant::now();
     let state = tokio::time::timeout_at(deadline, client.agent_state())
         .await
-        .map_err(|_| "agent_inspect_state_unavailable")?
-        .map_err(|_| "agent_inspect_state_unavailable")?;
+        .map_err(|_| {
+            failure::trace(
+                None,
+                timeout_ms,
+                started.elapsed(),
+                before_state,
+                state_started.elapsed(),
+            );
+            "agent_inspect_state_unavailable"
+        })?
+        .map_err(|error| {
+            failure::trace(
+                Some(&error),
+                timeout_ms,
+                started.elapsed(),
+                before_state,
+                state_started.elapsed(),
+            );
+            "agent_inspect_state_unavailable"
+        })?;
     if !matches!(state.status.as_str(), "active" | "paused" | "revoked")
         || !matches!(state.kind.as_str(), "User" | "Creator")
     {

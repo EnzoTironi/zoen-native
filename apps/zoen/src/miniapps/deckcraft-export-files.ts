@@ -1,3 +1,4 @@
+import { binaryExportFileType } from './binary-formats';
 import * as Sharing from 'expo-sharing';
 import { Directory, File, FileMode, Paths } from 'expo-file-system';
 import * as Crypto from 'expo-crypto';
@@ -42,15 +43,11 @@ export function shareDeckcraftExport(
             },
             share: () =>
               Sharing.shareAsync(file.uri, {
-                mimeType:
-                  format === 'pdf'
-                    ? 'application/pdf'
-                    : 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-                UTI:
-                  format === 'pdf'
-                    ? 'com.adobe.pdf'
-                    : 'org.openxmlformats.presentationml.presentation',
-                dialogTitle: t('decks.shareVersion', { version: options.head.version }),
+                ...binaryExportFileType(format),
+                dialogTitle:
+                  format === 'xlsx' || format === 'docx'
+                    ? filename
+                    : t('decks.shareVersion', { version: options.head.version }),
               }),
             dispose: () => {
               try {

@@ -146,7 +146,7 @@ async fn pages_and_files_travel_byte_for_byte() {
     );
     let started = std::time::Instant::now();
     let mut batch_ms: Vec<u128> = vec![];
-    for batch in expected.chunks(100) {
+    for (batch_number, batch) in expected.chunks(100).enumerate() {
         let batch_started = std::time::Instant::now();
         let mut args = vec![
             "--timeout".to_string(),
@@ -163,7 +163,12 @@ async fn pages_and_files_travel_byte_for_byte() {
                 .map(|(rel, _)| src.join(rel).display().to_string()),
         );
         let a: Vec<&str> = args.iter().map(String::as_str).collect();
-        let out = w.zoen("ana", &a);
+        let diagnostics: &[(&str, &str)] = if batch_number == 0 {
+            &[("ZOEN_NET_DEBUG", "1")]
+        } else {
+            &[]
+        };
+        let out = w.zoen_env("ana", &a, diagnostics);
         assert_eq!(out.lines().count(), batch.len(), "{out}");
         // Only full batches compare fairly: a short tail spreads command startup over few pages.
         if batch.len() == 100 {

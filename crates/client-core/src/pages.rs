@@ -68,6 +68,16 @@ pub struct PageBlockDto {
     pub lang: String,
     pub url: String,
     pub alt: String,
+    /// Heading syntax. Absent only in legacy editor requests; false is explicit ATX.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "client-types", ts(optional))]
+    #[uniffi(default = None)]
+    pub setext: Option<bool>,
+    /// Image title. Absent legacy requests preserve the existing canonical title.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "client-types", ts(optional))]
+    #[uniffi(default = None)]
+    pub title: Option<String>,
     /// Line breaks inside a block are U+2028.
     pub text: String,
     pub spans: Vec<TextSpanDto>,
@@ -147,6 +157,8 @@ pub(crate) fn block_dto(b: &documents::Block) -> PageBlockDto {
         lang: String::new(),
         url: String::new(),
         alt: String::new(),
+        setext: None,
+        title: None,
         text: b.plain_text(),
         spans: documents::spans_of(&b.runs)
             .into_iter()
@@ -159,7 +171,10 @@ pub(crate) fn block_dto(b: &documents::Block) -> PageBlockDto {
             .collect(),
     };
     match &b.kind {
-        Kind::Heading { level, .. } => d.level = *level,
+        Kind::Heading { level, setext } => {
+            d.level = *level;
+            d.setext = Some(*setext);
+        }
         Kind::Bullet { indent } => d.indent = *indent,
         Kind::Numbered { indent, number } => {
             d.indent = *indent;
@@ -170,25 +185,37 @@ pub(crate) fn block_dto(b: &documents::Block) -> PageBlockDto {
             d.checked = *checked
         }
         Kind::Code { lang } => d.lang = lang.clone(),
-        Kind::Image { url, alt, .. } => {
+        Kind::Image { url, alt, title } => {
             d.url = url.clone();
-            d.alt = alt.clone()
+            d.alt = alt.clone();
+            d.title = Some(title.clone());
         }
         _ => {}
     }
     d
 }
 
-fn kind_from_dto(d: &PageBlockDto, prev: Option<&Kind>) -> Kind {
-    match d.kind.as_str() {
+fn kind_from_dto(d: &PageBlockDto, prev: Option<&Kind>) -> R<Kind> {
+    if d.kind == "heading"
+        && d.setext.is_some()
+        && (!(1..=6).contains(&d.level) || (d.setext == Some(true) && d.level > 2))
+    {
+        return Err(CoreError::Invalid {
+            reason: "invalid heading syntax or level".into(),
+        });
+    }
+    Ok(match d.kind.as_str() {
+        "paragraph" => Kind::Paragraph,
         "heading" => Kind::Heading {
             level: d.level.clamp(1, 6),
-            setext: matches!(prev, Some(Kind::Heading { setext: true, level }) if *level == d.level),
+            setext: d.setext.unwrap_or(
+                matches!(prev, Some(Kind::Heading { setext: true, level }) if *level == d.level),
+            ),
         },
         "bullet" => Kind::Bullet { indent: d.indent },
         "numbered" => Kind::Numbered {
             indent: d.indent,
-            number: d.number.max(1),
+            number: d.number,
         },
         "task" => Kind::Task {
             indent: d.indent,
@@ -202,14 +229,18 @@ fn kind_from_dto(d: &PageBlockDto, prev: Option<&Kind>) -> Kind {
         "image" => Kind::Image {
             url: d.url.clone(),
             alt: d.alt.clone(),
-            title: match prev {
+            title: d.title.clone().unwrap_or_else(|| match prev {
                 Some(Kind::Image { title, .. }) => title.clone(),
                 _ => String::new(),
-            },
+            }),
         },
         "raw" => Kind::Raw,
-        _ => Kind::Paragraph,
-    }
+        _ => {
+            return Err(CoreError::Invalid {
+                reason: "unsupported page block kind".into(),
+            })
+        }
+    })
 }
 
 pub(crate) fn parse_editor_markdown(markdown: &str) -> R<Vec<PageBlockDto>> {
@@ -222,24 +253,36 @@ pub(crate) fn parse_editor_markdown(markdown: &str) -> R<Vec<PageBlockDto>> {
 }
 
 pub(crate) fn editor_block_markdown(block: &PageBlockDto) -> R<String> {
+    editor_blocks_markdown(std::slice::from_ref(block))
+}
+
+pub(crate) fn editor_blocks_markdown(blocks: &[PageBlockDto]) -> R<String> {
     let page = Page::new();
-    page.apply(
-        std::slice::from_ref(&block.id),
-        &[documents::BlockEdit {
-            id: block.id.clone(),
-            kind: kind_from_dto(block, None),
-            text: block.text.clone(),
-            spans: block
-                .spans
-                .iter()
-                .map(|span| documents::Span {
-                    start: span.start,
-                    end: span.end,
-                    key: span.key.clone(),
-                    value: span.value.clone(),
+    page.apply_editor(
+        &blocks
+            .iter()
+            .map(|block| block.id.clone())
+            .collect::<Vec<_>>(),
+        &blocks
+            .iter()
+            .map(|block| {
+                Ok(documents::BlockEdit {
+                    id: block.id.clone(),
+                    kind: kind_from_dto(block, None)?,
+                    text: block.text.clone(),
+                    spans: block
+                        .spans
+                        .iter()
+                        .map(|span| documents::Span {
+                            start: span.start,
+                            end: span.end,
+                            key: span.key.clone(),
+                            value: span.value.clone(),
+                        })
+                        .collect(),
                 })
-                .collect(),
-        }],
+            })
+            .collect::<R<Vec<_>>>()?,
     )
     .map_err(doc_err)?;
     Ok(page.canonical_markdown())

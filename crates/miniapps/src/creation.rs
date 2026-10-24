@@ -5,6 +5,9 @@ use super::*;
 pub fn create(app: &str, args: &Value, actor: &str, now: i64) -> Result<(String, Value), String> {
     match app {
         "deckcraft" => deckcraft::registration::create(args),
+        "gridcraft" => crate::binary::gridcraft_registration::create(args),
+        "wordcraft" => crate::binary::wordcraft_registration::create(args),
+        "photocraft" => crate::binary::photocraft_registration::create(args),
         "excalidraw" => {
             let title = args
                 .get("title")

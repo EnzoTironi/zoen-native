@@ -16,6 +16,8 @@ pub(super) struct MaintenanceContext<'a> {
     pub(super) claim_clock: &'a Option<ClaimClockSample>,
     pub(super) claim_refusal_reported: &'a mut bool,
     pub(super) media_kick: &'a tokio::sync::Notify,
+    pub(super) read_owner: Option<&'a (String, String)>,
+    pub(super) deferred_reads: &'a mut complete_reads::Deferred,
 }
 
 pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit> {
@@ -32,6 +34,8 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
         claim_clock,
         claim_refusal_reported,
         media_kick,
+        read_owner,
+        deferred_reads,
     } = context;
     macro_rules! engine {
         ($work:expr) => {
@@ -113,6 +117,7 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
         if !ids.is_empty() {
             traffic.profiles = Some(tokio::time::Instant::now() + PROFILE_TIMEOUT);
             *opening = Some(tokio::time::Instant::now());
+            tracing_like(&format!("sealed profiles prepared asked={}", ids.len()));
             reqs.push((
                 Op::GetProfiles { ids: ids.clone() },
                 Waiting::SealedProfiles(ids),
@@ -181,7 +186,14 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
         Ok(false) => {}
         Err(e) => tracing_like(&format!("checkpoints: {e}")),
     }
+    let sealing_started = std::time::Instant::now();
     let sealed = engine!(|engine| engine.mls_seal_outbox());
+    if sealing_started.elapsed() >= Duration::from_millis(100) {
+        tracing_like(&format!(
+            "outbox sealing elapsed_ms={}",
+            sealing_started.elapsed().as_millis()
+        ));
+    }
     match sealed {
         Ok(true) => {
             if let Err(e) = flush(ctx, sink, sent).await {
@@ -193,13 +205,12 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
     }
     let mut failed = None;
     for (op, w) in reqs {
-        let id = *next_id;
-        *next_id += 1;
-        if let Err(e) = send(sink, &ClientFrame::Req { id, op }).await {
+        let (op, w) = complete_reads::start(op, w, read_owner);
+        if let Err(e) = complete_reads::submit(op, w, sink, waiting, next_id, deferred_reads).await
+        {
             failed = Some(e);
             break;
         }
-        remember_waiting(waiting, id, w);
     }
     if let Some(e) = failed {
         return Err(Exit::Retry(e));

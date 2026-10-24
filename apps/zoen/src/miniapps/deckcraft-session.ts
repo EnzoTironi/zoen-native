@@ -1,4 +1,5 @@
 import { t } from '../i18n/index.ts';
+import { binaryEditorFormat, binaryExportAllowed, type BinaryEditorId } from './binary-formats.ts';
 import type { CoreDriver } from '../core/types';
 import type { VerifiedMiniappResource } from './sandbox';
 import { createNativeCanonicalBinaryHost } from './canonical-binary-native.ts';
@@ -11,7 +12,9 @@ import { deckcraftFeedbackReason, type DeckcraftFeedbackReason } from './deckcra
 
 type Phase = 'saved' | 'saving' | 'pending' | 'error';
 type Options = {
+  editor?: BinaryEditorId;
   itemId: string;
+  selectedHead?: DeckcraftExportHead;
   title: () => string;
   verified: VerifiedMiniappResource;
   driver: Pick<CoreDriver, 'request'>;
@@ -39,10 +42,43 @@ type Options = {
 /** One focused document owns its official protocol, bounded transfers and final
  * save. React owns presentation only; the Rust core remains the sole journal. */
 export function createDeckcraftSession(options: Options) {
+  const descriptor = binaryEditorFormat(options.editor);
+  const editor = descriptor.id;
+  const messages = descriptor.messages;
   const lifetime = frameAuthority(options.check);
+  // A history frame has no write authority, even if its guest requests save tools.
+  const selected = options.selectedHead ? Object.freeze({ ...options.selectedHead }) : null;
+  if (
+    selected &&
+    (!/^[1-9][0-9]{0,9}$/.test(selected.version) ||
+      Number(selected.version) > 0xffffffff ||
+      !/^[a-f0-9]{64}$/.test(selected.sha256))
+  )
+    throw Error(t(`${messages}.exportFailed`));
+  const readDriver: Pick<CoreDriver, 'request'> = {
+    request: (async (command) => {
+      if (!selected || command.op !== 'app_binary_read') return options.driver.request(command);
+      if (
+        (command.version !== null && command.version !== Number(selected.version)) ||
+        (command.expected_sha256 !== null && command.expected_sha256 !== selected.sha256)
+      )
+        throw Error(t(`${messages}.exportFailed`));
+      const source = await options.driver.request({
+        op: 'app_binary_read',
+        item_id: options.itemId,
+        version: Number(selected.version),
+        expected_sha256: selected.sha256,
+      });
+      lifetime.check();
+      if (source.version !== Number(selected.version) || source.sha256 !== selected.sha256)
+        throw Error(t(`${messages}.exportFailed`));
+      return source;
+    }) as CoreDriver['request'],
+  };
   const binary = createNativeCanonicalBinaryHost({
+    editor,
     itemId: options.itemId,
-    driver: options.driver,
+    driver: readDriver,
     mutate: options.mutate,
     check: lifetime.check,
     id: options.id,
@@ -100,15 +136,29 @@ export function createDeckcraftSession(options: Options) {
       if (name === 'app_binary_share') {
         if (
           args.id !== options.itemId ||
-          !['pdf', 'pptx'].includes(String(args.format)) ||
+          !binaryExportAllowed(editor, args.format) ||
           Object.keys(args).some((key) => !['id', 'format'].includes(key))
         )
-          throw Error(t('decks.exportFailed'));
+          throw Error(t(`${messages}.exportFailed`));
         await share(args.format as DeckcraftExportFormat);
         lifetime.check();
         return { content: [], structuredContent: { presented: true } };
       }
+      if (
+        selected &&
+        !['app_binary_read', 'app_binary_read_chunk', 'app_binary_export_source'].includes(name)
+      )
+        throw Error(t('documents.thisVersionIsReadOnly'));
       const result = await binary.call(name, args);
+      if (selected && name === 'app_binary_read') {
+        if (
+          !result.structuredContent ||
+          typeof result.structuredContent !== 'object' ||
+          Array.isArray(result.structuredContent)
+        )
+          throw Error(t(`${messages}.exportFailed`));
+        result.structuredContent = { ...result.structuredContent, readOnly: true };
+      }
       lifetime.check();
       return result;
     },
@@ -147,25 +197,25 @@ export function createDeckcraftSession(options: Options) {
           phase === 'error'
             ? opened
               ? reason === 'autosave_busy'
-                ? t('decks.editInProgress')
+                ? t(`${messages}.editInProgress`)
                 : reason === 'layout_failed' || reason === 'host_ui_failed'
-                  ? t('decks.viewFailed')
+                  ? t(`${messages}.viewFailed`)
                   : reason === 'export_failed'
-                    ? t('decks.exportFailed')
-                    : t('decks.saveFailed')
+                    ? t(`${messages}.exportFailed`)
+                    : t(`${messages}.saveFailed`)
               : status.reason === 'graphics_unavailable'
-                ? t('decks.graphicsUnavailable')
+                ? t(`${messages}.graphicsUnavailable`)
                 : status.reason === 'canvas_missing'
-                  ? t('decks.canvasUnavailable')
+                  ? t(`${messages}.canvasUnavailable`)
                   : status.reason === 'resource_fetch_failed'
-                    ? t('decks.resourceUnavailable')
+                    ? t(`${messages}.resourceUnavailable`)
                     : status.reason === 'module_init_failed'
-                      ? t('decks.moduleUnavailable')
+                      ? t(`${messages}.moduleUnavailable`)
                       : status.reason === 'document_open_failed'
-                        ? t('decks.documentUnavailable')
+                        ? t(`${messages}.documentUnavailable`)
                         : status.reason === 'runtime_start_failed'
-                          ? t('decks.runtimeUnavailable')
-                          : t('decks.unavailable')
+                          ? t(`${messages}.runtimeUnavailable`)
+                          : t(`${messages}.unavailable`)
             : null;
       publish();
       return {};
@@ -199,6 +249,14 @@ export function createDeckcraftSession(options: Options) {
         publish();
         return Promise.resolve();
       }
+      if (selected) {
+        // Read-only Close has no save to perform, but must drain any native share.
+        const operation = tail.catch(() => {}).then(() => lifetime.check());
+        tail = operation;
+        if (retire) closing = operation;
+        publish();
+        return operation;
+      }
       queued++;
       publish();
       const operation = tail
@@ -210,7 +268,7 @@ export function createDeckcraftSession(options: Options) {
           if (!retire && !retiring) {
             const resumed = await current.callAppTool('resume_document');
             lifetime.check();
-            if (resumed.isError) throw new Error(t('decks.saveFailed'));
+            if (resumed.isError) throw new Error(t(`${messages}.saveFailed`));
           }
           phase = 'saved';
           if (retire || !retiring) {
@@ -225,7 +283,7 @@ export function createDeckcraftSession(options: Options) {
             retiring = false;
             closing = null;
           }
-          if (live) error = t('decks.saveFailed');
+          if (live) error = t(`${messages}.saveFailed`);
           throw reason;
         })
         .finally(() => {
@@ -243,7 +301,8 @@ export function createDeckcraftSession(options: Options) {
     } catch (error) {
       return Promise.reject(error);
     }
-    if (!opened || retiring) return Promise.reject(new Error(t('decks.exportFailed')));
+    if (!binaryExportAllowed(editor, format) || !opened || retiring)
+      return Promise.reject(new Error(t(`${messages}.exportFailed`)));
     queued++;
     publish();
     let resumed = false;
@@ -251,19 +310,24 @@ export function createDeckcraftSession(options: Options) {
       .catch(() => {})
       .then(async () => {
         lifetime.check();
-        await current.flushResource();
+        if (!selected) await current.flushResource();
         lifetime.check();
         const resume = async () => {
           if (live && !retiring) {
+            if (selected) {
+              resumed = true;
+              recoveryRequired = false;
+              return;
+            }
             const response = await current.callAppTool('resume_document');
             lifetime.check();
-            if (response.isError) throw new Error(t('decks.saveFailed'));
+            if (response.isError) throw new Error(t(`${messages}.saveFailed`));
             resumed = true;
             recoveryRequired = false;
           }
         };
         try {
-          const source = await options.driver.request({
+          const source = await readDriver.request({
             op: 'app_binary_read',
             item_id: options.itemId,
             version: null,
@@ -276,7 +340,7 @@ export function createDeckcraftSession(options: Options) {
             source.version < 1 ||
             !/^[a-f0-9]{64}$/.test(source.sha256)
           )
-            throw new Error(t('decks.exportFailed'));
+            throw new Error(t(`${messages}.exportFailed`));
           await options.share(
             format,
             { version: String(source.version), sha256: source.sha256 },
@@ -299,10 +363,13 @@ export function createDeckcraftSession(options: Options) {
           reason = null;
         }
       })
-      .catch((reason: unknown) => {
-        if (!resumed) recoveryRequired = true;
-        if (live) error = t('decks.exportFailed');
-        throw reason;
+      .catch((failure: unknown) => {
+        if (!resumed && !selected) recoveryRequired = true;
+        if (live) {
+          error = t(`${messages}.exportFailed`);
+          reason = 'export_failed';
+        }
+        throw failure;
       })
       .finally(() => {
         queued--;

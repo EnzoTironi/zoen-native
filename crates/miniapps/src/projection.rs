@@ -1,14 +1,30 @@
 //! Time-derived state, card headlines, and portable snapshots.
 
-use super::*;
+use super::{clamp, hike_name, maptap_board, schedule, t, thousands, tr, ts, Value};
+use serde_json::json;
+use std::time::Duration;
+
+#[cfg(test)]
+mod tests;
+
+/// A rollback contributes no elapsed time; `abs_diff` preserves the full signed range.
+fn elapsed_millis(later: i64, earlier: i64) -> u64 {
+    if later > earlier {
+        later.abs_diff(earlier)
+    } else {
+        0
+    }
+}
 
 // ── leitura (com o tempo passando, no caso do bichinho) ──
 
 /// O estado como a interface deve ver agora (o bichinho sente fome com o tempo).
+#[must_use]
 pub fn view(app: &str, state: &Value, now: i64) -> Value {
     let mut v = state.clone();
     if app == "pet" && !state["released"].as_bool().unwrap_or(false) {
-        let h = ((now - state["updated"].as_i64().unwrap_or(now)).max(0) as f64) / 3_600_000.0;
+        let elapsed = elapsed_millis(now, state["updated"].as_i64().unwrap_or(now));
+        let h = Duration::from_millis(elapsed).as_secs_f64() / 3_600.0;
         let asleep = state["asleep"].as_bool().unwrap_or(false);
         v["fullness"] = json!(clamp(state["fullness"].as_f64().unwrap_or(50.0) - 6.0 * h).round());
         v["energy"] = json!(clamp(
@@ -47,9 +63,33 @@ pub(super) fn pet_mood(v: &Value) -> &'static str {
 }
 
 /// Linha e métricas para o cartão vivo da tela inicial.
+#[must_use]
 pub fn headline(app: &str, state: &Value, now: i64) -> (String, Vec<(String, f64)>) {
     let v = view(app, state, now);
     match app {
+        "wordcraft" => {
+            let words = state["words"].as_u64().unwrap_or(0);
+            let label = if words == 1 {
+                t("1 palavra", "1 word")
+            } else {
+                tr!("{} palavras", "{} words", words)
+            };
+            (label, vec![])
+        }
+        "photocraft" => {
+            let width = state["width"].as_u64().unwrap_or(0);
+            let height = state["height"].as_u64().unwrap_or(0);
+            (format!("{width} × {height}"), vec![])
+        }
+        "gridcraft" => {
+            let sheets = state["sheets"].as_u64().unwrap_or(0);
+            let label = if sheets == 1 {
+                t("1 aba", "1 sheet")
+            } else {
+                tr!("{} abas", "{} sheets", sheets)
+            };
+            (label, vec![])
+        }
         "deckcraft" => {
             let slides = state["slides"].as_u64().unwrap_or(0);
             let label = if slides == 1 {
@@ -230,7 +270,7 @@ pub fn headline(app: &str, state: &Value, now: i64) -> (String, Vec<(String, f64
         }
 
         "countdown" => {
-            let left = (v["target"].as_i64().unwrap_or(now) - now).max(0);
+            let left = elapsed_millis(v["target"].as_i64().unwrap_or(now), now);
             let days = left / 86_400_000;
             (
                 tr!(
@@ -245,12 +285,20 @@ pub fn headline(app: &str, state: &Value, now: i64) -> (String, Vec<(String, f64
     }
 }
 
-/// The mini-app's widget snapshot (one of a few native templates; see `WidgetSnapshot` in
-/// the Apple app). Content only, no labels about the app itself. `None` = no widget.
+/// Content for native cards and platform widgets. `None` means no widget.
 pub fn snapshot(app: &str, state: &Value, item_id: &str, now: i64) -> Option<Value> {
     let v = view(app, state, now);
     let link = format!("zoen://app/{item_id}");
     let snap = match app {
+        "wordcraft" => {
+            json!({"template":"caption","title":state["title"],"eyebrow":t("Documento", "Document"),"detail":headline(app,state,now).0,"accentHex":"#667C99","symbol":"doc.text"})
+        }
+        "photocraft" => {
+            json!({"template":"caption","title":state["title"],"eyebrow":t("Imagem", "Image"),"detail":headline(app,state,now).0,"accentHex":"#447B83","symbol":"photo"})
+        }
+        "gridcraft" => {
+            json!({"template":"caption","title":state["title"],"eyebrow":t("Planilha", "Spreadsheet"),"detail":headline(app,state,now).0,"accentHex":"#3F7B63","symbol":"tablecells"})
+        }
         "deckcraft" => {
             json!({"template":"caption","title":state["title"],"eyebrow":t("Apresentação", "Presentation"),"detail":headline(app,state,now).0,"accentHex":"#9B6E51","symbol":"rectangle.stack","art":"slides"})
         }

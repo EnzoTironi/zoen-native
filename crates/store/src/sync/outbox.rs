@@ -93,7 +93,12 @@ impl Store {
     /// space, kind).
     pub fn outbox_handshakes(&self) -> Result<Vec<(String, String, String)>> {
         let mut st = self.conn.prepare(
-            "SELECT client_id, space, json_extract(json, '$.body.Sealed.kind') AS kind FROM outbox
+            // Invalid bodies remain in the actual queue and its head reader.
+            // Do not let one corrupt chat erase every other chat's dependency
+            // metadata; only the dispatcher can fence an unreadable head.
+            "SELECT client_id, space,
+                    CASE WHEN json_valid(json) THEN json_extract(json, '$.body.Sealed.kind') END AS kind
+             FROM outbox
              WHERE NOT failed AND kind IN ('Commit', 'Welcome') ORDER BY queue_order",
         )?;
         let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;

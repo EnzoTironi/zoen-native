@@ -163,3 +163,49 @@ test('unsupported Photos video format cannot prepare an edit or fall through to 
   assert.deepEqual(f.copies, []);
   f.retire();
 });
+
+test('a caption-only journal projection does not retire the still-observed native input revision', async () => {
+  const f = await fixture(true);
+  f.photos.select(item('a'));
+  f.act(f.render(), 'preview', 'ph://a');
+  const observed = f.render();
+  f.act(observed, 'caption', 'ph://a', { text: 'A' });
+  const updated = f.render();
+  assert.equal(JSON.parse(updated.props.model).revision, JSON.parse(observed.props.model).revision);
+  f.act(observed, 'caption', 'ph://a', { text: 'AB' });
+  assert.equal(JSON.parse(f.render().props.model).caption.value, 'AB');
+  f.act(f.render(), 'preview', 'ph://b');
+  f.act(observed, 'caption', 'ph://a', { text: 'Foreign late keystroke' });
+  assert.equal(f.photos.getSnapshot().captions.items['ph://a'], 'AB');
+  f.retire();
+  await tick();
+});
+
+test('native grid and gallery use the captured copy and metadata instead of the mutable Photos row', async () => {
+  const f = await fixture(true);
+  f.photos.select(item('a'));
+  const original = f.photos.getSnapshot();
+  const state = {
+    ...original,
+    items: [{ ...item('a'), filename: 'replacement.jpg', width: 900 }],
+    previewUris: { 'ph://a': null },
+  };
+  const pending = JSON.parse(f.render(state).props.model);
+  assert.equal(pending.items[0].retained, true);
+  assert.equal(pending.items[0].uri, null, 'pending copy must not fall back to PHAsset');
+  assert.equal(pending.items[0].name, 'a.jpg');
+  const ready = JSON.parse(
+    f.render({ ...state, previewUris: { 'ph://a': 'file:///cache/exact-captured.jpg' } }).props
+      .model,
+  );
+  assert.equal(ready.items[0].uri, 'file:///cache/exact-captured.jpg');
+  assert.equal(ready.items[0].width, 100);
+  assert.deepEqual(ready.items[0], ready.selectedItems[0]);
+  assert.equal(
+    ready.revision,
+    pending.revision,
+    'thumbnail IO does not revoke the active caption input',
+  );
+  f.retire();
+  await tick();
+});

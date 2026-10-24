@@ -27,6 +27,7 @@ use crate::engine::Engine;
 use crate::sync::{Ingest, RejectionOutcome};
 use crate::CoreListener;
 
+mod complete_reads;
 mod dispatch;
 mod maintenance;
 mod media;
@@ -334,6 +335,11 @@ type Stream = futures_util::stream::SplitStream<
 >;
 
 enum Waiting {
+    Paged {
+        assembly: Box<protocol::complete_reads::Assembly>,
+        deadline: tokio::time::Instant,
+        done: Box<Waiting>,
+    },
     External(oneshot::Sender<Result<Reply, String>>),
     /// The ids asked for, so ones the relay doesn't know aren't asked again forever.
     Profiles(Vec<String>),
@@ -475,7 +481,11 @@ impl MediaDownloadRetries {
 
 pub(crate) fn tracing_like(msg: &str) {
     if std::env::var_os("ZOEN_NET_DEBUG").is_some() {
-        eprintln!("[zoen-net] {msg}");
+        // Relative process-local time correlates existing request/arrival facts.
+        // It neither changes scheduling nor exports a wall clock or private scope.
+        static ORIGIN: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+        let elapsed = ORIGIN.get_or_init(std::time::Instant::now).elapsed();
+        eprintln!("[zoen-net] t_ms={} {msg}", elapsed.as_millis());
     }
 }
 

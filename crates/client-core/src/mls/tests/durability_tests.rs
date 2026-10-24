@@ -3,8 +3,11 @@
 use super::*;
 use std::path::PathBuf;
 
+mod checkpoint_refresh_cases;
 mod confirmation_cases;
 mod fifo_cases;
+mod import_cases;
+mod integrity_marker_cases;
 mod receive_cases;
 
 struct Database {

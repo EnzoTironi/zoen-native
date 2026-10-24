@@ -236,11 +236,12 @@ pub(super) fn exact_file_send_retries_survive_cold_reopen_and_reject_intent_drif
 pub(super) fn file_message_sync_delivers_the_original_attachment_and_encrypted_chunks() {
     use crate::sync::Ingest;
     use protocol::{Envelope, Sequenced};
-    let sender = seeded();
-    let space = find_space(&sender, "Zoen").id;
+    let sender = media_peer("file_author");
+    let receiver = media_peer("file_reader");
+    let space = media_space(&sender, Some(&receiver), "File receipt");
     let root = sender.send_message(space.clone(), "Root".into()).unwrap();
+    confirm_media_outbox(&sender, &space);
     let mut relay = sender.lock().logs[&space].clone();
-    sender.lock().net.synced.insert(space.clone());
     let sent = send(
         &sender,
         &space,
@@ -256,7 +257,6 @@ pub(super) fn file_message_sync_delivers_the_original_attachment_and_encrypted_c
     for event in pending {
         relay.sequence(event.event);
     }
-    let receiver = Client::open(":memory:".into(), "en".into()).unwrap();
     for event in relay.events() {
         assert!(matches!(
             receiver.lock().ingest(Sequenced {
