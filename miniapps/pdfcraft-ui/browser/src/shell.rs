@@ -3,6 +3,22 @@ use pdfcraft_ui_egui::{PdfCraftApp, theme::ThemePreference};
 use pdfcraft_zoen_host::browser::BrowserBridge;
 use wasm_bindgen::{JsCast as _, JsValue};
 
+// The upstream Session explicitly accepts wall-clock callbacks on browser hosts.
+// Integer formatting avoids unchecked float-to-integer casts at the ABI boundary.
+fn clock_seconds() -> i64 {
+    (js_sys::Date::now() / 1_000.0)
+        .floor()
+        .to_string()
+        .parse()
+        .unwrap_or_default()
+}
+fn local_offset() -> i64 {
+    (-60.0 * js_sys::Date::new_0().get_timezone_offset())
+        .round()
+        .to_string()
+        .parse()
+        .unwrap_or_default()
+}
 pub async fn start() -> Result<(), JsValue> {
     let canvas = web_sys::window()
         .and_then(|window| window.document())
@@ -30,7 +46,7 @@ pub async fn start() -> Result<(), JsValue> {
                 api::install(creation.egui_ctx.clone());
                 Ok(Box::new(Shell {
                     app,
-                    bridge: BrowserBridge::default(),
+                    bridge: BrowserBridge::default().with_wall_clock(clock_seconds, local_offset),
                     wiped: false,
                 }))
             }),
@@ -84,6 +100,7 @@ impl eframe::App for Shell {
             raw.events.clear();
             return;
         }
+        api::observe_input(raw);
         self.app.raw_input_hook(ctx, raw);
     }
 

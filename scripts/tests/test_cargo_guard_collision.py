@@ -40,5 +40,28 @@ class CollateralCleanupTests(unittest.TestCase):
         self.assertNotIn("cleanedPackages", unknown)
 
 
+    def test_explicit_history_only_collision_rebuilds_local_replacement(self):
+        fixture = Fixture(self._testMethodName)
+        self.addCleanup(__import__("shutil").rmtree, fixture.root)
+        first, bound = fixture.guarded(fixture.a)
+        self.assertEqual(first.returncode, 0, first.stdout.decode())
+        self.assertIn("guard-dep", bound["before"]["thirdPartyNames"])
+        manifest = fixture.b / "Cargo.toml"
+        text = manifest.read_text().replace('name="source-probe"', 'name="guard-dep"')
+        manifest.write_text(text.split("[dependencies]")[0])
+        (fixture.b / "src/main.rs").write_text('fn main(){println!("local replacement");}')
+        fixture.raw(fixture.b, ["generate-lockfile", "--offline"])
+        refused, receipt = fixture.guarded(fixture.b)
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertIn("name collision", receipt["error"])
+        passed, receipt = fixture.guarded(fixture.b, ("--allow-collateral-package-clean", "guard-dep"))
+        self.assertEqual(passed.returncode, 0, passed.stdout.decode())
+        self.assertEqual(receipt["historicalCollateralPackageNames"], ["guard-dep"])
+        self.assertEqual(receipt["collateralCleanedPackageIds"], [])
+        self.assertTrue(all(not artifact["fresh"] for artifact in receipt["artifacts"]))
+        output = subprocess.check_output([str(fixture.target / "debug/guard-dep")], text=True).strip()
+        self.assertEqual(output, "local replacement")
+
+
 if __name__ == "__main__":
     unittest.main()

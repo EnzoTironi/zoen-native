@@ -8,7 +8,7 @@ export type RuntimeAsset = Readonly<{
 }>;
 export type RuntimePackage = Readonly<{
   schema: 1;
-  engine: 'deckcraft' | 'gridcraft' | 'wordcraft' | 'photocraft';
+  engine: 'deckcraft' | 'gridcraft' | 'wordcraft' | 'photocraft' | 'pdfcraft';
   revision: string;
   abi: 'zoen-host-v1';
   module: RuntimeAsset;
@@ -54,7 +54,8 @@ export function parseRuntimePackage(value: unknown): RuntimePackage {
     (input.engine !== 'deckcraft' &&
       input.engine !== 'gridcraft' &&
       input.engine !== 'wordcraft' &&
-      input.engine !== 'photocraft') ||
+      input.engine !== 'photocraft' &&
+      input.engine !== 'pdfcraft') ||
     input.abi !== 'zoen-host-v1' ||
     typeof input.revision !== 'string' ||
     !/^[a-f0-9]{40}$/.test(input.revision)

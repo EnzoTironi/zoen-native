@@ -77,7 +77,7 @@ def inside(path, directory):
 
 
 
-def snapshot(cargo, manifest, target, sidecar, receipt, env, extra_env, extra_files, collateral_names):
+def snapshot(cargo, manifest, target, sidecar, receipt, env, extra_env, extra_files, collateral_names, historical_names=()):
     workspace = pathlib.Path(manifest).parent
     metadata = json.loads(capture([cargo, "metadata", "--offline", "--locked", "--all-features", "--format-version", "1", "--manifest-path", str(manifest)], workspace, env))
     workspace = pathlib.Path(metadata["workspace_root"]).resolve()
@@ -86,7 +86,7 @@ def snapshot(cargo, manifest, target, sidecar, receipt, env, extra_env, extra_fi
     local = [p for p in metadata["packages"] if p["source"] is None]
     if not local:
         raise GuardError("No local Cargo packages to bind")
-    collisions = {p["name"] for p in local} & {p["name"] for p in metadata["packages"] if p["source"] is not None}
+    collisions = {p["name"] for p in local} & ({p["name"] for p in metadata["packages"] if p["source"] is not None} | set(historical_names))
     permitted = set(collateral_names)
     if collisions - permitted or permitted - collisions:
         raise GuardError("Local/third-party package name collision; explicitly name each collateral package clean")
@@ -265,7 +265,8 @@ def main():
         env["CARGO_TARGET_DIR"] = str(target)
         env["CARGO_BUILD_BUILD_DIR"] = str(target)
         env["CARGO_TERM_COLOR"] = "never"
-        before = snapshot(args.cargo, manifest, target, sidecar, receipt, env, args.input_env, args.input_file, args.allow_collateral_package_clean)
+        history = previous["thirdPartyNames"] if valid else []
+        before = snapshot(args.cargo, manifest, target, sidecar, receipt, env, args.input_env, args.input_file, args.allow_collateral_package_clean, history)
         result["before"] = before
         scope = compilation_scope(cargo_args, before["context"]["configuredTargets"])
         result["scope"] = scope
@@ -280,6 +281,7 @@ def main():
         trusted = prior_scope.get("status") == "bound" and prior_scope.get("contextDigest") == before["contextDigest"] and set(prior_scope.get("packages", {})) == set(before["packages"])
         clean = [key for key, value in before["packages"].items() if not trusted or prior_scope["packages"][key]["digest"] != value["digest"]]
         result["cleanedPackages"] = clean
+        result["historicalCollateralPackageNames"] = sorted(set(history) & set(args.allow_collateral_package_clean) & {before["packages"][key]["name"] for key in clean})
         result["collateralCleanedPackageIds"] = before["collateralPackageIds"] if any(before["packages"][key]["name"] in args.allow_collateral_package_clean for key in clean) else []
         scopes = previous["scopes"].copy() if valid and previous.get("ownerSourceDigest") == owner_source else {}
         scopes[scope_key] = {"status": "in_progress"}
@@ -296,7 +298,7 @@ def main():
             atomic_json(state_path, working)
         invocation = [args.cargo, command[0], "--offline", "--locked", "--manifest-path", str(manifest), "--target-dir", str(target), "--message-format=json-render-diagnostics", *command[1:]]
         records = cargo_command(invocation, manifest.parent, env, lock_fd, launched)
-        after = snapshot(args.cargo, manifest, target, sidecar, receipt, env, args.input_env, args.input_file, args.allow_collateral_package_clean)
+        after = snapshot(args.cargo, manifest, target, sidecar, receipt, env, args.input_env, args.input_file, args.allow_collateral_package_clean, history)
         result["after"] = after
         if before != after:
             raise GuardError("Source/configuration changed during Cargo; outputs remain unqualified")

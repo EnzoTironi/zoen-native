@@ -104,6 +104,20 @@ class PrepareTests(unittest.TestCase):
         (self.recipe / "inspection/Cargo.lock").write_text("generated lock")
         self.refused()
 
+    def test_managed_wire_and_structure_are_copied_from_core_verbatim(self):
+        original = SOURCE.parents[2] / "crates/miniapps/src/pdfcraft"
+        shared = self.root / "recipe/crates/miniapps/src/pdfcraft"
+        shared.mkdir(parents=True)
+        for name in ("structure.rs", "action.rs"):
+            shutil.copyfile(original / name, shared / name)
+        receipt = PREP.prepare(self.upstream, managed=True)
+        for name in ("structure.rs", "action.rs"):
+            produced = self.upstream / "crates/zoen-host/src" / name
+            self.assertEqual(produced.read_bytes(), (shared / name).read_bytes())
+            self.assertIn("crates/miniapps/src/pdfcraft/" + name, receipt["inputs"])
+        self.assertFalse(receipt["compiled"])
+        self.assertFalse(receipt["appAvailable"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -4,7 +4,9 @@ mod api;
 pub mod layout;
 #[cfg(target_arch = "wasm32")]
 mod shell;
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests;
+#[cfg(any(target_arch = "wasm32", test))]
 mod viewport;
 #[cfg(target_arch = "wasm32")]
 pub use api::{on_change, on_export, request, retire, start};

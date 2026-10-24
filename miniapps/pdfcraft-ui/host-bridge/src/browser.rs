@@ -8,6 +8,7 @@ use pdfcraft_ui_egui::PdfCraftApp;
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+type WallClock = (fn() -> i64, fn() -> i64);
 static NEXT_BINDING: AtomicU64 = AtomicU64::new(1);
 enum Kind {
     Manual,
@@ -27,9 +28,33 @@ pub struct BrowserBridge {
     accepted_generation: u64,
     pending: Option<Entry>,
     paused: bool,
+    wall_clock: Option<WallClock>,
 }
 
 impl BrowserBridge {
+    /// Uses the host's real clock/time zone for upstream content timestamps.
+    #[must_use]
+    pub fn with_wall_clock(mut self, clock: fn() -> i64, zone: fn() -> i64) -> Self {
+        self.wall_clock = Some((clock, zone));
+        self
+    }
+    /// # Errors
+    /// Commits the actual paragraph editor only after its final input frame.
+    /// Active composition/contacts and other upstream dialogs/drafts stay pending.
+    pub fn finish_input(&self, app: &mut PdfCraftApp, input_active: bool) -> Result<()> {
+        self.doc(&app.session)?;
+        if input_active {
+            return Err(failure("human_interaction"));
+        }
+        // Reuse upstream's Save/close typing path, including failed-draft restore.
+        if !app.managed_finish_input() {
+            return Err(failure("paragraph_commit_refused"));
+        }
+        if app.host_interaction() {
+            return Err(failure("human_interaction"));
+        }
+        Ok(())
+    }
     #[must_use]
     pub fn is_open(&self) -> bool {
         self.host.is_some()
@@ -91,6 +116,9 @@ impl BrowserBridge {
             })
             .map_err(|_| failure("binding_exhausted"))?;
         let mut next = PdfCraftApp::new();
+        if let Some((clock, zone)) = self.wall_clock {
+            next.session = std::mem::take(&mut next.session).with_wall_clock(clock, zone);
+        }
         next.session.set_javascript(false);
         next.open_bytes("Document.pdf", None, bytes.to_vec())
             .map_err(|_| failure("app_open_refused"))?;
@@ -99,6 +127,7 @@ impl BrowserBridge {
         next.session.managed_document = Some(id);
         next.session.managed_frozen = self.paused;
         next.managed_export = app.managed_export;
+        next.comment_prefs.author.clone_from(&host.scope.actor_id);
         next.set_theme_preference(app.theme_preference);
         next.left_open = false;
         next.set_option("mode", "read")

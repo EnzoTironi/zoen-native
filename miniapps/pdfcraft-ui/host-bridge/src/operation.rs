@@ -1,42 +1,72 @@
 //! A closed agent capability over the real upstream edit API; no UI/file dispatcher.
-use crate::{Result, failure};
+use crate::{Operation, Result, failure};
 use pdfcraft_engine::{AddedText, BlockStyle, DocId, Edit, NewAnnotation, Session, Shape, Style};
-use serde::{Deserialize, Serialize};
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
-pub enum Operation {
-    AddText {
-        page: usize,
-        rect: [f64; 4],
-        text: String,
-        size: f64,
-    },
-    InsertPage {
-        at: usize,
-    },
-    RotatePages {
-        pages: Vec<usize>,
-        degrees: i64,
-    },
-    ReplaceText {
-        page: usize,
-        block: usize,
-        expected: String,
-        text: String,
-    },
-    Annotate {
-        page: usize,
-        rect: [f64; 4],
-        text: String,
-    },
-}
 
 fn text(value: &str) -> bool {
     value.len() <= 32_768
         && !value
             .chars()
             .any(|c| c.is_control() && c != '\n' && c != '\t')
+}
+
+fn add_text(
+    document: &pdfcraft_engine::Document,
+    page: usize,
+    rect: [f64; 4],
+    contents: String,
+    size: f64,
+) -> Result<Edit> {
+    let info = document
+        .info
+        .pages
+        .get(page)
+        .ok_or_else(|| failure("invalid_page"))?;
+    if !text(&contents)
+        || contents.is_empty()
+        || !size.is_finite()
+        || !(6.0..=96.0).contains(&size)
+        || !rect.iter().all(|number| number.is_finite())
+        || rect[0] < 0.0
+        || rect[1] < 0.0
+        || rect[2] > f64::from(info.width)
+        || rect[3] > f64::from(info.height)
+        || rect[0] >= rect[2]
+        || rect[1] >= rect[3]
+    {
+        return Err(failure("invalid_text_box"));
+    }
+    let added = AddedText {
+        rect,
+        text: contents,
+        size,
+        ..AddedText::default()
+    };
+    let fitted = pdfcraft_engine::added_text_rect(&added);
+    if fitted[0] < 0.0
+        || fitted[1] < 0.0
+        || fitted[2] > f64::from(info.width)
+        || fitted[3] > f64::from(info.height)
+    {
+        return Err(failure("text_would_overflow_page"));
+    }
+    Ok(Edit::AddText { page, text: added })
+}
+
+fn rotate(pages: Vec<usize>, degrees: i64, count: usize) -> Result<Edit> {
+    if pages.is_empty()
+        || pages.len() > count
+        || !matches!(degrees, -90 | 90 | 180)
+        || pages.iter().any(|page| *page >= count)
+        || pages
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len()
+            != pages.len()
+    {
+        return Err(failure("invalid_pages"));
+    }
+    Ok(Edit::RotatePages { pages, degrees })
 }
 
 /// # Errors
@@ -60,58 +90,8 @@ pub fn apply(session: &mut Session, id: DocId, operation: Operation, author: &st
             rect,
             text: contents,
             size,
-        } => {
-            let info = document
-                .info
-                .pages
-                .get(page)
-                .ok_or_else(|| failure("invalid_page"))?;
-            if !text(&contents)
-                || contents.is_empty()
-                || !size.is_finite()
-                || !(6.0..=96.0).contains(&size)
-                || !rect.iter().all(|number| number.is_finite())
-                || rect[0] < 0.0
-                || rect[1] < 0.0
-                || rect[2] > f64::from(info.width)
-                || rect[3] > f64::from(info.height)
-                || rect[0] >= rect[2]
-                || rect[1] >= rect[3]
-            {
-                return Err(failure("invalid_text_box"));
-            }
-            let added = AddedText {
-                rect,
-                text: contents,
-                size,
-                ..AddedText::default()
-            };
-            let fitted = pdfcraft_engine::added_text_rect(&added);
-            if fitted[0] < 0.0
-                || fitted[1] < 0.0
-                || fitted[2] > f64::from(info.width)
-                || fitted[3] > f64::from(info.height)
-            {
-                return Err(failure("text_would_overflow_page"));
-            }
-            Edit::AddText { page, text: added }
-        }
-        Operation::RotatePages { pages, degrees } => {
-            if pages.is_empty()
-                || pages.len() > count
-                || !matches!(degrees, -90 | 90 | 180)
-                || pages.iter().any(|page| *page >= count)
-                || pages
-                    .iter()
-                    .copied()
-                    .collect::<std::collections::BTreeSet<_>>()
-                    .len()
-                    != pages.len()
-            {
-                return Err(failure("invalid_pages"));
-            }
-            Edit::RotatePages { pages, degrees }
-        }
+        } => add_text(document, page, rect, contents, size)?,
+        Operation::RotatePages { pages, degrees } => rotate(pages, degrees, count)?,
         Operation::ReplaceText {
             page,
             block,

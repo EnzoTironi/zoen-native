@@ -1,8 +1,12 @@
 # PdfCraft managed integration
 
+Preserved integration candidate for #581; not registered or enabled in Zoen.
+Further integration is deferred while the existing Word/Photo/Deck delivery
+batch is completed. No PdfCraft PR or production availability is claimed.
+
 Tracks #581 under #180/#170. Upstream is fixed to PdfCraft 0.13.0,
 `d445410807e7eefbe5b96f9662ab963ae8dd2a3a`; source/dependency hashes are in
-[upstream.json](upstream.json). No PdfCraft App is available in Zoen yet.
+[upstream.json](upstream.json).
 
 The actual upstream `PdfCraftApp`, Session, COS model, paragraph editor, PDF
 writer, renderer and Undo are retained. The standalone parent-message bridge is
@@ -19,9 +23,23 @@ specific fixture measurements, not an iPhone or worst-case memory guarantee.
 
 The first native host qualification passed three real tests: exact proposal/
 receipt/retry and accepted-version export; stale paragraph/forged artifact
-refusal; malformed source and disabled document JavaScript. Browser source,
-WASIp2 execution, canonical end-to-end integration and native iPhone acceptance
-remain distinct pending steps. GitHub #581 is the current status authority.
+refusal; malformed source and disabled document JavaScript. The real WASIp2
+baseline also executed in production WasmTier limits: a two-page
+read used 16.36M fuel, and a page rotation generated a PDF using 28.75M fuel. Its
+proposal was independently read by pypdf; an approved-command envelope mismatch
+was deliberately retained as a consumer RED before qualifying the corrected
+adapter. It does not prove Core authorization or persistence.
+
+The retained adapter host tests now exercised 70 consecutive actual edits, periodic
+full-writer compaction with opaque data preserved, false JPEG dimensions and
+bounded stream-decode refusal. Core structural/intent tests passed 3/3, and its
+Clippy all-targets run passed with pedantic/perf and warnings denied. The native
+host/App batch subsequently passed 11 cases, including real
+pointer/text events, a newer paragraph draft during ACK, native Undo/Redo,
+orientation/short viewport and 70 retained-session checkpoints with compaction.
+The latest small lint refactor has not repeated that native run. Browser release/
+execution, the updated WASIp2 worker, canonical end-to-end integration and native
+iPhone acceptance remain pending. GitHub #581 is the status authority.
 
 The initial structural limits are 8 MiB, 32 declared pages, 8,192 current objects,
 64 internal PDF revisions and image dimensions ≤2,048 / 2,000,000 pixels. The
@@ -31,7 +49,7 @@ encryption refusal, declared page Count and image scalars. It does not walk the
 complete page semantics, render, decode image pixels, edit or normalize bytes.
 The engine bridge independently checks actual page count, geometry, warnings,
 representation preservation and bounded stream/JPEG admission. Internal revision
-compaction through the real full writer is being qualified; Core retains exact
+compaction through the real full writer passed native checks; Core retains exact
 chosen versions independently of PDF's internal revision chain.
 
 An older manual ACK must not rebase newer COS edits or a newer unfinished UI

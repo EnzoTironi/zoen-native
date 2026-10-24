@@ -49,6 +49,7 @@ struct Queue {
     on_export: Option<Function>,
     layout: Option<Layout>,
     reported: Option<String>,
+    composing: bool,
 }
 thread_local! { static QUEUE:RefCell<Queue> = RefCell::new(Queue::default()); }
 fn error(code: &str) -> JsValue {
@@ -92,6 +93,22 @@ pub(crate) fn retired() -> bool {
 }
 pub(crate) fn layout() -> Option<Layout> {
     QUEUE.with(|q| q.borrow().layout)
+}
+pub(crate) fn observe_input(raw: &egui::RawInput) {
+    QUEUE.with(|queue| {
+        let mut queue = queue.borrow_mut();
+        for event in &raw.events {
+            match event {
+                egui::Event::Ime(egui::ImeEvent::Preedit { text, .. }) => {
+                    queue.composing = !text.is_empty();
+                }
+                egui::Event::Ime(egui::ImeEvent::Commit(_)) => {
+                    queue.composing = false;
+                }
+                _ => {}
+            }
+        }
+    });
 }
 
 #[wasm_bindgen(js_name=zoenHostRequest)]
@@ -246,12 +263,14 @@ pub(crate) fn drain(
     let Some((mut work, input_unavailable)) = work else {
         return;
     };
-    let interaction = app.host_interaction()
-        || QUEUE.with(|q| {
-            q.borrow().ctx.as_ref().is_some_and(|ctx| {
+    let input_active = QUEUE.with(|q| {
+        let q = q.borrow();
+        q.composing
+            || q.ctx.as_ref().is_some_and(|ctx| {
                 ctx.input(|input| input.pointer.any_down() || input.multi_touch().is_some())
             })
-        });
+    });
+    let interaction = app.host_interaction() || input_active;
     let empty = |metadata| Proposal {
         bytes: vec![],
         metadata,
@@ -273,11 +292,12 @@ pub(crate) fn drain(
         Request::Export(r) => bridge.export(&app.session, &r),
         Request::Status => bridge.status(&app.session).map(empty),
         Request::Freeze(r) => {
-            if r.frozen && interaction {
-                Err("human_interaction".into())
+            let finished = if r.frozen {
+                bridge.finish_input(app, input_active)
             } else {
-                bridge.freeze(&mut app.session, r.frozen).map(empty)
-            }
+                Ok(())
+            };
+            finished.and_then(|()| bridge.freeze(&mut app.session, r.frozen).map(empty))
         }
         Request::Layout(r) => {
             if r.valid() {

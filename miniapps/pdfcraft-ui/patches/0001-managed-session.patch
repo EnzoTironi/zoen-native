@@ -1,18 +1,5 @@
-diff --git a/crates/engine/src/js.rs b/crates/engine/src/js.rs
-index 7f94971..4fff000 100644
---- a/crates/engine/src/js.rs
-+++ b/crates/engine/src/js.rs
-@@ -248,7 +248,7 @@ impl crate::Document {
- impl Session {
-     /// Preferences ▸ JavaScript ▸ Enable Acrobat JavaScript (on by default).
-     pub fn set_javascript(&mut self, on: bool) {
--        self.js_off = !on;
-+        self.js_off = self.managed_binding.is_some() || !on;
-     }
- 
-     pub fn javascript(&self) -> bool {
 diff --git a/crates/engine/src/lib.rs b/crates/engine/src/lib.rs
-index aa71d82..bc1db8d 100644
+index aa71d82..0b5e078 100644
 --- a/crates/engine/src/lib.rs
 +++ b/crates/engine/src/lib.rs
 @@ -3206,8 +3206,22 @@ impl From<pdfcraft_sign::SignError> for EditError {
@@ -38,25 +25,36 @@ index aa71d82..bc1db8d 100644
      docs: Vec<Document>,
      next_id: u64,
      /// Seconds since the Unix epoch, injected so saves are deterministic in tests.
-@@ -3547,6 +3561,30 @@ fn signatures_of(cos: &pdfcraft_cos::Document, bytes: &[u8], trust: &TrustStore,
+@@ -3547,6 +3561,41 @@ fn signatures_of(cos: &pdfcraft_cos::Document, bytes: &[u8], trust: &TrustStore,
  }
  
  impl Session {
 +    /// Retain real COS/Undo/Redo before an embedded operation can fail host validation.
 +    pub fn managed_checkpoint(&self, id: DocId) -> Result<ManagedCheckpoint, EditError> {
 +        let binding = self.managed_binding.ok_or(EditError::NoDocument)?;
-+        if self.managed_document != Some(id) || self.docs.len() != 1 { return Err(EditError::NoDocument); }
++        if self.managed_document != Some(id) || self.docs.len() != 1 {
++            return Err(EditError::NoDocument);
++        }
 +        let doc = self.get(id).ok_or(EditError::NoDocument)?;
-+        if doc.xfa.is_some() || !doc.signatures.is_empty() { return Err(EditError::ReadOnly("Unsupported managed checkpoint".into())); }
-+        Ok(ManagedCheckpoint { binding, id, editor: doc.editor.as_ref().ok_or(EditError::NoDocument)?.clone(),
-+            dirty: doc.dirty, generation: doc.generation, notices: doc.edit_notices.clone() })
++        if doc.xfa.is_some() || !doc.signatures.is_empty() {
++            return Err(EditError::ReadOnly("Unsupported managed checkpoint".into()));
++        }
++        Ok(ManagedCheckpoint {
++            binding,
++            id,
++            editor: doc.editor.as_ref().ok_or(EditError::NoDocument)?.clone(),
++            dirty: doc.dirty,
++            generation: doc.generation,
++            notices: doc.edit_notices.clone(),
++        })
 +    }
 +
 +    /// Restore the same upstream editor after a refused proposal, including pre-existing redo.
 +    /// This cannot cross a replaced document/host binding and grants no durable authorization.
 +    pub fn managed_restore(&mut self, checkpoint: ManagedCheckpoint) -> Result<(), EditError> {
-+        if self.managed_binding != Some(checkpoint.binding) || self.managed_document != Some(checkpoint.id)
-+            || self.docs.len() != 1 { return Err(EditError::NoDocument); }
++        if self.managed_binding != Some(checkpoint.binding) || self.managed_document != Some(checkpoint.id) || self.docs.len() != 1 {
++            return Err(EditError::NoDocument);
++        }
 +        let doc = self.docs.iter_mut().find(|doc| doc.id == checkpoint.id).ok_or(EditError::NoDocument)?;
 +        doc.editor = Some(checkpoint.editor);
 +        Self::refresh(doc)?;
@@ -69,31 +67,31 @@ index aa71d82..bc1db8d 100644
      pub fn new() -> Self {
          Self::default()
      }
-@@ -3934,6 +3972,11 @@ impl Session {
+@@ -3934,6 +3983,9 @@ impl Session {
      }
  
      fn doc_mut(&mut self, id: DocId) -> Result<&mut Document, EditError> {
-+        if self.managed_binding.is_some()
-+            && (self.managed_frozen || self.managed_document != Some(id) || self.docs.len() != 1)
-+        {
++        if self.managed_binding.is_some() && (self.managed_frozen || self.managed_document != Some(id) || self.docs.len() != 1) {
 +            return Err(EditError::ReadOnly("The managed document is paused or replaced.".into()));
 +        }
          self.docs.iter_mut().find(|d| d.id == id).ok_or(EditError::NoDocument)
      }
  
-@@ -5352,6 +5395,7 @@ impl Session {
+@@ -5352,6 +5404,9 @@ impl Session {
      }
  
      pub fn close(&mut self, id: DocId) {
-+        if self.managed_binding.is_some() { return; }
++        if self.managed_binding.is_some() {
++            return;
++        }
          self.docs.retain(|d| d.id != id);
      }
  
 diff --git a/crates/ui-egui/src/chrome.rs b/crates/ui-egui/src/chrome.rs
-index 2723d16..f2808eb 100644
+index 2723d16..dbe0b27 100644
 --- a/crates/ui-egui/src/chrome.rs
 +++ b/crates/ui-egui/src/chrome.rs
-@@ -985,3 +985,43 @@ mod tab_widths {
+@@ -985,3 +985,57 @@ mod tab_widths {
          assert!(MAC_CONTENT_LEFT <= f32::from(i8::MAX));
      }
  }
@@ -105,55 +103,73 @@ index 2723d16..f2808eb 100644
 +        .exact_size(48.0)
 +        .frame(egui::Frame::NONE.fill(tokens.chrome).inner_margin(egui::Margin::symmetric(6, 2)))
 +        .show(ui, |ui| {
-+            egui::ScrollArea::horizontal().id_salt("managed_pdf_tools_scroll")
-+                .auto_shrink([false, false]).show(ui, |ui| {
-+                    ui.horizontal_centered(|ui| {
-+                        ui.spacing_mut().item_spacing.x = 2.0;
-+                        for (id, icon, label, selected) in [
-+                            ("edit.edit_text", "text-cursor-input", "Edit text & images", matches!(app.quick_tool, crate::QuickTool::EditText)),
-+                            ("comment.highlight", "highlighter", "Highlight text", matches!(app.quick_tool, crate::QuickTool::Comment(crate::comments::CommentTool::Highlight))),
-+                            ("comment.ink", "pencil", "Draw freehand", matches!(app.quick_tool, crate::QuickTool::Comment(crate::comments::CommentTool::Ink))),
-+                            ("edit.undo", "undo-2", "Undo", false),
-+                            ("edit.redo", "redo-2", "Redo", false),
-+                            ("file.save", "share-2", "Share PDF", false),
++            egui::ScrollArea::horizontal().id_salt("managed_pdf_tools_scroll").auto_shrink([false, false]).show(ui, |ui| {
++                ui.horizontal_centered(|ui| {
++                    ui.spacing_mut().item_spacing.x = 2.0;
++                    for (id, icon, label, selected) in [
++                        ("edit.edit_text", "text-cursor-input", "Edit text & images", matches!(app.quick_tool, crate::QuickTool::EditText)),
++                        (
++                            "comment.highlight",
++                            "highlighter",
++                            "Highlight text",
++                            matches!(app.quick_tool, crate::QuickTool::Comment(crate::comments::CommentTool::Highlight)),
++                        ),
++                        (
++                            "comment.ink",
++                            "pencil",
++                            "Draw freehand",
++                            matches!(app.quick_tool, crate::QuickTool::Comment(crate::comments::CommentTool::Ink)),
++                        ),
++                        ("edit.undo", "undo-2", "Undo", false),
++                        ("edit.redo", "redo-2", "Redo", false),
++                        ("file.save", "share-2", "Share PDF", false),
++                    ] {
++                        let enabled = pdfcraft_engine::commands::command(id).is_some_and(|spec| app.command_enabled(spec));
++                        if ui.add_enabled_ui(enabled, |ui| icons::button(ui, icon, 44.0, selected, tl!(label))).inner.clicked() {
++                            app.execute(id);
++                        }
++                    }
++                    let more = icons::button(ui, "ellipsis", 44.0, false, tl!("More tools"));
++                    egui::Popup::menu(&more).show(|ui| {
++                        for (id, label) in [
++                            ("view.read_mode", "Read mode"),
++                            ("edit.text", "Add text"),
++                            ("page.organize", "Organize pages"),
++                            ("comment.list", "Comments"),
++                            ("file.properties", "Document properties"),
 +                        ] {
 +                            let enabled = pdfcraft_engine::commands::command(id).is_some_and(|spec| app.command_enabled(spec));
-+                            if ui.add_enabled_ui(enabled, |ui| icons::button(ui, icon, 44.0, selected, tl!(label))).inner.clicked() {
++                            if ui.add_enabled(enabled, egui::Button::new(tl!(label))).clicked() {
 +                                app.execute(id);
++                                ui.close();
 +                            }
 +                        }
-+                        let more = icons::button(ui, "ellipsis", 44.0, false, tl!("More tools"));
-+                        egui::Popup::menu(&more).show(|ui| {
-+                            for (id, label) in [("view.read_mode", "Read mode"), ("edit.text", "Add text"), ("page.organize", "Organize pages"),
-+                                ("comment.list", "Comments"), ("file.properties", "Document properties")] {
-+                                let enabled = pdfcraft_engine::commands::command(id).is_some_and(|spec| app.command_enabled(spec));
-+                                if ui.add_enabled(enabled, egui::Button::new(tl!(label))).clicked() {
-+                                    app.execute(id);
-+                                    ui.close();
-+                                }
-+                            }
-+                        });
 +                    });
 +                });
++            });
 +        });
 +}
 diff --git a/crates/ui-egui/src/commands.rs b/crates/ui-egui/src/commands.rs
-index c0e12d5..ba4fb25 100644
+index c0e12d5..b201127 100644
 --- a/crates/ui-egui/src/commands.rs
 +++ b/crates/ui-egui/src/commands.rs
-@@ -80,6 +80,7 @@ impl PdfCraftApp {
+@@ -80,6 +80,9 @@ impl PdfCraftApp {
      /// Whether a registered command can run now. The engine judges the document (security,
      /// contents, undo history); view state it can't see is checked here.
      pub(crate) fn command_enabled(&self, spec: &CommandSpec) -> bool {
-+        if !self.managed_command_allowed(spec.id) { return false; }
++        if !self.managed_command_allowed(spec.id) {
++            return false;
++        }
          // Undo and Redo act on the Combine files list while its tab shows.
          if self.combine_showing() && matches!(spec.needs, commands::Needs::Undo | commands::Needs::Redo) {
              return self.combine_can_undo(spec.needs == commands::Needs::Undo);
-@@ -104,6 +105,10 @@ impl PdfCraftApp {
+@@ -104,6 +107,12 @@ impl PdfCraftApp {
      /// Last-resort guard (AGENTS.md §4): a command that panics is reported and the app, with its
      /// open documents, keeps running. Edits are applied to a copy, so the document is unchanged.
      pub fn execute(&mut self, id: &str) -> bool {
-+        if !self.managed_command_allowed(id) { return false; }
++        if !self.managed_command_allowed(id) {
++            return false;
++        }
 +        if self.session.managed_binding.is_some() && matches!(id, "file.save" | "file.save_as") {
 +            return self.managed_export.is_some_and(|export| export("pdf"));
 +        }
@@ -161,7 +177,7 @@ index c0e12d5..ba4fb25 100644
              Ok(done) => done,
              Err(m) => {
 diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
-index e50145f..2672b12 100644
+index e50145f..51237bf 100644
 --- a/crates/ui-egui/src/lib.rs
 +++ b/crates/ui-egui/src/lib.rs
 @@ -771,6 +771,8 @@ pub struct PdfCraftApp {
@@ -173,38 +189,73 @@ index e50145f..2672b12 100644
      /// Reports unsaved work to the embedding page (web, see [`HostDirtyFn`]).
      pub host_dirty: Option<HostDirtyFn>,
      /// A pending "save changes?" question (closing a dirty tab or quitting).
-@@ -1077,6 +1079,30 @@ pub enum OpenOutcome {
+@@ -1077,6 +1079,65 @@ pub enum OpenOutcome {
  }
  
  impl PdfCraftApp {
-+
 +    /// Conservatively fence live drafts/gestures: an unfinished editor must not be
 +    /// snapshotted, replaced by an agent, or silently discarded by host suspension.
++    /// Finish actual upstream typing before a managed snapshot. Caller has already
++    /// consumed the final input frame and refused active composition/contacts.
++    /// Native commit paths restore a refused draft instead of dropping its text.
++    pub fn managed_finish_input(&mut self) -> bool {
++        if self.session.managed_binding.is_none() {
++            return false;
++        }
++        let Some((_, id)) = self.active_ids() else {
++            return false;
++        };
++        if !self.commit_typing_in(id) {
++            return false;
++        }
++        for view in &mut self.views {
++            view.line_editor.take_if(|editor| !editor.has_changes());
++        }
++        true
++    }
++
 +    pub fn host_interaction(&self) -> bool {
-+        self.dialog.is_some() || self.password_prompt.is_some() || self.unlock_prompt.is_some()
-+            || self.image_import.is_some() || self.pending_link.is_some()
-+            || self.views.iter().any(|view| view.pending_edit.is_some()
-+                || view.line_editor.is_some() || view.block_drag.is_some()
-+                || view.comments.gesture.is_some() || view.comments.composer.is_some()
-+                || view.comments.editing.is_some() || view.forms.focus.is_some()
-+                || view.content.draft.is_some() || view.fill_text.is_some()
-+                || view.org_drag.is_some() || view.panel_drag.is_some())
++        self.dialog.is_some()
++            || self.password_prompt.is_some()
++            || self.unlock_prompt.is_some()
++            || self.image_import.is_some()
++            || self.pending_link.is_some()
++            || self.views.iter().any(|view| {
++                view.pending_edit.is_some()
++                    || view.line_editor.is_some()
++                    || view.block_drag.is_some()
++                    || view.comments.gesture.is_some()
++                    || view.comments.composer.is_some()
++                    || view.comments.editing.is_some()
++                    || view.forms.focus.is_some()
++                    || view.content.draft.is_some()
++                    || view.fill_text.is_some()
++                    || view.org_drag.is_some()
++                    || view.panel_drag.is_some()
++            })
 +    }
 +
 +    /// Keep document editing upstream while the host owns files, links and exports.
 +    pub(crate) fn managed_command_allowed(&self, id: &str) -> bool {
-+        if self.session.managed_binding.is_none() { return true; }
-+        if self.session.managed_frozen { return false; }
-+        if matches!(id, "file.save" | "file.save_as") { return self.managed_export.is_some(); }
-+        if matches!(id, "file.properties" | "file.word_count" | "help.shortcuts") { return true; }
-+        !["file.", "create.", "export.", "help.", "tools.js", "tools.document_js"]
-+            .iter().any(|prefix| id.starts_with(prefix))
++        if self.session.managed_binding.is_none() {
++            return true;
++        }
++        if self.session.managed_frozen {
++            return false;
++        }
++        if matches!(id, "file.save" | "file.save_as") {
++            return self.managed_export.is_some();
++        }
++        if matches!(id, "file.properties" | "file.word_count" | "help.shortcuts") {
++            return true;
++        }
++        !["file.", "create.", "export.", "help.", "tools.js", "tools.document_js"].iter().any(|prefix| id.starts_with(prefix))
 +            && !matches!(id, "page.combine" | "page.insert" | "edit.preferences")
 +    }
      pub fn new() -> Self {
          Self {
              session: Session::new(),
-@@ -1163,6 +1189,7 @@ impl PdfCraftApp {
+@@ -1163,6 +1224,7 @@ impl PdfCraftApp {
              unsaved_flag: Default::default(),
              os_events: None,
              host_save: None,
@@ -212,7 +263,7 @@ index e50145f..2672b12 100644
              host_dirty: None,
              close_request: None,
              save_prompt_button: Default::default(),
-@@ -1361,6 +1388,9 @@ impl PdfCraftApp {
+@@ -1361,6 +1423,9 @@ impl PdfCraftApp {
  
      /// Open a document and make it the active tab. Encrypted files raise the password prompt.
      pub fn open_bytes(&mut self, name: &str, path: Option<String>, bytes: Vec<u8>) -> Result<(), String> {
@@ -222,7 +273,7 @@ index e50145f..2672b12 100644
          self.startup_superseded = true;
          self.open_bytes_with_focus(name, path, bytes, true)
      }
-@@ -3637,8 +3667,15 @@ impl eframe::App for PdfCraftApp {
+@@ -3637,8 +3702,17 @@ impl eframe::App for PdfCraftApp {
          if self.draws_window_frame() {
              window_controls::resize_edges(&ctx);
          }
@@ -230,7 +281,9 @@ index e50145f..2672b12 100644
 -        chrome::mode_bar(self, ui);
 +        let managed = self.session.managed_binding.is_some();
 +        let compact = managed && (ui.available_width() < 700.0 || ui.available_height() < 450.0);
-+        if !managed { chrome::tab_strip(self, ui); }
++        if !managed {
++            chrome::tab_strip(self, ui);
++        }
 +        if compact {
 +            self.left_open = false;
 +            chrome::managed_bar(self, ui);

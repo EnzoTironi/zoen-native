@@ -1,5 +1,5 @@
 //! Same bounded LE metadata-length + JSON + raw document ABI as Deck/Grid workers.
-use pdfcraft_zoen_host::{Command, HostBridge, MAX_DOCUMENT_BYTES, Open, Proposal};
+use pdfcraft_zoen_host::{Command, HostBridge, MAX_DOCUMENT_BYTES, Open, Proposal, ReadQuery};
 use serde::Deserialize;
 use serde_json::json;
 use std::io::{Read, Write};

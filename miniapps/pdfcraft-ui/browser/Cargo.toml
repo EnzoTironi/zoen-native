@@ -36,6 +36,8 @@ unimplemented = "deny"
 todo = "deny"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+eframe = { version = "0.36", default-features = false, features = ["glow", "default_fonts"] }
+sha2 = "0.10"
 egui_kittest = { version = "0.36", features = ["eframe"] }
 pdfcraft-create = { path = "../create" }
 pdfcraft-cos = { path = "../cos" }

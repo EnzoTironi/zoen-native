@@ -1,5 +1,6 @@
 //! Ephemeral scope/head/proposal ABI shared with the managed binary editors.
 //! Only Core can authorize a source or persist the inert bytes returned here.
+mod action;
 #[cfg(feature = "browser")]
 pub mod browser;
 pub mod operation;
@@ -8,7 +9,7 @@ mod structure;
 #[cfg(test)]
 mod tests;
 mod wire;
-pub use operation::Operation;
+pub use action::Operation;
 pub const MAX_DOCUMENT_BYTES: usize = structure::MAX_BYTES;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
