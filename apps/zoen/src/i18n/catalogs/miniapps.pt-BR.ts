@@ -1,4 +1,8 @@
 export const miniappsPtBR = {
+  askAgent: 'Pedir à IA',
+  editRequestPlaceholder: 'O que você quer alterar?',
+  editRequestSent: 'Pedido enviado',
+  editRequestUncertain: 'Tente novamente para confirmar este pedido antes de alterá-lo.',
   theAccountHasChangedOpenTheMiniappAgain: 'A conta mudou. Abra o app novamente.',
   timelineUpdates: '%{name} · %{count} atualizações',
   timelineHistory: 'Histórico de versões de %{title}',

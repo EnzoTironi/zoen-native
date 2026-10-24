@@ -5,6 +5,7 @@ use std::io::{Cursor, Read, Write};
 use std::sync::{Arc, Mutex};
 use types::Role;
 mod gridcraft_cases;
+mod app_edit_request_cases;
 mod photocraft_cases;
 mod wordcraft_cases;
 const ORIGINAL: &[u8] = include_bytes!("fixtures/original.deckcraft");
