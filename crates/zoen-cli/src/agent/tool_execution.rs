@@ -25,7 +25,7 @@ impl ApprovedToolAdmission for CanonicalToolAdmission<'_, '_> {
                     .map_err(|e| e.to_string())?;
             }
         }
-        let result = if matches!(tool, "read_deckcraft" | "read_page") {
+        let result = if matches!(tool, "read_deckcraft" | "read_gridcraft" | "read_page") {
             self.tools
                 .done()
                 .into_iter()
@@ -71,7 +71,7 @@ impl ToolHost for SpaceTools<'_> {
                 .page_binding(call)
                 .is_some_and(|(_, tool)| tool == "replace_page_block")
             || current.names.iter().any(|(definition, _, tool)| {
-                definition.name == call.name && tool == client_core::agent_app_creation::TOOL
+                definition.name == call.name && client_core::agent_app_creation::is_model_name(tool)
             })
     }
     fn tools(&self) -> Vec<ToolDef> {

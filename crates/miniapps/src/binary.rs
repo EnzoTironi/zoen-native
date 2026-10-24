@@ -2,6 +2,10 @@
 //! This selects validation/metadata only; it never grants access or stores state.
 use crate::{deckcraft, gridcraft};
 
+pub mod agent_tools;
+pub mod gridcraft_registration;
+pub(crate) mod resource;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Format {
     Deckcraft,
@@ -43,6 +47,18 @@ impl Format {
         match self {
             Self::Deckcraft => deckcraft::MAX_BYTES,
             Self::Gridcraft => gridcraft::MAX_BYTES,
+        }
+    }
+    pub fn seed(self) -> &'static [u8] {
+        match self {
+            Self::Deckcraft => deckcraft::registration::EMPTY,
+            Self::Gridcraft => gridcraft_registration::EMPTY,
+        }
+    }
+    pub fn available(self) -> bool {
+        match self {
+            Self::Deckcraft => deckcraft::registration::available(),
+            Self::Gridcraft => gridcraft_registration::available(),
         }
     }
     pub fn filename(self) -> &'static str {

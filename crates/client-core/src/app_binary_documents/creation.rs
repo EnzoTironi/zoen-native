@@ -1,10 +1,7 @@
 //! Existing creation IDs and durable receipt lookup, shared by native and agent paths.
 use super::*;
 
-pub(crate) fn creation_item_id(me: &str, device: &str, space: &str, mutation: &str) -> R<String> {
-    creation_item_id_for(Format::Deckcraft, me, device, space, mutation)
-}
-fn creation_item_id_for(
+pub(crate) fn creation_item_id_for(
     format: Format,
     me: &str,
     device: &str,
@@ -20,8 +17,9 @@ fn creation_item_id_for(
 impl Engine {
     /// Read only, using the existing durable receipt. Absence never authorizes a
     /// retry: creation still has a deterministic item ID and refuses collisions.
-    pub(crate) fn app_binary_creation_result(
+    pub(crate) fn app_binary_creation_result_for(
         &self,
+        format: Format,
         space: &str,
         title: &str,
         seed_sha: &str,
@@ -29,18 +27,11 @@ impl Engine {
     ) -> R<Option<AppBinaryDocumentDto>> {
         let (me, device) = self.app_document_identity(space)?;
         let owner =
-            serde_json::to_vec(&(&me, &device, space, deckcraft::APP)).map_err(|_| invalid())?;
+            serde_json::to_vec(&(&me, &device, space, format.id())).map_err(|_| invalid())?;
         let key = format!("app_document_create_receipts:{}", hash(&owner));
         let fingerprint = hash(
-            &serde_json::to_vec(&(
-                &me,
-                &device,
-                space,
-                title,
-                seed_sha,
-                deckcraft::ENGINE_REVISION,
-            ))
-            .map_err(|_| invalid())?,
+            &serde_json::to_vec(&(&me, &device, space, title, seed_sha, format.revision()))
+                .map_err(|_| invalid())?,
         );
         let receipts = self.binary_receipts(&key)?;
         let Some(receipt) = receipts.iter().find(|receipt| receipt.id == mutation) else {
@@ -49,7 +40,7 @@ impl Engine {
         if receipt.fingerprint != fingerprint
             || receipt.version != 1
             || receipt.sha256 != seed_sha
-            || receipt.item != creation_item_id(&me, &device, space, mutation)?
+            || receipt.item != creation_item_id_for(format, &me, &device, space, mutation)?
         {
             return Err(storage());
         }

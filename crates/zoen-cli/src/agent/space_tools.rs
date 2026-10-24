@@ -49,32 +49,43 @@ impl<'a> SpaceTools<'a> {
                 image_tools::TOOL.into(),
             ));
         }
-        if deckcraft.is_some() && e.can_create_agent_app(space, source, serving) {
-            if let Some(definition) = client_core::agent_app_creation::definition(space) {
-                let definition: ToolDef =
-                    serde_json::from_value(definition).expect("native creation schema");
-                names.push((
-                    definition,
-                    space.into(),
-                    client_core::agent_app_creation::TOOL.into(),
-                ));
+        if e.can_create_agent_app(space, source, serving) {
+            if let Some(workers) = deckcraft {
+                for tool in [
+                    client_core::agent_app_creation::TOOL,
+                    client_core::agent_app_creation::GRID_TOOL,
+                ] {
+                    let Some(format) = client_core::agent_app_creation::creation_format(tool)
+                    else {
+                        continue;
+                    };
+                    if !workers.supports(format.id()) {
+                        continue;
+                    }
+                    if let Some(definition) =
+                        client_core::agent_app_creation::definition_for(tool, space)
+                    {
+                        let definition: ToolDef =
+                            serde_json::from_value(definition).expect("native creation schema");
+                        names.push((definition, space.into(), tool.into()));
+                    }
+                }
             }
         }
         if let Err(reason) = site_tools::discover(e, space, source, serving, &mut names) {
             say(reason);
         }
-        let binary_items: std::collections::BTreeSet<_> = e
-            .items()
-            .into_iter()
-            .filter(|item| {
-                item.space_id == space
-                    && item
-                        .app
-                        .as_ref()
-                        .is_some_and(|app| app.app_id == "deckcraft")
-            })
-            .map(|item| item.id)
-            .collect();
+        let binary_items: std::collections::BTreeSet<_> =
+            e.items()
+                .into_iter()
+                .filter(|item| {
+                    item.space_id == space
+                        && item.app.as_ref().is_some_and(|app| {
+                            matches!(app.app_id.as_str(), "deckcraft" | "gridcraft")
+                        })
+                })
+                .map(|item| item.id)
+                .collect();
         for t in e.agent_tools(space) {
             // Artifact transport is for its managed App UI, never a model tool.
             if binary_items.contains(&t.item_id) {
@@ -98,16 +109,19 @@ impl<'a> SpaceTools<'a> {
             names.push((def, t.item_id, t.name));
         }
         let mut deckcraft_items = Vec::new();
-        if deckcraft.is_some() {
+        if let Some(workers) = deckcraft {
             for item in e.items().into_iter().filter(|item| {
                 item.space_id == space
                     && item
                         .app
                         .as_ref()
-                        .is_some_and(|app| app.app_id == "deckcraft")
+                        .is_some_and(|app| workers.supports(&app.app_id))
             }) {
+                let Some(app) = item.app.as_ref() else {
+                    continue;
+                };
                 let mut offered = Vec::new();
-                for mut definition in crate::deckcraft::tools() {
+                for mut definition in crate::deckcraft::tools_for(&app.app_id) {
                     let tool = definition.name.clone();
                     let Some(name) = crate::deckcraft::model_name(&tool, &item.id) else {
                         offered.clear();
@@ -120,7 +134,7 @@ impl<'a> SpaceTools<'a> {
                     definition.name = name;
                     definition.parameters["properties"]["artifactId"]["enum"] = json!([item.id]);
                     definition.description =
-                        format!("{} (presentation {:?})", definition.description, item.title);
+                        format!("{} (App {:?})", definition.description, item.title);
                     offered.push((definition, item.id.clone(), tool));
                 }
                 // Keep the gateway's existing 64-tool limit. Offer an entire
@@ -183,105 +197,6 @@ impl<'a> SpaceTools<'a> {
             selection.check(self.e)?;
         }
         Ok(())
-    }
-
-    pub(super) fn stage_approval(
-        &self,
-        ask: &ToolAsk,
-    ) -> Result<client_core::AgentRequestDto, String> {
-        self.fresh().stage_current_approval(ask)
-    }
-    fn stage_current_approval(
-        &self,
-        ask: &ToolAsk,
-    ) -> Result<client_core::AgentRequestDto, String> {
-        self.check_selection()?;
-        let prior = self.e.tool_approval_requests(&self.space, self.source);
-        if let Some((_, tool)) = self.site_binding(&ask.call) {
-            let dto = self
-                .e
-                .stage_site_tool_approval(
-                    &self.space,
-                    self.source,
-                    self.serving,
-                    client_core::AgentToolApprovalInput {
-                        canonical_tool: tool.into(),
-                        arguments: ask.call.arguments.clone(),
-                        worker_binding: client_core::agent_sites::executor_binding(),
-                        continuation_json: serde_json::to_string(ask)
-                            .map_err(|_| "Invalid Site continuation")?,
-                        gate_rule: ask.rule.clone(),
-                    },
-                )
-                .map_err(|error| error.to_string())?;
-            self.check_selection()?;
-            return self.register_staged(dto, &prior);
-        }
-        if client_core::agent_app_creation::model_name(&self.space).as_deref()
-            == Some(&ask.call.name)
-            && self.names.iter().any(|(definition, _, tool)| {
-                definition.name == ask.call.name && tool == client_core::agent_app_creation::TOOL
-            })
-        {
-            let dto = self
-                .e
-                .stage_app_creation_approval(
-                    &self.space,
-                    self.source,
-                    self.serving,
-                    client_core::AgentToolApprovalInput {
-                        canonical_tool: client_core::agent_app_creation::TOOL.into(),
-                        arguments: ask.call.arguments.clone(),
-                        worker_binding: client_core::agent_app_creation::executor_binding(),
-                        continuation_json: serde_json::to_string(ask)
-                            .map_err(|_| "Invalid held creation")?,
-                        gate_rule: ask.rule.clone(),
-                    },
-                )
-                .map_err(|error| error.to_string())?;
-            self.check_selection()?;
-            return self.register_staged(dto, &prior);
-        }
-        let (_, item, tool) = self
-            .names
-            .iter()
-            .find(|(definition, _, _)| definition.name == ask.call.name)
-            .ok_or("The held tool is no longer offered")?;
-        if self.page_items.contains(item) && client_core::agent_page_tools::recognizes(tool) {
-            let result = self
-                .stage_page(item, tool, ask)
-                .and_then(|dto| self.register_staged(dto, &prior));
-            self.check_selection()?;
-            return result;
-        }
-        if !self.deckcraft_items.contains(item) || !crate::deckcraft::recognizes(tool) {
-            return Err("This tool has no supported canonical approval shape".into());
-        }
-        let worker = self
-            .deckcraft
-            .ok_or("The presentation executor is unavailable")?;
-        let (version, hash, _) =
-            client_core::deckcraft_agent_tools::command(tool, &ask.call.arguments)?;
-        let turn = self
-            .e
-            .agent_binary_turn(item, self.source, self.serving, version, hash.as_deref())
-            .map_err(|e| e.to_string())?;
-        let staged = self
-            .e
-            .stage_tool_approval(
-                &turn,
-                client_core::AgentToolApprovalInput {
-                    canonical_tool: tool.clone(),
-                    arguments: ask.call.arguments.clone(),
-                    worker_binding: worker.binding_sha256().into(),
-                    continuation_json: serde_json::to_string(ask)
-                        .map_err(|_| "Invalid held call")?,
-                    gate_rule: ask.rule.clone(),
-                },
-            )
-            .map_err(|e| e.to_string());
-        self.check_selection()?;
-        staged.and_then(|dto| self.register_staged(dto, &prior))
     }
 
     pub(super) fn load(&self) -> Vec<(String, Vec<ToolStep>)> {
@@ -496,3 +411,5 @@ impl<'a> SpaceTools<'a> {
 }
 
 pub(super) mod renewal;
+
+mod staging;
