@@ -83,6 +83,14 @@ fn actual_worker_proposal_exact_ack_cold_reopen_and_accepted_png() -> Result<()>
         head: receipt.head,
         format: ExportFormat::Png,
     })?;
+    assert_eq!(png.metadata["sourceHead"], json!(cold.status()["head"]));
+    assert_eq!(png.metadata["format"], "png");
+    assert_eq!(
+        png.metadata["engineRevision"],
+        cold.status()["engineRevision"]
+    );
+    assert_eq!(png.metadata["sha256"], hash(&png.bytes));
+    assert_eq!(png.metadata["byteLength"], png.bytes.len());
     let image = photocraft_codecs::decode(&png.bytes).map_err(|_| failure("png_decode"))?;
     let rgba = image.to_rgba8();
     assert_eq!(&rgba[..4], &[0, 0, 255, 255]);
