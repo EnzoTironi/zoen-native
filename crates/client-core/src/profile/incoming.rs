@@ -221,20 +221,4 @@ impl Engine {
             }
         }
     }
-
-    /// Nothing about profiles is waiting on the relay.
-    pub fn profiles_settled(&self) -> bool {
-        let p = &self.net.profiles;
-        if !p.supported {
-            return true;
-        }
-        p.need_agreement.is_empty()
-            && p.need_profiles.is_empty()
-            && !p.shares_dirty
-            && self.agreement_to_publish().is_none()
-            && !self.upload_due()
-            && self.own_profile_journal().is_ok_and(|journal| {
-                journal.sync.pending.is_none() && !journal.sync.key_unavailable()
-            })
-    }
 }
