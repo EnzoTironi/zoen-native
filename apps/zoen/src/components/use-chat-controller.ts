@@ -1,15 +1,7 @@
 import { type FlashListRef } from '@shopify/flash-list';
 import { useFocusEffect, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { useHeaderHeight } from 'expo-router/react-navigation';
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { type ScrollViewInstance, type TextInputInstance } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDialogs } from '../components/dialogs';
@@ -21,7 +13,9 @@ import {
   conversationRevealContent,
   type ConversationContentLayout,
 } from '../core/conversation-reveal-content';
-import { ConversationSearch } from '../core/conversation-search';
+import type { ConversationSearch } from '../core/conversation-search';
+import { conversationScope } from '../core/conversation-scope';
+import { useConversationSearch } from '../core/use-conversation-search';
 import {
   projectConversationTimeline,
   type ConversationTimelineRow,
@@ -70,37 +64,8 @@ export function useChatController() {
   const [noticeHeight, setNoticeHeight] = useState(0);
   const composerText = editing ? editDraft : draft;
   const chat = snapshot?.conversations.find((conversation) => conversation.id === id);
-  const owner = [
-    store.getSnapshot().mode,
-    snapshot?.account?.identity_id ?? snapshot?.me?.id,
-    snapshot?.account?.device_id,
-  ].join(':');
+  const { owner, search, searchState } = useConversationSearch(id);
   useMessageAudioFocus(id, `${owner}:${store.sessionEpoch}`);
-  const search = useMemo(
-    () =>
-      new ConversationSearch({
-        current: () => {
-          const current = store.getSnapshot();
-          return (
-            current.phase === 'ready' &&
-            [
-              current.mode,
-              current.snapshot?.account?.identity_id ?? current.snapshot?.me?.id,
-              current.snapshot?.account?.device_id,
-            ].join(':') === owner &&
-            Boolean(current.snapshot?.conversations.some((conversation) => conversation.id === id))
-          );
-        },
-        search: (query, cursor) =>
-          store.driver.request({ op: 'search_messages', space_id: id, query, cursor, limit: 30 }),
-      }),
-    [id, owner, store],
-  );
-  const searchState = useSyncExternalStore(
-    search.subscribe,
-    search.getSnapshot,
-    search.getSnapshot,
-  );
   const [searchRead, setSearchRead] = useState<{
     search: ConversationSearch;
     hit: UniversalHit;
@@ -300,13 +265,9 @@ export function useChatController() {
           !editing &&
           !scrollTarget &&
           !search.getSnapshot().active &&
-          current.phase === 'ready' &&
-          Boolean(current.snapshot?.conversations.some((conversation) => conversation.id === id)) &&
-          [
-            current.mode,
-            current.snapshot?.account?.identity_id ?? current.snapshot?.me?.id,
-            current.snapshot?.account?.device_id,
-          ].join(':') === owner
+          owner !== null &&
+          !store.isSessionRetiring &&
+          conversationScope(current, store.sessionEpoch, id) === owner
         );
       },
       frame: (work) => {
@@ -346,7 +307,6 @@ export function useChatController() {
     }, 200);
     return () => clearTimeout(timer);
   }, [search, searchState.active, searchState.query]);
-  useEffect(() => () => search.close(), [search]);
   const activityLabel = chatActivityLabel(snapshot, activity, id);
   useFocusEffect(
     useCallback(() => {
