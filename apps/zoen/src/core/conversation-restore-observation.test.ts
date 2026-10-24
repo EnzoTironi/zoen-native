@@ -119,7 +119,7 @@ test('unavailable or throwing QA ports cannot affect native event delivery', asy
     context: () => {
       throw Error('layout retired');
     },
-    emit: assert.fail,
+    emit: () => assert.fail('unavailable layout cannot emit'),
   });
   assert.doesNotThrow(() => probe.receive(packet()));
   await probe.sample(async () => {
