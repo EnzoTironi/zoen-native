@@ -9,10 +9,17 @@ impl Engine {
         inquiry: &OwnerPolicyInquiry,
         at_ms: i64,
     ) -> R<()> {
+        if !inquiry.fresh_at(at_ms) {
+            return Err(denied());
+        }
+        self.owner_policy_inquiry_membership(inquiry)
+    }
+
+    fn owner_policy_inquiry_membership(&self, inquiry: &OwnerPolicyInquiry) -> R<()> {
         let agent = self.identities.get(&inquiry.agent).ok_or_else(denied)?;
         let owner = self.identities.get(&inquiry.owner).ok_or_else(denied)?;
         let space = self.space_state(&inquiry.space)?;
-        if !inquiry.fresh_at(at_ms)
+        if !inquiry.valid_shape()
             || owner.kind != IdentityKind::Person
             || agent.kind != IdentityKind::Agent
             || agent.owner.as_deref() != Some(inquiry.owner.as_str())
@@ -35,8 +42,34 @@ impl Engine {
         inquiry: &OwnerPolicyInquiry,
         at_ms: i64,
     ) -> R<Option<ImageTaskInput>> {
+        self.owner_policy_inquiry_scope(inquiry, at_ms)?;
+        self.owner_policy_context_reference(inquiry, at_ms)
+    }
+
+    /// Read-only terminal classification. It never admits an expired quote,
+    /// review, model turn or financial action.
+    pub(crate) fn owner_policy_inquiry_expired(
+        &self,
+        inquiry: &OwnerPolicyInquiry,
+        at_ms: i64,
+    ) -> R<bool> {
+        if at_ms <= 0 || !inquiry.valid_shape() {
+            return Err(denied());
+        }
+        if at_ms.saturating_sub(inquiry.at_ms) <= types::owner_policy_context::CONTEXT_TTL_MS {
+            return Ok(false);
+        }
+        self.owner_policy_context_reference(inquiry, at_ms)?;
+        Ok(true)
+    }
+
+    fn owner_policy_context_reference(
+        &self,
+        inquiry: &OwnerPolicyInquiry,
+        at_ms: i64,
+    ) -> R<Option<ImageTaskInput>> {
+        self.owner_policy_inquiry_membership(inquiry)?;
         if inquiry.purpose.is_some() {
-            self.owner_policy_inquiry_scope(inquiry, at_ms)?;
             if !self.state.writer(&inquiry.space, &inquiry.owner)
                 || !self.state.writer(&inquiry.space, &inquiry.agent)
             {
@@ -44,7 +77,7 @@ impl Engine {
             }
             return Ok(None);
         }
-        self.owner_policy_image_input(inquiry, at_ms).map(Some)
+        self.owner_policy_image_reference(inquiry, at_ms).map(Some)
     }
 
     pub(crate) fn owner_policy_image_input(
@@ -56,6 +89,14 @@ impl Engine {
             return Err(denied());
         }
         self.owner_policy_inquiry_scope(inquiry, at_ms)?;
+        self.owner_policy_image_reference(inquiry, at_ms)
+    }
+
+    fn owner_policy_image_reference(
+        &self,
+        inquiry: &OwnerPolicyInquiry,
+        at_ms: i64,
+    ) -> R<ImageTaskInput> {
         let record = self
             .state
             .requests

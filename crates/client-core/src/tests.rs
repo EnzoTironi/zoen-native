@@ -2,8 +2,8 @@
 
 use super::*;
 
-mod client_api;
 mod chat_muting;
+mod client_api;
 mod edit_convergence;
 mod file_bounds;
 mod file_edits;

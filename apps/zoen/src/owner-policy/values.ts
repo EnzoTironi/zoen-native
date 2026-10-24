@@ -93,7 +93,9 @@ export function validReview(value: OwnerPolicyReview, scope: PolicyScope, state:
     value.allowed_profiles.length > 0 &&
     value.allowed_profiles.length <= 16 &&
     value.allowed_profiles.every(digest) &&
-    value.allowed_profiles.includes(context.image_profile_digest) &&
+    (value.enabled
+      ? value.allowed_profiles.includes(context.image_profile_digest)
+      : value.allowed_profiles.length === context.existing_profile_count) &&
     value.allowed_profiles.every(
       (profile, index) => index === 0 || value.allowed_profiles[index - 1] < profile,
     )

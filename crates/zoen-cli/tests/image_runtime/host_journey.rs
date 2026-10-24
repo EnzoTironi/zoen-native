@@ -116,7 +116,10 @@ pub(super) async fn install_policy(w: &World, config: &config::Config, runtime: 
         config.image_price.digest().unwrap(),
         config.chat_price.digest().unwrap(),
     ];
+    profiles.extend((0xa0..0xae).map(|value| format!("{value:02x}").repeat(32)));
     profiles.sort();
+    profiles.dedup();
+    assert_eq!(profiles.len(), 16);
     let policy = zoen_runtime::OwnerPeriodPolicy {
         owner: author.identity.clone(),
         year: year.parse().unwrap(),
