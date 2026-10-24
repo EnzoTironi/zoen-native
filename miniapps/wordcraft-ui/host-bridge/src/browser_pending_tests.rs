@@ -1,4 +1,4 @@
-//! Real WordApp input while an immutable manual checkpoint awaits its exact receipt.
+//! Real `WordApp` input while an immutable manual checkpoint awaits its exact receipt.
 use super::*;
 fn type_text(h: &mut Harness, text: &str) {
     h.input_mut().events.push(Event::Text(text.into()));
@@ -23,9 +23,21 @@ fn delayed_manual_ack_retains_real_input_without_rewriting_original_proposal() -
         expected,
         "an autosave receipt delay must not discard real keyboard input"
     );
+    assert_original_pending(&mut h, &mut bridge, &original, &pending, expected)?;
+    let latest = accept_original_and_capture_latest(&mut h, &mut bridge, &pending, expected)?;
+    accept_latest_undo_and_reopen(&mut h, &mut bridge, &pending, &latest, expected)?;
+    Ok(())
+}
+fn assert_original_pending(
+    h: &mut Harness,
+    bridge: &mut BrowserBridge,
+    original: &[u8],
+    pending: &Proposal,
+    expected: &str,
+) -> Result<()> {
     let original_retry = bridge.snapshot(
         &mut h.state_mut().session,
-        mutation(&original, "manual-inflight"),
+        mutation(original, "manual-inflight"),
     )?;
     assert_eq!(original_retry.bytes, pending.bytes);
     assert_eq!(original_retry.metadata, pending.metadata);
@@ -37,7 +49,7 @@ fn delayed_manual_ack_retains_real_input_without_rewriting_original_proposal() -
         bridge
             .snapshot(
                 &mut h.state_mut().session,
-                mutation(&original, "second-before-ack")
+                mutation(original, "second-before-ack")
             )
             .is_err()
     );
@@ -47,7 +59,7 @@ fn delayed_manual_ack_retains_real_input_without_rewriting_original_proposal() -
                 &h.state().session,
                 &Export {
                     scope: scope(),
-                    head: head("1", &original),
+                    head: head("1", original),
                     format: ExportFormat::Docx
                 }
             )?
@@ -73,14 +85,22 @@ fn delayed_manual_ack_retains_real_input_without_rewriting_original_proposal() -
                 &mut h.state_mut().session,
                 Open {
                     scope: scope(),
-                    head: head("1", &original)
+                    head: head("1", original)
                 },
-                &original,
+                original,
             )
             .is_err(),
         "reopen cannot replace an outstanding proposal or its newer local draft"
     );
     assert_eq!(h.state().session.doc.plain_text(StoryRef::Body), expected);
+    Ok(())
+}
+fn accept_original_and_capture_latest(
+    h: &mut Harness,
+    bridge: &mut BrowserBridge,
+    pending: &Proposal,
+    expected: &str,
+) -> Result<Proposal> {
     bridge.accept(
         &mut h.state_mut().session,
         &Accept {
@@ -116,6 +136,15 @@ fn delayed_manual_ack_retains_real_input_without_rewriting_original_proposal() -
         profile::parse(&latest.bytes)?.plain_text(StoryRef::Body),
         expected
     );
+    Ok(latest)
+}
+fn accept_latest_undo_and_reopen(
+    h: &mut Harness,
+    bridge: &mut BrowserBridge,
+    pending: &Proposal,
+    latest: &Proposal,
+    expected: &str,
+) -> Result<()> {
     assert!(
         bridge
             .accept(
