@@ -11,15 +11,16 @@ index 0ee0573..ba1bec4 100644
          // Params are named fields: anything but an object (or null, meaning none) is a caller
          // mistake, not "use every default".
 diff --git a/crates/engine/src/lib.rs b/crates/engine/src/lib.rs
-index ba75569..3ec897e 100644
+index ba75569..416648c 100644
 --- a/crates/engine/src/lib.rs
 +++ b/crates/engine/src/lib.rs
-@@ -437,7 +437,13 @@ pub struct CopiedStyle {
+@@ -436,8 +436,14 @@ pub struct CopiedStyle {
+ /// or fill layer) is known only when they run.
  pub const PRECHECKED: &[&str] = &["layer.new.layer", "layer.new.group", "layer.new.groupFromLayers", "layer.new.layerFromBackground"];
  
- #[derive(Default)]
 +pub type ManagedPolicy = fn(&Session, &str, &Value) -> Result<()>;
 +
+ #[derive(Default)]
  pub struct Session {
 +    /// Ephemeral embedding policy/binding, not a document or authorization record.
 +    pub managed_policy: Option<ManagedPolicy>,
