@@ -1,9 +1,11 @@
+import type { DeckcraftExportHead } from './deckcraft-export';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Crypto from 'expo-crypto';
 import { locale, t } from '../i18n/index.ts';
+import { homeSpacesFor } from '../home/access.ts';
 import { useClient } from '../core/provider';
 import type { ItemDetail } from '../core/types';
 import type { AppSpecDto } from '../core/generated/AppSpecDto';
@@ -22,6 +24,7 @@ import { readVerifiedMiniappResource } from './resource-load';
 import { sandboxHtml, type VerifiedMiniappResource } from './sandbox';
 
 type Props = {
+  selectedHead?: DeckcraftExportHead;
   item: ItemDetail;
   spec: AppSpecDto;
   fill?: boolean;
@@ -50,7 +53,11 @@ export function DeckcraftView(props: Props) {
     }, []),
   );
   return focus.lifetime ? (
-    <FocusedDeckcraft key={focus.epoch} {...props} registerClose={focus.lifetime.register} />
+    <FocusedDeckcraft
+      key={`${focus.epoch}:${JSON.stringify(props.selectedHead)}`}
+      {...props}
+      registerClose={focus.lifetime.register}
+    />
   ) : null;
 }
 
@@ -83,7 +90,7 @@ function FocusedDeckcraft(props: Props & { registerClose: RegisterClose }) {
       (state.mode === 'account' && (!account?.unlocked || account.setup_pending)) ||
       `${state.mode}:${account?.identity_id ?? state.snapshot?.me?.id ?? ''}:${account?.device_id ?? ''}` !==
         owner ||
-      !state.snapshot?.conversations.some((chat) => chat.id === item.space_id)
+      !homeSpacesFor(state).has(item.space_id)
     )
       throw Error(t('decks.accountChanged'));
   }, [store, epoch, owner, item.space_id]);
@@ -158,6 +165,7 @@ function FocusedDeckcraft(props: Props & { registerClose: RegisterClose }) {
 
 function DeckcraftDocument({
   item,
+  selectedHead,
   fill = false,
   verified,
   checkOwner,
@@ -230,6 +238,7 @@ function DeckcraftDocument({
     }
     const current = createDeckcraftSession({
       itemId: item.id,
+      selectedHead,
       title: () => latest.current.item.title,
       verified,
       driver: store.driver,
@@ -287,7 +296,7 @@ function DeckcraftDocument({
       close();
       unregisterClose();
     };
-  }, [store, verified, item.id, checkOwner, registerClose, context]);
+  }, [store, verified, item.id, selectedHead, checkOwner, registerClose, context]);
   useEffect(() => {
     session.current?.syncContext();
   }, [scheme, dimensions, safeAreaInsets, closeButton]);
@@ -346,6 +355,39 @@ function DeckcraftDocument({
           onMessage={receive}
           onError={() => setFrameFailure(t('decks.editorStopped'))}
         />
+        {selectedHead && state.opened ? (
+          <View
+            testID="deckcraft-history-export"
+            style={{
+              position: 'absolute',
+              bottom: safeAreaInsets.bottom + 12,
+              left: 12,
+              gap: 8,
+              padding: 12,
+              borderRadius: 16,
+              backgroundColor: colors.background,
+            }}
+          >
+            <Text style={{ color: colors.secondary }}>
+              {t('documents.previewVersion', { version: selectedHead.version })}
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {(['pdf', 'pptx'] as const).map((format) => (
+                <NativeButton
+                  key={format}
+                  secondary
+                  label={format === 'pdf' ? 'PDF' : 'PowerPoint'}
+                  testID={`deckcraft-history-export-${format}`}
+                  disabled={blocked}
+                  onPress={() => {
+                    if (retryOwner && session.current === retryOwner)
+                      void retryOwner.share(format).catch(() => {});
+                  }}
+                />
+              ))}
+            </View>
+          </View>
+        ) : null}
         {state.opened && error && !blocked ? (
           <View
             testID="deckcraft-save-warning"

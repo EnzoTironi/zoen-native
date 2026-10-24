@@ -1,5 +1,6 @@
+import { selectedDeckHead } from './deck-version-selection';
 import { t } from '../i18n/index.ts';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Stack, router, useLocalSearchParams, usePreventRemove } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
 import { useClient } from '../core/provider';
@@ -17,12 +18,24 @@ import { useConversationCards } from './conversation-provider';
 import type { MiniappDocumentController } from './document-controller';
 
 export function MiniappScreen({ manage = false }: { manage?: boolean }) {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, version, sha256 } = useLocalSearchParams<{
+    id: string;
+    version?: string;
+    sha256?: string;
+  }>();
+  const historical = version !== undefined || sha256 !== undefined;
+  const selectedHead = useMemo(() => selectedDeckHead(version, sha256), [version, sha256]);
   const { store } = useClient();
   const { colors } = useTheme();
   const home = useHome();
   const dialogs = useDialogs();
-  const read = useCoreQuery({ op: 'item', item_id: id });
+  const read = useCoreQuery(
+    historical
+      ? selectedHead
+        ? { op: 'item_at', item_id: id, version: Number(selectedHead.version) }
+        : null
+      : { op: 'item', item_id: id },
+  );
   const specs = useCoreQuery({ op: 'app_specs' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,6 +93,11 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
   const item = read.data;
   const cards = useConversationCards(item?.space_id ?? '');
   const app = item?.app;
+  if (historical && manage) return <EmptyState title={t('decks.unavailable')} />;
+  if (historical && !selectedHead)
+    return <EmptyState title={t('documents.thisVersionCouldNotBeLoaded')} />;
+  if (historical && item && item.app?.app_id !== 'deckcraft')
+    return <EmptyState title={t('decks.unavailable')} />;
   if (!item)
     return read.error ? (
       <EmptyState title={t('miniapps.theMiniappCouldNotBeOpened')} detail={read.error}>
@@ -96,6 +114,13 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
       />
     );
   const spec = specs.data?.find((spec) => spec.id === app.app_id);
+  if (historical && !spec)
+    return specs.error ? (
+      <EmptyState title={t('decks.unavailable')} detail={specs.error} />
+    ) : (
+      <Loading />
+    );
+  if (historical && !spec?.has_view) return <EmptyState title={t('decks.unavailable')} />;
   const tools =
     spec?.tools.filter(
       (tool) =>
@@ -195,6 +220,7 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
         ) : null}
         <MiniappView
           item={item}
+          selectedHead={selectedHead ?? undefined}
           spec={spec}
           fill
           onDocumentController={registerDocument}

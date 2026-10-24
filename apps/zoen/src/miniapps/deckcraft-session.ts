@@ -12,6 +12,7 @@ import { deckcraftFeedbackReason, type DeckcraftFeedbackReason } from './deckcra
 type Phase = 'saved' | 'saving' | 'pending' | 'error';
 type Options = {
   itemId: string;
+  selectedHead?: DeckcraftExportHead;
   title: () => string;
   verified: VerifiedMiniappResource;
   driver: Pick<CoreDriver, 'request'>;
@@ -40,9 +41,38 @@ type Options = {
  * save. React owns presentation only; the Rust core remains the sole journal. */
 export function createDeckcraftSession(options: Options) {
   const lifetime = frameAuthority(options.check);
+  // A history frame has no write authority, even if its guest requests save tools.
+  const selected = options.selectedHead ? Object.freeze({ ...options.selectedHead }) : null;
+  if (
+    selected &&
+    (!/^[1-9][0-9]{0,9}$/.test(selected.version) ||
+      Number(selected.version) > 0xffffffff ||
+      !/^[a-f0-9]{64}$/.test(selected.sha256))
+  )
+    throw Error(t('decks.exportFailed'));
+  const readDriver: Pick<CoreDriver, 'request'> = {
+    request: (async (command) => {
+      if (!selected || command.op !== 'app_binary_read') return options.driver.request(command);
+      if (
+        (command.version !== null && command.version !== Number(selected.version)) ||
+        (command.expected_sha256 !== null && command.expected_sha256 !== selected.sha256)
+      )
+        throw Error(t('decks.exportFailed'));
+      const source = await options.driver.request({
+        op: 'app_binary_read',
+        item_id: options.itemId,
+        version: Number(selected.version),
+        expected_sha256: selected.sha256,
+      });
+      lifetime.check();
+      if (source.version !== Number(selected.version) || source.sha256 !== selected.sha256)
+        throw Error(t('decks.exportFailed'));
+      return source;
+    }) as CoreDriver['request'],
+  };
   const binary = createNativeCanonicalBinaryHost({
     itemId: options.itemId,
-    driver: options.driver,
+    driver: readDriver,
     mutate: options.mutate,
     check: lifetime.check,
     id: options.id,
@@ -108,7 +138,21 @@ export function createDeckcraftSession(options: Options) {
         lifetime.check();
         return { content: [], structuredContent: { presented: true } };
       }
+      if (
+        selected &&
+        !['app_binary_read', 'app_binary_read_chunk', 'app_binary_export_source'].includes(name)
+      )
+        throw Error(t('documents.thisVersionIsReadOnly'));
       const result = await binary.call(name, args);
+      if (selected && name === 'app_binary_read') {
+        if (
+          !result.structuredContent ||
+          typeof result.structuredContent !== 'object' ||
+          Array.isArray(result.structuredContent)
+        )
+          throw Error(t('decks.exportFailed'));
+        result.structuredContent = { ...result.structuredContent, readOnly: true };
+      }
       lifetime.check();
       return result;
     },
@@ -199,6 +243,14 @@ export function createDeckcraftSession(options: Options) {
         publish();
         return Promise.resolve();
       }
+      if (selected) {
+        // Read-only Close has no save to perform, but must drain any native share.
+        const operation = tail.catch(() => {}).then(() => lifetime.check());
+        tail = operation;
+        if (retire) closing = operation;
+        publish();
+        return operation;
+      }
       queued++;
       publish();
       const operation = tail
@@ -251,10 +303,15 @@ export function createDeckcraftSession(options: Options) {
       .catch(() => {})
       .then(async () => {
         lifetime.check();
-        await current.flushResource();
+        if (!selected) await current.flushResource();
         lifetime.check();
         const resume = async () => {
           if (live && !retiring) {
+            if (selected) {
+              resumed = true;
+              recoveryRequired = false;
+              return;
+            }
             const response = await current.callAppTool('resume_document');
             lifetime.check();
             if (response.isError) throw new Error(t('decks.saveFailed'));
@@ -263,7 +320,7 @@ export function createDeckcraftSession(options: Options) {
           }
         };
         try {
-          const source = await options.driver.request({
+          const source = await readDriver.request({
             op: 'app_binary_read',
             item_id: options.itemId,
             version: null,
@@ -299,10 +356,13 @@ export function createDeckcraftSession(options: Options) {
           reason = null;
         }
       })
-      .catch((reason: unknown) => {
-        if (!resumed) recoveryRequired = true;
-        if (live) error = t('decks.exportFailed');
-        throw reason;
+      .catch((failure: unknown) => {
+        if (!resumed && !selected) recoveryRequired = true;
+        if (live) {
+          error = t('decks.exportFailed');
+          reason = 'export_failed';
+        }
+        throw failure;
       })
       .finally(() => {
         queued--;

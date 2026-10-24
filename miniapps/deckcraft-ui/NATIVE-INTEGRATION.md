@@ -51,3 +51,19 @@ The initial geometry acknowledgment precedes canonical open/manual input. Detect
 A separate bootstrap typecheck is available at `apps/zoen/node_modules/.bin/tsc -p miniapps/deckcraft-ui/tsconfig.json`. The manual `managed-startup-browser.mjs` oracle requires actual final JS/WASM and the pinned synthetic empty seed; it qualifies queued missing-canvas rejection against a healthy actual engine control in a fresh owned headless process. It does not qualify WKWebView or native share UI.
 
 The independent sixth portability patch removes unsupported OS process-ID calls from all WebAssembly targets. Browser-local recovery IDs mix the existing JS random/clock; WASI retains the standard clock. These non-authority local IDs do not replace authenticated canonical artifact identity. This patch is shared with the headless worker and does not require the browser geometry changes.
+
+## Selected historical export
+
+History resolves the chosen version through the authorized `app_binary_read` projection, then opens that exact version/SHA-256. The native session pins all reads and export-source requests to it, refuses all write-transfer tools, and exposes `readOnly` only on its trusted read response. The guest freezes the existing engine before reporting ready; resume/close cannot re-enable editing. Separate native PDF/PowerPoint actions remain usable while the upstream editor and its menus are frozen. Neither action restores the historical version or creates a new version.
+
+Export revalidates the original canonical source and the rendered engine's accepted head. The pinned upstream ABI exports `accepted_doc`, never an unaccepted UI buffer. A changed/missing hash, retired frame/account/device, or lost conversation membership refuses the operation; there is no fallback to current. The ordinary current-document path still flushes its accepted save before choosing the export head.
+
+Run the actual browser engine regression with an existing, audited JS/WASM pair and its original runtime manifest (no Cargo rebuild):
+
+```
+node miniapps/deckcraft-ui/test/history-export-browser.mjs \
+  /absolute/existing-managed-dist /absolute/new-evidence-directory \
+  /absolute/pinned-runtime-package.json
+```
+
+It uses the official App SDK and production session/document/stream-export adapters with a synthetic Core read port. It advances current from v1 to v2, verifies frozen v1/hash, rejects a real WASM edit, creates real PDF/PPTX bytes, and checks retirement and zero native saves. This is browser ABI/host evidence, not Rust authorization, WKWebView, iPhone history/share, or complete #174 acceptance. Existing worker/WASM qualification and pins remain unchanged.
