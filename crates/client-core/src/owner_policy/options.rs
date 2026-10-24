@@ -4,7 +4,7 @@ mod control;
 mod index;
 mod prepare;
 use super::*;
-pub use control::OwnerPolicyInquiryControl;
+pub use control::{OwnerPolicyInquiryControl, OwnerPolicyInquiryCounts, OwnerPolicyInquiryScan};
 use types::owner_policy_context::{
     OwnerPolicyInquiry, OwnerPolicyOptions, SignedOwnerPolicyInquiry, CONTEXT_TTL_MS,
 };

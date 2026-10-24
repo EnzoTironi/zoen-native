@@ -8,6 +8,7 @@ use std::result::Result as StdResult;
 use types::owner_budget::OwnerPeriodPolicy;
 type TestResult = StdResult<(), Box<dyn std::error::Error>>;
 mod account_management;
+mod inquiry_observation;
 mod inquiry_recovery;
 mod publication_cases;
 
