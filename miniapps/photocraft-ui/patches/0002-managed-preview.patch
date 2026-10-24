@@ -25,17 +25,16 @@
          };
          live.push(&pts)?;
          Ok(live)
-@@ -568,6 +572,13 @@
+@@ -568,6 +572,12 @@
      /// nothing new appears on release.
      /// Invalid coordinates reject the whole batch without changing the preview.
      pub fn push(&mut self, pts: &[StrokePoint]) -> Result<Rect> {
-+        if let Some((w, h)) = self.managed_bounds {
-+            if self.points.len().checked_add(pts.len()).is_none_or(|n| n > 4096)
++        if let Some((w, h)) = self.managed_bounds
++            && (self.points.len().checked_add(pts.len()).is_none_or(|n| n > 4096)
 +                || pts.iter().any(|p| !p.x.is_finite() || !p.y.is_finite()
 +                    || p.x < 0.0 || p.y < 0.0 || p.x >= w || p.y >= h
-+                    || !p.pressure.is_finite() || !(0.0..=1.0).contains(&p.pressure))
-+            { return Err(bad(&self.cmd, "managed stroke outside bounded canvas")); }
-+        }
++                    || !p.pressure.is_finite() || !(0.0..=1.0).contains(&p.pressure)))
++        { return Err(bad(&self.cmd, "managed stroke outside bounded canvas")); }
          check_coords(pts, &self.cmd)?;
          self.points.extend_from_slice(pts);
          let cmyk = self.cmyk.clone();
