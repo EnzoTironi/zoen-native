@@ -222,3 +222,6 @@ impl HostBridge {
 mod browser_tests;
 #[cfg(all(test, feature = "ui-tests"))]
 mod browser_ui_tests;
+
+#[cfg(test)]
+mod pdf_tests;
