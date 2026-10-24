@@ -2,7 +2,7 @@
 
 use super::{
     now_ms, tracing_like, Arc, CoreListener, Duration, EngineLease, MediaDownloadRetries,
-    RecoveryRetries, SinkExt, StreamExt,
+    RecoveryRetries,
 };
 
 /// Uploads queued encrypted copies and downloads the ones the chats need, retrying with

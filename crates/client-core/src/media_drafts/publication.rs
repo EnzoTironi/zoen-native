@@ -1,7 +1,7 @@
 //! Publication on the original Engine and canonical document state.
 
 use super::{
-    intent_id, invalid, stale, t, Content, CoreError, Digest, Engine, MediaDraftScope,
+    intent_id, invalid, stale, t, Content, CoreError, Engine, MediaDraftScope,
     MediaDraftSendResult, Receipt, Record, MEDIA_DRAFT_REVISION_ZERO, R,
 };
 

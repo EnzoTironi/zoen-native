@@ -1,7 +1,6 @@
 //! Transport-local complete-read staging; no partial page reaches Engine/host.
 use super::{
-    remember_waiting, send, ClientFrame, Duration, Exit, HashMap, Op, Reply, Sink, SinkExt,
-    StreamExt, Waiting,
+    remember_waiting, send, ClientFrame, Duration, Exit, HashMap, Op, Reply, Sink, Waiting,
 };
 use protocol::complete_reads::{Assembly, Kind, Request};
 

@@ -2,7 +2,7 @@
 
 use super::{
     invalid, json, metadata, t, unavailable, validate_scene, AppDoc, AppDocumentDto, CoreError,
-    Digest, Engine, HashMap, ItemContent, Value, EMPTY, MAX_SCENE_BYTES, MIME, R, RESOURCE,
+    Engine, HashMap, ItemContent, Value, EMPTY, MAX_SCENE_BYTES, MIME, R, RESOURCE,
 };
 
 impl Engine {

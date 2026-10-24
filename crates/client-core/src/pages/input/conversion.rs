@@ -1,7 +1,7 @@
 //! Complete captured-text conversion using the original input validators and Page parser.
 
 use super::{
-    empty_block, invalid, rich, text, Binding, Capture, Digest, PageBlockDto, PageInputMode,
+    empty_block, invalid, rich, text, Binding, Capture, PageBlockDto, PageInputMode,
     PageInputTarget, RichBlock, TaggedBlock, TextSpanDto, R,
 };
 

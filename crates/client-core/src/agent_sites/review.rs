@@ -1,8 +1,8 @@
 //! The unchanged signed Request/ToolProposal envelope owns review and consent.
 use super::{
     contract, digest, executor_binding, invalid, json, model_name, parse, sha, shared, stale,
-    token, ActionClass, AgentRequest, Client, Command, CoreError, Digest, ItemContent, ItemKind,
-    State, ToolProposal, Value, ARGUMENT_LIMIT, HTML_LIMIT, R, REVISION, SCHEMA,
+    token, ActionClass, AgentRequest, Client, Command, CoreError, ItemContent, ItemKind, State,
+    ToolProposal, Value, ARGUMENT_LIMIT, HTML_LIMIT, R, REVISION, SCHEMA,
 };
 use crate::{AgentRequestDto, AgentToolApprovalInput};
 use types::EventBody;

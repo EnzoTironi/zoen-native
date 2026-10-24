@@ -2,8 +2,7 @@
 
 use super::{
     invalid, invalid_file, validate_chunk, validate_file, ChunkRef, CoreError, Digest, Engine,
-    FileDoc, FileDto, ItemContent, KeyInit, Sha256, MAX_CHUNK, MAX_FILE_BYTES, MAX_THUMBNAIL_BYTES,
-    R,
+    FileDoc, FileDto, ItemContent, Sha256, MAX_CHUNK, MAX_FILE_BYTES, MAX_THUMBNAIL_BYTES, R,
 };
 
 impl Engine {

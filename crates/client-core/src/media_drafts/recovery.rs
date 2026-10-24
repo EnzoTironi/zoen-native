@@ -2,8 +2,8 @@
 //! It never changes the original event, receipt, Failed state, or transport queue.
 use super::{
     intent_id, invalid, stale, storage_error, t, target_id, validate, Attachment, Content,
-    CoreError, Digest, Engine, MediaDraftAsset, MediaDraftDto, MediaDraftScope, OptionalExtension,
-    Record, Zeroizing, MAX_ASSET_BYTES, R,
+    CoreError, Engine, MediaDraftAsset, MediaDraftDto, MediaDraftScope, OptionalExtension, Record,
+    Zeroizing, MAX_ASSET_BYTES, R,
 };
 use crate::engine::{Entry, EntryBody};
 use types::{

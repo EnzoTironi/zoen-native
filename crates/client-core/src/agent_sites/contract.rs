@@ -1,7 +1,7 @@
 //! Closed bounded model contracts. Model data cannot select authority or hosting.
 use super::{
-    digest, html_valid, invalid, json, sha, token, CoreError, Deserialize, Digest, Serialize,
-    Value, ARGUMENT_LIMIT, R,
+    digest, html_valid, invalid, json, sha, token, CoreError, Deserialize, Serialize, Value,
+    ARGUMENT_LIMIT, R,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

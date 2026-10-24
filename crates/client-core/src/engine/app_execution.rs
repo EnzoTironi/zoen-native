@@ -2,7 +2,7 @@
 use super::{
     apps, evaluate, json, not_found, now_ms, reason_label, t, tr, AgentTool, AppCallOutcome,
     AppCallStatus, AppDoc, Budget, CoreError, Decision, Engine, EventBody, IdentityKind,
-    ItemContent, ItemKind, ItemState, LowerFirst, TimelineEntry, Value, R,
+    ItemContent, ItemKind, ItemState, TimelineEntry, Value, R,
 };
 
 impl Engine {

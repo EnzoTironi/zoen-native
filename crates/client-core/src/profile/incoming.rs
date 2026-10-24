@@ -1,9 +1,9 @@
 //! Authenticated profile/agreement arrivals and own lookup settlement.
 
 use super::{
-    invalid, open_profile, verify_agreement, verify_upload, AgreementKeyRecord, Digest, Engine,
-    HashSet, Identity, IdentityId, Observe, ProfileFields, ProfileKey, SealedProfile, BATCH,
-    MAX_CIPHERTEXT, R,
+    invalid, open_profile, verify_agreement, verify_upload, AgreementKeyRecord, Engine, HashSet,
+    Identity, IdentityId, Observe, ProfileFields, ProfileKey, SealedProfile, BATCH, MAX_CIPHERTEXT,
+    R,
 };
 
 impl Engine {

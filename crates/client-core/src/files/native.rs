@@ -1,7 +1,7 @@
 //! The same `FileDoc` and canonical encryption with externally retained bytes.
 use super::{
-    invalid_file, seal_chunk, ChunkRef, Digest, Engine, FileDoc, KeyInit, Sha256, AVG_CHUNK,
-    MAX_CHUNK, MAX_FILE_BYTES, MIN_CHUNK, R,
+    invalid_file, seal_chunk, ChunkRef, Digest, Engine, FileDoc, Sha256, AVG_CHUNK, MAX_CHUNK,
+    MAX_FILE_BYTES, MIN_CHUNK, R,
 };
 
 /// Prepared canonical relay ciphertext, never an upload acknowledgement.

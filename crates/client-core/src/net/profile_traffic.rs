@@ -1,6 +1,6 @@
 //! Current profile request correlation and retry deadlines.
 
-use super::{Duration, HashMap, StreamExt, Waiting};
+use super::{Duration, HashMap, Waiting};
 
 /// Only the current retry may consume a profile response or settle its deadline.
 /// A timed-out request can still reply after the replacement was sent.

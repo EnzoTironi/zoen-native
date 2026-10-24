@@ -1,7 +1,7 @@
 //! A small effect receipt commits with the `FileDoc` change. It stores no HTML.
 use super::{
-    invalid, json, parse, review, sha, stale, Client, Command, Deserialize, Digest, Engine,
-    Serialize, ToolProposal, R, REVISION,
+    invalid, json, parse, review, sha, stale, Client, Command, Deserialize, Engine, Serialize,
+    ToolProposal, R, REVISION,
 };
 
 pub struct ApprovedSiteTool {

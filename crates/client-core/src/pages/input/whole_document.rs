@@ -1,6 +1,6 @@
 //! A whole Page uses its observed canonical snapshot and the existing input journal.
 use super::{
-    invalid, tagged, text, validate_target, Binding, Capture, Digest, PageBlockDto, PageInputMode,
+    invalid, tagged, text, validate_target, Binding, Capture, PageBlockDto, PageInputMode,
     PageInputTarget, MAX_CAPTURE, R,
 };
 use std::collections::{HashMap, HashSet, VecDeque};

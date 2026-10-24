@@ -2,8 +2,8 @@
 
 use super::{
     hash, invalid, json, metadata, stale, storage, t, unavailable, valid_hash, valid_id,
-    validate_scene, AppDoc, AppDocumentDto, BTreeSet, Digest, Engine, EventBody, HashMap,
-    ItemContent, Receipt, TrustLevel, Value, MAX_RECEIPTS, MAX_SCENE_BYTES, MIME, R,
+    validate_scene, AppDoc, AppDocumentDto, BTreeSet, Engine, EventBody, HashMap, ItemContent,
+    Receipt, TrustLevel, Value, MAX_RECEIPTS, MAX_SCENE_BYTES, MIME, R,
 };
 
 impl Engine {

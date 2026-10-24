@@ -2,9 +2,9 @@
 
 use super::{
     flush, report_rejection, responses, send, tracing_like, watch, ClaimClockSample, ClientFrame,
-    CoreListener, Ctx, CursorRepair, DeferredReceipts, Duration, EphemeralKind, ErrorCode, Exit,
-    HashMap, HashSet, Ingest, KeyPackageClaimClock, ProfileTraffic, RejectionOutcome, ServerFrame,
-    Sink, SinkExt, StreamExt, Waiting,
+    Ctx, CursorRepair, DeferredReceipts, Duration, EphemeralKind, ErrorCode, Exit, HashMap,
+    HashSet, Ingest, KeyPackageClaimClock, ProfileTraffic, RejectionOutcome, ServerFrame, Sink,
+    Waiting,
 };
 
 /// A per-call borrow, never another cursor, receipt or connection owner.
