@@ -271,8 +271,8 @@ async fn reopen_worker(
     require(
         result.bytes.is_empty()
             && result.metadata["text"] == TEXT
-            && result.metadata["head"]["version"] == accepted.version.to_string()
-            && result.metadata["head"]["sha256"] == accepted.sha256,
+            && result.metadata["head"] == open["open"]["head"]
+            && result.metadata["scope"] == open["open"]["scope"],
         "canonical accepted bytes or selected head changed in engine",
     )
 }
