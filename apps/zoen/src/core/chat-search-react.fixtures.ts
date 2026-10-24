@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
 import * as React from 'react';
 import { createReactTestRoot } from './react-test-root.fixtures.ts';
+import { chatNativeMetricsModule } from './chat-native-metrics.fixtures.ts';
 import { ClientStore } from './store.ts';
 import { Driver, draftSession, deferred } from './store.fixtures.ts';
 import * as conversationSearch from './conversation-search.ts';
@@ -30,12 +31,13 @@ const compiled = transformSync(readFileSync(file, 'utf8'), {
 assert.ok(compiled.includes('useChatController'), 'Expo must transform the actual chat controller');
 
 /** Actual Expo-transformed chat controller and search; geometry/native views are host ports. */
-export async function chatSearchReactFixture() {
+export async function chatSearchReactFixture(qa = false) {
   const root = createReactTestRoot(),
     driver = new Driver(),
     snapshot = draftSession();
   const id = snapshot.conversations[0]!.id;
   const calls: any[] = [];
+  const restoreRecords: string[] = [];
   const pending = deferred<MessageSearchPage>();
   driver.opening = async () => structuredClone(snapshot);
   driver.operation = async (command) => {
@@ -94,9 +96,17 @@ export async function chatSearchReactFixture() {
     'expo-router/react-navigation': { useHeaderHeight: () => 64 },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 20 }) },
     '../components/dialogs': { useDialogs: () => ({ inform: async () => {} }) },
-    '../components/keyboard-motion': { useKeyboardMotion: () => ({ progress: { value: 0 } }) },
+    '../components/keyboard-motion': {
+      useKeyboardMotion: () => ({ progress: { value: 0 }, height: { value: 0 } }),
+    },
     '../components/use-message-actions': { useMessageActions: () => ({}) },
-    './navigation-container': { navigationMetricsAvailable: false },
+    './use-chat-native-metrics': chatNativeMetricsModule({
+      qa,
+      native: qa,
+      emit: (line) => restoreRecords.push(line),
+      appState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
+      useFocusEffect: focus.exports.useFocusEffect as (callback: () => void | (() => void)) => void,
+    }),
     '../core/conversation-reveal': conversationReveal,
     '../core/conversation-reveal-content': conversationContent,
     '../core/conversation-search': conversationSearch,
@@ -173,6 +183,7 @@ export async function chatSearchReactFixture() {
     store,
     snapshot,
     calls,
+    restoreRecords,
     pending,
     errors: root.errors,
     act: root.act,
