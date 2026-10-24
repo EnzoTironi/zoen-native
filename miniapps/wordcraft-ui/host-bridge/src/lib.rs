@@ -164,7 +164,7 @@ impl HostBridge {
                 "sha256":hash(&bytes),"byteLength":bytes.len(),"engineRevision":profile::ENGINE_REVISION,
                 "acceptedHead":null});
         metadata["operation"] = operation;
-        let proposal = Proposal { metadata, bytes };
+        let proposal = Proposal { bytes, metadata };
         self.pending = Some(Pending {
             fingerprint,
             mutation,
