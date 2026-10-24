@@ -222,3 +222,6 @@ impl Engine {
         }
     }
 }
+
+#[cfg(test)]
+mod receipt_tests;
