@@ -24,12 +24,14 @@ use localization as i18n;
 use localization::{is_en, t, thousands, tr, ts};
 use serde_json::{json, Value};
 
+pub mod binary;
 mod catalog;
 mod creation;
 pub mod deckcraft;
 mod defaults;
 pub mod excalidraw;
 mod execution;
+pub mod gridcraft;
 mod projection;
 mod schedule;
 mod scoped;

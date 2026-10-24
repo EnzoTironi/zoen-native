@@ -1,0 +1,134 @@
+# GridCraft managed editor — integration in progress
+
+Issue [#445](https://github.com/EnzoTironi/zoen-native/issues/445), under #180.
+Pinned engine/UI: `storytold/gridcraft` **b8771d51fb4da60bd48c13cf313d6d6014dc5e66**
+(version 0.11.1, MIT OR Apache-2.0). Upstream branding is excluded by its NOTICE;
+no brand assets or upstream accounts, storage or collaboration are imported.
+
+The concrete XLSX profile and Core use the existing encrypted FileDoc/chunk,
+Item grant, version/CAS and exact receipt paths. `AppBinaryCreateFor` selects a
+fixed trusted format; the existing Deck command/wire/resource remain compatible.
+No second document database or local accepted-version counter is introduced.
+The shared JavaScript host defaults to Deck and explicitly selects Grid only
+through its trusted descriptor. Grid remains unavailable in the endpoint-neutral default manifest. Only a build
+with the exact configured HTML/JS/WASM resource manifest may advertise it; native
+asset delivery and iPhone acceptance remain separate requirements.
+
+`host-bridge/` runs the actual pinned GridCraft `Session`, `cell.set`, calculation,
+undo and native XLSX writer. It uses the existing Deck scope/head/proposal/accept
+contract. A pending proposal freezes input; only its exact next-version/hash
+receipt unfreezes it. Export returns the selected accepted native XLSX bytes,
+including after cold open, rather than a newer unsaved draft. No general command,
+filesystem, URI or automation API is exposed to agents. The first reviewed
+mutation is one bounded `cell.set`; generic upstream commands remain unavailable.
+Browser CSP/WASI capabilities and Core authority are still required independently.
+The adapter is never proof that an actor has a grant.
+
+`prepare-engine.py` copies this adapter and the **single canonical XLSX profile**
+from `crates/miniapps/src/gridcraft{.rs,/}` into a clean owned upstream checkout.
+It applies the reviewed embedding command, host export and drag-history patches, checks the exact revision,
+refuses dirty/adopted trees, records source hashes, and does not compile, fetch,
+install, enable an App or claim a pass. Example preparation:
+
+```sh
+python3 miniapps/gridcraft-ui/prepare-engine.py --upstream /absolute/owned/gridcraft
+```
+
+After a coordinated compiler lease, generate the lockfile genuinely in that tree,
+then qualify with one job, incremental disabled, debug info disabled and the
+normal source/resource guard. Initial executable commands are:
+
+```sh
+cargo test --locked --offline -p gridcraft-zoen-host -- --nocapture
+cargo test --locked --offline -p gridcraft-zoen-host --features ui-tests -- --nocapture
+cargo clippy --locked --offline -p gridcraft-zoen-host --all-targets -- -D warnings
+cargo run --locked --offline -p gridcraft-zoen-host -- --seed > /absolute/owned/empty.xlsx
+```
+
+Qualified on the pinned native engine: 7 profile cases, 14 Core binary cases
+(including 10 existing Deck cases), 10 native engine/profile cases, 2 actual
+egui Text+Enter input cases, all-target Clippy for the affected default/UI and
+Core client-types graphs, and a genuinely compiled 126-file type exporter.
+The UI test first failed with a hidden pre-ACK draft (9 became 99 after ACK);
+`begin_edit` now refuses while the proposal is frozen, and the same test passes
+with an additional no-editor assertion. These are native synthetic inputs, not
+WebView/iPhone keyboard or certified-agent admission evidence.
+
+The native tests exercise real engine calculation, human-scoped command and
+manual checkpoint convergence, exact repeat, receipt refusal, undo, cold reopen
+and accepted-version XLSX export. The independent standards-
+shaped XLSX fixtures in Core tests are adversarial storage fixtures, not engine-
+generated seeds. Generate any shipped seed with the actual pinned writer and
+record its hash; do not substitute those fixtures for it.
+
+Initial limits: 8 MiB compressed, 16 MiB inflated, 4 MiB per XML part, 128 ZIP
+entries, 16 sheets, 40,000 stored cells, 10,000 rows and 256 columns. The headless
+executor is deliberately smaller: 512 KiB native document/proposal and 64 KiB
+metadata. Macro/external/unknown package parts, malformed references, XML DTDs,
+external formulas and unsupported exports refuse explicitly. This is a restricted
+managed profile, not a general Excel importer or a claim of upstream parity.
+
+The upstream `?host=parent` bridge is replaced with a managed eframe/Glow shell
+and the same official MCP App bootstrap/session/export code used by Deck. The
+actual canvas is inert until Core opens a canonical snapshot; a pause, unresolved
+proposal or retired owner blocks mutations. Share emits a host export intent;
+it does not falsely mark an unacknowledged draft saved. No App storage is the
+sole accepted copy. The host owns document versions and selected-version export.
+
+Build the engine in the prepared owned checkout (and qualify the resulting bytes
+under the source guard), then use `wasm-bindgen` 0.2.129 for the wasm32 release
+module. Build the Root bootstrap with an absolute private output directory:
+
+```sh
+node miniapps/gridcraft-ui/build-bootstrap.mjs /absolute/owned/bootstrap --install-resource
+```
+
+The bootstrap builder emits exact HTML metadata and third-party JavaScript
+notices. It deliberately writes an endpoint-neutral default manifest. Deployment
+must supply `ZOEN_GRIDCRAFT_RESOURCE_MANIFEST_JSON` with the exact qualified HTML,
+module, WASM hashes/byte lengths and HTTPS locations. A changed manifest is a
+native compilation input; it must not reuse another deployment's native artifact.
+Package the compiled graph's notices as described in `NOTICE.md`, including the
+actual embedded font alternatives. Do not infer a license review from compilation.
+
+Actual browser fixtures use the official generated bootstrap and pinned engine
+inside an opaque sandbox with no guest network authority. They cover canvas
+keyboard edits, calculation, pending proposal/ACK refusal, pause, exact cold
+reopen, accepted-byte XLSX export and retirement. Their Core bridge is explicitly
+synthetic; these results do not prove certified-agent or iPhone behavior. The
+shared Deck path is independently checked with its original pinned engine and
+actual PPTX/PDF exports.
+
+The headless executable is a WASI-p2 component from `gridcraft-zoen-host`, selected
+only by fixed App identity and an operator-configured trusted publisher signature.
+The existing agent-host Gate stages the same typed owner review; the Core binds
+its exact worker, tool, current actor/device/source, input version/hash and output
+CAS receipt. Grid exposes only `read_gridcraft` and bounded `gridcraft_cell_set`.
+No model-selected executable, URI, actor or arbitrary upstream command is exposed.
+Its optional query returns one exact cell and bounded workbook metadata, not an
+unbounded claim of complete workbook contents. The original Deck path is retained.
+
+Operator configuration is explicit and all-or-none:
+`ZOEN_GRIDCRAFT_WORKER_COMPONENT`, `ZOEN_GRIDCRAFT_WORKER_MANIFEST`, and
+`ZOEN_GRIDCRAFT_WORKER_PUBLISHER`. The signature is verified before loading the
+actual component. Network/filesystem/secrets capabilities are not granted. The
+component has the existing 256 MiB / 2 billion fuel / 5 second envelope and the
+smaller document/metadata limits above; an oversized document refuses explicitly.
+
+Native iPhone manual/agent editing, keyboard/orientation/accessibility, memory,
+restart recovery and chosen-version sharing remain pending until tested on the
+actual built App. XLSX is the only exposed Grid export. Session undo is local to
+the editor lifetime; durable Core version history does not promise a global
+cross-device undo stack. Issue445 remains open until its complete acceptance.
+
+A real pointer regression also confirmed that a refused column resize could
+coalesce two already accepted cell undo entries. Drag paths now coalesce only
+successful commands; the same actual egui keyboard/pointer regression and all
+16 host/UI cases pass, with affected all-target Clippy. This does not enable
+resizing or object mutation in the restricted profile.
+
+The first pinned browser assets still have a separately reproduced mobile-touch
+focus defect: focus is deferred to RAF and may use the preceding editor geometry.
+The editor remains unavailable by default while a current-owner/fresh-geometry
+successor is qualified. Keyboard/canvas results do not substitute for trusted
+touch or iPhone acceptance.

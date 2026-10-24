@@ -1,13 +1,15 @@
 //! Build-provided runtime identity gates the existing catalog/resource/install path.
 //! No endpoint, account, storage location or network authority is supplied by a document.
-use super::{Document, APP, ENGINE_REVISION, RESOURCE};
+#[cfg(test)]
+use super::ENGINE_REVISION;
+use super::{Document, APP, RESOURCE};
 use crate::{tool, AppSpec};
 use localization::{t, ts};
 use serde_json::{json, Value};
+#[cfg(test)]
 use sha2::{Digest, Sha256};
 use std::sync::OnceLock;
 use types::ActionClass;
-use url::Url;
 
 pub const HTML: &str = include_str!("../../resources/deckcraft.html");
 pub const EMPTY: &[u8] = include_bytes!("../../resources/deckcraft.empty.deckcraft");
@@ -25,115 +27,20 @@ const MODULE_SHA: &str = "5b943f9b5e13bc8dce876193f2ced1b608efc74fc5643ca2b272bd
 const WASM_FILE: &str = "deckcraft-web-92fbceced94572b6_bg.wasm";
 const WASM_BYTES: u64 = 36_382_433;
 const WASM_SHA: &str = "7dc44c1c30356964b737cff936900f949ceadc4082db19555435eeea9b29def1";
-fn exact_keys(value: &Value, expected: &[&str]) -> bool {
-    value.as_object().is_some_and(|object| {
-        object.len() == expected.len() && expected.iter().all(|key| object.contains_key(*key))
-    })
-}
-fn empty_array(value: &Value) -> bool {
-    value.as_array().is_some_and(Vec::is_empty)
-}
-fn asset(value: &Value, file: &str, bytes: u64, hash: &str, mime: &str) -> Option<Url> {
-    if !exact_keys(value, &["url", "bytes", "sha256", "mime"])
-        || value["bytes"].as_u64() != Some(bytes)
-        || value["sha256"].as_str() != Some(hash)
-        || value["mime"].as_str() != Some(mime)
-    {
-        return None;
-    }
-    let source = value["url"].as_str()?;
-    let url = Url::parse(source).ok()?;
-    if source.len() > 2048
-        || url.scheme() != "https"
-        || url.host_str().is_none()
-        || !url.username().is_empty()
-        || url.password().is_some()
-        || url.query().is_some()
-        || url.fragment().is_some()
-        || url.as_str() != source
-        || !url
-            .path()
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b"/_.-,".contains(&b))
-        || url.path().contains("//")
-        || !url.path().ends_with(&format!("/{ENGINE_REVISION}/{file}"))
-    {
-        return None;
-    }
-    Some(url)
-}
-/// Defensive availability check in addition to the independently verified JS loader.
-/// Exact code identities change only through an explicit reviewed pinned build update.
 pub fn valid_resource(html: &str, manifest: &str) -> bool {
-    if html.is_empty() || html.len() > 8 << 20 || manifest.len() > 65_536 {
-        return false;
-    }
-    let Ok(value) = serde_json::from_str::<Value>(manifest) else {
-        return false;
-    };
-    if value["id"] != APP
-        || value["resourceUri"] != RESOURCE
-        || value["mimeType"] != crate::MIME
-        || value["bytes"].as_u64() != Some(html.len() as u64)
-        || value["sha256"].as_str()
-            != Some(format!("{:x}", Sha256::digest(html.as_bytes())).as_str())
-        || !empty_array(&value["capabilities"])
-        || !empty_array(&value["allowedDomains"])
-        || !empty_array(&value["linkDomains"])
-        || !value["permissions"]
-            .as_object()
-            .is_some_and(serde_json::Map::is_empty)
-        || !exact_keys(
-            &value["csp"],
-            &[
-                "connectDomains",
-                "resourceDomains",
-                "frameDomains",
-                "baseUriDomains",
-            ],
-        )
-        || ![
-            "connectDomains",
-            "resourceDomains",
-            "frameDomains",
-            "baseUriDomains",
-        ]
-        .iter()
-        .all(|key| empty_array(&value["csp"][*key]))
-    {
-        return false;
-    }
-    let runtime = &value["runtimePackage"];
-    if !exact_keys(
-        runtime,
-        &["schema", "engine", "revision", "abi", "module", "wasm"],
-    ) || runtime["schema"].as_u64() != Some(1)
-        || runtime["engine"] != APP
-        || runtime["revision"] != ENGINE_REVISION
-        || runtime["abi"] != "zoen-host-v1"
-    {
-        return false;
-    }
-    let Some(module) = asset(
-        &runtime["module"],
-        MODULE_FILE,
-        MODULE_BYTES,
-        MODULE_SHA,
-        "text/javascript",
-    ) else {
-        return false;
-    };
-    let Some(wasm) = asset(
-        &runtime["wasm"],
-        WASM_FILE,
-        WASM_BYTES,
-        WASM_SHA,
-        "application/wasm",
-    ) else {
-        return false;
-    };
-    module.origin() == wasm.origin()
-        && module.path().rsplit_once('/').map(|p| p.0) == wasm.path().rsplit_once('/').map(|p| p.0)
+    crate::binary::resource::valid_resource(
+        crate::binary::Format::Deckcraft,
+        &crate::binary::resource::RuntimePins {
+            module_file: MODULE_FILE,
+            module_bytes: MODULE_BYTES,
+            module_sha: MODULE_SHA,
+            wasm_file: WASM_FILE,
+            wasm_bytes: WASM_BYTES,
+            wasm_sha: WASM_SHA,
+        },
+        html,
+        manifest,
+    )
 }
 pub fn available() -> bool {
     static AVAILABLE: OnceLock<bool> = OnceLock::new();

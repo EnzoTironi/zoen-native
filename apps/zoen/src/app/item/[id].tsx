@@ -177,7 +177,7 @@ export default function Item() {
                 <PageVersionExportAction page={pastPage.data} />
               ) : null}
               {past.data?.version === selected &&
-              past.data.app?.app_id === 'deckcraft' &&
+              (past.data.app?.app_id === 'deckcraft' || past.data.app?.app_id === 'gridcraft') &&
               !oldError ? (
                 <DeckVersionAction item={past.data} />
               ) : null}

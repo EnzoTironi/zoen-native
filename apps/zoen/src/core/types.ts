@@ -144,6 +144,7 @@ type Results = {
   app_binary_read: AppBinaryDocumentDto;
   app_binary_save: AppBinaryDocumentDto;
   app_binary_create: AppBinaryDocumentDto;
+  app_binary_create_for: AppBinaryDocumentDto;
   app_document_read: AppDocumentDto;
   app_document_save: AppDocumentDto;
   app_document_copy: AppDocumentDto;

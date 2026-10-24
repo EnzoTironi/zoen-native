@@ -43,14 +43,23 @@ export function shareDeckcraftExport(
             share: () =>
               Sharing.shareAsync(file.uri, {
                 mimeType:
-                  format === 'pdf'
-                    ? 'application/pdf'
-                    : 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-                UTI:
-                  format === 'pdf'
-                    ? 'com.adobe.pdf'
-                    : 'org.openxmlformats.presentationml.presentation',
-                dialogTitle: t('decks.shareVersion', { version: options.head.version }),
+                  format === 'xlsx'
+                    ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                    : format === 'pdf'
+                      ? 'application/pdf'
+                      : 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                ...(format === 'xlsx'
+                  ? {}
+                  : {
+                      UTI:
+                        format === 'pdf'
+                          ? 'com.adobe.pdf'
+                          : 'org.openxmlformats.presentationml.presentation',
+                    }),
+                dialogTitle:
+                  format === 'xlsx'
+                    ? filename
+                    : t('decks.shareVersion', { version: options.head.version }),
               }),
             dispose: () => {
               try {

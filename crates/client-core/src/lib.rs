@@ -25,6 +25,7 @@ pub use agent_enrollment::{
     AgentEnrollmentHostProgress, AgentEnrollmentHostRequest, AgentEnrollmentPreviewDto,
     AgentEnrollmentStatusDto,
 };
+pub use miniapps::binary::agent_tools as binary_agent_tools;
 /// Closed, shared schema validation only; this module grants no execution authority.
 pub use miniapps::deckcraft::agent_tools as deckcraft_agent_tools;
 mod agent_notes;

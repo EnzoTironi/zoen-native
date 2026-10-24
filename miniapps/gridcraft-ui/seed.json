@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "upstream": "b8771d51fb4da60bd48c13cf313d6d6014dc5e66",
+  "preparedSource": "df49a51bf681778e4d8a9056e2c707764e7322cb",
+  "generatorSha256": "4df5bd2c67793e7cb0496fe503874b3f78f6c99f6e4a9416f990decb95f05558",
+  "command": "gridcraft-zoen-host --seed",
+  "path": "crates/miniapps/resources/gridcraft-empty.xlsx",
+  "bytes": 4011,
+  "sha256": "ccfd6f02c464d4d2ac45582ac0e25a9e816453cc797c0efee64339c9cae23151",
+  "source": "Actual GridCraft Session::new_workbook + io::save_bytes; not a handwritten XLSX template. Not catalog registration."
+}
