@@ -80,6 +80,11 @@ pub(super) async fn media_worker(
         // its content address must match the signed commit before MLS sees any bytes.
         let wanted = engine!(|engine| engine.wanted_recovery_contexts());
         if let Some(reference) = recovery_retries.next(wanted, tokio::time::Instant::now()) {
+            if !engine!(|engine| engine.net.synced.contains(&reference.space)
+                && engine.wants_recovery_context(&reference))
+            {
+                continue;
+            }
             let bytes = bounded_blob(
                 &http,
                 &format!("{base}/v1/blobs/{}", reference.blob),

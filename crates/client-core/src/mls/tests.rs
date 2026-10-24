@@ -13,6 +13,7 @@ use support::*;
 mod authorization_cases;
 mod catchup_projection;
 mod claim_retry_faults;
+mod cold_recovery;
 mod outbox_cases;
 mod prefix_admission_cases;
 mod prefix_settlement_cases;

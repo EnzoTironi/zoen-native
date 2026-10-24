@@ -11,6 +11,15 @@ import {
   decodeDeckcraftInputOrderQa,
   type DeckcraftInputOrderQa,
 } from './deckcraft-input-order-qa';
+import {
+  decodeWordcraftRuntimeQa,
+  wordcraftRuntimeQaCommand,
+  wordcraftRuntimeQaEnabled,
+  wordcraftRuntimeQaLabel,
+  wordcraftRuntimeQaOwnerReady,
+  wordcraftRuntimeQaScript,
+  type WordcraftRuntimeQa,
+} from './wordcraft-runtime-qa';
 import type { MiniappFrameHandle, MiniappFrameProps } from './frame-types';
 import {
   nativeMiniappCommand,
@@ -31,19 +40,36 @@ export const MiniappFrame = forwardRef<MiniappFrameHandle, MiniappFrameProps>(fu
     runtimePackage,
     DECKCRAFT_ENGINE_REVISION,
   );
+  const wordQa = wordcraftRuntimeQaEnabled(
+    Platform.OS,
+    process.env.EXPO_PUBLIC_ZOEN_WORDCRAFT_RUNTIME_QA,
+    runtimePackage,
+  );
   const document = useMemo(() => {
     const nonce = randomUUID();
-    const qaSession = inputOrderQa ? randomUUID() : null;
+    const qaSession = inputOrderQa || wordQa ? randomUUID() : null;
     return {
       nonce,
       qaSession,
-      qaScript: qaSession ? deckcraftInputOrderQaScript(qaSession) : undefined,
+      qaScript: qaSession
+        ? deckcraftInputOrderQaScript(qaSession, wordQa ? 'wordcraft_canvas' : 'deckcraft_canvas') +
+          (wordQa ? wordcraftRuntimeQaScript(qaSession) : '')
+        : undefined,
       html: nativeMiniappHtml(html, 'Zoen', nonce, runtimePackage),
     };
-  }, [html, runtimePackage, inputOrderQa]);
+  }, [html, runtimePackage, inputOrderQa, wordQa]);
   const [qaState, setQaState] = useState<{
     owner: typeof document;
     trace: DeckcraftInputOrderQa;
+  } | null>(null);
+  const [wordQaState, setWordQaState] = useState<{
+    owner: typeof document;
+    trace: WordcraftRuntimeQa;
+  } | null>(null);
+  const [nativeQa, setNativeQa] = useState<{
+    owner: typeof document;
+    touches: number;
+    requests: number;
   } | null>(null);
   // Layout/theme updates must not submit a fresh native source and reload the App.
   const source = useMemo(() => ({ html: document.html }), [document]);
@@ -72,6 +98,8 @@ export const MiniappFrame = forwardRef<MiniappFrameHandle, MiniappFrameProps>(fu
         if (active.current !== document) return;
         active.current = null;
         setQaState(null);
+        setWordQaState(null);
+        setNativeQa(null);
         view.current?.stopLoading();
         view.current?.injectJavaScript(nativeMiniappCommand(document.nonce, 'dispose'));
       },
@@ -119,8 +147,19 @@ export const MiniappFrame = forwardRef<MiniappFrameHandle, MiniappFrameProps>(fu
         bounces={false}
         accessibilityLabel={title}
         onTouchStart={() => {
-          if (Platform.OS === 'ios' && active.current === document && inputAllowed.current)
-            view.current?.requestFocus();
+          if (Platform.OS === 'ios' && active.current === document && inputAllowed.current) {
+            const target = view.current;
+            target?.requestFocus();
+            if (wordQa)
+              setNativeQa((previous) => ({
+                owner: document,
+                touches: Math.min(65535, (previous?.owner === document ? previous.touches : 0) + 1),
+                requests: Math.min(
+                  65535,
+                  (previous?.owner === document ? previous.requests : 0) + (target ? 1 : 0),
+                ),
+              }));
+          }
         }}
         onShouldStartLoadWithRequest={nativeMiniappNavigation}
         onOpenWindow={() => {}}
@@ -130,7 +169,14 @@ export const MiniappFrame = forwardRef<MiniappFrameHandle, MiniappFrameProps>(fu
         }}
         onMessage={(event) => {
           if (active.current !== document) return;
-          if (inputOrderQa && document.qaSession) {
+          if ((inputOrderQa || wordQa) && document.qaSession) {
+            if (wordQa) {
+              const snapshot = decodeWordcraftRuntimeQa(event.nativeEvent.data, document.qaSession);
+              if (snapshot) {
+                setWordQaState({ owner: document, trace: snapshot });
+                return;
+              }
+            }
             const trace = decodeDeckcraftInputOrderQa(event.nativeEvent.data, document.qaSession);
             if (trace) {
               setQaState({ owner: document, trace });
@@ -139,7 +185,16 @@ export const MiniappFrame = forwardRef<MiniappFrameHandle, MiniappFrameProps>(fu
           }
           if (!nativeMiniappMessageSource(event.nativeEvent.url, Platform.OS)) return;
           const message = nativeMiniappMessage(event.nativeEvent.data, document.nonce);
-          if (message !== null) onMessage(message);
+          if (message !== null) {
+            if (wordQa && document.qaSession) {
+              const ready = wordcraftRuntimeQaOwnerReady(message);
+              if (ready !== null)
+                view.current?.injectJavaScript(
+                  wordcraftRuntimeQaCommand(document.qaSession, ready),
+                );
+            }
+            onMessage(message);
+          }
         }}
         onError={(event) => {
           if (active.current === document) onError(event.nativeEvent.description);
@@ -150,9 +205,9 @@ export const MiniappFrame = forwardRef<MiniappFrameHandle, MiniappFrameProps>(fu
         }}
         style={{ backgroundColor: 'transparent' }}
       />
-      {inputOrderQa ? (
+      {inputOrderQa || wordQa ? (
         <Text
-          testID="deckcraft-input-order-qa"
+          testID={wordQa ? 'wordcraft-input-order-qa' : 'deckcraft-input-order-qa'}
           accessible
           accessibilityLabel={deckcraftInputOrderQaLabel(
             qaState?.owner === document ? qaState.trace : null,
@@ -171,6 +226,27 @@ export const MiniappFrame = forwardRef<MiniappFrameHandle, MiniappFrameProps>(fu
         >
           {deckcraftInputOrderQaLabel(qaState?.owner === document ? qaState.trace : null)}
         </Text>
+      ) : null}
+      {wordQa ? (
+        <Text
+          testID="wordcraft-runtime-qa"
+          accessible
+          accessibilityLabel={
+            wordcraftRuntimeQaLabel(wordQaState?.owner === document ? wordQaState.trace : null) +
+            `; RNtouches=${nativeQa?.owner === document ? nativeQa.touches : 0}; RNfocusRequests=${nativeQa?.owner === document ? nativeQa.requests : 0}`
+          }
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: 1,
+            height: 1,
+            fontSize: 1,
+            color: 'transparent',
+            overflow: 'hidden',
+          }}
+        />
       ) : null}
     </View>
   );
