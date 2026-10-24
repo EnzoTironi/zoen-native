@@ -107,6 +107,23 @@ fn due_and_unknown_checkpoints_still_require_the_actual_group() -> TestResult {
             .parse()?;
         assert!(started >= expired);
     }
+    // Parsed extreme values must not overflow the refresh comparison.
+    owner.net.mls.checkpoint_due.remove(space);
+    owner.store.set_meta(&key, &i64::MIN.to_string())?;
+    {
+        let probe = Probe::start(Duration::from_millis(10));
+        owner.mls_refresh_checkpoints();
+        assert_eq!(probe.reads(), 1);
+        assert!(owner.net.mls.checkpoint_due.contains(space));
+    }
+    owner.net.mls.checkpoint_due.remove(space);
+    owner.store.set_meta(&key, &i64::MAX.to_string())?;
+    {
+        let probe = Probe::start(Duration::from_millis(10));
+        owner.mls_refresh_checkpoints();
+        assert_eq!(probe.reads(), 0);
+        assert!(!owner.net.mls.checkpoint_due.contains(space));
+    }
     owner.device()?.forget(space)?;
     owner.net.mls.checkpoint_due.remove(space);
     owner.store.set_meta(&key, &expired.to_string())?;
@@ -119,6 +136,17 @@ fn due_and_unknown_checkpoints_still_require_the_actual_group() -> TestResult {
             "a due timestamp cannot manufacture a missing group"
         );
         assert_eq!(owner.store.meta(&key)?, Some(expired.to_string()));
+    }
+    // Skipping a fresh refresh is not group authority or publication readiness.
+    owner
+        .store
+        .set_meta(&key, &crate::engine::now_ms().to_string())?;
+    {
+        let probe = Probe::start(Duration::from_millis(10));
+        owner.mls_refresh_checkpoints();
+        assert_eq!(probe.reads(), 0);
+        assert_eq!(owner.ready_epoch(space), None);
+        assert!(!owner.net.mls.checkpoint_due.contains(space));
     }
     assert_eq!(owner.store.event_count()?, before_events);
     assert_ne!(
