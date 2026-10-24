@@ -78,7 +78,21 @@ fn unreadable_integrity_marker_parks_exact_ciphertext_without_blocking_another_s
     assert_eq!(retained.0, original.0);
     assert_eq!(retained.1.content(), original.1.content());
     assert_eq!(retained.1.sig, original.1.sig);
-    for envelope in offered {
+    // Cold reconstruction cannot turn the unreadable durable marker into absence.
+    drop(owner);
+    let mut owner = reopen(&database.path("owner.sqlite"), &owner_secret);
+    assert!(owner.store.meta(&fork_meta(space)).is_err());
+    assert_eq!(provider_rows(&owner), provider);
+    assert_eq!(pending_json(&owner, &message.id)?, json);
+    let offered_after_reopen = owner.outbox_envelopes();
+    assert_eq!(
+        offered_after_reopen
+            .iter()
+            .map(|env| env.client_id())
+            .collect::<Vec<_>>(),
+        vec![other.id.as_str()]
+    );
+    for envelope in offered_after_reopen {
         let frame = ordered(&owner, envelope);
         assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
         assert_eq!(peer.ingest(frame), Ingest::Applied);

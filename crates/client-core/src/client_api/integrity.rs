@@ -37,13 +37,7 @@ impl Client {
         let engine = self.lock();
         Self::integrity_scope(&engine, &space)?;
         let mut report = engine.verify_log(&space);
-        if let Some(error) = engine
-            .state
-            .spaces
-            .get(&space)
-            .and_then(|state| state.integrity_error.clone())
-            .or_else(|| engine.recorded_fork(&space))
-        {
+        if let Some(error) = engine.checked_integrity_error(&space)? {
             report.valid = false;
             report.head_hash.clear();
             report.error = Some(error);
