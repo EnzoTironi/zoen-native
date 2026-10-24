@@ -4,6 +4,9 @@
 //! FoundationDB (`eval "$(scripts/fdb.sh env)"`).
 
 mod diagnostics;
+mod relay_build;
+pub mod watch;
+mod watch_readiness;
 mod world_commands;
 mod world_service;
 
@@ -32,15 +35,13 @@ pub fn relay_bin() -> PathBuf {
     // overwrite the metadata still needed by later workspace doctests.
     let target = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("journey-relay");
     BUILT.call_once(|| {
-        let ok = Command::new(env!("CARGO"))
-            .args(["build", "--locked", "-q", "-p", "zoen-relay"])
-            .arg("--manifest-path")
-            .arg(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"))
-            .arg("--target-dir")
-            .arg(&target)
-            .status()
-            .expect("cargo")
-            .success();
+        let mut command = Command::new(env!("CARGO"));
+        relay_build::configure(
+            &mut command,
+            &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"),
+            &target,
+        );
+        let ok = command.status().expect("cargo").success();
         assert!(ok, "cargo build -p zoen-relay failed");
     });
     target
