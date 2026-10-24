@@ -94,7 +94,7 @@ fn cursors(state: protocol::AgentStateRecord) -> BTreeMap<String, u64> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn complete_agent_state_and_cli_inspection_keep_257_existing_cursors_across_membership_changes(
 ) {
-    let w = World::new("complete_agent_reads").await;
+    let mut w = World::new("complete_agent_reads").await;
     let agent_id = enroll(&w);
     let owner = Online::open(&w, "owner").await;
     let agent = Online::open(&w, "citizen").await;
@@ -159,6 +159,11 @@ async fn complete_agent_state_and_cli_inspection_keep_257_existing_cursors_acros
     drop(reader);
     drop(agent);
     drop(owner);
+    // Keep the existing closed Core deadline observation in this exact failing
+    // consumer's stderr. A hosted timeout can cancel artifact upload, whereas
+    // World::zoen already includes failed-child stderr in the original assertion.
+    // This adds no wait/retry and never changes the returned settlement error.
+    w.set_client_env("ZOEN_SYNC_WAIT_DIAGNOSTICS", "1");
     // The real CLI consumer uses the completed state without running a model,
     // seeding a missing cursor, moving an existing one or writing a watermark.
     let report: serde_json::Value =
