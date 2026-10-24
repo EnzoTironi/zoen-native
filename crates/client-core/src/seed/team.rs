@@ -24,7 +24,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<String> {
             privacy: Privacy::EndToEnd,
         },
     )?;
-    for m in [&lucas, &ana, &zoen] {
+    for m in [lucas, ana, zoen] {
         e.append_at(
             &team,
             &enzo,

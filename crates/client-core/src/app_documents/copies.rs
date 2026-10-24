@@ -150,7 +150,10 @@ impl Engine {
         caption: &str,
         item_id: Option<String>,
     ) -> R<String> {
-        let item = item_id.unwrap_or_else(|| new_id("it")?);
+        let item = match item_id {
+            Some(item) => item,
+            None => new_id("it")?,
+        };
         let key = self.file_key(None)?;
         let file = self.file_doc(
             space,

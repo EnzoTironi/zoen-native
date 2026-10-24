@@ -1,9 +1,10 @@
 use super::{grant, msg, Cast, MIN};
-use crate::apps;
 use crate::engine::{Engine, R};
 use crate::i18n::t;
 use types::new_id;
-use types::{Annotation, Capability, EventBody, GrantScope, Privacy, Role, SpaceKind, TrustLevel};
+use types::{
+    Annotation, Capability, EventBody, GrantScope, Privacy, ReplyRef, Role, SpaceKind, TrustLevel,
+};
 pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<(String, u64, u64)> {
     let Cast {
         enzo,
@@ -26,7 +27,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<(String, u64, u64)
             privacy: Privacy::EndToEnd,
         },
     )?;
-    for m in [&marina, &lucas, &ana, &zoen] {
+    for m in [marina, lucas, ana, zoen] {
         e.append_at(
             &turma,
             &enzo,

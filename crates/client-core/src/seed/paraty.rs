@@ -31,7 +31,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<()> {
             privacy: Privacy::EndToEnd,
         },
     )?;
-    for m in [&marina, &zoen, &fin, &org] {
+    for m in [marina, zoen, fin, org] {
         e.append_at(
             &paraty,
             &enzo,
