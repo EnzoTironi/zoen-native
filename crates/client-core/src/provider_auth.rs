@@ -45,11 +45,13 @@ impl Drop for ProviderSetup {
 impl ProviderSetup {
     fn new(name: &str, relay: &str) -> Result<Self, CoreError> {
         let root = Signer::generate()?;
+        let device = Signer::generate()?;
+        let agreement = AgreementKey::generate()?;
         Ok(Self {
             version: 1,
             root: root.secret(),
-            device: Signer::generate()?.secret(),
-            agreement: AgreementKey::generate()?.secret(),
+            device: device.secret(),
+            agreement: agreement.secret(),
             name: name.into(),
             handle: format!("zoen_{}", &root.id()[..16]),
             relay: relay.into(),
