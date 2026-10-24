@@ -385,7 +385,7 @@ test('explicit beginEdit uses actual latest context and cannot release pending o
   assert.equal(f.f.submits, 1);
 });
 
-for (const outcome of ['refused', 'delivery_failed'] as const)
+for (const outcome of ['refused', 'delivery_failed', 'expired'] as const)
   test(`conclusive inquiry ${outcome} permits one explicit retry without editing or submitting`, async () => {
     const f = await fixture();
     let inquiries = 0;
@@ -500,5 +500,65 @@ test('unacknowledged inquiry cannot be redispatched by retry, refresh or focus r
   assert.ok(reads >= 3);
   assert.equal(f.session.getSnapshot().optionsState, null);
   assert.equal(f.session.getSnapshot().phase, 'held');
+  assert.equal(f.f.submits, 0);
+});
+
+test('an offline original can expire without automatic requery, then one explicit retry uses the recovered scope', async () => {
+  const f = await fixture();
+  let sends = 0,
+    expired = false;
+  f.port.inquire = async () => ({
+    source: `offline-${++sends}`,
+    inquiry_digest: 'e'.repeat(64),
+    state: 'pending',
+    context: null,
+  });
+  f.port.options = async (_scope, source) => ({
+    source,
+    inquiry_digest: 'e'.repeat(64),
+    state: expired ? 'expired' : 'pending',
+    context: null,
+  });
+  await f.session.refresh();
+  await settle();
+  assert.equal(sends, 1);
+  expired = true;
+  await f.session.reconcile();
+  await settle();
+  const terminal = f.session.getSnapshot();
+  assert.equal(terminal.optionsState, 'expired');
+  assert.equal(terminal.context, null);
+  assert.equal(f.session.confirmation(), null);
+  assert.equal(sends, 1, 'expiry does not silently queue a replacement');
+  f.session.retire();
+  f.session.activate(f.f.scope);
+  assert.equal(f.session.canRetryOptions(terminal), false, 'retired render cannot retry');
+  await f.session.reconcile();
+  const current = f.session.getSnapshot();
+  assert.equal(f.session.canRetryOptions(current), true);
+  await f.session.retryOptions(current);
+  await settle();
+  assert.equal(sends, 2);
+  assert.equal(f.f.submits, 0);
+});
+
+test('lost ACK stays held when no exact original can be recovered, even after leaving and refocusing', async () => {
+  const f = await fixture();
+  let sends = 0;
+  f.port.inquire = async () => {
+    sends++;
+    throw Error('ambiguous acknowledgement');
+  };
+  f.port.findOptions = async () => null;
+  await f.session.refresh();
+  await settle();
+  f.session.retire();
+  f.session.activate(f.f.scope);
+  await f.session.refresh();
+  await settle();
+  assert.equal(f.session.getSnapshot().phase, 'held');
+  assert.equal(f.session.canRetryOptions(), false);
+  await f.session.retryOptions();
+  assert.equal(sends, 1);
   assert.equal(f.f.submits, 0);
 });

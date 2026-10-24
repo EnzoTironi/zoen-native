@@ -196,7 +196,7 @@ for (const [effect, patch, status] of [
     );
   });
 
-for (const outcome of ['refused', 'delivery_failed'] as const)
+for (const outcome of ['refused', 'delivery_failed', 'expired'] as const)
   test(`compiled conclusive quote ${outcome} exposes one explicit inquiry without disabled Edit`, async () => {
     const f = await fixture(),
       render = screen(f);
@@ -215,7 +215,13 @@ for (const outcome of ['refused', 'delivery_failed'] as const)
     await settle();
     assert.equal(f.session.getSnapshot().optionsState, outcome);
     const tree = render();
-    assert.equal(has(tree, 'ownerPolicy.quoteUnavailable'), true);
+    assert.equal(
+      has(
+        tree,
+        outcome === 'expired' ? 'ownerPolicy.quoteExpired' : 'ownerPolicy.quoteUnavailable',
+      ),
+      true,
+    );
     assert.equal(
       tree.some((node) => node.type === 'Field'),
       false,
@@ -385,6 +391,15 @@ test('compiled owner budget route uses actual image validation before opening th
 
 test('account management reuses the compiled native form and explicit disable confirmation without an image target', async () => {
   const f = await fixture();
+  f.f.context = context({
+    current_policy_digest: policy,
+    current_limit_units: '1000000',
+    current_max_attempt_units: '100',
+    current_enabled: true,
+    current_expired: false,
+    current_expires_at_ms: '200000',
+    existing_profile_count: 1,
+  });
   f.f.owner = {
     identity: scope.identity,
     device: scope.device,

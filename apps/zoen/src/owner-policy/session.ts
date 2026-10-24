@@ -70,7 +70,7 @@ export type PolicyState = Readonly<{
   limitInput: string;
   maxAttemptInput: string;
   enabled: boolean;
-  optionsState: 'pending' | 'ready' | 'refused' | 'delivery_failed' | null;
+  optionsState: 'pending' | 'ready' | 'refused' | 'delivery_failed' | 'expired' | null;
   optionsSource: string | null;
   inquiryDigest: string | null;
   effectiveness: 'unknown' | 'current' | 'superseded' | 'expired' | 'disabled';
@@ -193,7 +193,7 @@ export class OwnerPolicySession {
       (this.state.inquiryDigest &&
         expectedSource &&
         value.inquiry_digest !== this.state.inquiryDigest) ||
-      !['pending', 'ready', 'refused', 'delivery_failed'].includes(value.state) ||
+      !['pending', 'ready', 'refused', 'delivery_failed', 'expired'].includes(value.state) ||
       (value.state === 'ready') !== !!value.context ||
       (value.context && !validContext(value.context))
     )
@@ -210,7 +210,10 @@ export class OwnerPolicySession {
     if (replaced) this.revision++;
     this.publish({
       optionsState:
-        value.state === 'pending' || value.state === 'ready' || value.state === 'refused'
+        value.state === 'pending' ||
+        value.state === 'ready' ||
+        value.state === 'refused' ||
+        value.state === 'expired'
           ? value.state
           : 'delivery_failed',
       optionsSource: value.source,
@@ -309,7 +312,7 @@ export class OwnerPolicySession {
       !this.inquiryUncertain &&
       !observed.refreshing &&
       !!observed.optionsSource &&
-      (observed.optionsState === 'refused' || observed.optionsState === 'delivery_failed')
+      ['refused', 'delivery_failed', 'expired'].includes(observed.optionsState ?? '')
     );
   }
   async retryOptions(observed: PolicyState = this.state) {

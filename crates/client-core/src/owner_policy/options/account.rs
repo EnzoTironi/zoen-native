@@ -59,42 +59,12 @@ impl Engine {
         &self,
         scope: &OwnerPolicyScope,
     ) -> R<Option<OwnerPolicyOptionsStatus>> {
-        self.owner_policy_conversation(scope)?;
-        let pending = self.store.outbox()?;
-        let mut original: Option<(i64, String)> = None;
-        for event in pending.iter().map(|entry| &entry.event).chain(
-            self.logs
-                .get(&scope.space_id)
-                .into_iter()
-                .flat_map(|log| log.events()),
-        ) {
-            let EventBody::OwnerPolicyOptionsRequested { agent, signed } = &event.body else {
-                continue;
-            };
-            if event.space != scope.space_id
-                || event.author != scope.expected_identity_id
-                || event.device.as_deref() != Some(scope.expected_device_id.as_str())
-                || agent != &scope.agent_id
-                || signed.inquiry.purpose != Some(OwnerPolicyInquiryPurpose::AccountBudget)
-            {
-                continue;
-            }
-            match self.owner_policy_query(scope, &event.client_id) {
-                Ok(_) => {}
-                Err(CoreError::Forbidden { .. }) => continue,
-                Err(error) => return Err(error),
-            }
-            let candidate = (signed.inquiry.at_ms, event.client_id.clone());
-            if original
-                .as_ref()
-                .is_none_or(|previous| &candidate > previous)
-            {
-                original = Some(candidate);
-            }
-        }
-        original
-            .map(|(_, source)| self.owner_policy_options(scope, &source))
-            .transpose()
+        self.find_policy_inquiry(
+            scope,
+            Some(OwnerPolicyInquiryPurpose::AccountBudget),
+            "",
+            "",
+        )
     }
 }
 impl Client {
