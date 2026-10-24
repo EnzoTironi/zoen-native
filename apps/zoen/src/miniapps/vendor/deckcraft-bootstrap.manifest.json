@@ -1,7 +1,7 @@
 {
   "resourceUri": "ui://zoen/deckcraft/index.html",
-  "sha256": "75d5e47f0af3d713f8ff80405a4615d2e64bfa86580f25b119ba2c50705a8556",
-  "bytes": 624198,
+  "sha256": "68612b53dca73bb7e0a7f9f427dedff75659035369ab7371577ade2eb7815532",
+  "bytes": 624235,
   "sources": {
     "apps/zoen/node_modules/@modelcontextprotocol/client/dist/cfWorkerProvider-BylNJ1R5.mjs": "eb39ab8996af767751fc34bea128d6b2adaef5a39cd42ec94749a091f76ab268",
     "apps/zoen/node_modules/@modelcontextprotocol/client/dist/chunk-Br0eD_fh.mjs": "d4a000980e7c6a8a2ee04c12d80cf538b11e5040e8487dad7661b09d85894e74",
@@ -167,7 +167,7 @@
     "apps/zoen/src/miniapps/canonical-scene.ts": "e43df63ef2b90e2b60d6e0fc58277964238ead166e8c991894d6e99aa59a1a6e",
     "apps/zoen/src/miniapps/deckcraft-document.ts": "77b6e882eec71376f1ebc7794ab3555c8e2998b5ad4b9abe32deb77303d74292",
     "apps/zoen/src/miniapps/deckcraft-feedback.ts": "d5f3770a43cf3d1d5b115f5f885e6be89a982f2b3c9178f20536f3d50987c153",
-    "apps/zoen/src/miniapps/managed-binary-app.ts": "6e6826bd13a822c766ac65e1c8b8c3a221eb29df853af10926a92593d679ed6a",
+    "apps/zoen/src/miniapps/managed-binary-app.ts": "a4f6dd8e62badfb8ec7b7420a7c6fc4e20ecaa0d8bc4e2477db0eb0ef504eb93",
     "miniapps/deckcraft-ui/src/mcp-app.ts": "1e36ca70ed3059b579016cb36c64e7e8d25871301b2d30a55de567ba5dd2455f",
     "packages/zoen-miniapp-sdk/src/managed-host-ui.ts": "8786763320763037a1fdd5ac6364639df3f79ccff33977ab4a8eb90e69cda0e5"
   },

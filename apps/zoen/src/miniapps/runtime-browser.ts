@@ -67,7 +67,11 @@ type Bindings = Record<string, unknown> & {
   zoenHostStart(): unknown;
   zoenHostRetire(): unknown;
 };
-export type RuntimeClient = { load(): Promise<Bindings>; dispose(): void };
+export type RuntimeClient = {
+  load(): Promise<Bindings>;
+  onBeforeDispose(cleanup: () => void): void;
+  dispose(): void;
+};
 
 /** Runs inside the opaque App. Its CSP permits no network; only parent transfers code. */
 export function installRuntimeClient(input: RuntimePackage, target: Window = window) {
@@ -78,6 +82,7 @@ export function installRuntimeClient(input: RuntimePackage, target: Window = win
   let pending: Promise<Bindings> | undefined;
   let rejectPending: ((error: Error) => void) | undefined;
   let admitted = false;
+  let ownerCleanup: (() => void) | undefined;
   const current = () => {
     if (!active) throw new Error('App runtime retired');
   };
@@ -88,11 +93,19 @@ export function installRuntimeClient(input: RuntimePackage, target: Window = win
     target.removeEventListener('pagehide', dispose);
     rejectPending?.(new Error('App runtime retired'));
     rejectPending = undefined;
+    const cleanup = ownerCleanup;
+    ownerCleanup = undefined;
     try {
-      bindings?.zoenHostRetire();
+      // The loader registers pagehide first. Retire document callbacks while
+      // bindings are still live, independent of later pagehide listener order.
+      cleanup?.();
     } finally {
-      if (moduleUrl) URL.revokeObjectURL(moduleUrl);
-      moduleUrl = undefined;
+      try {
+        bindings?.zoenHostRetire();
+      } finally {
+        if (moduleUrl) URL.revokeObjectURL(moduleUrl);
+        moduleUrl = undefined;
+      }
     }
   }
   let accept: ((value: Bindings) => void) | undefined;
@@ -164,6 +177,11 @@ export function installRuntimeClient(input: RuntimePackage, target: Window = win
     }
   }
   const client: RuntimeClient = Object.freeze({
+    onBeforeDispose(cleanup: () => void) {
+      current();
+      if (ownerCleanup) throw new Error('App runtime already has an owner');
+      ownerCleanup = cleanup;
+    },
     load() {
       current();
       if (!pending) {
