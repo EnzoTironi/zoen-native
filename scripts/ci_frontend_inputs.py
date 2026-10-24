@@ -4,15 +4,15 @@
 # recipes. Drift selects the full lane; refreshing a pin never bypasses tests.
 FRONTEND_CONTRACTS = {
     # Word includes shared frontend source through its generated bootstrap.
-    "crates/miniapps/resources/wordcraft.manifest.json": "8ec3ca2c40182db09658605c41c2db9653d596646cef45abb6d70a7d5bef2676",
-    "crates/miniapps/resources/generated/wordcraft-bootstrap.manifest.json": "3a65080d41df84b1a8b3a774dab0c2de175114660ed50306ee93517e61000c9d",
+    "crates/miniapps/resources/wordcraft.manifest.json": "be6ef15fae6216d7817979c286967123998eabb33cd4074dc8196ac1a8ebd4e1",
+    "crates/miniapps/resources/generated/wordcraft-bootstrap.manifest.json": "8c4b432e0bd6cacea09cff1435aca96dd96432654223292aa8cdc85970bd5731",
     "miniapps/wordcraft-ui/build-bootstrap.mjs": "944862507c8e710eb1584b80654706a6535c34003a67ef247bab27de6d0ad31c",
     "miniapps/wordcraft-ui/build-resource-manifest.mjs": "58883d2a1600baae7d61930d85f72086e0063a80e3b95a1b7c60284fdc4085db",
     "miniapps/wordcraft-ui/prepare-engine.py": "7eb5454ac8c06c3a67083f0487a3b1ae069a2310b8312d403d33bd240f107421",
     "crates/miniapps/resources/countdown.manifest.json": "e4e75fe59826cc21cc32f60e844cae5e803b3ff4b093134599319716fe1adbd7",
-    "crates/miniapps/resources/deckcraft.manifest.json": "06b1dc2b3ffad9b781e17fd974d38667810cfab8e4d4fbfc2f97648ccb47e9ae",
+    "crates/miniapps/resources/deckcraft.manifest.json": "b2d23c8ae066de35b7d8b8d74816a89ee9c62ad8abbc8e2d1370a9e304d02c4c",
     "crates/miniapps/resources/excalidraw.manifest.json": "0c781ade300c8aa15102f71b12facfd6dbd541d609ccacae5a19a8701a43400a",
-    "crates/miniapps/resources/gridcraft.manifest.json": "c55892246dd7839827d8fa5bf885f1ac9ca0c426721f90fa84be612ccc01466e",
+    "crates/miniapps/resources/gridcraft.manifest.json": "da5ff825baa1b40da321d3cc2e82528601b1736c626153fa6d9ab1d779d7c860",
     "crates/miniapps/resources/hike.manifest.json": "c0762587d7627c503e9a5f48ed0f3e1c1c45bf28fd00d97477523d159bcab5dd",
     "crates/miniapps/resources/list.manifest.json": "1d7fe1009d8f024ec75ce76a3c1906fae87725ecd3511cba08b8f1d5c1795261",
     "crates/miniapps/resources/maptap.manifest.json": "72aebc640b874a00bdc5d524a1d8f07905d2159d76d92fbaad6d73950d10d4cd",
@@ -33,7 +33,7 @@ FRONTEND_CONTRACTS = {
     ".github/workflows/ci.yml": "fd620ffc26625762df13419673a105463878c7f65ac4a0ba446728ee86536b5f",
     ".github/workflows/expo.yml": "085e800264619bcc17f43b676a40b9ee682cb8e7dff845058b9ff4247e1bf7e7",
     "apps/zoen/package.json": "d58538007aec677d34171d4a09f883973c1c8bf9440b141d5bc72f33b2dba14b",
-    "apps/zoen/src/miniapps/vendor/deckcraft-bootstrap.manifest.json": "1673999b625d06f99757dee040b7fc01cfaa8eb302455374e736a9f6e9d3a688",
+    "apps/zoen/src/miniapps/vendor/deckcraft-bootstrap.manifest.json": "a1e9afddbd28602267448ad1629fdbfb83bab1c3adae26bd070582efce427d00",
     "apps/zoen/src/miniapps/vendor/runtime-support.manifest.json": "7dbb32c6ff5de48a4f8027aa41175b111d305951cdf987ec079420655cc37d89",
     "apps/zoen/src/miniapps/vendor/excalidraw-ui.manifest.json": "9e58fab46099bb8ef146d5bef194bab99385095e0ce845bb3a0f442e84ae12d3",
     "miniapps/deckcraft-ui/build-bootstrap.mjs": "ecf7c02ddf67fac3f3bbb566b00940c2c5becc5a8f94060bf410a0f9b74fb57e",
