@@ -3634,6 +3634,7 @@ dependencies = [
  "types",
  "url",
  "zip 8.6.0",
+ "zoen-word-profile",
 ]
 
 [[package]]
