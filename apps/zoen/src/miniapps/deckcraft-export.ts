@@ -50,7 +50,13 @@ export function deckcraftExportFilename(
       .replace(/^\.+/, '')
       .trim()
       .slice(0, 80) ||
-    (format === 'xlsx' ? 'workbook' : format === 'docx' ? 'document' : format === 'pcraft' || format === 'png' ? 'image' : 'presentation');
+    (format === 'xlsx'
+      ? 'workbook'
+      : format === 'docx'
+        ? 'document'
+        : format === 'pcraft' || format === 'png'
+          ? 'image'
+          : 'presentation');
   return `${name}-v${head.version}.${format}`;
 }
 
@@ -108,7 +114,7 @@ export async function streamDeckcraftExport(options: DeckcraftExportOptions): Pr
             ? String.fromCharCode(...data.subarray(0, 5)) !== '%PDF-'
             : options.format === 'png'
               ? ![137, 80, 78, 71, 13, 10, 26, 10].every((byte, index) => data[index] === byte)
-            : data[0] !== 0x50 || data[1] !== 0x4b || data[2] !== 3 || data[3] !== 4)
+              : data[0] !== 0x50 || data[1] !== 0x4b || data[2] !== 3 || data[3] !== 4)
         )
           throw Error('Invalid presentation export format.');
         hash.update(data);

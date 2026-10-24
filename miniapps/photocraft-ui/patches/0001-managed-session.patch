@@ -100,3 +100,29 @@ index 89f293a..3c4f72f 100644
          if let Err(err) = tool_memory::save_on_exit(self) {
              log::warn!("Preferences: could not save the final tool selection: {err}");
          }
+diff --git a/crates/format/src/store.rs b/crates/format/src/store.rs
+--- a/crates/format/src/store.rs
++++ b/crates/format/src/store.rs
+@@ -541,10 +541,12 @@
+             Err(e) => return Err(e.into()),
+         }
+     }
+-    let (tmp, mut file) = temporary.ok_or_else(|| {
++    let (tmp, file) = temporary.ok_or_else(|| {
+         FormatError::Io(std::io::Error::new(std::io::ErrorKind::AlreadyExists, format!("could not create a temporary file beside {}", path.display())))
+     })?;
+     let result = (|| -> Result<()> {
++        {
++        let mut file = file;
+         // The parent may have changed between validation and create_new. Check the new file's
+         // resolved location before putting document bytes into it.
+         if std::fs::canonicalize(&tmp)? != tmp {
+@@ -553,7 +555,7 @@
+         validate_bundle_file(root, path)?;
+         file.write_all(data)?;
+         file.sync_all()?;
+-        drop(file);
++        }
+         // Preserve the existing mode where possible, as the generic atomic writer does.
+         if let Ok(permissions) = std::fs::metadata(path).map(|m| m.permissions()) {
+             let _ = std::fs::set_permissions(&tmp, permissions);

@@ -1,17 +1,32 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { resolve, isAbsolute } from "node:path";
-import { pathToFileURL } from "node:url";
+import { pathToFileURL, fileURLToPath } from "node:url";
 import { build } from "../../../apps/zoen/node_modules/esbuild/lib/main.js";
 import { findBrowserExecutable } from "../../../tools/miniapp-build/browser-executable.ts";
 const editor = "photocraft";
 const [modulePath, wasmPath, htmlPath, seedPath, output, playwrightPath] = process.argv.slice(2);
-if (![modulePath,wasmPath,htmlPath,seedPath,output,playwrightPath].every(p=>p&&isAbsolute(p)))
- throw Error("Usage: managed-browser.mjs ABS_MODULE ABS_WASM ABS_HTML ABS_SEED ABS_NEW_OUTPUT ABS_PLAYWRIGHT");
+if (
+  ![modulePath, wasmPath, htmlPath, seedPath, output, playwrightPath].every(
+    (p) => p && isAbsolute(p),
+  )
+)
+  throw Error(
+    "Usage: managed-browser.mjs ABS_MODULE ABS_WASM ABS_HTML ABS_SEED ABS_NEW_OUTPUT ABS_PLAYWRIGHT",
+  );
 await mkdir(output, { recursive: true });
 const sha = (b) => createHash("sha256").update(b).digest("hex");
+const pixels = (path) =>
+  JSON.parse(
+    execFileSync(
+      process.env.PHOTO_PYTHON ?? "python3",
+      [fileURLToPath(new URL("./png-probe.py", import.meta.url)), path],
+      { encoding: "utf8", timeout: 10000 },
+    ),
+  );
 const module = await readFile(modulePath),
   wasm = await readFile(wasmPath);
 const html = await readFile(htmlPath, "utf8"),
@@ -115,20 +130,101 @@ try {
   await page.goto(`http://127.0.0.1:${server.address().port}/`, { waitUntil: "load" });
   await page.waitForFunction(() => window.probe?.opened, undefined, { timeout: 25000 });
   assert.equal(await page.evaluate(() => window.probe.writes), 0);
-  const formats = ["pcraft","png"];
-  for (const format of formats) await page.evaluate(f=>window.probe.share(f), format);
-  await page.screenshot({path:resolve(output,"initial.png")});
-  const result = await page.evaluate(()=>({states:window.probe.states,exports:window.probe.exports,
-    writes:window.probe.writes,accepted:window.probe.accepted,version:window.probe.version}));
-  assert.equal(result.writes,0);
-  assert.equal(result.version,1);
-  assert.equal(result.accepted,seed.toString("base64"));
+  const formats = ["pcraft", "png"];
+  for (const format of formats) await page.evaluate((f) => window.probe.share(f), format);
+  await page.screenshot({ path: resolve(output, "initial.png") });
+  const result = await page.evaluate(() => ({
+    states: window.probe.states,
+    exports: window.probe.exports,
+    writes: window.probe.writes,
+    accepted: window.probe.accepted,
+    version: window.probe.version,
+  }));
+  assert.equal(result.writes, 0);
+  assert.equal(result.version, 1);
+  assert.equal(result.accepted, seed.toString("base64"));
   for (const file of result.exports) {
-    const bytes=Buffer.from(file.data,"base64");assert.equal(sha(bytes),file.sha256);
-    if(file.format==="pcraft")assert.equal(file.data,seed.toString("base64"));
-    else assert.equal(bytes.subarray(0,8).toString("hex"),"89504e470d0a1a0a");
-    await writeFile(resolve(output,`baseline.${file.format}`),bytes);delete file.data;file.bytes=bytes.length;
+    const bytes = Buffer.from(file.data, "base64");
+    assert.equal(sha(bytes), file.sha256);
+    if (file.format === "pcraft") assert.equal(file.data, seed.toString("base64"));
+    else assert.equal(bytes.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+    await writeFile(resolve(output, `baseline.${file.format}`), bytes);
+    delete file.data;
+    file.bytes = bytes.length;
   }
+  const originalPixels = pixels(resolve(output, "baseline.png"));
+  assert.deepEqual(originalPixels, {
+    width: 640,
+    height: 480,
+    blackPixels: 1800,
+    newBlackPixels: 0,
+    white: [255, 255, 255, 255],
+    black: [0, 0, 0, 255],
+    green: [0, 255, 0, 255],
+  });
+  await page.evaluate(() => window.probe.holdNextWrite());
+  // Trusted primary touch on the real canvas, without focusing it from JS.
+  await page.touchscreen.tap(180, 340);
+  await page.waitForFunction(() => window.probe.writeHeld, undefined, { timeout: 10000 });
+  await page.touchscreen.tap(250, 440);
+  const frame = page.frames().find((f) => f !== page.mainFrame());
+  assert.ok(frame);
+  await frame.evaluate(
+    () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+  );
+  assert.equal(await page.evaluate(() => window.probe.writeHeld), true);
+  await page.evaluate(() => window.probe.releaseWrite());
+  await page.evaluate(() => window.probe.flush());
+  for (const format of formats) await page.evaluate((f) => window.probe.share(f), format);
+  const edited = await page.evaluate(() => ({
+    writes: window.probe.writes,
+    version: window.probe.version,
+    accepted: window.probe.accepted,
+    exports: window.probe.exports.slice(2),
+  }));
+  assert.equal(edited.writes, 2);
+  assert.equal(edited.version, 3);
+  assert.notEqual(edited.accepted, seed.toString("base64"));
+  for (const file of edited.exports) {
+    const bytes = Buffer.from(file.data, "base64");
+    assert.equal(sha(bytes), file.sha256);
+    if (file.format === "pcraft") assert.equal(file.data, edited.accepted);
+    await writeFile(resolve(output, `edited.${file.format}`), bytes);
+    delete file.data;
+    file.bytes = bytes.length;
+  }
+  const editedPixels = pixels(resolve(output, "edited.png"));
+  assert.ok(editedPixels.newBlackPixels > 10, "trusted touches must paint real pixels");
+  assert.deepEqual(editedPixels.white, originalPixels.white);
+  assert.deepEqual(editedPixels.black, originalPixels.black);
+  assert.deepEqual(editedPixels.green, originalPixels.green);
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.screenshot({ path: resolve(output, "landscape.png") });
+  assert.equal(
+    await page.evaluate(() => window.probe.writes),
+    2,
+    "rotation must not save a document edit",
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => window.probe.close());
+  files.set("/config.json", [
+    Buffer.from(JSON.stringify({ ...config, seed: edited.accepted, version: edited.version })),
+    "application/json",
+  ]);
+  await page.reload({ waitUntil: "load" });
+  await page.waitForFunction(() => window.probe?.opened, undefined, { timeout: 25000 });
+  assert.equal(await page.evaluate(() => window.probe.writes), 0);
+  assert.equal(await page.evaluate(() => window.probe.version), 3);
+  for (const format of formats) await page.evaluate((f) => window.probe.share(f), format);
+  const reopened = await page.evaluate(() => window.probe.exports);
+  for (const file of reopened) {
+    const bytes = Buffer.from(file.data, "base64");
+    assert.equal(sha(bytes), file.sha256);
+    if (file.format === "pcraft")
+      assert.equal(file.data, edited.accepted, "fresh renderer reopens exact accepted bytes");
+    await writeFile(resolve(output, `reopened.${file.format}`), bytes);
+  }
+  assert.deepEqual(pixels(resolve(output, "reopened.png")), editedPixels);
   await page.screenshot({ path: resolve(output, "opened.png") });
   await page.evaluate(() => window.probe.retire());
   await assert.rejects(page.evaluate((f) => window.probe.share(f), formats[0]));
@@ -145,6 +241,10 @@ try {
     seed: { bytes: seed.length, sha256: sha(seed) },
     fixtureBundleSha256: sha(bundled.outputFiles[0].contents),
     ...result,
+    originalPixels,
+    editedPixels,
+    edited,
+    coldReopen: { version: 3, writes: 0, sha256: sha(Buffer.from(edited.accepted, "base64")) },
     requests,
     errors,
     consoleErrors,

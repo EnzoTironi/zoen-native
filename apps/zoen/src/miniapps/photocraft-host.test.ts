@@ -16,7 +16,9 @@ test('PNG signatures reach sharing only as explicit PNG; wrong formats release t
   const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0]);
   const zip = new Uint8Array([80, 75, 3, 4, 0, 0, 0, 0]);
   for (const [format, bytes, valid] of [
-    ['png', png, true], ['png', zip, false], ['pcraft', png, false],
+    ['png', png, true],
+    ['png', zip, false],
+    ['pcraft', png, false],
   ] as const) {
     const calls: string[] = [];
     let shared = 0;
@@ -24,19 +26,41 @@ test('PNG signatures reach sharing only as explicit PNG; wrong formats release t
     let written = 0;
     const head = { version: '2', sha256: 'a'.repeat(64) };
     const run = streamDeckcraftExport({
-      editor: 'photocraft', title: 'Image', format, head, check: () => {},
+      editor: 'photocraft',
+      title: 'Image',
+      format,
+      head,
+      check: () => {},
       call: async (name) => {
         calls.push(name);
-        if (name === 'prepare_document_export') return { structuredContent: {
-          transferId: 'photo-export', sourceHead: head, format,
-          bytes: bytes.length, byteLength: bytes.length, sha256: hash(bytes), chunkBytes: 196608,
-        } };
-        if (name === 'read_document_export_chunk') return { structuredContent: { index: 0, data: encode64(bytes) } };
-        assert.equal(name, 'release_document_export'); return {};
+        if (name === 'prepare_document_export')
+          return {
+            structuredContent: {
+              transferId: 'photo-export',
+              sourceHead: head,
+              format,
+              bytes: bytes.length,
+              byteLength: bytes.length,
+              sha256: hash(bytes),
+              chunkBytes: 196608,
+            },
+          };
+        if (name === 'read_document_export_chunk')
+          return { structuredContent: { index: 0, data: encode64(bytes) } };
+        assert.equal(name, 'release_document_export');
+        return {};
       },
       create: () => ({
-        write: async (chunk) => { written += chunk.length; }, finish: () => written,
-        share: async () => { shared++; }, dispose: () => { disposed++; },
+        write: async (chunk) => {
+          written += chunk.length;
+        },
+        finish: () => written,
+        share: async () => {
+          shared++;
+        },
+        dispose: () => {
+          disposed++;
+        },
       }),
     });
     if (valid) await run;
