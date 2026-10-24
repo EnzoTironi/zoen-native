@@ -11,6 +11,13 @@ struct Request {
     schema: u8,
     open: Open,
     command: Option<Command>,
+    read: Option<ReadCell>,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ReadCell {
+    sheet: String,
+    cell: String,
 }
 fn run() -> Result<Proposal, String> {
     let mut input = std::io::stdin().lock();
@@ -39,6 +46,9 @@ fn run() -> Result<Proposal, String> {
     let mut session = Session::new();
     let mut bridge = HostBridge::default();
     bridge.open(&mut session, request.open, &bytes)?;
+    if request.command.is_some() && request.read.is_some() {
+        return Err("A read query cannot accompany an edit".into());
+    }
     if let Some(command) = request.command {
         let proposal = bridge.execute(&mut session, command)?;
         if proposal.bytes.len() > MAX_DOCUMENT {
@@ -49,10 +59,32 @@ fn run() -> Result<Proposal, String> {
         let value = session
             .execute("document.inspect", json!({}))
             .map_err(|e| e.to_string())?;
+        let query = match request.read {
+            Some(query) => query,
+            None => {
+                let doc = session.doc().map_err(|e| e.to_string())?;
+                ReadCell {
+                    sheet: doc.wb.active().ok_or("Missing active sheet")?.name.clone(),
+                    cell: doc.selection.active.a1(),
+                }
+            }
+        };
+        if !gridcraft_zoen_host::profile::cell_reference(&query.cell)
+            || query.sheet.is_empty()
+            || query.sheet.len() > 200
+            || query.sheet.chars().any(char::is_control)
+        {
+            return Err("Invalid bounded cell query".into());
+        }
+        let cell = session
+            .execute("cell.get", json!({"sheet":query.sheet,"cell":query.cell}))
+            .map_err(|e| e.to_string())?;
         Ok(Proposal {
             metadata: {
                 let mut status = bridge.status(&session);
                 status["workbook"] = value;
+                status["query"] = json!({"sheet":query.sheet,"cell":query.cell});
+                status["cell"] = cell;
                 status
             },
             bytes: Vec::new(),
