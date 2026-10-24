@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { createServer } from "node:http";
 import { resolve, isAbsolute } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { sandboxHtml } from "../../../apps/zoen/src/miniapps/sandbox.ts";
 import { findBrowserExecutable } from "../../../tools/miniapp-build/browser-executable.ts";
 import { childHtml } from "./browser-child.mjs";
@@ -35,13 +35,10 @@ const runtime = {
   wasm: asset(wasm, "wasm", "application/wasm"),
 };
 function sheetCells(path) {
-  const code = `import sys,zipfile,json,xml.etree.ElementTree as E
-with zipfile.ZipFile(sys.argv[1]) as z:
- raw=z.read('xl/worksheets/sheet1.xml')
- if len(raw)>4*1024*1024: raise ValueError('fixture part limit')
- root=E.fromstring(raw); ns={'s':'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
- print(json.dumps({c.attrib['r']:{'value':c.findtext('s:v',default='',namespaces=ns),'formula':c.findtext('s:f',default='',namespaces=ns)}for c in root.findall('.//s:c',ns)}))`;
-  return JSON.parse(execFileSync('python3', ['-c', code, path], {encoding:'utf8',timeout:10000}));
+  const reader = fileURLToPath(new URL("./xlsx_export.py", import.meta.url));
+  return JSON.parse(execFileSync("python3", [reader, "cells", path], {
+    encoding: "utf8", timeout: 10000,
+  }));
 }
 const child = sandboxHtml(childHtml(seed.toString("base64"), sha(seed)), [], runtime);
 const requests = [], errors = [], consoleErrors = [], cleanupErrors = [];
