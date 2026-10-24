@@ -57,22 +57,7 @@ impl Engine {
             return Err(CoreError::Invalid { reason });
         }
         let text = input.text.trim();
-        if text.is_empty()
-            || text.len() > 16 * 1024
-            || text.contains('\0')
-            || input.expected_version == 0
-            || input.expected_sha256.len() != 64
-            || !input
-                .expected_sha256
-                .bytes()
-                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-            || input.mutation_id.is_empty()
-            || input.mutation_id.len() > 128
-            || !input
-                .mutation_id
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
-        {
+        if text.is_empty() || text.len() > 16 * 1024 || text.contains('\0') {
             return Err(invalid());
         }
         let binding = ArtifactRequest {
@@ -82,6 +67,9 @@ impl Engine {
             request_id: input.mutation_id,
             text_sha256: hex::encode(Sha256::digest(text.as_bytes())),
         };
+        if !binding.is_well_formed() {
+            return Err(invalid());
+        }
         let discussion = self.item_discussion(&input.space_id, &input.item_id)?;
         let root = discussion
             .root
@@ -105,6 +93,7 @@ impl Engine {
                     || marks.deleted
                     || marks.forwarded
                     || prior != text
+                    || !reference.thread
                     || reference.to != root.id
                     || reference.artifact.as_ref() != Some(&binding)
                 {

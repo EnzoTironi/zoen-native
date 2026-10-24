@@ -214,7 +214,10 @@ export class EditorAgentSession {
     try {
       await this.port.flush();
       this.check(ticket);
-      const valid = requestDecisionCommand(request, command.decision);
+      const decision = command.decision;
+      if (decision !== 'ApproveOnce' && decision !== 'Deny' && decision !== 'Cancel')
+        throw Error('editor_agent_review_changed');
+      const valid = requestDecisionCommand(request, decision);
       if (
         !valid ||
         valid.op !== 'decide_tool_request' ||

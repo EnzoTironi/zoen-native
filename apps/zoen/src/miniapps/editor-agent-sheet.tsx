@@ -4,7 +4,8 @@ import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { AppState, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RequestCard } from '../agents/request-card';
-import { IconButton, Field, Loading, NativeButton } from '../components/primitives';
+import { IconButton, Loading, NativeButton } from '../components/primitives';
+import { ComposerTextField } from '../components/composer-text-field';
 import { useClient } from '../core/provider';
 import { t } from '../i18n';
 import { useTheme } from '../theme';
@@ -101,7 +102,8 @@ export function EditorAgentAccess({
                   onPress={session.close}
                 />
               </View>
-              <Field
+              <ComposerTextField
+                context={`editor-agent:${itemId}`}
                 testID="editor-agent-prompt"
                 accessibilityLabel={t('miniapps.editRequestPlaceholder')}
                 placeholder={t('miniapps.editRequestPlaceholder')}
@@ -110,7 +112,14 @@ export function EditorAgentAccess({
                 multiline
                 maxLength={4000}
                 editable={!state.busy && !state.uncertain}
-                style={{ minHeight: 72 }}
+                style={{
+                  minHeight: 72,
+                  fontSize: 17,
+                  color: colors.text,
+                  backgroundColor: colors.surface,
+                  borderRadius: 12,
+                  padding: 14,
+                }}
               />
               <NativeButton
                 testID="editor-agent-send"
