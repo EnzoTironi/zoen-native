@@ -72,6 +72,7 @@ export function renderDurableAttachment(
         name: asset?.name ?? '',
         mime: asset?.mime ?? 'application/octet-stream',
         size: asset?.size ?? 0,
+        sha256: state?.value?.assets.find((asset) => asset.id === item.asset_id)?.sha256,
         mutationId: item.mutation_id,
         caption: item.caption,
         attempted: retry,

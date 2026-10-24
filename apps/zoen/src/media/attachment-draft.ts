@@ -21,6 +21,8 @@ export type AttachmentAsset = Readonly<{
 export type AttachmentReceipt = Readonly<{ itemId: string; messageId: string }>;
 export type AttachmentDraftItem = AttachmentAsset &
   Readonly<{
+    /** Display binding from the canonical media journal, never a send authority. */
+    sha256?: string;
     mutationId: string;
     caption: string;
     attempted: boolean;

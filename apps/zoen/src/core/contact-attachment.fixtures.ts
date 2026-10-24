@@ -7,49 +7,58 @@ import type { ContactPreview, LocalMediaFile, MediaDriver } from '../media/types
 import { hooks, nodes } from './attachment-route-ui.fixtures.ts';
 const require = createRequire(import.meta.url);
 const { transformSync } = require('@babel/core');
-const path = new URL('../media/contact-attachment.tsx', import.meta.url);
-const code = transformSync(readFileSync(path, 'utf8'), {
-  filename: path.pathname,
-  babelrc: false,
-  configFile: false,
-  presets: [['babel-preset-expo', { jsxRuntime: 'automatic' }]],
-  plugins: [['babel-plugin-react-compiler', { target: '19' }]],
-  caller: { name: 'metro', platform: 'ios', isDev: false, supportsStaticESM: false },
-}).code;
-const output = await build({
-  stdin: {
-    contents: code,
-    resolveDir: new URL('../media/', import.meta.url).pathname,
-    loader: 'js',
-  },
-  bundle: true,
-  write: false,
-  format: 'cjs',
-  platform: 'node',
-  plugins: [
-    {
-      name: 'contact-native-ports',
-      setup(builder) {
-        builder.onResolve({ filter: /./ }, ({ path }) =>
-          [
-            './use-contact-preview',
-            './contact-preview-session',
-            './observed-file.ts',
-            '../documents/document-authority',
-            '../home/access',
-            '../home/access.ts',
-            './document-authority.ts',
-            './access.ts',
-          ].includes(path) ||
-          path.endsWith('owner-state.ts') ||
-          path.startsWith('@babel/runtime/helpers/')
-            ? undefined
-            : { path, external: true },
-        );
-      },
+async function compiledPreview(kind: 'contact' | 'location') {
+  const path = new URL(`../media/${kind}-attachment.tsx`, import.meta.url);
+  const code = transformSync(readFileSync(path, 'utf8'), {
+    filename: path.pathname,
+    babelrc: false,
+    configFile: false,
+    presets: [['babel-preset-expo', { jsxRuntime: 'automatic' }]],
+    plugins: [['babel-plugin-react-compiler', { target: '19' }]],
+    caller: { name: 'metro', platform: 'ios', isDev: false, supportsStaticESM: false },
+  }).code;
+  const output = await build({
+    stdin: {
+      contents: code,
+      resolveDir: new URL('../media/', import.meta.url).pathname,
+      loader: 'js',
     },
-  ],
-});
+    bundle: true,
+    write: false,
+    format: 'cjs',
+    platform: 'node',
+    plugins: [
+      {
+        name: 'contact-native-ports',
+        setup(builder) {
+          builder.onResolve({ filter: /./ }, ({ path }) =>
+            [
+              './use-contact-preview',
+              './use-file-preview',
+              './contact-preview-session',
+              './location-preview-session',
+              './native-location.ts',
+              './observed-file.ts',
+              '../documents/document-authority',
+              '../home/access',
+              '../home/access.ts',
+              './document-authority.ts',
+              './access.ts',
+            ].includes(path) ||
+            path.endsWith('owner-state.ts') ||
+            path.startsWith('@babel/runtime/helpers/')
+              ? undefined
+              : { path, external: true },
+          );
+        },
+      },
+    ],
+  });
+
+  return output;
+}
+const contactOutput = await compiledPreview('contact');
+const locationOutput = await compiledPreview('location');
 export const tick = async () => {
   for (let n = 0; n < 40; n++) await Promise.resolve();
 };
@@ -80,7 +89,7 @@ const file: LocalMediaFile = {
     has_thumbnail: false,
   },
 };
-export function fixture() {
+export function fixture(kind: 'contact' | 'location' = 'contact') {
   let h = hooks(),
     active = h;
   const wrapper = hooks();
@@ -116,6 +125,17 @@ export function fixture() {
     released: string[] = [],
     copies: string[] = [],
     shares: unknown[] = [];
+  const location = { longitude: -43.95, latitude: -19.92, label: 'Praça Real' };
+  let locationGate: Promise<typeof location> | null = null;
+  const actualFile =
+    kind === 'contact'
+      ? file
+      : {
+          ...file,
+          itemId: 'location',
+          uri: 'file:///synthetic/authorized.geojson',
+          info: { ...file.info, mime: 'application/geo+json', name: 'location.geojson' },
+        };
   const media: MediaDriver = {
     sendFile: async () => {
       throw Error('preview cannot send');
@@ -123,10 +143,15 @@ export function fixture() {
     sendVoice: async () => {
       throw Error('preview cannot record');
     },
-    fileInfo: async () => file.info,
+    fileInfo: async () => actualFile.info,
     materializeFile: async (itemId, version) => {
       materialized.push({ itemId, version });
-      return structuredClone(file);
+      return structuredClone(actualFile);
+    },
+    readLocation: async (value) => {
+      reads.push(value);
+      if (nativeRefused) throw Error('native-location-refused');
+      return locationGate ?? structuredClone(location);
     },
     readContact: async (value) => {
       reads.push(value);
@@ -172,11 +197,12 @@ export function fixture() {
   };
   const module = { exports: {} as any };
   const jsx = (type: unknown, props: unknown, key?: string) => ({ type, props, key });
-  runInNewContext(output.outputFiles[0]!.text, {
+  runInNewContext((kind === 'contact' ? contactOutput : locationOutput).outputFiles[0]!.text, {
     module,
     exports: module.exports,
     Object,
     Promise,
+    TextEncoder,
     require: (name: string) => {
       if (name.startsWith('@babel/runtime/helpers/')) return require(name);
       if (name === 'react') return react;
@@ -204,6 +230,7 @@ export function fixture() {
         return { NativeButton: 'NativeButton', IconButton: 'IconButton', Icon: 'Icon' };
       if (name === '../components/message-interaction')
         return { MessagePressable: 'MessagePressable' };
+      if (name === './location-map') return { LocationMap: 'LocationMap' };
       if (name === './media-sheet') return { MediaSheet: 'MediaSheet' };
       if (name === '../theme') return { useTheme: () => ({ colors: {} }) };
       if (name.startsWith('../i18n'))
@@ -230,9 +257,9 @@ export function fixture() {
   function once() {
     active = wrapper;
     wrapper.begin();
-    const child = module.exports.ContactAttachment({
+    const child = module.exports[kind === 'contact' ? 'ContactAttachment' : 'LocationAttachment']({
       media,
-      source: { itemId: 'contact', version: 2, expectedHash: file.info.sha256 },
+      source: { itemId: actualFile.itemId, version: 2, expectedHash: actualFile.info.sha256 },
       spaceId,
       messageId,
       readiness: '80 B',
@@ -282,6 +309,9 @@ export function fixture() {
       nodes(tree)
         .filter((node) => node.type === 'Text')
         .map((node) => node.props.children),
+    locationParse: (gate: Promise<typeof location>) => {
+      locationGate = gate;
+    },
     parse: (gate: Promise<ContactPreview>) => {
       parseGate = gate;
     },
