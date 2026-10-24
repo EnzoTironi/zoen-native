@@ -242,9 +242,9 @@ pub(super) fn file_message_sync_delivers_the_original_attachment_and_encrypted_c
     use protocol::{Envelope, Sequenced};
     let sender = media_peer("file_author");
     let receiver = media_peer("file_reader");
-    let space = media_space(&sender, Some(&receiver), "File receipt");
+    let space = media_space(&sender, Some(&receiver), "File receipt")?;
     let root = sender.send_message(space.clone(), "Root".into()).unwrap();
-    confirm_media_outbox(&sender, &space);
+    confirm_media_outbox(&sender, &space)?;
     let mut relay = sender.lock().logs[&space].clone();
     let sent = send(
         &sender,

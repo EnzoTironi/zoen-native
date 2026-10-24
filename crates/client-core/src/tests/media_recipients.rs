@@ -4,12 +4,13 @@ use crate::sync::Ingest;
 use protocol::{Envelope, Sequenced};
 
 #[test]
-fn media_replay_requires_current_recipient_and_removal_retires_background_download() {
+fn media_replay_requires_current_recipient_and_removal_retires_background_download(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let author = media_peer("media_author");
     let reader = media_peer("media_reader");
     let stranger = media_peer("media_stranger");
     let anonymous = Client::open(":memory:".into(), "en".into()).unwrap();
-    let space = media_space(&author, Some(&reader), "Authorized media");
+    let space = media_space(&author, Some(&reader), "Authorized media")?;
     let file = author
         .file_add(
             space.clone(),
@@ -20,7 +21,7 @@ fn media_replay_requires_current_recipient_and_removal_retires_background_downlo
             None,
         )
         .unwrap();
-    confirm_media_outbox(&author, &space);
+    confirm_media_outbox(&author, &space)?;
     for event in author.lock().logs[&space].events() {
         for recipient in [&reader, &stranger, &anonymous] {
             assert!(matches!(
@@ -42,7 +43,7 @@ fn media_replay_requires_current_recipient_and_removal_retires_background_downlo
     author
         .remove_member(space.clone(), reader.account().unwrap().identity_id)
         .unwrap();
-    confirm_media_outbox(&author, &space);
+    confirm_media_outbox(&author, &space)?;
     for event in &author.lock().logs[&space].events()[seen..] {
         assert!(matches!(
             reader.lock().ingest(Sequenced {
@@ -56,4 +57,5 @@ fn media_replay_requires_current_recipient_and_removal_retires_background_downlo
     }
     assert!(reader.lock().wanted_media().is_empty());
     assert_eq!(reader.file_bytes(file.id, None).unwrap(), None);
+    Ok(())
 }

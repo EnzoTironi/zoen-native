@@ -145,9 +145,9 @@ pub(super) fn voice_reply_syncs_its_metadata_and_encrypted_bytes_and_survives_re
 
     let sender = media_peer("voice_author");
     let receiver = media_peer("voice_reader");
-    let space = media_space(&sender, Some(&receiver), "Voice receipt");
+    let space = media_space(&sender, Some(&receiver), "Voice receipt")?;
     let root = sender.send_message(space.clone(), "Root".into()).unwrap();
-    confirm_media_outbox(&sender, &space);
+    confirm_media_outbox(&sender, &space)?;
     let mut relay = sender.lock().logs[&space].clone();
     let sent = note(&sender, &space, Some(root.id.clone())).unwrap();
     let voice = sent.voice.as_ref().unwrap();

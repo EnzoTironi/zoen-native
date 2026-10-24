@@ -158,11 +158,11 @@ pub(super) fn forwarded_voice_survives_cold_reopen_and_a_destination_only_peer_d
     let receiver = media_peer("cold_voice_reader");
     let (source_item, destination, forwarded, mut relay, before) = {
         let sender = media_account(&path, "cold_voice_author", vault.clone());
-        let source = media_space(&sender, None, "Private voice source");
-        let destination = media_space(&sender, Some(&receiver), "Cold voice destination");
+        let source = media_space(&sender, None, "Private voice source")?;
+        let destination = media_space(&sender, Some(&receiver), "Cold voice destination")?;
         let original = wav_note(&sender, &source, &bytes, None, false);
         let source_item = original.voice.unwrap().item_id;
-        confirm_media_outbox(&sender, &source);
+        confirm_media_outbox(&sender, &source)?;
         let relay = sender.lock().logs[&destination].clone();
         let before = sender.timeline(destination.clone()).unwrap().len();
         let forwarded = sender
