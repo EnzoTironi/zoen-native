@@ -57,6 +57,9 @@ impl Engine {
             self.net
                 .synced
                 .iter()
+                // A profile lookup is not a reason to reload every ready MLS
+                // group. Retry only recovery that actually lacked this key.
+                .filter(|space| self.net.mls.recovery_key_waiters.contains(*space))
                 .filter(|space| {
                     self.mls_roster(space)
                         .is_some_and(|roster| asked.iter().any(|id| roster.contains_key(id)))

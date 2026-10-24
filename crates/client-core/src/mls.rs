@@ -157,6 +157,9 @@ pub struct MlsNet {
     rejoin: HashSet<SpaceId>,
     pub(crate) recovery_retry_at: HashMap<SpaceId, Instant>,
     recovery_dirty: Mutex<HashSet<SpaceId>>,
+    /// Scheduling hints for contexts that actually lacked a recipient key.
+    /// Arrivals wake only these spaces; every attempt revalidates durable state.
+    pub(crate) recovery_key_waiters: HashSet<SpaceId>,
     /// Transient download hints from recovery classification, never group authority.
     pub(crate) recovery_downloads: HashMap<SpaceId, crate::mls_recovery::ContextRef>,
 }
