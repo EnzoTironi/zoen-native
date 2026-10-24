@@ -1,6 +1,8 @@
 //! Build-provided runtime identity gates the existing catalog/resource/install path.
 //! No endpoint, account, storage location or network authority is supplied by a document.
-use super::{Document, APP, ENGINE_REVISION, RESOURCE};
+#[cfg(test)]
+use super::ENGINE_REVISION;
+use super::{Document, APP, RESOURCE};
 use crate::{tool, AppSpec};
 use localization::{t, ts};
 use serde_json::{json, Value};
