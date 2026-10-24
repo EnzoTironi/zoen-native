@@ -15,7 +15,11 @@ pub fn command(tool: &str, value: &Value) -> Result<ParsedCommand, String> {
     if !recognizes(tool) {
         return Err("Unsupported document operation".into());
     }
-    if crate::deckcraft::agent_tools::canonical_json(value)?.len() > 32 * 1024 {
+    if crate::deckcraft::agent_tools::canonical_json(value)
+        .map_err(|_| "Invalid document arguments")?
+        .len()
+        > 32 * 1024
+    {
         return Err("Document arguments exceed the signed review limit".into());
     }
     let args = value
