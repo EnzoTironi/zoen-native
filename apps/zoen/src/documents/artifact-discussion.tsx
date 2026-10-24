@@ -11,8 +11,8 @@ import { discussionScope, discussionTarget } from './discussion';
 
 /** Pages and other artifacts open the same encrypted conversation thread. */
 export function ArtifactDiscussion({ itemId, spaceId }: { itemId: string; spaceId: string }) {
-  const { store } = useClient();
-  const state = store.getSnapshot();
+  const state = useClient();
+  const { store } = state;
   const scope = discussionScope(state, store.sessionEpoch);
   if (!scope || !homeSpacesFor(state).has(spaceId)) return null;
   return (

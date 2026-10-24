@@ -80,6 +80,7 @@ export function AttachmentRoute({
     [error, setError] = useState<string | null>(null),
     [leaving, setLeaving] = useState(false);
   const [source, setSource] = useState(false);
+  const [pickerActivation, setPickerActivation] = useState<number | null>(null);
   const editorGeneration = useMemo(() => ({ source }), [source]);
   const liveEditor = useRef<object | null>(null);
   useLayoutEffect(() => {
@@ -136,16 +137,19 @@ export function AttachmentRoute({
     useCallback(() => {
       editLease.current++;
       focused.current = true;
+      setPickerActivation(foreground.current ? editLease.current : null);
       return () => {
         editLease.current++;
         focused.current = false;
+        setPickerActivation(null);
       };
     }, []),
   );
   useEffect(() => {
     const listener = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') editLease.current++;
+      editLease.current++;
       foreground.current = state === 'active';
+      setPickerActivation(focused.current && foreground.current ? editLease.current : null);
       if (state !== 'active' && channel && allowed())
         void channel.controller.flush(channel.scope).catch(() => {});
     });
@@ -383,13 +387,14 @@ export function AttachmentRoute({
               <Text style={{ color: colors.secondary }}>{t('attachmentTabs.saved')}</Text>
             </>
           ) : null}
-          {kind === 'location' && mediaDriver ? (
+          {kind === 'location' && mediaDriver && pickerActivation !== null ? (
             <LocationPicker
-              key={JSON.stringify(target)}
+              key={JSON.stringify([target, pickerActivation])}
               media={mediaDriver}
               channel={media}
               current={() =>
                 current() &&
+                editLease.current === pickerActivation &&
                 store.driver.media === mediaDriver &&
                 Boolean(media && store.mediaDrafts.isCurrent(media))
               }

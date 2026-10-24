@@ -81,6 +81,42 @@ private final class PageInputTestVault: SecretVault, @unchecked Sendable {
     _ = try secondLease.discard()
     check(try core.pageInputLoad(scope: scope).binding == nil, "Explicit Discard releases the real empty binding")
     check(!secondLease.status().unretained, "Only durable discard ACK may release rejected bytes")
-    print("PASS Page input native lease: exact retention, private Apply/replay, invalidate, malformed IME, Discard")
+    // Whole-document input is an explicit target. Its exact base text belongs
+    // to Core's binding, while live capture stays in the same native journal.
+    let beforeWhole = try core.page(itemId: item.id)
+    let wholeSeed = try core.pageMarkdown(itemId: item.id)
+    let wholeLoaded = try core.pageInputLoad(scope: scope)
+    let whole = try core.pageInputOpen(scope: scope, expectedRevision: wholeLoaded.revision,
+      writerId: UUID().uuidString, target: .wholeDocument, mode: .markdown,
+      observedEditContext: beforeWhole.editContext)
+    check(whole.binding?.target == .wholeDocument && whole.binding?.baseDocumentMarkdown == wholeSeed,
+      "Native whole-document seed must be the exact Core snapshot at the bound context")
+    let wholeLease = try ZoenPageInputLease(id: UUID().uuidString, engine: core, generation: 7,
+      scope: scope, opened: whole, changed: { _ in })
+    check(try wholeLease.initialSnapshot() == nil, "A seed must not fabricate a retained capture")
+    let replacement = "# Whole replacement\n\nPrivate🪴"
+    let wholeCapture = try payload(sequence: 1, text: replacement)
+    _ = try wholeLease.retainDraftSnapshot(wholeCapture, sequence: 1)
+    let checkpointed = try core.pageInputLoad(scope: scope)
+    check(checkpointed.capture?.payload == wholeCapture && checkpointed.binding?.baseDocumentMarkdown == nil,
+      "Checkpoint retains exact live bytes; canonical seed is returned only by Open")
+    check(try core.pageMarkdown(itemId: item.id) == wholeSeed, "Typing must not Apply or Share")
+    let reboundLease = try ZoenPageInputLease(id: UUID().uuidString, engine: core, generation: 7,
+      scope: scope, opened: checkpointed, changed: { _ in })
+    check(try reboundLease.initialSnapshot() == wholeCapture,
+      "Rebinding loads the exact retained capture before the original document seed")
+    reboundLease.invalidate()
+    try wholeLease.didSeal(); try wholeLease.prepare(.apply)
+    let wholeApplied = try wholeLease.apply()
+    let wholeReplay = try wholeLease.apply()
+    check(wholeApplied.edit.mutationId == wholeReplay.edit.mutationId &&
+      wholeApplied.edit.appliedContentHash == wholeReplay.edit.appliedContentHash,
+      "A lost whole-document reply must replay the exact original operation")
+    let replaced = try core.page(itemId: item.id)
+    check(replaced.blocks.map(\.text) == ["Whole replacement", "Private🪴"],
+      "Whole-document Apply replaces existing blocks rather than appending a second document")
+    check(replaced.unsaved && !replaced.inputPending && core.connection().pending == before,
+      "Whole-document Apply remains a private draft without a publication event")
+    print("PASS Page input native lease: exact retention, private Apply/replay, invalidate, malformed IME, Discard, whole document")
   }
 }

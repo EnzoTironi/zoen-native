@@ -94,11 +94,17 @@ fn actual_engine_manual_agent_calculation_undo_cas_and_exact_cold_xlsx_export() 
         mutation_id: "human-1".into(),
     };
     let p = b.snapshot(&mut s, manual).unwrap();
+    assert!(b.freeze(&mut s, true).is_ok());
     assert!(
         s.execute("cell.set", json!({"cell":"A1","input":"8"}))
             .is_err()
     );
     let head = accept(&mut s, &mut b, &scope, "human-1", "2", &p);
+    assert!(
+        s.managed_frozen,
+        "manual ACK cannot remove an explicit host pause"
+    );
+    assert!(b.freeze(&mut s, false).is_ok());
     let c = command(&scope, &head, "agent-1", "A1", "9");
     let p = b.execute(&mut s, c.clone()).unwrap();
     assert_eq!(
@@ -150,6 +156,11 @@ fn pending_proposal_requires_exact_receipt_and_never_exports_unaccepted_draft() 
     let p = b
         .execute(&mut s, command(&scope, &head, "write-1", "A1", "5"))
         .unwrap();
+    assert!(b.freeze(&mut s, false).is_ok());
+    assert!(
+        s.managed_frozen,
+        "explicit resume cannot release a pending agent proposal"
+    );
     assert_eq!(
         b.export(
             &s,
@@ -239,7 +250,7 @@ fn command_scope_capacity_external_io_and_invalid_formula_never_mutate_workbook(
 }
 
 #[test]
-fn paused_flush_accept_keeps_keyboard_frozen_and_resume_cannot_release_pending() {
+fn paused_manual_flush_ack_keeps_keyboard_frozen_until_explicit_resume() {
     let (mut s, mut b, scope, head, _) = open();
     s.execute("cell.set", json!({"cell":"A1","input":"7"}))
         .unwrap();
@@ -254,8 +265,7 @@ fn paused_flush_accept_keeps_keyboard_frozen_and_resume_cannot_release_pending()
             },
         )
         .unwrap();
-    assert_eq!(b.freeze(&mut s, false).unwrap()["frozen"], true);
-    b.freeze(&mut s, true).unwrap();
+    assert_eq!(b.status(&s)["frozen"], true);
     accept(&mut s, &mut b, &scope, "paused", "2", &p);
     assert_eq!(b.status(&s)["frozen"], true);
     assert!(

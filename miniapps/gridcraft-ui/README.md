@@ -16,8 +16,11 @@ asset delivery and iPhone acceptance remain separate requirements.
 
 `host-bridge/` runs the actual pinned GridCraft `Session`, `cell.set`, calculation,
 undo and native XLSX writer. It uses the existing Deck scope/head/proposal/accept
-contract. A pending proposal freezes input; only its exact next-version/hash
-receipt unfreezes it. Export returns the selected accepted native XLSX bytes,
+contract. A manual checkpoint keeps its original proposal immutable while newer
+manual input/Undo stays in the same Session. Its exact next-version/hash receipt
+advances only the accepted baseline; newer work requires a later checkpoint.
+Pending agent proposals, history and explicit host pause still freeze input.
+Export returns the selected accepted native XLSX bytes,
 including after cold open, rather than a newer unsaved draft. No general command,
 filesystem, URI or automation API is exposed to agents. The first reviewed
 mutation is one bounded `cell.set`; generic upstream commands remain unavailable.
@@ -55,9 +58,11 @@ Qualified on the pinned native engine: 7 profile cases, 14 Core binary cases
 (including 10 existing Deck cases), 10 native engine/profile cases, 2 actual
 egui Text+Enter input cases, all-target Clippy for the affected default/UI and
 Core client-types graphs, and a genuinely compiled 126-file type exporter.
-The UI test first failed with a hidden pre-ACK draft (9 became 99 after ACK);
-`begin_edit` now refuses while the proposal is frozen, and the same test passes
-with an additional no-editor assertion. These are native synthetic inputs, not
+Earlier UI tests found a hidden pre-ACK draft (9 became 99 after ACK), and
+`begin_edit` refuses while explicitly frozen. Issue #546 separately found that
+ordinary manual autosave must not freeze at all: its real keyboard regression
+first lost A2=9 and now passes with an immutable original proposal, retained
+newer draft, exact ACK/Undo and later cold export. These are native synthetic inputs, not
 WebView/iPhone keyboard or certified-agent admission evidence.
 
 The native tests exercise real engine calculation, human-scoped command and
@@ -76,8 +81,9 @@ managed profile, not a general Excel importer or a claim of upstream parity.
 
 The upstream `?host=parent` bridge is replaced with a managed eframe/Glow shell
 and the same official MCP App bootstrap/session/export code used by Deck. The
-actual canvas is inert until Core opens a canonical snapshot; a pause, unresolved
-proposal or retired owner blocks mutations. Share emits a host export intent;
+actual canvas is inert until Core opens a canonical snapshot; an explicit pause,
+unresolved agent proposal or retired owner blocks mutations. A pending manual
+checkpoint retains live editing while its own bytes stay immutable. Share emits a host export intent;
 it does not falsely mark an unacknowledged draft saved. No App storage is the
 sole accepted copy. The host owns document versions and selected-version export.
 
@@ -156,3 +162,35 @@ satisfies the resource pins; it remains immutable at its old URL. These proofs
 cover the source and Chromium touch contract, not the iPhone software keyboard.
 The endpoint-neutral default still does not enable Grid; actual native resource
 delivery, iPhone/agent/CAS interaction and complete issue445 acceptance stay open.
+
+The short embedded editing viewport has a separate, transient render policy. It
+compares the actual safe egui canvas against the requested ribbon/formula/status/
+sheet chrome plus a worksheet interaction row. While a real cell editor is active
+and that content cannot fit, the current TextEdit is rendered in the formula row
+with its SAME widget ID, buffer, cursor and IME owner. Cancel/Enter keep their
+existing paths. The Commands popup uses the existing catalog/run policy and the
+explicit managed Share intent in a viewport-constrained virtualized list. It
+does not auto-focus another search input, alter saved ribbon/formula settings,
+create a different editor or infer a keyboard from orientation. The ordinary
+layout returns when the real available space fits or the edit finishes.
+
+`patches/0005-compact-retained-editor.patch` applies after0004 only in the browser/mobile
+preparation; ordinary headless preparation keeps its original renderer. The real egui
+regressions are in `host-bridge/src/compact_ui_tests.rs`. Real pinned egui tests and the genuine release WASM passed, with a byte-exact
+fresh normal preparation recorded in [issue445](https://github.com/EnzoTironi/zoen-native/issues/445).
+This is not iPhone landscape editing acceptance, nor proof of why the retained499
+native host-height samples differ.
+
+### Manual autosave receipt regression (#546)
+
+The current producer separates manual checkpoints from agent proposals without a
+new persisted state. The real compact SheetApp suite passes 34 engine/input tests;
+WASM all-target Clippy and Release compilation are independently recorded. The
+real opaque browser ABI checks original A1=7 versus later A2=9, an incorrect and a
+late ACK, explicit pause, formula export and cold reopen. The official generated
+MCP bootstrap holds the first ordinary save while typing A2=9, then saves the
+later draft at head 3 and reloads those exact XLSX bytes with zero new writes.
+Both consumers use the existing bounded XLSX reader. Their receipts/CAS are
+synthetic; neither proves physical storage or native keyboard behavior. Previously
+sealed packages stay immutable and retain the defect until a new qualified
+package is selected by a native build. The default manifest remains unavailable.

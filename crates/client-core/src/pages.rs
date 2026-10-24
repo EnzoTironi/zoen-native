@@ -253,24 +253,36 @@ pub(crate) fn parse_editor_markdown(markdown: &str) -> R<Vec<PageBlockDto>> {
 }
 
 pub(crate) fn editor_block_markdown(block: &PageBlockDto) -> R<String> {
+    editor_blocks_markdown(std::slice::from_ref(block))
+}
+
+pub(crate) fn editor_blocks_markdown(blocks: &[PageBlockDto]) -> R<String> {
     let page = Page::new();
     page.apply_editor(
-        std::slice::from_ref(&block.id),
-        &[documents::BlockEdit {
-            id: block.id.clone(),
-            kind: kind_from_dto(block, None)?,
-            text: block.text.clone(),
-            spans: block
-                .spans
-                .iter()
-                .map(|span| documents::Span {
-                    start: span.start,
-                    end: span.end,
-                    key: span.key.clone(),
-                    value: span.value.clone(),
+        &blocks
+            .iter()
+            .map(|block| block.id.clone())
+            .collect::<Vec<_>>(),
+        &blocks
+            .iter()
+            .map(|block| {
+                Ok(documents::BlockEdit {
+                    id: block.id.clone(),
+                    kind: kind_from_dto(block, None)?,
+                    text: block.text.clone(),
+                    spans: block
+                        .spans
+                        .iter()
+                        .map(|span| documents::Span {
+                            start: span.start,
+                            end: span.end,
+                            key: span.key.clone(),
+                            value: span.value.clone(),
+                        })
+                        .collect(),
                 })
-                .collect(),
-        }],
+            })
+            .collect::<R<Vec<_>>>()?,
     )
     .map_err(doc_err)?;
     Ok(page.canonical_markdown())

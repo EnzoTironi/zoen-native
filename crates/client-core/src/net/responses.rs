@@ -97,8 +97,7 @@ pub(super) async fn dispatch_reply(
         }
         Some(Waiting::AgreementKeys(asked)) => {
             let ok = if let Ok(Reply::AgreementKeys(list)) = result {
-                engine!(|engine| engine.agreement_keys_arrived(list, &asked));
-                true
+                engine!(|engine| engine.agreement_keys_arrived(list, &asked))
             } else {
                 false
             };

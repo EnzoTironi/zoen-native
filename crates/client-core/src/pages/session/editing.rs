@@ -239,7 +239,15 @@ impl PageSession {
             })
             .collect::<R<Vec<_>>>()?;
         let context_hash = drafts::context_hash(context);
-        let (observed, base) = if let Some(prior) = journal.continuation(&context_hash) {
+        // One native capture is consumed once, then its exact receipt replays.
+        // It is a distinct editor intent, never a replacement of another
+        // editor's earlier draft merely because they observed the same context.
+        let continuation = if input_fingerprint.is_none() {
+            journal.continuation(&context_hash)
+        } else {
+            None
+        };
+        let (observed, base) = if let Some(prior) = continuation {
             desired
                 .apply_editor(order, &edits)
                 .map_err(super::super::doc_err)?;
@@ -268,8 +276,12 @@ impl PageSession {
             (desired, base)
         };
         let live = doc.at(&doc.frontiers()).map_err(super::super::doc_err)?;
-        live.import(&observed.updates_since(&base))
-            .map_err(super::super::doc_err)?;
+        if observed.version() != base {
+            // A semantic no-op has no Loro update. It still receives the exact
+            // durable mutation receipt below; nonempty changes must import fully.
+            live.import(&observed.updates_since(&base))
+                .map_err(super::super::doc_err)?;
+        }
         let hash = observed.content_hash();
         let fronts = observed.frontiers().encode();
         let mut journal = journal.clone();

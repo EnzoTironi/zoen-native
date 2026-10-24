@@ -1,14 +1,15 @@
 //! Explicit build configuration gates the real, pinned GridCraft editor package.
 use super::{
-    resource::{self, RuntimePins},
     Format,
+    resource::{self, RuntimePins},
 };
 use crate::{
-    gridcraft::{Document, APP, RESOURCE},
-    tool, AppSpec,
+    AppSpec,
+    gridcraft::{APP, Document, RESOURCE},
+    tool,
 };
 use localization::{t, ts};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::OnceLock;
 use types::ActionClass;
 pub const EMPTY: &[u8] = include_bytes!("../../resources/gridcraft-empty.xlsx");
@@ -18,12 +19,12 @@ pub const MANIFEST: &str = match option_env!("ZOEN_GRIDCRAFT_RESOURCE_MANIFEST_J
     None => include_str!("../../resources/gridcraft.manifest.json"),
 };
 const PINS: RuntimePins = RuntimePins {
-    module_file: "gridcraft-web-83b80492b1534aca.js",
+    module_file: "gridcraft-web-c79d78db09183721.js",
     module_bytes: 78_601,
-    module_sha: "83b80492b1534acafac7961a881dfa71cdb3a1c9b3cfec21b11562878720e3a5",
-    wasm_file: "gridcraft-web-80130caca86e70d2_bg.wasm",
-    wasm_bytes: 20_251_661,
-    wasm_sha: "80130caca86e70d29d604360985e05321870e1b69e0ff0d9c5a8d870ff213cd9",
+    module_sha: "c79d78db09183721f5c6c5554f0e7a3b92457b5a6455c1162125bab82ba0c83d",
+    wasm_file: "gridcraft-web-916c894df62ffbe0_bg.wasm",
+    wasm_bytes: 17_121_603,
+    wasm_sha: "916c894df62ffbe0d3313f95e452a6d6fb9a371b0c0c15aef9929bbaa83f43cc",
 };
 pub fn valid_resource(html: &str, manifest: &str) -> bool {
     resource::valid_resource(Format::Gridcraft, &PINS, html, manifest)
@@ -170,6 +171,36 @@ mod tests {
             "url": format!("{base}gridcraft-web-3656ee00500b30ac_bg.wasm"),
             "bytes": 20_250_956,
             "sha256": "3656ee00500b30ac821bcad78553e0ef3234836d468930d4d8396cc2f47a1eea",
+            "mime": "application/wasm"
+        });
+        assert!(!valid_resource(HTML, &old.to_string()));
+    }
+    #[test]
+    fn retired_precompact_editor_cannot_enable_grid() {
+        let mut old = fixture();
+        let base = format!(
+            "https://runtime.invalid/gridcraft/{}/",
+            Format::Gridcraft.revision()
+        );
+        old["runtimePackage"]["wasm"] = json!({
+            "url": format!("{base}gridcraft-web-80130caca86e70d2_bg.wasm"),
+            "bytes": 20_251_661,
+            "sha256": "80130caca86e70d29d604360985e05321870e1b69e0ff0d9c5a8d870ff213cd9",
+            "mime": "application/wasm"
+        });
+        assert!(!valid_resource(HTML, &old.to_string()));
+    }
+    #[test]
+    fn retired_input_freezing_autosave_package_cannot_enable_grid() {
+        let mut old = fixture();
+        let base = format!(
+            "https://runtime.invalid/gridcraft/{}/",
+            Format::Gridcraft.revision()
+        );
+        old["runtimePackage"]["wasm"] = json!({
+            "url": format!("{base}gridcraft-web-1364ea2f1b8e3fe5_bg.wasm"),
+            "bytes": 20_353_598,
+            "sha256": "1364ea2f1b8e3fe5596fe4793253099b7c06b4cfa98b8015b6c93e673a1e32fc",
             "mime": "application/wasm"
         });
         assert!(!valid_resource(HTML, &old.to_string()));

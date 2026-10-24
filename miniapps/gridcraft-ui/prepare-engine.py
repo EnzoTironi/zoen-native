@@ -80,6 +80,20 @@ def main():
     subprocess.run(["git", "-C", str(directory), "apply", "--check", str(undo)], check=True)
     subprocess.run(["git", "-C", str(directory), "apply", str(undo)], check=True)
     patches.append(undo)
+    # Compact editing depends on the existing browser/mobile TextEdit owner.
+    # Headless preparation must retain its original unadapted UI sources.
+    if args.browser:
+        compact = HERE / "patches/0005-compact-retained-editor.patch"
+        subprocess.run(["git", "-C", str(directory), "apply", "--check", str(compact)], check=True)
+        subprocess.run(["git", "-C", str(directory), "apply", str(compact)], check=True)
+        patches.append(compact)
+        # Register after mobile's existing touch leaf so fresh preparation exactly
+        # preserves the independently qualified test-source order in either profile.
+        tests = destination / "src/ui_tests.rs"
+        source = tests.read_text()
+        if "mod compact;" in source:
+            raise SystemExit("Refusing duplicate compact-layout test registration")
+        tests.write_text(source + '\n#[path = "compact_ui_tests.rs"]\nmod compact;\n')
     # The source checker watches this prepared tree + these exact hashes. Cargo
     # must generate/update its lockfile genuinely, never using handwritten entries.
     for patch in patches:

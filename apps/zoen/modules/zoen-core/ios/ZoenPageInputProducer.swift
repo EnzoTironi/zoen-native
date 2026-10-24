@@ -106,43 +106,6 @@ import ReactNativeEnrichedMarkdown
   }
 }
 
-struct ZoenPageInputOpenRequest: Decodable, Equatable, Sendable {
-  let session: String
-  let id: String
-  let itemId: String
-  let blockId: String?
-  let resume: Bool
-  let revision: String
-  let editContext: String
-  let mode: String
-
-  static func decode(_ json: String) throws -> Self {
-    guard json.utf8.count <= 256 * 1024 else { throw ZoenPageInputLease.Failure.invalidCapture }
-    let data = Data(json.utf8)
-    guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-          Set(object.keys).isSubset(of: ["session", "id", "itemId", "blockId", "resume", "revision", "editContext", "mode"]) else {
-      throw ZoenPageInputLease.Failure.invalidCapture
-    }
-    let value = try JSONDecoder().decode(Self.self, from: data)
-    guard !value.itemId.isEmpty, value.itemId.utf8.count <= 256,
-          value.blockId.map({ !$0.isEmpty && $0.utf8.count <= 256 }) ?? true,
-          ["rich", "markdown", "lossless-text"].contains(value.mode),
-          value.editContext.utf8.count <= 128 * 1024,
-          let revision = UInt64(value.revision), String(revision) == value.revision else {
-      throw ZoenPageInputLease.Failure.unsupported
-    }
-    return value
-  }
-
-  static func seedBlock(_ json: String) throws -> [String: Any]? {
-    let value = try JSONSerialization.jsonObject(with: Data(json.utf8), options: [.fragmentsAllowed])
-    if value is NSNull { return nil }
-    guard let tagged = value as? [String: Any], tagged.count == 1,
-          let block = tagged["Page"] as? [String: Any] else { throw ZoenPageInputLease.Failure.unsupported }
-    return block
-  }
-}
-
 /// Module destruction fences synchronous sinks immediately, even before the actor can run.
 final class ZoenPageInputLifetime: @unchecked Sendable {
   private let lock = NSLock()

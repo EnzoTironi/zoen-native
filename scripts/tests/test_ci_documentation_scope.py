@@ -6,11 +6,13 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tempfile
 import unittest
 
 
 SOURCE = Path(__file__).resolve().parents[1] / "ci-documentation-scope.py"
+sys.path.insert(0, str(SOURCE.parent))
 SPEC = importlib.util.spec_from_file_location("ci_scope", SOURCE)
 SCOPE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(SCOPE)
@@ -117,7 +119,8 @@ class DocumentationScopeTests(unittest.TestCase):
             # Empty outputs after a failed selector must keep the full job selected.
             self.assertIn("!cancelled()", condition)
             self.assertIn("needs.change-scope.result != 'success' ||", condition)
-            self.assertIn("needs.change-scope.outputs.documentation_only != 'true'", condition)
+            expected = "run_rust != 'false'" if job == "rust" else "documentation_only != 'true'"
+            self.assertIn("needs.change-scope.outputs." + expected, condition)
 
     def test_delete_rename_and_symlink_never_skip(self):
         for operation in ("delete", "rename", "symlink"):

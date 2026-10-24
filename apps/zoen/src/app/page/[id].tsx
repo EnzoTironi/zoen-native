@@ -399,7 +399,7 @@ function PageDocument({ id }: { id: string }) {
                 onPress={() =>
                   router.push({
                     pathname: '/page-block/[id]',
-                    params: { id, block: 'new', mode: 'markdown' },
+                    params: { id, block: 'new', mode: 'markdown', target: 'document' },
                   })
                 }
               />

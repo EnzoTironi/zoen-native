@@ -141,7 +141,9 @@ mod editing;
 mod incoming;
 mod journal;
 mod publication;
+mod settlement;
 mod sharing;
+pub(crate) use settlement::ProfileSettlement;
 mod views;
 
 #[cfg(test)]

@@ -13,6 +13,7 @@ fn convert(text: &str, inline: serde_json::Value, blocks: serde_json::Value) -> 
         target: PageInputTarget::AppendNew,
         base_edit_context: String::new(),
         base_block: None,
+        base_document: None,
         mode: PageInputMode::RawRich,
     };
     validate_payload(&binding.mode, 1, &payload).unwrap();

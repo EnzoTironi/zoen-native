@@ -27,8 +27,16 @@ const readEmpty = () => null;
 
 /** Normal text is durable; edit/search/caption/recording state remains independent. */
 export function useMessageDraft(spaceId: string, threadRootId: string | null = null) {
-  const { store, snapshot, timelines } = useClient();
-  const channel = store.messageDrafts.channel(spaceId, threadRootId);
+  const client = useClient();
+  const { store, snapshot, timelines } = client;
+  // The service survives account changes; observe the client before selecting its channel.
+  const channel = useMemo(
+    () =>
+      client.phase === 'ready' && client.snapshot
+        ? client.store.messageDrafts.channel(spaceId, threadRootId)
+        : null,
+    [client, spaceId, threadRootId],
+  );
   const normal = useSyncExternalStore(
     channel?.controller.subscribe ?? subscribeEmpty,
     channel ? () => channel.controller.getSnapshot(channel.scope) : readEmpty,

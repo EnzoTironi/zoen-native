@@ -88,7 +88,7 @@ export function fixture() {
             }, [read]),
         };
       if (name === '../components/primitives') return { NativeButton: 'NativeButton' };
-      if (name === '../core/provider') return { useClient: () => ({ store }) };
+      if (name === '../core/provider') return { useClient: () => ({ store, ...state }) };
       if (name === '../core/query')
         return {
           useCoreQuery: (command: unknown) => {

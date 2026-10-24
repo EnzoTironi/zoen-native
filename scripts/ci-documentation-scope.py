@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Conservatively select the documentation-only PR lane from immutable Git trees."""
+"""Select reviewed prose/frontend PR lanes from immutable Git; unknown means full."""
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import PurePosixPath
@@ -22,6 +23,103 @@ DOCUMENTS = frozenset({
 SELF = "scripts/ci-documentation-scope.py"
 TEST = "scripts/tests/test_ci_documentation_scope.py"
 
+from ci_frontend_inputs import (
+    FRONTEND_CONTRACTS, NON_INPUT_APP_LITERALS, RESOURCE_MANIFESTS, RUST_ROOTS,
+    SOURCE_BUNDLE_MANIFESTS,
+)
+
+
+def frontend_path(path):
+    parts = PurePosixPath(path).parts
+    name = PurePosixPath(path).name
+    return (parts[:3] == ("apps", "zoen", "src")
+            and PurePosixPath(path).suffix in (".ts", ".tsx")
+            and not any("generated" in part.lower() or part == "vendor" for part in parts)
+            and not name.endswith(".d.ts")
+            and not name.startswith("native-")
+            and not any(marker in name for marker in (".native.", ".ios.", ".android."))
+            and path not in ("apps/zoen/src/core/types.ts", "apps/zoen/src/core/driver.ts"))
+
+
+def json_strings(value):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            yield key
+            yield from json_strings(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from json_strings(child)
+    elif isinstance(value, str):
+        yield value
+
+
+def validate_frontend(base, head, ancestor, paths):
+    if not FRONTEND_CONTRACTS or not (set(RESOURCE_MANIFESTS) | NON_INPUT_APP_LITERALS).issubset(FRONTEND_CONTRACTS):
+        raise ValueError("Incomplete frontend boundary contract")
+    if ancestor != base:
+        raise ValueError("Stale or non-ancestral base requires full Rust")
+    if len(paths) > 128 or not all(frontend_path(path) for path in paths):
+        raise ValueError("Not exclusively reviewed app TypeScript source")
+    names = {PurePosixPath(path).name for path in paths}
+    for tree in (base, head):
+        for path, expected in FRONTEND_CONTRACTS.items():
+            if hashlib.sha256(git("show", tree + ":" + path)).hexdigest() != expected:
+                raise ValueError("Frontend boundary contract drift: " + path)
+        for path in paths:
+            text = git("show", tree + ":" + path) if tree == head else None
+            if text is not None and (b"\0" in text or not text.decode("utf-8")):
+                raise ValueError("Binary or empty frontend input requires full Rust")
+        listed = git("ls-tree", "-r", "--name-only", "-z", tree, "--",
+                     "apps/zoen/src/miniapps/vendor", "crates/miniapps/resources", "miniapps").split(b"\0")
+        manifests = {path.decode("utf-8") for path in listed if path and (
+            path.endswith(b".manifest.json") or (path.startswith(b"miniapps/") and path.endswith(b"/manifest.json")))}
+        if manifests != set(RESOURCE_MANIFESTS):
+            raise ValueError("Unknown or missing embedded-resource manifest")
+        for path in RESOURCE_MANIFESTS:
+            data = json.loads(git("show", tree + ":" + path))
+            if not isinstance(data, dict):
+                raise ValueError("Invalid embedded-resource manifest: " + path)
+            if path in SOURCE_BUNDLE_MANIFESTS:
+                sources = data.get("sources")
+                if (not isinstance(sources, dict) or not sources or len(sources) > 4096
+                        or any(not isinstance(name, str) or not isinstance(digest, str)
+                               or not re.fullmatch(r"[a-f0-9]{64}", digest)
+                               for name, digest in sources.items())):
+                    raise ValueError("Invalid bundled source closure: " + path)
+            # Recursively include provenance/source maps too, not only direct
+            # Rust include_str! inputs. A basename match is conservative.
+            if any(value in paths or PurePosixPath(value).name in names
+                   for value in json_strings(data)):
+                raise ValueError("Frontend source is an embedded-resource input: " + path)
+        # Cross-boundary readers and shared JSON can be outside the Cargo
+        # directories. Frontend-to-frontend imports remain in the app lane.
+        command = ["git", "grep", "-I", "-l", "-E"]
+        for path in paths:
+            for token in (path, PurePosixPath(path).name):
+                command += ["-e", r"(^|[^A-Za-z0-9_.-])" + re.escape(token) + r"([^A-Za-z0-9_.-]|$)"]
+        search = subprocess.run(command + [tree, "--", ".", ":(exclude)apps/zoen/src/**",
+            ":(exclude)*.md", ":(exclude)" + SELF, ":(exclude)" + TEST,
+            ":(exclude)scripts/tests/test_ci_frontend_scope.py"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if search.returncode == 0:
+            raise ValueError("A tracked cross-boundary input refers to frontend source")
+        if search.returncode != 1:
+            raise ValueError("Cannot establish the cross-boundary input closure")
+        command = ["git", "grep", "-I", "-l", "-z", "-F",
+                   "-e", "apps/zoen/src", "-e", '"apps/zoen"',
+                   "-e", "'apps/zoen'", "-e", '"apps"', "-e", "'apps'"]
+        search = subprocess.run(command + [tree, "--", *RUST_ROOTS, ":(exclude)*.md"],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if search.returncode == 0:
+            readers = {row.decode("utf-8").partition(":")[2]
+                       for row in search.stdout.split(b"\0") if row}
+            # These exact pinned manifests were parsed above, including every
+            # declared source. They are known closures, not dynamic Rust readers.
+            if readers - NON_INPUT_APP_LITERALS - set(RESOURCE_MANIFESTS):
+                raise ValueError("A Rust input refers to frontend source or a broad app reader")
+        elif search.returncode != 1:
+            raise ValueError("Cannot establish the Rust/frontend input boundary")
+
 
 def git(*args):
     return subprocess.run(["git", *args], check=True, stdout=subprocess.PIPE,
@@ -29,7 +127,8 @@ def git(*args):
 
 
 def classify(base, head, event):
-    result = {"documentation_only": False, "reason": "full-suite default", "paths": []}
+    result = {"documentation_only": False, "frontend_only": False, "run_rust": True,
+              "reason": "full-suite default", "paths": []}
     if event != "pull_request":
         result["reason"] = "Only pull requests may use the documentation lane"
         return result
@@ -42,6 +141,8 @@ def classify(base, head, event):
         ancestor = ancestors[0]
         entries = git("diff", "--raw", "--no-abbrev", "--no-renames", "-z",
                       ancestor, head, "--").split(b"\0")
+        if entries[-1] != b"" or (len(entries) - 1) % 2:
+            raise ValueError("Malformed Git diff requires the full suite")
         changes = []
         for index in range(0, len(entries) - 1, 2):
             metadata = entries[index].split()
@@ -49,13 +150,17 @@ def classify(base, head, event):
             if len(metadata) != 5 or metadata[4] not in (b"A", b"M"):
                 raise ValueError("Deleted, renamed or unusual changes require the full suite")
             if (metadata[1] != b"100644" or
-                    (metadata[4] == b"M" and metadata[0] != b":100644") or
-                    path not in DOCUMENTS):
-                raise ValueError("Changed path is outside the explicit prose allowlist: " + path)
+                    (metadata[4] == b"M" and metadata[0] != b":100644")):
+                raise ValueError("Unsupported tracked file mode: " + path)
             changes.append(path)
         result["paths"] = changes
         if not changes:
             raise ValueError("Empty or unavailable diff requires the full suite")
+        if not all(path in DOCUMENTS for path in changes):
+            validate_frontend(base, head, ancestor, changes)
+            result.update(frontend_only=True, run_rust=False,
+                          reason="Verified frontend-only PR; client/Expo and local integrity remain selected")
+            return result
         # Both endpoints matter: removal of a consumer on this branch must not
         # conceal a dependency. Search all other non-Markdown tracked text,
         # including build scripts/configuration with unconventional extensions.
@@ -70,7 +175,8 @@ def classify(base, head, event):
                 raise ValueError("A non-Markdown input refers to the changed prose")
             if search.returncode != 1:
                 raise ValueError("Cannot establish the documentation dependency boundary")
-        result.update(documentation_only=True, reason="Only allowlisted prose; no tracked consumer references")
+        result.update(documentation_only=True, run_rust=False,
+                      reason="Only allowlisted prose; no tracked consumer references")
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         result["reason"] = str(error)
     return result
@@ -119,11 +225,13 @@ def main():
     print(json.dumps(result, indent=2))
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-            output.write("documentation_only=" + str(result["documentation_only"]).lower() + "\n")
+            for key in ("documentation_only", "frontend_only", "run_rust"):
+                output.write(key + "=" + str(result[key]).lower() + "\n")
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
             summary.write("### CI scope\n\n" + result["reason"] + "\n\n")
-            summary.write(result.get("validation", "Full Rust and integration jobs remain selected." if not result["documentation_only"] else "Documentation integrity selected; Rust/integration jobs explicitly skipped.") + "\n")
+            summary.write(result.get("validation", "Full Rust suite remains selected." if result["run_rust"]
+                else "Rust job SKIPPED: no application Rust compilation or journeys. Local tooling fixtures and other applicable checks remain selected.") + "\n")
 
 
 if __name__ == "__main__":

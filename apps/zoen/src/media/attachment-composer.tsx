@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -84,11 +85,16 @@ export type AttachmentComposerOptions = {
 };
 
 export function useAttachmentComposer(options: AttachmentComposerOptions) {
-  const { store, mode } = useClient();
+  const client = useClient();
+  const { store, mode } = client;
   const durable = mode === 'account' && Boolean(store.driver.media?.drafts);
-  const channel = durable
-    ? store.mediaDrafts.channel(options.spaceId, options.threadRootId ?? null)
-    : null;
+  const channel = useMemo(
+    () =>
+      durable && client.phase === 'ready' && client.snapshot
+        ? client.store.mediaDrafts.channel(options.spaceId, options.threadRootId ?? null)
+        : null,
+    [client, durable, options.spaceId, options.threadRootId],
+  );
   const saved = useDurableAttachmentComposer(options, channel);
   const temporary = useVolatileAttachmentComposer({
     ...options,

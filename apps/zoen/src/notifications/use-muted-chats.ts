@@ -2,15 +2,16 @@ import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useClient } from '../core/provider';
-import { accountScopeKey } from '../core/account-scope';
+import { accountScope, accountScopeKey } from '../core/account-scope';
 import { MutedChatsSession, createMutedChatsPort, emptyMutedChats } from './muted-chats';
 
 export function useMutedChats() {
-  const { store } = useClient();
+  const client = useClient();
+  const { store } = client;
   const port = useMemo(() => createMutedChatsPort(store), [store]);
   const session = useMemo(() => new MutedChatsSession(port), [port]);
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
-  const scopeKey = accountScopeKey(port.scope());
+  const scopeKey = accountScopeKey(accountScope(store, client));
   useFocusEffect(
     useCallback(() => {
       let foreground = AppState.currentState === 'active';

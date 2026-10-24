@@ -1,4 +1,4 @@
-import type { ClientStore } from './store';
+import type { ClientState, ClientStore } from './store';
 
 /** Read-only owner of an account surface, including same-account reopen. */
 export type AccountScope = Readonly<{
@@ -10,8 +10,10 @@ export type AccountScope = Readonly<{
 export const accountScopeKey = (scope: AccountScope | null): string =>
   scope ? JSON.stringify([scope.identity, scope.device, scope.relay, scope.epoch]) : '';
 
-export function accountScope(store: ClientStore): AccountScope | null {
-  const state = store.getSnapshot();
+export function accountScope(
+  store: ClientStore,
+  state: ClientState = store.getSnapshot(),
+): AccountScope | null {
   const account = state.snapshot?.account;
   return state.phase === 'ready' &&
     state.mode === 'account' &&

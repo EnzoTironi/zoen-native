@@ -2,16 +2,17 @@ import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import { AppState, Platform } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useClient } from '../core/provider';
-import { accountScopeKey } from '../core/account-scope';
+import { accountScope, accountScopeKey } from '../core/account-scope';
 import { MemberActionsSession, emptyMemberActions } from './member-actions';
 import { createMemberActionsPort } from './member-context-port';
 
 export function useMemberActions(space: string) {
-  const { store } = useClient();
+  const client = useClient();
+  const { store } = client;
   const port = useMemo(() => createMemberActionsPort(store, space), [store, space]);
   const session = useMemo(() => new MemberActionsSession(space, port), [space, port]);
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
-  const scope = Platform.OS === 'web' ? '' : accountScopeKey(port.scope());
+  const scope = Platform.OS === 'web' ? '' : accountScopeKey(accountScope(store, client));
   useFocusEffect(
     useCallback(() => {
       let foreground = AppState.currentState === 'active';
