@@ -33,6 +33,7 @@ pub async fn start() -> Result<(), JsValue> {
                     app,
                     bridge: BrowserBridge::default(),
                     wiped: false,
+                    chrome: crate::viewport::Chrome::default(),
                 }))
             }),
         )
@@ -43,6 +44,7 @@ struct Shell {
     app: PhotocraftApp,
     bridge: BrowserBridge,
     wiped: bool,
+    chrome: crate::viewport::Chrome,
 }
 impl eframe::App for Shell {
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
@@ -84,6 +86,12 @@ impl eframe::App for Shell {
         if api::retired() || !self.bridge.is_open() {
             return;
         }
+        self.chrome.update(
+            &mut self.app.ui.panels,
+            ui.available_rect_before_wrap()
+                .intersect(ui.ctx().content_rect())
+                .size(),
+        );
         crate::viewport::show(ui, |ui| {
             ui.add_enabled_ui(!self.app.session.managed_frozen, |ui| {
                 self.app.ui(ui, frame)
