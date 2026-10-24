@@ -1,7 +1,7 @@
 //! Real canonical edits, encrypted receipts, cold reopen and Markdown export.
 use super::*;
 
-const SOURCE: &str = "Setext **title**\n===\n\n## ATX\n\nA **bold** 👩‍💻 paragraph\n\n- Bullet\n\n3. Numbered\n\n- [x] Task\n\n> Quote\n\n```rust\nlet x = 1;\n```\n\n***\n\n![ALT](zoen:item/private-file \"Keep title\")\n\n<div>raw</div>\n";
+const SOURCE: &str = "Setext **title**\n===\n\n## ATX\n\nA **bold** 👩‍💻 paragraph\n\n- Bullet\n\n0. Numbered\n\n- [x] Task\n\n> Quote\n\n```rust\nlet x = 1;\n```\n\n***\n\n![ALT](zoen:item/private-file \"Keep title\")\n\n<div>raw</div>\n";
 
 fn imported(client: &Client, space: &str) -> PageDto {
     let item = client
@@ -83,6 +83,7 @@ fn every_kind_duplicates_undoes_replays_exports_and_recovers_cold() {
     let redone = apply(&client, &undone.page, "redo-copies", &copies).unwrap();
     assert_eq!(redone.page.blocks, copies);
     let markdown = client.page_markdown(original.item_id.clone()).unwrap();
+    assert_eq!(markdown.matches("0. Numbered").count(), 2);
     assert_eq!(markdown.matches("Setext **title**\n===").count(), 2);
     assert_eq!(
         markdown
@@ -157,7 +158,13 @@ fn absent_legacy_metadata_preserves_content_and_exact_old_receipt_fingerprint() 
         text: &'a str,
         spans: &'a [TextSpanDto],
     }
-    let (client, seed) = fixture();
+    let directory = std::env::temp_dir().join(new_id("legacy-page-fields"));
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory
+        .join("client.sqlite")
+        .to_string_lossy()
+        .into_owned();
+    let (client, seed) = fixture_at(&path);
     let original = imported(&client, &seed.space_id);
     let mut changed = original.blocks.clone();
     for block in &mut changed {
@@ -182,6 +189,12 @@ fn absent_legacy_metadata_preserves_content_and_exact_old_receipt_fingerprint() 
             spans: &b.spans,
         })
         .collect();
+    let decoded: Vec<PageBlockDto> =
+        serde_json::from_slice(&serde_json::to_vec(&legacy).unwrap()).unwrap();
+    assert_eq!(
+        decoded, changed,
+        "old JSON without metadata decodes identically"
+    );
     let bytes =
         serde_json::to_vec(&("legacy-edit", &original.edit_context, &order, legacy)).unwrap();
     let hash = hex::encode(
@@ -204,7 +217,8 @@ fn absent_legacy_metadata_preserves_content_and_exact_old_receipt_fingerprint() 
             .as_deref(),
         Some("Keep title")
     );
-    client.lock().reload().unwrap();
+    drop(client);
+    let client = Client::open(path, "en".into()).unwrap();
     let replay = apply(&client, &original, "legacy-edit", &changed).unwrap();
     assert!(replay.replayed);
     assert_eq!(replay.mutation_hash, hash);
@@ -222,6 +236,18 @@ fn absent_legacy_metadata_preserves_content_and_exact_old_receipt_fingerprint() 
         .page_markdown(original.item_id)
         .unwrap()
         .contains("Keep title"));
+    assert_eq!(
+        result
+            .page
+            .blocks
+            .iter()
+            .find(|b| b.kind == "numbered")
+            .unwrap()
+            .number,
+        0
+    );
+    drop(client);
+    std::fs::remove_dir_all(directory).unwrap();
 }
 
 #[test]
