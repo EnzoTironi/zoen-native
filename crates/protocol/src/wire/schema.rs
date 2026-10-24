@@ -59,7 +59,7 @@ pub struct PbReq {
     pub id: u64,
     #[prost(
         oneof = "pb_req::Op",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24"
     )]
     pub op: Option<pb_req::Op>,
 }
@@ -113,6 +113,8 @@ pub mod pb_req {
         CallTurn(PbCallTurnRequest),
         #[prost(message, tag = "23")]
         RuntimeBinding(PbRuntimeBindingRequest),
+        #[prost(message, tag = "24")]
+        CompleteRead(crate::complete_reads::Request),
     }
 }
 
@@ -508,7 +510,7 @@ pub struct PbRes {
     pub id: u64,
     #[prost(
         oneof = "pb_res::R",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16"
     )]
     pub r: Option<pb_res::R>,
 }
@@ -546,6 +548,8 @@ pub mod pb_res {
         CallTurn(PbCallTurnReply),
         #[prost(message, tag = "15")]
         RuntimeBinding(PbRuntimeBindingProof),
+        #[prost(message, tag = "16")]
+        CompletePage(crate::complete_reads::Page),
     }
 }
 

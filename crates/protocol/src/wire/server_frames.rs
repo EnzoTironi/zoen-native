@@ -45,6 +45,7 @@ impl ServerFrame {
                         kind: p.kind.clone(),
                         agent: p.agent.as_deref().map(profile_to).map(Box::new),
                     }),
+                    Ok(Reply::CompletePage(page)) => pb_res::R::CompletePage(page.clone()),
                     Ok(Reply::Done) => pb_res::R::Done(PbEmpty {}),
                     Ok(Reply::RuntimeBinding(p)) => {
                         pb_res::R::RuntimeBinding(PbRuntimeBindingProof {
@@ -270,6 +271,10 @@ impl ServerFrame {
                         definition: a.definition,
                         cursors: a.cursors.into_iter().map(|c| (c.space, c.seq)).collect(),
                     })),
+                    pb_res::R::CompletePage(page) => {
+                        if !page.valid() { return Err(bad("complete read page")); }
+                        Ok(Reply::CompletePage(page))
+                    },
                     pb_res::R::Devices(ds) => Ok(Reply::Devices(
                         ds.devices
                             .into_iter()
