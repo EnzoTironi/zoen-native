@@ -1,16 +1,16 @@
 //! Typed binary Apps share the existing signed Item/FileDoc, encrypted chunks and
 //! atomic event/outbox transaction. This module is not another document database.
 use crate::{
-    Client, CoreError,
     engine::{Engine, R},
+    Client, CoreError,
 };
-use base64::{Engine as _, engine::general_purpose::STANDARD};
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use miniapps::{binary::Format, deckcraft};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeSet, HashMap};
 use types::{
-    AppDoc, Capability, EventBody, Grant, GrantScope, ItemContent, ItemKind, TrustLevel, new_id,
+    new_id, AppDoc, Capability, EventBody, Grant, GrantScope, ItemContent, ItemKind, TrustLevel,
 };
 
 pub(crate) const MAX_BASE64_BYTES: usize = deckcraft::MAX_BYTES.div_ceil(3) * 4;

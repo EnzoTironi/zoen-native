@@ -1,6 +1,6 @@
 use super::*;
 use std::io::Write;
-use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
+use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
 // Standards-shaped adversarial fixtures, not a substitute GridCraft engine.
 // Real Session-generated seed/reopen/export qualification is separate.

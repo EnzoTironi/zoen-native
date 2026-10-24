@@ -39,14 +39,13 @@ fn grid_and_deck_share_the_transaction_but_never_format_identity_or_creation_rec
     };
     assert_eq!(doc.resource_uri, gridcraft::RESOURCE);
     assert_eq!(doc.document.as_ref().unwrap().mime, gridcraft::MIME);
-    assert!(
-        doc.document
-            .as_ref()
-            .unwrap()
-            .chunks
-            .iter()
-            .all(|c| c.blob != c.sha256 && !c.key.is_empty())
-    );
+    assert!(doc
+        .document
+        .as_ref()
+        .unwrap()
+        .chunks
+        .iter()
+        .all(|c| c.blob != c.sha256 && !c.key.is_empty()));
     assert_eq!(
         serde_json::from_str::<Value>(&doc.state_json).unwrap()["cells"],
         2
@@ -60,28 +59,26 @@ fn wrong_format_or_unknown_editor_cannot_write_or_change_any_receipt() {
     let before = counts(&f);
     assert!(save(&f, &sheet, ORIGINAL, "wrong").is_err());
     assert!(save(&f, &deck, GRID, "wrong").is_err());
-    assert!(
-        f.client
-            .app_binary_create_for(
-                "unknown".into(),
-                f.space.clone(),
-                "No".into(),
-                STANDARD.encode(GRID),
-                "unknown".into()
-            )
-            .is_err()
-    );
-    assert!(
-        f.client
-            .app_binary_create_for(
-                gridcraft::APP.into(),
-                f.space.clone(),
-                "No".into(),
-                STANDARD.encode(ORIGINAL),
-                "wrong".into()
-            )
-            .is_err()
-    );
+    assert!(f
+        .client
+        .app_binary_create_for(
+            "unknown".into(),
+            f.space.clone(),
+            "No".into(),
+            STANDARD.encode(GRID),
+            "unknown".into()
+        )
+        .is_err());
+    assert!(f
+        .client
+        .app_binary_create_for(
+            gridcraft::APP.into(),
+            f.space.clone(),
+            "No".into(),
+            STANDARD.encode(ORIGINAL),
+            "wrong".into()
+        )
+        .is_err());
     assert_eq!(counts(&f), before);
 }
 #[test]
