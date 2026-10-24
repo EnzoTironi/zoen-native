@@ -15,6 +15,39 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Signed request for one App and its observed document head. It narrows existing
+/// authority; it grants no membership, trust or permission to execute a tool.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ArtifactRequest {
+    pub item_id: String,
+    pub version: u32,
+    pub sha256: String,
+    pub request_id: String,
+    pub text_sha256: String,
+}
+
+impl ArtifactRequest {
+    pub fn is_well_formed(&self) -> bool {
+        let token = |s: &str| {
+            !s.is_empty()
+                && s.len() <= 128
+                && s.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+        };
+        let digest = |s: &str| {
+            s.len() == 64
+                && s.bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        };
+        token(&self.item_id)
+            && token(&self.request_id)
+            && self.version > 0
+            && digest(&self.sha256)
+            && digest(&self.text_sha256)
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct ReplyRef {
     /// Event hash of the message being answered (the thread root for thread replies).
@@ -22,6 +55,8 @@ pub struct ReplyRef {
     /// `true` = in the thread under `to`; `false` = inline, quoting `to`.
     #[serde(default)]
     pub thread: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact: Option<ArtifactRequest>,
 }
 
 impl ReplyRef {
@@ -29,12 +64,14 @@ impl ReplyRef {
         Self {
             to: to.into(),
             thread: false,
+            artifact: None,
         }
     }
     pub fn thread(root: impl Into<String>) -> Self {
         Self {
             to: root.into(),
             thread: true,
+            artifact: None,
         }
     }
 }
@@ -74,6 +111,60 @@ mod tests {
             forwarded: false,
         };
         assert!(!serde_json::to_string(&plain).unwrap().contains("reply"));
+    }
+
+    #[test]
+    fn artifact_scope_is_typed_and_legacy_reply_bytes_are_identical() {
+        assert_eq!(
+            serde_json::to_string(&ReplyRef::thread("root")).unwrap(),
+            r#"{"to":"root","thread":true}"#
+        );
+        let mut reply = ReplyRef::thread("root");
+        reply.artifact = Some(ArtifactRequest {
+            item_id: "item".into(),
+            version: 1,
+            sha256: "ab".repeat(32),
+            request_id: "request".into(),
+            text_sha256: "cd".repeat(32),
+        });
+        assert!(reply.artifact.as_ref().unwrap().is_well_formed());
+        let mut value = serde_json::to_value(&reply).unwrap();
+        assert_eq!(
+            serde_json::from_value::<ReplyRef>(value.clone()).unwrap(),
+            reply
+        );
+        value["artifact"]["grant"] = serde_json::json!("all");
+        assert!(serde_json::from_value::<ReplyRef>(value).is_err());
+    }
+
+    #[test]
+    fn old_message_consumer_cannot_decode_scoped_request_as_chat() {
+        // The old decoder (event_log::decode_body) turns this decode failure into
+        // Unsupported while retaining signed raw bytes. It never sees a prompt.
+        #[derive(Deserialize)]
+        enum LegacyBody {
+            MessagePosted { text: String },
+        }
+        let mut reply = ReplyRef::thread("root");
+        reply.artifact = Some(ArtifactRequest {
+            item_id: "item".into(),
+            version: 1,
+            sha256: "ab".repeat(32),
+            request_id: "request".into(),
+            text_sha256: "cd".repeat(32),
+        });
+        let scoped = serde_json::to_vec(&EventBody::AppEditRequested {
+            message: "m".into(),
+            text: "Only this App".into(),
+            reply,
+        })
+        .unwrap();
+        assert!(serde_json::from_slice::<LegacyBody>(&scoped).is_err());
+        let LegacyBody::MessagePosted { text } = serde_json::from_str(
+            r#"{"MessagePosted":{"message":"m","text":"legacy","attaches":null}}"#,
+        )
+        .unwrap();
+        assert_eq!(text, "legacy");
     }
 
     #[test]

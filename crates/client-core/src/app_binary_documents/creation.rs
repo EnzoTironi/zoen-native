@@ -194,6 +194,7 @@ impl Engine {
                     item: item.clone(),
                     version: 1,
                     sha256: sha,
+                    source: None,
                 },
             )?;
             e.app_binary_read(&item, Some(1), None)

@@ -222,6 +222,9 @@ impl Engine {
         serving: &str,
         at_ms: i64,
     ) -> R<(String, String, String)> {
+        if self.artifact_request(space, source)?.is_some() {
+            return Err(denied());
+        }
         let actor = self.me_id()?;
         let account = self.account().ok_or_else(denied)?;
         let identity = self.identities.get(&actor).ok_or_else(denied)?;

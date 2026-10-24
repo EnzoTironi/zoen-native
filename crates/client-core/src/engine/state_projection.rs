@@ -8,6 +8,15 @@ impl State {
         identities: &HashMap<IdentityId, Identity>,
         context: &BeforeEvent,
     ) -> Projection {
+        if let EventBody::AppEditRequested { text, reply, .. } = &e.body {
+            if !self.writer(&e.space, &e.author)
+                || !crate::agent_binary_documents::source_scope::request_valid(
+                    self, &e.space, text, reply,
+                )
+            {
+                return Projection::Refused;
+            }
+        }
         if !self.call_transport_valid(e) {
             return Projection::Refused;
         }
@@ -144,6 +153,17 @@ impl State {
                 if let Some(metadata) = media.as_ref() {
                     self.media_groups
                         .record(&e.space, &e.author, reply, *forwarded, metadata);
+                }
+            }
+            EventBody::AppEditRequested { text, reply, .. } => {
+                if let Some(s) = self.spaces.get_mut(&e.space) {
+                    s.entries.push(entry(EntryBody::Message {
+                        text: text.clone(),
+                        attaches: None,
+                        reply: Some(reply.clone()),
+                        marks: MessageMarks::default(),
+                    }));
+                    s.last_at_ms = s.last_at_ms.max(e.at_ms);
                 }
             }
             EventBody::ChatPrefsSet { space, prefs } => {
