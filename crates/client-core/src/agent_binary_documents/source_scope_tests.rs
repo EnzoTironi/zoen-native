@@ -311,3 +311,38 @@ fn a_scoped_prompt_under_the_legacy_discriminator_is_not_projected_or_dispatched
         .agent_artifact_request(&f.space, &event.client_id, &f.owner)
         .is_err());
 }
+
+#[test]
+fn scoped_answer_is_atomic_source_linked_idempotent_and_fenced_after_context_changes() {
+    let mut f = fixture();
+    scope(&mut f, |_| {});
+    let answer = f
+        .agent
+        .agent_artifact_reply(&f.space, &f.source, &f.owner, "Scoped answer")
+        .unwrap();
+    assert_eq!(answer.reply_to.as_ref().unwrap().id, f.source);
+    let before = counts(&f);
+    assert_eq!(
+        f.agent
+            .agent_artifact_reply(&f.space, &f.source, &f.owner, "Different retry")
+            .unwrap(),
+        answer
+    );
+    assert_eq!(counts(&f), before);
+    f.agent
+        .app_binary_save(
+            f.base.item_id.clone(),
+            f.base.version,
+            f.base.sha256.clone(),
+            STANDARD.encode(CHANGED),
+            "outside_answer".into(),
+            "33".repeat(32),
+        )
+        .unwrap();
+    let before = counts(&f);
+    assert!(f
+        .agent
+        .agent_artifact_reply(&f.space, &f.source, &f.owner, "Late answer")
+        .is_err());
+    assert_eq!(counts(&f), before);
+}

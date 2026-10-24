@@ -369,6 +369,9 @@ async fn checked(
             );
             true
         }
+        TurnOutcome::Say { text } if scoped => e
+            .agent_artifact_reply(space, &t.id, &t.author.id, &text)
+            .is_ok(),
         TurnOutcome::Say { text } => selected_reply(e, space, &text, &t.id, selection),
         TurnOutcome::ToolAsk { ask } if ask.call.name == image_tools::TOOL => {
             tools.image_stage(&ask.call).is_ok()
@@ -388,6 +391,10 @@ async fn checked(
                 true
             }
         },
+        // A scoped draft stays at the signed source, not another conversation.
+        TurnOutcome::AskOwner { draft, .. } if scoped => e
+            .agent_artifact_reply(space, &t.id, &t.author.id, &draft)
+            .is_ok(),
         TurnOutcome::AskOwner { draft, rule } => selected_owner_note(
             e,
             cx,
