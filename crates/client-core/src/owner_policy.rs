@@ -3,6 +3,7 @@
 mod context_rejection;
 mod control;
 mod image_context;
+mod observation;
 mod options;
 mod publication;
 use crate::{
@@ -12,6 +13,7 @@ use crate::{
 use context_rejection::ContextAdmissionFailure;
 pub use context_rejection::OwnerPolicyContextRejection;
 pub use control::OwnerPolicySubmission;
+pub use observation::{WorkerDirectoryState, WorkerGroupObservation, WorkerGroupState};
 pub use options::{
     OwnerPolicyContext, OwnerPolicyInquiryControl, OwnerPolicyInquiryCounts,
     OwnerPolicyInquiryScan, OwnerPolicyOptionsStatus,

@@ -129,6 +129,14 @@ impl Engine {
     }
 
     pub(super) fn owner_policy_agent(&self, space: &str) -> R<String> {
+        let agent = self.owner_policy_agent_scope(space)?;
+        if self.ready_epoch(space).is_none() {
+            return Err(denied());
+        }
+        Ok(agent)
+    }
+
+    pub(super) fn owner_policy_agent_scope(&self, space: &str) -> R<String> {
         let account = self.account().ok_or_else(denied)?;
         self.native_surface_owner(&account.identity, &account.device)?;
         let agent = self.identities.get(&account.identity).ok_or_else(denied)?;
@@ -144,7 +152,6 @@ impl Engine {
             || !self.is_member(space, owner)
             || !self.is_member(space, &agent.id)
             || !self.state.writer(space, &agent.id)
-            || self.ready_epoch(space).is_none()
         {
             return Err(denied());
         }

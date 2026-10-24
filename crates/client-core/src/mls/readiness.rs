@@ -16,6 +16,13 @@ pub(crate) enum ReadinessRejection {
 }
 
 impl Engine {
+    pub(crate) fn mls_work_observation(&self, space: &str) -> (bool, bool, bool) {
+        (
+            self.net.mls.dirty.contains(space),
+            self.net.mls.claiming.contains(space),
+            self.net.mls.retry_at.contains_key(space),
+        )
+    }
     /// Whether `space` is relay-ordered and end-to-end encrypted.
     pub(crate) fn is_e2e(&self, space: &str) -> bool {
         self.net.synced.contains(space)
@@ -167,8 +174,10 @@ impl Engine {
     ) -> std::result::Result<u64, ReadinessRejection> {
         use ReadinessRejection as E;
         let device = self.device().map_err(|_| E::Credential)?;
-        if !device.has_group(space) {
-            return Err(E::Group);
+        match device.group_state(space).map_err(|_| E::Storage)? {
+            ::mls::GroupState::Missing => return Err(E::Group),
+            ::mls::GroupState::Pending => return Err(E::Pending),
+            ::mls::GroupState::Ready => {}
         }
         if device.pending(space) {
             return Err(E::Pending);
