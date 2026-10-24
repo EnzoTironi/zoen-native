@@ -146,7 +146,7 @@ export function locationReactFixture() {
   const buttons = new Map<string, Button>(),
     fields = new Map<string, FieldProps>();
   let map: MapProps | undefined;
-  const capture = <T>(read: () => T, publish: (props: T) => void, release: (props: T) => void) => {
+  const useCapture = <T>(read: () => T, publish: (props: T) => void, release: (props: T) => void) => {
     const props = read();
     React.useLayoutEffect(() => {
       publish(props);
