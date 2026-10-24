@@ -2,6 +2,9 @@
 
 use super::*;
 
+#[cfg(test)]
+mod tests;
+
 // ── leitura (com o tempo passando, no caso do bichinho) ──
 
 /// O estado como a interface deve ver agora (o bichinho sente fome com o tempo).
