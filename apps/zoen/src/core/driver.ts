@@ -3,6 +3,7 @@ import NativeCore from '../../modules/zoen-core/src/ZoenCoreModule';
 import type { Command, CommandResult, CoreDriver, Snapshot } from './types';
 import { createNativeProfilePhotoDriver } from '../profile/native-driver';
 import type { MediaDriver } from '../media/types';
+import { nativeContactReader } from '../media/native-contact';
 import { Platform } from 'react-native';
 import { locale as appLocale } from '../i18n/index.ts';
 import { randomUUID } from 'expo-crypto';
@@ -221,6 +222,10 @@ export function createDriver(): CoreDriver {
     async materializeFile(itemId, version) {
       return JSON.parse(await core().materializeFile(itemId, version ?? null));
     },
+    readContact:
+      Platform.OS === 'ios' && typeof NativeCore?.readContactFile === 'function'
+        ? nativeContactReader({ readContactFile: (request) => core().readContactFile!(request) })
+        : undefined,
     previewFile:
       Platform.OS === 'ios' && typeof NativeCore?.previewLocalFile === 'function'
         ? async (file) => {
