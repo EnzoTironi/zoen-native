@@ -1,8 +1,8 @@
 //! Streaming bounds and package references for the initial managed XLSX profile.
 use super::*;
 use quick_xml::{
-    Reader,
     events::{BytesStart, Event},
+    Reader,
 };
 use std::collections::BTreeSet;
 
