@@ -2,7 +2,7 @@ use super::*;
 use crate::agent_binary_documents::tests::grid_fixture;
 const GRID7: &[u8] = include_bytes!("../../app_binary_documents/fixtures/gridcraft-7.xlsx");
 #[test]
-fn certified_grid_turn_uses_current_native_source_and_exact_approved_binary_cas() {
+fn reviewed_grid_read_cannot_replace_its_stable_source_step_with_a_write() {
     let f = grid_fixture();
     signed_trust(&f, TrustLevel::Act);
     let read = stage(&f, "read_gridcraft");
@@ -21,6 +21,19 @@ fn certified_grid_turn_uses_current_native_source_and_exact_approved_binary_cas(
     f.agent
         .agent_binary_finish_read(permit.turn())
         .expect("finish approved read");
+    let turn = turn(&f);
+    let before = counts(&f);
+    assert!(f
+        .agent
+        .stage_tool_approval(&turn, input(&f, &turn, "gridcraft_cell_set"))
+        .is_err());
+    assert_eq!(counts(&f), before);
+    assert_eq!(current(&f).version, 1);
+}
+#[test]
+fn certified_grid_turn_uses_current_native_source_and_exact_approved_binary_cas() {
+    let f = grid_fixture();
+    signed_trust(&f, TrustLevel::Act);
     let write = stage(&f, "gridcraft_cell_set");
     assert!(f.agent.approved_tool_turn(&write.id, WORKER).is_err());
     owner_decide(

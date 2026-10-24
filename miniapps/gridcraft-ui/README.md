@@ -10,7 +10,9 @@ Item grant, version/CAS and exact receipt paths. `AppBinaryCreateFor` selects a
 fixed trusted format; the existing Deck command/wire/resource remain compatible.
 No second document database or local accepted-version counter is introduced.
 The shared JavaScript host defaults to Deck and explicitly selects Grid only
-through its trusted descriptor. Grid is **not registered as available** yet.
+through its trusted descriptor. Grid remains unavailable in the endpoint-neutral default manifest. Only a build
+with the exact configured HTML/JS/WASM resource manifest may advertise it; native
+asset delivery and iPhone acceptance remain separate requirements.
 
 `host-bridge/` runs the actual pinned GridCraft `Session`, `cell.set`, calculation,
 undo and native XLSX writer. It uses the existing Deck scope/head/proposal/accept
@@ -66,7 +68,55 @@ metadata. Macro/external/unknown package parts, malformed references, XML DTDs,
 external formulas and unsupported exports refuse explicitly. This is a restricted
 managed profile, not a general Excel importer or a claim of upstream parity.
 
-The upstream `?host=parent` browser bridge cannot be used unchanged: it relies on
-same-origin parent messages and marks saved before any durable host ACK. A real
-managed browser shell, packaged JS/WASM hashes, agent production wiring and actual
-iPhone usability/recovery are still pending. No placeholder editor is shipped.
+The upstream `?host=parent` bridge is replaced with a managed eframe/Glow shell
+and the same official MCP App bootstrap/session/export code used by Deck. The
+actual canvas is inert until Core opens a canonical snapshot; a pause, unresolved
+proposal or retired owner blocks mutations. Share emits a host export intent;
+it does not falsely mark an unacknowledged draft saved. No App storage is the
+sole accepted copy. The host owns document versions and selected-version export.
+
+Build the engine in the prepared owned checkout (and qualify the resulting bytes
+under the source guard), then use `wasm-bindgen` 0.2.129 for the wasm32 release
+module. Build the Root bootstrap with an absolute private output directory:
+
+```sh
+node miniapps/gridcraft-ui/build-bootstrap.mjs /absolute/owned/bootstrap --install-resource
+```
+
+The bootstrap builder emits exact HTML metadata and third-party JavaScript
+notices. It deliberately writes an endpoint-neutral default manifest. Deployment
+must supply `ZOEN_GRIDCRAFT_RESOURCE_MANIFEST_JSON` with the exact qualified HTML,
+module, WASM hashes/byte lengths and HTTPS locations. A changed manifest is a
+native compilation input; it must not reuse another deployment's native artifact.
+Package the compiled graph's notices as described in `NOTICE.md`, including the
+actual embedded font alternatives. Do not infer a license review from compilation.
+
+Actual browser fixtures use the official generated bootstrap and pinned engine
+inside an opaque sandbox with no guest network authority. They cover canvas
+keyboard edits, calculation, pending proposal/ACK refusal, pause, exact cold
+reopen, accepted-byte XLSX export and retirement. Their Core bridge is explicitly
+synthetic; these results do not prove certified-agent or iPhone behavior. The
+shared Deck path is independently checked with its original pinned engine and
+actual PPTX/PDF exports.
+
+The headless executable is a WASI-p2 component from `gridcraft-zoen-host`, selected
+only by fixed App identity and an operator-configured trusted publisher signature.
+The existing agent-host Gate stages the same typed owner review; the Core binds
+its exact worker, tool, current actor/device/source, input version/hash and output
+CAS receipt. Grid exposes only `read_gridcraft` and bounded `gridcraft_cell_set`.
+No model-selected executable, URI, actor or arbitrary upstream command is exposed.
+Its optional query returns one exact cell and bounded workbook metadata, not an
+unbounded claim of complete workbook contents. The original Deck path is retained.
+
+Operator configuration is explicit and all-or-none:
+`ZOEN_GRIDCRAFT_WORKER_COMPONENT`, `ZOEN_GRIDCRAFT_WORKER_MANIFEST`, and
+`ZOEN_GRIDCRAFT_WORKER_PUBLISHER`. The signature is verified before loading the
+actual component. Network/filesystem/secrets capabilities are not granted. The
+component has the existing 256 MiB / 2 billion fuel / 5 second envelope and the
+smaller document/metadata limits above; an oversized document refuses explicitly.
+
+Native iPhone manual/agent editing, keyboard/orientation/accessibility, memory,
+restart recovery and chosen-version sharing remain pending until tested on the
+actual built App. XLSX is the only exposed Grid export. Session undo is local to
+the editor lifetime; durable Core version history does not promise a global
+cross-device undo stack. Issue445 remains open until its complete acceptance.
