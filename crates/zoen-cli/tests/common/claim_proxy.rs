@@ -19,6 +19,7 @@ use tokio_tungstenite::tungstenite::Message;
 #[derive(Clone, Copy)]
 pub enum Boundary {
     Request,
+    Joined,
     Reply,
     ReplyThenRequest,
     AbsentCapability,
@@ -28,6 +29,7 @@ pub enum Boundary {
 
 #[derive(Debug)]
 pub enum Observed {
+    Joined(String),
     ClockRefreshed,
     Request {
         operation: Option<String>,
@@ -174,7 +176,7 @@ async fn forward(
                                     Boundary::AbsentCapability => capabilities.retain(|c| c != protocol::KEY_PACKAGE_CLAIM_CAPABILITY),
                                     Boundary::AbsentClock => server_time_ms = None,
                                     Boundary::MalformedClock => server_time_ms = Some(-1),
-                                    Boundary::Request | Boundary::Reply | Boundary::ReplyThenRequest => {},
+                                    Boundary::Request | Boundary::Reply | Boundary::ReplyThenRequest | Boundary::Joined => {},
                                 }
                                 msg = Message::Binary(ServerFrame::Challenge { nonce, relay, protocol, capabilities, server_time_ms }.encode().into());
                             }
@@ -183,6 +185,17 @@ async fn forward(
                                     && protocol::KeyPackageClaimClock::from_server_ms(time).is_some()
                                     && once.compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst).is_ok() => {
                                 let _ = events.send(Observed::ClockRefreshed);
+                            }
+                            ServerFrame::Joined { space }
+                                if matches!(boundary, Boundary::Joined)
+                                    && once.compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst).is_ok() => {
+                                // Hold the actual new-membership notification, not a fake
+                                // SyncDone or clock delay. All subsequent frames stay ordered.
+                                let _ = events.send(Observed::Joined(space));
+                                tokio::select! {
+                                    _ = release.notified() => {},
+                                    _ = disconnect.notified() => break,
+                                }
                             }
                             ServerFrame::Res { id, result: Ok(Reply::KeyPackages(records)) } => {
                                 if let Some((operation, selected)) = claims.remove(&id) {
