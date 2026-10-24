@@ -43,13 +43,9 @@ impl Engine {
         let mut sealed = false;
         let mut blocked = HashSet::new();
         for h in heads {
-            if h.failed || blocked.contains(&h.space) || !self.is_e2e(&h.space) {
+            if h.failed {
                 continue;
             }
-            let epoch = *ready
-                .entry(h.space.clone())
-                .or_insert_with(|| self.ready_epoch(&h.space));
-            let Some(epoch) = epoch else { continue };
             let e = match self.read_outbox_head(&h) {
                 Ok(event) => event,
                 Err(failure) => {
@@ -63,6 +59,15 @@ impl Engine {
                     return Err(storage("outbox head has no reliable Space association"));
                 }
             };
+            // SQL Space metadata is not a selection authority. Resolve the
+            // signed original before deciding the lane, readiness or cache hit.
+            if blocked.contains(&e.space) || !self.is_e2e(&e.space) {
+                continue;
+            }
+            let epoch = *ready
+                .entry(e.space.clone())
+                .or_insert_with(|| self.ready_epoch(&e.space));
+            let Some(epoch) = epoch else { continue };
             if self.sealed_epoch_of(&h.client_id) == Some(epoch) {
                 continue;
             }
