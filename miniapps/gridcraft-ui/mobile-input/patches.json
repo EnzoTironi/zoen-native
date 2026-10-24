@@ -1,6 +1,6 @@
 {
   "status": "QUALIFIED_NATIVE_UI_AND_ACTUAL_BROWSER_NOT_IPHONE",
-  "source": "6d05c8452c7dde7449c8fb0b81e0d2b3bf395563",
+  "source": "4b5e45575c5c33b4b30185706c59824661b20d2f",
   "preparedBase": "d7d7cb9d1a8b2286887885082f9927a2f2255634",
   "archives": {
     "eframe-0.36.2": "55ad41fac6e3149abb4866e93df37dbd33baa95db525c3368c944584e95a5dc2",
@@ -19,8 +19,8 @@
     },
     {
       "path": "patches/eframe-text-agent.patch",
-      "bytes": 3615,
-      "sha256": "455dab396d4d5508e46e2bc0cdd3f818a9b68f781120115be851764d937cecbb"
+      "bytes": 4748,
+      "sha256": "d4cc8928719a35ad5964c998e5659f258beafaa9d2c392a67cd415ea23ff6b6a"
     },
     {
       "path": "patches/egui-touch-input.patch",
@@ -46,7 +46,7 @@
   },
   "testLeaf": {
     "path": "tests/touch_ui_tests.rs",
-    "sha256": "8f69cc6f9b0c09c1d044e130b64391331c4255380df2a01b2e3c84528271a106",
-    "bytes": 7271
+    "sha256": "632cacd0cea5b264a82dd0594870dd7d3ab7e0391585cdc16a71c54abb9ee424",
+    "bytes": 9118
   }
 }

@@ -1,6 +1,6 @@
 # Grid primary-touch input recipe
 
-Status: source 6d05c8452c7dde7449c8fb0b81e0d2b3bf395563 qualified by check14 Clippy×2 + actual13 UI + Release WASM and browser14/15; iPhone software-keyboard and deployment acceptance remain pending.
+Status: source 4b5e45575c5c33b4b30185706c59824661b20d2f passed host/WASM Clippy, actual14 UI, Release WASM and actual sandbox browser touch/IME/content/Undo/Redo/freeze plus current-owner focus negatives. Original 6d05 assets remain immutable; new bytes require a new runtime prefix. iPhone software-keyboard and landscape acceptance remain pending.
 
 This recipe extends the existing pinned Grid producer. It does not replace its source pin, managed-command policy, host bridge, browser ABI or document authority.
 
@@ -18,3 +18,18 @@ The helper is ephemeral input ownership. A real primary contact must still own t
 `tests/touch_ui_tests.rs` is a real egui input regression leaf, registered after the host sources are copied. It covers first formula entry, cell entry and handoff, actual values and XLSX snapshot, cancellation, replaced documents, stale/wrong/no-IME pulses, frozen CAS and one-shot consumption. Existing keyboard/undo regressions remain intact.
 
 The scratch replay receipt proves exact reconstructed bytes, not compilation or browser acceptance. Browser proof does not prove the iPhone software keyboard.
+
+When the rendered platform output has no current IME/editor, the DOM text agent
+must leave hit-testing so its old caret cannot obstruct adjacent cells. The same
+agent becomes interactive again when the current editor supplies IME output,
+before the existing contact/owner activation gate runs. This does not clear its
+buffer, move its range, interrupt composition or add a focus/blur workaround.
+The update runs even when IME geometry is cached (including repeated `None`).
+
+The browser suite includes an independent synthetic document: trusted A1 edit →
+Enter → landscape resize → touch the old caret footprint in B1. It verifies the
+actual hit target, B1 content, trusted composition-start/input and caret (CDP composition-end is observed untrusted), normal Undo/Redo,
+cancellation and frozen editing. CSS values are observations, not the behavioral
+contract. The original native observation is narrower: B1 did not activate after
+rotation; Chrome reproduces a concrete stale-target mechanism, but does not prove
+the exact native hit coordinate or the iPhone software keyboard.

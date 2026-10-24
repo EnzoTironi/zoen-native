@@ -8,6 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { sandboxHtml } from "../../../apps/zoen/src/miniapps/sandbox.ts";
 import { findBrowserExecutable } from "../../../tools/miniapp-build/browser-executable.ts";
 import { childHtml } from "./browser-child.mjs";
+import { verifyRetiredAgent } from "./retired-agent.mjs";
 
 const [dist, seedPath, outputPath, playwrightModule] = process.argv.slice(2);
 if (![dist, seedPath, outputPath, playwrightModule].every((v) => v && isAbsolute(v)))
@@ -67,6 +68,7 @@ let browser, page, receipt, result = "FAIL";
 try {
   await new Promise((done, fail) => { server.once("error", fail); server.listen(0, "127.0.0.1", done); });
   browser = await chromium.launch({ executablePath, headless: true, timeout: 30_000, args: ["--enable-unsafe-swiftshader", "--use-angle=swiftshader", "--disable-background-networking", "--disable-component-update"] });
+  const retiredAgent = await verifyRetiredAgent(browser, `http://127.0.0.1:${server.address().port}/`, output);
   page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
   page.on("pageerror", (e) => errors.push(String(e)));
   page.on("console", (e) => { if (e.type() === "error") consoleErrors.push(e.text()); });
@@ -128,7 +130,7 @@ try {
   assert.deepEqual(errors, []);
   assert.deepEqual(consoleErrors, []);
   assert.ok(!requests.some((r) => !["/", "/module.js", "/engine.wasm", "/favicon.ico"].includes(r.path)), "No document/formula/engine network traffic");
-  receipt = { runtime, manualHash: manual.metadata.sha256, commandHash: exported.metadata.sha256, commandAccepted, manualCells, commandCells, requests, errors, consoleErrors, scope: "actual opaque-sandbox browser engine ABI/manual input/export; synthetic receipts, not Core or agent admission" };
+  receipt = { runtime, retiredAgent, manualHash: manual.metadata.sha256, commandHash: exported.metadata.sha256, commandAccepted, manualCells, commandCells, requests, errors, consoleErrors, scope: "actual opaque-sandbox browser engine ABI/manual input/export; synthetic receipts, not Core or agent admission" };
   result = "PASS";
 } catch (error) {
   receipt = { error: String(error), stack: error.stack, requests, errors, consoleErrors };

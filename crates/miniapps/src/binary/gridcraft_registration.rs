@@ -18,12 +18,12 @@ pub const MANIFEST: &str = match option_env!("ZOEN_GRIDCRAFT_RESOURCE_MANIFEST_J
     None => include_str!("../../resources/gridcraft.manifest.json"),
 };
 const PINS: RuntimePins = RuntimePins {
-    module_file: "gridcraft-web-342b01fb13fdf007.js",
+    module_file: "gridcraft-web-83b80492b1534aca.js",
     module_bytes: 78_601,
-    module_sha: "342b01fb13fdf00780e518d74d64986632b4db5a8985d00856cdff0353c0fc12",
-    wasm_file: "gridcraft-web-3656ee00500b30ac_bg.wasm",
-    wasm_bytes: 20_250_956,
-    wasm_sha: "3656ee00500b30ac821bcad78553e0ef3234836d468930d4d8396cc2f47a1eea",
+    module_sha: "83b80492b1534acafac7961a881dfa71cdb3a1c9b3cfec21b11562878720e3a5",
+    wasm_file: "gridcraft-web-80130caca86e70d2_bg.wasm",
+    wasm_bytes: 20_251_661,
+    wasm_sha: "80130caca86e70d29d604360985e05321870e1b69e0ff0d9c5a8d870ff213cd9",
 };
 pub fn valid_resource(html: &str, manifest: &str) -> bool {
     resource::valid_resource(Format::Gridcraft, &PINS, html, manifest)
@@ -149,6 +149,27 @@ mod tests {
             "url": format!("{base}gridcraft-web-5153bf63fb5e9877_bg.wasm"),
             "bytes": 20_192_554,
             "sha256": "5153bf63fb5e9877655446b23e4ade78d7207dbcd7f99d71bdfbf549d161384c",
+            "mime": "application/wasm"
+        });
+        assert!(!valid_resource(HTML, &old.to_string()));
+    }
+    #[test]
+    fn retired_hit_target_package_cannot_enable_grid() {
+        let mut old = fixture();
+        let base = format!(
+            "https://runtime.invalid/gridcraft/{}/",
+            Format::Gridcraft.revision()
+        );
+        old["runtimePackage"]["module"] = json!({
+            "url": format!("{base}gridcraft-web-342b01fb13fdf007.js"),
+            "bytes": 78_601,
+            "sha256": "342b01fb13fdf00780e518d74d64986632b4db5a8985d00856cdff0353c0fc12",
+            "mime": "text/javascript"
+        });
+        old["runtimePackage"]["wasm"] = json!({
+            "url": format!("{base}gridcraft-web-3656ee00500b30ac_bg.wasm"),
+            "bytes": 20_250_956,
+            "sha256": "3656ee00500b30ac821bcad78553e0ef3234836d468930d4d8396cc2f47a1eea",
             "mime": "application/wasm"
         });
         assert!(!valid_resource(HTML, &old.to_string()));
