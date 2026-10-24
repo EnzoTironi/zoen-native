@@ -42,6 +42,9 @@ impl Session {
     /// Old wire variants remain complete-or-error, with finite query/reassembly
     /// and exact existing transport ceilings. Never disguise a prefix as a list.
     pub(super) async fn complete_legacy(&self, kind: Kind) -> Result<Reply, String> {
+        if self.read_snapshot.is_some() {
+            return Err("complete_read_busy".into());
+        }
         let mut snapshot = Snapshot::begin(&self.st, &self.identity, &self.device, kind).await?;
         let mut staging = Assembly::new(kind, self.identity.clone(), self.device.clone());
         let mut bytes = 0_usize;

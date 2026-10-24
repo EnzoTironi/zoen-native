@@ -194,6 +194,13 @@ async fn snapshot_tokens_are_connection_bound_and_cancel_releases_the_global_slo
     let root = Signer::generate();
     let (author, mut first, _) = setup(&test, &root).await;
     let p = next(&mut first, 20, Request::begin(Kind::Devices)).await;
+    assert!(
+        request(&mut first, 19, Op::Devices)
+            .await
+            .unwrap_err()
+            .contains("complete_read_busy"),
+        "legacy read overlapped its connection's retained snapshot"
+    );
     let mut second = capable(&test, &author).await;
     let foreign = Request {
         kind: p.kind,
