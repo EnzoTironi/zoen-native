@@ -46,10 +46,12 @@ pub struct RecoveryRef {
 }
 
 impl RecoveryRef {
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         self.encode_to_vec()
     }
 
+    #[must_use]
     pub fn parse(data: &[u8]) -> Option<Self> {
         if data.len() > 128 {
             return None;
@@ -82,7 +84,8 @@ fn context(space: &str, epoch: u64, device: &str) -> Option<Vec<u8>> {
         return None;
     }
     let mut aad = DOMAIN.to_vec();
-    aad.extend_from_slice(&(space.len() as u32).to_be_bytes());
+    let space_len = u32::try_from(space.len()).ok()?;
+    aad.extend_from_slice(&space_len.to_be_bytes());
     aad.extend_from_slice(space.as_bytes());
     aad.extend_from_slice(&epoch.to_be_bytes());
     aad.extend_from_slice(&device);
@@ -106,6 +109,7 @@ fn wrapping_key(
 }
 
 /// Recipient identity IDs and their verified recoverable X25519 public keys.
+#[must_use]
 pub fn seal(
     space: &str,
     epoch: u64,
@@ -175,6 +179,7 @@ pub fn seal(
     )
 }
 
+#[must_use]
 pub fn open(
     space: &str,
     epoch: u64,

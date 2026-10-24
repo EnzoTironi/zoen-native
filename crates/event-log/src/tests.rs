@@ -102,7 +102,7 @@ fn tampered_content_is_detected() {
                 media: None,
                 forwarded: false,
             },
-        )))
+        )));
     });
     assert_eq!(
         SpaceLog::from_events("sp_paraty", events).unwrap_err(),
@@ -142,7 +142,7 @@ fn rehashed_tamper_fails_signature() {
                 media: None,
                 forwarded: false,
             },
-        )))
+        )));
     });
     rehash(&mut events[3]);
     assert_eq!(
@@ -213,7 +213,7 @@ fn a_sequencer_cannot_move_an_event_before_what_its_author_saw() {
     for e in &log.events()[..2] {
         relay.accept(e.clone()).unwrap();
     }
-    let reply = Author::root(marina.clone()).sign_event(
+    let reply = Author::root(marina).sign_event(
         "sp_paraty",
         "late",
         9,
@@ -448,7 +448,7 @@ fn device_keys_sign_for_their_identity() {
 #[test]
 fn relay_sequenced_events_are_accepted_in_order_only() {
     let root = Signer::generate();
-    let me = Author::root(root.clone());
+    let me = Author::root(root);
     let mut relay = SpaceLog::new("sp_g");
     let a = relay
         .sequence(me.sign_event(
@@ -530,4 +530,19 @@ fn signer_roundtrips_secret() {
 fn json_hash_is_stable_and_sensitive() {
     assert_eq!(content_hash(&("a", 1)), content_hash(&("a", 1)));
     assert_ne!(content_hash(&("a", 1)), content_hash(&("a", 2)));
+}
+
+#[test]
+fn a_causal_position_cannot_wrap_to_an_earlier_index() {
+    let (log, _, _) = sample().unwrap();
+    let mut event = log.events()[2].clone();
+    event.seq = (1_u64 << 32) + 1;
+    event.seen = Some(Seen {
+        seq: 1_u64 << 32,
+        hash: log.events()[0].hash.clone(),
+    });
+    assert_eq!(
+        verify_causal_link(log.events(), &event),
+        Err(LogError::BrokenCausalLink { seq: event.seq })
+    );
 }

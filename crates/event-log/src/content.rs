@@ -108,9 +108,11 @@ pub struct InnerEvent {
 }
 
 impl InnerEvent {
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         self.encode_to_vec()
     }
+    #[must_use]
     pub fn decode(bytes: &[u8]) -> Option<Self> {
         <Self as Message>::decode(bytes).ok()
     }
@@ -118,6 +120,7 @@ impl InnerEvent {
 
 impl SealedKind {
     /// The name a device records for an entry it keeps sealed.
+    #[must_use]
     pub fn name(self) -> &'static str {
         match self {
             SealedKind::Unspecified => "Unspecified",
@@ -129,6 +132,7 @@ impl SealedKind {
 }
 
 impl Sealed {
+    #[must_use]
     pub fn new(kind: SealedKind, suite: u32, data: Vec<u8>) -> Self {
         Self {
             kind: kind as i32,
@@ -140,6 +144,7 @@ impl Sealed {
     }
 
     /// What a pruned stub keeps of this: no MLS bytes, their hash.
+    #[must_use]
     pub fn stub(&self) -> Sealed {
         Sealed {
             data: Vec::new(),
@@ -148,6 +153,7 @@ impl Sealed {
         }
     }
 
+    #[must_use]
     pub fn is_stub(&self) -> bool {
         self.data.is_empty() && !self.data_hash.is_empty()
     }
@@ -184,6 +190,7 @@ pub const SEALED_DOMAIN: &[u8] = b"zoen-sealed-v1\0";
 
 /// V4 signatures cannot be replayed as opaque legacy v3 stub hashes. Legacy signatures
 /// signed only the digest, so their surviving headers remain a historical trust limit.
+#[must_use]
 pub fn signature_message(content: &[u8], hash: &str) -> Vec<u8> {
     let mut message = Vec::new();
     if SignedContent::parse(content).is_some_and(|c| {
@@ -227,6 +234,7 @@ fn sealed_hash(header: &[u8], digest: &[u8]) -> String {
 
 /// Compatibility for the unversioned pruning hash briefly emitted by M2 branches.
 /// Readers select this only when the author's signature authenticates it.
+#[must_use]
 pub fn unversioned_sealed_hash(content: &[u8]) -> Option<String> {
     let mut c = SignedContent::parse(content)?;
     let Some(Payload::Sealed(s)) = &mut c.payload else {
@@ -239,6 +247,7 @@ pub fn unversioned_sealed_hash(content: &[u8]) -> Option<String> {
 }
 
 /// The stub content a pruned sealed entry leaves; `None` unless sealed with its bytes.
+#[must_use]
 pub fn stub_content(content: &[u8]) -> Option<Vec<u8>> {
     let mut c = SignedContent::parse(content)?;
     let Some(Payload::Sealed(sealed)) = &c.payload else {
@@ -350,10 +359,10 @@ fn take_field<'a>(input: &mut &'a [u8]) -> Option<Field<'a>> {
 
 fn append_varint(output: &mut Vec<u8>, mut value: u64) {
     while value >= 128 {
-        output.push((value as u8 & 127) | 128);
+        output.push((value.to_le_bytes()[0] & 127) | 128);
         value >>= 7;
     }
-    output.push(value as u8);
+    output.push(value.to_le_bytes()[0]);
 }
 
 fn append_bytes(output: &mut Vec<u8>, tag: u64, bytes: &[u8]) {
@@ -363,6 +372,7 @@ fn append_bytes(output: &mut Vec<u8>, tag: u64, bytes: &[u8]) {
 }
 
 /// SHA-256(domain ‖ content), lowercase hex: the hash of clear content.
+#[must_use]
 pub fn content_hash(content: &[u8]) -> String {
     hex::encode(
         Sha256::new()
@@ -373,6 +383,7 @@ pub fn content_hash(content: &[u8]) -> String {
 }
 
 /// Decodes the body, or names the kind this build doesn't know.
+#[must_use]
 pub fn decode_body(json: &[u8]) -> EventBody {
     serde_json::from_slice(json).unwrap_or_else(|_| {
         let kind = serde_json::from_slice::<serde_json::Value>(json)
@@ -387,15 +398,18 @@ pub fn decode_body(json: &[u8]) -> EventBody {
     })
 }
 
+#[must_use]
 pub fn encode_body(body: &EventBody) -> Vec<u8> {
     serde_json::to_vec(body).expect("event bodies always serialize")
 }
 
 impl SignedContent {
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         self.encode_to_vec()
     }
 
+    #[must_use]
     pub fn parse(bytes: &[u8]) -> Option<Self> {
         Self::decode(bytes).ok()
     }
@@ -408,6 +422,26 @@ impl SignedContent {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn varint_encoding_preserves_canonical_boundary_bytes() {
+        for (value, expected) in [
+            (0, vec![0]),
+            (127, vec![127]),
+            (128, vec![128, 1]),
+            (
+                u64::MAX,
+                vec![255, 255, 255, 255, 255, 255, 255, 255, 255, 1],
+            ),
+        ] {
+            let mut encoded = Vec::new();
+            append_varint(&mut encoded, value);
+            assert_eq!(encoded, expected);
+            let mut input = encoded.as_slice();
+            assert_eq!(take_varint(&mut input), Some(value));
+            assert_eq!(input, b"");
+        }
+    }
 
     #[test]
     fn version_four_authenticates_unknown_fields_inside_the_sealed_header() {
@@ -473,7 +507,7 @@ mod tests {
         let Some(Payload::Sealed(sealed)) = parsed.payload else {
             panic!("sealed fixture");
         };
-        assert!(sealed.data.is_empty());
+        assert_eq!(sealed.data, Vec::<u8>::new());
         assert_eq!(sealed.data_hash, Sha256::digest([10, 20, 30]).to_vec());
     }
 }

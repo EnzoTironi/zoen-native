@@ -64,6 +64,7 @@ pub struct ProfilePhoto {
 pub const MAX_PHOTO_BYTES: usize = 5 * 1024 * 1024;
 
 impl ProfilePhoto {
+    #[must_use]
     pub fn valid(&self) -> bool {
         [&self.sha256, &self.blob, &self.key].iter().all(|value| {
             value.len() == 64
@@ -76,6 +77,7 @@ impl ProfilePhoto {
         )
     }
 
+    #[must_use]
     pub fn seal(bytes: &[u8], mime: &str) -> Option<(Self, Vec<u8>)> {
         if bytes.is_empty() || bytes.len() > MAX_PHOTO_BYTES {
             return None;
@@ -91,6 +93,7 @@ impl ProfilePhoto {
     }
 
     /// Both hashes are checked; no caller can relabel someone else's blob.
+    #[must_use]
     pub fn open(&self, sealed: &[u8]) -> Option<Vec<u8>> {
         if !self.valid()
             || sealed.len() > MAX_PHOTO_BYTES + 40
@@ -107,10 +110,12 @@ impl ProfilePhoto {
 }
 
 impl ProfileFields {
+    #[must_use]
     pub fn to_bytes(&self) -> Vec<u8> {
         self.encode_to_vec()
     }
 
+    #[must_use]
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         Self::decode(bytes).ok()
     }
@@ -126,6 +131,7 @@ impl std::fmt::Debug for ProfileKey {
 }
 
 impl ProfileKey {
+    #[must_use]
     pub fn generate() -> Self {
         Self(random())
     }
@@ -134,6 +140,7 @@ impl ProfileKey {
         hex::decode(s).ok()?.try_into().ok().map(Self)
     }
 
+    #[must_use]
     pub fn to_hex(&self) -> String {
         hex::encode(self.0)
     }
@@ -143,7 +150,7 @@ impl ProfileKey {
         Hkdf::<Sha256>::new(None, &self.0)
             .expand(PROFILE_INFO, &mut k)
             .expect("32 bytes");
-        XChaCha20Poly1305::new_from_slice(&k).expect("32-byte key")
+        XChaCha20Poly1305::new(&k.into())
     }
 }
 
@@ -158,6 +165,7 @@ fn profile_aad(identity: &str, version: u64) -> Vec<u8> {
 }
 
 /// `nonce ‖ ciphertext+tag`.
+#[must_use]
 pub fn seal_profile(
     key: &ProfileKey,
     identity: &str,
@@ -178,6 +186,7 @@ pub fn seal_profile(
     [nonce.as_slice(), &ct].concat()
 }
 
+#[must_use]
 pub fn open_profile(
     key: &ProfileKey,
     identity: &str,
@@ -224,6 +233,7 @@ fn verify_as(identity: &str, msg: &[u8], s: &DeviceSigned) -> bool {
 }
 
 /// Canonical bytes for a certified external device signer to authorize an upload.
+#[must_use]
 pub fn upload_message(identity: &str, version: u64, ciphertext: &[u8]) -> Vec<u8> {
     let mut m = UPLOAD_DOMAIN.to_vec();
     m.extend_from_slice(identity.as_bytes());
@@ -234,6 +244,7 @@ pub fn upload_message(identity: &str, version: u64, ciphertext: &[u8]) -> Vec<u8
 }
 
 /// Signs a profile upload; `None` for an author without a certified device.
+#[must_use]
 pub fn sign_upload(author: &Author, version: u64, ciphertext: &[u8]) -> Option<DeviceSigned> {
     sign_as(
         author,
@@ -241,6 +252,7 @@ pub fn sign_upload(author: &Author, version: u64, ciphertext: &[u8]) -> Option<D
     )
 }
 
+#[must_use]
 pub fn verify_upload(identity: &str, version: u64, ciphertext: &[u8], s: &DeviceSigned) -> bool {
     verify_as(identity, &upload_message(identity, version, ciphertext), s)
 }
@@ -250,24 +262,29 @@ pub fn verify_upload(identity: &str, version: u64, ciphertext: &[u8], s: &Device
 pub struct AgreementKey(StaticSecret);
 
 impl AgreementKey {
+    #[must_use]
     pub fn generate() -> Self {
         Self(StaticSecret::from(random::<32>()))
     }
 
+    #[must_use]
     pub fn from_secret(secret: [u8; 32]) -> Self {
         Self(StaticSecret::from(secret))
     }
 
+    #[must_use]
     pub fn secret(&self) -> [u8; 32] {
         self.0.to_bytes()
     }
 
+    #[must_use]
     pub fn public_hex(&self) -> String {
         hex::encode(PublicKey::from(&self.0).as_bytes())
     }
 }
 
 /// Canonical bytes for a certified external device signer to publish its agreement key.
+#[must_use]
 pub fn agreement_message(identity: &str, public: &str) -> Vec<u8> {
     [
         AGREEMENT_DOMAIN,
@@ -279,10 +296,12 @@ pub fn agreement_message(identity: &str, public: &str) -> Vec<u8> {
 }
 
 /// Publishes `public` as `author`'s agreement key.
+#[must_use]
 pub fn sign_agreement(author: &Author, public: &str) -> Option<DeviceSigned> {
     sign_as(author, &agreement_message(&author.identity, public))
 }
 
+#[must_use]
 pub fn verify_agreement(identity: &str, public: &str, s: &DeviceSigned) -> bool {
     public.len() == 64 && verify_as(identity, &agreement_message(identity, public), s)
 }
@@ -305,10 +324,11 @@ fn share_key(
     Hkdf::<Sha256>::new(Some(&salt), shared)
         .expand_multi_info(&[SHARE_INFO, b"\0", context], &mut k)
         .expect("32 bytes");
-    XChaCha20Poly1305::new_from_slice(&k).expect("32-byte key")
+    XChaCha20Poly1305::new(&k.into())
 }
 
 /// `context` names sender, recipient and Space, so a share can't be replayed elsewhere.
+#[must_use]
 pub fn share_context(space: &str, sender: &str, recipient: &str) -> Vec<u8> {
     [
         space.as_bytes(),
@@ -321,6 +341,7 @@ pub fn share_context(space: &str, sender: &str, recipient: &str) -> Vec<u8> {
 }
 
 /// Seals `(key, version)` to `recipient_public` (hex X25519).
+#[must_use]
 pub fn seal_share(
     key: &ProfileKey,
     version: u64,
@@ -346,6 +367,7 @@ pub fn seal_share(
 }
 
 /// Opens a share sealed to `me`: the sender's profile key and the version it unlocks.
+#[must_use]
 pub fn open_share(
     me: &AgreementKey,
     share: &SealedShare,

@@ -42,6 +42,7 @@ pub(crate) fn strict(id: &str, message: &[u8], signature: &str) -> bool {
             .is_ok()
 }
 
+#[must_use]
 pub fn sign(author: &Author, policy: OwnerPeriodPolicy) -> Option<SignedOwnerPolicy> {
     if policy.owner != author.identity || author.device.as_deref() != Some(&author.key.id()) {
         return None;
@@ -55,6 +56,7 @@ pub fn sign(author: &Author, policy: OwnerPeriodPolicy) -> Option<SignedOwnerPol
     verify(&signed).then_some(signed)
 }
 
+#[must_use]
 pub fn verify(signed: &SignedOwnerPolicy) -> bool {
     message(&signed.policy).is_some_and(|msg| {
         strict(
@@ -65,6 +67,7 @@ pub fn verify(signed: &SignedOwnerPolicy) -> bool {
     })
 }
 
+#[must_use]
 pub fn digest(policy: &OwnerPeriodPolicy) -> Option<String> {
     Some(hex::encode(Sha256::digest(message(policy)?)))
 }
@@ -109,7 +112,7 @@ mod tests {
         changed = signed.clone();
         changed.device = Signer::generate().id();
         assert!(!verify(&changed));
-        changed = signed.clone();
+        changed = signed;
         changed.cert = "00".repeat(64);
         assert!(!verify(&changed));
         assert!(sign(&Author::root(Signer::generate()), policy).is_none());

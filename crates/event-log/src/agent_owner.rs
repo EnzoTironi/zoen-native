@@ -32,10 +32,12 @@ fn verified(key: &VerifyingKey, message: &[u8], signature: &str) -> bool {
 }
 
 /// All three ids are canonical 64-character hex public keys, separated by a NUL.
+#[must_use]
 pub fn message(owner: &str, agent: &str, device: &str) -> Vec<u8> {
     format!("zoen-agent-owner-v1\0{owner}\0{agent}\0{device}").into_bytes()
 }
 
+#[must_use]
 pub fn verify(owner: &str, agent: &str, proof: &AgentOwnerProof) -> bool {
     if owner == agent || key(agent).is_none() {
         return false;
@@ -53,6 +55,7 @@ pub fn verify(owner: &str, agent: &str, proof: &AgentOwnerProof) -> bool {
 
 /// Signing requires a certified device. Relay admission also checks its current
 /// enrollment and revocation state; possession of this proof cannot revive a device.
+#[must_use]
 pub fn authorize(owner: &Author, agent: &str) -> Option<AgentOwnerProof> {
     let device = owner.device.as_ref()?;
     if device != &owner.key.id() {
@@ -67,6 +70,7 @@ pub fn authorize(owner: &Author, agent: &str) -> Option<AgentOwnerProof> {
 }
 
 /// The Agent signs the digest of a canonical enrollment offer in its own domain.
+#[must_use]
 pub fn enrollment_offer_message(agent: &str, offer_sha256: &str) -> Option<Vec<u8>> {
     key(agent)?;
     if offer_sha256.len() != 64
@@ -79,6 +83,7 @@ pub fn enrollment_offer_message(agent: &str, offer_sha256: &str) -> Option<Vec<u
     Some(format!("zoen-agent-enrollment-offer-v1\0{agent}\0{offer_sha256}").into_bytes())
 }
 
+#[must_use]
 pub fn verify_enrollment_offer(agent: &str, offer_sha256: &str, signature: &str) -> bool {
     let (Some(agent_key), Some(message)) =
         (key(agent), enrollment_offer_message(agent, offer_sha256))
@@ -114,6 +119,7 @@ fn enrollment_owner_message(
 }
 
 /// Bind this offer to an ordinary ownership proof using the same certified device.
+#[must_use]
 pub fn authorize_enrollment(
     owner: &Author,
     agent: &str,
@@ -125,6 +131,7 @@ pub fn authorize_enrollment(
     Some((proof, signature))
 }
 
+#[must_use]
 pub fn verify_enrollment(
     owner: &str,
     agent: &str,
@@ -144,6 +151,7 @@ pub fn verify_enrollment(
     verified(&device_key, &message, signature)
 }
 
+#[must_use]
 pub fn profile_authorized(profile: &Identity) -> bool {
     match profile.kind {
         IdentityKind::Person => profile.owner.is_none() && profile.owner_proof.is_none(),

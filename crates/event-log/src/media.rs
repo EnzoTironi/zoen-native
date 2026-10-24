@@ -13,10 +13,11 @@ fn random<const N: usize>() -> [u8; N] {
 }
 
 /// `nonce ‖ ciphertext+tag` under a new random key.
+#[must_use]
 pub fn seal(plain: &[u8]) -> ([u8; 32], Vec<u8>) {
     let key = random::<32>();
     let nonce = random::<NONCE>();
-    let cipher = XChaCha20Poly1305::new_from_slice(&key).expect("32-byte key");
+    let cipher = XChaCha20Poly1305::new(&key.into());
     let ct = cipher
         .encrypt(&XNonce::from(nonce), plain)
         .expect("encrypt");
@@ -27,6 +28,7 @@ pub fn seal(plain: &[u8]) -> ([u8; 32], Vec<u8>) {
 }
 
 /// The plaintext, or `None` if the key is wrong or a byte changed.
+#[must_use]
 pub fn open(key: &[u8], blob: &[u8]) -> Option<Vec<u8>> {
     if blob.len() < NONCE + 16 {
         return None;

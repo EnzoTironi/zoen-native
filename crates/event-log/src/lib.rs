@@ -25,37 +25,13 @@ pub mod profile;
 pub mod profile_sync;
 pub mod recovery;
 
+mod error;
+pub use error::LogError;
+
 use content::{Payload, SignedContent};
 use ed25519_dalek::{Signature, Signer as _, SigningKey, Verifier, VerifyingKey};
 use sha2::{Digest, Sha256};
-use thiserror::Error;
 use types::{ChainLink, Event, EventBody, IdentityId, Seen, SpaceId, EVENT_FORMAT, GENESIS_PREV};
-
-#[derive(Debug, Error, PartialEq, Eq)]
-pub enum LogError {
-    #[error("evento #{seq} pertence a outro Espaço")]
-    WrongSpace { seq: u64 },
-    #[error("sequência quebrada: esperava #{expected}, veio #{got}")]
-    BadSequence { expected: u64, got: u64 },
-    #[error("cadeia quebrada no evento #{seq}")]
-    BrokenChain { seq: u64 },
-    #[error("hash não confere no evento #{seq} (conteúdo alterado)")]
-    BadHash { seq: u64 },
-    #[error("assinatura inválida no evento #{seq}")]
-    BadSignature { seq: u64 },
-    #[error("chave de autor inválida no evento #{seq}")]
-    BadAuthorKey { seq: u64 },
-    #[error("aparelho não certificado pelo autor no evento #{seq}")]
-    BadDeviceCert { seq: u64 },
-    #[error("conteúdo assinado ilegível ou diferente do evento #{seq}")]
-    BadContent { seq: u64 },
-    #[error("o evento #{seq} aponta para uma história que este aparelho não tem")]
-    BrokenCausalLink { seq: u64 },
-    #[error("o evento #{seq} não diz o que o autor já tinha visto")]
-    MissingCausalLink { seq: u64 },
-    #[error("o evento #{seq} cria de novo um Espaço que já existe")]
-    Recreated { seq: u64 },
-}
 
 /// An Ed25519 signing key (identity root key or device key).
 #[derive(Clone)]
@@ -64,6 +40,7 @@ pub struct Signer {
 }
 
 impl Signer {
+    #[must_use]
     pub fn generate() -> Self {
         let mut seed = [0u8; 32];
         getrandom::getrandom(&mut seed).expect("entropia do sistema");
@@ -72,21 +49,25 @@ impl Signer {
         }
     }
 
+    #[must_use]
     pub fn from_secret(secret: &[u8; 32]) -> Self {
         Self {
             key: SigningKey::from_bytes(secret),
         }
     }
 
+    #[must_use]
     pub fn secret(&self) -> [u8; 32] {
         self.key.to_bytes()
     }
 
     /// The public key in hex. For an identity key, this *is* the Identity.
+    #[must_use]
     pub fn id(&self) -> IdentityId {
         hex::encode(self.key.verifying_key().to_bytes())
     }
 
+    #[must_use]
     pub fn sign(&self, msg: &[u8]) -> String {
         hex::encode(self.key.sign(msg).to_bytes())
     }
@@ -104,6 +85,7 @@ pub struct Author {
 
 impl Author {
     /// The identity key signs directly (local personas, agents without devices).
+    #[must_use]
     pub fn root(key: Signer) -> Self {
         Self {
             identity: key.id(),
@@ -114,6 +96,7 @@ impl Author {
     }
 
     /// A device key certified by the identity key.
+    #[must_use]
     pub fn device(identity: &Signer, device: Signer) -> Self {
         let cert = identity.sign(&device_cert_message(&device.id()));
         Self {
@@ -125,6 +108,7 @@ impl Author {
     }
 
     /// A device key with a certificate made earlier (the identity key may live elsewhere).
+    #[must_use]
     pub fn certified(identity: IdentityId, device: Signer, cert: String) -> Self {
         Self {
             identity,
@@ -145,7 +129,7 @@ impl Author {
         body: EventBody,
     ) -> Event {
         let content = SignedContent {
-            v: EVENT_FORMAT as u32,
+            v: u32::from(EVENT_FORMAT),
             space: space.to_string(),
             client_id: client_id.to_string(),
             author: self.identity.clone(),
@@ -206,6 +190,9 @@ impl Author {
 
 /// Rebuilds an event from what traveled: the author's exact bytes, the signature and
 /// certificate, and the sequencer's position. Every view field comes from the bytes.
+///
+/// # Errors
+/// Returns `BadContent` if the signed content cannot be decoded or has no payload.
 pub fn event_from_content(
     content: Vec<u8>,
     sig: String,
@@ -247,16 +234,19 @@ fn sealed_body(s: &content::Sealed) -> EventBody {
 }
 
 /// What an identity signs to certify a device key.
+#[must_use]
 pub fn device_cert_message(device: &str) -> Vec<u8> {
     format!("zoen-device-v1:{device}").into_bytes()
 }
 
+#[must_use]
 pub fn sha256_hex(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
 
 /// The hash the author signed: over the exact content bytes for clear events, over the
 /// header and the hash of the MLS bytes for sealed ones (`content::signed_hash`).
+#[must_use]
 pub fn content_hash_of(e: &Event) -> String {
     if let Some(original) = legacy_stub_hash(e) {
         return original.to_string();
@@ -266,6 +256,7 @@ pub fn content_hash_of(e: &Event) -> String {
 
 /// Select the signed hash without changing any legacy chain links. M2 briefly emitted
 /// a pruning hash with v3; accept that variant only with its authentic signature.
+#[must_use]
 pub fn signed_content_hash(bytes: &[u8], sig: &str) -> String {
     let hash = content::signed_hash(bytes);
     if let Some(c) = SignedContent::parse(bytes) {
@@ -295,11 +286,13 @@ fn legacy_stub_hash(e: &Event) -> Option<&str> {
 }
 
 /// What traveled: the sealed envelope's hash, or the content hash for plaintext.
+#[must_use]
 pub fn wire_hash_of(e: &Event) -> String {
     e.sealed_wire.clone().unwrap_or_else(|| content_hash_of(e))
 }
 
 /// The chain hash for `e` at (`seq`, `prev`).
+#[must_use]
 pub fn chain_hash(space: &str, seq: u64, prev: &str, wire: &str) -> String {
     sha256_hex(
         &serde_json::to_vec(&ChainLink {
@@ -318,6 +311,7 @@ pub fn content_hash<T: serde::Serialize>(value: &T) -> String {
 }
 
 /// Whether `hexkey` is an Ed25519 public key (a device or identity key).
+#[must_use]
 pub fn parse_device_key(hexkey: &str) -> Option<()> {
     parse_key(hexkey).map(|_| ())
 }
@@ -333,6 +327,7 @@ fn parse_sig(hexsig: &str) -> Option<Signature> {
 }
 
 /// Verifies a raw Ed25519 signature (hex key, hex signature).
+#[must_use]
 pub fn verify_sig(pubkey_hex: &str, msg: &[u8], sig_hex: &str) -> bool {
     match (parse_key(pubkey_hex), parse_sig(sig_hex)) {
         (Some(k), Some(s)) => k.verify(msg, &s).is_ok(),
@@ -342,6 +337,10 @@ pub fn verify_sig(pubkey_hex: &str, msg: &[u8], sig_hex: &str) -> bool {
 
 /// Who-said-it check: the view fields match the signed bytes, the device certificate (if
 /// any) holds, and the signature covers the bytes.
+///
+/// # Errors
+/// Returns a content, author-key, device-certificate or signature error when the event
+/// does not carry the corresponding authentic proof.
 pub fn verify_author(e: &Event) -> Result<(), LogError> {
     let seq = e.seq;
     let c = SignedContent::parse(&e.content).ok_or(LogError::BadContent { seq })?;
@@ -389,10 +388,17 @@ pub fn verify_author(e: &Event) -> Result<(), LogError> {
 
 /// Checks the causal link against the events before it. Only a Space's creation and a
 /// newcomer adding themselves may come from an author who had seen nothing.
+///
+/// # Errors
+/// Returns `MissingCausalLink` when required history is absent, or `BrokenCausalLink`
+/// when the referenced position is unavailable, not earlier, or has a different hash.
 pub fn verify_causal_link(before: &[Event], e: &Event) -> Result<(), LogError> {
     let seq = e.seq;
     match &e.seen {
-        Some(s) => match before.get(s.seq as usize) {
+        Some(s) => match usize::try_from(s.seq)
+            .ok()
+            .and_then(|index| before.get(index))
+        {
             Some(target) if s.seq < seq && target.hash == s.hash => Ok(()),
             _ => Err(LogError::BrokenCausalLink { seq }),
         },
@@ -414,6 +420,9 @@ fn verify_place(before: &[Event], e: &Event) -> Result<(), LogError> {
 }
 
 /// Full check of one event at its position: chain hash plus author signature.
+///
+/// # Errors
+/// Returns `BadHash` for a mismatched chain link, or the author verification error.
 pub fn verify_event(e: &Event) -> Result<(), LogError> {
     if chain_hash(&e.space, e.seq, &e.prev, &wire_hash_of(e)) != e.hash {
         return Err(LogError::BadHash { seq: e.seq });
@@ -436,6 +445,9 @@ impl SpaceLog {
     }
 
     /// Rebuilds a log from persisted events, verifying everything.
+    ///
+    /// # Errors
+    /// Returns the first sequence, chain, signature, content or causal-history error.
     pub fn from_events(space: impl Into<SpaceId>, events: Vec<Event>) -> Result<Self, LogError> {
         let log = Self {
             space: space.into(),
@@ -445,30 +457,33 @@ impl SpaceLog {
         Ok(log)
     }
 
+    #[must_use]
     pub fn space(&self) -> &str {
         &self.space
     }
 
+    #[must_use]
     pub fn events(&self) -> &[Event] {
         &self.events
     }
 
+    #[must_use]
     pub fn len(&self) -> usize {
         self.events.len()
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.events.is_empty()
     }
 
+    #[must_use]
     pub fn head_hash(&self) -> &str {
-        self.events
-            .last()
-            .map(|e| e.hash.as_str())
-            .unwrap_or(GENESIS_PREV)
+        self.events.last().map_or(GENESIS_PREV, |e| e.hash.as_str())
     }
 
     /// The causal link a new event signed on top of this log carries.
+    #[must_use]
     pub fn head(&self) -> Option<Seen> {
         self.events.last().map(|e| Seen {
             seq: e.seq,
@@ -477,6 +492,7 @@ impl SpaceLog {
     }
 
     /// Next sequence number.
+    #[must_use]
     pub fn next_seq(&self) -> u64 {
         self.events.len() as u64
     }
@@ -486,8 +502,7 @@ impl SpaceLog {
         e.seq = self.next_seq();
         e.prev = self.head_hash().to_string();
         e.hash = chain_hash(&self.space, e.seq, &e.prev, &wire_hash_of(&e));
-        self.events.push(e);
-        self.events.last().expect("acabou de entrar")
+        self.events.push_mut(e)
     }
 
     /// Signs and sequences locally in one step (local-only Spaces and tests).
@@ -513,6 +528,10 @@ impl SpaceLog {
 
     /// Accepts an event sequenced elsewhere (the relay): it must be the next one, link
     /// to the head and carry a valid signature.
+    ///
+    /// # Errors
+    /// Returns a space, sequence or chain error for an unexpected position, or an
+    /// author/content/causal-history error for an invalid event.
     pub fn accept(&mut self, e: Event) -> Result<&Event, LogError> {
         if e.space != self.space {
             return Err(LogError::WrongSpace { seq: e.seq });
@@ -528,11 +547,13 @@ impl SpaceLog {
         }
         verify_event(&e)?;
         verify_place(&self.events, &e)?;
-        self.events.push(e);
-        Ok(self.events.last().expect("acabou de entrar"))
+        Ok(self.events.push_mut(e))
     }
 
     /// Verifies sequence, hash chain and every signature.
+    ///
+    /// # Errors
+    /// Returns the first space, sequence, chain, author/content or causal-history error.
     pub fn verify(&self) -> Result<(), LogError> {
         let mut prev = GENESIS_PREV.to_string();
         for (i, e) in self.events.iter().enumerate() {
@@ -550,7 +571,7 @@ impl SpaceLog {
             }
             verify_event(e)?;
             verify_place(&self.events[..i], e)?;
-            prev = e.hash.clone();
+            prev.clone_from(&e.hash);
         }
         Ok(())
     }

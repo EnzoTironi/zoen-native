@@ -14,6 +14,7 @@ fn message(inquiry: &OwnerPolicyInquiry) -> Option<Vec<u8>> {
     message.extend_from_slice(&bytes);
     Some(message)
 }
+#[must_use]
 pub fn sign(author: &Author, inquiry: OwnerPolicyInquiry) -> Option<SignedOwnerPolicyInquiry> {
     if inquiry.owner != author.identity || author.device.as_deref() != Some(&author.key.id()) {
         return None;
@@ -26,6 +27,7 @@ pub fn sign(author: &Author, inquiry: OwnerPolicyInquiry) -> Option<SignedOwnerP
     };
     verify(&signed).then_some(signed)
 }
+#[must_use]
 pub fn verify(signed: &SignedOwnerPolicyInquiry) -> bool {
     message(&signed.inquiry).is_some_and(|message| {
         strict(
@@ -35,6 +37,7 @@ pub fn verify(signed: &SignedOwnerPolicyInquiry) -> bool {
         ) && strict(&signed.device, &message, &signed.signature)
     })
 }
+#[must_use]
 pub fn digest(inquiry: &OwnerPolicyInquiry) -> Option<String> {
     Some(hex::encode(Sha256::digest(message(inquiry)?)))
 }
@@ -131,7 +134,7 @@ mod tests {
             assert!(!mixed.valid_shape());
             assert!(sign(&author, mixed).is_none());
         }
-        let mut forged = signed.clone();
+        let mut forged = signed;
         forged.inquiry.purpose = None;
         assert!(!verify(&forged));
         let mut unknown = serde_json::to_value(&account)?;
