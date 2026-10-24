@@ -4,25 +4,7 @@ import { test } from 'node:test';
 import { installRuntimeClient } from './runtime-browser.ts';
 import { parseRuntimePackage } from './runtime-package.ts';
 
-test('pagehide clears document callbacks before retiring its loaded engine', async () => {
-  const create = URL.createObjectURL;
-  const revoke = URL.revokeObjectURL;
-  const shared = globalThis as typeof globalThis & {
-    retirementFixture?: { retired: boolean; events: string[] };
-  };
-  const module = `
-    export default async () => {};
-    export function zoenHostStart() {};
-    export function zoenHostOnChange(callback) {
-      if (globalThis.retirementFixture.retired) throw Error('engine already retired');
-      if (callback !== undefined) throw Error('unexpected callback');
-      globalThis.retirementFixture.events.push('clear');
-    }
-    export function zoenHostRetire() {
-      globalThis.retirementFixture.events.push('retire');
-      globalThis.retirementFixture.retired = true;
-    }
-  `;
+function resource(module: string) {
   const revision = 'a'.repeat(40);
   const wasm = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]);
   const hash = (value: string | Uint8Array) => createHash('sha256').update(value).digest('hex');
@@ -44,6 +26,29 @@ test('pagehide clears document callbacks before retiring its loaded engine', asy
       mime: 'application/wasm',
     },
   });
+  return { runtime, revision, wasm };
+}
+
+test('pagehide clears document callbacks before retiring its loaded engine', async () => {
+  const create = URL.createObjectURL;
+  const revoke = URL.revokeObjectURL;
+  const shared = globalThis as typeof globalThis & {
+    retirementFixture?: { retired: boolean; events: string[] };
+  };
+  const module = `
+    export default async () => {};
+    export function zoenHostStart() {};
+    export function zoenHostOnChange(callback) {
+      if (globalThis.retirementFixture.retired) throw Error('engine already retired');
+      if (callback !== undefined) throw Error('unexpected callback');
+      globalThis.retirementFixture.events.push('clear');
+    }
+    export function zoenHostRetire() {
+      globalThis.retirementFixture.events.push('retire');
+      globalThis.retirementFixture.retired = true;
+    }
+  `;
+  const { runtime, revision, wasm } = resource(module);
   URL.createObjectURL = () =>
     `data:text/javascript;base64,${Buffer.from(module).toString('base64')}`;
   URL.revokeObjectURL = () => {};
@@ -98,5 +103,90 @@ test('pagehide clears document callbacks before retiring its loaded engine', asy
     URL.createObjectURL = create;
     URL.revokeObjectURL = revoke;
     delete shared.retirementFixture;
+  }
+});
+
+test('close during real WASM initialization retires only initialized bindings and never starts a late App', async () => {
+  const create = URL.createObjectURL;
+  const revoke = URL.revokeObjectURL;
+  const shared = globalThis as typeof globalThis & {
+    pendingRuntime?: {
+      compiled(): void;
+      continuation: Promise<void>;
+      fail: boolean;
+      initialized: boolean;
+      starts: number;
+      retires: number;
+    };
+  };
+  const module = `
+    export default async ({module_or_path}) => {
+      await WebAssembly.instantiate(module_or_path);
+      const state = globalThis.pendingRuntime;
+      state.compiled();
+      await state.continuation;
+      if (state.fail) throw Error('initialization failed');
+      state.initialized = true;
+    };
+    export function zoenHostStart() { globalThis.pendingRuntime.starts++; };
+    export function zoenHostRetire() {
+      const state = globalThis.pendingRuntime;
+      if (!state.initialized) throw Error('exports are not initialized');
+      state.retires++;
+    }
+  `;
+  const { runtime, revision, wasm } = resource(module);
+  URL.createObjectURL = () =>
+    `data:text/javascript;base64,${Buffer.from(module).toString('base64')}`;
+  URL.revokeObjectURL = () => {};
+  try {
+    for (const fail of [false, true]) {
+      let release!: () => void;
+      let compiled!: () => void;
+      const entered = new Promise<void>((resolve) => {
+        compiled = resolve;
+      });
+      const state = {
+        compiled: () => compiled(),
+        continuation: new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+        fail,
+        initialized: false,
+        starts: 0,
+        retires: 0,
+      };
+      shared.pendingRuntime = state;
+      const events = new Map<string, EventListener>();
+      const parent = { postMessage() {} };
+      const target = {
+        parent,
+        addEventListener: (name: string, listener: EventListener) => events.set(name, listener),
+        removeEventListener: (name: string) => events.delete(name),
+      } as unknown as Window;
+      const client = installRuntimeClient(runtime, target);
+      const pending = client.load();
+      const rejected = assert.rejects(pending, /retired/);
+      const receiving = events.get('message')?.({
+        source: parent,
+        data: { zoenRuntime: 1, kind: 'ready', revision, module, wasm },
+      } as unknown as MessageEvent);
+      await entered;
+      assert.doesNotThrow(() => client.dispose());
+      client.dispose();
+      assert.equal(state.retires, 0, 'imported bindings do not yet have callable exports');
+      release();
+      await receiving;
+      await rejected;
+      assert.equal(state.starts, 0);
+      assert.equal(state.retires, fail ? 0 : 1);
+      client.dispose();
+      assert.equal(state.retires, fail ? 0 : 1);
+      assert.equal(events.size, 0);
+    }
+  } finally {
+    URL.createObjectURL = create;
+    URL.revokeObjectURL = revoke;
+    delete shared.pendingRuntime;
   }
 });

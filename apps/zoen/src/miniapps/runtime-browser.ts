@@ -78,6 +78,8 @@ export function installRuntimeClient(input: RuntimePackage, target: Window = win
   const runtime = parseRuntimePackage(input);
   let active = true;
   let bindings: Bindings | undefined;
+  let bindingsReady = false;
+  let bindingsRetired = false;
   let moduleUrl: string | undefined;
   let pending: Promise<Bindings> | undefined;
   let rejectPending: ((error: Error) => void) | undefined;
@@ -86,6 +88,11 @@ export function installRuntimeClient(input: RuntimePackage, target: Window = win
   const current = () => {
     if (!active) throw new Error('App runtime retired');
   };
+  function retireBindings() {
+    if (!bindingsReady || bindingsRetired) return;
+    bindingsRetired = true;
+    bindings?.zoenHostRetire();
+  }
   function dispose() {
     if (!active) return;
     active = false;
@@ -101,7 +108,7 @@ export function installRuntimeClient(input: RuntimePackage, target: Window = win
       cleanup?.();
     } finally {
       try {
-        bindings?.zoenHostRetire();
+        retireBindings();
       } finally {
         if (moduleUrl) URL.revokeObjectURL(moduleUrl);
         moduleUrl = undefined;
@@ -154,6 +161,7 @@ export function installRuntimeClient(input: RuntimePackage, target: Window = win
         throw new Error('App runtime does not implement the managed host ABI');
       bindings = module;
       await bindings.default({ module_or_path: data.wasm });
+      bindingsReady = true;
       current();
       stage = 'runtime_start_failed';
       await bindings.zoenHostStart();
@@ -162,7 +170,7 @@ export function installRuntimeClient(input: RuntimePackage, target: Window = win
       rejectPending = undefined;
     } catch (error) {
       try {
-        bindings?.zoenHostRetire();
+        retireBindings();
       } finally {
         rejectPending?.(
           Object.assign(new Error('App runtime failed', { cause: error }), {
