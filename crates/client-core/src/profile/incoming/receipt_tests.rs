@@ -196,3 +196,5 @@ fn agreement_absence_is_distinct_from_failed_storage_and_later_valid_key() -> R<
     assert!(engine.take_need_agreement().is_empty());
     Ok(())
 }
+
+mod foreign;
