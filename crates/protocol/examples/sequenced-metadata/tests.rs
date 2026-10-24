@@ -89,6 +89,15 @@ fn row_overflow_duplicates_and_chain_or_signature_corruption_are_refused() {
     let mut previous = types::GENESIS_PREV.to_owned();
     let mut input = String::new();
     for seq in 0..=MAX_ROWS {
+        if seq == MAX_ROWS {
+            assert_eq!(
+                project(input.as_bytes(), "space")
+                    .expect("exact row bound")
+                    .rows
+                    .len(),
+                MAX_ROWS
+            );
+        }
         let mut e = original.clone();
         e.seq = seq as u64;
         e.prev = previous;
@@ -116,5 +125,36 @@ fn row_overflow_duplicates_and_chain_or_signature_corruption_are_refused() {
     assert_eq!(
         project(wire(&bad).as_bytes(), "space").err(),
         Some(Rejected::Signature)
+    );
+}
+
+#[test]
+fn total_byte_cap_rejects_a_valid_chain_below_the_row_and_wire_caps() {
+    let author = Author::root(Signer::from_secret(&[13; 32]));
+    let mut previous = types::GENESIS_PREV.to_owned();
+    let mut input = String::new();
+    for seq in 0..50 {
+        let env = Envelope::sealed(
+            &author,
+            "space",
+            "private-client-id",
+            1,
+            None,
+            Sealed::new(SealedKind::Application, 1, vec![b'x'; 90_000]),
+        );
+        let entry = Sequenced {
+            seq,
+            hash: event_log::chain_hash("space", seq, &previous, &env.wire_hash()),
+            prev: previous,
+            env,
+        };
+        assert!(entry.encode().len() < MAX_WIRE_BYTES);
+        previous = entry.hash.clone();
+        input.push_str(&wire(&entry));
+    }
+    assert!(input.len() as u64 > MAX_INPUT_BYTES);
+    assert_eq!(
+        project(input.as_bytes(), "space").err(),
+        Some(Rejected::Bounds)
     );
 }
