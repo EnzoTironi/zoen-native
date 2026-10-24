@@ -43,9 +43,18 @@ cargo clippy --locked --offline -p gridcraft-zoen-host --all-targets -- -D warni
 cargo run --locked --offline -p gridcraft-zoen-host -- --seed > /absolute/owned/empty.xlsx
 ```
 
-These commands are a **plan, not results**. The native tests exercise real engine
-calculation, manual checkpoint, agent proposal, exact repeat, receipt refusal,
-undo, cold reopen and accepted-version XLSX export. The independent standards-
+Qualified on the pinned native engine: 7 profile cases, 14 Core binary cases
+(including 10 existing Deck cases), 10 native engine/profile cases, 2 actual
+egui Text+Enter input cases, all-target Clippy for the affected default/UI and
+Core client-types graphs, and a genuinely compiled 126-file type exporter.
+The UI test first failed with a hidden pre-ACK draft (9 became 99 after ACK);
+`begin_edit` now refuses while the proposal is frozen, and the same test passes
+with an additional no-editor assertion. These are native synthetic inputs, not
+WebView/iPhone keyboard or certified-agent admission evidence.
+
+The native tests exercise real engine calculation, human-scoped command and
+manual checkpoint convergence, exact repeat, receipt refusal, undo, cold reopen
+and accepted-version XLSX export. The independent standards-
 shaped XLSX fixtures in Core tests are adversarial storage fixtures, not engine-
 generated seeds. Generate any shipped seed with the actual pinned writer and
 record its hash; do not substitute those fixtures for it.
