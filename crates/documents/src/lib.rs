@@ -419,13 +419,30 @@ impl Page {
     /// Validate and stage first, so a refused edit cannot change the original page.
     /// For a stale editor, call this on `at(observed_frontiers)` and merge its updates.
     pub fn apply(&self, order: &[String], changed: &[BlockEdit]) -> Result<(), DocError> {
+        self.apply_checked(order, changed, false)
+    }
+
+    /// A complete editor projection may explicitly change syntax metadata. Legacy
+    /// `apply` keeps its semantic no-op/source-spelling preservation contract.
+    pub fn apply_editor(&self, order: &[String], changed: &[BlockEdit]) -> Result<(), DocError> {
+        self.apply_checked(order, changed, true)
+    }
+
+    fn apply_checked(
+        &self,
+        order: &[String],
+        changed: &[BlockEdit],
+        exact_kind: bool,
+    ) -> Result<(), DocError> {
         validate_apply(&block_ids(&self.blocks_list()), order, changed)?;
         let staged = Page {
             doc: self.doc.fork(),
         };
         let from = staged.version();
         staged.apply_validated(order, changed)?;
-        if staged.editor_content_eq(self) {
+        if staged.content_hash() == self.content_hash()
+            && (!exact_kind || staged.editor_content_eq(self))
+        {
             return Ok(());
         }
         let delta = staged.doc.export(ExportMode::updates(&from)).map_err(err)?;

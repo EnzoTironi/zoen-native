@@ -241,7 +241,7 @@ impl PageSession {
         let context_hash = drafts::context_hash(context);
         let (observed, base) = if let Some(prior) = journal.continuation(&context_hash) {
             desired
-                .apply(order, &edits)
+                .apply_editor(order, &edits)
                 .map_err(super::super::doc_err)?;
             let previous = Frontiers::decode(&prior.frontiers).map_err(plan_error)?;
             let observed = doc.at(&previous).map_err(super::super::doc_err)?;
@@ -257,13 +257,13 @@ impl PageSession {
                 })
                 .collect();
             observed
-                .apply(order, &complete)
+                .apply_editor(order, &complete)
                 .map_err(super::super::doc_err)?;
             (observed, base)
         } else {
             let base = desired.version();
             desired
-                .apply(order, &edits)
+                .apply_editor(order, &edits)
                 .map_err(super::super::doc_err)?;
             (desired, base)
         };
