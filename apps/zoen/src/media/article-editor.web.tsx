@@ -15,6 +15,7 @@ export function ArticleEditor({
   source: boolean;
   onChange(text: string): void;
   canEdit(): boolean;
+  captureEditLease(): () => boolean;
   ref?: Ref<ArticleEditorHandle>;
 }) {
   const { colors } = useTheme();

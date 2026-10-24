@@ -330,6 +330,7 @@ export function fixture(kind = 'article') {
     },
     blur: () => focusCleanup?.(),
     background: () => foregroundListener?.('background'),
+    foreground: () => foregroundListener?.('active'),
     revoke: () => {
       member = false;
     },

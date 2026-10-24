@@ -1,5 +1,5 @@
-import { useImperativeHandle, useRef, useState, type Ref } from 'react';
-import { ScrollView, TextInput, View } from 'react-native';
+import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
+import { ScrollView, Text, TextInput, View } from 'react-native';
 import {
   EnrichedMarkdownTextInput,
   type EnrichedMarkdownTextInputInstance,
@@ -10,6 +10,15 @@ import { useTheme } from '../theme';
 import { articleText } from './attachment-content';
 import type { ArticleEditorHandle } from './article-editor.types';
 
+type LinkTarget = {
+  editor: EnrichedMarkdownTextInputInstance;
+  range: { start: number; end: number };
+  current(): boolean;
+  markdown: string | null;
+  applying: boolean;
+};
+const linkUrl = (value: string) => /^(https?:\/\/|mailto:)[^\s\0]{1,2048}$/i.test(value);
+
 /** The installed native editor owns selection and formatting; Markdown is its lossless transport. */
 export function ArticleEditor({
   initial,
@@ -17,6 +26,7 @@ export function ArticleEditor({
   source,
   onChange,
   canEdit,
+  captureEditLease,
   ref,
 }: {
   initial: string;
@@ -24,12 +34,119 @@ export function ArticleEditor({
   source: boolean;
   onChange(text: string): void;
   canEdit(): boolean;
+  captureEditLease(): () => boolean;
   ref?: Ref<ArticleEditorHandle>;
 }) {
   const { colors } = useTheme();
   const input = useRef<EnrichedMarkdownTextInputInstance>(null);
   const raw = useRef(initial);
   const [link, setLink] = useState<string | null>(null);
+  const [selection, setSelection] = useState({ start: 0, end: 0 });
+  const range = useRef(selection);
+  const target = useRef<LinkTarget | null>(null);
+  const mounted = useRef(true);
+  const refocus = useRef<LinkTarget | null>(null);
+  const [linkBusy, setLinkBusy] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      target.current = null;
+      refocus.current = null;
+    };
+  }, []);
+  useEffect(() => {
+    // Restore keyboard only after the URL form has released focus and the body is editable again.
+    if (link !== null) return;
+    const value = refocus.current;
+    refocus.current = null;
+    if (value && mounted.current && input.current === value.editor && value.current() && canEdit())
+      value.editor.focus();
+  }, [link, canEdit]);
+  function currentLink(value: LinkTarget | null): value is LinkTarget {
+    return Boolean(
+      value &&
+      mounted.current &&
+      target.current === value &&
+      input.current === value.editor &&
+      value.current() &&
+      canEdit(),
+    );
+  }
+  function finishLink(value: LinkTarget | null) {
+    if (target.current !== value) return;
+    target.current = null;
+    if (mounted.current) {
+      setLink(null);
+      setLinkBusy(false);
+      setLinkError(null);
+    }
+  }
+  async function openLink() {
+    const editor = input.current;
+    const selected = range.current;
+    if (disabled || !canEdit() || !editor || target.current || selected.start === selected.end)
+      return;
+    const value: LinkTarget = {
+      editor,
+      range: selected,
+      current: captureEditLease(),
+      markdown: null,
+      applying: false,
+    };
+    target.current = value;
+    setLinkBusy(true);
+    setLinkError(null);
+    try {
+      const markdown = articleText(await editor.getMarkdown());
+      if (
+        !currentLink(value) ||
+        range.current.start !== selected.start ||
+        range.current.end !== selected.end
+      ) {
+        finishLink(value);
+        return;
+      }
+      value.markdown = markdown;
+      setLink('');
+    } catch {
+      if (currentLink(value)) {
+        finishLink(value);
+        setLinkError(t('attachmentTabs.failed'));
+      } else finishLink(value);
+    } finally {
+      if (mounted.current && target.current === value) setLinkBusy(false);
+    }
+  }
+  async function applyLink(value: LinkTarget | null, url: string) {
+    if (!currentLink(value)) {
+      finishLink(value);
+      return;
+    }
+    if (disabled || value.applying || value.markdown === null || !linkUrl(url)) return;
+    value.applying = true;
+    setLinkBusy(true);
+    try {
+      const markdown = articleText(await value.editor.getMarkdown());
+      if (!currentLink(value)) {
+        finishLink(value);
+        return;
+      }
+      if (markdown !== value.markdown) throw new Error('changed-article');
+      // Consume before native commands: retained/double-tap callbacks cannot apply twice.
+      finishLink(value);
+      value.editor.setSelection(value.range.start, value.range.end);
+      value.editor.setLink(url);
+      refocus.current = value;
+    } catch {
+      if (currentLink(value)) {
+        finishLink(value);
+        setLinkError(t('attachmentTabs.failed'));
+      } else finishLink(value);
+    }
+  }
+  const shownLink = target.current;
   useImperativeHandle(
     ref,
     () => ({
@@ -106,7 +223,7 @@ export function ArticleEditor({
         editor?.toggleOrderedList();
         break;
       case 'link':
-        setLink('');
+        void openLink();
         break;
     }
   }
@@ -123,9 +240,14 @@ export function ArticleEditor({
             key={tool.icon}
             label={tool.label}
             name={{ ios: tool.icon, android: 'edit', web: 'edit' }}
-            disabled={disabled}
+            disabled={
+              disabled ||
+              linkBusy ||
+              link !== null ||
+              (tool.action === 'link' && selection.start === selection.end)
+            }
             onPress={() => {
-              if (canEdit()) format(tool.action);
+              if (canEdit() && !target.current) format(tool.action);
             }}
           />
         ))}
@@ -136,20 +258,18 @@ export function ArticleEditor({
             label={t('attachmentTabs.linkUrl')}
             value={link}
             onChangeText={(value) => {
-              if (canEdit()) setLink(value);
+              if (currentLink(shownLink) && !shownLink.applying) setLink(value);
             }}
             autoCapitalize="none"
             autoCorrect={false}
-            editable={!disabled}
+            editable={!disabled && !linkBusy}
+            autoFocus
           />
           <NativeButton
             label={t('attachmentTabs.applyLink')}
-            disabled={disabled || !/^(https?:\/\/|mailto:)[^\s\0]{1,2048}$/i.test(link)}
+            disabled={disabled || linkBusy || !linkUrl(link)}
             onPress={() => {
-              if (!disabled && canEdit() && /^(https?:\/\/|mailto:)[^\s\0]{1,2048}$/i.test(link)) {
-                input.current?.setLink(link);
-                setLink(null);
-              }
+              void applyLink(shownLink, link);
             }}
           />
           <NativeButton
@@ -157,19 +277,46 @@ export function ArticleEditor({
             label={t('common.cancel')}
             disabled={disabled}
             onPress={() => {
-              if (canEdit()) setLink(null);
+              const admitted = currentLink(shownLink);
+              finishLink(shownLink);
+              if (admitted) refocus.current = shownLink;
             }}
           />
         </View>
       ) : null}
+      {linkError ? (
+        <Text accessibilityRole="alert" style={{ color: colors.danger }}>
+          {linkError}
+        </Text>
+      ) : null}
       <EnrichedMarkdownTextInput
         ref={input}
         defaultValue={initial}
-        editable={!disabled}
+        editable={!disabled && link === null && !linkBusy}
         multiline
         autoFocus
         markdownShortcuts
-        onChangeMarkdown={onChange}
+        onFocus={() => {
+          // Returning to the body abandons the URL form, not the document.
+          if (target.current && target.current.markdown !== null) finishLink(target.current);
+        }}
+        onChangeSelection={(value) => {
+          if (
+            !canEdit() ||
+            !Number.isSafeInteger(value.start) ||
+            !Number.isSafeInteger(value.end) ||
+            value.start < 0 ||
+            value.end < value.start
+          )
+            return;
+          range.current = value;
+          setSelection(value);
+        }}
+        onChangeMarkdown={(text) => {
+          if (!canEdit()) return;
+          finishLink(target.current);
+          onChange(text);
+        }}
         accessibilityLabel={t('attachmentTabs.body')}
         placeholder={t('attachmentTabs.body')}
         placeholderTextColor={colors.tertiary}

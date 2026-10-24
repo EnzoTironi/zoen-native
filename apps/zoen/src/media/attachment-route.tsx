@@ -76,6 +76,7 @@ export function AttachmentRoute({
   const input = useRef<ArticleEditorHandle>(null);
   const scroll = useRef<KeyboardAwareScrollViewRef>(null);
   const routeClosed = useRef(false);
+  const editLease = useRef(0);
   const mounted = useRef(true),
     focused = useRef(false),
     foreground = useRef(AppState.currentState === 'active');
@@ -143,14 +144,17 @@ export function AttachmentRoute({
   }, [channel, allowed]);
   useFocusEffect(
     useCallback(() => {
+      editLease.current++;
       focused.current = true;
       return () => {
+        editLease.current++;
         focused.current = false;
       };
     }, []),
   );
   useEffect(() => {
     const listener = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') editLease.current++;
       foreground.current = state === 'active';
       if (state !== 'active' && channel && allowed())
         void channel.controller.flush(channel.scope).catch(() => {});
@@ -362,6 +366,14 @@ export function AttachmentRoute({
                 canEdit={() =>
                   current() && !working.current && liveEditor.current === editorGeneration
                 }
+                captureEditLease={() => {
+                  const generation = editLease.current;
+                  return () =>
+                    generation === editLease.current &&
+                    current() &&
+                    !working.current &&
+                    liveEditor.current === editorGeneration;
+                }}
                 onChange={(text) => {
                   if (
                     liveEditor.current !== editorGeneration ||
