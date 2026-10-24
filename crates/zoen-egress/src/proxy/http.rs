@@ -1,4 +1,5 @@
-use super::Target;
+use super::{Decision, Target, BLOCKED_PORTS};
+use std::net::IpAddr;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 pub(super) enum Head {
@@ -26,6 +27,29 @@ pub(super) async fn read_head<S: AsyncRead + Unpin>(
             return Ok(Head::TooBig);
         }
     }
+}
+
+pub(super) struct ParsedHead {
+    pub(super) method: String,
+    pub(super) path: String,
+    pub(super) headers: Vec<(String, Vec<u8>)>,
+}
+
+pub(super) fn parse_head(bytes: &[u8]) -> Option<ParsedHead> {
+    let mut headers = [httparse::EMPTY_HEADER; 64];
+    let mut request = httparse::Request::new(&mut headers);
+    if !matches!(request.parse(bytes), Ok(httparse::Status::Complete(_))) {
+        return None;
+    }
+    Some(ParsedHead {
+        method: request.method?.to_owned(),
+        path: request.path?.to_owned(),
+        headers: request
+            .headers
+            .iter()
+            .map(|header| (header.name.to_owned(), header.value.to_vec()))
+            .collect(),
+    })
 }
 
 /// One request upstream: `Connection: close`, so one request per connection.
@@ -56,10 +80,18 @@ where
         upstream.write_all(leftover).await?;
     }
     let (a, b) = tokio::io::copy_bidirectional(conn, upstream).await?;
-    Ok(((head.len() + leftover.len()) as u64 + a, b))
+    let prefix = head
+        .len()
+        .checked_add(leftover.len())
+        .ok_or_else(|| std::io::Error::other("Transfer prefix overflow"))?;
+    let prefix = u64::try_from(prefix).map_err(std::io::Error::other)?;
+    let up = prefix
+        .checked_add(a)
+        .ok_or_else(|| std::io::Error::other("Transfer byte count overflow"))?;
+    Ok((up, b))
 }
 
-/// A stream with bytes already read in front of it (the TLS ClientHello can arrive together
+/// A stream with bytes already read in front of it (the TLS `ClientHello` can arrive together
 /// with the CONNECT head).
 pub(super) struct Prefixed<S> {
     pub(super) prefix: Vec<u8>,
@@ -128,6 +160,22 @@ pub(super) fn split_host_port(authority: &str, default_port: u16) -> Option<(Str
     }
 }
 
+pub(super) fn validated_target(method: &str, raw: &str) -> Result<Target, Decision> {
+    let target = parse_target(method, raw).ok_or(Decision::BadRequest)?;
+    if target
+        .host
+        .trim_matches(['[', ']'])
+        .parse::<IpAddr>()
+        .is_ok()
+    {
+        return Err(Decision::IpLiteral);
+    }
+    if BLOCKED_PORTS.contains(&target.port) {
+        return Err(Decision::BlockedPort);
+    }
+    Ok(target)
+}
+
 pub(super) fn parse_target(method: &str, raw: &str) -> Option<Target> {
     if method.eq_ignore_ascii_case("CONNECT") {
         let (host, port) = split_host_port(raw, 443)?;
@@ -147,10 +195,7 @@ pub(super) fn parse_target(method: &str, raw: &str) -> Option<Target> {
         Some(i) => (&rest[..i], rest[i..].to_string()),
         None => (rest, "/".to_string()),
     };
-    let authority = authority
-        .rsplit_once('@')
-        .map(|(_, a)| a)
-        .unwrap_or(authority);
+    let authority = authority.rsplit_once('@').map_or(authority, |(_, a)| a);
     let (host, port) = split_host_port(authority, default_port)?;
     (!host.is_empty()).then_some(Target {
         host,

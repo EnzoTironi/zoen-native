@@ -199,11 +199,11 @@ pub struct Egress {
     root: SandboxRoot,
 }
 
-fn now_ms() -> i64 {
-    SystemTime::now()
+fn now_ms() -> std::io::Result<i64> {
+    let elapsed = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
+        .map_err(std::io::Error::other)?;
+    i64::try_from(elapsed.as_millis()).map_err(std::io::Error::other)
 }
 
 fn ct_eq(a: &[u8], b: &[u8]) -> bool {
@@ -233,27 +233,31 @@ struct Ctx {
 }
 
 impl Egress {
+    /// # Errors
+    /// Creates the proxy only after its TLS roots and sandbox CA are available.
     pub fn new(
         config: EgressConfig,
         resolver: Resolver,
         secrets: Arc<dyn SecretSource>,
         approvals: Arc<dyn ApprovalSink>,
-    ) -> Arc<Self> {
-        let upstream = Upstream::new(&config.extra_upstream_roots_pem)
-            .expect("upstream TLS roots (extra roots must be valid PEM)");
-        Arc::new(Egress {
+    ) -> Result<Arc<Self>, String> {
+        let upstream = Upstream::new(&config.extra_upstream_roots_pem)?;
+        let root = SandboxRoot::new()?;
+        Ok(Arc::new(Egress {
             state: Mutex::new(State::default()),
             config,
             resolver,
             secrets,
             approvals,
             upstream,
-            root: SandboxRoot::new().expect("sandbox root CA"),
-        })
+            root,
+        }))
     }
 
     /// Starts allowing traffic for a lease. Rules are validated here, so a bad manifest fails
     /// before the sandbox runs.
+    /// # Errors
+    /// Refuses invalid rules, CA preparation failures or unavailable state.
     pub fn register(&self, policy: LeasePolicy) -> Result<(), String> {
         for r in &policy.rules {
             r.validate()?;
@@ -276,7 +280,10 @@ impl Egress {
             let root = policy.browser.then_some(&self.root);
             Some(Arc::new(LeaseCa::new(&policy.lease, &hosts, root)?))
         };
-        let mut st = self.state.lock().unwrap();
+        let mut st = self
+            .state
+            .lock()
+            .map_err(|_| "Egress state is poisoned".to_owned())?;
         match ca {
             Some(ca) => st.cas.insert(policy.lease.clone(), ca),
             None => st.cas.remove(&policy.lease),
@@ -294,11 +301,17 @@ impl Egress {
     }
 
     /// Stops a lease: its credential no longer works and its pending cards are dropped.
-    pub fn revoke(&self, lease: &str) {
-        let mut st = self.state.lock().unwrap();
+    /// # Errors
+    /// Reports unavailable state; no lease is reported revoked on failure.
+    pub fn revoke(&self, lease: &str) -> Result<(), String> {
+        let mut st = self
+            .state
+            .lock()
+            .map_err(|_| "Egress state is poisoned".to_owned())?;
         st.leases.remove(lease);
         st.cas.remove(lease);
         st.pending.retain(|_, p| p.lease != lease);
+        Ok(())
     }
 
     pub(super) fn signs(&self, policy: &LeasePolicy) -> bool {
@@ -306,28 +319,46 @@ impl Egress {
     }
 
     /// The node's sandbox root certificate, baked into browser templates.
+    #[must_use]
     pub fn sandbox_root_pem(&self) -> String {
         self.root.cert_pem().to_string()
     }
 
     /// The certificate of the lease's CA, for the sandbox's trust bundle; `None` when the
     /// tool has no secrets and doesn't sign (then nothing is ever intercepted).
-    pub fn lease_ca_pem(&self, lease: &str) -> Option<String> {
-        self.state
+    /// # Errors
+    /// Reports unavailable state rather than inventing certificate absence.
+    pub fn lease_ca_pem(&self, lease: &str) -> Result<Option<String>, String> {
+        Ok(self
+            .state
             .lock()
-            .unwrap()
+            .map_err(|_| "Egress state is poisoned".to_owned())?
             .cas
             .get(lease)
-            .map(|c| c.cert_pem().to_string())
+            .map(|c| c.cert_pem().to_string()))
     }
 
     /// The owner said no: the card closes and the host stays refused.
-    pub fn deny(&self, request: &str) {
-        self.state.lock().unwrap().pending.remove(request);
+    /// # Errors
+    /// Reports unavailable state rather than reporting a card closed.
+    pub fn deny(&self, request: &str) -> Result<(), String> {
+        self.state
+            .lock()
+            .map_err(|_| "Egress state is poisoned".to_owned())?
+            .pending
+            .remove(request);
+        Ok(())
     }
 
-    pub fn log(&self) -> Vec<LogEntry> {
-        self.state.lock().unwrap().log.clone()
+    /// # Errors
+    /// Reports unavailable state rather than returning an empty log.
+    pub fn log(&self) -> Result<Vec<LogEntry>, String> {
+        Ok(self
+            .state
+            .lock()
+            .map_err(|_| "Egress state is poisoned".to_owned())?
+            .log
+            .clone())
     }
 
     /// The manifest's rules, the owner's tool-wide approvals, or a one-time approval.
@@ -337,24 +368,23 @@ impl Egress {
         host: &str,
         port: u16,
         method: &str,
-    ) -> bool {
-        let mut st = self.state.lock().unwrap();
+    ) -> Result<bool, Decision> {
+        let mut st = self.state.lock().map_err(|_| Decision::UpstreamError)?;
         let tool_wide = st
             .tool_wide
             .get(&(policy.owner.clone(), policy.tool.clone()))
-            .map(|rs| rs.iter().any(|r| r.matches(host, port, method)))
-            .unwrap_or(false);
+            .is_some_and(|rs| rs.iter().any(|r| r.matches(host, port, method)));
         let Some(l) = st.leases.get_mut(&policy.lease) else {
-            return false;
+            return Ok(false);
         };
         if l.policy.rules.iter().any(|r| r.matches(host, port, method)) || tool_wide {
-            return true;
+            return Ok(true);
         }
         if let Some(i) = l.once.iter().position(|r| r.matches(host, port, method)) {
             l.once.remove(i);
-            return true;
+            return Ok(true);
         }
-        false
+        Ok(false)
     }
 
     pub(super) fn rewrite_headers(
@@ -382,8 +412,12 @@ impl Egress {
             out.push((name.clone(), self.inject(policy, host, value)?));
         }
         if let Some(agent) = signer {
-            let now = (now_ms() / 1000) as u64;
-            for (n, v) in agent.sign_request(authority, now) {
+            let now = u64::try_from(now_ms().map_err(|_| Decision::UpstreamError)? / 1000)
+                .map_err(|_| Decision::UpstreamError)?;
+            for (n, v) in agent
+                .sign_request(authority, now)
+                .map_err(|_| Decision::UpstreamError)?
+            {
                 out.push((n, v.into_bytes()));
             }
         }
@@ -453,3 +487,6 @@ impl Egress {
 mod approvals;
 mod http;
 mod transport;
+
+#[cfg(test)]
+mod state_tests;
