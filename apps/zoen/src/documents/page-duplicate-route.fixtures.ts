@@ -89,6 +89,8 @@ export function fixture() {
     lostAck = false;
   let idGate: Promise<string> | null = null;
   let applyGate: Promise<void> | null = null;
+  let confirmation: Promise<boolean> | null = null;
+  let confirmations = 0;
   let appListener: ((state: string) => void) | undefined;
   let focusRead: (() => void | (() => void)) | undefined, focusCleanup: (() => void) | undefined;
   const driver = {
@@ -210,7 +212,14 @@ export function fixture() {
           Surface: 'Surface',
         };
       if (name === '../../components/dialogs')
-        return { useDialogs: () => ({ confirm: async () => true }) };
+        return {
+          useDialogs: () => ({
+            confirm: async () => {
+              confirmations++;
+              return confirmation ?? true;
+            },
+          }),
+        };
       if (name === '../../theme') return { useTheme: () => ({ colors: {} }) };
       if (name === '../../i18n/index.ts') return { t: (key: string) => key };
       throw Error(name);
@@ -249,6 +258,10 @@ export function fixture() {
     exports,
     keys,
     read: () => page,
+    confirmation: (gate: Promise<boolean>) => {
+      confirmation = gate;
+    },
+    confirmationCount: () => confirmations,
     counts: () => ({ ids, effects, refreshes }),
     lostAck: () => {
       lostAck = true;

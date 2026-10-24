@@ -360,6 +360,8 @@ function PageDocument({ id }: { id: string }) {
             void apply([], [], t('documents.blockDuplicated'), build);
           }}
           onDelete={(block) => {
+            const current = currentAction();
+            if (!current()) return;
             void dialogs
               .confirm({
                 title: t('documents.deleteThisBlock'),
@@ -368,7 +370,7 @@ function PageDocument({ id }: { id: string }) {
                 destructive: true,
               })
               .then((accepted) => {
-                if (accepted)
+                if (accepted && current())
                   void apply(
                     observed.blocks.filter((item) => item.id !== block.id).map((item) => item.id),
                     [],
