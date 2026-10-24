@@ -84,7 +84,20 @@ impl Engine {
         space: &str,
         source: &str,
     ) -> R<OwnerPolicyInquiryControl> {
-        let agent = self.owner_policy_agent(space)?;
+        let current = self.owner_policy_authenticated_original(space, source)?;
+        self.owner_policy_agent(space)?;
+        self.owner_policy_context_input(&current.signed.inquiry, crate::engine::now_ms())?;
+        Ok(current)
+    }
+
+    /// Pure current scope and original cryptographic association. No readiness,
+    /// quote, options, publication or Runtime admission is returned by this seam.
+    pub(in crate::owner_policy) fn owner_policy_authenticated_original(
+        &self,
+        space: &str,
+        source: &str,
+    ) -> R<OwnerPolicyInquiryControl> {
+        let agent = self.owner_policy_agent_scope(space)?;
         let owner = self
             .identities
             .get(&agent)
@@ -116,7 +129,6 @@ impl Engine {
         {
             return Err(denied());
         }
-        self.owner_policy_context_input(&signed.inquiry, crate::engine::now_ms())?;
         Ok(OwnerPolicyInquiryControl {
             source: source.into(),
             sequence: event.seq,
@@ -124,7 +136,10 @@ impl Engine {
             digest: event_log::owner_policy_inquiry::digest(&signed.inquiry).ok_or_else(invalid)?,
         })
     }
-    fn owner_policy_options_reported(&self, query: &OwnerPolicyInquiryControl) -> R<bool> {
+    pub(in crate::owner_policy) fn owner_policy_options_reported(
+        &self,
+        query: &OwnerPolicyInquiryControl,
+    ) -> R<bool> {
         let pending = self.store.outbox()?;
         Ok(pending
             .iter()

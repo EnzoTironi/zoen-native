@@ -4,6 +4,7 @@ use super::*;
 
 mod chat_muting;
 mod client_api;
+mod community_members;
 mod edit_convergence;
 mod file_bounds;
 mod file_edits;

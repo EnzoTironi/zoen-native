@@ -23,6 +23,7 @@ pub enum PageInputMode {
 pub enum PageInputTarget {
     Block { block_id: String },
     AppendNew,
+    WholeDocument,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct PageInputBindingDto {
@@ -31,6 +32,9 @@ pub struct PageInputBindingDto {
     pub mode: PageInputMode,
     pub base_edit_context: String,
     pub base_block_json: String,
+    /// Canonical whole-document seed on Open only; never a recovered capture.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_document_markdown: Option<String>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct PageInputCaptureDto {
@@ -69,6 +73,8 @@ pub(super) struct Binding {
     pub target: PageInputTarget,
     pub base_edit_context: String,
     pub base_block: Option<TaggedBlock>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_document: Option<Vec<PageBlockDto>>,
     pub mode: PageInputMode,
 }
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
@@ -130,6 +136,7 @@ impl InputStateV1 {
                         base_edit_context: b.base_edit_context.clone(),
                         base_block_json: serde_json::to_string(&b.base_block)
                             .map_err(|_| invalid("invalid base block"))?,
+                        base_document_markdown: None,
                     })
                 })
                 .transpose()?,
@@ -150,11 +157,16 @@ impl InputStateV1 {
             if b.base_edit_context.len() > tagged::MAX_CONTEXT_BYTES {
                 return Err(invalid("input context exceeds limit"));
             }
-            match (&b.target, &b.base_block) {
-                (PageInputTarget::AppendNew, None) => {}
-                (PageInputTarget::Block { block_id }, Some(TaggedBlock::Page(p)))
+            match (&b.target, &b.base_block, &b.base_document) {
+                (PageInputTarget::AppendNew, None, None) => {}
+                (PageInputTarget::WholeDocument, None, Some(blocks))
+                    if b.mode == PageInputMode::Markdown =>
+                {
+                    whole_document::validate(blocks)?;
+                }
+                (PageInputTarget::Block { block_id }, Some(TaggedBlock::Page(p)), None)
                     if *block_id == p.id => {}
-                (PageInputTarget::Block { block_id }, Some(TaggedBlock::Plan(p)))
+                (PageInputTarget::Block { block_id }, Some(TaggedBlock::Plan(p)), None)
                     if *block_id == p.id => {}
                 _ => return Err(invalid("invalid input base block")),
             }
@@ -464,6 +476,8 @@ fn empty_block(id: String) -> PageBlockDto {
         lang: String::new(),
         url: String::new(),
         alt: String::new(),
+        setext: None,
+        title: None,
         text: String::new(),
         spans: Vec::new(),
     }
@@ -568,3 +582,4 @@ mod tests;
 
 mod conversion;
 pub(super) use conversion::page_edits;
+pub(super) mod whole_document;

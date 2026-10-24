@@ -278,6 +278,30 @@ impl Client {
                 space_id,
                 identity_id,
             } => encode(&self.add_admin(space_id, identity_id)?),
+            SpaceMemberContext {
+                space_id,
+                identity_id,
+                expected_identity_id,
+                expected_device_id,
+            } => encode(&self.lock().space_member_context(
+                &space_id,
+                &identity_id,
+                &expected_identity_id,
+                &expected_device_id,
+            )?),
+            RemoveMemberReviewed {
+                space_id,
+                identity_id,
+                expected_identity_id,
+                expected_device_id,
+                observed_revision,
+            } => encode(&self.lock().remove_member_reviewed(
+                &space_id,
+                &identity_id,
+                &expected_identity_id,
+                &expected_device_id,
+                &observed_revision,
+            )?),
             RemoveMember {
                 space_id,
                 identity_id,

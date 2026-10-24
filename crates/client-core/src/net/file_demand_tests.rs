@@ -28,6 +28,7 @@ impl SecretVault for Vault {
 struct Fixture {
     sender: Arc<Client>,
     reader: Arc<Client>,
+    reader_vault: Arc<Vault>,
     space: String,
     item: String,
     old: Vec<u8>,
@@ -38,22 +39,27 @@ struct Fixture {
 }
 
 fn account(name: &str) -> Arc<Client> {
+    account_with_vault(name).0
+}
+
+fn account_with_vault(name: &str) -> (Arc<Client>, Arc<Vault>) {
     let engine = Client::open(":memory:".into(), "en".into()).unwrap();
+    let vault = Arc::new(Vault::default());
     engine
         .create_account(
             name.into(),
             name.into(),
             "http://127.0.0.1:1".into(),
-            Arc::new(Vault::default()),
+            vault.clone(),
         )
         .unwrap();
-    engine
+    (engine, vault)
 }
 
 impl Fixture {
     fn new() -> Self {
         let sender = account("history_author");
-        let reader = account("history_reader");
+        let (reader, reader_vault) = account_with_vault("history_reader");
         let space = sender
             .create_group_with(
                 "History download QA".into(),
@@ -117,6 +123,7 @@ impl Fixture {
         let mut fixture = Self {
             sender,
             reader,
+            reader_vault,
             space: space.clone(),
             item: file.id,
             old,
@@ -400,5 +407,9 @@ fn ensure(
 
 #[path = "file_demand_tests/lifecycle.rs"]
 mod lifecycle;
+#[path = "file_demand_tests/revocation.rs"]
+mod revocation;
 #[path = "file_demand_tests/selection.rs"]
 mod selection;
+#[path = "file_demand_tests/session_retirement.rs"]
+mod session_retirement;

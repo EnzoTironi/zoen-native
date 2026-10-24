@@ -7,9 +7,12 @@ import { useTheme } from '../theme';
 import { Icon } from './primitives';
 import { NavigationGlass } from './navigation-glass';
 
+import type { NavigationMetricsBinding } from './navigation-container';
+
 export type ChatHeaderProps = {
   id: string;
   scrollViewTag?: number;
+  navigationMetrics?: NavigationMetricsBinding;
   title: string;
   counterpart?: Persona | null;
   activityLabel?: string | null;

@@ -16,6 +16,11 @@ declare class ZoenCoreModule extends NativeModule<{
   onPageInputStatus: (event: { json: string }) => void;
 }> {
   readonly sitePreviewVersion?: number;
+  readonly pageInputVersion?: number;
+  readonly staticLocationVersion?: number;
+  searchLocations?(request: string): Promise<string>;
+  cancelLocationSearch?(binding: string): Promise<void>;
+  readLocationFile?(request: string): Promise<string>;
   startCall?(spaceId: string, video: boolean): Promise<void>;
   callAudioReply?(ticket: string, success: boolean): Promise<void>;
   callPresentation?(): Promise<string>;
@@ -76,6 +81,7 @@ declare class ZoenCoreModule extends NativeModule<{
   materializeFile(itemId: string, version: number | null): Promise<string>;
   materializeRecentAttachment?(request: string): Promise<string>;
   previewRecentAttachment?(request: string, presentationId: string): Promise<void>;
+  readContactFile?(request: string): Promise<string>;
   previewLocalFile(uri: string): Promise<void>;
   previewConversationMedia?(request: string, presentationId: string): Promise<void>;
   cancelConversationMedia?(presentationId: string): Promise<void>;

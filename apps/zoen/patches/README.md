@@ -63,3 +63,27 @@ and regenerate successor diffs as needed. Do not hand-split hunks or substitute
 the installed package for the pristine baseline. Retained generated/vendor assets
 in a qualified native overlay are additional build inputs; preserve and verify
 them separately instead of replacing that overlay with a source-only package.
+
+## Temporary Automatic theme input probe (#440)
+
+`@expo+ui+58.0.23.patch` adds only bounded native diagnostics to the existing
+Toggle Binding setter and dispatch call. It does not change the binding, events,
+gestures or control state. The SDK patch is silent unless the caller explicitly
+sets the closed `zoen-theme-automatic-probe` testID. Zoen supplies that ID only in
+builds made with `EXPO_PUBLIC_ZOEN_THEME_INPUT_PROBE=1`; normal builds are inert.
+Native OSLog uses subsystem `com.zoen.theme-input`, category `Automatic`; JS logs
+use `[ZoenThemeInput]`. Every fixed stage stops logging after eight observations.
+No values, labels, identifiers, coordinates, event payloads or credentials are
+logged or persisted. The RN touch observer is on the already-existing settings
+ScrollView, so the probe does not create a new hit-test boundary around the Toggle.
+A screen touch is not proof of a native Toggle hit; Binding and dispatch stages
+plus JS callback/provider commit narrow that boundary. Accessibility activation
+can reach Binding without a screen touch.
+
+The existing #440 iOS failure remains unresolved. The compiled SDK JS-wrapper
+regression proves the native-event protocol reaches/persists Auto, not that an
+actual iPhone tap reaches that event. Native compilation and one controlled QA
+input on the next opt-in artifact are required. Remove this temporary patch and
+probe after that evidence identifies and verifies the actual fix. Retain the
+wrapper/provider regression. `patch-package --error-on-fail` applies the patch
+through the existing postinstall; no dependency version is changed.

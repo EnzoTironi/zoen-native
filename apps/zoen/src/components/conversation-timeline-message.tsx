@@ -7,12 +7,18 @@ import { MiniappTimelineActivityView } from '../miniapps/timeline-activity';
 import { ConversationMessage, type ConversationMessageProps } from './conversation-message';
 import type { MediaAlbum } from '../core/media-albums';
 import { ConversationAlbumMessage } from './conversation-album-message';
+import type { ConversationContentLayout } from '../core/conversation-reveal-content';
 
 export function ConversationTimelineMessage({
   activity,
   album,
+  onRevealLayout,
   ...message
-}: ConversationMessageProps & { activity?: MiniappTimelineActivity; album?: MediaAlbum }) {
+}: ConversationMessageProps & {
+  activity?: MiniappTimelineActivity;
+  album?: MediaAlbum;
+  onRevealLayout?: (id: string, layout: ConversationContentLayout) => void;
+}) {
   const { presentation: p, localDate: now } = useTheme();
   const first = activity?.entries[0] ?? album?.entries[0] ?? message.entry;
   const at = new Date(Number(first.at_ms));
@@ -66,7 +72,16 @@ export function ConversationTimelineMessage({
           </Text>
         </View>
       ) : null}
-      {content}
+      {onRevealLayout ? (
+        <View
+          key={message.entry.id}
+          onLayout={({ nativeEvent }) => onRevealLayout(message.entry.id, nativeEvent.layout)}
+        >
+          {content}
+        </View>
+      ) : (
+        content
+      )}
     </View>
   );
 }

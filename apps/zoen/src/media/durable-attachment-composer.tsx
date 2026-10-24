@@ -8,5 +8,18 @@ export function useDurableAttachmentComposer(
   options: AttachmentComposerOptions,
   channel: MediaDraftChannel | null,
 ) {
-  return renderDurableAttachment(useDurableAttachmentController(options, channel));
+  const controller = useDurableAttachmentController(options, channel);
+  const view = renderDurableAttachment({
+    ...controller,
+    pick: (kind) => controller.pick(kind, field),
+  });
+  // Photos journals selections while its native overlay still owns the input.
+  // Publishing a caption field now would rebind that anchor and retire Photos.
+  // Retain the last committed projection (including an ordinary message field)
+  // until the picker resolves after native removal. Durable content stays live.
+  const field =
+    controller.runtime.picking && controller.pickerAnchor?.channel === channel
+      ? controller.pickerAnchor.field
+      : view.field;
+  return { ...view, field };
 }

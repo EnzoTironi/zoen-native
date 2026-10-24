@@ -1,6 +1,8 @@
 //! More than two pages of actual Agent cursors, created only through the same
 //! registration, MLS invitation and Advance APIs used by the host. No provider,
 //! SQL cursor seeding, FDB membership injection or quota override.
+#[path = "complete_reads/arrival.rs"]
+mod arrival;
 mod common;
 #[path = "../src/file_vault.rs"]
 mod file_vault;
@@ -92,7 +94,7 @@ fn cursors(state: protocol::AgentStateRecord) -> BTreeMap<String, u64> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn complete_agent_state_and_cli_inspection_keep_257_existing_cursors_across_membership_changes(
 ) {
-    let w = World::new("complete_agent_reads").await;
+    let mut w = World::new("complete_agent_reads").await;
     let agent_id = enroll(&w);
     let owner = Online::open(&w, "owner").await;
     let agent = Online::open(&w, "citizen").await;
@@ -112,14 +114,15 @@ async fn complete_agent_state_and_cli_inspection_keep_257_existing_cursors_acros
             .0
             .send_message(space.clone(), format!("Unhandled source {n}"))
             .unwrap();
-        owner.0.wait_until_settled(20_000).await.unwrap();
-        agent.0.wait_until_settled(20_000).await.unwrap();
+        arrival::settled_message(&owner, &agent, &space, &format!("Unhandled source {n}")).await;
+        // This is still an exact message assertion on the real recipient, not
+        // local emptiness or the sender's accepted echo.
         assert!(agent
             .0
             .timeline(space.clone())
             .unwrap()
             .iter()
-            .any(|e| matches!(&e.kind, client_core::EntryKind::Message { text, .. } if text == &format!("Unhandled source {n}"))));
+            .any(|e| matches!(&e.kind, client_core::EntryKind::Message { text, .. } if text == &format!("Unhandled source {n}"))), "missing received source {n}");
         agent.0.agent_advance(space.clone(), 0).await.unwrap();
         expected.insert(space, 0);
         // Stay below the existing request/device quota. This is setup pacing,
@@ -156,6 +159,11 @@ async fn complete_agent_state_and_cli_inspection_keep_257_existing_cursors_acros
     drop(reader);
     drop(agent);
     drop(owner);
+    // Keep the existing closed Core deadline observation in this exact failing
+    // consumer's stderr. A hosted timeout can cancel artifact upload, whereas
+    // World::zoen already includes failed-child stderr in the original assertion.
+    // This adds no wait/retry and never changes the returned settlement error.
+    w.set_client_env("ZOEN_SYNC_WAIT_DIAGNOSTICS", "1");
     // The real CLI consumer uses the completed state without running a model,
     // seeding a missing cursor, moving an existing one or writing a watermark.
     let report: serde_json::Value =

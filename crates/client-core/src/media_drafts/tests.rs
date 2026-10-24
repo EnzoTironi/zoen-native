@@ -2,6 +2,7 @@ use super::*;
 use crate::{PrivacyDto, SecretVault};
 use std::sync::{Arc, Mutex};
 
+mod gallery_cases;
 mod recovery;
 
 #[derive(Default)]

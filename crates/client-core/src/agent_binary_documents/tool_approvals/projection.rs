@@ -32,6 +32,9 @@ impl State {
         let ItemContent::App(app) = &item.current().content else {
             return false;
         };
+        let Some(format) = agent_tools::format(&p.canonical_tool) else {
+            return false;
+        };
         req.proposal.is_none()
             && req.item.is_none()
             && req.line.is_none()
@@ -42,8 +45,8 @@ impl State {
             && p.serving != req.agent
             && item.space == space
             && item.current().number == p.version
-            && app.app == deckcraft::APP
-            && app.resource_uri == deckcraft::RESOURCE
+            && app.app == format.id()
+            && app.resource_uri == format.resource()
             && app.document.as_ref().is_some_and(|file| {
                 file.sha256 == p.sha256 && file.bytes <= AGENT_BINARY_DOCUMENT_LIMIT as u64
             })

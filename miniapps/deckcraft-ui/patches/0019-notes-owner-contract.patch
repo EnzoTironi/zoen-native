@@ -1,0 +1,94 @@
+diff --git a/crates/ui-egui/src/host_notes_handoff_tests.rs b/crates/ui-egui/src/host_notes_handoff_tests.rs
+new file mode 100644
+index 0000000..21cd074
+--- /dev/null
++++ b/crates/ui-egui/src/host_notes_handoff_tests.rs
+@@ -0,0 +1,77 @@
++//! Actual web touch event sequence after a custom title edit, not a synthetic TextEdit focus.
++use super::*;
++
++fn web_touch(h: &mut Harness<'_, State>, at: egui::Pos2, pressed: bool) {
++    h.input_mut().time = Some(h.ctx.input(|input| input.time) + 0.1);
++    h.input_mut().events.push(Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE });
++    if !pressed {
++        h.input_mut().events.push(Event::PointerGone);
++    }
++    h.input_mut().events.push(Event::Touch {
++        device_id: egui::TouchDeviceId(0),
++        id: egui::TouchId::from(17),
++        phase: if pressed { egui::TouchPhase::Start } else { egui::TouchPhase::End },
++        pos: at,
++        force: None,
++    });
++    h.step();
++}
++
++#[test]
++fn title_then_notes_touch_transfers_current_text_owner_after_keyboard_dismissal() {
++    for existing in ["", "QA345: recuperação do mesmo artefato"] {
++        for viewport_focused in [true, false] {
++            let portrait = layout(402.0, 874.0, 0.0, 0.0);
++            let mut h = fixture(Some(portrait), vec2(402.0, 874.0));
++            h.state_mut().app.run("slide.notes", json!({"text":existing})).unwrap();
++            h.get_by_label("Speaker notes").click();
++            h.run_steps(2);
++            let title = title_activation_target(&h);
++            web_touch(&mut h, title, true);
++            web_touch(&mut h, title, false);
++            assert!(activation_after_current_frame(&h), "the real custom title editor admitted its touch");
++            h.event(Event::Text("Edited title".into()));
++            h.step();
++            assert!(h.state().app.session.active().unwrap().selection.text.is_some());
++            // WebKit can dismiss its keyboard while the app retains its custom title selection.
++            // Raw viewport focus is what eframe polls, independent of egui widget focus.
++            h.input_mut().focused = viewport_focused;
++            h.run_steps(2);
++            let rect = h.query_all_by_role(Role::MultilineTextInput).next().unwrap().rect();
++            let at = rect.left_top() + vec2(59.0, 7.0);
++            web_touch(&mut h, at, true);
++            web_touch(&mut h, at, false);
++            let id = egui::Id::new("notes_edit");
++            let response = h.ctx.read_response(id).unwrap();
++            assert!(
++                h.output().platform_output.ime.as_ref().unwrap().should_interrupt_composition,
++                "egui explicitly ends the previous composition on this real Notes focus request"
++            );
++            assert!(!web_text_activation::accepted_output_text(&h.ctx, None), "an owner without IME output cannot activate");
++            assert!(
++                web_text_activation::accepted_output_text(&h.ctx, h.output().platform_output.ime.as_ref()),
++                "existing={} viewport={} rect={rect:?} focused={} click={} ime={}",
++                !existing.is_empty(),
++                viewport_focused,
++                h.ctx.memory(|m| m.has_focus(id)),
++                response.clicked_by(egui::PointerButton::Primary),
++                h.output().platform_output.ime.is_some()
++            );
++            h.event(Event::Text(" Notes addition".into()));
++            h.step();
++            assert!(h.state().app.notes_buf.2.text.contains(" Notes addition"));
++            assert!(
++                !web_text_activation::accepted_output_text(&h.ctx, h.output().platform_output.ime.as_ref()),
++                "a later IME frame without a fresh click cannot reactivate"
++            );
++            let title_before_blur = h.state().app.session.active().unwrap().doc.slides[0].shapes[0].text.clone();
++            let blank = h.state().app.canvas_rect.unwrap().left_top() + vec2(4.0, 4.0);
++            web_touch(&mut h, blank, true);
++            web_touch(&mut h, blank, false);
++            h.run_steps(2);
++            let slide = &h.state().app.session.active().unwrap().doc.slides[0];
++            assert!(slide.notes.text().contains(" Notes addition"), "real canvas blur saves Notes through slide.notes");
++            assert_eq!(slide.shapes[0].text, title_before_blur, "Notes typing never modifies the title");
++        }
++    }
++}
+diff --git a/crates/ui-egui/src/host_phone_landscape_tests.rs b/crates/ui-egui/src/host_phone_landscape_tests.rs
+index 8cbd42d..f6863df 100644
+--- a/crates/ui-egui/src/host_phone_landscape_tests.rs
++++ b/crates/ui-egui/src/host_phone_landscape_tests.rs
+@@ -598,3 +598,6 @@ fn notes_viewport_focus_probe_true_control() {
+ fn notes_viewport_focus_probe_false_requires_current_text_owner() {
+     first_notes_click_with_viewport_focus(false);
+ }
++
++#[path = "host_notes_handoff_tests.rs"]
++mod notes_handoff_tests;

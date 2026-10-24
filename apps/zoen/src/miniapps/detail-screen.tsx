@@ -43,7 +43,12 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
   const [document, setDocument] = useState<MiniappDocumentController | null>(null);
   const [leaving, setLeaving] = useState(false);
   const navigating = useRef(false);
-  const documentNamespace = read.data?.app?.app_id === 'deckcraft' ? 'decks' : 'drawing';
+  const documentNamespace =
+    read.data?.app?.app_id === 'deckcraft'
+      ? 'decks'
+      : read.data?.app?.app_id === 'gridcraft'
+        ? 'workbooks'
+        : 'drawing';
   const registerDocument = useCallback((controller: MiniappDocumentController | null) => {
     setDocument(controller);
     if (controller) setLeaving(false);
@@ -93,11 +98,24 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
   const item = read.data;
   const cards = useConversationCards(item?.space_id ?? '');
   const app = item?.app;
-  if (historical && manage) return <EmptyState title={t('decks.unavailable')} />;
+  if (historical && manage)
+    return (
+      <EmptyState
+        title={t(
+          read.data?.app?.app_id === 'gridcraft' ? 'workbooks.unavailable' : 'decks.unavailable',
+        )}
+      />
+    );
   if (historical && !selectedHead)
     return <EmptyState title={t('documents.thisVersionCouldNotBeLoaded')} />;
-  if (historical && item && item.app?.app_id !== 'deckcraft')
-    return <EmptyState title={t('decks.unavailable')} />;
+  if (historical && item && !['deckcraft', 'gridcraft'].includes(item.app?.app_id ?? ''))
+    return (
+      <EmptyState
+        title={t(
+          read.data?.app?.app_id === 'gridcraft' ? 'workbooks.unavailable' : 'decks.unavailable',
+        )}
+      />
+    );
   if (!item)
     return read.error ? (
       <EmptyState title={t('miniapps.theMiniappCouldNotBeOpened')} detail={read.error}>
@@ -116,17 +134,29 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
   const spec = specs.data?.find((spec) => spec.id === app.app_id);
   if (historical && !spec)
     return specs.error ? (
-      <EmptyState title={t('decks.unavailable')} detail={specs.error} />
+      <EmptyState
+        title={t(
+          read.data?.app?.app_id === 'gridcraft' ? 'workbooks.unavailable' : 'decks.unavailable',
+        )}
+        detail={specs.error}
+      />
     ) : (
       <Loading />
     );
-  if (historical && !spec?.has_view) return <EmptyState title={t('decks.unavailable')} />;
+  if (historical && !spec?.has_view)
+    return (
+      <EmptyState
+        title={t(
+          read.data?.app?.app_id === 'gridcraft' ? 'workbooks.unavailable' : 'decks.unavailable',
+        )}
+      />
+    );
   const tools =
     spec?.tools.filter(
       (tool) =>
         tool.visibility.includes('app') &&
         !(spec.id === 'excalidraw' && tool.name.startsWith('app_document_')) &&
-        !(spec.id === 'deckcraft' && tool.name.startsWith('app_binary_')),
+        !(['deckcraft', 'gridcraft'].includes(spec.id) && tool.name.startsWith('app_binary_')),
     ) ?? [];
   function call(tool: string, args: Record<string, unknown>) {
     if (busy) return;

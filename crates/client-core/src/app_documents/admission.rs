@@ -9,22 +9,22 @@ impl Engine {
         item: &str,
         mut app: AppDoc,
     ) -> R<AppDoc> {
-        if app.app == miniapps::deckcraft::APP {
-            let seed = miniapps::deckcraft::registration::EMPTY;
-            if !miniapps::deckcraft::registration::available()
-                || app.resource_uri != miniapps::deckcraft::RESOURCE
+        if let Some(format) = miniapps::binary::Format::for_id(&app.app) {
+            let seed = format.seed();
+            if !format.available()
+                || app.resource_uri != format.resource()
                 || app.document.is_some()
             {
                 return Err(invalid());
             }
-            let document = miniapps::deckcraft::Document::parse(seed).map_err(|_| invalid())?;
+            let metadata = format.metadata(seed, &app.title).map_err(|_| invalid())?;
             let key = self.file_key(None)?;
             let file = self.file_doc(
                 space,
                 &key,
-                "presentation.deckcraft",
+                format.filename(),
                 "",
-                miniapps::deckcraft::MIME,
+                format.mime(),
                 seed,
                 None,
                 &HashMap::new(),
@@ -32,7 +32,7 @@ impl Engine {
             self.store
                 .set_meta(&format!("file_key:{item}"), &hex::encode(key))?;
             app.document = Some(file);
-            app.state_json = document.metadata(&app.title);
+            app.state_json = metadata;
             return Ok(app);
         }
         if app.app != "excalidraw" {

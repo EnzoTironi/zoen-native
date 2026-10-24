@@ -5,7 +5,7 @@ use crate::{
 };
 use types::{Capability, EventBody, Grant, GrantScope, TrustLevel};
 
-fn setup() -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
+pub(super) fn setup() -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
     let f = fixture()?;
     let mut e = f.agent.lock();
     let actor = e.me_id().unwrap();
@@ -27,7 +27,7 @@ fn setup() -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
     drop(e);
     Ok(f)
 }
-fn input(f: &Fixture, requested_title: &str) -> AgentToolApprovalInput {
+pub(super) fn input(f: &Fixture, requested_title: &str) -> AgentToolApprovalInput {
     let e = f.agent.lock();
     let actor = e.me_id().unwrap();
     let (device, owner, _, _) = e.creation_authority(&f.space, &f.source, &f.owner).unwrap();
@@ -56,7 +56,7 @@ fn stage(f: &Fixture) -> crate::AgentRequestDto {
         )
         .unwrap()
 }
-fn decide(
+pub(super) fn decide(
     f: &Fixture,
     id: &str,
     hash: &str,

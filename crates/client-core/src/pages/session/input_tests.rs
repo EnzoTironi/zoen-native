@@ -73,3 +73,5 @@ mod release_cases;
 #[path = "input_tests/support.rs"]
 mod support;
 use support::*;
+#[path = "input_tests/whole_document_cases.rs"]
+mod whole_document_cases;

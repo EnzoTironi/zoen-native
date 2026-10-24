@@ -265,6 +265,19 @@ pub(super) enum Command {
         space_id: String,
         identity_id: String,
     },
+    SpaceMemberContext {
+        space_id: String,
+        identity_id: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+    },
+    RemoveMemberReviewed {
+        space_id: String,
+        identity_id: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+        observed_revision: String,
+    },
     RemoveMember {
         space_id: String,
         identity_id: String,
@@ -494,6 +507,13 @@ pub(super) enum Command {
         expected_sha256: Option<String>,
     },
     AppBinaryCreate {
+        space_id: String,
+        title: String,
+        data_base64: String,
+        mutation_id: String,
+    },
+    AppBinaryCreateFor {
+        app_id: String,
         space_id: String,
         title: String,
         data_base64: String,

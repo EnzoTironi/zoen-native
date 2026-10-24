@@ -111,8 +111,9 @@ export async function verifyMiniappResource(
     input.runtimePackage === undefined ? undefined : parseRuntimePackage(input.runtimePackage);
   if (
     runtimePackage &&
-    (appId !== 'deckcraft' ||
-      uri !== 'ui://zoen/deckcraft/index.html' ||
+    ((appId !== 'deckcraft' && appId !== 'gridcraft') ||
+      runtimePackage.engine !== appId ||
+      uri !== `ui://zoen/${appId}/index.html` ||
       capabilities.length ||
       input.allowedDomains.length ||
       ((input.linkDomains as unknown[] | undefined) ?? []).length)

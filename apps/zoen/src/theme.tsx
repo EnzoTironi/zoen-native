@@ -1,4 +1,5 @@
 import { t } from './i18n/index.ts';
+import { reportThemeInput } from './theme/input-probe';
 import {
   createContext,
   use,
@@ -43,6 +44,7 @@ type Theme = ReturnType<typeof resolveSkyTheme> & {
 const Context = createContext<Theme | null>(null);
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [preference, updatePreference] = useState<ThemePreference>('auto');
+  useEffect(() => reportThemeInput('preference-committed'), [preference]);
   const [clock, setClock] = useState(() => sampleSkyClock(new Date()));
   const [reducedMotion, setReducedMotion] = useState(false);
   const [appearanceRestored, setAppearanceRestored] = useState(false);

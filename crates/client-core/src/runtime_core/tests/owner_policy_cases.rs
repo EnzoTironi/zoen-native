@@ -8,9 +8,14 @@ use std::result::Result as StdResult;
 use types::owner_budget::OwnerPeriodPolicy;
 type TestResult = StdResult<(), Box<dyn std::error::Error>>;
 mod account_management;
+mod admission;
 mod inquiry_observation;
 mod inquiry_recovery;
 mod publication_cases;
+mod retained_membership;
+mod retained_welcome;
+mod welcome_recovery;
+mod worker_observation;
 
 fn setup() -> StdResult<(Fixture, OwnerPolicyScope, String), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new()?;

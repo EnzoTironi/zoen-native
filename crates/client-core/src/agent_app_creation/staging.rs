@@ -13,10 +13,11 @@ impl Client {
     ) -> R<AgentRequestDto> {
         let mut e = self.lock();
         let (device, owner, _, source_sha256) = e.creation_authority(space, source, serving)?;
-        if input.canonical_tool != TOOL || input.worker_binding != executor_binding() {
+        let format = creation_format(&input.canonical_tool).ok_or_else(invalid)?;
+        if input.worker_binding != binding_for(format) {
             return Err(invalid());
         }
-        let title = title(&input.arguments)?;
+        let title = title(&input.arguments, format)?;
         let ask: Value = serde_json::from_str(&input.continuation_json).map_err(|_| invalid())?;
         let actor = e.me_id()?;
         let mut p = ToolProposal {
@@ -36,11 +37,11 @@ impl Client {
                 .ok_or_else(invalid)?,
             artifact: String::new(),
             version: 1,
-            sha256: sha(registration::EMPTY),
-            canonical_tool: TOOL.into(),
+            sha256: sha(format.seed()),
+            canonical_tool: input.canonical_tool,
             arguments_json: agent_tools::canonical_json(&input.arguments).map_err(|_| invalid())?,
             worker_binding: input.worker_binding,
-            engine_revision: deckcraft::ENGINE_REVISION.into(),
+            engine_revision: format.revision().into(),
             continuation_json: input.continuation_json,
             expires_at_ms: crate::engine::now_ms()
                 .checked_add(15 * 60 * 1000)
@@ -49,8 +50,9 @@ impl Client {
             review: None,
         };
         let mutation = mutation(&p, space, &actor)?;
-        p.artifact =
-            crate::app_binary_documents::creation_item_id(&actor, &p.device, space, &mutation)?;
+        p.artifact = crate::app_binary_documents::creation_item_id_for(
+            format, &actor, &p.device, space, &mutation,
+        )?;
         parsed(&p)?;
         if let Some(existing) =
             e.state
@@ -73,14 +75,12 @@ impl Client {
             }
             return Ok(e.request_dto(existing));
         }
+        let operation = shared::operation(&p.canonical_tool);
         let mut request = AgentRequest {
             id: types::new_id("rq")?,
             agent: actor.clone(),
-            title: shared::operation(TOOL),
-            detail: format!(
-                "{}: {title}",
-                crate::i18n::t("Criar apresentação", "Create presentation")
-            ),
+            title: operation.clone(),
+            detail: format!("{operation}: {title}"),
             audience: "This conversation".into(),
             action: ActionClass::Reversible,
             content_hash: String::new(),

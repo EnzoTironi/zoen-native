@@ -1,3 +1,4 @@
+import { galleryValue } from './media-draft-gallery.ts';
 import type { MediaDraftChannel } from './media-draft-channel.ts';
 import type {
   MediaDraftAsset,
@@ -99,7 +100,14 @@ export function contentValue(input: unknown): {
   let content: MediaDraftContent;
   if (raw.kind === 'attachments') {
     const hasOptions = Object.hasOwn(raw, 'options');
-    keys(raw, ['kind', 'reply_to', 'items', ...(hasOptions ? ['options'] : [])]);
+    const hasGallery = Object.hasOwn(raw, 'gallery');
+    keys(raw, [
+      'kind',
+      'reply_to',
+      'items',
+      ...(hasOptions ? ['options'] : []),
+      ...(hasGallery ? ['gallery'] : []),
+    ]);
     if (!Array.isArray(raw.items) || !raw.items.length || raw.items.length > 10) invalid();
     const items = raw.items.map((item: unknown) => {
       const entry = object(item);
@@ -129,6 +137,7 @@ export function contentValue(input: unknown): {
       reply_to: raw.reply_to,
       items,
       ...(options ? { options } : {}),
+      ...(hasGallery ? { gallery: galleryValue(raw.gallery, items) } : {}),
     };
   } else if (raw.kind === 'voice') {
     keys(raw, ['kind', 'reply_to', 'source_asset_id', 'editor', 'render']);
@@ -225,6 +234,13 @@ export function dtoValue(input: unknown): {
     assets.some((asset, index) => asset.id !== parsed.refs[index])
   )
     invalid();
+  if (parsed.content?.kind === 'attachments' && parsed.content.gallery) {
+    for (const entry of parsed.content.gallery.entries) {
+      const asset = assets.find((asset) => asset.id === entry.asset_id);
+      if (!asset || (!asset.mime.startsWith('image/') && !asset.mime.startsWith('video/')))
+        invalid();
+    }
+  }
   const total = assets.reduce((count, asset) => count + asset.size, 0);
   if (total > (parsed.content?.kind === 'voice' ? 128 : 64) * 1024 * 1024) invalid();
   if (parsed.content?.kind === 'voice') {

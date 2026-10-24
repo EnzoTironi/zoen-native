@@ -11,6 +11,7 @@ import {
   type ConversationTimelineRow,
 } from './conversation-timeline.ts';
 import { messageCard } from './message-presentation.ts';
+import { conversationRevealContent } from './conversation-reveal-content.ts';
 import { selectedDeckHead } from '../miniapps/deck-version-selection.ts';
 import type { ItemDetail, TimelineEntry } from './types';
 import type { ItemCard } from './generated/ItemCard';
@@ -196,6 +197,7 @@ function renderScreen(
           root: 'thread_root',
         }),
         useFocusEffect: noop,
+        useIsFocused: () => true,
         usePreventRemove: () => noop,
       };
     if (path === 'expo-router/react-navigation') return { useHeaderHeight: () => 96 };
@@ -232,7 +234,9 @@ function renderScreen(
     if (path.endsWith('/core/use-message-draft')) return { useMessageDraft: () => draft };
     if (path.endsWith('/core/conversation-search')) return { ConversationSearch: SearchPort };
     if (path.endsWith('/core/initial-timeline-end')) return { InitialTimelineEnd: LayoutPort };
+    if (path === './navigation-container') return { navigationMetricsAvailable: false };
     if (path.endsWith('/core/conversation-reveal')) return { ConversationReveal: LayoutPort };
+    if (path.endsWith('/core/conversation-reveal-content')) return { conversationRevealContent };
     if (path.endsWith('/core/live-activity')) return { chatActivityLabel: () => '' };
     if (path.endsWith('/components/keyboard-motion'))
       return { useKeyboardMotion: () => ({ progress: { value: 0 } }) };

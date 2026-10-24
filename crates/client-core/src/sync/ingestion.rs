@@ -152,14 +152,19 @@ impl Engine {
         }
         // The confirmed event, its catch-up scope and an own pending copy describe
         // one receipt. Never publish a confirmation whose bookkeeping failed.
-        let stored = (|| -> store::Result<()> {
-            let tx = self.store.conn().unchecked_transaction()?;
+        let stored = (|| -> crate::engine::R<()> {
+            let tx = self
+                .store
+                .conn()
+                .unchecked_transaction()
+                .map_err(store::StoreError::from)?;
             self.store.append_event(&e)?;
             self.store.set_synced(&space)?;
             if own {
+                self.confirm_owner_policy_welcome(&e)?;
                 self.store.outbox_remove(&e.client_id)?;
             }
-            tx.commit()?;
+            tx.commit().map_err(store::StoreError::from)?;
             Ok(())
         })();
         if let Err(err) = stored {

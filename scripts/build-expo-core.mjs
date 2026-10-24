@@ -53,7 +53,8 @@ async function inputs(directory) {
   for (const entry of entries) {
     const path = join(directory, entry.name);
     if (entry.isDirectory()) result.push(...(await inputs(path)));
-    else if (/\.(rs|toml|json|html|deckcraft)$/.test(path)) result.push(path);
+    // Grid's canonical starter workbook is embedded by Rust include_bytes!.
+    else if (/\.(rs|toml|json|html|deckcraft|xlsx)$/.test(path)) result.push(path);
   }
   return result;
 }
@@ -116,6 +117,7 @@ async function sourceInputs() {
       // The registry is compiled into Rust. A config-only change must not reuse
       // native artifacts from another verified code package or deployment URL.
       deckcraftResourceManifest: process.env.ZOEN_DECKCRAFT_RESOURCE_MANIFEST_JSON ?? null,
+      gridcraftResourceManifest: process.env.ZOEN_GRIDCRAFT_RESOURCE_MANIFEST_JSON ?? null,
     }),
   );
   // The browser core evolves independently. Hash the actual native dependency

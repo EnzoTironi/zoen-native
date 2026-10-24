@@ -1,0 +1,40 @@
+diff --git a/crates/ui-egui/src/grid.rs b/crates/ui-egui/src/grid.rs
+index 6c57cd3..95324fe 100644
+--- a/crates/ui-egui/src/grid.rs
++++ b/crates/ui-egui/src/grid.rs
+@@ -2509,8 +2509,9 @@ fn interact(app: &mut SheetApp, ui: &mut egui::Ui, resp: &egui::Response, geo: &
+                 } else {
+                     RangeRef::cols(col, col).a1()
+                 };
+-                let _ = app.session.run("home.columnWidth", json!({"cols": cols, "width": w.round()}));
+-                coalesce_last_undo(app);
++                if app.session.run("home.columnWidth", json!({"cols": cols, "width": w.round()})).is_ok() {
++                    coalesce_last_undo(app);
++                }
+             }
+             Drag::ResizeRow { row, start, orig } => {
+                 let h = (orig + (p.y - start) / geo.z).max(0.0);
+@@ -2525,8 +2526,9 @@ fn interact(app: &mut SheetApp, ui: &mut egui::Ui, resp: &egui::Response, geo: &
+                 } else {
+                     format!("{}:{}", row + 1, row + 1)
+                 };
+-                let _ = app.session.run("home.rowHeight", json!({"rows": rows, "height": h.round()}));
+-                coalesce_last_undo(app);
++                if app.session.run("home.rowHeight", json!({"rows": rows, "height": h.round()})).is_ok() {
++                    coalesce_last_undo(app);
++                }
+             }
+             Drag::Freeze { cols, .. } => {
+                 app.grid.drag = Drag::Freeze { cols, to: Some(freeze_boundary(geo, sh, p, cols)) };
+@@ -2556,8 +2558,9 @@ fn interact(app: &mut SheetApp, ui: &mut egui::Ui, resp: &egui::Response, geo: &
+                     let nc = CellRef::new(sh.row_at(y0.max(0.0) as f64), sh.col_at(x0.max(0.0) as f64));
+                     json!({"kind": kind, "id": id, "at": nc.a1(), "dx": x0.max(0.0) - sh.col_left(nc.col) as f32, "dy": y0.max(0.0) - sh.row_top(nc.row) as f32})
+                 };
+-                let _ = app.session.run("object.move", params);
+-                coalesce_last_undo(app);
++                if app.session.run("object.move", params).is_ok() {
++                    coalesce_last_undo(app);
++                }
+             }
+             Drag::None => {}
+         }

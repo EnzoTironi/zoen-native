@@ -7,47 +7,9 @@
 //! The harness builds the relay from this checkout first.
 
 mod common;
+use common::watch::Watch;
 use common::*;
 use protocol::SealedKind;
-use std::{path::PathBuf, process::Child, time::Duration};
-
-struct Watch {
-    child: Child,
-    log: PathBuf,
-    status_log: PathBuf,
-}
-
-impl Watch {
-    async fn until(&mut self, expected: &str, observed: impl Fn(&str, &str) -> bool) -> String {
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
-        loop {
-            let stdout = std::fs::read_to_string(&self.log).expect("watch stdout");
-            let stderr = std::fs::read_to_string(&self.status_log).expect("watch stderr");
-            let log = format!("stdout:\n{stdout}\nstderr:\n{stderr}");
-            let status = self.child.try_wait().expect("watch status");
-            assert!(
-                status.is_none(),
-                "watch exited while waiting for {expected}: {status:?}\n{log}"
-            );
-            if observed(&stdout, &stderr) {
-                return log;
-            }
-            assert!(
-                tokio::time::Instant::now() < deadline,
-                "watch never observed {expected}:\n{log}"
-            );
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
-    }
-}
-
-impl Drop for Watch {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
-}
-
 #[tokio::test]
 async fn dm_roundtrip_survives_relaunch_and_verifies() {
     let w = World::new("dm").await;

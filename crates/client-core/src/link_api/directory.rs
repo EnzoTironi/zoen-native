@@ -149,4 +149,4 @@ fn directory_stale() -> CoreError {
 }
 
 #[cfg(test)]
-mod transport_tests;
+pub(crate) mod transport_tests;

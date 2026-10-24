@@ -67,7 +67,7 @@ export function useAttachmentPhotoPicker(
   const cancel = useMemo(
     () => () => {
       recent.retire();
-      session.cancel();
+      session.retire();
     },
     [recent, session],
   );
@@ -131,7 +131,7 @@ export function useAttachmentPhotoPicker(
           returnToKeyboard: false,
         },
       );
-      const files = await session.open(remaining, current);
+      const files = await session.open(remaining, current, admission?.journal);
       if (pickerOwner.current === (request?.id ?? null)) pickerOwner.current = null;
       setKeyboardRequest(null);
       preferred.current =

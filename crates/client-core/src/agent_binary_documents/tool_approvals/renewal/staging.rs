@@ -24,7 +24,7 @@ impl Engine {
             &p.artifact,
             p.version,
             &p.sha256,
-            &format!("deckcmd_{intent}"),
+            &mutation_id(p, &intent),
             &intent,
         )
         .map(|result| result.is_some())

@@ -67,10 +67,12 @@ impl Client {
         }
         let (ask, args) = parsed(&p)?;
         let space = ask_space(&ask)?;
-        let document = e.app_binary_create(
+        let format = creation_format(&p.canonical_tool).ok_or_else(invalid)?;
+        let document = e.app_binary_create_format(
+            format,
             space,
-            &title(&args.ok_or_else(invalid)?)?,
-            &STANDARD.encode(registration::EMPTY),
+            &title(&args.ok_or_else(invalid)?, format)?,
+            &STANDARD.encode(format.seed()),
             &mutation(&p, space, &permit.actor)?,
         )?;
         if document.item_id != p.artifact || document.version != 1 || document.sha256 != p.sha256 {

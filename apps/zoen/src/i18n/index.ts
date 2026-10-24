@@ -11,11 +11,13 @@ import { agentDefinition } from './catalogs/agent-definition.ts';
 import { auth } from './catalogs/auth.ts';
 import { authProviders } from './catalogs/authProviders.ts';
 import { chat } from './catalogs/chat.ts';
+import { community } from './catalogs/community.ts';
 import { common } from './catalogs/common.ts';
 import { composerKeyboard } from './catalogs/composer-keyboard.ts';
 import { documents } from './catalogs/documents.ts';
 import { workspace } from './catalogs/workspace.ts';
 import { decks } from './catalogs/decks.ts';
+import { workbooks } from './catalogs/workbooks.ts';
 import { drawing } from './catalogs/drawing.ts';
 import { home } from './catalogs/home.ts';
 import { conversationCards } from './catalogs/conversation-cards.ts';
@@ -43,6 +45,7 @@ import {
 
 // Feature owners only add their catalog import and assembly entry here.
 const catalogs = {
+  community,
   ownerPolicy,
   imageReview,
   sites,
@@ -62,6 +65,7 @@ const catalogs = {
   workspace,
   drawing,
   decks,
+  workbooks,
   home,
   conversationCards,
   connectedApps,

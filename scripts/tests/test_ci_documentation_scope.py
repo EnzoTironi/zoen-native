@@ -1,6 +1,7 @@
 """Real Git histories qualify the documentation-only CI boundary."""
 
 import importlib.util
+import json
 import os
 from pathlib import Path
 import re
@@ -29,6 +30,9 @@ class DocumentationScopeTests(unittest.TestCase):
                         GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
         self.git("init", "-q")
         self.git("config", "commit.gpgsign", "false")
+        # No detached Git writer may outlive this temporary repository's cleanup.
+        self.git("config", "maintenance.auto", "false")
+        self.git("config", "gc.auto", "0")
         self.write(DOC, "# Runtime\n\nInitial prose.\n")
         self.write("crates/documents/src/lib.rs", "pub fn current() {}\n")
         self.base = self.commit()
@@ -48,6 +52,18 @@ class DocumentationScopeTests(unittest.TestCase):
 
     def classify(self, head=None, event="pull_request"):
         return SCOPE.classify(self.base, head or self.commit(), event)
+
+    def test_fixture_commits_do_not_start_unowned_automatic_maintenance(self):
+        trace = Path(self.temp.name) / ".git" / "fixture-trace.jsonl"
+        self.env["GIT_TRACE2_EVENT"] = str(trace)
+        self.write(DOC, "Changed prose\n")
+        self.commit()
+        events = [json.loads(line) for line in trace.read_text().splitlines()]
+        self.assertTrue(any(event["event"] == "start" for event in events))
+        maintenance = [event["argv"] for event in events
+                       if event["event"] == "child_start"
+                       and any(command in event.get("argv", []) for command in ("maintenance", "gc"))]
+        self.assertEqual(maintenance, [], "temporary repository cleanup must own all writers")
 
     def test_only_allowlisted_prose_passes_and_validates_links(self):
         self.write(DOC, "# Runtime\n\n[Source](../crates/documents/src/lib.rs).\n")

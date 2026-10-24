@@ -41,7 +41,7 @@ pub(super) fn start(e: &Arc<Client>, cx: &Ctx) -> Worker {
             let mut summary = Summary::new(configured, status);
             if status == Agent::Ready {
                 for space in e.spaces() {
-                    reconcile(&e, &agent, &space.id, &mut summary).await;
+                    reconcile(&e, &agent, &device, &space.id, &mut summary).await;
                 }
             }
             observer.write(summary, &mut std::io::stdout().lock());
@@ -58,7 +58,13 @@ fn scan_error(counts: &mut Counts, error: &client_core::CoreError) {
         counts.core_error = Some(observation::failure(CoreStage::Scan, error));
     }
 }
-async fn reconcile(e: &Client, agent: &str, space: &str, summary: &mut Summary) {
+async fn reconcile(
+    e: &Client,
+    agent: &str,
+    worker_device: &str,
+    space: &str,
+    summary: &mut Summary,
+) {
     // Core omits exact authenticated queued/confirmed receipts. A crash after
     // installation replays the original through Runtime, never a second authority.
     match e.scan_owner_policy_inquiries(space, 0, 50) {
@@ -83,12 +89,33 @@ async fn reconcile(e: &Client, agent: &str, space: &str, summary: &mut Summary) 
                     continue;
                 }
                 counts.rechecked += 1;
+                // Incomplete directory blocks a recovery mutation, not the
+                // unchanged read-only Runtime options path. Preserve its error.
+                let welcome_attempt = e.owner_policy_welcome_attempt(&current, worker_device);
                 let command = Command::PolicyContext {
                     agent: agent.into(),
                     signed: Box::new(current.signed().clone()),
                 };
                 counts.ipc_calls += 1;
                 match reply::options(image_ipc::execute_observed(command).await, current.digest()) {
+                    reply::OptionsReply::NeedsWelcome(device) => {
+                        let recovery = welcome_attempt.and_then(|attempt| {
+                            e.request_owner_policy_welcome(&current, &attempt, &device)
+                        });
+                        if let Err(error) = recovery {
+                            counts.core_error =
+                                Some(observation::failure(CoreStage::Recheck, &error));
+                        }
+                        // Delayed Welcome remains pending. Only a subsequent
+                        // actual Runtime options admission may report success.
+                        match e.owner_policy_worker_observation(&current) {
+                            Ok(observed) => counts.worker_group = Some(observed),
+                            Err(error) => {
+                                counts.core_error =
+                                    Some(observation::failure(CoreStage::Observation, &error))
+                            }
+                        }
+                    }
                     reply::OptionsReply::Report(options) => {
                         match e.report_owner_policy_options(&current, *options) {
                             Ok(()) => counts.report_accepted += 1,
@@ -105,7 +132,30 @@ async fn reconcile(e: &Client, agent: &str, space: &str, summary: &mut Summary) 
                                 Some(observation::failure(CoreStage::Report, &error))
                         }
                     },
-                    reply::OptionsReply::Pending(fault) => reply::observe(counts, fault),
+                    reply::OptionsReply::Pending(fault) => {
+                        use zoen_runtime::OwnerPolicyContextStage as Stage;
+                        let group_failure = matches!(
+                            &fault,
+                            reply::Fault::Runtime(
+                                _,
+                                Some(
+                                    Stage::AdmissionMlsGroup
+                                        | Stage::AdmissionMlsPending
+                                        | Stage::AdmissionMlsStorage
+                                )
+                            )
+                        );
+                        reply::observe(counts, fault);
+                        if group_failure {
+                            match e.owner_policy_worker_observation(&current) {
+                                Ok(observed) => counts.worker_group = Some(observed),
+                                Err(error) => {
+                                    counts.core_error =
+                                        Some(observation::failure(CoreStage::Observation, &error))
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -148,6 +198,7 @@ async fn reconcile(e: &Client, agent: &str, space: &str, summary: &mut Summary) 
                     Ok(PolicyProgress::Unavailable {
                         operation: PolicyOperation::Import,
                         code,
+                        context_stage: None,
                     }) => {
                         counts.runtime_error = Some(code);
                         None

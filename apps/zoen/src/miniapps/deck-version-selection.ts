@@ -2,12 +2,13 @@ import type { ClientStore } from '../core/store';
 import type { ItemDetail } from '../core/types';
 import { homeSpacesFor } from '../home/access.ts';
 import { documentScope } from '../documents/document-authority.ts';
-import { DECKCRAFT_ENGINE_REVISION } from './canonical-binary.ts';
+import { binaryEditorFormat, type BinaryEditorId } from './binary-formats.ts';
 import type { DeckcraftExportHead } from './deckcraft-export';
 
 type Store = Pick<ClientStore, 'getSnapshot' | 'sessionEpoch' | 'driver'>;
 export type DeckVersionBinding = Readonly<{
   scope: string;
+  editor: BinaryEditorId;
   spaceId: string;
   itemId: string;
   version: number;
@@ -16,11 +17,17 @@ export function deckVersionBinding(store: Store, item: ItemDetail): DeckVersionB
   const state = store.getSnapshot();
   const scope = documentScope(state, store.sessionEpoch);
   return scope &&
-    item.app?.app_id === 'deckcraft' &&
+    (item.app?.app_id === 'deckcraft' || item.app?.app_id === 'gridcraft') &&
     Number.isSafeInteger(item.version) &&
     item.version > 0 &&
     homeSpacesFor(state).has(item.space_id)
-    ? { scope, spaceId: item.space_id, itemId: item.id, version: item.version }
+    ? {
+        scope,
+        editor: item.app.app_id,
+        spaceId: item.space_id,
+        itemId: item.id,
+        version: item.version,
+      }
     : null;
 }
 export function currentDeckVersion(store: Store, binding: DeckVersionBinding) {
@@ -47,13 +54,13 @@ export async function observeDeckVersion(
   if (!current()) return null;
   if (
     source.item_id !== binding.itemId ||
-    source.kind !== 'deckcraft' ||
+    source.kind !== binding.editor ||
     source.version !== binding.version ||
     source.current_version < source.version ||
-    source.engine_revision !== DECKCRAFT_ENGINE_REVISION ||
+    source.engine_revision !== binaryEditorFormat(binding.editor).engineRevision ||
     !/^[a-f0-9]{64}$/.test(source.sha256)
   )
-    throw Error('The selected presentation version could not be loaded.');
+    throw Error('The selected document version could not be loaded.');
   return { version: String(source.version), sha256: source.sha256 };
 }
 export function selectedDeckHead(version: unknown, sha256: unknown): DeckcraftExportHead | null {

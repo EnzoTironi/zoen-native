@@ -1,5 +1,5 @@
 import { type FlashListRef } from '@shopify/flash-list';
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { useHeaderHeight } from 'expo-router/react-navigation';
 import {
   useCallback,
@@ -15,7 +15,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDialogs } from '../components/dialogs';
 import { useKeyboardMotion } from '../components/keyboard-motion';
 import { useMessageActions } from '../components/use-message-actions';
+import { navigationMetricsAvailable, type NavigationMetricsHandle } from './navigation-container';
 import { ConversationReveal } from '../core/conversation-reveal';
+import {
+  conversationRevealContent,
+  type ConversationContentLayout,
+} from '../core/conversation-reveal-content';
 import { ConversationSearch } from '../core/conversation-search';
 import {
   projectConversationTimeline,
@@ -164,8 +169,40 @@ export function useChatController() {
     noticeHeight,
   });
   const searchReveal = useMemo(() => new ConversationReveal(`${id}:${owner}`), [id, owner]);
+  const metricsFocused = useIsFocused();
+  const metricsRef = useRef<NavigationMetricsHandle | null>(null);
+  const navigationMetrics = useMemo(
+    () => ({
+      binding: metricsFocused && searchState.active ? searchReveal.nativeBinding : '',
+      ref: metricsRef,
+      changed: searchReveal.nativeMetricsChanged,
+    }),
+    [searchReveal, metricsFocused, searchState.active],
+  );
+  const searchContent = useRef<{
+    scope: ConversationReveal;
+    id: string;
+    layout: ConversationContentLayout;
+  } | null>(null);
+  const onSearchContentLayout = useCallback(
+    (target: string, layout: ConversationContentLayout) => {
+      const current = search.getSnapshot();
+      if (!current.active || current.hits[current.index]?.ref_id !== target) return;
+      searchContent.current = { scope: searchReveal, id: target, layout };
+      searchReveal.onItemLayout();
+    },
+    [search, searchReveal],
+  );
   useLayoutEffect(() => {
     searchReveal.connect({
+      observe: navigationMetricsAvailable
+        ? async () => {
+            const native = metricsRef.current;
+            if (!native) return null;
+            const packet = await native.sampleScroll(searchReveal.nativeBinding);
+            return metricsRef.current === native ? packet : null;
+          }
+        : undefined,
       current: (target) => {
         const current = search.getSnapshot();
         return (
@@ -183,10 +220,12 @@ export function useChatController() {
         if (index < 0) return null;
         const row = native.getLayout(index);
         if (!row) return null;
+        const content = searchContent.current;
         return {
-          y: row.y,
-          height: row.height,
-          measured: row.isHeightMeasured === true && row.isWidthMeasured === true,
+          ...conversationRevealContent(
+            row,
+            content?.scope === searchReveal && content.id === target ? content.layout : null,
+          ),
           firstItemOffset: native.getFirstItemOffset(),
           childHeight: native.getChildContainerDimensions().height,
           windowHeight: native.getWindowSize().height,
@@ -509,6 +548,8 @@ export function useChatController() {
     input,
     initialEnd,
     searchReveal,
+    navigationMetrics,
+    onSearchContentLayout,
     normalDraft,
     editing,
     reply,

@@ -1,7 +1,28 @@
 //! MLS device, roster and ready-epoch projections.
 use super::*;
 
+/// Closed readiness facts, shared with the normal sealing gate. No keys or IDs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ReadinessRejection {
+    Credential,
+    Group,
+    Pending,
+    Reconciliation,
+    Storage,
+    Welcome,
+    Membership,
+    Behind,
+    Adding,
+}
+
 impl Engine {
+    pub(crate) fn mls_work_observation(&self, space: &str) -> (bool, bool, bool) {
+        (
+            self.net.mls.dirty.contains(space),
+            self.net.mls.claiming.contains(space),
+            self.net.mls.retry_at.contains_key(space),
+        )
+    }
     /// Whether `space` is relay-ordered and end-to-end encrypted.
     pub(crate) fn is_e2e(&self, space: &str) -> bool {
         self.net.synced.contains(space)
@@ -143,28 +164,45 @@ impl Engine {
     }
 
     pub(crate) fn ready_epoch_in(&self, space: &str, state: &crate::engine::State) -> Option<u64> {
-        let device = self.device().ok()?;
-        if !device.has_group(space) || device.pending(space) || device.needs_reconciliation(space) {
-            return None;
+        self.ready_epoch_checked(space, state).ok()
+    }
+
+    pub(crate) fn ready_epoch_checked(
+        &self,
+        space: &str,
+        state: &crate::engine::State,
+    ) -> std::result::Result<u64, ReadinessRejection> {
+        use ReadinessRejection as E;
+        let device = self.device().map_err(|_| E::Credential)?;
+        match device.group_state(space).map_err(|_| E::Storage)? {
+            ::mls::GroupState::Missing => return Err(E::Group),
+            ::mls::GroupState::Pending => return Err(E::Pending),
+            ::mls::GroupState::Ready => {}
+        }
+        if device.pending(space) {
+            return Err(E::Pending);
+        }
+        if device.needs_reconciliation(space) {
+            return Err(E::Reconciliation);
         }
         // The commit can land before its Welcome is accepted (e.g. under a publish
         // limit). The new member cannot open messages that overtake that Welcome.
         if self
             .store
             .outbox_handshakes()
-            .ok()?
+            .map_err(|_| E::Storage)?
             .iter()
             .any(|(_, s, kind)| s == space && kind == SealedKind::Welcome.name())
         {
-            return None;
+            return Err(E::Welcome);
         }
-        let me = self.me.as_deref()?;
-        let s = state.spaces.get(space)?;
-        let group = device.roster(space).ok()?;
+        let me = self.me.as_deref().ok_or(E::Membership)?;
+        let s = state.spaces.get(space).ok_or(E::Membership)?;
+        let group = device.roster(space).map_err(|_| E::Storage)?;
         // Nobody seals for a group that still holds someone the log removed: wait for the
         // commit that takes them out.
         if group.iter().any(|g| !s.members.iter().any(|(m, _)| m == g)) {
-            return None;
+            return Err(E::Membership);
         }
         // An owner or admin about to add someone (including adds still on their way to
         // the relay) sends after the commit, so the newcomer reads it.
@@ -173,22 +211,22 @@ impl Engine {
             .iter()
             .any(|(m, r)| m == me && matches!(r, Role::Owner | Role::Admin));
         let m = &self.net.mls;
-        let epoch = device.epoch(space).ok()?;
+        let epoch = device.epoch(space).map_err(|_| E::Storage)?;
         if m.behind.get(space) == Some(&epoch) {
-            return None;
+            return Err(E::Behind);
         }
         let missing_member = s.members.iter().any(|(who, _)| !group.contains(who));
         // An unavailable package must not turn a direct message into a message only
         // its sender can open. A later Welcome cannot recover that earlier epoch.
         // Extra devices of an identity already in the group do not change this gate.
         if s.kind == SpaceKind::Direct && missing_member {
-            return None;
+            return Err(E::Membership);
         }
         let adding = m.claiming.contains(space) || missing_member;
         if runs_it && adding && !m.stuck.contains(space) {
-            return None;
+            return Err(E::Adding);
         }
-        device.epoch(space).ok()
+        device.epoch(space).map_err(|_| E::Storage)
     }
 
     /// Nothing MLS-side left to do right now (the CLI waits for this before exiting).

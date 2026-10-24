@@ -9,7 +9,7 @@ impl Engine {
         };
         let action = if matches!(
             p.canonical_tool.as_str(),
-            "read_deckcraft" | "read_page" | "read_site"
+            "read_deckcraft" | "read_gridcraft" | "read_page" | "read_site"
         ) {
             ActionClass::Reply
         } else {
@@ -77,7 +77,7 @@ impl Engine {
             return Err(denied());
         }
         let intent = command_intent(p, action.as_ref())?;
-        if mutation.is_some_and(|(id, hash)| id != format!("deckcmd_{intent}") || hash != intent) {
+        if mutation.is_some_and(|(id, hash)| id != mutation_id(p, &intent) || hash != intent) {
             return Err(denied());
         }
         // Accepted-result recovery is read-only and uses the existing durable receipt.
@@ -88,7 +88,7 @@ impl Engine {
                     &p.artifact,
                     p.version,
                     &p.sha256,
-                    &format!("deckcmd_{intent}"),
+                    &mutation_id(p, &intent),
                     &intent,
                 )?
                 .is_some()

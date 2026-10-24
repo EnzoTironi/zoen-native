@@ -40,6 +40,20 @@ pub(crate) fn fixture() -> std::result::Result<Fixture, Box<dyn std::error::Erro
 pub(crate) fn fixture_with_privacy(
     privacy: Privacy,
 ) -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
+    fixture_binary(privacy, "deckcraft", ORIGINAL)
+}
+pub(crate) fn grid_fixture() -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
+    fixture_binary(
+        Privacy::Closed,
+        "gridcraft",
+        include_bytes!("../../../miniapps/resources/gridcraft-empty.xlsx"),
+    )
+}
+fn fixture_binary(
+    privacy: Privacy,
+    app: &str,
+    bytes: &[u8],
+) -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
     let owner = Client::open(":memory:".into(), "en".into()).unwrap();
     let vault = Arc::new(Vault::default());
     let owner_id = owner
@@ -110,10 +124,15 @@ pub(crate) fn fixture_with_privacy(
         .unwrap();
     }
     let base = agent
-        .app_binary_create(
+        .app_binary_create_for(
+            app.into(),
             space.clone(),
-            "Deck".into(),
-            STANDARD.encode(ORIGINAL),
+            if app == "deckcraft" {
+                "Deck".into()
+            } else {
+                "Grid".into()
+            },
+            STANDARD.encode(bytes),
             "create_worker".into(),
         )
         .unwrap();

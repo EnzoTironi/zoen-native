@@ -1,4 +1,5 @@
 """Exact egui touch-fix staging; no Cargo, browser, services or device actions."""
+import copy
 import importlib.util
 import json
 import os
@@ -54,6 +55,19 @@ class TouchInputDependencyTest(unittest.TestCase):
             self.assertEqual(module.digest((self.source / item['path']).read_bytes()), item['after'])
             self.assertEqual(module.digest((BASELINE / item['path']).read_bytes()), item['before'])
         self.assertEqual(module.digest(CRATE.read_bytes()), archive_hash)
+
+    def test_notes_contract_hash_is_checked_before_first_touch_patch(self):
+        metadata = copy.deepcopy(METADATA)
+        metadata['patches'][1]['sha256'] = '0' * 64
+        applied = []
+        def record(source, patch):
+            applied.append(patch)
+            apply_patch(source, patch)
+        with self.assertRaisesRegex(ValueError, 'input hash mismatch'):
+            module.stage_experiment(self.source, metadata, CRATE, ROOT, record)
+        self.assertEqual(applied, [], 'an invalid Notes patch must not partially apply touch changes')
+        for item in metadata['sourceFiles']:
+            self.assertEqual(module.digest((self.source / item['path']).read_bytes()), item['before'])
 
     def test_egui_stage_requires_exact_preceding_input_stage(self):
         with self.assertRaisesRegex(ValueError, 'Experiment base changed'):

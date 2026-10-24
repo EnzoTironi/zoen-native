@@ -4,6 +4,9 @@ use super::*;
 
 /// Maps the native semantic ranges directly. No before/after text inference occurs.
 pub(in crate::pages) fn page_edits(binding: &Binding, capture: &Capture) -> R<Vec<PageBlockDto>> {
+    if binding.target == PageInputTarget::WholeDocument {
+        return super::whole_document::edits(binding, capture);
+    }
     if binding.mode == PageInputMode::Markdown {
         return super::super::parse_editor_markdown(&text(&binding.mode, &capture.payload)?.text);
     }

@@ -96,7 +96,7 @@ impl PageSession {
                         blocks: doc.blocks(),
                     },
                     doc.content_hash(),
-                    doc.content_hash() != shadow.content_hash()
+                    !doc.editor_content_eq(shadow)
                         || matches!(self.blocked, Some(SessionBlock::DraftLocked(_)))
                         || (journal.has_draft && save_error.is_some()),
                 )

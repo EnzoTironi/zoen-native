@@ -238,6 +238,7 @@ fn same_media_group(first: &Event, second: &Event) -> bool {
 mod account;
 mod account_preparation;
 mod ingestion;
+mod member_controls;
 mod outbox;
 mod prepared_account;
 mod profiles;

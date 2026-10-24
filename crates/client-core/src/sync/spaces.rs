@@ -142,16 +142,12 @@ impl Engine {
                 what: t("conversa", "chat"),
             })?;
         let role_of = |id: &str| s.members.iter().find(|(m, _)| m == id).map(|(_, r)| *r);
-        let allowed = match (role_of(&me), role_of(who)) {
-            (_, None) => {
-                return Err(CoreError::NotFound {
-                    what: t("membro", "member"),
-                });
-            }
-            (Some(Role::Owner), _) => true,
-            (Some(Role::Admin), Some(target)) => target != Role::Owner,
-            _ => false,
-        };
+        if role_of(who).is_none() {
+            return Err(CoreError::NotFound {
+                what: t("membro", "member"),
+            });
+        }
+        let allowed = may_remove_member(role_of(&me), role_of(who));
         if !allowed {
             return Err(CoreError::Forbidden {
                 reason: t(
@@ -202,5 +198,15 @@ impl Engine {
         self.net.pending.insert(client_id, space.to_string());
         self.net.wake();
         Ok(())
+    }
+}
+
+/// One policy for both the legacy writer and its reviewed native control.
+pub(super) fn may_remove_member(actor: Option<Role>, target: Option<Role>) -> bool {
+    match (actor, target) {
+        (_, None) => false,
+        (Some(Role::Owner), _) => true,
+        (Some(Role::Admin), Some(role)) => role != Role::Owner,
+        _ => false,
     }
 }
