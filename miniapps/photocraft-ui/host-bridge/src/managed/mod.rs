@@ -103,7 +103,7 @@ impl HostBridge {
         m: Mutation,
         fingerprint: String,
         bytes: Vec<u8>,
-        operation: Value,
+        operation: &Value,
     ) -> Result<Proposal> {
         if let Some(p) = self.retry(&m, &fingerprint)? {
             return Ok(p);
@@ -136,7 +136,7 @@ impl HostBridge {
             command.action,
         )
         .map_err(|_| failure("engine_command_refused"))?;
-        self.prepare(command.mutation, fingerprint, bytes, json!(command.action))
+        self.prepare(command.mutation, fingerprint, bytes, &json!(command.action))
     }
     /// # Errors
     /// Only the exact retained proposal at its next version can advance accepted bytes.

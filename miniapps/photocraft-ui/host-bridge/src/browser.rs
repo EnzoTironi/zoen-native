@@ -173,7 +173,7 @@ impl BrowserBridge {
             .host
             .as_mut()
             .ok_or_else(|| failure("not_open"))?
-            .prepare(m, fingerprint, bytes, json!({"kind":"humanCheckpoint"}))?;
+            .prepare(m, fingerprint, bytes, &json!({"kind":"humanCheckpoint"}))?;
         self.pending = Some(Entry {
             kind: Kind::Manual,
             id,
@@ -205,7 +205,7 @@ impl BrowserBridge {
             .host
             .as_mut()
             .ok_or_else(|| failure("not_open"))?
-            .prepare(command.mutation, fingerprint, bytes, json!(command.action))?;
+            .prepare(command.mutation, fingerprint, bytes, &json!(command.action))?;
         self.pending = Some(Entry {
             kind: Kind::Agent,
             id,
