@@ -26,7 +26,7 @@ The adapter is never proof that an actor has a grant.
 
 `prepare-engine.py` copies this adapter and the **single canonical XLSX profile**
 from `crates/miniapps/src/gridcraft{.rs,/}` into a clean owned upstream checkout.
-It applies only the embedding command policy hook, checks the exact revision,
+It applies the reviewed embedding command, host export and drag-history patches, checks the exact revision,
 refuses dirty/adopted trees, records source hashes, and does not compile, fetch,
 install, enable an App or claim a pass. Example preparation:
 
@@ -120,3 +120,15 @@ restart recovery and chosen-version sharing remain pending until tested on the
 actual built App. XLSX is the only exposed Grid export. Session undo is local to
 the editor lifetime; durable Core version history does not promise a global
 cross-device undo stack. Issue445 remains open until its complete acceptance.
+
+A real pointer regression also confirmed that a refused column resize could
+coalesce two already accepted cell undo entries. Drag paths now coalesce only
+successful commands; the same actual egui keyboard/pointer regression and all
+16 host/UI cases pass, with affected all-target Clippy. This does not enable
+resizing or object mutation in the restricted profile.
+
+The first pinned browser assets still have a separately reproduced mobile-touch
+focus defect: focus is deferred to RAF and may use the preceding editor geometry.
+The editor remains unavailable by default while a current-owner/fresh-geometry
+successor is qualified. Keyboard/canvas results do not substitute for trusted
+touch or iPhone acceptance.
