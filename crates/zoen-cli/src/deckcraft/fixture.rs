@@ -10,6 +10,16 @@ pub(crate) fn fixture_with_privacy_at(
     root: [u8; 32],
     privacy: types::Privacy,
 ) -> Fixture {
+    fixture_for_format_at(path, root, privacy, "deckcraft", ORIGINAL)
+}
+
+pub(super) fn fixture_for_format_at(
+    path: std::path::PathBuf,
+    root: [u8; 32],
+    privacy: types::Privacy,
+    app: &str,
+    original: &[u8],
+) -> Fixture {
     let owner_path = path.join("owner.sqlite");
     let owner_vault = Arc::new(Vault::default());
     let human = Client::open(owner_path.to_str().unwrap().into(), "en".into()).unwrap();
@@ -103,10 +113,11 @@ pub(crate) fn fixture_with_privacy_at(
     let client = Client::open(db.to_str().unwrap().into(), "en".into()).unwrap();
     assert!(client.unlock(vault.clone()).unwrap());
     let base = client
-        .app_binary_create(
+        .app_binary_create_for(
+            app.into(),
             space.clone(),
             "Agent deck".into(),
-            STANDARD.encode(ORIGINAL),
+            STANDARD.encode(original),
             "worker_create".into(),
         )
         .unwrap();

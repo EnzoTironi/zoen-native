@@ -78,6 +78,8 @@ mod restart {
 mod codex {
     include!("deckcraft/codex_tests.rs");
 }
+#[path = "deckcraft/photo_reply_tests.rs"]
+mod photo_reply;
 pub(crate) async fn inspect(f: &Fixture, worker: &DeckcraftWorker) -> Value {
     serde_json::from_str(
         &call(
