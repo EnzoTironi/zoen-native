@@ -113,8 +113,17 @@ fn rich_manual_agent_ack_cold_docx_pdf_and_undo_keep_one_actual_document() -> Re
         final_p.runs[0].props, styled_p.runs[0].props,
         "range edit keeps the real selected run formatting"
     );
+    assert_accepted_exports_and_cold_reopen(&b, &s, &edited, &final_model)?;
+    assert_actual_undo_chain(&b, &mut s, &edited, &final_model, &styled_model, &manual)
+}
+fn assert_accepted_exports_and_cold_reopen(
+    b: &BrowserBridge,
+    s: &Session,
+    edited: &Proposal,
+    final_model: &Document,
+) -> Result<()> {
     let exported = b.export(
-        &s,
+        s,
         &Export {
             scope: scope(),
             head: head("4", &edited.bytes),
@@ -123,7 +132,7 @@ fn rich_manual_agent_ack_cold_docx_pdf_and_undo_keep_one_actual_document() -> Re
     )?;
     assert_eq!(exported.bytes, edited.bytes);
     let pdf = b.export(
-        &s,
+        s,
         &Export {
             scope: scope(),
             head: head("4", &edited.bytes),
@@ -153,35 +162,45 @@ fn rich_manual_agent_ack_cold_docx_pdf_and_undo_keep_one_actual_document() -> Re
         &exported.bytes,
     )?;
     assert_eq!(
-        next.doc, final_model,
+        next.doc, *final_model,
         "cold reopen keeps every rich property"
     );
+    Ok(())
+}
+fn assert_actual_undo_chain(
+    b: &BrowserBridge,
+    s: &mut Session,
+    edited: &Proposal,
+    final_model: &Document,
+    styled_model: &Document,
+    manual: &Document,
+) -> Result<()> {
     s.run("text.insert", &json!({"text":" human suffix","raw":true}))
         .map_err(|_| failure("manual_after_agent"))?;
     s.run("edit.undo", &json!({}))
         .map_err(|_| failure("undo_manual_suffix"))?;
     assert!(
-        s.doc == final_model,
+        s.doc == *final_model,
         "manual typing after ACK must not join the agent's Undo step"
     );
     s.run("edit.undo", &json!({}))
         .map_err(|_| failure("undo_edit"))?;
     assert_eq!(
-        s.doc, styled_model,
+        s.doc, *styled_model,
         "one Undo reverses just the reviewed text edit"
     );
     s.run("edit.undo", &json!({}))
         .map_err(|_| failure("undo_format"))?;
     assert_eq!(
-        s.doc, manual,
+        s.doc, *manual,
         "next Undo reverses the entire reviewed format patch"
     );
     s.run("edit.redo", &json!({}))
         .map_err(|_| failure("redo_format"))?;
-    assert_eq!(s.doc, styled_model);
+    assert_eq!(s.doc, *styled_model);
     assert_eq!(
         b.export(
-            &s,
+            s,
             &Export {
                 scope: scope(),
                 head: head("4", &edited.bytes),
@@ -194,6 +213,7 @@ fn rich_manual_agent_ack_cold_docx_pdf_and_undo_keep_one_actual_document() -> Re
     );
     Ok(())
 }
+
 #[test]
 fn invalid_unicode_stale_scope_and_lossy_serialization_roll_back_actual_session() -> Result<()> {
     let (mut b, mut s, bytes) = opened("Olá title")?;

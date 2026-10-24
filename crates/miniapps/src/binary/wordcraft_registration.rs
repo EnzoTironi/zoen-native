@@ -55,7 +55,7 @@ pub fn create(args: &Value) -> Result<(String, Value), String> {
     }
     let doc = Document::parse(EMPTY).map_err(str::to_owned)?;
     let metadata = serde_json::from_str(&doc.metadata(title))
-        .map_err(|_| "Invalid initial plain-text document metadata")?;
+        .map_err(|_| "Invalid initial document metadata")?;
     Ok((title.into(), metadata))
 }
 pub fn spec() -> Option<AppSpec> {
@@ -64,10 +64,10 @@ pub fn spec() -> Option<AppSpec> {
     }
     let mut tools = vec![tool(
         "create_wordcraft",
-        ts("Criar documento", "Create plain-text document"),
+        ts("Criar documento", "Create document"),
         ts(
             "Cria um documento editável nesta conversa.",
-            "Creates an editable plain-text document in this conversation.",
+            "Creates an editable document in this conversation.",
         ),
         json!({"type":"object","properties":{"title":{"type":"string","maxLength":160}},"additionalProperties":false}),
         &["model"],
@@ -101,7 +101,7 @@ pub fn spec() -> Option<AppSpec> {
         name: "WordCraft",
         description: ts(
             "Documentos compartilhados e criptografados.",
-            "Shared encrypted plain-text documents.",
+            "Shared encrypted documents.",
         ),
         resource_uri: RESOURCE,
         html: Some(HTML),
