@@ -71,10 +71,12 @@ pub struct PageBlockDto {
     /// Heading syntax. Absent only in legacy editor requests; false is explicit ATX.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "client-types", ts(optional))]
+    #[uniffi(default = None)]
     pub setext: Option<bool>,
     /// Image title. Absent legacy requests preserve the existing canonical title.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "client-types", ts(optional))]
+    #[uniffi(default = None)]
     pub title: Option<String>,
     /// Line breaks inside a block are U+2028.
     pub text: String,
@@ -213,7 +215,7 @@ fn kind_from_dto(d: &PageBlockDto, prev: Option<&Kind>) -> R<Kind> {
         "bullet" => Kind::Bullet { indent: d.indent },
         "numbered" => Kind::Numbered {
             indent: d.indent,
-            number: d.number.max(1),
+            number: d.number,
         },
         "task" => Kind::Task {
             indent: d.indent,
