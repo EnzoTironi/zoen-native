@@ -7,7 +7,7 @@ fn queue_at(
     f: &mut Fixture,
     scope: &OwnerPolicyScope,
     at_ms: i64,
-) -> StdResult<crate::OwnerPolicyOptionsStatus, CoreError> {
+) -> StdResult<crate::owner_policy::OwnerPolicyOptionsStatus, CoreError> {
     f.owner.queue_owner_policy_inquiry(
         scope,
         OwnerPolicyInquiry {
@@ -106,6 +106,15 @@ fn inquiry_ack_recovery_uses_atomic_producer_order_after_clock_rollback_ties_and
         let second = queue_at(&mut f, &scope, at + delta)?;
         assert_ne!(first.source, second.source);
         assert_eq!(f.owner.outbox_len(), 1);
+        assert_eq!(
+            f.owner.store.conn().query_row(
+                "SELECT count(*) FROM meta WHERE key GLOB 'runtime.owner-policy.inquiry/1/*'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )?,
+            3,
+            "only marker, head and current producer are retained"
+        );
         f.owner.mls_seal_outbox()?;
         let exact = f.owner.outbox_envelopes();
         for cold in [false, true] {
@@ -146,6 +155,8 @@ fn missing_corrupt_or_rolled_back_inquiry_producer_records_never_select_another_
     for fault in [
         "head_missing",
         "marker_missing",
+        "extra_record",
+        "oversized",
         "record_missing",
         "head_rollback",
         "raw",
@@ -161,6 +172,8 @@ fn missing_corrupt_or_rolled_back_inquiry_producer_records_never_select_another_
         f.owner.mls_seal_outbox()?;
         let (key, raw) = head(&f)?;
         match fault {
+            "extra_record" => f.owner.store.set_meta(&format!("{key}/extra"), &raw)?,
+            "oversized" => f.owner.store.set_meta(&key, &"x".repeat(16_385))?,
             "marker_missing" => f.owner.store.meta_delete(&format!("{key}:initialized"))?,
             "head_missing" => {
                 f.owner
@@ -238,7 +251,7 @@ fn inquiry_head_write_failure_rolls_back_the_new_outbox_and_producer_association
 }
 
 #[test]
-fn inquiry_counter_overflow_fails_atomically_and_does_not_scan_prior_queries() -> TestResult {
+fn inquiry_counter_overflow_fails_atomically_without_another_original() -> TestResult {
     let (mut f, scope, _) = setup()?;
     let first = f.owner.request_account_policy_options(&scope)?;
     let (key, raw) = head(&f)?;

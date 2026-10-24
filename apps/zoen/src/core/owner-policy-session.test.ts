@@ -505,6 +505,18 @@ test('unacknowledged inquiry cannot be redispatched by retry, refresh or focus r
 
 test('an offline original can expire without automatic requery, then one explicit retry uses the recovered scope', async () => {
   const f = await fixture();
+  const oldConfirmation = await ready(f);
+  f.port.options = async (_scope, source) => ({
+    source,
+    inquiry_digest: 'e'.repeat(64),
+    state: 'expired',
+    context: null,
+  });
+  await f.session.reconcile();
+  assert.equal(f.session.getSnapshot().review, null);
+  assert.equal(f.session.getSnapshot().phase, 'refused');
+  await f.session.submit(oldConfirmation);
+  assert.equal(f.f.submits, 0);
   let sends = 0,
     expired = false;
   f.port.inquire = async () => ({
