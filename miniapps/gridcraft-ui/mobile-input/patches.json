@@ -9,13 +9,13 @@
   "patches": [
     {
       "path": "patches/eframe-current-owner.patch",
-      "bytes": 15136,
-      "sha256": "05a27707faae437e681ac1b9483e670770f185e910f96a1373559d5a4bbd8ef6"
+      "bytes": 15755,
+      "sha256": "07e723549084e9f1325278b6f12038c1a0ed21a4ca93423da0cbbb6bf6b08fb4"
     },
     {
       "path": "patches/eframe-primary-contact.patch",
-      "bytes": 13903,
-      "sha256": "6bbab724a3c080b046b2eb711f9e2a9e3cd0a1c6b7bd89de68b6e674c108251d"
+      "bytes": 13947,
+      "sha256": "4891c9c4f35d11b1d754d1d60b0744faa8f02cd71cb8ec97b20d958a8b09f20e"
     },
     {
       "path": "patches/eframe-text-agent.patch",
@@ -49,5 +49,5 @@
     "sha256": "632cacd0cea5b264a82dd0594870dd7d3ab7e0391585cdc16a71c54abb9ee424",
     "bytes": 9118
   },
-  "revisionNote": "Canvas focus retries on admitted trusted tap release before IME output; active text-agent/composition, drag, cancel, secondary-contact and owner gates preserved. Top-level source/status retain historical qualification; current patches require per-consumer compilation/browser/native qualification."
+  "revisionNote": "Current trusted eligible textual release admits its egui focus pass even if native DOM canvas focus is asynchronous; native input focus remains inside the genuine callback and requires current enabled owner/IME. No load/reopen/native keyboard policy override. Per-consumer and native qualification remain required."
 }

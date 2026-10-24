@@ -279,7 +279,18 @@
              screenshot_commands_with_frame_delay: vec![],
              textures_delta: Default::default(),
              clipped_primitives: None,
-@@ -251,7 +255,16 @@
+@@ -237,5 +241,9 @@
+     pub fn update_focus(&mut self) {
+-        let has_focus = self.has_focus();
++        // The current trusted textual release already focuses this app. WebKit
++        // may grant DOM canvas focus later; do not postpone its IME admission
++        // to an ordinary RAF outside that genuine user callback.
++        let has_focus = self.has_focus()
++            || (self.pointer_callback && self.allow_text_activation);
+         if self.input.raw.focused != has_focus {
+             log::trace!("{} Focus changed to {has_focus}", self.canvas().id());
+             self.input.set_focus(has_focus);
+@@ -251,7 +259,16 @@
      /// Runs the logic, but doesn't paint the result.
      ///
      /// The result can be painted later with a call to [`Self::run_and_paint`] or [`Self::paint`].
@@ -296,7 +307,7 @@
          // We sometimes miss blur/focus events due to the text agent, so let's just poll each frame:
          self.update_focus();
          // We might have received a screenshot
-@@ -412,21 +425,11 @@
+@@ -412,21 +429,11 @@
  
          super::set_cursor_icon(self.canvas(), cursor_icon);
  
@@ -323,7 +334,7 @@
          if let Err(err) = self
              .text_agent
              .update(ime, self.canvas(), self.egui_ctx.zoom_factor())
-@@ -436,6 +439,34 @@
+@@ -436,6 +443,34 @@
                  super::string_from_js_value(&err)
              );
          }
