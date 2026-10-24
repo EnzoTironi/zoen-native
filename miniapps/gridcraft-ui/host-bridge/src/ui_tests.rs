@@ -186,14 +186,17 @@ fn actual_refused_column_drag_preserves_two_accepted_cell_undo_steps() {
         },
     ]);
     h.run_steps(1);
+    let end = start + egui::vec2(24.0, 0.0);
+    h.input_mut().events.push(Event::PointerMoved(end));
+    h.run_steps(1);
     assert!(
         matches!(
             h.state().grid.drag,
             gridcraft_ui_egui::grid::Drag::ResizeCol { col: 0, .. }
         ),
-        "actual header pointer selected the column resize path"
+        "actual header pointer crossed the drag threshold and selected column resize"
     );
-    let end = start + egui::vec2(24.0, 0.0);
+    let end = end + egui::vec2(8.0, 0.0);
     h.input_mut().events.push(Event::PointerMoved(end));
     h.run_steps(1);
     h.input_mut().events.push(Event::PointerButton {
