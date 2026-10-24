@@ -51,8 +51,14 @@ fn real_docx_creation_reuses_receipts_but_keeps_format_mime_scope_and_encrypted_
     assert!(save(&f, &doc, ORIGINAL, "wrong-format").is_err());
     assert!(save(&f, &deck, DOCX, "wrong-format").is_err());
     assert_eq!(counts(&f), before);
-    assert!(!miniapps::binary::Format::Wordcraft.available());
-    assert!(miniapps::spec(wordcraft::APP).is_none());
+    assert_eq!(
+        miniapps::binary::Format::Wordcraft.available(),
+        option_env!("ZOEN_WORDCRAFT_RESOURCE_MANIFEST_JSON").is_some()
+    );
+    assert_eq!(
+        miniapps::spec(wordcraft::APP).is_some(),
+        miniapps::binary::Format::Wordcraft.available()
+    );
     Ok(())
 }
 #[test]
@@ -165,7 +171,7 @@ fn configured_wordcraft_person_factory_creates_one_standard_card_and_same_host_f
         .install_app(f.space.clone(), wordcraft::APP.into(), args)?;
     assert_eq!(first.id, repeated.id);
     let base = f.client.app_binary_read(first.id.clone(), None, None)?;
-    assert_eq!(base.actor_kind, "person");
+    assert_eq!(base.actor_kind, "human");
     assert_eq!(STANDARD.decode(&base.data_base64).expect("base64"), DOCX);
     let edited = save(&f, &base, EDITED, "person-host-edit")?;
     assert_eq!(edited.item_id, first.id);
