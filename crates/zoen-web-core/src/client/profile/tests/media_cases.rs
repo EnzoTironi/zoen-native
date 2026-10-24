@@ -1,13 +1,14 @@
 use super::*;
 
 #[test]
-fn own_profile_uses_shared_cipher_signed_upload_and_retries_identical_bytes_after_reload() {
-    let (mut client, identity, _) = client();
+fn own_profile_uses_shared_cipher_signed_upload_and_retries_identical_bytes_after_reload(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, identity, _) = client()?;
     request(
         &mut client,
         json!({"op":"update_profile","name":"  Depois 🦋  ","bio":"  privada  "}),
     );
-    let update = synced(&mut client);
+    let update = synced(&mut client)?;
     let upload = update
         .frames
         .iter()
@@ -43,7 +44,7 @@ fn own_profile_uses_shared_cipher_signed_upload_and_retries_identical_bytes_afte
         &update.snapshot,
     )
     .unwrap();
-    let again = synced(&mut reload);
+    let again = synced(&mut reload)?;
     let retry = again
         .frames
         .iter()
@@ -64,12 +65,14 @@ fn own_profile_uses_shared_cipher_signed_upload_and_retries_identical_bytes_afte
         .result["version"],
         "2"
     );
+    Ok(())
 }
 
 #[test]
-fn profile_photo_binary_cache_and_upload_barrier_survive_reload() {
-    let (mut client, identity, _) = client();
-    synced(&mut client);
+fn profile_photo_binary_cache_and_upload_barrier_survive_reload(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, identity, _) = client()?;
+    synced(&mut client)?;
     let response = client
         .profile_save(
             r#"{"name":"Photo","bio":"Private","photo":"set","mime":"image/jpeg"}"#,
@@ -99,7 +102,7 @@ fn profile_photo_binary_cache_and_upload_barrier_survive_reload() {
     let snapshot = response.update.unwrap().snapshot;
     let mut reload = Client::new(client.account.clone(), client.signer.clone(), &snapshot).unwrap();
     assert_eq!(reload.pending_profile_uploads(), vec![photo.blob.clone()]);
-    let update = synced(&mut reload);
+    let update = synced(&mut reload)?;
     assert!(!update.frames.iter().any(|frame| matches!(
         ClientFrame::decode(frame),
         Ok(ClientFrame::Req {
@@ -156,11 +159,13 @@ fn profile_photo_binary_cache_and_upload_barrier_survive_reload() {
             .is_err(),
         "a disposable cache cannot resurrect a removed photo"
     );
+    Ok(())
 }
 
 #[test]
-fn handle_changes_redact_private_fields_and_only_apply_matching_acknowledgements() {
-    let (mut client, identity, _) = client();
+fn handle_changes_redact_private_fields_and_only_apply_matching_acknowledgements(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, identity, _) = client()?;
     let before = client.my_profile_fields().unwrap().2;
     let prepared = client.handle_profile("  @Depois_123  ").unwrap();
     let profile: Identity = serde_json::from_str(&prepared).unwrap();
@@ -184,15 +189,17 @@ fn handle_changes_redact_private_fields_and_only_apply_matching_acknowledgements
     let reload = Client::new(original, client.signer.clone(), &update.snapshot).unwrap();
     assert_eq!(reload.account.handle, "depois_123");
     assert_eq!(reload.fields_of(&identity.id()).unwrap().1, before);
+    Ok(())
 }
 
 #[test]
-fn certified_native_share_opens_only_matching_signed_profile_and_survives_reload() {
-    let (mut client, _, _) = client();
+fn certified_native_share_opens_only_matching_signed_profile_and_survives_reload(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, _, _) = client()?;
     let identity = NativeSigner::from_secret(&[74; 32]);
     let device = NativeSigner::from_secret(&[75; 32]);
     let author = Author::device(&identity, device);
-    let key = ProfileKey::generate();
+    let key = ProfileKey::generate()?;
     let agreement = client.agreement_key().unwrap();
     let space = "sp_profile";
     let mut log = SpaceLog::new(space);
@@ -205,7 +212,7 @@ fn certified_native_share_opens_only_matching_signed_profile_and_survives_reload
             privacy: Privacy::Closed,
         },
         1,
-    );
+    )?;
     client.receive(&create, 2).unwrap();
     let share = profile::seal_share(
         &key,
@@ -226,7 +233,7 @@ fn certified_native_share_opens_only_matching_signed_profile_and_survives_reload
             }],
         },
         3,
-    );
+    )?;
     client.receive(&share, 4).unwrap();
     let update = client.receive(&ServerFrame::SyncDone.encode(), 10).unwrap();
     assert!(update.frames.iter().any(|frame| matches!(
@@ -241,7 +248,7 @@ fn certified_native_share_opens_only_matching_signed_profile_and_survives_reload
         bio: "Só contatos".into(),
         photo: None,
     };
-    let ciphertext = profile::seal_profile(&key, &identity.id(), 3, &fields);
+    let ciphertext = profile::seal_profile(&key, &identity.id(), 3, &fields)?;
     let signed = profile::sign_upload(&author, 3, &ciphertext).unwrap();
     let mut forged = SealedProfile {
         identity: identity.id(),
@@ -255,7 +262,7 @@ fn certified_native_share_opens_only_matching_signed_profile_and_survives_reload
                 id: client.profile_net.profiles_request.unwrap(),
                 result: Ok(Reply::SealedProfiles(vec![
                     forged.clone(),
-                    remote_profile(&client, 1, "Antes", false),
+                    remote_profile(&client, 1, "Antes", false)?,
                 ])),
             }
             .encode(),
@@ -291,11 +298,13 @@ fn certified_native_share_opens_only_matching_signed_profile_and_survives_reload
         .result["name"]
             == "Nome privado"
     );
+    Ok(())
 }
 
 #[test]
-fn failed_recovery_key_lookup_retries_without_downgrading_blocked_member_to_legacy() {
-    let (mut client, _, author) = client();
+fn failed_recovery_key_lookup_retries_without_downgrading_blocked_member_to_legacy(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, _, author) = client()?;
     let other = NativeSigner::from_secret(&[84; 32]);
     let mut log = SpaceLog::new("sp_key_retry");
     client
@@ -309,7 +318,7 @@ fn failed_recovery_key_lookup_retries_without_downgrading_blocked_member_to_lega
                     privacy: Privacy::Closed,
                 },
                 1,
-            ),
+            )?,
             2,
         )
         .unwrap();
@@ -323,7 +332,7 @@ fn failed_recovery_key_lookup_retries_without_downgrading_blocked_member_to_lega
                     role: Role::Member,
                 },
                 3,
-            ),
+            )?,
             4,
         )
         .unwrap();
@@ -332,7 +341,7 @@ fn failed_recovery_key_lookup_retries_without_downgrading_blocked_member_to_lega
         update.frames.iter().any(|frame|matches!(ClientFrame::decode(frame).unwrap(),ClientFrame::Req{op:Op::AgreementKeys{ids},..} if ids.contains(&other.id())))
     };
     assert!(
-        lookup(&synced(&mut client)),
+        lookup(&synced(&mut client)?),
         "a blocked member still needs an authenticated MLS recovery key"
     );
     let failed = client
@@ -363,11 +372,13 @@ fn failed_recovery_key_lookup_retries_without_downgrading_blocked_member_to_lega
         client.profile_net.no_agreement.contains(&other.id()),
         "only a successful empty answer establishes legacy absence"
     );
+    Ok(())
 }
 
 #[test]
-fn blocking_rotates_profile_key_and_never_reshares_to_blocked_person() {
-    let (mut client, _, author) = client();
+fn blocking_rotates_profile_key_and_never_reshares_to_blocked_person(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, _, author) = client()?;
     let other = NativeSigner::from_secret(&[76; 32]);
     let space = "sp_block";
     let mut log = SpaceLog::new(space);
@@ -380,7 +391,7 @@ fn blocking_rotates_profile_key_and_never_reshares_to_blocked_person() {
             privacy: Privacy::Closed,
         },
         1,
-    );
+    )?;
     client.receive(&create, 2).unwrap();
     let add = clear(
         &mut log,
@@ -390,20 +401,20 @@ fn blocking_rotates_profile_key_and_never_reshares_to_blocked_person() {
             role: Role::Member,
         },
         3,
-    );
+    )?;
     client.receive(&add, 4).unwrap();
     client
         .saved
         .profile
         .agreement
-        .insert(other.id(), AgreementKey::generate().public_hex());
+        .insert(other.id(), AgreementKey::generate()?.public_hex());
     let old = client.my_profile_fields().unwrap().0;
     request(
         &mut client,
         json!({"op":"block_person","identity_id":other.id()}),
     );
     assert_ne!(old.to_hex(), client.my_profile_fields().unwrap().0.to_hex());
-    let update = synced(&mut client);
+    let update = synced(&mut client)?;
     for frame in &update.frames {
         if let ClientFrame::Publish { env } = ClientFrame::decode(frame).unwrap() {
             let event = event_log::event_from_content(
@@ -429,7 +440,7 @@ fn blocking_rotates_profile_key_and_never_reshares_to_blocked_person() {
     let mut found = false;
     for frame in update.frames {
         if let ClientFrame::Publish { env } = ClientFrame::decode(&frame).unwrap() {
-            let bytes = sequence(&mut log, env);
+            let bytes = sequence(&mut log, env)?;
             let decoded = ServerFrame::decode(&bytes).unwrap();
             if let ServerFrame::Event { ev } = decoded {
                 let event = event_log::event_from_content(
@@ -448,4 +459,5 @@ fn blocking_rotates_profile_key_and_never_reshares_to_blocked_person() {
         }
     }
     assert!(found);
+    Ok(())
 }

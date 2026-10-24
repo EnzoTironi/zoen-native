@@ -1,9 +1,9 @@
 //! Original whole test bodies, called by their unchanged registered facade.
 use super::*;
 
-pub(super) fn conversation_metadata_comes_from_logs_and_only_my_personal_log_controls_preferences()
-{
-    let (mut client, author, other, mut chat, _) = web_fixture();
+pub(super) fn conversation_metadata_comes_from_logs_and_only_my_personal_log_controls_preferences(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, author, other, mut chat, _) = web_fixture()?;
     clear(
         &mut chat,
         &author,
@@ -12,7 +12,7 @@ pub(super) fn conversation_metadata_comes_from_logs_and_only_my_personal_log_con
             role: Role::Reader,
         },
         3,
-    );
+    )?;
     let prefs = types::ChatPrefs {
         pinned: true,
         archived: true,
@@ -32,8 +32,8 @@ pub(super) fn conversation_metadata_comes_from_logs_and_only_my_personal_log_con
             privacy: Privacy::EndToEnd,
         },
         4,
-    );
-    clear(&mut personal, &author, body(), 5);
+    )?;
+    clear(&mut personal, &author, body(), 5)?;
     clear(
         &mut personal,
         &other,
@@ -42,7 +42,7 @@ pub(super) fn conversation_metadata_comes_from_logs_and_only_my_personal_log_con
             prefs: Default::default(),
         },
         6,
-    );
+    )?;
     client.logs.insert(personal.space().into(), personal);
     let mut impostor = SpaceLog::new("sp_someone_elses_personal");
     clear(
@@ -54,7 +54,7 @@ pub(super) fn conversation_metadata_comes_from_logs_and_only_my_personal_log_con
             privacy: Privacy::EndToEnd,
         },
         7,
-    );
+    )?;
     clear(
         &mut impostor,
         &author,
@@ -63,7 +63,7 @@ pub(super) fn conversation_metadata_comes_from_logs_and_only_my_personal_log_con
             prefs: Default::default(),
         },
         8,
-    );
+    )?;
     client.logs.insert(impostor.space().into(), impostor);
     let profile = Identity {
         id: other.identity.clone(),
@@ -111,7 +111,7 @@ pub(super) fn conversation_metadata_comes_from_logs_and_only_my_personal_log_con
             prefs: Default::default(),
         },
         9,
-    );
+    )?;
     client.logs.insert(chat.space().into(), chat);
     assert!(client.conversations()[0].prefs.pinned);
     for privacy in [Privacy::Closed, Privacy::Public] {
@@ -126,7 +126,7 @@ pub(super) fn conversation_metadata_comes_from_logs_and_only_my_personal_log_con
                 privacy,
             },
             10,
-        );
+        )?;
         client.logs.insert(space.clone(), log);
         let projected = client
             .conversations()
@@ -136,15 +136,17 @@ pub(super) fn conversation_metadata_comes_from_logs_and_only_my_personal_log_con
         assert_eq!(projected.privacy, privacy);
         assert!(!projected.prefs.pinned);
     }
+    Ok(())
 }
 
-pub(super) fn web_reaction_participants_replace_remove_and_ignore_invalid_reactions() {
-    let (mut client, author, other, mut log, target) = web_fixture();
+pub(super) fn web_reaction_participants_replace_remove_and_ignore_invalid_reactions(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, author, other, mut log, target) = web_fixture()?;
     let react = |emoji: &str| types::Annotation::React {
         emoji: emoji.into(),
     };
-    annotate(&mut log, &author, &target, react("👍"));
-    annotate(&mut log, &other, &target, react("👍"));
+    annotate(&mut log, &author, &target, react("👍"))?;
+    annotate(&mut log, &other, &target, react("👍"))?;
     client.logs.insert(log.space().into(), log.clone());
     let view = client.conversations();
     let reaction = &view[0].messages[0].reactions[0];
@@ -155,13 +157,13 @@ pub(super) fn web_reaction_participants_replace_remove_and_ignore_invalid_reacti
         .participants
         .iter()
         .any(|p| p.identity == client.account.identity && p.name == "Fixture"));
-    annotate(&mut log, &author, &target, react("❤️"));
-    annotate(&mut log, &other, &target, react(" "));
-    annotate(&mut log, &other, &target, react(&"😀".repeat(9)));
+    annotate(&mut log, &author, &target, react("❤️"))?;
+    annotate(&mut log, &other, &target, react(" "))?;
+    annotate(&mut log, &other, &target, react(&"😀".repeat(9)))?;
     client.logs.insert(log.space().into(), log.clone());
     let view = client.conversations();
     assert_eq!(view[0].messages[0].reactions.len(), 2);
-    annotate(&mut log, &author, &target, types::Annotation::Unreact);
+    annotate(&mut log, &author, &target, types::Annotation::Unreact)?;
     client.logs.insert(log.space().into(), log.clone());
     let view = client.conversations();
     let reactions = &view[0].messages[0].reactions;
@@ -169,8 +171,8 @@ pub(super) fn web_reaction_participants_replace_remove_and_ignore_invalid_reacti
     assert_eq!(reactions[0].emoji, "👍");
     assert_eq!(reactions[0].count, 1);
     assert!(!reactions[0].mine);
-    annotate(&mut log, &author, &target, types::Annotation::Delete);
-    annotate(&mut log, &other, &target, react("❤️"));
+    annotate(&mut log, &author, &target, types::Annotation::Delete)?;
+    annotate(&mut log, &other, &target, react("❤️"))?;
     client.logs.insert(log.space().into(), log);
     assert!(client.conversations()[0].messages[0].reactions.is_empty());
     assert!(client
@@ -178,10 +180,12 @@ pub(super) fn web_reaction_participants_replace_remove_and_ignore_invalid_reacti
         .err()
         .unwrap()
         .contains("no longer available"));
+    Ok(())
 }
 
-pub(super) fn web_reaction_submission_rejects_blank_and_oversized_utf8_before_encryption() {
-    let (mut client, _, _, log, target) = web_fixture();
+pub(super) fn web_reaction_submission_rejects_blank_and_oversized_utf8_before_encryption(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, _, _, log, target) = web_fixture()?;
     client.logs.insert(log.space().into(), log);
     for emoji in [" ".into(), "😀".repeat(9)] {
         assert!(client
@@ -195,10 +199,12 @@ pub(super) fn web_reaction_submission_rejects_blank_and_oversized_utf8_before_en
             .unwrap()
             .contains("32 bytes"));
     }
+    Ok(())
 }
 
-pub(super) fn browser_directory_never_trusts_person_fields_or_reassigns_a_proven_agent_owner() {
-    let (mut client, owner, _) = document_fixture();
+pub(super) fn browser_directory_never_trusts_person_fields_or_reassigns_a_proven_agent_owner(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, owner, _) = document_fixture()?;
     let person = NativeSigner::from_secret(&[81; 32]);
     let mut record = Identity {
         id: person.id(),
@@ -251,10 +257,12 @@ pub(super) fn browser_directory_never_trusts_person_fields_or_reassigns_a_proven
         client.saved.profiles[&agent.id()].owner.as_deref(),
         Some(owner.identity.as_str())
     );
+    Ok(())
 }
 
-pub(super) fn browser_typing_is_connection_local_and_requires_a_current_writing_member() {
-    let (mut client, author, mut log) = document_fixture();
+pub(super) fn browser_typing_is_connection_local_and_requires_a_current_writing_member(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, author, mut log) = document_fixture()?;
     let before = serde_json::to_string(&client.saved).unwrap();
     assert!(matches!(
         ClientFrame::decode(&client.typing_frame(log.space(), true).unwrap()).unwrap(),
@@ -282,7 +290,8 @@ pub(super) fn browser_typing_is_connection_local_and_requires_a_current_writing_
             role: Role::Reader,
         },
         10,
-    );
+    )?;
     client.receive(&reader, 11).unwrap();
     assert!(client.typing_frame(log.space(), true).unwrap().is_empty());
+    Ok(())
 }

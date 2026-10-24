@@ -187,8 +187,9 @@ mod tests {
     use types::GENESIS_PREV;
 
     #[test]
-    fn recovery_reference_survives_pruning_and_cannot_be_substituted() {
-        let author = Author::root(Signer::generate());
+    fn recovery_reference_survives_pruning_and_cannot_be_substituted(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let author = Author::root(Signer::generate()?);
         let reference = event_log::recovery::RecoveryRef {
             version: 1,
             epoch: 7,
@@ -214,6 +215,7 @@ mod tests {
             .unwrap()
             .verify()
             .is_err());
+        Ok(())
     }
 
     fn fixture(name: &str) -> Sequenced {
@@ -341,7 +343,8 @@ mod tests {
     }
 
     #[test]
-    fn versioned_stubs_authenticate_unknown_fields_and_refuse_legacy_markers() {
+    fn versioned_stubs_authenticate_unknown_fields_and_refuse_legacy_markers(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let author = Author::root(event_log::Signer::from_secret(&[37; 32]));
         let env = Envelope::sealed(
             &author,
@@ -378,13 +381,15 @@ mod tests {
             .verify()
             .is_err());
         assert_eq!(
-            chain_hash("sp", 0, GENESIS_PREV, &full.wire_hash()),
-            chain_hash("sp", 0, GENESIS_PREV, &stub.wire_hash())
+            chain_hash("sp", 0, GENESIS_PREV, &full.wire_hash())?,
+            chain_hash("sp", 0, GENESIS_PREV, &stub.wire_hash())?
         );
+        Ok(())
     }
 
     #[test]
-    fn version_four_signatures_cannot_be_downgraded_to_legacy_tag_five_stubs() {
+    fn version_four_signatures_cannot_be_downgraded_to_legacy_tag_five_stubs(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let author = Author::root(event_log::Signer::from_secret(&[39; 32]));
         let full = Envelope::sealed(
             &author,
@@ -411,7 +416,7 @@ mod tests {
         assert!(forged.verify().is_err());
 
         // The persisted Event path must reject the same opaque legacy hash replay.
-        let hash = chain_hash("sp", 0, GENESIS_PREV, &original_hash);
+        let hash = chain_hash("sp", 0, GENESIS_PREV, &original_hash)?;
         let mut event = event_from_content(
             forged.content,
             forged.sig,
@@ -423,6 +428,7 @@ mod tests {
         .unwrap();
         event.sealed_wire = Some(original_hash);
         assert!(verify_author(&event).is_err());
+        Ok(())
     }
 
     #[test]

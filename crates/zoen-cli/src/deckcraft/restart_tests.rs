@@ -233,7 +233,8 @@ async fn operator_restart_child() {
 
 #[test]
 #[ignore = "whole-process proof: explicit operator configuration and nonexistent private profile required; cold component loads can take minutes"]
-fn operator_signed_worker_survives_whole_host_restart_after_acceptance() {
+fn operator_signed_worker_survives_whole_host_restart_after_acceptance(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for name in [
         "ZOEN_AGENT_FAULT",
         "ZOEN_AGENT_FAULT_MARKER",
@@ -260,7 +261,7 @@ fn operator_signed_worker_survives_whole_host_restart_after_acceptance() {
     private_directory(&home.join("temp"));
     let mut random_root = [0; 32];
     getrandom::getrandom(&mut random_root).unwrap();
-    let fixture = fixture_at(home.clone(), random_root);
+    let fixture = fixture_at(home.clone(), random_root)?;
     let file_vault = crate::FileVault {
         dir: home.join("vault"),
     };
@@ -324,4 +325,5 @@ fn operator_signed_worker_survives_whole_host_restart_after_acceptance() {
         &home.join("restart-proof.json"),
         &json!({"wholeHostedRuntimeProcessRestartQualified":true,"scriptedBrainOnly":true,"relayDaemonWakeQualified":false,"realProviderQualified":false,"supervisorPid":std::process::id(),"childA":load_a,"childB":load_b,"childAExitCode":86,"acceptedVersion":2,"versionCount":2,"exactDocumentAndVersionBytesUnchanged":true,"exactOpaqueIntentAndReceiptsUnchanged":true,"eventAndOutboxCountsUnchanged":true,"acceptedDocumentSha256":accepted["head"]["sha256"],"operationReceipt":operation_receipts[0],"toolJournalEntriesAfterReplay":1,"canonicalReplayMilliseconds":result["canonicalReplayMilliseconds"]}),
     );
+    Ok(())
 }

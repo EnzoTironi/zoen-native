@@ -2,8 +2,9 @@
 
 use super::*;
 
-pub(super) fn binary_offline_commit_preserves_the_existing_page_contract() {
-    let (legacy, legacy_id, _) = edited_binary_fixture();
+pub(super) fn binary_offline_commit_preserves_the_existing_page_contract(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (legacy, legacy_id, _) = edited_binary_fixture()?;
     let mut legacy_engine = legacy.lock();
     let space = legacy_engine.item_state(&legacy_id).unwrap().space.clone();
     legacy_engine.net.synced.remove(&space);
@@ -13,7 +14,7 @@ pub(super) fn binary_offline_commit_preserves_the_existing_page_contract() {
     let legacy_read = legacy_engine.page(&legacy_id).unwrap();
     assert!(!legacy_read.pending_sync);
 
-    let (public, id, mut session) = edited_binary_fixture();
+    let (public, id, mut session) = edited_binary_fixture()?;
     let mut engine = public.lock();
     let space = engine.item_state(&id).unwrap().space.clone();
     engine.net.synced.remove(&space);
@@ -41,10 +42,12 @@ pub(super) fn binary_offline_commit_preserves_the_existing_page_contract() {
         reopened.read(&engine).unwrap().content_hash,
         read.content_hash
     );
+    Ok(())
 }
 
-pub(super) fn binary_replay_keeps_the_exact_pre_upgrade_payload() {
-    let (public, id, _) = edited_binary_fixture();
+pub(super) fn binary_replay_keeps_the_exact_pre_upgrade_payload(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (public, id, _) = edited_binary_fixture()?;
     let read = public.page(id.clone()).unwrap();
     let order: Vec<_> = read.blocks.iter().map(|b| b.id.clone()).collect();
     let mut dto = read.blocks[1].clone();
@@ -119,6 +122,7 @@ pub(super) fn binary_replay_keeps_the_exact_pre_upgrade_payload() {
         serde_json::to_vec(&engine.load_page_journal(it).unwrap()).unwrap(),
         before
     );
+    Ok(())
 }
 
 pub(super) fn binary_refresh_reuses_verified_payload_and_rechecks_after_reload(
@@ -187,8 +191,9 @@ pub(super) fn binary_refresh_reuses_verified_payload_and_rechecks_after_reload(
     Ok(())
 }
 
-pub(super) fn binary_failed_publication_preserves_the_existing_visible_error() {
-    let (public, id, mut session) = edited_binary_fixture();
+pub(super) fn binary_failed_publication_preserves_the_existing_visible_error(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (public, id, mut session) = edited_binary_fixture()?;
     let mut engine = public.lock();
     let space = engine.item_state(&id).unwrap().space.clone();
     engine.store.set_synced(&space).unwrap();
@@ -221,4 +226,5 @@ pub(super) fn binary_failed_publication_preserves_the_existing_visible_error() {
     assert_eq!(reopened.save_error, legacy_error);
     assert!(reopened.unsaved);
     assert!(!reopened.pending_sync);
+    Ok(())
 }

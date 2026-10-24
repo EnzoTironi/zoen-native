@@ -5,7 +5,7 @@ use super::*;
 pub(super) fn bounded_discovery_cursor_survives_complete_image(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new()?;
-    fixture.grant("discovery-owner-trust", Some(1000));
+    fixture.grant("discovery-owner-trust", Some(1000))?;
     for index in 0..17 {
         fixture.message(&format!("Retained request {index}"))?;
     }
@@ -33,7 +33,7 @@ pub(super) fn bounded_discovery_cursor_survives_complete_image(
 pub(super) fn discovery_refuses_cursor_outside_verified_history(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new()?;
-    fixture.grant("discovery-owner-trust", Some(1000));
+    fixture.grant("discovery-owner-trust", Some(1000))?;
     fixture.message("Actual verified owner request")?;
     fixture
         .core
@@ -59,7 +59,7 @@ pub(super) fn discovery_refuses_cursor_outside_verified_history(
 pub(super) fn actual_owner_opening_survives_complete_image_and_pins_original_input(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new()?;
-    fixture.grant("explicit-owner-trust", Some(1000));
+    fixture.grant("explicit-owner-trust", Some(1000))?;
     let trigger = fixture.message("Private retained owner request")?;
     let peer_event = fixture.core.engine.logs[SPACE].events().last().unwrap();
     assert_eq!(

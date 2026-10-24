@@ -2,7 +2,8 @@
 use super::*;
 
 #[test]
-pub(super) fn device_history_recovery_releases_waiting_membership_and_its_deferred_receipt() {
+pub(super) fn device_history_recovery_releases_waiting_membership_and_its_deferred_receipt(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use crate::link::{DeviceMsg, Peer};
     use event_log::content::{Sealed, SealedKind};
     use event_log::content_hash_of;
@@ -20,7 +21,7 @@ pub(super) fn device_history_recovery_releases_waiting_membership_and_its_deferr
     // Retain a real authenticated opaque application, as a linked device does
     // before its sibling sends opened history. Membership itself stays clear.
     let mut earlier = request.clone();
-    earlier.content_hash = content_hash(&"earlier request binding");
+    earlier.content_hash = content_hash(&"earlier request binding")?;
     let author = fixture.engine.author_for(&agent).unwrap();
     let client = new_id("opaque-request").unwrap();
     let at = 1_800_000_000_000;
@@ -33,7 +34,7 @@ pub(super) fn device_history_recovery_releases_waiting_membership_and_its_deferr
         EventBody::RequestOpened {
             request: earlier.clone(),
         },
-    );
+    )?;
     let (content, sig) = author.sign_sealed(
         &fixture.space,
         &client,
@@ -55,7 +56,7 @@ pub(super) fn device_history_recovery_releases_waiting_membership_and_its_deferr
         .logs
         .get_mut(&fixture.space)
         .unwrap()
-        .sequence(outer)
+        .sequence(outer)?
         .clone();
     fixture.engine.store.append_event(&retained).unwrap();
     fixture.engine.reload().unwrap();
@@ -159,6 +160,7 @@ pub(super) fn device_history_recovery_releases_waiting_membership_and_its_deferr
     );
     assert_eq!(fixture.engine.store.peer_receipts().unwrap().len(), 1);
     assert!(fixture.engine.logs[&fixture.space].verify().is_ok());
+    Ok(())
 }
 
 #[test]
@@ -286,7 +288,8 @@ pub(super) fn removed_duplicate_lines_use_the_first_remaining_exact_external_id(
 }
 
 #[test]
-pub(super) fn optimistic_canonical_pages_cannot_supply_confirmed_approval_content() {
+pub(super) fn optimistic_canonical_pages_cannot_supply_confirmed_approval_content(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new().unwrap();
     let agent = agent(&mut fixture).unwrap();
     let fold = fixture.fold();
@@ -330,17 +333,19 @@ pub(super) fn optimistic_canonical_pages_cannot_supply_confirmed_approval_conten
         .unwrap()
         .iter()
         .any(|entry| entry.event.client_id == pending.client_id));
-    deliver(&mut fixture.engine, &pending, Ingest::Confirmed);
+    deliver(&mut fixture.engine, &pending, Ingest::Confirmed)?;
     fixture.engine.reload().unwrap();
     assert_eq!(
         fixture.engine.state.requests[&request.id].status,
         ReqStatus::Pending
     );
     assert!(fixture.engine.state.resolved_order.is_empty());
+    Ok(())
 }
 
 #[test]
-pub(super) fn exact_text_and_cents_select_the_first_duplicate_id_while_done_is_not_hashed() {
+pub(super) fn exact_text_and_cents_select_the_first_duplicate_id_while_done_is_not_hashed(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new().unwrap();
     let agent = agent(&mut fixture).unwrap();
     let mut legacy = original();
@@ -360,7 +365,7 @@ pub(super) fn exact_text_and_cents_select_the_first_duplicate_id_while_done_is_n
     let request = open(&mut fixture, &agent, &document).unwrap();
     let mut second = linked(&fixture, &agent, &document).unwrap();
     let second_line = &document.sections[0].lines[1];
-    second.content_hash = content_hash(&(&second_line.text, second_line.cost_cents));
+    second.content_hash = content_hash(&(&second_line.text, second_line.cost_cents))?;
     fixture
         .ordered_as(
             &agent,
@@ -392,4 +397,5 @@ pub(super) fn exact_text_and_cents_select_the_first_duplicate_id_while_done_is_n
         fixture.engine.state.requests[&request.id].status,
         ReqStatus::Approved
     );
+    Ok(())
 }

@@ -38,8 +38,9 @@ async fn unchanged(w: &World, policies: i64, latest: &str) {
     assert_eq!(w.http.sends.load(Ordering::SeqCst), 0);
 }
 
-pub(super) async fn exact_restart_and_historical_replay() {
-    let w = World::new().await;
+pub(super) async fn exact_restart_and_historical_replay(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let w = World::new().await?;
     // The real SQL commit succeeds; its return is deliberately not retained.
     // This is lost-return simulation, not a PostgreSQL wire-level ACK cut.
     w.runtime.install_policy(w.signed.clone()).await.unwrap();
@@ -77,7 +78,7 @@ pub(super) async fn exact_restart_and_historical_replay() {
         reopened.install_policy(disabled.clone()).await.unwrap(),
         latest
     );
-    let binding = w.binding(&w.step(0).await);
+    let binding = w.binding(&w.step(0).await?);
     assert_eq!(
         reopened.finance.reserve(&binding).await.unwrap_err(),
         RuntimeError::Denied
@@ -128,10 +129,12 @@ pub(super) async fn exact_restart_and_historical_replay() {
     reopened.finance.pool.close().await;
     w.finish().await;
     println!("owner policy replay: actual SQL known-return loss, cold restart and concurrent exact observation, historical digest does not revive disabled latest, conflicting/skipped/revoked replay refuses with no financial/provider rows PASS");
+    Ok(())
 }
 
-pub(super) async fn expired_exact_replay_does_not_reactivate() {
-    let w = World::new().await;
+pub(super) async fn expired_exact_replay_does_not_reactivate(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let w = World::new().await?;
     let now = w.runtime.finance.reply_clock().await.unwrap();
     let mut expiring = w.signed.policy.clone();
     expiring.version = 2;
@@ -156,7 +159,7 @@ pub(super) async fn expired_exact_replay_does_not_reactivate() {
         reopened.install_policy(expiring).await.unwrap_err(),
         RuntimeError::InvalidPolicy
     );
-    let mut binding = w.binding(&w.step(0).await);
+    let mut binding = w.binding(&w.step(0).await?);
     binding.policy_digest = digest.clone();
     assert_eq!(
         reopened.finance.reserve(&binding).await.unwrap_err(),
@@ -166,4 +169,5 @@ pub(super) async fn expired_exact_replay_does_not_reactivate() {
     reopened.finance.pool.close().await;
     w.finish().await;
     println!("owner policy expiry replay: real SQL deadline, cold exact replay refused, expired latest remains historical and creates no financial/provider rows PASS");
+    Ok(())
 }

@@ -1,7 +1,10 @@
 //! Shared synthetic MLS fixtures and delivery helpers.
 use super::*;
 
-pub(super) fn ordered(engine: &Engine, env: Envelope) -> Sequenced {
+pub(super) fn ordered(
+    engine: &Engine,
+    env: Envelope,
+) -> std::result::Result<Sequenced, Box<dyn std::error::Error>> {
     let (seq, prev) = engine
         .logs
         .get(env.space())
@@ -15,12 +18,12 @@ pub(super) fn ordered(engine: &Engine, env: Envelope) -> Sequenced {
             )
         })
         .unwrap_or_else(|| (0, types::GENESIS_PREV.into()));
-    Sequenced {
+    Ok(Sequenced {
         seq,
-        hash: chain_hash(env.space(), seq, &prev, &env.wire_hash()),
+        hash: chain_hash(env.space(), seq, &prev, &env.wire_hash())?,
         prev,
         env,
-    }
+    })
 }
 
 pub(super) fn seen(engine: &Engine, space: &str) -> Option<types::Seen> {
@@ -34,7 +37,9 @@ pub(super) fn seen(engine: &Engine, space: &str) -> Option<types::Seen> {
         })
 }
 
-pub(super) fn confirm_claim_handshakes(engine: &mut Engine) -> Vec<Sequenced> {
+pub(super) fn confirm_claim_handshakes(
+    engine: &mut Engine,
+) -> std::result::Result<Vec<Sequenced>, Box<dyn std::error::Error>> {
     for (sha, _) in engine.pending_uploads(100) {
         engine.upload_done(&sha);
     }
@@ -44,20 +49,20 @@ pub(super) fn confirm_claim_handshakes(engine: &mut Engine) -> Vec<Sequenced> {
         let pending = engine.store.outbox().unwrap();
         assert!(!pending.is_empty());
         for queued in pending {
-            let frame = ordered(engine, Envelope::plain(&queued.event));
+            let frame = ordered(engine, Envelope::plain(&queued.event))?;
             assert_eq!(engine.ingest(frame.clone()), Ingest::Confirmed);
             frames.push(frame);
         }
         assert!(frames.len() < 10, "handshake confirmation did not settle");
     }
-    frames
+    Ok(frames)
 }
 
 pub(super) fn claim_group(
     engine: &mut Engine,
     space: &str,
     peers: &mut [Engine],
-) -> Vec<Sequenced> {
+) -> std::result::Result<Vec<Sequenced>, Box<dyn std::error::Error>> {
     claim_space(engine, space, SpaceKind::Group, peers)
 }
 
@@ -66,7 +71,7 @@ pub(super) fn claim_space(
     space: &str,
     kind: SpaceKind,
     peers: &mut [Engine],
-) -> Vec<Sequenced> {
+) -> std::result::Result<Vec<Sequenced>, Box<dyn std::error::Error>> {
     let author = engine.net.author.clone().unwrap();
     let mut bodies = vec![EventBody::SpaceCreated {
         title: space.into(),
@@ -98,13 +103,13 @@ pub(super) fn claim_space(
             1,
             seen(engine, space),
             body,
-        ));
-        let frame = ordered(engine, env);
+        )?);
+        let frame = ordered(engine, env)?;
         assert_eq!(engine.ingest(frame.clone()), Ingest::Applied);
         frames.push(frame);
     }
     engine.create_mls_group(space).unwrap();
-    frames
+    Ok(frames)
 }
 
 pub(super) fn claimed_records(
@@ -134,7 +139,10 @@ pub(super) fn claimed_records(
         .collect()
 }
 
-pub(super) fn relay_ready_to_peer(owner: &mut Engine, peer: &mut Engine) -> Vec<Sequenced> {
+pub(super) fn relay_ready_to_peer(
+    owner: &mut Engine,
+    peer: &mut Engine,
+) -> std::result::Result<Vec<Sequenced>, Box<dyn std::error::Error>> {
     let mut published = Vec::new();
     for _ in 0..10 {
         for (sha, _) in owner.pending_uploads(100) {
@@ -148,10 +156,10 @@ pub(super) fn relay_ready_to_peer(owner: &mut Engine, peer: &mut Engine) -> Vec<
                 0,
                 "queued event did not become publishable"
             );
-            return published;
+            return Ok(published);
         }
         for env in envelopes {
-            let frame = ordered(owner, env);
+            let frame = ordered(owner, env)?;
             assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
             assert_eq!(peer.ingest(frame.clone()), Ingest::Applied);
             published.push(frame);
@@ -188,7 +196,12 @@ pub(super) fn checkpoint(upto: types::Seen, digest: &str) -> EventBody {
     }
 }
 
-pub(super) fn ingest_signed(engine: &mut Engine, author: &Author, space: &str, body: EventBody) {
+pub(super) fn ingest_signed(
+    engine: &mut Engine,
+    author: &Author,
+    space: &str,
+    body: EventBody,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let seq = engine.next_seq(space);
     let event = author.sign_event(
         space,
@@ -196,15 +209,20 @@ pub(super) fn ingest_signed(engine: &mut Engine, author: &Author, space: &str, b
         1_700_000_000_000 + seq as i64,
         seen(engine, space),
         body,
-    );
-    let got = engine.ingest(ordered(engine, Envelope::plain(&event)));
+    )?;
+    let got = engine.ingest(ordered(engine, Envelope::plain(&event))?);
     assert!(
         matches!(got, Ingest::Applied | Ingest::Confirmed),
         "ingest {seq}: {got:?}"
     );
+    Ok(())
 }
 
-pub(super) fn start_space(engine: &mut Engine, author: &Author, space: &str) {
+pub(super) fn start_space(
+    engine: &mut Engine,
+    author: &Author,
+    space: &str,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     ingest_signed(
         engine,
         author,
@@ -214,7 +232,8 @@ pub(super) fn start_space(engine: &mut Engine, author: &Author, space: &str) {
             kind: SpaceKind::Group,
             privacy: Privacy::EndToEnd,
         },
-    );
+    )?;
+    Ok(())
 }
 
 pub(super) fn hash_at(engine: &Engine, space: &str, seq: u64) -> String {
@@ -236,7 +255,12 @@ pub(super) fn device_key(author: &Author) -> String {
         .unwrap_or_else(|| author.identity.clone())
 }
 
-pub(super) fn add_member(engine: &mut Engine, owner: &Author, space: &str, peer: &Author) {
+pub(super) fn add_member(
+    engine: &mut Engine,
+    owner: &Author,
+    space: &str,
+    peer: &Author,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     ingest_signed(
         engine,
         owner,
@@ -245,7 +269,8 @@ pub(super) fn add_member(engine: &mut Engine, owner: &Author, space: &str, peer:
             identity: peer.identity.clone(),
             role: Role::Member,
         },
-    );
+    )?;
+    Ok(())
 }
 
 pub(super) fn pending(engine: &Engine, space: &str) -> BTreeMap<String, PendingPrefix> {
@@ -267,18 +292,31 @@ pub(super) fn claim(seq: u64, hash: &str) -> EventBody {
     )
 }
 
-pub(super) fn extend_until(engine: &mut Engine, author: &Author, space: &str, seq: u64) {
+pub(super) fn extend_until(
+    engine: &mut Engine,
+    author: &Author,
+    space: &str,
+    seq: u64,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     while engine.next_seq(space) <= seq {
         let n = engine.next_seq(space);
-        ingest_signed(engine, author, space, post(&format!("reach-{n}")));
+        ingest_signed(engine, author, space, post(&format!("reach-{n}")))?;
     }
+    Ok(())
 }
 
-pub(super) fn deliver(engine: &mut Engine, event: Event) -> Ingest {
-    engine.ingest(ordered(engine, Envelope::plain(&event)))
+pub(super) fn deliver(
+    engine: &mut Engine,
+    event: Event,
+) -> std::result::Result<Ingest, Box<dyn std::error::Error>> {
+    Ok(engine.ingest(ordered(engine, Envelope::plain(&event))?))
 }
 
-pub(super) fn pruned_frame(engine: &Engine, author: &Author, space: &str) -> Sequenced {
+pub(super) fn pruned_frame(
+    engine: &Engine,
+    author: &Author,
+    space: &str,
+) -> std::result::Result<Sequenced, Box<dyn std::error::Error>> {
     let seen = engine.logs.get(space).and_then(SpaceLog::head);
     let seq = engine.next_seq(space);
     let sealed = Envelope::sealed(
@@ -293,8 +331,8 @@ pub(super) fn pruned_frame(engine: &Engine, author: &Author, space: &str) -> Seq
             vec![7, 7, 7, 7],
         ),
     );
-    ordered(
+    Ok(ordered(
         engine,
         sealed.pruned().expect("a sealed event leaves a stub"),
-    )
+    )?)
 }

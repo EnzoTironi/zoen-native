@@ -5,7 +5,7 @@ pub(super) fn cold_outbox_fifo_preserves_signed_intents_ciphertext_and_receiver_
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let database = Database::new()?;
     let space = "fifo-backwards-clock";
-    let (mut owner, secret, mut peer, _) = encrypted_pair(&database, space);
+    let (mut owner, secret, mut peer, _) = encrypted_pair(&database, space)?;
     let author = owner.net.author.clone().unwrap();
     let queued = [("first", 300), ("second", 100), ("third", 100)]
         .into_iter()
@@ -45,7 +45,7 @@ pub(super) fn cold_outbox_fifo_preserves_signed_intents_ciphertext_and_receiver_
     assert_eq!(owner.outbox_envelopes(), original);
     assert_eq!(provider_rows(&owner), ratchet);
     for envelope in original {
-        let frame = ordered(&owner, envelope);
+        let frame = ordered(&owner, envelope)?;
         assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
         assert_eq!(peer.ingest(frame.clone()), Ingest::Applied);
         assert_eq!(peer.ingest(frame), Ingest::Duplicate);
@@ -86,12 +86,12 @@ pub(super) fn backward_clock_welcome_stays_behind_original_commit_and_other_spac
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let database = Database::new()?;
     let space = "fifo-handshake";
-    let (mut owner, secret, peer, _) = encrypted_pair(&database, space);
+    let (mut owner, secret, peer, _) = encrypted_pair(&database, space)?;
     // encrypted_pair already added peer's signature key. A different key package
     // for that same leaf cannot add it again; stage a genuinely new member.
     let (newcomer, newcomer_author, _) = member(&database.path("newcomer.sqlite"));
     let author = owner.net.author.clone().unwrap();
-    add_member(&mut owner, &author, space, &newcomer_author);
+    add_member(&mut owner, &author, space, &newcomer_author)?;
     let package = newcomer
         .device()
         .unwrap()
@@ -141,7 +141,7 @@ pub(super) fn backward_clock_welcome_stays_behind_original_commit_and_other_spac
     let commit = commit.unwrap();
     let welcome = welcome.unwrap();
     let other = "independent-space";
-    closed_space(&mut owner, &peer.net.author.clone().unwrap(), other);
+    closed_space(&mut owner, &peer.net.author.clone().unwrap(), other)?;
     let independent = owner
         .append_synced(other, &author, 50, post("other"))
         .unwrap();
@@ -160,7 +160,7 @@ pub(super) fn backward_clock_welcome_stays_behind_original_commit_and_other_spac
         .into_iter()
         .find(|e| e.client_id() == commit)
         .unwrap();
-    assert_eq!(owner.ingest(ordered(&owner, envelope)), Ingest::Confirmed);
+    assert_eq!(owner.ingest(ordered(&owner, envelope)?), Ingest::Confirmed);
     assert!(owner
         .outbox_envelopes()
         .iter()

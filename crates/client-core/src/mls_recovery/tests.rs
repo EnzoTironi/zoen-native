@@ -4,7 +4,10 @@ use event_log::{chain_hash, SpaceLog};
 use protocol::Sequenced;
 use types::{EventBody, Privacy, SpaceKind};
 
-fn ordered(engine: &Engine, env: Envelope) -> Sequenced {
+fn ordered(
+    engine: &Engine,
+    env: Envelope,
+) -> std::result::Result<Sequenced, Box<dyn std::error::Error>> {
     let (seq, prev) = engine
         .logs
         .get(env.space())
@@ -18,12 +21,12 @@ fn ordered(engine: &Engine, env: Envelope) -> Sequenced {
             )
         })
         .unwrap_or_else(|| (0, types::GENESIS_PREV.into()));
-    Sequenced {
+    Ok(Sequenced {
         seq,
-        hash: chain_hash(env.space(), seq, &prev, &env.wire_hash()),
+        hash: chain_hash(env.space(), seq, &prev, &env.wire_hash())?,
         prev,
         env,
-    }
+    })
 }
 
 fn seen(engine: &Engine, space: &str) -> Option<types::Seen> {
@@ -49,13 +52,15 @@ struct StagedRecovery {
 }
 
 #[test]
-fn a_ready_group_creates_its_context_after_profiles_become_available() {
-    context_creation::a_ready_group_creates_its_context_after_profiles_become_available();
+fn a_ready_group_creates_its_context_after_profiles_become_available(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    context_creation::a_ready_group_creates_its_context_after_profiles_become_available()
 }
 
 #[test]
-fn an_empty_claim_reply_resumes_context_creation_for_a_ready_group() {
-    context_creation::an_empty_claim_reply_resumes_context_creation_for_a_ready_group();
+fn an_empty_claim_reply_resumes_context_creation_for_a_ready_group(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    context_creation::an_empty_claim_reply_resumes_context_creation_for_a_ready_group()
 }
 
 #[test]
@@ -94,8 +99,9 @@ fn a_recovery_error_keeps_its_group_queued_through_a_future_retry() {
 }
 
 #[test]
-fn producing_one_context_preserves_the_other_queued_groups() {
-    context_creation::producing_one_context_preserves_the_other_queued_groups();
+fn producing_one_context_preserves_the_other_queued_groups(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    context_creation::producing_one_context_preserves_the_other_queued_groups()
 }
 
 fn staged_recovery(
@@ -138,8 +144,8 @@ fn staged_recovery(
             },
         ),
     ] {
-        let env = Envelope::plain(&author.sign_event(space, cid, 1, seen(&engine, space), body));
-        let confirmed = ordered(&engine, env);
+        let env = Envelope::plain(&author.sign_event(space, cid, 1, seen(&engine, space), body)?);
+        let confirmed = ordered(&engine, env)?;
         assert_eq!(engine.ingest(confirmed.clone()), Ingest::Applied);
         baseline.push(confirmed);
     }
@@ -163,7 +169,7 @@ fn staged_recovery(
         .1;
     engine.upload_done(&reference.blob);
     for queued in queued {
-        let confirmed = ordered(&engine, Envelope::plain(&queued.event));
+        let confirmed = ordered(&engine, Envelope::plain(&queued.event))?;
         assert_eq!(engine.ingest(confirmed.clone()), Ingest::Confirmed);
         baseline.push(confirmed);
     }
@@ -220,8 +226,9 @@ fn a_removal_during_held_recovery_survives_restart_and_repairs_before_sealing() 
 }
 
 #[test]
-fn agreement_lookup_finishes_before_the_engine_requests_one_shot_key_packages() {
-    context_creation::agreement_lookup_finishes_before_the_engine_requests_one_shot_key_packages();
+fn agreement_lookup_finishes_before_the_engine_requests_one_shot_key_packages(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    context_creation::agreement_lookup_finishes_before_the_engine_requests_one_shot_key_packages()
 }
 
 #[test]

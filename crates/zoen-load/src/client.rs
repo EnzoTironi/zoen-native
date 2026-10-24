@@ -127,7 +127,7 @@ impl Conn {
         let now = now_ms();
         let e = self
             .author
-            .sign_event(space, &types::new_ulid(now)?, now, seen, body);
+            .sign_event(space, &types::new_ulid(now)?, now, seen, body)?;
         let env = Envelope::plain(&e);
         let client_id = env.client_id().to_string();
         // Like the app: a temporary refusal (a rate limit) means send the same envelope again
@@ -310,7 +310,7 @@ pub async fn run(conn: Conn, plan: Plan, mut rx: mpsc::Receiver<Publish>) -> any
                         media: None,
                         forwarded: false,
                     },
-                );
+                )?;
                 let env = Envelope::plain(&e);
                 if due_us >= measure_from_us {
                     pending.insert(env.client_id().to_string(), due_us);

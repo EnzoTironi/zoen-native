@@ -2,8 +2,12 @@
 
 use super::*;
 
-pub(super) fn refused(f: &Fixture, ids: &[&str], grouping: &str) -> MediaDraftSendResult {
-    media_contract_confirm_scope(f);
+pub(super) fn refused(
+    f: &Fixture,
+    ids: &[&str],
+    grouping: &str,
+) -> std::result::Result<MediaDraftSendResult, Box<dyn std::error::Error>> {
+    media_contract_confirm_scope(f)?;
     let draft = save(
         f,
         "0",
@@ -50,7 +54,7 @@ pub(super) fn refused(f: &Fixture, ids: &[&str], grouping: &str) -> MediaDraftSe
             crate::Delivery::Failed
         );
     }
-    sent
+    Ok(sent)
 }
 
 pub(super) fn recover(f: &Fixture, id: &str) -> R<MediaDraftDto> {
@@ -60,11 +64,14 @@ pub(super) fn recover(f: &Fixture, id: &str) -> R<MediaDraftDto> {
     engine.recover_failed_media_draft(&f.scope, id, &media.revision, &normal.revision)
 }
 
-pub(super) fn confirm_failed_id(f: &Fixture, id: &str) {
+pub(super) fn confirm_failed_id(
+    f: &Fixture,
+    id: &str,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut engine = f.engine.lock();
     let pending = engine.store.outbox_get(id).unwrap().unwrap();
     let mut relay = engine.logs[&pending.space].clone();
-    let event = relay.sequence(pending);
+    let event = relay.sequence(pending)?;
     assert!(matches!(
         engine.ingest(protocol::Sequenced {
             seq: event.seq,
@@ -78,6 +85,7 @@ pub(super) fn confirm_failed_id(f: &Fixture, id: &str) {
         .events()
         .iter()
         .any(|event| event.client_id == id));
+    Ok(())
 }
 
 pub(super) fn public_state(f: &Fixture) -> serde_json::Value {

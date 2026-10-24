@@ -93,7 +93,8 @@ fn voice_append_failure_rolls_back_chunks_keys_and_uploads_then_retries_once() {
 }
 
 #[test]
-fn history_export_remains_only_canonical_events_while_media_draft_is_private() {
+fn history_export_remains_only_canonical_events_while_media_draft_is_private(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     custody_cases::history_export_remains_only_canonical_events_while_media_draft_is_private()
 }
 
@@ -145,7 +146,8 @@ fn media_contract_single_media_transient_file_refusal_survives_cold_receiver() {
 }
 
 #[test]
-fn media_contract_group_dependencies_wait_for_confirmed_files_and_do_not_block_other_spaces() {
+fn media_contract_group_dependencies_wait_for_confirmed_files_and_do_not_block_other_spaces(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     group_admission_cases::media_contract_group_dependencies_wait_for_confirmed_files_and_do_not_block_other_spaces()
 }
 
@@ -199,7 +201,8 @@ fn media_contract_failed_local_metadata_remains_visible_after_revocation_and_col
 }
 
 #[test]
-fn media_contract_received_ordered_fixtures_use_the_same_cursor_as_browser() {
+fn media_contract_received_ordered_fixtures_use_the_same_cursor_as_browser(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let fixtures: Vec<serde_json::Value> = serde_json::from_str(include_str!(
         "../../../types/src/media-received-fixtures.json"
     ))
@@ -220,7 +223,7 @@ fn media_contract_received_ordered_fixtures_use_the_same_cursor_as_browser() {
                 )
                 .unwrap();
         }
-        media_contract_confirm_scope(&f);
+        media_contract_confirm_scope(&f)?;
         let items = f
             .engine
             .lock()
@@ -284,6 +287,7 @@ fn media_contract_received_ordered_fixtures_use_the_same_cursor_as_browser() {
             scenario["name"]
         );
     }
+    Ok(())
 }
 
 #[test]

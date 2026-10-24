@@ -318,6 +318,22 @@ impl From<store::StoreError> for CoreError {
     }
 }
 
+impl From<serde_json::Error> for CoreError {
+    fn from(error: serde_json::Error) -> Self {
+        Self::Storage {
+            message: error.to_string(),
+        }
+    }
+}
+
+impl From<event_log::AppendError> for CoreError {
+    fn from(error: event_log::AppendError) -> Self {
+        Self::Storage {
+            message: error.to_string(),
+        }
+    }
+}
+
 impl From<event_log::CryptoError> for CoreError {
     fn from(error: event_log::CryptoError) -> Self {
         Self::Storage {

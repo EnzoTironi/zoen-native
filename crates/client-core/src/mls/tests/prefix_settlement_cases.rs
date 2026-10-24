@@ -5,10 +5,10 @@ pub(super) fn divergent_prefix_on_the_local_chain_marks_the_space(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (mut engine, author, _) = member(":memory:");
     let space = "prefix-now";
-    start_space(&mut engine, &author, space);
-    ingest_signed(&mut engine, &author, space, post("one"));
+    start_space(&mut engine, &author, space)?;
+    ingest_signed(&mut engine, &author, space, post("one"))?;
     let peer = Author::root(Signer::generate()?);
-    add_member(&mut engine, &author, space, &peer);
+    add_member(&mut engine, &author, space, &peer)?;
     ingest_signed(
         &mut engine,
         &peer,
@@ -20,7 +20,7 @@ pub(super) fn divergent_prefix_on_the_local_chain_marks_the_space(
             },
             &"ab".repeat(32),
         ),
-    );
+    )?;
     assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
     assert_eq!(
         engine.store.meta(&fork_meta(space)).unwrap().as_deref(),
@@ -35,17 +35,17 @@ pub(super) fn matching_prefix_does_not_fork() -> std::result::Result<(), Box<dyn
 {
     let (mut engine, author, _) = member(":memory:");
     let space = "prefix-match";
-    start_space(&mut engine, &author, space);
-    ingest_signed(&mut engine, &author, space, post("one"));
+    start_space(&mut engine, &author, space)?;
+    ingest_signed(&mut engine, &author, space, post("one"))?;
     let hash = hash_at(&engine, space, 0);
     let peer = Author::root(Signer::generate()?);
-    add_member(&mut engine, &author, space, &peer);
+    add_member(&mut engine, &author, space, &peer)?;
     ingest_signed(
         &mut engine,
         &peer,
         space,
         checkpoint(types::Seen { seq: 0, hash }, &"ab".repeat(32)),
-    );
+    )?;
     assert_eq!(integrity(&engine, space), None);
     assert_eq!(engine.store.meta(&fork_meta(space)).unwrap(), None);
     assert!(pending(&engine, space).is_empty());
@@ -58,9 +58,9 @@ pub(super) fn matching_pending_prefix_is_cleared_without_a_fork(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (mut engine, author, _) = member(":memory:");
     let space = "prefix-clear";
-    start_space(&mut engine, &author, space);
+    start_space(&mut engine, &author, space)?;
     let peer = Author::root(Signer::generate()?);
-    add_member(&mut engine, &author, space, &peer);
+    add_member(&mut engine, &author, space, &peer)?;
     let mut stored = BTreeMap::new();
     stored.insert(
         device_key(&peer),
@@ -78,7 +78,7 @@ pub(super) fn matching_pending_prefix_is_cleared_without_a_fork(
             &serde_json::to_string(&stored).unwrap(),
         )
         .unwrap();
-    ingest_signed(&mut engine, &author, space, post("later"));
+    ingest_signed(&mut engine, &author, space, post("later"))?;
     assert_eq!(integrity(&engine, space), None);
     assert_eq!(engine.store.meta(&fork_meta(space)).unwrap(), None);
     assert!(pending(&engine, space).is_empty());
@@ -90,12 +90,12 @@ pub(super) fn pending_prefix_forks_when_the_chain_reaches_it(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (mut engine, author, _) = member(":memory:");
     let space = "prefix-later";
-    start_space(&mut engine, &author, space);
+    start_space(&mut engine, &author, space)?;
     let peer = Author::root(Signer::generate()?);
-    add_member(&mut engine, &author, space, &peer);
+    add_member(&mut engine, &author, space, &peer)?;
     let claimed = "22".repeat(32);
     let target = engine.next_seq(space) + 3;
-    ingest_signed(&mut engine, &peer, space, claim(target, &claimed));
+    ingest_signed(&mut engine, &peer, space, claim(target, &claimed))?;
     assert_eq!(integrity(&engine, space), None);
     assert_eq!(
         pending(&engine, space).get(&device_key(&peer)),
@@ -113,11 +113,11 @@ pub(super) fn pending_prefix_forks_when_the_chain_reaches_it(
             &author,
             space,
             post(&format!("before-{target}")),
-        );
+        )?;
         assert_eq!(integrity(&engine, space), None);
         assert_eq!(pending(&engine, space).len(), 1);
     }
-    ingest_signed(&mut engine, &author, space, post("reached"));
+    ingest_signed(&mut engine, &author, space, post("reached"))?;
     assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
     assert_eq!(
         engine.store.meta(&fork_meta(space)).unwrap().as_deref(),
@@ -141,10 +141,10 @@ pub(super) fn pending_prefix_survives_reopen_and_forks_when_reached(
     let peer = Author::root(Signer::generate()?);
     let device_secret = {
         let (mut engine, author, device_secret) = member(&path);
-        start_space(&mut engine, &author, space);
-        add_member(&mut engine, &author, space, &peer);
+        start_space(&mut engine, &author, space)?;
+        add_member(&mut engine, &author, space, &peer)?;
         assert_eq!(engine.next_seq(space), 2);
-        ingest_signed(&mut engine, &peer, space, claim(5, &claimed));
+        ingest_signed(&mut engine, &peer, space, claim(5, &claimed))?;
         assert_eq!(integrity(&engine, space), None);
         assert_eq!(
             pending(&engine, space)
@@ -169,10 +169,10 @@ pub(super) fn pending_prefix_survives_reopen_and_forks_when_reached(
     let author = engine.net.author.clone().unwrap();
     let quiet = 5 - engine.next_seq(space);
     for _ in 0..quiet {
-        ingest_signed(&mut engine, &author, space, post("before-reopen"));
+        ingest_signed(&mut engine, &author, space, post("before-reopen"))?;
         assert_eq!(integrity(&engine, space), None);
     }
-    ingest_signed(&mut engine, &author, space, post("reached-reopen"));
+    ingest_signed(&mut engine, &author, space, post("reached-reopen"))?;
     assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
     assert!(pending(&engine, space).is_empty());
 
@@ -183,20 +183,20 @@ pub(super) fn divergent_digest_still_marks_the_space(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (mut engine, author, _) = member(":memory:");
     let space = "digest-still";
-    start_space(&mut engine, &author, space);
+    start_space(&mut engine, &author, space)?;
     engine
         .store
         .set_meta(&digest_meta(space, 1), &"aa".repeat(32))
         .unwrap();
     let hash = hash_at(&engine, space, 0);
     let peer = Author::root(Signer::generate()?);
-    add_member(&mut engine, &author, space, &peer);
+    add_member(&mut engine, &author, space, &peer)?;
     ingest_signed(
         &mut engine,
         &peer,
         space,
         checkpoint(types::Seen { seq: 0, hash }, &"bb".repeat(32)),
-    );
+    )?;
     assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
     assert_eq!(
         engine.store.meta(&fork_meta(space)).unwrap().as_deref(),

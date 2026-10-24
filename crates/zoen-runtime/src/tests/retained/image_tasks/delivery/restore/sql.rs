@@ -218,8 +218,9 @@ mod tests {
         Snapshot { tables }
     }
     #[test]
-    fn only_exact_authenticated_timestamp_advance_is_allowed() {
-        let actor = Author::device(&Signer::generate(), Signer::generate());
+    fn only_exact_authenticated_timestamp_advance_is_allowed(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let actor = Author::device(&Signer::generate()?, Signer::generate()?);
         let before = snapshot(&actor, "2026-10-23T10:01:00+00:00");
         let after = snapshot(&actor, "2026-10-23T10:02:00+00:00");
         assert!(before.only_authenticated_ws_touch(&after, &actor));
@@ -253,12 +254,14 @@ mod tests {
                 "{table}"
             );
         }
-        let foreign = Author::device(&Signer::generate(), Signer::generate());
+        let foreign = Author::device(&Signer::generate()?, Signer::generate()?);
         assert!(!before.only_authenticated_ws_touch(&after, &foreign));
+        Ok(())
     }
     #[test]
-    fn diagnostic_contains_only_names_counts_and_hashes() {
-        let actor = Author::device(&Signer::generate(), Signer::generate());
+    fn diagnostic_contains_only_names_counts_and_hashes(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let actor = Author::device(&Signer::generate()?, Signer::generate()?);
         let before = snapshot(&actor, "2026-10-23T10:01:00+00:00");
         let after = snapshot(&actor, "2026-10-23T10:02:00+00:00");
         let summary = before.summary(&after);
@@ -267,5 +270,6 @@ mod tests {
         assert!(!summary.contains(&actor.identity));
         assert!(!summary.contains(actor.cert.as_deref().unwrap()));
         assert!(!summary.contains("2026-10-23"));
+        Ok(())
     }
 }

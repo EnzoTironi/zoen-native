@@ -2,7 +2,8 @@
 use super::*;
 
 #[test]
-pub(super) fn cross_space_ambiguity_closes_local_writes_but_preserves_scoped_confirmed_decisions() {
+pub(super) fn cross_space_ambiguity_closes_local_writes_but_preserves_scoped_confirmed_decisions(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new().unwrap();
     let agent = agent(&mut fixture).unwrap();
     let document = canonical(
@@ -35,8 +36,8 @@ pub(super) fn cross_space_ambiguity_closes_local_writes_but_preserves_scoped_con
             1,
             fixture.engine.logs.get(&other).and_then(|log| log.head()),
             body,
-        );
-        deliver(&mut fixture.engine, &signed, Ingest::Applied);
+        )?;
+        deliver(&mut fixture.engine, &signed, Ingest::Applied)?;
     }
     let raw = fixture.engine.store.events(&fixture.space).unwrap();
     let outbox = fixture.engine.store.outbox().unwrap();
@@ -97,6 +98,7 @@ pub(super) fn cross_space_ambiguity_closes_local_writes_but_preserves_scoped_con
     assert!(fixture.engine.timeline(&fixture.space).unwrap().iter().any(|entry| {
         matches!(&entry.kind, crate::dto::EntryKind::Request { request_id, approved: Some(true), .. } if request_id == &request.id)
     }));
+    Ok(())
 }
 
 #[test]
@@ -190,7 +192,8 @@ pub(super) fn contexts_are_bound_to_the_exact_decision_and_do_not_read_later_pay
 }
 
 #[test]
-pub(super) fn later_foreign_creations_do_not_rewrite_the_scoped_approved_decision() {
+pub(super) fn later_foreign_creations_do_not_rewrite_the_scoped_approved_decision(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for reader in [true, false] {
         for at_ms in [1, 1_900_000_000_000] {
             let directory = std::env::temp_dir().join(new_id("late-foreign-plan-origin").unwrap());
@@ -244,8 +247,8 @@ pub(super) fn later_foreign_creations_do_not_rewrite_the_scoped_approved_decisio
                     at_ms,
                     fixture.engine.logs.get(&other).and_then(|log| log.head()),
                     body,
-                );
-                deliver(&mut fixture.engine, &signed, Ingest::Applied);
+                )?;
+                deliver(&mut fixture.engine, &signed, Ingest::Applied)?;
             }
             assert_eq!(
                 fixture.engine.store.events(&fixture.space).unwrap(),
@@ -324,10 +327,12 @@ pub(super) fn later_foreign_creations_do_not_rewrite_the_scoped_approved_decisio
             std::fs::remove_dir_all(directory).unwrap();
         }
     }
+    Ok(())
 }
 
 #[test]
-pub(super) fn duplicate_request_ids_keep_each_space_history_and_close_unscoped_writes() {
+pub(super) fn duplicate_request_ids_keep_each_space_history_and_close_unscoped_writes(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for at_ms in [1, 1_900_000_000_000] {
         let mut fixture = Fixture::new().unwrap();
         let agent = agent(&mut fixture).unwrap();
@@ -352,7 +357,7 @@ pub(super) fn duplicate_request_ids_keep_each_space_history_and_close_unscoped_w
         let mut foreign_request = request.clone();
         foreign_request.title = "Unrelated request".into();
         foreign_request.item = Some(other_item.clone());
-        foreign_request.content_hash = content_hash(&(&line.text, line.cost_cents));
+        foreign_request.content_hash = content_hash(&(&line.text, line.cost_cents))?;
         for body in [
             EventBody::SpaceCreated {
                 title: "Separate request history".into(),
@@ -385,8 +390,8 @@ pub(super) fn duplicate_request_ids_keep_each_space_history_and_close_unscoped_w
                 at_ms,
                 fixture.engine.logs.get(&other).and_then(|log| log.head()),
                 body,
-            );
-            deliver(&mut fixture.engine, &event, Ingest::Applied);
+            )?;
+            deliver(&mut fixture.engine, &event, Ingest::Applied)?;
         }
         assert!(!fixture.engine.state.requests.contains_key(&request.id));
         let raw = fixture.engine.store.events(&fixture.space).unwrap();
@@ -431,4 +436,5 @@ pub(super) fn duplicate_request_ids_keep_each_space_history_and_close_unscoped_w
             }));
         }
     }
+    Ok(())
 }

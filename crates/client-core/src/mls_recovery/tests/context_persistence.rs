@@ -28,7 +28,7 @@ pub(super) fn context_and_commit_roll_back_together_and_wait_for_upload_after_re
                     kind: SpaceKind::Group,
                     privacy: Privacy::EndToEnd,
                 },
-            ))
+            )?)?
             .clone();
         genesis = created.hash.clone();
         assert_eq!(
@@ -79,7 +79,7 @@ pub(super) fn context_and_commit_roll_back_together_and_wait_for_upload_after_re
         assert_eq!(ready.len(), 1);
         assert_eq!(ready[0].content(), commit.content());
         assert_eq!(ready[0].client_id(), commit.client_id());
-        previous = chain_hash(space, 1, &genesis, &commit.wire_hash());
+        previous = chain_hash(space, 1, &genesis, &commit.wire_hash())?;
         assert_eq!(
             engine.ingest(Sequenced {
                 seq: 1,
@@ -149,7 +149,7 @@ pub(super) fn context_and_commit_roll_back_together_and_wait_for_upload_after_re
         let confirmation = Sequenced {
             seq: 2,
             prev: previous.clone(),
-            hash: chain_hash(space, 2, &previous, &external.wire_hash()),
+            hash: chain_hash(space, 2, &previous, &external.wire_hash())?,
             env: external,
         };
         for table in ["mls_recovery_pending", "outbox"] {

@@ -225,7 +225,8 @@ impl Cell {
                     continue;
                 }
             };
-            let hash = chain_hash(space, seq, &prev, &env.wire_hash());
+            let hash = chain_hash(space, seq, &prev, &env.wire_hash())
+                .map_err(|error| custom(error.to_string()))?;
             let mut stored = env.clone();
             stored.invite = None;
             let ev = Sequenced {

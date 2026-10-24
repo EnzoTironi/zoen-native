@@ -84,7 +84,7 @@ pub(super) async fn relay(mode: Mode) -> Relay {
             tokio::spawn(async move {
                 let mut ws = tokio_tungstenite::accept_async(socket).await.unwrap();
                 let Some(Ok(Message::Binary(bytes))) = ws.next().await else {
-                    return;
+                    return Ok(());
                 };
                 let ClientFrame::Hello {
                     identity,
@@ -114,7 +114,7 @@ pub(super) async fn relay(mode: Mode) -> Relay {
                 .await
                 .unwrap();
                 let Some(Ok(Message::Binary(bytes))) = ws.next().await else {
-                    return;
+                    return Ok(());
                 };
                 let ClientFrame::Auth { sig } = ClientFrame::decode(&bytes).unwrap() else {
                     panic!("Auth")
@@ -286,7 +286,7 @@ pub(super) async fn relay(mode: Mode) -> Relay {
                                         seq,
                                         &prev,
                                         &env.wire_hash(),
-                                    ),
+                                    )?,
                                     prev,
                                     env,
                                 };
@@ -326,6 +326,7 @@ pub(super) async fn relay(mode: Mode) -> Relay {
                         break;
                     }
                 }
+                Ok::<(), serde_json::Error>(())
             });
         }
     });

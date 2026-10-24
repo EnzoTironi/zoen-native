@@ -1,7 +1,8 @@
 use super::*;
 
 #[tokio::test]
-async fn an_end_to_end_group_leaves_the_relay_only_ciphertext() {
+async fn an_end_to_end_group_leaves_the_relay_only_ciphertext(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let w = World::new("m2").await;
     for (h, n) in [("ana", "Ana"), ("bruno", "Bruno"), ("carla", "Carla")] {
         w.init(h, n);
@@ -66,8 +67,8 @@ async fn an_end_to_end_group_leaves_the_relay_only_ciphertext() {
     }
 
     // A stranger can't write into the group, and learns nothing about it.
-    let mut mallory = RawClient::connect(&w.relay_url(), "mallory").await;
-    let refused = mallory.publish_message(space, "texto aberto").await;
+    let mut mallory = RawClient::connect(&w.relay_url(), "mallory").await?;
+    let refused = mallory.publish_message(space, "texto aberto").await?;
     assert!(refused.contains("not a member"), "{refused}");
 
     // ── members agree on the group ──
@@ -148,12 +149,14 @@ async fn an_end_to_end_group_leaves_the_relay_only_ciphertext() {
     assert!(w.zoen("bruno", &["read", "Cofre"]).contains(after));
     let (ae, _) = keys(&w.zoen("ana", &["keys", "Cofre"]));
     assert_eq!(ae, 2, "no commit for someone without packages");
+    Ok(())
 }
 
 /// ADR 0027: a relay-readable group from M1 keeps working, becomes end-to-end on request,
 /// and can't be turned back.
 #[tokio::test]
-async fn a_readable_group_becomes_end_to_end_and_never_goes_back() {
+async fn a_readable_group_becomes_end_to_end_and_never_goes_back(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let w = World::new("m2up").await;
     w.init("ana", "Ana");
     w.init("bruno", "Bruno");
@@ -203,7 +206,7 @@ async fn a_readable_group_becomes_end_to_end_and_never_goes_back() {
     // No way back: not by recreating the Space, not by "upgrading" again.
     let code = w.zoen("ana", &["invite", "Trilha"]);
     let code = code.split('\t').next().unwrap().trim().to_string();
-    let mut mallory = RawClient::connect(&w.relay_url(), "mallory").await;
+    let mut mallory = RawClient::connect(&w.relay_url(), "mallory").await?;
     let joined = mallory.join(space, &code).await.expect("joins by invite");
     let seen = Some(types::Seen {
         seq: joined.seq,
@@ -224,6 +227,7 @@ async fn a_readable_group_becomes_end_to_end_and_never_goes_back() {
         let v = w.zoen(who, &["verify"]);
         assert!(!v.contains("BROKEN"), "{who}: {v}");
     }
+    Ok(())
 }
 
 /// A removed member reads nothing written after their removal, their device forgets the

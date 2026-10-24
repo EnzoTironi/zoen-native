@@ -5,7 +5,7 @@ use super::*;
 pub(super) fn conflicting_sealed_seen_blocks_cold_restore_with_valid_pending_credentials(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new()?;
-    fixture.grant("conflicting-prefix-trust", None);
+    fixture.grant("conflicting-prefix-trust", None)?;
     let trigger = fixture.message("Original retained input")?;
     let original = fixture
         .core
@@ -37,7 +37,7 @@ pub(super) fn conflicting_sealed_seen_blocks_cold_restore_with_valid_pending_cre
         Sealed::new(kind, ::mls::SUITE_ID, bytes.to_vec()),
     );
     conflicting.verify().unwrap();
-    let frame = ordered(&fixture.core.engine, conflicting);
+    let frame = ordered(&fixture.core.engine, conflicting)?;
     let got = fixture.core.engine.ingest(frame);
     assert!(matches!(got, Ingest::Invalid(_)), "{got:?}");
     assert_eq!(fixture.core.retained_head(SPACE).unwrap(), Some(before));
@@ -57,7 +57,7 @@ pub(super) fn receipt_prefix_keeps_exact_pending_bytes_and_resumes_beyond_64_rea
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use sha2::{Digest, Sha256};
     let mut fixture = Fixture::new()?;
-    fixture.grant("prefix-trust", Some(1000));
+    fixture.grant("prefix-trust", Some(1000))?;
     let trigger = fixture.message("Original prefix input")?;
     let original = fixture
         .core
@@ -110,7 +110,7 @@ pub(super) fn receipt_prefix_keeps_exact_pending_bytes_and_resumes_beyond_64_rea
     for index in 0..65 {
         batch.push(receipt_source_message(&mut fixture, index)?);
     }
-    let accepted = ordered(&fixture.owner, prepared.envelope().clone());
+    let accepted = ordered(&fixture.owner, prepared.envelope().clone())?;
     assert_eq!(fixture.owner.ingest(accepted.clone()), Ingest::Applied);
     let first = batch.drain(..64).collect::<Vec<_>>();
     let frontier = first.last().unwrap().clone();
@@ -171,7 +171,7 @@ pub(super) fn receipt_prefix_validates_original_pending_before_reading_unrelated
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for case in ["pending-inner", "missing-sealed-copy", "pending-map"] {
         let mut fixture = Fixture::new()?;
-        fixture.grant("prefix-pending-trust", None);
+        fixture.grant("prefix-pending-trust", None)?;
         let trigger = fixture.message("Original pending input")?;
         let original = fixture
             .core
@@ -202,7 +202,7 @@ pub(super) fn receipt_prefix_validates_original_pending_before_reading_unrelated
                         media: None,
                         forwarded: false,
                     },
-                );
+                )?;
                 fixture.core.engine.store.outbox_remove(&cid).unwrap();
                 fixture.core.engine.store.outbox_put(&event).unwrap();
             }
@@ -249,7 +249,7 @@ pub(super) fn receipt_prefix_refuses_skipped_duplicate_oversized_and_partially_i
         "other-pending-acceptance",
     ] {
         let mut fixture = Fixture::new()?;
-        fixture.grant("prefix-batch-trust", None);
+        fixture.grant("prefix-batch-trust", None)?;
         let trigger = fixture.message("Original batch input")?;
         let original = fixture
             .core
@@ -296,7 +296,7 @@ pub(super) fn receipt_prefix_refuses_skipped_duplicate_oversized_and_partially_i
                         },
                     )
                     .unwrap();
-                let last = ordered(&fixture.owner, Envelope::plain(&event));
+                let last = ordered(&fixture.owner, Envelope::plain(&event))?;
                 assert_eq!(fixture.owner.ingest(last.clone()), Ingest::Applied);
                 batch.push(last);
             }

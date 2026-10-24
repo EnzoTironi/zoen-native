@@ -25,7 +25,8 @@ fn request_again(f: &Fixture, old: &AgentRequestDto) -> String {
 }
 
 #[test]
-fn expired_approval_requests_only_preparation_and_successor_requires_independent_approval() {
+fn expired_approval_requests_only_preparation_and_successor_requires_independent_approval(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let f = fixture().unwrap();
     let (old, _) = expired_approved(&f, "read_deckcraft").unwrap();
     let original = f.agent.lock().state.requests[&old.id].clone();
@@ -92,7 +93,7 @@ fn expired_approval_requests_only_preparation_and_successor_requires_independent
         f.agent.lock().state.requests[&old.id].resolution,
         original.resolution
     );
-    confirm_pending(&f);
+    confirm_pending(&f)?;
     owner_decide(
         &f,
         &next.id,
@@ -111,10 +112,11 @@ fn expired_approval_requests_only_preparation_and_successor_requires_independent
             .any(|event| Some(event_log::content_hash_of(event)) == r.resolved_content_hash));
     }
     assert!(f.agent.approved_tool_turn(&next.id, WORKER).is_ok());
-    confirm_pending(&f);
+    confirm_pending(&f)?;
     assert!(f.agent.approved_tool_turn(&next.id, WORKER).is_ok());
     assert!(f.agent.approved_tool_turn(&old.id, WORKER).is_err());
     assert_v1(&f);
+    Ok(())
 }
 
 #[test]

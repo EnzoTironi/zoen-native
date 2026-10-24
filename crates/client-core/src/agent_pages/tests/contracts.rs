@@ -318,7 +318,8 @@ fn semantically_reverted_private_history_is_not_included_in_agent_publication() 
 }
 
 #[test]
-fn expired_signed_page_ask_is_retained_but_never_approves_or_executes() {
+fn expired_signed_page_ask_is_retained_but_never_approves_or_executes(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let f = fixture().unwrap();
     let t = turn(&f);
     let c = command(&t);
@@ -343,8 +344,8 @@ fn expired_signed_page_ask_is_retained_but_never_approves_or_executes() {
             at,
             log.head(),
             EventBody::RequestOpened { request: expired },
-        );
-        let event = log.sequence(signed).clone();
+        )?;
+        let event = log.sequence(signed)?.clone();
         assert_eq!(
             e.ingest(protocol::Sequenced {
                 seq: event.seq,
@@ -368,6 +369,7 @@ fn expired_signed_page_ask_is_retained_but_never_approves_or_executes() {
     assert_eq!(counts(&f), before);
     decide(&f, &req, ToolRequestDecision::Cancel).unwrap();
     assert_eq!(page(&f).version, 1);
+    Ok(())
 }
 
 #[test]

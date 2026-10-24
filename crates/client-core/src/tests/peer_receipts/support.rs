@@ -120,9 +120,9 @@ pub(super) fn membership(
         crate::engine::now_ms(),
         engine.logs[&c.space].head(),
         body,
-    );
+    )?;
     let mut relay = engine.logs[&c.space].clone();
-    let event = relay.sequence(signed).clone();
+    let event = relay.sequence(signed)?.clone();
     assert_eq!(
         engine.ingest(protocol::Sequenced {
             seq: event.seq,

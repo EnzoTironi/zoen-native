@@ -8,7 +8,7 @@ pub(super) fn plain_confirmation_cleanup_failure_keeps_exact_outbox_for_cold_ret
     let (mut sender, _, secret) = member(&path);
     let (_, peer, _) = member(":memory:");
     let space = "plain-confirmation-transaction";
-    closed_space(&mut sender, &peer, space);
+    closed_space(&mut sender, &peer, space)?;
     let message = sender
         .send_message(space, "Only one confirmed message")
         .unwrap();
@@ -18,7 +18,7 @@ pub(super) fn plain_confirmation_cleanup_failure_keeps_exact_outbox_for_cold_ret
         .outbox_get(envelope.client_id())
         .unwrap()
         .unwrap();
-    let frame = ordered(&sender, envelope.clone());
+    let frame = ordered(&sender, envelope.clone())?;
     let before = sender.store.event_count().unwrap();
     sender
         .store
@@ -77,7 +77,7 @@ pub(super) fn pending_confirmation_other_member_does_not_ack_or_stamp_our_plain_
     let (mut owner, _, secret) = member(&path);
     let (_, peer, _) = member(":memory:");
     let space = "plain-member-collision";
-    closed_space(&mut owner, &peer, space);
+    closed_space(&mut owner, &peer, space)?;
     let message = owner.send_message(space, "Owner stays queued").unwrap();
     let pending = owner.store.outbox_get(&message.id).unwrap().unwrap();
     let remote = peer.sign_event(
@@ -86,8 +86,8 @@ pub(super) fn pending_confirmation_other_member_does_not_ack_or_stamp_our_plain_
         pending.at_ms + 1,
         pending.seen.clone(),
         post("Peer is independently applied"),
-    );
-    let frame = ordered(&owner, Envelope::plain(&remote));
+    )?;
+    let frame = ordered(&owner, Envelope::plain(&remote))?;
     assert_eq!(owner.ingest(frame.clone()), Ingest::Applied);
     assert_pending_confirmation_retained(&owner, &pending);
     assert_pending_confirmation_remote(&owner, &frame, &peer);
@@ -98,7 +98,7 @@ pub(super) fn pending_confirmation_other_member_does_not_ack_or_stamp_our_plain_
     let mut owner = reopen(&path, &secret);
     assert_pending_confirmation_retained(&owner, &pending);
     assert_pending_confirmation_remote(&owner, &frame, &peer);
-    let own_frame = ordered(&owner, Envelope::plain(&pending));
+    let own_frame = ordered(&owner, Envelope::plain(&pending))?;
     assert_eq!(owner.ingest(own_frame.clone()), Ingest::Confirmed);
     assert!(owner
         .store
@@ -131,7 +131,7 @@ pub(super) fn pending_confirmation_another_certified_device_cannot_ack_this_devi
     let other = Author::device(&Signer::from_secret(&root), Signer::generate()?);
     let space = "plain-device-collision";
     let (_, peer, _) = member(":memory:");
-    closed_space(&mut owner, &peer, space);
+    closed_space(&mut owner, &peer, space)?;
     let message = owner
         .send_message(space, "First device stays queued")
         .unwrap();
@@ -144,9 +144,9 @@ pub(super) fn pending_confirmation_another_certified_device_cannot_ack_this_devi
         pending.at_ms + 1,
         pending.seen.clone(),
         post("Other certified device"),
-    );
+    )?;
     event_log::verify_author(&remote).unwrap();
-    let frame = ordered(&owner, Envelope::plain(&remote));
+    let frame = ordered(&owner, Envelope::plain(&remote))?;
     assert_eq!(owner.ingest(frame.clone()), Ingest::Applied);
     assert_pending_confirmation_retained(&owner, &pending);
     assert_pending_confirmation_remote(&owner, &frame, &other);
@@ -157,11 +157,12 @@ pub(super) fn pending_confirmation_another_certified_device_cannot_ack_this_devi
     Ok(())
 }
 
-pub(super) fn pending_confirmation_same_signer_with_different_signed_bytes_is_not_our_receipt() {
+pub(super) fn pending_confirmation_same_signer_with_different_signed_bytes_is_not_our_receipt(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (mut owner, author, _) = member(":memory:");
     let (_, peer, _) = member(":memory:");
     let space = "plain-commitment-collision";
-    closed_space(&mut owner, &peer, space);
+    closed_space(&mut owner, &peer, space)?;
     let message = owner
         .send_message(space, "Keep the original signed intent")
         .unwrap();
@@ -172,14 +173,15 @@ pub(super) fn pending_confirmation_same_signer_with_different_signed_bytes_is_no
         pending.at_ms,
         pending.seen.clone(),
         post("Different signed intent"),
-    );
+    )?;
     assert_ne!(pending.content, changed.content);
-    let frame = ordered(&owner, Envelope::plain(&changed));
+    let frame = ordered(&owner, Envelope::plain(&changed))?;
     assert_eq!(owner.ingest(frame.clone()), Ingest::Applied);
     assert_pending_confirmation_retained(&owner, &pending);
     owner.reproject_approval_overlay().unwrap();
     assert_pending_confirmation_retained(&owner, &pending);
     assert_pending_confirmation_remote(&owner, &frame, &author);
+    Ok(())
 }
 
 pub(super) fn pending_confirmation_other_space_cannot_remove_a_pending_event_on_cold_reopen(
@@ -188,8 +190,8 @@ pub(super) fn pending_confirmation_other_space_cannot_remove_a_pending_event_on_
     let path = database.path("space-collision.sqlite");
     let (mut owner, _, secret) = member(&path);
     let (_, peer, _) = member(":memory:");
-    closed_space(&mut owner, &peer, "pending-space");
-    closed_space(&mut owner, &peer, "remote-space");
+    closed_space(&mut owner, &peer, "pending-space")?;
+    closed_space(&mut owner, &peer, "remote-space")?;
     let message = owner
         .send_message("pending-space", "Still belongs to the first space")
         .unwrap();
@@ -200,8 +202,8 @@ pub(super) fn pending_confirmation_other_space_cannot_remove_a_pending_event_on_
         pending.at_ms + 1,
         seen(&owner, "remote-space"),
         post("Same label in a different space"),
-    );
-    let frame = ordered(&owner, Envelope::plain(&remote));
+    )?;
+    let frame = ordered(&owner, Envelope::plain(&remote))?;
     assert_eq!(owner.ingest(frame.clone()), Ingest::Applied);
     assert_pending_confirmation_retained(&owner, &pending);
     drop(owner);
@@ -216,7 +218,7 @@ pub(super) fn pending_confirmation_other_mls_member_keeps_pending_overlay_and_co
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let database = Database::new()?;
     let space = "sealed-member-collision";
-    let (mut owner, secret, mut peer, _) = encrypted_pair(&database, space);
+    let (mut owner, secret, mut peer, _) = encrypted_pair(&database, space)?;
     let message = owner
         .send_message(space, "Owner encrypted intent remains pending")
         .unwrap();
@@ -228,11 +230,11 @@ pub(super) fn pending_confirmation_other_mls_member_keeps_pending_overlay_and_co
         pending.at_ms + 1,
         seen(&peer, space),
         post("Authenticated other MLS member"),
-    );
+    )?;
     peer.seal_outgoing(&remote, peer.ready_epoch(space).unwrap())
         .unwrap();
     let envelope = peer.sealed_copy(&remote).unwrap().1;
-    let frame = ordered(&owner, envelope);
+    let frame = ordered(&owner, envelope)?;
     assert_eq!(owner.ingest(frame.clone()), Ingest::Applied);
     assert_pending_confirmation_retained(&owner, &pending);
     owner.reproject_approval_overlay().unwrap();
@@ -253,7 +255,7 @@ pub(super) fn pending_confirmation_exact_signed_echo_cleans_a_crash_window_on_co
     let (mut owner, _, secret) = member(&path);
     let (_, peer, _) = member(":memory:");
     let space = "exact-pending-confirmation";
-    closed_space(&mut owner, &peer, space);
+    closed_space(&mut owner, &peer, space)?;
     let message = owner
         .send_message(space, "Only the exact signed receipt")
         .unwrap();
@@ -262,7 +264,7 @@ pub(super) fn pending_confirmation_exact_signed_echo_cleans_a_crash_window_on_co
     envelope.sig = envelope.sig.to_uppercase();
     envelope.cert = envelope.cert.map(|cert| cert.to_uppercase());
     envelope.verify().unwrap();
-    let frame = ordered(&owner, envelope);
+    let frame = ordered(&owner, envelope)?;
     assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
     assert!(owner
         .store
@@ -284,16 +286,17 @@ pub(super) fn pending_confirmation_exact_signed_echo_cleans_a_crash_window_on_co
     Ok(())
 }
 
-pub(super) fn pending_confirmation_outbox_read_failure_never_appends_or_guesses_an_ack() {
+pub(super) fn pending_confirmation_outbox_read_failure_never_appends_or_guesses_an_ack(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (mut owner, _, _) = member(":memory:");
     let (_, peer, _) = member(":memory:");
     let space = "confirmation-storage-read";
-    closed_space(&mut owner, &peer, space);
+    closed_space(&mut owner, &peer, space)?;
     let message = owner
         .send_message(space, "Retain unreadable pending record")
         .unwrap();
     let pending = owner.store.outbox_get(&message.id).unwrap().unwrap();
-    let frame = ordered(&owner, Envelope::plain(&pending));
+    let frame = ordered(&owner, Envelope::plain(&pending))?;
     let before = owner.store.event_count().unwrap();
     owner
         .store
@@ -325,13 +328,14 @@ pub(super) fn pending_confirmation_outbox_read_failure_never_appends_or_guesses_
         )
         .unwrap();
     assert_eq!(owner.ingest(frame), Ingest::Confirmed);
+    Ok(())
 }
 
 pub(super) fn pending_confirmation_retained_older_sealed_echo_survives_resealing(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let database = Database::new()?;
     let space = "sealed-original-ack-after-reseal";
-    let (mut owner, secret, _, _) = encrypted_pair(&database, space);
+    let (mut owner, secret, _, _) = encrypted_pair(&database, space)?;
     let message = owner
         .send_message(space, "Accept the actual earlier signed echo")
         .unwrap();
@@ -346,7 +350,7 @@ pub(super) fn pending_confirmation_retained_older_sealed_echo_survives_resealing
     assert_ne!(original.content(), newer.content());
     original.verify().unwrap();
     newer.verify().unwrap();
-    let frame = ordered(&owner, original);
+    let frame = ordered(&owner, original)?;
     assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
     assert!(owner
         .store
@@ -377,13 +381,13 @@ pub(super) fn pending_confirmation_sealed_outbox_read_failure_keeps_event_and_ra
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let database = Database::new()?;
     let space = "sealed-confirmation-storage-read";
-    let (mut owner, _, _, _) = encrypted_pair(&database, space);
+    let (mut owner, _, _, _) = encrypted_pair(&database, space)?;
     let message = owner
         .send_message(space, "Do not guess an encrypted ACK")
         .unwrap();
     let pending = owner.store.outbox_get(&message.id).unwrap().unwrap();
     assert!(owner.mls_seal_outbox().unwrap());
-    let frame = ordered(&owner, owner.sealed_copy(&pending).unwrap().1);
+    let frame = ordered(&owner, owner.sealed_copy(&pending).unwrap().1)?;
     let before = owner.store.event_count().unwrap();
     let provider_before = provider_rows(&owner);
     owner

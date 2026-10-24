@@ -29,7 +29,11 @@ fn ingest(e: &mut Engine, event: Sequenced) {
     ));
 }
 
-async fn setup(w: &World, path: &Path) -> (Engine, Owner, RawClient, RawClient, String) {
+async fn setup(
+    w: &World,
+    path: &Path,
+) -> std::result::Result<(Engine, Owner, RawClient, RawClient, String), Box<dyn std::error::Error>>
+{
     let mut e = Engine::open(path.to_str().unwrap()).unwrap();
     let (root, secret, _) = e.create_account("Owner", "owner", &w.relay_url()).unwrap();
     let owner = Owner {
@@ -47,7 +51,7 @@ async fn setup(w: &World, path: &Path) -> (Engine, Owner, RawClient, RawClient, 
         Ok(Reply::Registered(_))
     ));
     e.set_registered(true).unwrap();
-    let author = Author::device(&Signer::generate(), Signer::generate());
+    let author = Author::device(&Signer::generate()?, Signer::generate()?);
     let mut agent = RawClient::reconnect(&w.relay_url(), author).await;
     let profile = Identity {
         owner_proof: Some(Box::new(e.authorize_agent(&agent.identity()).unwrap())),
@@ -64,7 +68,7 @@ async fn setup(w: &World, path: &Path) -> (Engine, Owner, RawClient, RawClient, 
         panic!("agent registration")
     };
     e.put_profiles(vec![profile]).unwrap();
-    let space = new_id("sp");
+    let space = new_id("sp")?;
     for body in [
         EventBody::SpaceCreated {
             title: "Durable approvals".into(),
@@ -77,7 +81,7 @@ async fn setup(w: &World, path: &Path) -> (Engine, Owner, RawClient, RawClient, 
         },
         EventBody::GrantIssued {
             grant: Grant {
-                id: new_id("gr"),
+                id: new_id("gr")?,
                 grantor: person.identity(),
                 grantee: Some(agent.identity()),
                 scope: GrantScope::Space(space.clone()),
@@ -87,7 +91,7 @@ async fn setup(w: &World, path: &Path) -> (Engine, Owner, RawClient, RawClient, 
         },
         EventBody::GrantIssued {
             grant: Grant {
-                id: new_id("gr"),
+                id: new_id("gr")?,
                 grantor: person.identity(),
                 grantee: Some(agent.identity()),
                 scope: GrantScope::Everywhere,
@@ -102,13 +106,19 @@ async fn setup(w: &World, path: &Path) -> (Engine, Owner, RawClient, RawClient, 
             .unwrap();
         ingest(&mut e, event);
     }
-    (e, owner, person, agent, space)
+    Ok((e, owner, person, agent, space))
 }
 
-async fn propose(e: &mut Engine, agent: &mut RawClient, space: &str, title: &str) -> AgentRequest {
+async fn propose(
+    e: &mut Engine,
+    agent: &mut RawClient,
+    space: &str,
+    title: &str,
+) -> std::result::Result<AgentRequest, Box<dyn std::error::Error>> {
+    let line_id = new_id("line")?;
     let mut request = AgentRequest {
         tool_proposal: None,
-        id: new_id("rq"),
+        id: new_id("rq")?,
         agent: agent.identity(),
         title: title.into(),
         detail: "Exact retained content".into(),
@@ -118,7 +128,7 @@ async fn propose(e: &mut Engine, agent: &mut RawClient, space: &str, title: &str
         item: None,
         line: None,
         proposal: Some(Box::new(ItemProposal {
-            item: new_id("it"),
+            item: new_id("it")?,
             kind: ItemKind::Plan,
             content: ItemContent::Plan(PlanDoc {
                 title: title.into(),
@@ -127,7 +137,7 @@ async fn propose(e: &mut Engine, agent: &mut RawClient, space: &str, title: &str
                 sections: vec![PlanSection {
                     title: "Work".into(),
                     lines: vec![PlanLine {
-                        id: new_id("line"),
+                        id: line_id.clone(),
                         text: "Keep these exact bytes".into(),
                         cost_cents: 4200,
                         done: false,
@@ -154,7 +164,7 @@ async fn propose(e: &mut Engine, agent: &mut RawClient, space: &str, title: &str
             .await
             .unwrap(),
     );
-    request
+    Ok(request)
 }
 
 fn fault(path: &Path, sql: &str) {
@@ -181,12 +191,13 @@ async fn publish_after_restart(person: &mut RawClient, env: protocol::Envelope) 
 }
 
 #[tokio::test]
-async fn interrupted_approval_batch_and_lost_ack_survive_core_and_relay_restarts() {
+async fn interrupted_approval_batch_and_lost_ack_survive_core_and_relay_restarts(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut w = World::with_nats("approval_restart").await;
     let path = w.dir.join("owner.sqlite");
-    let (mut e, owner, person, mut agent, space) = setup(&w, &path).await;
-    let first = propose(&mut e, &mut agent, &space, "First durable plan").await;
-    let second = propose(&mut e, &mut agent, &space, "Second durable plan").await;
+    let (mut e, owner, person, mut agent, space) = setup(&w, &path).await?;
+    let first = propose(&mut e, &mut agent, &space, "First durable plan").await?;
+    let second = propose(&mut e, &mut agent, &space, "Second durable plan").await?;
     drop(person);
     drop(agent);
     w.stop_relay();
@@ -263,10 +274,15 @@ async fn interrupted_approval_batch_and_lost_ack_survive_core_and_relay_restarts
     assert_eq!(e.items().len(), 2);
     assert_eq!(e.agent_profile(&first.agent).budget_spent_cents, Some(74));
     assert_eq!(e.outbox_len(), 0);
+    Ok(())
 }
 
-async fn competing_owner_device(w: &World, owner: &Owner, sponsor: &mut RawClient) -> RawClient {
-    let author = Author::device(&owner.root, Signer::generate());
+async fn competing_owner_device(
+    w: &World,
+    owner: &Owner,
+    sponsor: &mut RawClient,
+) -> std::result::Result<RawClient, Box<dyn std::error::Error>> {
+    let author = Author::device(&owner.root, Signer::generate()?);
     assert!(matches!(
         sponsor
             .request(Op::DeliverLink {
@@ -280,10 +296,12 @@ async fn competing_owner_device(w: &World, owner: &Owner, sponsor: &mut RawClien
             .await,
         Ok(Reply::Done)
     ));
-    RawClient::reconnect(&w.relay_url(), author).await
+    Ok(RawClient::reconnect(&w.relay_url(), author).await)
 }
 
-async fn ordered_change_before_approval_echo(removal: bool) {
+async fn ordered_change_before_approval_echo(
+    removal: bool,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let w = World::new(if removal {
         "approval_removed"
     } else {
@@ -291,9 +309,9 @@ async fn ordered_change_before_approval_echo(removal: bool) {
     })
     .await;
     let path = w.dir.join("owner.sqlite");
-    let (mut e, owner, mut person, mut agent, space) = setup(&w, &path).await;
-    let mut other = competing_owner_device(&w, &owner, &mut person).await;
-    let request = propose(&mut e, &mut agent, &space, "Conflicting approval").await;
+    let (mut e, owner, mut person, mut agent, space) = setup(&w, &path).await?;
+    let mut other = competing_owner_device(&w, &owner, &mut person).await?;
+    let request = propose(&mut e, &mut agent, &space, "Conflicting approval").await?;
     e.decide_request(&request.id, RequestDecision::AlwaysApprove)
         .unwrap();
     assert_eq!(e.items().len(), 1);
@@ -381,14 +399,19 @@ async fn ordered_change_before_approval_echo(removal: bool) {
         observer.agent_profile(&request.agent).budget_spent_cents,
         Some(37)
     );
+    Ok(())
 }
 
 #[tokio::test]
-async fn the_other_owner_devices_ordered_denial_wins_before_the_approval_echo() {
-    ordered_change_before_approval_echo(false).await;
+async fn the_other_owner_devices_ordered_denial_wins_before_the_approval_echo(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    ordered_change_before_approval_echo(false).await?;
+    Ok(())
 }
 
 #[tokio::test]
-async fn the_other_owner_devices_ordered_removal_invalidates_the_approval_before_its_echo() {
-    ordered_change_before_approval_echo(true).await;
+async fn the_other_owner_devices_ordered_removal_invalidates_the_approval_before_its_echo(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    ordered_change_before_approval_echo(true).await?;
+    Ok(())
 }

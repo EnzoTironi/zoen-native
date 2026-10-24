@@ -190,7 +190,7 @@ impl Engine {
             at,
             None,
             EventBody::MemberAdded { identity: me, role },
-        );
+        )?;
         self.store.set_meta(&format!("invite:{client_id}"), code)?;
         self.store.outbox_put(&e)?;
         self.store.set_synced(space)?;

@@ -9,7 +9,7 @@ pub(super) fn media_contract_permanent_file_refusal_fails_dependents_and_release
             let dir = temp()?;
             let path = dir.join("terminal-file.sqlite");
             let f = fixture(path.to_str().unwrap());
-            media_contract_confirm_scope(&f);
+            media_contract_confirm_scope(&f)?;
             let draft = save(
                 &f,
                 "0",
@@ -117,7 +117,7 @@ pub(super) fn media_contract_refused_duplicate_creation_cannot_poison_confirmed_
 pub(super) fn media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let f = fixture(":memory:");
-    media_contract_confirm_scope(&f);
+    media_contract_confirm_scope(&f)?;
     let draft = save(
         &f,
         "0",
@@ -166,7 +166,7 @@ pub(super) fn media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped
         .unwrap()
         .event
         .client_id;
-    media_contract_confirm_id(&f, &first_file);
+    media_contract_confirm_id(&f, &first_file)?;
     let original = f
         .engine
         .lock()
@@ -203,7 +203,7 @@ pub(super) fn media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped
             original.at_ms + 10,
             None,
             original.body.clone(),
-        );
+        )?;
         f.engine.lock().store.outbox_put(&event).unwrap();
         unrelated.push(event.client_id);
     }
@@ -231,7 +231,7 @@ pub(super) fn media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped
             original.at_ms + 11,
             None,
             body,
-        );
+        )?;
         if drift == "signature" {
             event.sig.push('x');
         }

@@ -159,7 +159,7 @@ impl Fixture {
             let frames = fixture.owner.outbox_envelopes();
             assert!(!frames.is_empty(), "real protocol outbox must advance");
             for envelope in frames {
-                let frame = ordered(&fixture.owner, envelope);
+                let frame = ordered(&fixture.owner, envelope)?;
                 assert_eq!(fixture.owner.ingest(frame.clone()), Ingest::Confirmed);
                 fixture.core.ingest(vec![frame]).unwrap();
                 handshakes += 1;
@@ -176,14 +176,18 @@ impl Fixture {
     ) -> std::result::Result<String, Box<dyn std::error::Error>> {
         let author = self.owner.net.author.as_ref().unwrap();
         let seen = self.owner.logs.get(&self.space).and_then(SpaceLog::head);
-        let event = author.sign_event(&self.space, &new_id("clear")?, 100, seen, body);
-        let frame = ordered(&self.owner, Envelope::plain(&event));
+        let event = author.sign_event(&self.space, &new_id("clear")?, 100, seen, body)?;
+        let frame = ordered(&self.owner, Envelope::plain(&event))?;
         assert_eq!(self.owner.ingest(frame.clone()), Ingest::Applied);
         self.core.ingest(vec![frame.clone()]).unwrap();
         Ok(frame.hash)
     }
 
-    fn encrypted(&mut self, body: EventBody, at_ms: i64) -> String {
+    fn encrypted(
+        &mut self,
+        body: EventBody,
+        at_ms: i64,
+    ) -> std::result::Result<String, Box<dyn std::error::Error>> {
         let author = self.owner.net.author.clone().unwrap();
         self.owner
             .append_synced(&self.space, &author, at_ms, body)
@@ -191,13 +195,17 @@ impl Fixture {
         self.owner.mls_seal_outbox().unwrap();
         let frames = self.owner.outbox_envelopes();
         assert_eq!(frames.len(), 1);
-        let frame = ordered(&self.owner, frames.into_iter().next().unwrap());
+        let frame = ordered(&self.owner, frames.into_iter().next().unwrap())?;
         assert_eq!(self.owner.ingest(frame.clone()), Ingest::Confirmed);
         self.core.ingest(vec![frame.clone()]).unwrap();
-        frame.hash
+        Ok(frame.hash)
     }
 
-    fn grant(&mut self, id: &str, expiry: Option<i64>) -> String {
+    fn grant(
+        &mut self,
+        id: &str,
+        expiry: Option<i64>,
+    ) -> std::result::Result<String, Box<dyn std::error::Error>> {
         self.encrypted(
             EventBody::GrantIssued {
                 grant: Grant {
@@ -224,7 +232,7 @@ impl Fixture {
                 forwarded: false,
             },
             300,
-        ))
+        )?)
     }
 }
 

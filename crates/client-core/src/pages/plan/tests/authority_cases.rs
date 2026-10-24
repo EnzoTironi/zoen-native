@@ -2,7 +2,8 @@
 use super::*;
 
 #[test]
-pub(super) fn transport_confirmation_cannot_ack_a_semantically_refused_page_or_late_legacy_undo() {
+pub(super) fn transport_confirmation_cannot_ack_a_semantically_refused_page_or_late_legacy_undo(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let directory = std::env::temp_dir().join(new_id("plan-refused-outbox-reopen").unwrap());
     std::fs::create_dir_all(&directory).unwrap();
     let path = directory.join("plan.sqlite");
@@ -59,7 +60,7 @@ pub(super) fn transport_confirmation_cannot_ack_a_semantically_refused_page_or_l
         Acceptance::Pending
     ));
     let refused_source = source(&fixture.space, &fixture.item, &refused, false);
-    deliver(&mut fixture.engine, &refused, Ingest::Confirmed);
+    deliver(&mut fixture.engine, &refused, Ingest::Confirmed)?;
     assert!(!fixture
         .fold()
         .acknowledges(&refused.client_id, &refused_source.event_id));
@@ -82,7 +83,7 @@ pub(super) fn transport_confirmation_cannot_ack_a_semantically_refused_page_or_l
     assert!(!fixture
         .fold()
         .acknowledges(&valid.client_id, &valid_source.event_id));
-    let confirmed = deliver(&mut fixture.engine, &valid, Ingest::Confirmed);
+    let confirmed = deliver(&mut fixture.engine, &valid, Ingest::Confirmed)?;
     let fold = fixture.fold();
     assert_eq!(fold.slots[2].source.event_id, valid_source.event_id);
     assert!(fold.acknowledges(&valid.client_id, &valid_source.event_id));
@@ -126,6 +127,7 @@ pub(super) fn transport_confirmation_cannot_ack_a_semantically_refused_page_or_l
     assert!(recovered.acknowledges(&valid.client_id, &valid_source.event_id));
     drop(reopened);
     std::fs::remove_dir_all(directory).unwrap();
+    Ok(())
 }
 
 #[test]
@@ -201,7 +203,8 @@ pub(super) fn reader_and_removed_member_frames_never_authorize_canonical_plan_mu
 }
 
 #[test]
-pub(super) fn invalid_signatures_and_oversized_payloads_cannot_establish_cutover() {
+pub(super) fn invalid_signatures_and_oversized_payloads_cannot_establish_cutover(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new().unwrap();
     let baseline = fixture.fold();
     let content = page(
@@ -214,7 +217,7 @@ pub(super) fn invalid_signatures_and_oversized_payloads_cannot_establish_cutover
             fixture.version(ItemContent::Page(content.clone())),
         )
         .unwrap();
-    let mut forged = frame(&fixture.engine, &event);
+    let mut forged = frame(&fixture.engine, &event)?;
     forged.env.sig = "00".repeat(64);
     assert!(matches!(fixture.engine.ingest(forged), Ingest::Invalid(_)));
     assert_eq!(fixture.fold().slots.len(), 1);
@@ -246,10 +249,12 @@ pub(super) fn invalid_signatures_and_oversized_payloads_cannot_establish_cutover
     assert!(fold.frozen_at.is_none());
     assert!(!fold.waiting);
     assert_eq!(view(&fold), original());
+    Ok(())
 }
 
 #[test]
-pub(super) fn tagged_plan_versions_preserve_author_space_and_creation_checks() {
+pub(super) fn tagged_plan_versions_preserve_author_space_and_creation_checks(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new().unwrap();
     let reader = add_identity(&mut fixture.engine, "Reader");
     let removed = add_identity(&mut fixture.engine, "Removed");
@@ -365,11 +370,12 @@ pub(super) fn tagged_plan_versions_preserve_author_space_and_creation_checks() {
     );
     let pending = fixture.queue(version);
     assert_eq!(fixture.engine.store.outbox_len().unwrap(), 1);
-    let confirmed = deliver(&mut fixture.engine, &pending, Ingest::Confirmed);
+    let confirmed = deliver(&mut fixture.engine, &pending, Ingest::Confirmed)?;
     let fold = fixture.fold();
     assert_eq!(view(&fold), document.view().unwrap().to_plan_doc());
     assert!(fold.acknowledges(
         &confirmed.client_id,
         &source(&fixture.space, &fixture.item, &confirmed, true).event_id
     ));
+    Ok(())
 }

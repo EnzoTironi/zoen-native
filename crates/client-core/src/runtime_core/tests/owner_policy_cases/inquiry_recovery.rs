@@ -271,7 +271,7 @@ fn inquiry_counter_overflow_fails_atomically_without_another_original() -> TestR
 #[test]
 fn image_inquiry_ack_recovery_also_retains_latest_producer_after_clock_rollback() -> TestResult {
     let (mut f, request, hash, envelope) = super::super::image_review_cases::pending().unwrap();
-    let frame = ordered(&f.owner, envelope);
+    let frame = ordered(&f.owner, envelope)?;
     assert_eq!(f.owner.ingest(frame.clone()), Ingest::Applied);
     f.core.ingest(vec![frame])?;
     f.owner.set_registered(true)?;

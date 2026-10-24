@@ -14,13 +14,13 @@ fn provider_rows(engine: &Engine) -> Vec<ProviderRow> {
     rows.collect::<rusqlite::Result<_>>().unwrap()
 }
 
-fn exercise_fault(fault: &str) {
-    let database = OwnedDatabase(std::env::temp_dir().join(types::new_id("outbox-seal-repair")));
+fn exercise_fault(fault: &str) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let database = OwnedDatabase(std::env::temp_dir().join(types::new_id("outbox-seal-repair")?));
     let mut f = Fixture::with_privacies(
         database.0.to_str().unwrap(),
         Privacy::EndToEnd,
         Privacy::EndToEnd,
-    );
+    )?;
     f.engine.create_mls_group("sp_fault_a").unwrap();
     let original_a = provider_rows(&f.engine);
     assert!(!original_a.is_empty());
@@ -117,23 +117,29 @@ fn exercise_fault(fault: &str) {
     );
     drop(cold);
     drop(database);
+    Ok(())
 }
 
 #[test]
-fn unreadable_unsealed_head_preserves_ratchet_and_other_chat_progress_through_exact_repair() {
-    exercise_fault("json");
+fn unreadable_unsealed_head_preserves_ratchet_and_other_chat_progress_through_exact_repair(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    exercise_fault("json")?;
+    Ok(())
 }
 
 #[test]
-fn invalid_signed_head_cannot_consume_ratchet_or_ciphertext_before_dispatch_validation() {
+fn invalid_signed_head_cannot_consume_ratchet_or_ciphertext_before_dispatch_validation(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for fault in ["signature", "empty-content"] {
-        exercise_fault(fault);
+        exercise_fault(fault)?;
     }
+    Ok(())
 }
 
 #[test]
-fn corrupt_cached_head_still_fences_unsealed_successor_without_reencrypting_it() {
-    let mut f = Fixture::with_privacies(":memory:", Privacy::EndToEnd, Privacy::EndToEnd);
+fn corrupt_cached_head_still_fences_unsealed_successor_without_reencrypting_it(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::with_privacies(":memory:", Privacy::EndToEnd, Privacy::EndToEnd)?;
     f.engine.create_mls_group("sp_fault_a").unwrap();
     let first = f.message("sp_fault_a", 0);
     assert!(f.engine.mls_seal_outbox().unwrap());
@@ -170,11 +176,13 @@ fn corrupt_cached_head_still_fences_unsealed_successor_without_reencrypting_it()
             .unwrap(),
         retained
     );
+    Ok(())
 }
 
 #[test]
-fn unknown_original_lane_stops_before_crypto_and_exact_association_repair_recovers() {
-    let mut f = Fixture::with_privacies(":memory:", Privacy::EndToEnd, Privacy::EndToEnd);
+fn unknown_original_lane_stops_before_crypto_and_exact_association_repair_recovers(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::with_privacies(":memory:", Privacy::EndToEnd, Privacy::EndToEnd)?;
     f.engine.create_mls_group("sp_fault_a").unwrap();
     f.engine.create_mls_group("sp_fault_b").unwrap();
     let first = f.message("sp_fault_a", 0);
@@ -200,11 +208,13 @@ fn unknown_original_lane_stops_before_crypto_and_exact_association_repair_recove
     f.engine.net.pending.insert(first.client_id, scope);
     assert!(f.engine.mls_seal_outbox().unwrap());
     assert_eq!(f.engine.outbox_envelopes().len(), 2);
+    Ok(())
 }
 
 #[test]
-fn changed_sql_space_cannot_hide_invalid_head_from_precrypto_validation() {
-    let mut f = Fixture::with_privacies(":memory:", Privacy::EndToEnd, Privacy::Closed);
+fn changed_sql_space_cannot_hide_invalid_head_from_precrypto_validation(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::with_privacies(":memory:", Privacy::EndToEnd, Privacy::Closed)?;
     f.engine.create_mls_group("sp_fault_a").unwrap();
     let first = f.message("sp_fault_a", 0);
     let second = f.message("sp_fault_a", 1);
@@ -250,4 +260,5 @@ fn changed_sql_space_cannot_hide_invalid_head_from_precrypto_validation() {
             .collect::<Vec<_>>(),
         [first.client_id.as_str(), second.client_id.as_str()]
     );
+    Ok(())
 }

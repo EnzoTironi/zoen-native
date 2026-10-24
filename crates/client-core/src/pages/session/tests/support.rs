@@ -47,22 +47,29 @@ pub(super) fn identity(engine: &mut Engine, name: &str) -> String {
         .unwrap()
 }
 
-pub(super) fn envelope_frame(engine: &Engine, env: Envelope) -> Sequenced {
+pub(super) fn envelope_frame(
+    engine: &Engine,
+    env: Envelope,
+) -> std::result::Result<Sequenced, Box<dyn std::error::Error>> {
     let head = engine.logs.get(env.space()).and_then(|log| log.head());
     let seq = head.as_ref().map_or(0, |head| head.seq + 1);
     let prev = head.map_or_else(|| GENESIS_PREV.into(), |head| head.hash);
-    Sequenced {
+    Ok(Sequenced {
         seq,
-        hash: chain_hash(env.space(), seq, &prev, &env.wire_hash()),
+        hash: chain_hash(env.space(), seq, &prev, &env.wire_hash())?,
         prev,
         env,
-    }
+    })
 }
 
-pub(super) fn deliver(engine: &mut Engine, event: &Event, expected: Ingest) -> Event {
-    let frame = envelope_frame(engine, Envelope::plain(event));
+pub(super) fn deliver(
+    engine: &mut Engine,
+    event: &Event,
+    expected: Ingest,
+) -> std::result::Result<Event, Box<dyn std::error::Error>> {
+    let frame = envelope_frame(engine, Envelope::plain(event))?;
     assert_eq!(engine.ingest(frame), expected);
-    engine.logs[&event.space].events().last().unwrap().clone()
+    Ok(engine.logs[&event.space].events().last().unwrap().clone())
 }
 
 pub(super) fn blocks(read: &SessionRead) -> &[PlanBlock] {
@@ -173,7 +180,9 @@ pub(super) fn drop_trigger(f: &Fixture, name: &str) {
         .unwrap();
 }
 
-pub(super) fn edited_binary_fixture() -> (std::sync::Arc<Client>, String, PageSession) {
+pub(super) fn edited_binary_fixture(
+) -> std::result::Result<(std::sync::Arc<Client>, String, PageSession), Box<dyn std::error::Error>>
+{
     let public = Client::open(":memory:".into(), "en".into()).unwrap();
     public.seed_demo_if_empty().unwrap();
     let space = public
@@ -196,7 +205,7 @@ pub(super) fn edited_binary_fixture() -> (std::sync::Arc<Client>, String, PageSe
         .map(|p| p.event)
         .collect();
     for event in creations {
-        deliver(&mut engine, &event, Ingest::Confirmed);
+        deliver(&mut engine, &event, Ingest::Confirmed)?;
     }
     drop(engine);
     let read = public.page(id.clone()).unwrap();
@@ -214,7 +223,7 @@ pub(super) fn edited_binary_fixture() -> (std::sync::Arc<Client>, String, PageSe
     let engine = public.lock();
     let session = PageSession::open(&engine, &id).unwrap();
     drop(engine);
-    (public, id, session)
+    Ok((public, id, session))
 }
 
 pub(super) fn encrypted_exact_source_and_peer_readability(
@@ -317,7 +326,7 @@ pub(super) fn encrypted_exact_source_and_peer_readability(
         .unwrap();
     assert!(env.is_sealed());
     assert_ne!(env.content(), event.content.as_slice());
-    let frame = envelope_frame(&f.engine, env);
+    let frame = envelope_frame(&f.engine, env)?;
     assert_eq!(peer.ingest(frame.clone()), Ingest::Applied);
     assert_eq!(f.engine.ingest(frame), Ingest::Confirmed);
     let landed = f.engine.logs[&f.space].events().last().unwrap();
@@ -359,7 +368,7 @@ pub(super) fn encrypted_exact_source_and_peer_readability(
         .into_iter()
         .find(|e| e.client_id() == response.client_id)
         .unwrap();
-    let frame = envelope_frame(&peer, env);
+    let frame = envelope_frame(&peer, env)?;
     assert_eq!(f.engine.ingest(frame), Ingest::Applied);
     assert!(
         matches!(&f.engine.logs[&f.space].events().last().unwrap().body, EventBody::MessagePosted { text, .. } if text == "peer after typed Plan")

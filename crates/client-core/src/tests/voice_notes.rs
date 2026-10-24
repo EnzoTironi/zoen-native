@@ -135,7 +135,8 @@ fn legacy_two_event_voice_replies_still_replay_once() {
 }
 
 #[test]
-fn voice_reply_syncs_its_metadata_and_encrypted_bytes_and_survives_replay() {
+fn voice_reply_syncs_its_metadata_and_encrypted_bytes_and_survives_replay(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     search_compatibility_cases::voice_reply_syncs_its_metadata_and_encrypted_bytes_and_survives_replay()
 }
 

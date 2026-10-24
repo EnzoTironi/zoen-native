@@ -16,19 +16,22 @@ pub(super) fn profile(root: &Signer, kind: IdentityKind) -> Identity {
     }
 }
 
-pub(super) fn ordered(engine: &Engine, envelope: Envelope) -> Sequenced {
+pub(super) fn ordered(
+    engine: &Engine,
+    envelope: Envelope,
+) -> std::result::Result<Sequenced, Box<dyn std::error::Error>> {
     let log = engine.logs.get(envelope.space());
     let seq = log.map(SpaceLog::next_seq).unwrap_or(0);
     let prev = log
         .and_then(|l| l.events().last())
         .map(|e| e.hash.clone())
         .unwrap_or_else(|| GENESIS_PREV.into());
-    Sequenced {
+    Ok(Sequenced {
         seq,
-        hash: chain_hash(envelope.space(), seq, &prev, &envelope.wire_hash()),
+        hash: chain_hash(envelope.space(), seq, &prev, &envelope.wire_hash())?,
         prev,
         env: envelope,
-    }
+    })
 }
 
 pub(super) fn colliding_native_reply(
@@ -55,7 +58,7 @@ pub(super) fn colliding_native_reply(
             media: None,
             forwarded: false,
         },
-    );
+    )?;
     let bytes = fork
         .engine
         .device()
@@ -101,7 +104,7 @@ pub(super) fn receipt_source_message(
         )
         .unwrap();
     fixture.owner.mls_seal_outbox().unwrap();
-    let frame = ordered(&fixture.owner, fixture.owner.outbox_envelopes().remove(0));
+    let frame = ordered(&fixture.owner, fixture.owner.outbox_envelopes().remove(0))?;
     assert_eq!(fixture.owner.ingest(frame.clone()), Ingest::Confirmed);
     Ok(frame)
 }

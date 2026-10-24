@@ -28,7 +28,7 @@ pub mod recovery;
 mod crypto;
 pub use crypto::CryptoError;
 mod error;
-pub use error::LogError;
+pub use error::{AppendError, LogError};
 
 use content::{Payload, SignedContent};
 use ed25519_dalek::{Signature, Signer as _, SigningKey, Verifier, VerifyingKey};
@@ -121,6 +121,9 @@ impl Author {
 
     /// Builds and signs an event that isn't sequenced yet (`seq`/`prev`/`hash` empty).
     /// `seen` is the newest relay-ordered event this device has applied in the Space.
+    ///
+    /// # Errors
+    /// Returns body serialization failure before producing a signature.
     pub fn sign_event(
         &self,
         space: &str,
@@ -128,7 +131,7 @@ impl Author {
         at_ms: i64,
         seen: Option<Seen>,
         body: EventBody,
-    ) -> Event {
+    ) -> Result<Event, serde_json::Error> {
         let content = SignedContent {
             v: u32::from(EVENT_FORMAT),
             space: space.to_string(),
@@ -137,11 +140,11 @@ impl Author {
             device: self.device.clone(),
             at_ms,
             seen: seen.as_ref().map(Into::into),
-            payload: Some(Payload::Body(content::encode_body(&body))),
+            payload: Some(Payload::Body(content::encode_body(&body)?)),
         }
         .encode();
         let sig = self.key.sign(content::content_hash(&content).as_bytes());
-        Event {
+        Ok(Event {
             space: space.to_string(),
             seq: 0,
             prev: String::new(),
@@ -156,7 +159,7 @@ impl Author {
             seen,
             content,
             sealed_wire: None,
-        }
+        })
     }
 
     /// Signs MLS ciphertext for `space` (ADR 0026). The relay sees the framing (kind,
@@ -292,23 +295,30 @@ pub fn wire_hash_of(e: &Event) -> String {
     e.sealed_wire.clone().unwrap_or_else(|| content_hash_of(e))
 }
 
-/// The chain hash for `e` at (`seq`, `prev`).
-#[must_use]
-pub fn chain_hash(space: &str, seq: u64, prev: &str, wire: &str) -> String {
-    sha256_hex(
-        &serde_json::to_vec(&ChainLink {
-            space,
-            seq,
-            prev,
-            wire,
-        })
-        .expect("serialização"),
-    )
+/// The chain hash for `e` at (`seq`, `prev`), preserving the ordered JSON tuple.
+///
+/// # Errors
+/// Returns serialization failure without producing a chain hash.
+pub fn chain_hash(
+    space: &str,
+    seq: u64,
+    prev: &str,
+    wire: &str,
+) -> Result<String, serde_json::Error> {
+    Ok(sha256_hex(&serde_json::to_vec(&ChainLink {
+        space,
+        seq,
+        prev,
+        wire,
+    })?))
 }
 
 /// SHA-256 of any serializable value (used to pin approvals to content).
-pub fn content_hash<T: serde::Serialize>(value: &T) -> String {
-    sha256_hex(&serde_json::to_vec(value).expect("serialização"))
+///
+/// # Errors
+/// Returns the serializer error without hashing partial or substitute bytes.
+pub fn content_hash<T: serde::Serialize>(value: &T) -> Result<String, serde_json::Error> {
+    Ok(sha256_hex(&serde_json::to_vec(value)?))
 }
 
 /// Whether `hexkey` is an Ed25519 public key (a device or identity key).
@@ -425,7 +435,10 @@ fn verify_place(before: &[Event], e: &Event) -> Result<(), LogError> {
 /// # Errors
 /// Returns `BadHash` for a mismatched chain link, or the author verification error.
 pub fn verify_event(e: &Event) -> Result<(), LogError> {
-    if chain_hash(&e.space, e.seq, &e.prev, &wire_hash_of(e)) != e.hash {
+    if chain_hash(&e.space, e.seq, &e.prev, &wire_hash_of(e))
+        .map_err(|_| LogError::Serialization { seq: e.seq })?
+        != e.hash
+    {
         return Err(LogError::BadHash { seq: e.seq });
     }
     verify_author(e)
@@ -499,23 +512,34 @@ impl SpaceLog {
     }
 
     /// Sequences a signed event here (local-only Spaces: this device is the sequencer).
-    pub fn sequence(&mut self, mut e: Event) -> &Event {
+    ///
+    /// # Errors
+    /// Returns chain serialization failure before changing the log.
+    pub fn sequence(&mut self, e: Event) -> Result<&Event, serde_json::Error> {
+        self.sequence_with(e, chain_hash)
+    }
+
+    fn sequence_with(
+        &mut self,
+        mut e: Event,
+        hash: impl FnOnce(&str, u64, &str, &str) -> Result<String, serde_json::Error>,
+    ) -> Result<&Event, serde_json::Error> {
         e.seq = self.next_seq();
         e.prev = self.head_hash().to_string();
-        e.hash = chain_hash(&self.space, e.seq, &e.prev, &wire_hash_of(&e));
-        self.events.push_mut(e)
+        e.hash = hash(&self.space, e.seq, &e.prev, &wire_hash_of(&e))?;
+        Ok(self.events.push_mut(e))
     }
 
     /// Signs and sequences locally in one step (local-only Spaces and tests).
     ///
     /// # Errors
-    /// Returns identifier generation failures before signing or changing the log.
+    /// Returns identifier or serialization failures before changing the log.
     pub fn append(
         &mut self,
         signer: &Signer,
         at_ms: i64,
         body: EventBody,
-    ) -> Result<&Event, types::IdError> {
+    ) -> Result<&Event, AppendError> {
         let client_id = types::new_ulid(at_ms)?;
         let e = Author::root(signer.clone()).sign_event(
             &self.space,
@@ -523,8 +547,8 @@ impl SpaceLog {
             at_ms,
             self.head(),
             body,
-        );
-        Ok(self.sequence(e))
+        )?;
+        Ok(self.sequence(e)?)
     }
 
     /// Accepts an event sequenced elsewhere (the relay): it must be the next one, link
@@ -578,5 +602,7 @@ impl SpaceLog {
     }
 }
 
+#[cfg(test)]
+mod serialization_tests;
 #[cfg(test)]
 mod tests;

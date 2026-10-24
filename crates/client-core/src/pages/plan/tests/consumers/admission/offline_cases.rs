@@ -2,7 +2,8 @@
 use super::*;
 
 #[test]
-pub(super) fn signed_offline_creation_keeps_two_legacy_edits_without_an_authenticated_page_seed() {
+pub(super) fn signed_offline_creation_keeps_two_legacy_edits_without_an_authenticated_page_seed(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new().unwrap();
     let item = new_id("native-offline-plan").unwrap();
     let creation = fixture.queue(EventBody::ItemCreated {
@@ -96,7 +97,7 @@ pub(super) fn signed_offline_creation_keeps_two_legacy_edits_without_an_authenti
     assert_eq!(storage(&fixture), before);
 
     for event in [creation, first_event, second_event] {
-        deliver(&mut fixture.engine, &event, Ingest::Confirmed);
+        deliver(&mut fixture.engine, &event, Ingest::Confirmed)?;
     }
     let before = storage(&fixture);
     let read = fixture.engine.plan_page(&item).unwrap();
@@ -106,10 +107,12 @@ pub(super) fn signed_offline_creation_keeps_two_legacy_edits_without_an_authenti
     assert!(read.legacy_edit_admitted);
     assert_eq!(read.total_cents, Some(248));
     assert_eq!(storage(&fixture), before);
+    Ok(())
 }
 
 #[test]
-pub(super) fn typed_legacy_controls_preserve_two_offline_edits_despite_the_crdt_session_gate() {
+pub(super) fn typed_legacy_controls_preserve_two_offline_edits_despite_the_crdt_session_gate(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new().unwrap();
     let first = {
         let observed_hash = fixture
@@ -183,7 +186,7 @@ pub(super) fn typed_legacy_controls_preserve_two_offline_edits_despite_the_crdt_
     assert_eq!(storage(&fixture), before);
 
     for event in [first_event, second_event] {
-        deliver(&mut fixture.engine, &event, Ingest::Confirmed);
+        deliver(&mut fixture.engine, &event, Ingest::Confirmed)?;
     }
     let before = storage(&fixture);
     let read = fixture.engine.plan_page(&fixture.item).unwrap();
@@ -193,6 +196,7 @@ pub(super) fn typed_legacy_controls_preserve_two_offline_edits_despite_the_crdt_
     assert!(read.legacy_edit_admitted);
     assert_eq!(read.total_cents, Some(203));
     assert_eq!(storage(&fixture), before);
+    Ok(())
 }
 
 #[test]

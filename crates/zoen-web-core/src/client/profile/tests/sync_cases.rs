@@ -1,8 +1,9 @@
 use super::*;
 
 #[test]
-fn own_remote_update_adopts_without_echo_and_refreshes_on_reconnect() {
-    let (mut client, _, _) = client();
+fn own_remote_update_adopts_without_echo_and_refreshes_on_reconnect(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, _, _) = client()?;
     client.saved.profile.own_sync = Some(OwnProfileSync::clean(1));
     let initial = client.receive(&ServerFrame::SyncDone.encode(), 10).unwrap();
     assert!(initial.frames.iter().any(|frame| matches!(ClientFrame::decode(frame),Ok(ClientFrame::Req{op:Op::GetProfiles{ids},..}) if ids.contains(&client.account.identity))));
@@ -13,13 +14,13 @@ fn own_remote_update_adopts_without_echo_and_refreshes_on_reconnect() {
         photo: Some(photo.clone()),
         ..Default::default()
     };
-    let mut remote = remote_profile(&client, 2, "Other device", false);
+    let mut remote = remote_profile(&client, 2, "Other device", false)?;
     remote.ciphertext = profile::seal_profile(
         &client.my_profile_fields().unwrap().0,
         &client.account.identity,
         2,
         &fields,
-    );
+    )?;
     remote.signed = profile::sign_upload(
         &Author::device(
             &NativeSigner::from_secret(&[71; 32]),
@@ -66,17 +67,19 @@ fn own_remote_update_adopts_without_echo_and_refreshes_on_reconnect() {
         .unwrap()
         .pending
         .is_none());
+    Ok(())
 }
 
 #[test]
-fn pending_local_profile_rebases_and_late_ack_preserves_it() {
-    let (mut client, _, _) = client();
+fn pending_local_profile_rebases_and_late_ack_preserves_it(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, _, _) = client()?;
     client.saved.profile.own_sync = Some(OwnProfileSync::clean(1));
     request(
         &mut client,
         json!({"op":"update_profile","name":"Pending local","bio":"local"}),
     );
-    let remote = remote_profile(&client, 4, "Remote newer", false);
+    let remote = remote_profile(&client, 4, "Remote newer", false)?;
     let applied = receive_own(&mut client, remote);
     assert_eq!(client.my_profile_fields().unwrap().1, 5);
     assert_eq!(client.my_profile_fields().unwrap().2.name, "Pending local");
@@ -96,11 +99,13 @@ fn pending_local_profile_rebases_and_late_ack_preserves_it() {
         reload.saved.profile.own_sync.as_ref().unwrap().pending,
         Some(5)
     );
+    Ok(())
 }
 
 #[test]
-fn unknown_rotated_key_blocks_old_key_publication_without_losing_local_intent() {
-    let (mut client, _, _) = client();
+fn unknown_rotated_key_blocks_old_key_publication_without_losing_local_intent(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, _, _) = client()?;
     client.saved.profile.own_sync = Some(OwnProfileSync::clean(1));
     request(
         &mut client,
@@ -115,7 +120,7 @@ fn unknown_rotated_key_blocks_old_key_publication_without_losing_local_intent() 
         .seen_version = 100;
     client.saved.profile.own_sync.as_mut().unwrap().pending = Some(100);
     client.synced = true;
-    let remote = remote_profile(&client, 8, "Rotated", true);
+    let remote = remote_profile(&client, 8, "Rotated", true)?;
     let update = receive_own(&mut client, remote);
     assert!(client
         .saved
@@ -126,11 +131,11 @@ fn unknown_rotated_key_blocks_old_key_publication_without_losing_local_intent() 
         .key_unavailable());
     assert_eq!(client.my_profile_fields().unwrap().2.name, "Pending local");
     assert!(!update.frames.iter().any(|frame| is_profile_upload(frame)));
-    let old = remote_profile(&client, 2, "Old key", false);
+    let old = remote_profile(&client, 2, "Old key", false)?;
     receive_own(&mut client, old);
     reply_upload(&mut client, 2);
     reply_upload(&mut client, 100);
-    let higher_old_key = remote_profile(&client, 101, "Higher old key", false);
+    let higher_old_key = remote_profile(&client, 101, "Higher old key", false)?;
     let update = receive_own(&mut client, higher_old_key);
     let state = client.saved.profile.own_sync.as_ref().unwrap();
     assert_eq!(state.blocked_at_version, Some(8));
@@ -150,11 +155,13 @@ fn unknown_rotated_key_blocks_old_key_publication_without_losing_local_intent() 
         .as_ref()
         .unwrap()
         .key_unavailable());
+    Ok(())
 }
 
 #[test]
-fn failed_own_lookup_retains_work_and_uses_bounded_retry() {
-    let (mut client, _, _) = client();
+fn failed_own_lookup_retains_work_and_uses_bounded_retry(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, _, _) = client()?;
     client.receive(&ServerFrame::SyncDone.encode(), 10).unwrap();
     client
         .profile_reply(
@@ -173,11 +180,13 @@ fn failed_own_lookup_retains_work_and_uses_bounded_retry() {
         .frames
         .iter()
         .any(|frame| is_profile_upload(frame)));
+    Ok(())
 }
 
 #[test]
-fn invalid_own_lookup_retries_without_releasing_pending_profile() {
-    let (mut client, _, _) = client();
+fn invalid_own_lookup_retries_without_releasing_pending_profile(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, _, _) = client()?;
     client.saved.profile.own_sync = Some(OwnProfileSync::clean(1));
     request(
         &mut client,
@@ -187,7 +196,7 @@ fn invalid_own_lookup_retries_without_releasing_pending_profile() {
     let lookup = client.profile_net.profiles_request.unwrap();
     let before = client.my_profile_fields().unwrap();
     let state = client.saved.profile.own_sync.clone();
-    let mut forged = remote_profile(&client, 2, "Forged", false);
+    let mut forged = remote_profile(&client, 2, "Forged", false)?;
     forged.signed.sig = "00".repeat(64);
     let update = client
         .receive(
@@ -207,11 +216,13 @@ fn invalid_own_lookup_retries_without_releasing_pending_profile() {
         .contains(&client.account.identity));
     assert_eq!(client.profile_net.profiles_retry, 5011);
     assert!(!update.frames.iter().any(|frame| is_profile_upload(frame)));
+    Ok(())
 }
 
 #[test]
-fn missing_known_publication_retains_own_work_and_pending_intent() {
-    let (mut client, _, _) = client();
+fn missing_known_publication_retains_own_work_and_pending_intent(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, _, _) = client()?;
     client.saved.profile.own_sync = Some(OwnProfileSync::clean(1));
     request(
         &mut client,
@@ -240,11 +251,13 @@ fn missing_known_publication_retains_own_work_and_pending_intent() {
         Some(2)
     );
     assert!(!update.frames.iter().any(|frame| is_profile_upload(frame)));
+    Ok(())
 }
 
 #[test]
-fn missing_profile_bootstrap_and_clean_linked_seed_have_distinct_completion() {
-    let (mut client, _, _) = client();
+fn missing_profile_bootstrap_and_clean_linked_seed_have_distinct_completion(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, _, _) = client()?;
     client.saved.profile.own_sync = Some(OwnProfileSync::migrate(1, 0));
     client.receive(&ServerFrame::SyncDone.encode(), 10).unwrap();
     let lookup = client.profile_net.profiles_request.unwrap();
@@ -263,7 +276,7 @@ fn missing_profile_bootstrap_and_clean_linked_seed_have_distinct_completion() {
         .fetched
         .contains(&client.account.identity));
     assert!(update.frames.iter().any(|frame| is_profile_upload(frame)));
-    let (mut linked, _, _) = self::client();
+    let (mut linked, _, _) = self::client()?;
     linked.saved.profile.own_sync = Some(OwnProfileSync::default());
     linked.receive(&ServerFrame::SyncDone.encode(), 10).unwrap();
     let lookup = linked.profile_net.profiles_request.unwrap();
@@ -283,11 +296,13 @@ fn missing_profile_bootstrap_and_clean_linked_seed_have_distinct_completion() {
         .contains(&linked.account.identity));
     assert_eq!(linked.profile_net.profiles_retry, 5011);
     assert!(!update.frames.iter().any(|frame| is_profile_upload(frame)));
+    Ok(())
 }
 
 #[test]
-fn stale_signed_own_record_cannot_satisfy_publication_floor() {
-    let (mut client, _, _) = client();
+fn stale_signed_own_record_cannot_satisfy_publication_floor(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, _, _) = client()?;
     client.saved.profile.own_sync = Some(OwnProfileSync::clean(1));
     request(
         &mut client,
@@ -295,7 +310,7 @@ fn stale_signed_own_record_cannot_satisfy_publication_floor() {
     );
     client.receive(&ServerFrame::SyncDone.encode(), 10).unwrap();
     let lookup = client.profile_net.profiles_request.unwrap();
-    let old = remote_profile(&client, 0, "Old", false);
+    let old = remote_profile(&client, 0, "Old", false)?;
     let update = client
         .receive(
             &ServerFrame::Res {
@@ -317,4 +332,5 @@ fn stale_signed_own_record_cannot_satisfy_publication_floor() {
         Some(2)
     );
     assert!(!update.frames.iter().any(|frame| is_profile_upload(frame)));
+    Ok(())
 }

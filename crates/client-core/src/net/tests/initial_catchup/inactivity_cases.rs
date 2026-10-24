@@ -34,11 +34,11 @@ pub(super) fn initial_progress_does_not_revive_expiry_or_extend_completed_period
 
 #[tokio::test(flavor = "current_thread")]
 pub(super) async fn duplicate_historical_gap_invalid_and_ephemeral_traffic_cannot_renew_initial_sync(
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("ws://{}", listener.local_addr().unwrap());
-    let (mut engine, _, author, mut head, genesis) = pending_engine(&url, ":memory:");
+    let (mut engine, _, author, mut head, genesis) = pending_engine(&url, ":memory:")?;
     let mut other_head = None;
     let historical = sequence(
         Envelope::plain(&author.sign_event(
@@ -51,9 +51,9 @@ pub(super) async fn duplicate_historical_gap_invalid_and_ephemeral_traffic_canno
                 kind: SpaceKind::Group,
                 privacy: Privacy::Closed,
             },
-        )),
+        )?),
         &mut other_head,
-    );
+    )?;
     assert_eq!(engine.ingest(historical.clone()), Ingest::Applied);
     let next = sequence(
         Envelope::plain(&author.sign_event(
@@ -69,9 +69,9 @@ pub(super) async fn duplicate_historical_gap_invalid_and_ephemeral_traffic_canno
                 media: None,
                 forwarded: false,
             },
-        )),
+        )?),
         &mut head,
-    );
+    )?;
     let mut invalid = next;
     let replacement = if invalid.env.sig.starts_with('0') {
         "1"
@@ -93,9 +93,9 @@ pub(super) async fn duplicate_historical_gap_invalid_and_ephemeral_traffic_canno
                 media: None,
                 forwarded: false,
             },
-        )),
+        )?),
         &mut head,
-    );
+    )?;
     let engine = Arc::new(Mutex::new(engine));
     let before = serde_json::to_vec(&lock(&engine).store.outbox().unwrap()[0].event).unwrap();
     let ctx = context(&engine);
@@ -169,4 +169,5 @@ pub(super) async fn duplicate_historical_gap_invalid_and_ephemeral_traffic_canno
     );
     drop(e);
     ctx.engine.revoke();
+    Ok(())
 }

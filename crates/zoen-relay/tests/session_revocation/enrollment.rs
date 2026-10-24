@@ -1,11 +1,12 @@
 use super::*;
 
 #[tokio::test]
-async fn enrollment_and_link_box_delivery_commit_or_rollback_together() {
-    let test = TestRelay::new().await;
-    let root = Signer::generate();
-    let first = Author::device(&root, Signer::generate());
-    let next = Author::device(&root, Signer::generate());
+async fn enrollment_and_link_box_delivery_commit_or_rollback_together(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let test = TestRelay::new().await?;
+    let root = Signer::generate()?;
+    let first = Author::device(&root, Signer::generate()?);
+    let next = Author::device(&root, Signer::generate()?);
     let mut controller = connect(&test.ws_url, &first).await;
     request(
         &mut controller,
@@ -16,7 +17,7 @@ async fn enrollment_and_link_box_delivery_commit_or_rollback_together() {
     )
     .await
     .unwrap();
-    let box_id = Signer::generate().id();
+    let box_id = Signer::generate()?.id();
     let pending = Author::device(&next.key, next.key.clone());
     let mut waiting = connect(&test.ws_url, &pending).await;
     assert_eq!(
@@ -54,8 +55,8 @@ async fn enrollment_and_link_box_delivery_commit_or_rollback_together() {
     let mut linked = connect(&test.ws_url, &next).await;
     // Retry-safe enrollment keeps an already-active certificate, while duplicate box
     // delivery aborts the whole transaction and cannot leave a third device enrolled.
-    let third = Author::device(&root, Signer::generate());
-    let occupied_id = Signer::generate().id();
+    let third = Author::device(&root, Signer::generate()?);
+    let occupied_id = Signer::generate()?.id();
     request(
         &mut controller,
         3,
@@ -77,8 +78,8 @@ async fn enrollment_and_link_box_delivery_commit_or_rollback_together() {
             .unwrap(),
         Some(vec![1])
     );
-    let invalid_id = Signer::generate().id();
-    let bad_cert = Author::device(&Signer::generate(), Signer::generate());
+    let invalid_id = Signer::generate()?.id();
+    let bad_cert = Author::device(&Signer::generate()?, Signer::generate()?);
     assert!(request(&mut controller, 5, link_op(&bad_cert, &invalid_id))
         .await
         .is_err());
@@ -88,7 +89,7 @@ async fn enrollment_and_link_box_delivery_commit_or_rollback_together() {
         .is_none());
     assert_device_absent(&test, &bad_cert).await;
     // History manifests still work without a certificate and do not enroll any key.
-    let history_id = Signer::generate().id();
+    let history_id = Signer::generate()?.id();
     request(
         &mut controller,
         6,
@@ -119,13 +120,15 @@ async fn enrollment_and_link_box_delivery_commit_or_rollback_together() {
     let _ = controller.close(None).await;
     let _ = linked.close(None).await;
     test.close().await;
+    Ok(())
 }
 
 #[tokio::test]
-async fn an_enrollment_retry_can_finish_while_a_backup_writer_waits_for_its_vault() {
-    let mut test = TestRelay::new().await;
-    let root = Signer::generate();
-    let device = Author::device(&root, Signer::generate());
+async fn an_enrollment_retry_can_finish_while_a_backup_writer_waits_for_its_vault(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut test = TestRelay::new().await?;
+    let root = Signer::generate()?;
+    let device = Author::device(&root, Signer::generate()?);
     let mut controller = connect(&test.ws_url, &device).await;
     request(
         &mut controller,
@@ -244,4 +247,5 @@ async fn an_enrollment_retry_can_finish_while_a_backup_writer_waits_for_its_vaul
         "an enrollment retry mutated the device row"
     );
     test.close().await;
+    Ok(())
 }

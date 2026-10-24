@@ -1,9 +1,10 @@
 use super::*;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn actual_signed_owner_review_freezes_the_flag_and_arguments_without_exposing_raw_rule() {
+async fn actual_signed_owner_review_freezes_the_flag_and_arguments_without_exposing_raw_rule(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let server = relay(Mode::Normal).await;
-    let mut f = Fixture::new(&server.url);
+    let mut f = Fixture::new(&server.url)?;
     online(&f.client, true).await;
     f.client.stop_sync();
     let base = deck(&f);
@@ -22,7 +23,7 @@ async fn actual_signed_owner_review_freezes_the_flag_and_arguments_without_expos
     let ask: ToolAsk = serde_json::from_str(&proposal.continuation_json).unwrap();
     assert!(ask.call.requires_review);
     assert_eq!(ask.rule, zoen_agentd::NATIVE_REVIEW_REQUIRED);
-    f.approve(&request).await;
+    f.approve(&request).await?;
     let permit = f
         .client
         .approved_tool_turn(&request.id, &"88".repeat(32))
@@ -79,4 +80,5 @@ async fn actual_signed_owner_review_freezes_the_flag_and_arguments_without_expos
             .version,
         base.version
     );
+    Ok(())
 }

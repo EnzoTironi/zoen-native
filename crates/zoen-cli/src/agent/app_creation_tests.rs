@@ -81,8 +81,9 @@ fn context(
 }
 
 #[test]
-fn binary_ui_transports_are_not_offered_and_cannot_replay_a_cached_model_success() {
-    let fixture = crate::deckcraft::tests::fixture();
+fn binary_ui_transports_are_not_offered_and_cannot_replay_a_cached_model_success(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let fixture = crate::deckcraft::tests::fixture()?;
     let space = fixture
         .client
         .item(fixture.base.item_id.clone())
@@ -120,14 +121,16 @@ fn binary_ui_transports_are_not_offered_and_cannot_replay_a_cached_model_success
     drop(cx);
     drop(fixture.client);
     std::fs::remove_dir_all(fixture.path).unwrap();
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[ignore = "explicit pinned offline WASI component and configured genuine editor; no providers or services"]
-async fn offline_create_approve_lost_result_recover_edit_and_cold_reopen() {
+async fn offline_create_approve_lost_result_recover_edit_and_cold_reopen(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let worker = crate::deckcraft::tests::worker();
-    let fixture = crate::deckcraft::tests::fixture();
+    let fixture = crate::deckcraft::tests::fixture()?;
     let space = fixture
         .client
         .item(fixture.base.item_id.clone())
@@ -158,7 +161,7 @@ async fn offline_create_approve_lost_result_recover_edit_and_cold_reopen() {
     assert_eq!(client.items().len(), before, "staging is inert");
     drop(cx);
     drop(client);
-    canonical_tool_approval_tests::signed_owner_resolution(&path, &space, &request, &owner);
+    canonical_tool_approval_tests::signed_owner_resolution(&path, &space, &request, &owner)?;
     client = canonical_tool_approval_tests::reopen(&path, vault.clone());
     let cx = context(&client, Some(worker.clone()), &journal, &space, &starts);
     let host = SpaceTools::new(&client, &cx, &space, &owner, &source);
@@ -200,7 +203,7 @@ async fn offline_create_approve_lost_result_recover_edit_and_cold_reopen() {
     assert_eq!(client.items().len(), before + 1);
     drop(cx);
     drop(client);
-    canonical_tool_approval_tests::signed_owner_resolution(&path, &space, &edit, &owner);
+    canonical_tool_approval_tests::signed_owner_resolution(&path, &space, &edit, &owner)?;
     client = canonical_tool_approval_tests::reopen(&path, vault.clone());
     let cx = context(&client, Some(worker.clone()), &journal, &space, &starts);
     canonical_tool_approval_tests::handle(&client, &cx, &space, &source).await;
@@ -236,6 +239,7 @@ async fn offline_create_approve_lost_result_recover_edit_and_cold_reopen() {
     assert!(cold.verify_all().iter().all(|result| result.valid));
     drop(cold);
     std::fs::remove_dir_all(path).unwrap();
+    Ok(())
 }
 
 #[test]

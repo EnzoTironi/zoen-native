@@ -2,9 +2,10 @@ use super::*;
 use crate::agent_binary_documents::tests::grid_fixture;
 const GRID7: &[u8] = include_bytes!("../../app_binary_documents/fixtures/gridcraft-7.xlsx");
 #[test]
-fn reviewed_grid_read_cannot_replace_its_stable_source_step_with_a_write() {
-    let f = grid_fixture();
-    signed_trust(&f, TrustLevel::Act);
+fn reviewed_grid_read_cannot_replace_its_stable_source_step_with_a_write(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = grid_fixture()?;
+    signed_trust(&f, TrustLevel::Act)?;
     let read = stage(&f, "read_gridcraft");
     owner_decide(
         &f,
@@ -29,11 +30,13 @@ fn reviewed_grid_read_cannot_replace_its_stable_source_step_with_a_write() {
         .is_err());
     assert_eq!(counts(&f), before);
     assert_eq!(current(&f).version, 1);
+    Ok(())
 }
 #[test]
-fn certified_grid_turn_uses_current_native_source_and_exact_approved_binary_cas() {
-    let f = grid_fixture();
-    signed_trust(&f, TrustLevel::Act);
+fn certified_grid_turn_uses_current_native_source_and_exact_approved_binary_cas(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = grid_fixture()?;
+    signed_trust(&f, TrustLevel::Act)?;
     let write = stage(&f, "gridcraft_cell_set");
     assert!(f.agent.approved_tool_turn(&write.id, WORKER).is_err());
     owner_decide(
@@ -69,14 +72,16 @@ fn certified_grid_turn_uses_current_native_source_and_exact_approved_binary_cas(
         .expect("retained result");
     assert_eq!(repeated.sha256, accepted.sha256);
     assert_eq!(repeated.version, 2);
+    Ok(())
 }
 #[test]
-fn binary_approval_refuses_cross_format_tools_without_creating_requests() {
+fn binary_approval_refuses_cross_format_tools_without_creating_requests(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for (f, tool) in [
-        (grid_fixture(), "deckcraft_slide_notes"),
-        (fixture(), "gridcraft_cell_set"),
+        (grid_fixture()?, "deckcraft_slide_notes"),
+        (fixture()?, "gridcraft_cell_set"),
     ] {
-        signed_trust(&f, TrustLevel::Act);
+        signed_trust(&f, TrustLevel::Act)?;
         let t = turn(&f);
         let before = counts(&f);
         assert!(f
@@ -85,11 +90,13 @@ fn binary_approval_refuses_cross_format_tools_without_creating_requests() {
             .is_err());
         assert_eq!(counts(&f), before);
     }
+    Ok(())
 }
 #[test]
-fn grid_approved_turn_cannot_outlive_current_app_grant() {
-    let f = grid_fixture();
-    signed_trust(&f, TrustLevel::Act);
+fn grid_approved_turn_cannot_outlive_current_app_grant(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = grid_fixture()?;
+    signed_trust(&f, TrustLevel::Act)?;
     let request = stage(&f, "gridcraft_cell_set");
     owner_decide(
         &f,
@@ -139,4 +146,5 @@ fn grid_approved_turn_cannot_outlive_current_app_grant() {
     assert!(f.agent.approved_tool_turn(&request.id, WORKER).is_err());
     assert_eq!(counts(&f), before);
     assert_eq!(current(&f).version, 1);
+    Ok(())
 }

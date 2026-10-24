@@ -238,7 +238,7 @@ impl Engine {
             &body,
             EventBody::CallV1 { .. } | EventBody::CallTransportV1 { .. }
         ) {
-            let probe = signer.sign_event(space, "call-admission", at_ms, None, body.clone());
+            let probe = signer.sign_event(space, "call-admission", at_ms, None, body.clone())?;
             if !self.state.call_event_valid(&probe, &self.identities)
                 || !self.state.call_transport_valid(&probe)
             {
@@ -273,7 +273,7 @@ impl Engine {
         }
         let client_id = new_ulid(at_ms)?;
         let seen = self.logs.get(space).and_then(SpaceLog::head);
-        let signed = signer.sign_event(space, &client_id, at_ms, seen, body);
+        let signed = signer.sign_event(space, &client_id, at_ms, seen, body)?;
         let empty = State::default();
         let scoped = self.space_projections.get(space).unwrap_or(&empty);
         let context =
@@ -286,12 +286,16 @@ impl Engine {
                 ),
             });
         }
-        let event = self
-            .logs
-            .entry(space.to_string())
-            .or_insert_with(|| SpaceLog::new(space))
-            .sequence(signed)
-            .clone();
+        // Prepare a new log before publishing it to the in-memory directory.
+        // A serialization failure must not create an empty phantom Space.
+        let event = if let Some(log) = self.logs.get_mut(space) {
+            log.sequence(signed)?.clone()
+        } else {
+            let mut log = SpaceLog::new(space);
+            let event = log.sequence(signed)?.clone();
+            self.logs.insert(space.to_owned(), log);
+            event
+        };
         if let Err(e) = self.store.append_event(&event) {
             // Mantém memória e disco iguais: desfaz o append em memória recarregando.
             self.reload()?;

@@ -59,9 +59,9 @@ pub(super) async fn healthy_socket_recovers_final_unannounced_event_without_reco
         ),
     ] {
         let ev = sequence(
-            Envelope::plain(&owner.sign_event(SPACE, id, AT, head.clone(), body)),
+            Envelope::plain(&owner.sign_event(SPACE, id, AT, head.clone(), body)?),
             &mut head,
-        );
+        )?;
         canonical.append_event(&ev.plain_event().unwrap()).unwrap();
         assert_eq!(engine.ingest(ev), Ingest::Applied);
     }
@@ -79,9 +79,9 @@ pub(super) async fn healthy_socket_recovers_final_unannounced_event_without_reco
                 media: None,
                 forwarded: false,
             },
-        )),
+        )?),
         &mut head,
-    );
+    )?;
     let engine = Arc::new(Mutex::new(engine));
     let (cmd, mut commands) = mpsc::unbounded_channel();
     let (status, _) = watch::channel(NetStatus {
@@ -344,9 +344,9 @@ pub(super) async fn healthy_socket_discovers_new_authorized_space_when_joined_an
             ),
         ] {
             let event = sequence(
-                Envelope::plain(&peer.sign_event(SPACE, id, AT, head.clone(), body)),
+                Envelope::plain(&peer.sign_event(SPACE, id, AT, head.clone(), body)?),
                 &mut head,
-            );
+            )?;
             canonical
                 .append_event(&event.plain_event().unwrap())
                 .unwrap();
@@ -365,9 +365,9 @@ pub(super) async fn healthy_socket_discovers_new_authorized_space_when_joined_an
                     media: None,
                     forwarded: false,
                 },
-            )),
+            )?),
             &mut head,
-        );
+        )?;
         canonical
             .append_event(&missing.plain_event().unwrap())
             .unwrap();
@@ -454,7 +454,7 @@ pub(super) async fn healthy_socket_discovers_new_authorized_space_when_joined_an
             futures_util::FutureExt::now_or_never(listener.accept()).is_none(),
             "recovery used the original healthy socket"
         );
-        (expected, missing)
+        Ok::<_, Box<dyn std::error::Error>>((expected, missing))
     };
     let mut backoff = Duration::from_millis(500);
     let client = async {
@@ -462,11 +462,12 @@ pub(super) async fn healthy_socket_discovers_new_authorized_space_when_joined_an
         finished.send(()).unwrap();
         exit
     };
-    let (exit, (expected, missing)) = tokio::time::timeout(Duration::from_secs(12), async {
+    let (exit, recovered) = tokio::time::timeout(Duration::from_secs(12), async {
         tokio::join!(client, server)
     })
     .await
     .expect("new Space discovery stalled without its lost Joined notification");
+    let (expected, missing) = recovered?;
     assert!(matches!(exit, Exit::Stop));
     ctx.engine.revoke();
     assert_eq!(Arc::strong_count(&engine), 1);

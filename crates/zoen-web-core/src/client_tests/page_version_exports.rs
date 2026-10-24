@@ -2,8 +2,9 @@
 use super::*;
 
 #[test]
-fn browser_export_selected_page_version_excludes_private_draft_and_survives_snapshot() {
-    let (mut client, _, mut log) = document_fixture();
+fn browser_export_selected_page_version_excludes_private_draft_and_survives_snapshot(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, _, mut log) = document_fixture()?;
     let original = "# Original 🪴\r\n\r\nRaw **text** e\u{301}\r\n";
     let made = doc(
         &mut client,
@@ -11,7 +12,7 @@ fn browser_export_selected_page_version_excludes_private_draft_and_survives_snap
         10,
     );
     let id = made.result["id"].as_str().unwrap().to_owned();
-    confirm_documents(&mut client, &mut log, made.update.unwrap(), 11);
+    confirm_documents(&mut client, &mut log, made.update.unwrap(), 11)?;
     let first = doc(
         &mut client,
         serde_json::json!({"op":"page","item_id":id}),
@@ -73,11 +74,12 @@ fn browser_export_selected_page_version_excludes_private_draft_and_survives_snap
         ),
         EventBody::MemberRemoved { identity: me },
         18,
-    );
+    )?;
     reopened.receive(&frame, 19).unwrap();
     assert!(reopened.document_request(&command.to_string(), 20).is_err());
     assert_eq!(
         serde_json::to_vec(&reopened.saved.documents).unwrap(),
         before
     );
+    Ok(())
 }

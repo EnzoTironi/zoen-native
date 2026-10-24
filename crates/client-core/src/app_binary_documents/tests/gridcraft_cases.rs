@@ -82,8 +82,10 @@ fn wrong_format_or_unknown_editor_cannot_write_or_change_any_receipt() {
     assert_eq!(counts(&f), before);
 }
 #[test]
-fn grid_cas_exact_replay_and_cold_history_use_the_same_encrypted_filedoc_authority() {
-    let path = std::env::temp_dir().join(format!("zoen-grid-cas-{}.sqlite", types::new_id("test")));
+fn grid_cas_exact_replay_and_cold_history_use_the_same_encrypted_filedoc_authority(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let path =
+        std::env::temp_dir().join(format!("zoen-grid-cas-{}.sqlite", types::new_id("test")?));
     let f = fixture(path.to_str().unwrap());
     let base = grid(&f, "create");
     let accepted = save(&f, &base, GRID_CHANGED, "accepted").unwrap();
@@ -113,6 +115,7 @@ fn grid_cas_exact_replay_and_cold_history_use_the_same_encrypted_filedoc_authori
     assert_eq!(original.current_version, 2);
     drop(client);
     std::fs::remove_file(path).unwrap();
+    Ok(())
 }
 #[test]
 fn grid_failed_transaction_and_revoked_grant_never_acknowledge_a_new_version() {

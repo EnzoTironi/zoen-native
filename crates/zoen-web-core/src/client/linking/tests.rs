@@ -298,7 +298,8 @@ fn outgoing_history_retains_exact_ciphertext_until_ack_and_native_wire_opens_it(
 }
 
 #[test]
-fn older_page_requires_matching_peer_request_space_and_signed_relay_record() {
+fn older_page_requires_matching_peer_request_space_and_signed_relay_record(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (primary, mut source) = source();
     let (_, linked, id) = prepare(&primary, &mut source, 106);
     ack(&mut source, id, 101);
@@ -314,7 +315,7 @@ fn older_page_requires_matching_peer_request_space_and_signed_relay_record() {
             kind: SpaceKind::Group,
             privacy: Privacy::EndToEnd,
         },
-    );
+    )?;
     let mut opened = author.sign_event(
         space,
         "msg_old",
@@ -328,7 +329,7 @@ fn older_page_requires_matching_peer_request_space_and_signed_relay_record() {
             media: None,
             forwarded: false,
         },
-    );
+    )?;
     let (content, sig) = author.sign_sealed(
         space,
         "msg_old",
@@ -345,7 +346,7 @@ fn older_page_requires_matching_peer_request_space_and_signed_relay_record() {
         String::new(),
     )
     .unwrap();
-    let outer = log.sequence(outer).clone();
+    let outer = log.sequence(outer)?.clone();
     opened.seq = outer.seq;
     opened.sealed_wire = Some(event_log::content_hash_of(&outer));
     let opened = device_link::opened_history_event(&outer, opened).unwrap();
@@ -472,7 +473,7 @@ fn older_page_requires_matching_peer_request_space_and_signed_relay_record() {
             media: None,
             forwarded: false,
         },
-    );
+    )?;
     large.seq = outer.seq;
     large.sealed_wire = Some(event_log::content_hash_of(&outer));
     let large = device_link::opened_history_event(&outer, large).unwrap();
@@ -569,4 +570,5 @@ fn older_page_requires_matching_peer_request_space_and_signed_relay_record() {
                 ..
             })
         )));
+    Ok(())
 }

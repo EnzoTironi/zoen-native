@@ -27,7 +27,8 @@ async fn claim(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn receipts_bind_canonical_targets_and_authenticated_actor() {
+async fn receipts_bind_canonical_targets_and_authenticated_actor(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let w = World::new("kp_claim_scope").await;
     let bruno = Device::new(&w, "bruno", &w.relay_url());
     bruno.start().await;
@@ -36,7 +37,7 @@ async fn receipts_bind_canonical_targets_and_authenticated_actor() {
     source.start().await;
     source.core.stop_sync();
     let mut ana = RawClient::reconnect(&w.relay_url(), source.author()).await;
-    let mut carol = RawClient::connect(&w.relay_url(), "carol").await;
+    let mut carol = RawClient::connect(&w.relay_url(), "carol").await?;
     let operation = operation_at(now_ms(), 1);
     for invalid in [
         bruno.account.identity_id.to_uppercase(),
@@ -122,9 +123,9 @@ async fn receipts_bind_canonical_targets_and_authenticated_actor() {
         .unwrap()
         .try_into()
         .unwrap();
-    let second = Author::device(&Signer::from_secret(&root), Signer::generate());
+    let second = Author::device(&Signer::from_secret(&root), Signer::generate()?);
     ana.request(Op::DeliverLink {
-        id: Signer::generate().id(),
+        id: Signer::generate()?.id(),
         sealed: vec![1],
         device: Some(protocol::DeviceCertificate {
             device: second.device.clone().unwrap(),
@@ -169,15 +170,17 @@ async fn receipts_bind_canonical_targets_and_authenticated_actor() {
         ));
     }
     assert_eq!(bruno.stock(&w).await, 29);
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn expired_future_and_noncanonical_operations_never_consume_packages() {
+async fn expired_future_and_noncanonical_operations_never_consume_packages(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let w = World::new("kp_claim_expiry").await;
     let bruno = Device::new(&w, "bruno", &w.relay_url());
     bruno.start().await;
     bruno.core.stop_sync();
-    let mut ana = RawClient::connect(&w.relay_url(), "ana").await;
+    let mut ana = RawClient::connect(&w.relay_url(), "ana").await?;
     let now = now_ms();
     for operation in [
         operation_at(now - KEY_PACKAGE_CLAIM_TTL_MS - 1000, 1),
@@ -215,6 +218,7 @@ async fn expired_future_and_noncanonical_operations_never_consume_packages() {
         KEY_PACKAGE_CLAIM_EXPIRED
     );
     assert_eq!(bruno.stock(&w).await, 32);
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

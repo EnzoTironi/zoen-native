@@ -2,10 +2,10 @@ use super::*;
 use std::path::PathBuf;
 struct Journal(PathBuf);
 impl Journal {
-    fn new() -> Self {
-        let home = std::env::temp_dir().join(types::new_id("image-host-journal"));
+    fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        let home = std::env::temp_dir().join(types::new_id("image-host-journal")?);
         std::fs::create_dir(&home).unwrap();
-        Self(home.join("steps.json"))
+        Ok(Self(home.join("steps.json")))
     }
 }
 impl Drop for Journal {
@@ -22,8 +22,9 @@ fn call(prompt: &str) -> ToolCall {
     }
 }
 #[test]
-fn stage_scheduling_survives_cold_open_and_lost_subprocess_reply_without_new_request() {
-    let journal = Journal::new();
+fn stage_scheduling_survives_cold_open_and_lost_subprocess_reply_without_new_request(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let journal = Journal::new()?;
     let call = call("A calm sea");
     let initial = retained_or_schedule(&journal.0, "space", "source", &call).unwrap();
     assert_eq!(
@@ -58,6 +59,7 @@ fn stage_scheduling_survives_cold_open_and_lost_subprocess_reply_without_new_req
         retained_or_schedule(&journal.0, "space", "source", &call).unwrap(),
         published
     );
+    Ok(())
 }
 #[test]
 fn ordinary_history_pruning_keeps_unresolved_review_and_recovery_boundedly() {
@@ -93,8 +95,9 @@ fn ordinary_history_pruning_keeps_unresolved_review_and_recovery_boundedly() {
     assert_eq!(steps[1].0, "ordinary-30");
 }
 #[test]
-fn full_pending_capacity_refuses_before_executor_without_mutating_journal() {
-    let journal = Journal::new();
+fn full_pending_capacity_refuses_before_executor_without_mutating_journal(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let journal = Journal::new()?;
     for n in 0..JOURNAL_KEEP {
         retained_or_schedule(&journal.0, "space", &format!("source-{n}"), &call("one")).unwrap();
     }
@@ -105,6 +108,7 @@ fn full_pending_capacity_refuses_before_executor_without_mutating_journal() {
         JournalState::load(&journal.0).unwrap().steps.len(),
         JOURNAL_KEEP
     );
+    Ok(())
 }
 #[test]
 fn content_protocol_rejects_authority_fields_and_bounds_utf8_bytes() {
@@ -194,8 +198,9 @@ fn cold_financial_recovery_rechecks_the_same_request_and_cannot_restage() {
     }
 }
 #[test]
-fn matching_canonical_terminal_releases_capacity_without_claiming_delivery_or_erasing_finance() {
-    let journal = Journal::new();
+fn matching_canonical_terminal_releases_capacity_without_claiming_delivery_or_erasing_finance(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let journal = Journal::new()?;
     for n in 0..JOURNAL_KEEP {
         retained_or_schedule(&journal.0, "space", &format!("source-{n}"), &call("one")).unwrap();
     }
@@ -252,21 +257,25 @@ fn matching_canonical_terminal_releases_capacity_without_claiming_delivery_or_er
         unresolved_count(&JournalState::load(&journal.0).unwrap().steps),
         JOURNAL_KEEP
     );
+    Ok(())
 }
 
 #[test]
-fn a_second_prompt_for_the_same_source_cannot_create_orphan_scheduling() {
-    let journal = Journal::new();
+fn a_second_prompt_for_the_same_source_cannot_create_orphan_scheduling(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let journal = Journal::new()?;
     retained_or_schedule(&journal.0, "space", "source", &call("original")).unwrap();
     let before = std::fs::read(&journal.0).unwrap();
     assert!(retained_or_schedule(&journal.0, "space", "source", &call("different")).is_err());
     assert_eq!(std::fs::read(&journal.0).unwrap(), before);
     retained_or_schedule(&journal.0, "space", "new-source", &call("different")).unwrap();
+    Ok(())
 }
 
 #[test]
-fn unrepresentable_content_cannot_create_or_change_pending_scheduling() {
-    let journal = Journal::new();
+fn unrepresentable_content_cannot_create_or_change_pending_scheduling(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let journal = Journal::new()?;
     for prompt in [
         String::new(),
         " ".repeat(8),
@@ -295,4 +304,5 @@ fn unrepresentable_content_cannot_create_or_change_pending_scheduling() {
         unresolved_count(&JournalState::load(&journal.0).unwrap().steps),
         1
     );
+    Ok(())
 }

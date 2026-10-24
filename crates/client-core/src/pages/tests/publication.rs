@@ -32,7 +32,8 @@ pub(super) fn event_append_failure_preserves_draft_across_reload_and_retry() {
     );
 }
 
-pub(super) fn newer_draft_waits_for_ack_and_survives_a_permanent_refusal() {
+pub(super) fn newer_draft_waits_for_ack_and_survives_a_permanent_refusal(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (engine, observed) = fixture();
     {
         let mut e = engine.lock();
@@ -65,12 +66,13 @@ pub(super) fn newer_draft_waits_for_ack_and_survives_a_permanent_refusal() {
     assert!(engine
         .page_commit(observed.item_id.clone(), "Retry whole draft".into())
         .unwrap());
-    assert_ne!(confirm_pending(&engine, &observed.item_id), id);
+    assert_ne!(confirm_pending(&engine, &observed.item_id)?, id);
     let confirmed = engine.page(observed.item_id.clone()).unwrap();
     assert_eq!(confirmed.blocks, second);
     assert!(!confirmed.unsaved);
     assert!(!confirmed.pending_sync);
     assert_eq!(confirmed.save_error, None);
+    Ok(())
 }
 
 pub(super) fn public_page_reads_reuse_verified_media_and_require_it_again_after_reload(

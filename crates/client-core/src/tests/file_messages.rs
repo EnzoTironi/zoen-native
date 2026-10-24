@@ -33,7 +33,8 @@ fn file_caption_is_signed_with_its_attachment_and_thread_before_receiver_replay(
 }
 
 #[test]
-fn clearing_file_caption_through_public_edit_reaches_signed_recipient_without_changing_file() {
+fn clearing_file_caption_through_public_edit_reaches_signed_recipient_without_changing_file(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     captions_cases::clearing_file_caption_through_public_edit_reaches_signed_recipient_without_changing_file()
 }
 
@@ -53,7 +54,8 @@ fn file_caption_bounds_and_failed_receipt_leave_no_partial_file_or_message() {
 }
 
 #[test]
-fn file_message_sync_delivers_the_original_attachment_and_encrypted_chunks() {
+fn file_message_sync_delivers_the_original_attachment_and_encrypted_chunks(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     sending_cases::file_message_sync_delivers_the_original_attachment_and_encrypted_chunks()
 }
 
@@ -63,7 +65,8 @@ fn cross_chat_media_forwarding_copies_current_files_without_source_bindings() {
 }
 
 #[test]
-fn destination_only_receiver_decrypts_forwarded_media_and_thumbnail() {
+fn destination_only_receiver_decrypts_forwarded_media_and_thumbnail(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     forwarding_cases::destination_only_receiver_decrypts_forwarded_media_and_thumbnail()
 }
 

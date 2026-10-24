@@ -44,7 +44,7 @@ fn linked(
         action: ActionClass::Money {
             cents: line.cost_cents,
         },
-        content_hash: content_hash(&(&line.text, line.cost_cents)),
+        content_hash: content_hash(&(&line.text, line.cost_cents))?,
         item: Some(fixture.item.clone()),
         line: Some(line.id.clone()),
         proposal: None,
@@ -137,7 +137,8 @@ fn missing_blob(
 }
 
 #[test]
-fn proposal_created_legacy_plans_remain_valid_without_minting_duplicate_origins() {
+fn proposal_created_legacy_plans_remain_valid_without_minting_duplicate_origins(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new().unwrap();
     let agent = agent(&mut fixture).unwrap();
     let mut proposal = AgentRequest {
@@ -224,7 +225,7 @@ fn proposal_created_legacy_plans_remain_valid_without_minting_duplicate_origins(
         fixture.engine.plan_page(&item).is_err(),
         "unconfirmed approval cannot authenticate a Plan session"
     );
-    deliver(&mut fixture.engine, &pending_approval, Ingest::Confirmed);
+    deliver(&mut fixture.engine, &pending_approval, Ingest::Confirmed)?;
     assert_eq!(
         fixture.engine.state.plan_origins[&item],
         PlanOrigin::Proposal
@@ -284,7 +285,7 @@ fn proposal_created_legacy_plans_remain_valid_without_minting_duplicate_origins(
         .unwrap();
     let pending_edit = fixture.engine.store.outbox().unwrap().into_iter().find(|pending|
         matches!(&pending.event.body, EventBody::ItemVersioned { item: edited, .. } if edited == &item)).unwrap().event;
-    deliver(&mut fixture.engine, &pending_edit, Ingest::Confirmed);
+    deliver(&mut fixture.engine, &pending_edit, Ingest::Confirmed)?;
     fixture.engine.reload().unwrap();
     assert_eq!(
         fixture.engine.plan_page(&item).unwrap().total_cents,
@@ -350,10 +351,12 @@ fn proposal_created_legacy_plans_remain_valid_without_minting_duplicate_origins(
             .text,
         "Owner-approved canonical plan"
     );
+    Ok(())
 }
 
 #[test]
-fn own_confirmation_rechecks_semantics_and_preserves_profiles_sessions_and_identity() {
+fn own_confirmation_rechecks_semantics_and_preserves_profiles_sessions_and_identity(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new().unwrap();
     let agent = agent(&mut fixture).unwrap();
     let request = open(&mut fixture, &agent, &original()).unwrap();
@@ -377,7 +380,7 @@ fn own_confirmation_rechecks_semantics_and_preserves_profiles_sessions_and_ident
         fixture.engine.state.requests[&request.id].status,
         ReqStatus::Pending
     );
-    let confirmed = deliver(&mut fixture.engine, &pending, Ingest::Confirmed);
+    let confirmed = deliver(&mut fixture.engine, &pending, Ingest::Confirmed)?;
     assert_eq!(confirmed.client_id, pending.client_id);
     assert_eq!(
         fixture.engine.state.requests[&request.id].status,
@@ -396,6 +399,7 @@ fn own_confirmation_rechecks_semantics_and_preserves_profiles_sessions_and_ident
         fixture.engine.state.requests[&request.id].status,
         ReqStatus::Pending
     );
+    Ok(())
 }
 
 mod history_cases;

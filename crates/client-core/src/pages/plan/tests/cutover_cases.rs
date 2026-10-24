@@ -2,7 +2,8 @@
 use super::*;
 
 #[test]
-pub(super) fn pending_legacy_snapshots_and_undos_never_enlarge_the_authenticated_seed() {
+pub(super) fn pending_legacy_snapshots_and_undos_never_enlarge_the_authenticated_seed(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new().unwrap();
     let baseline = fixture.fold();
     let manifest = baseline.manifest().unwrap();
@@ -27,9 +28,9 @@ pub(super) fn pending_legacy_snapshots_and_undos_never_enlarge_the_authenticated
         &source(&fixture.space, &fixture.item, &pending, false).event_id
     ));
 
-    deliver(&mut fixture.engine, &pending, Ingest::Confirmed);
+    deliver(&mut fixture.engine, &pending, Ingest::Confirmed)?;
     assert!(fixture.fold().pending_legacy); // The still-pending undo retains its intent.
-    deliver(&mut fixture.engine, &undo, Ingest::Confirmed);
+    deliver(&mut fixture.engine, &undo, Ingest::Confirmed)?;
     let confirmed = fixture.fold();
     assert!(confirmed.writable());
     assert_eq!(view(&confirmed), original());
@@ -43,6 +44,7 @@ pub(super) fn pending_legacy_snapshots_and_undos_never_enlarge_the_authenticated
                 && slot.source.ordered.is_some())
     );
     assert!(fixture.engine.store.outbox().unwrap().is_empty());
+    Ok(())
 }
 
 #[test]
@@ -99,7 +101,8 @@ pub(super) fn a_pending_creation_has_no_verified_seed_or_promotion_manifest() {
 }
 
 #[test]
-pub(super) fn an_ordered_remote_cutover_preserves_but_never_imports_local_legacy_intent() {
+pub(super) fn an_ordered_remote_cutover_preserves_but_never_imports_local_legacy_intent(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new().unwrap();
     let baseline = fixture.fold();
     let document = edited(
@@ -124,7 +127,7 @@ pub(super) fn an_ordered_remote_cutover_preserves_but_never_imports_local_legacy
     };
     let pending = fixture.queue(fixture.version(ItemContent::Plan(intent.clone())));
     assert!(!fixture.fold().writable());
-    let ordered = deliver(&mut fixture.engine, &remote, Ingest::Applied);
+    let ordered = deliver(&mut fixture.engine, &remote, Ingest::Applied)?;
     let cutover = fixture.fold();
     assert_eq!(
         cutover.frozen_at,
@@ -142,7 +145,7 @@ pub(super) fn an_ordered_remote_cutover_preserves_but_never_imports_local_legacy
         Acceptance::Pending
     );
 
-    deliver(&mut fixture.engine, &pending, Ingest::Confirmed);
+    deliver(&mut fixture.engine, &pending, Ingest::Confirmed)?;
     let resolved = fixture.fold();
     assert!(resolved.writable());
     assert_eq!(view(&resolved), document.view().unwrap().to_plan_doc());
@@ -155,10 +158,12 @@ pub(super) fn an_ordered_remote_cutover_preserves_but_never_imports_local_legacy
         resolved.slots.last().unwrap().acceptance,
         Acceptance::Refused(_)
     ));
+    Ok(())
 }
 
 #[test]
-pub(super) fn shorter_exact_ancestry_and_two_first_writers_merge_in_both_relay_orders() {
+pub(super) fn shorter_exact_ancestry_and_two_first_writers_merge_in_both_relay_orders(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new().unwrap();
     let first = fixture.fold();
     let first_editor = edited(
@@ -198,13 +203,13 @@ pub(super) fn shorter_exact_ancestry_and_two_first_writers_merge_in_both_relay_o
     let history = fixture.engine.store.events(&fixture.space).unwrap();
     let mut reverse = Engine::open(":memory:").unwrap();
     for event in &history {
-        deliver(&mut reverse, event, Ingest::Applied);
+        deliver(&mut reverse, event, Ingest::Applied)?;
     }
 
-    deliver(&mut fixture.engine, &queued, Ingest::Confirmed);
-    deliver(&mut fixture.engine, &second_event, Ingest::Applied);
-    deliver(&mut reverse, &second_event, Ingest::Applied);
-    deliver(&mut reverse, &queued, Ingest::Applied);
+    deliver(&mut fixture.engine, &queued, Ingest::Confirmed)?;
+    deliver(&mut fixture.engine, &second_event, Ingest::Applied)?;
+    deliver(&mut reverse, &second_event, Ingest::Applied)?;
+    deliver(&mut reverse, &queued, Ingest::Applied)?;
     let forward = fixture.fold();
     let backward = reverse.plan_timeline(&fixture.item).unwrap();
     assert_eq!(view(&forward), view(&backward));
@@ -237,6 +242,7 @@ pub(super) fn shorter_exact_ancestry_and_two_first_writers_merge_in_both_relay_o
             &source(&fixture.space, &fixture.item, &second_event, false).event_id
         ));
     }
+    Ok(())
 }
 
 #[test]

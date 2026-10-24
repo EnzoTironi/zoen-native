@@ -183,9 +183,9 @@ pub(super) async fn member_seen_beyond_the_next_sequence_is_fetched_once_then_fo
                 kind: SpaceKind::Group,
                 privacy: Privacy::Closed,
             },
-        )),
+        )?),
         &mut head,
-    );
+    )?;
     assert_eq!(engine.ingest(created), Ingest::Applied);
     let peer = event_log::Author::root(event_log::Signer::generate()?);
     let added = sequence(
@@ -198,9 +198,9 @@ pub(super) async fn member_seen_beyond_the_next_sequence_is_fetched_once_then_fo
                 identity: peer.identity.clone(),
                 role: Role::Member,
             },
-        )),
+        )?),
         &mut head,
-    );
+    )?;
     assert_eq!(engine.ingest(added), Ingest::Applied);
     let next = engine.next_seq(space);
     let bad = sequence(
@@ -220,9 +220,9 @@ pub(super) async fn member_seen_beyond_the_next_sequence_is_fetched_once_then_fo
                 media: None,
                 forwarded: false,
             },
-        )),
+        )?),
         &mut head,
-    );
+    )?;
     assert_eq!(bad.seq, next);
     let engine = Arc::new(Mutex::new(engine));
     let (cmd, mut commands) = mpsc::unbounded_channel();

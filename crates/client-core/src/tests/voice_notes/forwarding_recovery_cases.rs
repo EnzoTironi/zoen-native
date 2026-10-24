@@ -154,20 +154,17 @@ pub(super) fn forwarded_voice_survives_cold_reopen_and_a_destination_only_peer_d
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("core.sqlite").to_string_lossy().to_string();
     let bytes = pcm_wav(8000);
+    let vault = Arc::new(MemVault::default());
+    let receiver = media_peer("cold_voice_reader");
     let (source_item, destination, forwarded, mut relay, before) = {
-        let sender = Client::open(path.clone(), "pt-BR".into()).unwrap();
-        sender.seed_demo_if_empty().unwrap();
-        let source = find_space(&sender, "Paraty com a Marina").id;
-        let destination = find_space(&sender, "Zoen").id;
+        let sender = media_account(&path, "cold_voice_author", vault.clone());
+        let source = media_space(&sender, None, "Private voice source")?;
+        let destination = media_space(&sender, Some(&receiver), "Cold voice destination")?;
         let original = wav_note(&sender, &source, &bytes, None, false);
         let source_item = original.voice.unwrap().item_id;
+        confirm_media_outbox(&sender, &source)?;
         let relay = sender.lock().logs[&destination].clone();
         let before = sender.timeline(destination.clone()).unwrap().len();
-        {
-            let mut engine = sender.lock();
-            engine.store.set_synced(&destination).unwrap();
-            engine.net.synced.insert(destination.clone());
-        }
         let forwarded = sender
             .forward_message(source, original.id, destination.clone())
             .unwrap();
@@ -176,6 +173,7 @@ pub(super) fn forwarded_voice_survives_cold_reopen_and_a_destination_only_peer_d
     };
     // A real disk reopen restores the pending voice, metadata and fresh upload.
     let sender = Client::open(path, "pt-BR".into()).unwrap();
+    assert!(sender.unlock(vault).unwrap());
     let copied = forwarded.voice.as_ref().unwrap();
     let restored = sender.timeline(destination.clone()).unwrap();
     assert_eq!(restored.len(), before + 1);
@@ -189,9 +187,8 @@ pub(super) fn forwarded_voice_survives_cold_reopen_and_a_destination_only_peer_d
     let pending = sender.lock().store.outbox().unwrap();
     assert_eq!(pending.len(), 1);
     for event in pending {
-        relay.sequence(event.event);
+        relay.sequence(event.event)?;
     }
-    let receiver = Client::open(":memory:".into(), "en".into()).unwrap();
     for event in relay.events() {
         let envelope = Sequenced {
             seq: event.seq,

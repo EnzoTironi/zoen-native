@@ -8,15 +8,15 @@ pub(super) fn plain_receive_scope_failure_rolls_back_event_and_delivered_progres
     let (mut receiver, _, secret) = member(&path);
     let (_, peer, _) = member(":memory:");
     let space = "plain-receive-transaction";
-    closed_space(&mut receiver, &peer, space);
+    closed_space(&mut receiver, &peer, space)?;
     let pending = peer.sign_event(
         space,
         "peer-message",
         10,
         seen(&receiver, space),
         post("Retain me only after the complete receipt commits"),
-    );
-    let frame = ordered(&receiver, Envelope::plain(&pending));
+    )?;
+    let frame = ordered(&receiver, Envelope::plain(&pending))?;
     let before = receiver.store.event_count().unwrap();
     let delivered_before = receiver.delivered_to_announce(space);
     receiver
@@ -61,7 +61,7 @@ pub(super) fn failed_ciphertext_retention_rolls_back_sender_ratchet_before_cold_
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let database = Database::new()?;
     let space = "sealed-send-retention";
-    let (mut owner, secret, mut peer, _) = encrypted_pair(&database, space);
+    let (mut owner, secret, mut peer, _) = encrypted_pair(&database, space)?;
     let message = owner
         .send_message(space, "One retained ciphertext per generation")
         .unwrap();
@@ -129,7 +129,7 @@ pub(super) fn failed_ciphertext_retention_rolls_back_sender_ratchet_before_cold_
     assert_eq!(owner.sealed_copy(&queued).unwrap().1, retained);
     assert!(owner.outbox_envelopes().contains(&retained));
     assert!(!owner.mls_seal_outbox().unwrap());
-    let frame = ordered(&owner, retained);
+    let frame = ordered(&owner, retained)?;
     assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
     assert_eq!(peer.ingest(frame.clone()), Ingest::Applied);
     assert_eq!(peer.ingest(frame), Ingest::Duplicate);
@@ -167,9 +167,9 @@ pub(super) fn pruned_receive_scope_failure_preserves_the_group_until_the_whole_r
     let path = database.path("pruned-receiver.sqlite");
     let (mut receiver, author, secret) = member(&path);
     let space = "pruned-receive-scope";
-    start_space(&mut receiver, &author, space);
+    start_space(&mut receiver, &author, space)?;
     receiver.create_mls_group(space).unwrap();
-    let frame = pruned_frame(&receiver, &author, space);
+    let frame = pruned_frame(&receiver, &author, space)?;
     let before = provider_rows(&receiver);
     let count_before = receiver.store.event_count().unwrap();
     receiver

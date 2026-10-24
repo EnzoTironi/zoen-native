@@ -8,7 +8,7 @@ impl Drop for Home {
     }
 }
 pub(crate) fn fixture() -> Result<(Home, Deployment, AnchorWriter), Box<dyn std::error::Error>> {
-    let home = Home(std::env::temp_dir().join(types::new_id("managed-relay")));
+    let home = Home(std::env::temp_dir().join(types::new_id("managed-relay")?));
     let deployment = Deployment {
         namespace: "test-managed".into(),
         witness: "a".repeat(64),

@@ -16,7 +16,7 @@ fn photo() -> MediaDraftAssetInput {
 #[test]
 fn gallery_selection_and_caption_cold_reopen_encrypted_without_publishing_and_cancel_keeps_baseline(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let dir = temp();
+    let dir = temp()?;
     let path = dir.join("gallery.sqlite");
     let f = fixture(path.to_str().ok_or("temporary path is not UTF-8")?);
     let baseline = save(&f, "0", &attachments(&["base"], None), vec![input("base")]);

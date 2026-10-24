@@ -17,9 +17,12 @@ impl Engine {
             .into_iter()
             .map(|p| p.event)
             .find(|e| e.space == space && matches!(e.body, EventBody::SpaceCreated { .. }));
-        Ok(genesis.map(|g| Seen {
+        let Some(genesis) = genesis else {
+            return Ok(None);
+        };
+        Ok(Some(Seen {
             seq: 0,
-            hash: chain_hash(space, 0, GENESIS_PREV, &content_hash_of(&g)),
+            hash: chain_hash(space, 0, GENESIS_PREV, &content_hash_of(&genesis))?,
         }))
     }
 
@@ -46,7 +49,7 @@ impl Engine {
         } else {
             self.causal_head(space)?
         };
-        let e = signer.sign_event(space, &client_id, at_ms, seen, body);
+        let e = signer.sign_event(space, &client_id, at_ms, seen, body)?;
         let empty = State::default();
         let scoped = self.space_projections.get(space).unwrap_or(&empty);
         let context =

@@ -93,7 +93,7 @@ pub(super) fn media_contract_transient_first_album_refusal_preserves_all_confirm
     let sender_path = dir.join("album-sender.sqlite");
     let receiver_path = dir.join("album-receiver.sqlite");
     let mut f = fixture(sender_path.to_str().unwrap());
-    media_contract_confirm_scope(&f);
+    media_contract_confirm_scope(&f)?;
     let mut relay = f.engine.lock().logs[&f.scope.space_id].clone();
     let mut receiver = crate::engine::Engine::open(receiver_path.to_str().unwrap()).unwrap();
     let frame = |event: &types::Event| protocol::Sequenced {
@@ -155,7 +155,7 @@ pub(super) fn media_contract_transient_first_album_refusal_preserves_all_confirm
                 .outbox_get(env.client_id())
                 .unwrap()
                 .unwrap();
-            let accepted = relay.sequence(event).clone();
+            let accepted = relay.sequence(event)?.clone();
             assert_eq!(
                 f.engine.lock().ingest(frame(&accepted)),
                 crate::sync::Ingest::Confirmed
@@ -221,7 +221,7 @@ pub(super) fn media_contract_single_media_transient_file_refusal_survives_cold_r
     let dir = temp()?;
     let path = dir.join("single-receiver.sqlite");
     let f = fixture(":memory:");
-    media_contract_confirm_scope(&f);
+    media_contract_confirm_scope(&f)?;
     let mut relay = f.engine.lock().logs[&f.scope.space_id].clone();
     let mut receiver = crate::engine::Engine::open(path.to_str().unwrap()).unwrap();
     let frame = |event: &types::Event| protocol::Sequenced {
@@ -288,7 +288,7 @@ pub(super) fn media_contract_single_media_transient_file_refusal_survives_cold_r
                     continue;
                 }
             }
-            let accepted = relay.sequence(event).clone();
+            let accepted = relay.sequence(event)?.clone();
             assert_eq!(
                 f.engine.lock().ingest(frame(&accepted)),
                 crate::sync::Ingest::Confirmed

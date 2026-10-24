@@ -116,8 +116,8 @@ fn peer_event(
     log: &mut SpaceLog,
     body: EventBody,
     now: i64,
-) -> String {
-    let inner = author.sign_event(SPACE, &types::new_ulid(now), now, log.head(), body);
+) -> std::result::Result<String, Box<dyn std::error::Error>> {
+    let inner = author.sign_event(SPACE, &types::new_ulid(now)?, now, log.head(), body)?;
     let plaintext = InnerEvent {
         content: inner.content,
         sig: inner.sig,
@@ -140,7 +140,7 @@ fn peer_event(
         _ => unreachable!(),
     };
     client.receive(&frame, now + 1).unwrap();
-    hash
+    Ok(hash)
 }
 
 fn reload(client: &mut Client<HostSigner>) {

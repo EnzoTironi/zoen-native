@@ -71,10 +71,10 @@ impl Fixture {
             1_800_000_000_000,
             head.clone(),
             body,
-        );
+        )?;
         assert_eq!(
             self.engine
-                .ingest(frame(Envelope::plain(&event), &mut head)),
+                .ingest(frame(Envelope::plain(&event), &mut head)?),
             Ingest::Applied
         );
 
@@ -210,7 +210,8 @@ fn ordinary_remote_page_beside_a_confirmed_legacy_plan_matches_cold_projection()
 }
 
 #[test]
-fn ordinary_remote_page_preserves_a_real_optimistic_plan_approval_until_its_echo() {
+fn ordinary_remote_page_preserves_a_real_optimistic_plan_approval_until_its_echo(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut f = Fixture::new().unwrap();
     f.legacy_plan().unwrap();
     let local = f.engine.net.author.clone().unwrap();
@@ -253,7 +254,7 @@ fn ordinary_remote_page_preserves_a_real_optimistic_plan_approval_until_its_echo
         action: ActionClass::Money {
             cents: line.cost_cents,
         },
-        content_hash: event_log::content_hash(&(&line.text, line.cost_cents)),
+        content_hash: event_log::content_hash(&(&line.text, line.cost_cents))?,
         item: Some("legacy-plan".into()),
         line: Some(line.id.clone()),
         proposal: None,
@@ -282,10 +283,12 @@ fn ordinary_remote_page_preserves_a_real_optimistic_plan_approval_until_its_echo
     assert_eq!(f.engine.store.outbox().unwrap()[0].event, pending);
     assert!(f.engine.state.grants.is_empty());
     f.assert_cold();
+    Ok(())
 }
 
 #[test]
-fn ordinary_remote_page_does_not_release_a_real_waiting_plan_approval() {
+fn ordinary_remote_page_does_not_release_a_real_waiting_plan_approval(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut f = Fixture::new().unwrap();
     f.legacy_plan().unwrap();
     let agent = Author::device(&Signer::generate().unwrap(), Signer::generate().unwrap());
@@ -342,7 +345,7 @@ fn ordinary_remote_page_does_not_release_a_real_waiting_plan_approval() {
         action: ActionClass::Money {
             cents: line.cost_cents,
         },
-        content_hash: event_log::content_hash(&(&line.text, line.cost_cents)),
+        content_hash: event_log::content_hash(&(&line.text, line.cost_cents))?,
         item: Some("legacy-plan".into()),
         line: Some(line.id.clone()),
         proposal: None,
@@ -384,22 +387,26 @@ fn ordinary_remote_page_does_not_release_a_real_waiting_plan_approval() {
     assert!(f.engine.state.grants.is_empty());
     assert!(f.engine.state.usage.is_empty());
     f.assert_cold();
+    Ok(())
 }
 
-fn frame(env: Envelope, head: &mut Option<Seen>) -> protocol::Sequenced {
+fn frame(
+    env: Envelope,
+    head: &mut Option<Seen>,
+) -> std::result::Result<protocol::Sequenced, Box<dyn std::error::Error>> {
     let seq = head.as_ref().map_or(0, |h| h.seq + 1);
     let prev = head
         .as_ref()
         .map_or_else(|| GENESIS_PREV.to_string(), |h| h.hash.clone());
-    let hash = event_log::chain_hash(env.space(), seq, &prev, &env.wire_hash());
+    let hash = event_log::chain_hash(env.space(), seq, &prev, &env.wire_hash())?;
     *head = Some(Seen {
         seq,
         hash: hash.clone(),
     });
-    protocol::Sequenced {
+    Ok(protocol::Sequenced {
         seq,
         prev,
         hash,
         env,
-    }
+    })
 }

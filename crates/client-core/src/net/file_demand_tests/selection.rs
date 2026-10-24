@@ -2,8 +2,9 @@
 use super::*;
 
 #[tokio::test]
-async fn historical_file_demand_downloads_only_selected_version_and_coalesces_waiters() {
-    let f = Fixture::new();
+async fn historical_file_demand_downloads_only_selected_version_and_coalesces_waiters(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = Fixture::new()?;
     let mut server = BlobServer::start(f.uploads(), f.old_blob.clone(), false);
     let kick = Arc::new(tokio::sync::Notify::new());
     let task = worker(&f.reader, &server, kick.clone());
@@ -81,12 +82,14 @@ async fn historical_file_demand_downloads_only_selected_version_and_coalesces_wa
     server
         .stop()
         .expect("fixture HTTP worker must finish cleanly");
+    Ok(())
 }
 
 #[tokio::test]
-async fn mixed_historical_downloads_preserve_item_routing_and_retry_after_corruption() {
+async fn mixed_historical_downloads_preserve_item_routing_and_retry_after_corruption(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for corrupt_first in [true, false] {
-        let f = Fixture::new();
+        let f = Fixture::new()?;
         let other = f
             .reader
             .items()
@@ -216,11 +219,13 @@ async fn mixed_historical_downloads_preserve_item_routing_and_retry_after_corrup
         let _ = task.await;
         healthy.stop().expect("healthy HTTP worker finishes");
     }
+    Ok(())
 }
 
 #[tokio::test]
-async fn new_foreground_demand_retries_same_worker_and_coalesces_before_backoff() {
-    let f = Fixture::new();
+async fn new_foreground_demand_retries_same_worker_and_coalesces_before_backoff(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = Fixture::new()?;
     let mut corrupt = f.uploads();
     corrupt.get_mut(&f.old_blob).unwrap()[0] ^= 1;
     let mut server = BlobServer::start(corrupt, String::new(), false);
@@ -315,6 +320,7 @@ async fn new_foreground_demand_retries_same_worker_and_coalesces_before_backoff(
     task.abort();
     let _ = task.await;
     server.stop().expect("same HTTP worker finishes");
+    Ok(())
 }
 
 #[test]
@@ -337,8 +343,9 @@ fn foreground_attempt_does_not_reset_background_deadline_or_failure_count() {
 }
 
 #[test]
-fn foreground_attempt_revalidates_scope_and_retains_unsynced_demand() {
-    let mut f = Fixture::new();
+fn foreground_attempt_revalidates_scope_and_retains_unsynced_demand(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
     {
         let e = f.reader.lock();
         assert!(!e.wanted_media().is_empty());
@@ -408,8 +415,9 @@ fn foreground_attempt_revalidates_scope_and_retains_unsynced_demand() {
     f.sender
         .remove_member(f.space.clone(), f.reader.account().unwrap().identity_id)
         .unwrap();
-    f.catch_up();
+    f.catch_up()?;
     assert!(f.reader.lock().take_foreground_file_attempts().is_empty());
     assert!(!lease.active().unwrap());
     assert!(f.reader.verify_log(f.space).valid);
+    Ok(())
 }

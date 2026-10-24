@@ -38,7 +38,7 @@ fn authenticated_worker_snapshot_is_bounded_payload_free_and_read_only() -> Test
         .core
         .engine
         .owner_policy_inquiry(&scope.space_id, &pending.source)?;
-    let sibling = Signer::generate().id();
+    let sibling = Signer::generate()?.id();
     f.core.engine.devices_arrived(vec![
         protocol::DeviceRecord {
             device: f.agent_device.id(),
@@ -194,7 +194,7 @@ fn real_unconfirmed_mls_commit_is_observed_pending_and_never_admits_account_cont
         .core
         .engine
         .owner_policy_inquiry(&scope.space_id, &pending.source)?;
-    let key = Signer::generate();
+    let key = Signer::generate()?;
     let author = Author::device(&f.agent_root, key.clone());
     let cert = author.cert.ok_or("sibling certificate")?;
     let credential = UnlockedDevice::verify(

@@ -2,7 +2,8 @@ use super::*;
 use documents::plan::PlanBlockContent;
 
 #[test]
-fn legacy_edit_flag_admits_the_owner_and_active_member_without_writing_on_read() {
+fn legacy_edit_flag_admits_the_owner_and_active_member_without_writing_on_read(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new().unwrap();
     let before = storage(&fixture);
     let read = fixture.engine.plan_page(&fixture.item).unwrap();
@@ -30,7 +31,7 @@ fn legacy_edit_flag_admits_the_owner_and_active_member_without_writing_on_read()
     assert!(pending_read.pending_sync);
     assert_eq!(pending_read.total_cents, Some(1_218));
     let pending = fixture.engine.store.outbox().unwrap()[0].event.clone();
-    deliver(&mut fixture.engine, &pending, Ingest::Confirmed);
+    deliver(&mut fixture.engine, &pending, Ingest::Confirmed)?;
     let before = storage(&fixture);
     assert!(
         fixture
@@ -77,6 +78,7 @@ fn legacy_edit_flag_admits_the_owner_and_active_member_without_writing_on_read()
             .cost_cents,
         0
     );
+    Ok(())
 }
 
 #[test]
@@ -171,7 +173,8 @@ fn legacy_edit_flag_and_actual_mutations_refuse_reader_removed_and_unsigned_acto
 }
 
 #[test]
-fn legacy_edit_flag_refuses_pending_and_ordered_canonical_cutover() {
+fn legacy_edit_flag_refuses_pending_and_ordered_canonical_cutover(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new().unwrap();
     assert!(
         fixture
@@ -208,7 +211,7 @@ fn legacy_edit_flag_refuses_pending_and_ordered_canonical_cutover() {
     }
     .is_err());
     assert_eq!(storage(&fixture), before);
-    deliver(&mut fixture.engine, &pending, Ingest::Confirmed);
+    deliver(&mut fixture.engine, &pending, Ingest::Confirmed)?;
     let before = storage(&fixture);
     let read = fixture.engine.plan_page(&fixture.item).unwrap();
     assert!(read.ready);
@@ -226,6 +229,7 @@ fn legacy_edit_flag_refuses_pending_and_ordered_canonical_cutover() {
     }
     .is_err());
     assert_eq!(storage(&fixture), before);
+    Ok(())
 }
 
 #[test]

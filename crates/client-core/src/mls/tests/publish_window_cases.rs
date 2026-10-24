@@ -26,8 +26,8 @@ pub(super) fn publish_window_keeps_a_reordered_burst_decryptable(
             kind: SpaceKind::Group,
             privacy: Privacy::EndToEnd,
         },
-    ));
-    assert_eq!(engine.ingest(ordered(&engine, genesis)), Ingest::Applied);
+    )?);
+    assert_eq!(engine.ingest(ordered(&engine, genesis)?), Ingest::Applied);
     engine.create_mls_group(space).unwrap();
 
     let peer_author = Author::device(&Signer::from_secret(&root_secret), Signer::generate()?);
@@ -55,7 +55,7 @@ pub(super) fn publish_window_keeps_a_reordered_burst_decryptable(
         seen(&engine, space).as_ref(),
         Sealed::new(SealedKind::Commit, SUITE_ID, adding.commit),
     );
-    assert_eq!(engine.ingest(ordered(&engine, commit)), Ingest::Applied);
+    assert_eq!(engine.ingest(ordered(&engine, commit)?), Ingest::Applied);
     let roster: BTreeSet<String> = BTreeSet::from([author.identity.clone()]);
     let welcome_bytes = adding.welcome.unwrap();
     assert!(peer.join(space, &welcome_bytes, &roster).unwrap());
@@ -67,7 +67,7 @@ pub(super) fn publish_window_keeps_a_reordered_burst_decryptable(
         seen(&engine, space).as_ref(),
         Sealed::new(SealedKind::Welcome, SUITE_ID, welcome_bytes),
     );
-    assert_eq!(engine.ingest(ordered(&engine, welcome)), Ingest::Applied);
+    assert_eq!(engine.ingest(ordered(&engine, welcome)?), Ingest::Applied);
     let sender = engine.device().unwrap().leaf().clone();
 
     for i in 0..12 {
@@ -129,7 +129,7 @@ pub(super) fn publish_window_keeps_a_reordered_burst_decryptable(
         }
         for env in &apps {
             assert_eq!(
-                engine.ingest(ordered(&engine, env.clone())),
+                engine.ingest(ordered(&engine, env.clone())?),
                 Ingest::Confirmed
             );
         }
@@ -185,8 +185,8 @@ pub(super) fn publish_window_lets_the_next_space_through(
                     kind: SpaceKind::Group,
                     privacy: Privacy::EndToEnd,
                 },
-            )),
-        )),
+            )?),
+        )?),
         Ingest::Applied
     );
     engine.create_mls_group(space_a).unwrap();
@@ -219,7 +219,7 @@ pub(super) fn publish_window_lets_the_next_space_through(
                 seen(&engine, space_a).as_ref(),
                 Sealed::new(SealedKind::Commit, SUITE_ID, adding.commit),
             ),
-        )),
+        )?),
         Ingest::Applied
     );
     let roster: BTreeSet<String> = BTreeSet::from([author.identity.clone()]);
@@ -236,7 +236,7 @@ pub(super) fn publish_window_lets_the_next_space_through(
                 seen(&engine, space_a).as_ref(),
                 Sealed::new(SealedKind::Welcome, SUITE_ID, welcome_bytes),
             ),
-        )),
+        )?),
         Ingest::Applied
     );
 
@@ -254,8 +254,8 @@ pub(super) fn publish_window_lets_the_next_space_through(
                     kind: SpaceKind::Group,
                     privacy: Privacy::Closed,
                 },
-            )),
-        )),
+            )?),
+        )?),
         Ingest::Applied
     );
 
