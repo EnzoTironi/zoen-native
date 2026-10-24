@@ -41,15 +41,24 @@ impl<'a> SpaceTools<'a> {
         serving: &'a str,
         source: &'a str,
     ) -> Self {
+        let scope = e.agent_artifact_request(space, source, serving);
+        // An invalid/stale signed scope offers nothing. Never widen an error to
+        // the whole conversation, including image/site/creation tools.
+        let unrestricted = matches!(&scope, Ok(None));
+        let artifact = scope
+            .as_ref()
+            .ok()
+            .and_then(|r| r.as_ref())
+            .map(|r| r.item_id.as_str());
         let mut names: Vec<(ToolDef, String, String)> = Vec::new();
-        if image_tools::configured() {
+        if unrestricted && image_tools::configured() {
             names.push((
                 image_tools::definition(),
                 space.into(),
                 image_tools::TOOL.into(),
             ));
         }
-        if e.can_create_agent_app(space, source, serving) {
+        if unrestricted && e.can_create_agent_app(space, source, serving) {
             if let Some(workers) = deckcraft {
                 for tool in [
                     client_core::agent_app_creation::TOOL,
@@ -74,8 +83,10 @@ impl<'a> SpaceTools<'a> {
                 }
             }
         }
-        if let Err(reason) = site_tools::discover(e, space, source, serving, &mut names) {
-            say(reason);
+        if unrestricted {
+            if let Err(reason) = site_tools::discover(e, space, source, serving, &mut names) {
+                say(reason);
+            }
         }
         let binary_items: std::collections::BTreeSet<_> = e
             .items()
@@ -91,7 +102,7 @@ impl<'a> SpaceTools<'a> {
             })
             .map(|item| item.id)
             .collect();
-        for t in e.agent_tools(space) {
+        for t in e.agent_tools(space).into_iter().filter(|_| unrestricted) {
             // Artifact transport is for its managed App UI, never a model tool.
             if binary_items.contains(&t.item_id) {
                 continue;
@@ -117,6 +128,7 @@ impl<'a> SpaceTools<'a> {
         if let Some(workers) = deckcraft {
             for item in e.items().into_iter().filter(|item| {
                 item.space_id == space
+                    && (unrestricted || artifact == Some(item.id.as_str()))
                     && item
                         .app
                         .as_ref()
@@ -155,7 +167,7 @@ impl<'a> SpaceTools<'a> {
         for item in e
             .items()
             .into_iter()
-            .filter(|item| item.space_id == space && item.kind_id == "page")
+            .filter(|item| unrestricted && item.space_id == space && item.kind_id == "page")
         {
             if e.agent_page_turn(&item.id, source, serving).is_err() {
                 continue;

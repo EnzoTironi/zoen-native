@@ -246,3 +246,5 @@ mod wordcraft_cases;
 
 #[path = "wordcraft_rich_cases.rs"]
 mod word_rich;
+
+mod source_scope;

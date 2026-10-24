@@ -7,6 +7,9 @@ impl State {
         let Some(p) = &req.tool_proposal else {
             return false;
         };
+        if !super::super::source_scope::proposal_valid(self, space, p) {
+            return false;
+        }
         if p.schema == 5 {
             return crate::agent_sites::matches(self, req, space);
         }

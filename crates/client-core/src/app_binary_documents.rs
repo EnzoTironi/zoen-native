@@ -15,6 +15,8 @@ use types::{
 
 pub(crate) const MAX_BASE64_BYTES: usize = deckcraft::MAX_BYTES.div_ceil(3) * 4;
 const MAX_RECEIPTS: usize = 64;
+mod source_scope;
+pub(crate) use source_scope::SourceReceipt;
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record, Serialize, Deserialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct AppBinaryDocumentDto {
@@ -40,6 +42,8 @@ struct Receipt {
     item: String,
     version: u32,
     sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source: Option<SourceReceipt>,
 }
 fn invalid() -> CoreError {
     CoreError::Invalid {
@@ -155,6 +159,7 @@ impl Engine {
                     || !digest(&r.intent)
                     || !digest(&r.sha256)
                     || r.version == 0
+                    || r.source.as_ref().is_some_and(|s| !s.valid())
             })
         {
             return Err(storage());
@@ -284,6 +289,28 @@ impl Engine {
         mutation: &str,
         intent_sha: &str,
     ) -> R<AppBinaryDocumentDto> {
+        self.app_binary_save_with_source(
+            item,
+            expected_version,
+            expected_sha,
+            data,
+            (mutation, intent_sha, None),
+        )
+    }
+    pub(crate) fn app_binary_save_with_source(
+        &mut self,
+        item: &str,
+        expected_version: u32,
+        expected_sha: &str,
+        data: &str,
+        intent: (&str, &str, Option<SourceReceipt>),
+    ) -> R<AppBinaryDocumentDto> {
+        let (mutation, intent_sha, source) = intent;
+        if source.as_ref().is_some_and(|s| {
+            !s.valid() || s.base_version != expected_version || s.base_sha256 != expected_sha
+        }) {
+            return Err(invalid());
+        }
         if !token(mutation) || expected_version == 0 || !digest(expected_sha) || !digest(intent_sha)
         {
             return Err(invalid());
@@ -323,7 +350,11 @@ impl Engine {
         );
         let receipts = self.binary_receipts(&key)?;
         if let Some(r) = receipts.iter().find(|r| r.id == mutation) {
-            if r.fingerprint != fingerprint || r.item != item || r.intent != intent {
+            if r.fingerprint != fingerprint
+                || r.item != item
+                || r.intent != intent
+                || r.source != source
+            {
                 return Err(invalid());
             }
             let accepted = self.app_binary_read(item, Some(r.version), Some(&r.sha256))?;
@@ -396,6 +427,7 @@ impl Engine {
                     item: item.into(),
                     version,
                     sha256: sha,
+                    source,
                 },
             )?;
             e.app_binary_read(item, Some(version), None)

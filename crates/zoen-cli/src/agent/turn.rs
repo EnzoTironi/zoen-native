@@ -115,9 +115,16 @@ async fn checked(
             None => true,
         };
     }
+    let scoped = match e.agent_artifact_request(space, &t.id, &t.author.id) {
+        Ok(scope) => scope.is_some(),
+        Err(_) => return false,
+    };
     let history: Vec<Turn> = before
         .iter()
         .rev()
+        // A scoped App request reads through its bounded native tool. Unrelated
+        // conversation history must not become an implicit artifact read.
+        .filter(|_| !scoped)
         .filter_map(|m| {
             text_of(m).map(|x| Turn {
                 space: space.into(),
