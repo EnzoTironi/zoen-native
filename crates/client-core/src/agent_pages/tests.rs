@@ -9,6 +9,7 @@ use types::{Capability, EventBody, Grant, GrantScope, TrustLevel};
 
 mod continuation;
 mod contracts;
+mod locale_projection;
 mod recovery;
 
 struct PageFixture {

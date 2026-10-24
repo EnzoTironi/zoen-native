@@ -59,6 +59,25 @@ pub fn model_name(tool: &str, item: &str) -> Option<String> {
 /// Native projection can verify this prefix without opening a local editor or blob.
 /// The materialized canonical shadow is independently checked before returning bytes.
 pub(crate) fn prefix(state: &State, item: &str, version: u32) -> Result<String, String> {
+    // Schema2/v1 historically serialized the English synthetic creation label.
+    // Preserve that exact wire contract, regardless of the reader's UI locale.
+    prefix_with_creation_note(state, item, version, "Created")
+}
+
+/// Only the two labels actually synthesized by pre-fix clients are compatible.
+/// Every signed later note and every content/author/time/scope field remains exact.
+pub(crate) fn prefix_matches(state: &State, item: &str, version: u32, expected: &str) -> bool {
+    prefix(state, item, version).is_ok_and(|actual| actual == expected)
+        || prefix_with_creation_note(state, item, version, "Criado")
+            .is_ok_and(|actual| actual == expected)
+}
+
+fn prefix_with_creation_note(
+    state: &State,
+    item: &str,
+    version: u32,
+    creation_note: &str,
+) -> Result<String, String> {
     let it = state.items.get(item).ok_or("Page not found")?;
     if it.kind != ItemKind::Page || version == 0 || version as usize > it.versions.len() {
         return Err("Invalid Page prefix".into());
@@ -71,7 +90,12 @@ pub(crate) fn prefix(state: &State, item: &str, version: u32) -> Result<String, 
         if page.manifest.is_some() {
             return Err("A Plan is not an ordinary Page".into());
         }
-        rows.push((v.number, &v.author, v.at_ms, &v.note, v.is_undo, page));
+        let note = if v.number == 1 {
+            creation_note
+        } else {
+            v.note.as_str()
+        };
+        rows.push((v.number, &v.author, v.at_ms, note, v.is_undo, page));
     }
     let bytes = serde_json::to_vec(&(REVISION, &it.space, &it.id, rows))
         .map_err(|_| "Invalid Page prefix")?;
