@@ -283,29 +283,12 @@ impl<S: Signer> Client<S> {
                         })
                         .unwrap_or(0);
                     // A retry after process interruption reuses exactly the pending boundary.
-                    let fresh = self
-                        .saved
-                        .linking
-                        .pages
-                        .get(&space_id)
-                        .is_none_or(|pending| {
-                            pending.answer.is_some() || pending.failure.is_some()
-                        });
-                    if fresh {
-                        let request = PageRequest {
-                            req: browser_id("pg", now)?,
-                            before,
-                            answer: None,
-                            failure: None,
-                        };
-                        self.saved.linking.pages.insert(space_id.clone(), request);
-                    }
-                    let pending = self
-                        .saved
-                        .linking
-                        .pages
-                        .get(&space_id)
-                        .ok_or("Missing retained history request")?;
+                    let pending = requests::retain_page(
+                        &mut self.saved.linking.pages,
+                        &space_id,
+                        before,
+                        || browser_id("pg", now),
+                    )?;
                     json!({"request_id":pending.req,"loaded":0,"more":true})
                 }
             }
@@ -523,3 +506,5 @@ impl<S: Signer> Client<S> {
 mod tests;
 
 mod delivery;
+
+mod requests;
