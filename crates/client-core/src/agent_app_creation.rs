@@ -93,6 +93,7 @@ fn definition_unchecked(space: &str) -> Option<Value> {
 }
 fn definition_unchecked_for(tool: &str, space: &str) -> Option<Value> {
     let description=match creation_format(tool)? {
+        Format::Wordcraft=>return None,
         Format::Deckcraft=>"Create one shared editable presentation in this conversation. Call alone and wait for the owner's exact review before requesting its document tools. Does not replace an existing document.",
         Format::Gridcraft=>"Create one shared editable spreadsheet in this conversation. Call alone and wait for the owner's exact review before requesting its document tools. Does not replace an existing document.",
     };

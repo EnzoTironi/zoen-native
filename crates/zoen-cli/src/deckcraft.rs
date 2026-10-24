@@ -44,11 +44,22 @@ pub fn configured() -> Result<Option<Arc<DeckcraftWorker>>, String> {
             "ZOEN_GRIDCRAFT_WORKER_PUBLISHER",
         ],
     )?;
-    match (deck, grid) {
-        (Some(deck), Some(grid)) => Ok(Some(Arc::new(deck.combine(grid)?))),
-        (Some(worker), None) | (None, Some(worker)) => Ok(Some(Arc::new(worker))),
-        (None, None) => Ok(None),
+    let word = configured_for(
+        "wordcraft",
+        [
+            "ZOEN_WORDCRAFT_WORKER_COMPONENT",
+            "ZOEN_WORDCRAFT_WORKER_MANIFEST",
+            "ZOEN_WORDCRAFT_WORKER_PUBLISHER",
+        ],
+    )?;
+    let mut configured: Option<DeckcraftWorker> = None;
+    for worker in [deck, grid, word].into_iter().flatten() {
+        configured = Some(match configured {
+            None => worker,
+            Some(current) => current.combine(worker)?,
+        });
     }
+    Ok(configured.map(Arc::new))
 }
 fn configured_for(app: &str, names: [&str; 3]) -> Result<Option<DeckcraftWorker>, String> {
     let component = std::env::var(names[0]).ok();

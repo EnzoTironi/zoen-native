@@ -15,10 +15,13 @@ pub const MAX_TEXT: usize = 32 * 1024;
 /// # Errors
 /// Refuses oversized text or controls outside LF/tab.
 pub fn validate_text(text: &str) -> Result<()> {
+    // Exactly the pinned writer's XML 1.0 scalar ranges, plus this profile's LF/tab rule.
+    // Other planes' noncharacters remain valid XML; never blacklist a whole category.
     if text.len() > MAX_TEXT
-        || text
-            .chars()
-            .any(|c| c.is_control() && c != '\n' && c != '\t')
+        || text.chars().any(|c| {
+            !matches!(c, '\t' | '\n' | '\u{20}'..='\u{D7FF}' | '\u{E000}'..='\u{FFFD}' | '\u{10000}'..='\u{10FFFF}')
+                || (c.is_control() && c != '\n' && c != '\t')
+        })
     {
         return Err(failure("unsupported_text"));
     }

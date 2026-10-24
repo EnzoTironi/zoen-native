@@ -17,7 +17,7 @@ pub const ENGINE_REVISION: &str = "a31b990d32f2c8562f1588562f922960c3fde48b";
 pub const WORKER_ID: &str = "deckcraft-canonical-v1";
 pub struct DeckcraftWorker {
     primary: Worker,
-    companion: Option<Worker>,
+    companions: Vec<Worker>,
 }
 struct Worker {
     tier: WasmTier,
@@ -53,6 +53,11 @@ impl DeckcraftWorker {
                 "gridcraft-canonical-v1",
                 "b8771d51fb4da60bd48c13cf313d6d6014dc5e66",
             ),
+            "wordcraft" => (
+                "wordcraft",
+                "wordcraft-canonical-v1",
+                "d1b0bfc3f9dd83126b162a42b667facecb003b7f",
+            ),
             _ => return Err("Unsupported binary App worker".into()),
         };
         let spec = manifest.verify(&trusted).map_err(|e| e.to_string())?;
@@ -76,7 +81,7 @@ impl DeckcraftWorker {
                 app,
                 revision,
             },
-            companion: None,
+            companions: Vec::new(),
         })
     }
     /// Retains the original single-Deck API; production dispatch uses binding_for.
@@ -84,22 +89,22 @@ impl DeckcraftWorker {
         &self.primary.binding_sha256
     }
     pub fn combine(mut self, other: Self) -> Result<Self, String> {
-        if self.companion.is_some()
-            || other.companion.is_some()
-            || self.primary.app == other.primary.app
+        let incoming = std::iter::once(&other.primary).chain(&other.companions);
+        if self.companions.len() + other.companions.len() + 2 > 3
+            || incoming
+                .clone()
+                .any(|worker| self.select(worker.app).is_ok())
         {
             return Err("Duplicate or unsupported binary worker configuration".into());
         }
-        self.companion = Some(other.primary);
+        self.companions.push(other.primary);
+        self.companions.extend(other.companions);
         Ok(self)
     }
     fn select(&self, app: &str) -> Result<&Worker, String> {
-        if self.primary.app == app {
-            return Ok(&self.primary);
-        }
-        self.companion
-            .as_ref()
-            .filter(|worker| worker.app == app)
+        std::iter::once(&self.primary)
+            .chain(&self.companions)
+            .find(|worker| worker.app == app)
             .ok_or_else(|| "The binary App executor is not configured".into())
     }
     pub fn supports(&self, app: &str) -> bool {

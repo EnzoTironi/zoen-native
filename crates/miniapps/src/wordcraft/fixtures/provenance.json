@@ -1,0 +1,18 @@
+{
+  "upstream": "d1b0bfc3f9dd83126b162a42b667facecb003b7f",
+  "profile": "plain-text-v1",
+  "seed": {
+    "source": "Actual native upstream --seed, check-04",
+    "sha256": "0a4363cf44e798c967e35b2ec7addce8697f4ab694844fba12c561fc0789310b"
+  },
+  "actual-wasi.docx": {
+    "source": "Existing WasmTier actual text.replace, runtime-check-01",
+    "sha256": "7430bd4e6c5bc63e5abf58ed59866db46ba35d56c981c9f74f2e821ce59cdf0a"
+  },
+  "actual-special.docx": {
+    "source": "Qualified native worker text.replace; actual quoted/entities/adjacent tabs/empty paragraphs/Unicode",
+    "sha256": "1131f08a59ccf17e4031a42fa8846675139f1b286bb7e44b9703c7aff29e2587",
+    "text": "  <&>\"'\t\t\n\nOlá 日本語 👩🏽‍💻\t fim\n",
+    "nativeBinarySha256": "2ad54341d4d6d8e68316e4916837fdaa158fd7bfe85619ad88387e4bfa6f9c12"
+  }
+}

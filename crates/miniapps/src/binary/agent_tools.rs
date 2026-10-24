@@ -20,6 +20,8 @@ pub fn tools_for(kind: Format) -> Vec<Definition> {
     match kind {
         Format::Deckcraft => deckcraft::agent_tools::tools(),
         Format::Gridcraft => gridcraft_tools::tools(),
+        // No Word browser/catalogue yet; do not offer an incomplete App.
+        Format::Wordcraft => Vec::new(),
     }
 }
 pub fn tools() -> Vec<Definition> {
@@ -31,7 +33,7 @@ pub fn command(tool: &str, args: &Value) -> Result<ParsedCommand, String> {
     match format(tool) {
         Some(Format::Deckcraft) => deckcraft::agent_tools::command(tool, args),
         Some(Format::Gridcraft) => gridcraft_tools::command(tool, args),
-        None => Err("Unsupported binary App tool".into()),
+        Some(Format::Wordcraft) | None => Err("Unsupported binary App tool".into()),
     }
 }
 pub fn recognizes(tool: &str) -> bool {

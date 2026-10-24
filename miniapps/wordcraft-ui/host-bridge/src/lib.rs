@@ -138,7 +138,9 @@ impl HostBridge {
             return Err(failure("engine_text_mismatch"));
         }
         let bytes = profile::encode(&text)?;
-        profile::parse(&bytes)?;
+        if profile::parse(&bytes)?.plain_text(StoryRef::Body) != params.text {
+            return Err(failure("encoded_text_mismatch"));
+        }
         let proposal = Proposal {
             metadata: json!({"scope":mutation.scope,"base":mutation.base,"mutationId":mutation.mutation_id,
                 "sha256":hash(&bytes),"byteLength":bytes.len(),"engineRevision":profile::ENGINE_REVISION,

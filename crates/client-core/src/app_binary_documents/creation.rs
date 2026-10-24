@@ -136,6 +136,7 @@ impl Engine {
                         document: Some(file),
                     }),
                     origin: match format {
+                        Format::Wordcraft => crate::i18n::t("Documento criado", "Created document"),
                         Format::Deckcraft => {
                             crate::i18n::t("Apresentação criada", "Created presentation")
                         }
@@ -163,6 +164,10 @@ impl Engine {
                 space,
                 &me,
                 &match format {
+                    Format::Wordcraft => crate::i18n::t(
+                        "Documento adicionado a esta conversa.",
+                        "Document added to this conversation.",
+                    ),
                     Format::Deckcraft => crate::i18n::t(
                         "Apresentação adicionada a esta conversa.",
                         "Presentation added to this conversation.",

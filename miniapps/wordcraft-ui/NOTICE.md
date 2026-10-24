@@ -23,3 +23,9 @@ WASM package inputs require their own actual inventory before distribution.
 
 Primary references: [pinned source](https://github.com/storytold/wordcraft/tree/d1b0bfc3f9dd83126b162a42b667facecb003b7f),
 [upstream NOTICE](https://github.com/storytold/wordcraft/blob/d1b0bfc3f9dd83126b162a42b667facecb003b7f/NOTICE).
+
+The canonical DOCX seed and two profile fixtures under `crates/miniapps` are actual
+writer/worker outputs, with production source and byte hashes in the adjacent
+fixture provenance. The storage verifier follows this pinned writer's closed
+plain paragraph/run shape and XML 1.0 text ranges; it does not embed the engine,
+upstream accounts, collaboration clients or branding.

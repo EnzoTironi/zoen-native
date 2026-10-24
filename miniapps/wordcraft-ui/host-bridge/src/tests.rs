@@ -244,6 +244,8 @@ fn zip_declared_size_count_and_actual_text_bounds_refuse_without_partial_edit() 
         "x".repeat(profile::MAX_TEXT + 1),
         "bad\rline".into(),
         "bad\0text".into(),
+        "before\u{fffe}after".into(),
+        "before\u{ffff}after".into(),
     ] {
         assert_eq!(
             bridge
@@ -279,5 +281,31 @@ fn command_schema_is_closed_and_version_overflow_cannot_create_proposal() -> Res
         Some(failure("invalid_mutation"))
     );
     assert!(bridge.pending.is_none());
+    Ok(())
+}
+
+#[test]
+fn actual_writer_xml_boundary_scalars_and_whitespace_survive_proposal_and_cold_reopen() -> Result<()>
+{
+    for text in [
+        "<&>\"' and entities",
+        "\t\t\n\ntrailing\t\n",
+        "boundary\u{d7ff}\u{e000}\u{fffd}\u{10000}\u{10ffff}",
+        "valid XML noncharacters in other planes: \u{1fffe}\u{1ffff}\u{10fffe}",
+        "Olá 日本語 👩🏽‍💻 👨‍👩‍👧‍👦",
+    ] {
+        let (mut bridge, original) = opened("Unchanged")?;
+        let request = command(head("1", &original), "boundary-edit", text);
+        let proposal = bridge.execute(request)?;
+        let cold = HostBridge::open(
+            Open {
+                scope: scope(),
+                head: head("2", &proposal.bytes),
+            },
+            &proposal.bytes,
+        )?;
+        assert_eq!(cold.inspect()["text"], text);
+        assert_eq!(exported(&bridge, head("1", &original))?.bytes, original);
+    }
     Ok(())
 }
