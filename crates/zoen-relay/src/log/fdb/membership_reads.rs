@@ -1,8 +1,14 @@
 use super::*;
 impl FdbLog {
     pub(super) async fn membership_read_version_impl(&self) -> Result<i64, StoreError> {
-        let trx = self.cell.db.create_trx().map_err(store_err)?;
-        trx.get_read_version().await.map_err(store_err)
+        let trx = self
+            .cell
+            .db
+            .create_trx()
+            .map_err(|e| StoreError(e.to_string()))?;
+        trx.get_read_version()
+            .await
+            .map_err(|e| StoreError(e.to_string()))
     }
     pub(super) async fn membership_page_impl(
         &self,
@@ -16,7 +22,11 @@ impl FdbLog {
         {
             return Err(StoreError(reads::INVALID.into()));
         }
-        let trx = self.cell.db.create_trx().map_err(store_err)?;
+        let trx = self
+            .cell
+            .db
+            .create_trx()
+            .map_err(|e| StoreError(e.to_string()))?;
         trx.set_read_version(version);
         let range = self.cell.root.subspace(&("i", who));
         let mut opt = RangeOption::from(range.range());
@@ -26,7 +36,10 @@ impl FdbLog {
         opt.limit = Some(limit);
         opt.target_bytes = 64 * 1024;
         opt.mode = StreamingMode::WantAll;
-        let page = trx.get_range(&opt, 1, true).await.map_err(store_err)?;
+        let page = trx
+            .get_range(&opt, 1, true)
+            .await
+            .map_err(|e| StoreError(e.to_string()))?;
         let mut spaces = Vec::new();
         for row in page.iter() {
             let (space,) = range
