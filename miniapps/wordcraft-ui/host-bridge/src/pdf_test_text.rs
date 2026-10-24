@@ -1,5 +1,5 @@
-//! Unicode extraction adapted from pinned WordCraft PDF tests (MIT OR Apache-2.0).
-/// Text of every page through hayro's interpreter (glyph → Unicode via ToUnicode / ActualText).
+//! Unicode extraction adapted from pinned `WordCraft` PDF tests (MIT OR Apache-2.0).
+/// Text of every page through hayro's interpreter (glyph → Unicode via `ToUnicode` / `ActualText`).
 pub(super) fn extract_text(bytes: &[u8]) -> crate::Result<Vec<String>> {
     use hayro_interpret::font::Glyph;
     use hayro_interpret::{

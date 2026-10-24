@@ -19,7 +19,7 @@ fn head(version: &str, bytes: &[u8]) -> Head {
         sha256: hash(bytes),
     }
 }
-fn pdf_request(head: Head) -> Result<Export> {
+fn pdf_request(head: &Head) -> Result<Export> {
     serde_json::from_value(json!({"scope":scope(),"head":head,"format":"pdf"}))
         .map_err(|_| failure("PDF export is not exposed"))
 }
@@ -48,7 +48,7 @@ fn actual_pdf_keeps_original_before_ack_then_exports_accepted_and_selected_cold_
         &original,
     )?;
     let before = bridge.status();
-    let pdf = bridge.export(&pdf_request(first.clone())?)?;
+    let pdf = bridge.export(&pdf_request(&first)?)?;
     assert!(contents(&pdf)?.contains("Original histórico Olá office"));
     assert!(contents(&pdf)?.contains("Second paragraph"));
     assert_eq!(pdf.metadata["sourceHead"], json!(first));
@@ -64,7 +64,7 @@ fn actual_pdf_keeps_original_before_ack_then_exports_accepted_and_selected_cold_
         }),
     })?;
     let pending = bridge.status();
-    let held = contents(&bridge.export(&pdf_request(first.clone())?)?)?;
+    let held = contents(&bridge.export(&pdf_request(&first)?)?)?;
     assert!(held.contains("Original histórico"));
     assert!(!held.contains("Replacement"));
     assert_eq!(bridge.status(), pending);
@@ -74,10 +74,10 @@ fn actual_pdf_keeps_original_before_ack_then_exports_accepted_and_selected_cold_
         mutation_id: "pdf-edit".into(),
         head: second.clone(),
     })?;
-    let latest = contents(&bridge.export(&pdf_request(second.clone())?)?)?;
+    let latest = contents(&bridge.export(&pdf_request(&second)?)?)?;
     assert!(latest.contains("Replacement accepted"));
     assert!(!latest.contains("Original"));
-    assert!(bridge.export(&pdf_request(first.clone())?).is_err());
+    assert!(bridge.export(&pdf_request(&first)?).is_err());
     let cold = HostBridge::open(
         Open {
             scope: scope(),
@@ -85,7 +85,7 @@ fn actual_pdf_keeps_original_before_ack_then_exports_accepted_and_selected_cold_
         },
         &proposal.bytes,
     )?;
-    assert!(contents(&cold.export(&pdf_request(second)?)?)?.contains("Replacement accepted"));
+    assert!(contents(&cold.export(&pdf_request(&second)?)?)?.contains("Replacement accepted"));
     let historical = HostBridge::open(
         Open {
             scope: scope(),
@@ -93,7 +93,7 @@ fn actual_pdf_keeps_original_before_ack_then_exports_accepted_and_selected_cold_
         },
         &original,
     )?;
-    let selected = historical.export(&pdf_request(first)?)?;
+    let selected = historical.export(&pdf_request(&first)?)?;
     assert!(contents(&selected)?.contains("Original histórico"));
     assert!(!contents(&selected)?.contains("Replacement"));
     assert_eq!(
@@ -114,7 +114,7 @@ fn pdf_rejects_foreign_scope_head_and_unknown_format_without_changing_document()
         &bytes,
     )?;
     let before = bridge.status();
-    let mut req = pdf_request(h.clone())?;
+    let mut req = pdf_request(&h)?;
     req.scope.actor_id = "foreign-owner".into();
     assert!(bridge.export(&req).is_err());
     req.scope = scope();
@@ -173,7 +173,7 @@ fn browser_pdf_uses_accepted_snapshot_while_real_canvas_and_manual_proposal_keep
     let text = contents(&bridge.export(&session, &current)?)?;
     assert!(text.contains("Checkpoint canvas"));
     assert!(!text.contains("Newer"));
-    assert!(bridge.status(&session)?["dirty"] == true);
+    assert_eq!(bridge.status(&session)?["dirty"], true);
     assert_eq!(
         session.doc.plain_text(wordcraft_doc::StoryRef::Body),
         "Newer unsaved canvas"
