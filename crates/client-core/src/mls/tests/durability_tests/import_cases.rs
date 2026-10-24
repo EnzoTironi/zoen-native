@@ -12,11 +12,18 @@ fn hundred_page_import_cold_reopen_and_lost_confirmation_keep_exact_originals() 
     let mut peer = reopen(&database.path("peer.sqlite"), &peer_secret);
     owner.profiles_session_start(true);
     assert!(owner.ready_epoch(space).is_some());
-    let mut pages = Vec::new();
-    for n in 0..100 {
-        let markdown = format!("# Página {n}\n\nOriginal Unicode 日本語 😀\r\nLinha {n}.\n");
-        let item = owner.page_import_markdown(space, &format!("{n}.md"), &markdown)?;
-        pages.push((item, markdown));
+    let pages = import_pages(&mut owner, space)?;
+    let uploads = owner
+        .pending_uploads(100)
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+    assert_eq!(
+        uploads.len(),
+        1,
+        "the corpus must exercise a real encrypted external Page"
+    );
+    for blob in uploads.keys() {
+        owner.upload_done(blob);
     }
     assert_eq!(owner.outbox_len(), 100);
     assert_eq!(owner.net.pending.len(), 100);
@@ -91,11 +98,56 @@ fn hundred_page_import_cold_reopen_and_lost_confirmation_keep_exact_originals() 
     assert_eq!(count, 100);
     assert!(owner.net.pending.is_empty());
     assert_eq!(peer.state.items.len(), 100);
-    for (item, markdown) in pages {
-        assert_eq!(owner.page_markdown(&item)?, markdown);
-        assert_eq!(peer.page_markdown(&item)?, markdown);
-    }
+    receive_page_payload(&mut peer, &uploads);
+    check_pages(&owner, &peer, &pages)?;
+    drop(peer);
+    let peer = reopen(&database.path("peer.sqlite"), &peer_secret);
+    check_pages(&owner, &peer, &pages)?;
     owner.logs[space].verify().map_err(storage)?;
     peer.logs[space].verify().map_err(storage)?;
+    Ok(())
+}
+
+fn import_pages(owner: &mut Engine, space: &str) -> R<Vec<(String, String)>> {
+    let mut pages = Vec::new();
+    for n in 0..100 {
+        let markdown = if n == 0 {
+            // Incompressible enough for the real Page.snapshot -> encrypted blob path.
+            let mut state = 0x5eed_u64;
+            let mut text = String::from("# External original\n\n");
+            for line in 0..4096 {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                text.push_str(&format!("{line}: {state:016x}\n"));
+            }
+            text
+        } else {
+            format!("# Página {n}\n\nOriginal Unicode 日本語 😀\r\nLinha {n}.\n")
+        };
+        let item = owner.page_import_markdown(space, &format!("{n}.md"), &markdown)?;
+        pages.push((item, markdown));
+    }
+    Ok(pages)
+}
+fn receive_page_payload(peer: &mut Engine, uploads: &HashMap<String, Vec<u8>>) {
+    let wanted = peer.wanted_media();
+    assert_eq!(wanted.len(), 1);
+    for w in wanted {
+        let sealed = &uploads[&w.blob];
+        let mut corrupt = sealed.clone();
+        corrupt[40] ^= 1;
+        assert!(
+            !peer.media_arrived(&w, &corrupt),
+            "changed ciphertext must refuse"
+        );
+        assert!(peer.media_arrived(&w, sealed));
+    }
+}
+fn check_pages(owner: &Engine, peer: &Engine, pages: &[(String, String)]) -> R<()> {
+    for (item, markdown) in pages {
+        assert_eq!(&owner.page_markdown(item)?, markdown);
+        assert_eq!(&peer.page_markdown(item)?, markdown);
+    }
     Ok(())
 }
