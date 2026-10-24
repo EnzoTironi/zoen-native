@@ -7,7 +7,7 @@ import { BlockedPeopleView, blockedPersonName } from '../../profile/blocked-peop
 export default function BlockedPeople() {
   const { session, state, accountRequired } = useBlockedPeople();
   const { confirm } = useDialogs();
-  const ticket = session.ticket();
+  const ticket = session.ticket(state);
   return (
     <>
       <Stack.Screen options={{ title: t('settings.blockedPeople') }} />

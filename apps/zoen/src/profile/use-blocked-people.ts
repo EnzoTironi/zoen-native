@@ -2,6 +2,7 @@ import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useClient } from '../core/provider';
+import { accountScope } from '../core/account-scope';
 import {
   BlockedPeopleSession,
   blockedPeopleScopeKey,
@@ -10,11 +11,12 @@ import {
 } from './blocked-people';
 
 export function useBlockedPeople() {
-  const { store } = useClient();
+  const client = useClient();
+  const { store } = client;
   const port = useMemo(() => createBlockedPeoplePort(store), [store]);
   const session = useMemo(() => new BlockedPeopleSession(port), [port]);
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
-  const scopeKey = blockedPeopleScopeKey(port.scope());
+  const scopeKey = blockedPeopleScopeKey(accountScope(store, client));
   useFocusEffect(
     useCallback(() => {
       let foreground = AppState.currentState === 'active';

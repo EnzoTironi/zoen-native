@@ -7,7 +7,7 @@ import { MutedChatsScreen, mutedChatName } from '../../notifications/muted-chats
 export default function MutedChats() {
   const { state, session, accountRequired } = useMutedChats();
   const { confirm } = useDialogs();
-  const ticket = session.ticket();
+  const ticket = session.ticket(state);
   return (
     <>
       <Stack.Screen options={{ title: t('notifications.mutedChats') }} />
