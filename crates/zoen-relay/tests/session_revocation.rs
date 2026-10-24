@@ -31,6 +31,9 @@ use zoen_relay::{
 };
 
 struct BlockedLog {
+    // Every live Session retains this log through AppState. Keep the scheduling
+    // lease through background socket teardown even if its fixture panics.
+    _snapshot_test_lease: Arc<snapshot_test_lease::Lease>,
     managed_registry: std::sync::OnceLock<zoen_relay::managed_devices::ManagedDevices>,
     sync_spaces: std::sync::Mutex<Option<Vec<String>>>,
     sync_history: std::sync::Mutex<Option<Arc<sync_membership::History>>>,
@@ -305,7 +308,7 @@ async fn connect(url: &str, author: &Author) -> Socket {
 mod snapshot_test_lease;
 
 struct TestRelay {
-    _snapshot_test_lease: snapshot_test_lease::Lease,
+    _snapshot_test_lease: Arc<snapshot_test_lease::Lease>,
     state: Arc<AppState>,
     log: Arc<BlockedLog>,
     ws_url: String,
@@ -325,6 +328,7 @@ impl TestRelay {
     }
 
     async fn with_snapshot_test_lease(lease: snapshot_test_lease::Lease) -> Self {
+        let lease = Arc::new(lease);
         let admin_url = std::env::var("ZOEN_TEST_PG").expect("set ZOEN_TEST_PG");
         let database = format!(
             "zoen_t_read_revoke_{}",
@@ -351,6 +355,7 @@ impl TestRelay {
                 .unwrap()
         };
         let log = Arc::new(BlockedLog {
+            _snapshot_test_lease: lease.clone(),
             managed_registry: Default::default(),
             sync_spaces: Default::default(),
             sync_history: Default::default(),
