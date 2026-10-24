@@ -1,20 +1,20 @@
-import type { SpaceMemberContext } from "../core/generated/SpaceMemberContext";
-import { accountScopeKey, type AccountScope } from "../core/account-scope.ts";
-import type { MemberActionsPort } from "./member-context-port.ts";
+import type { SpaceMemberContext } from '../core/generated/SpaceMemberContext';
+import { accountScopeKey, type AccountScope } from '../core/account-scope.ts';
+import type { MemberActionsPort } from './member-context-port.ts';
 
 export type MemberActionTicket = Readonly<{ scope: string; generation: number; member: string }>;
 export type MemberActionsState = Readonly<{
   scope: string;
   selected: string | null;
-  phase: "inactive" | "loading" | "ready" | "failed";
+  phase: 'inactive' | 'loading' | 'ready' | 'failed';
   context: SpaceMemberContext | null;
   busy: boolean;
   actionFailed: boolean;
 }>;
 export const emptyMemberActions: MemberActionsState = {
-  scope: "",
+  scope: '',
   selected: null,
-  phase: "inactive",
+  phase: 'inactive',
   context: null,
   busy: false,
   actionFailed: false,
@@ -26,16 +26,16 @@ function validate(context: SpaceMemberContext, space: string, member: string, ow
     context.member_id !== member ||
     context.identity_id !== owner.identity ||
     context.device_id !== owner.device ||
-    typeof context.space_title !== "string" ||
+    typeof context.space_title !== 'string' ||
     !/^[a-f0-9]{64}$/.test(context.revision) ||
-    !["Active", "Updating", "Removing", "Removed"].includes(context.state) ||
-    typeof context.can_remove !== "boolean" ||
+    !['Active', 'Updating', 'Removing', 'Removed'].includes(context.state) ||
+    typeof context.can_remove !== 'boolean' ||
     (context.member !== null && context.member.id !== member) ||
-    (context.state === "Removed" && (context.member !== null || context.can_remove)) ||
+    (context.state === 'Removed' && (context.member !== null || context.can_remove)) ||
     (context.can_remove &&
-      (context.state !== "Active" || !context.member || member === owner.identity))
+      (context.state !== 'Active' || !context.member || member === owner.identity))
   )
-    throw Error("Invalid member context");
+    throw Error('Invalid member context');
   return context;
 }
 
@@ -105,7 +105,7 @@ export class MemberActionsSession {
     this.publish({
       selected: member,
       context: null,
-      phase: "loading",
+      phase: 'loading',
       actionFailed: false,
       busy: this.writes.has(this.state.scope),
     });
@@ -119,20 +119,20 @@ export class MemberActionsSession {
     this.publish({
       selected: null,
       context: null,
-      phase: "inactive",
+      phase: 'inactive',
       busy: this.writes.has(this.state.scope),
     });
   }
   canOpenProfile(ticket: MemberActionTicket | null): boolean {
     return Boolean(
-      this.current(ticket) && this.state.phase === "ready" && this.state.context?.member,
+      this.current(ticket) && this.state.phase === 'ready' && this.state.context?.member,
     );
   }
   async refresh(ticket: MemberActionTicket | null, failed = false) {
     if (!this.current(ticket) || !this.owner || !ticket) return;
     const owner = this.owner;
     const read = ++this.readGeneration;
-    this.publish({ phase: "loading" });
+    this.publish({ phase: 'loading' });
     try {
       const context = validate(
         await this.port.read(ticket.member, owner),
@@ -141,19 +141,19 @@ export class MemberActionsSession {
         owner,
       );
       if (!this.current(ticket) || read !== this.readGeneration) return;
-      if (context.state === "Removed") {
+      if (context.state === 'Removed') {
         this.close();
         return;
       }
       this.publish({
-        phase: "ready",
+        phase: 'ready',
         context,
         busy: Boolean(this.review || this.writes.has(ticket.scope)),
-        actionFailed: failed && context.state !== "Removing",
+        actionFailed: failed && context.state !== 'Removing',
       });
     } catch {
       if (this.current(ticket) && read === this.readGeneration)
-        this.publish({ phase: "failed", context: null, actionFailed: failed });
+        this.publish({ phase: 'failed', context: null, actionFailed: failed });
     }
   }
   async remove(
@@ -165,7 +165,7 @@ export class MemberActionsSession {
       !this.current(ticket) ||
       !ticket ||
       !this.owner ||
-      this.state.phase !== "ready" ||
+      this.state.phase !== 'ready' ||
       !context?.can_remove ||
       this.state.busy ||
       this.review ||

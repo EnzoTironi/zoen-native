@@ -322,7 +322,7 @@ export default function Space() {
           {t('chat.historyEventTotal', { total: selected.event_count })}
         </Text>
       </ScrollView>
-      {chat.kind !== 'Direct' ? (
+      {chat.kind !== 'Direct' && members.available ? (
         <MemberActionsSheet session={members.session} state={members.state} />
       ) : null}
     </>

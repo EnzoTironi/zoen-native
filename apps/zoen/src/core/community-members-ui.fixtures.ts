@@ -57,10 +57,14 @@ export function strings(value: unknown): string {
     ? strings((value as Element).props.children)
     : '';
 }
-export async function communityUi(locale: 'en' | 'pt-BR' = 'en') {
-  const localization = createLocalization({ community, common, chat, conversationCards, peerInfo: peerCatalog }, [
-    locale,
-  ]);
+export async function communityUi(
+  locale: 'en' | 'pt-BR' = 'en',
+  platform: 'ios' | 'android' | 'web' = 'ios',
+) {
+  const localization = createLocalization(
+    { community, common, chat, conversationCards, peerInfo: peerCatalog },
+    [locale],
+  );
   const snapshot = draftSession();
   const room = snapshot.conversations[0]!;
   room.kind = 'Community';
@@ -150,6 +154,7 @@ export async function communityUi(locale: 'en' | 'pt-BR' = 'en') {
     if (name === 'react-native')
       return {
         AppState: appState,
+        Platform: { OS: platform },
         View: 'View',
         Text: 'Text',
         Pressable: 'Pressable',

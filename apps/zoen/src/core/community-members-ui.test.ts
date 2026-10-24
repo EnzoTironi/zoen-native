@@ -132,3 +132,16 @@ test('Direct and self rows retain their separate intended controls', async () =>
   assert.equal(row.props.onLongPress, undefined);
   await f.close();
 });
+
+test('web keeps profile navigation without advertising unsupported native member controls', async () => {
+  const f = await communityUi('en', 'web');
+  const screen = f.render();
+  const row = nodes(screen.tree).find((node) => node.props.testID === `details-member-${peer}`)!;
+  assert.equal(row.props.onLongPress, undefined);
+  assert.equal(row.props.accessibilityActions, undefined);
+  assert.equal(screen.sheet, null);
+  row.props.onPress();
+  assert.equal((f.routes[0] as any).params.id, peer);
+  assert.equal(f.calls.length, 0);
+  await f.close();
+});
