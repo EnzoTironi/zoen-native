@@ -270,14 +270,34 @@ mod money_currency_tests {
 
     #[test]
     fn signed_score_boundaries_preserve_the_full_magnitude() {
-        super::with_lang(Lang::En, || {
-            assert_eq!(super::thousands(i64::MIN), "-9,223,372,036,854,775,808");
-            assert_eq!(super::thousands(i64::MAX), "9,223,372,036,854,775,807");
-            assert_eq!(super::thousands(0), "0");
-        });
-        super::with_lang(Lang::Pt, || {
-            assert_eq!(super::thousands(i64::MIN), "-9.223.372.036.854.775.808");
-        });
+        for (language, cases) in [
+            (
+                Lang::En,
+                [
+                    (i64::MIN, "-9,223,372,036,854,775,808"),
+                    (i64::MAX, "9,223,372,036,854,775,807"),
+                    (0, "0"),
+                    (-1, "-1"),
+                    (1000, "1,000"),
+                ],
+            ),
+            (
+                Lang::Pt,
+                [
+                    (i64::MIN, "-9.223.372.036.854.775.808"),
+                    (i64::MAX, "9.223.372.036.854.775.807"),
+                    (0, "0"),
+                    (-1, "-1"),
+                    (1000, "1.000"),
+                ],
+            ),
+        ] {
+            super::with_lang(language, || {
+                for (number, expected) in cases {
+                    assert_eq!(super::thousands(number), expected, "{language:?}/{number}");
+                }
+            });
+        }
     }
 
     #[test]
