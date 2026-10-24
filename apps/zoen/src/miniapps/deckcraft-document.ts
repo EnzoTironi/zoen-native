@@ -1,12 +1,20 @@
 import { loadBinaryDocument } from './binary-document-load.ts';
-import { token, digest, positive, headEqual, record, head, scope, scopeEqual, type Scope, type Head, type DeckcraftBindings } from './deckcraft-document-wire.ts';
+import {
+  token,
+  digest,
+  positive,
+  headEqual,
+  record,
+  head,
+  scope,
+  scopeEqual,
+  type Scope,
+  type Head,
+  type DeckcraftBindings,
+} from './deckcraft-document-wire.ts';
 export type { DeckcraftBindings } from './deckcraft-document-wire.ts';
 import type { App } from '@modelcontextprotocol/ext-apps';
-import {
-  encode64,
-  hash,
-  CANONICAL_SCENE_CHUNK_BYTES as CHUNK,
-} from './canonical-scene.ts';
+import { encode64, hash, CANONICAL_SCENE_CHUNK_BYTES as CHUNK } from './canonical-scene.ts';
 import {
   binaryEditorFormat,
   binaryExportAllowed,
@@ -111,7 +119,11 @@ export class DeckcraftDocument {
   open(): Promise<void> {
     return this.serial(async () => {
       if (this.opened) throw new Error('The document is already open.');
-      const { read, binding, bytes } = await loadBinaryDocument(this.options.editor, this.options.itemId, (name, args) => this.tool(name, args));
+      const { read, binding, bytes } = await loadBinaryDocument(
+        this.options.editor,
+        this.options.itemId,
+        (name, args) => this.tool(name, args),
+      );
       this.binding = binding;
       try {
         await this.engine(
@@ -156,14 +168,19 @@ export class DeckcraftDocument {
         const status = (await this.engine('status')).metadata;
         if (this.pending || status.dirty || status.pendingMutationId)
           throw new Error('Preserve the local draft before reviewing the new version.');
-        const loaded = await loadBinaryDocument(this.options.editor, this.options.itemId, (name, args) => this.tool(name, args));
+        const loaded = await loadBinaryDocument(
+          this.options.editor,
+          this.options.itemId,
+          (name, args) => this.tool(name, args),
+        );
         try {
           if (loaded.read.readOnly === true || !scopeEqual(loaded.binding, this.binding))
             throw new Error('The document authority changed.');
           const next = { version: String(loaded.read.version), sha256: String(loaded.read.sha256) };
           const prior = head(status.head);
           if (!headEqual(prior, next)) {
-            if (Number(next.version) <= Number(prior.version)) throw new Error('The canonical document did not advance.');
+            if (Number(next.version) <= Number(prior.version))
+              throw new Error('The canonical document did not advance.');
             await this.engine('open', { scope: this.binding, head: next }, loaded.bytes);
           }
           this.state('saved');

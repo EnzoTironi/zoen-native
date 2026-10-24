@@ -8,7 +8,8 @@ export type DeckcraftBindings = {
 };
 export const token = (v: unknown): v is string =>
   typeof v === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(v);
-export const digest = (v: unknown): v is string => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v);
+export const digest = (v: unknown): v is string =>
+  typeof v === 'string' && /^[a-f0-9]{64}$/.test(v);
 export const positive = (v: unknown): v is number =>
   typeof v === 'number' && Number.isSafeInteger(v) && v >= 1 && v <= 0xffffffff;
 export const headEqual = (a: Head, b: Head) => a.version === b.version && a.sha256 === b.sha256;
@@ -45,4 +46,3 @@ export function scope(v: unknown, item: string): Scope {
 export function scopeEqual(a: Scope, b: Scope) {
   return a.artifactId === b.artifactId && a.actorId === b.actorId && a.actorKind === b.actorKind;
 }
-
