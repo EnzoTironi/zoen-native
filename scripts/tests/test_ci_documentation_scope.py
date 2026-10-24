@@ -112,14 +112,14 @@ class DocumentationScopeTests(unittest.TestCase):
 
     def test_workflow_preserves_full_jobs_after_scope_failure_and_does_not_run_after_cancel(self):
         workflow = (SOURCE.parents[1] / ".github/workflows/ci.yml").read_text()
-        for job in ("rust", "web-e2e"):
+        for job in ("rust-tests", "web-e2e"):
             body = re.search(r"(?ms)^  " + job + r":\n(.*?)(?=^  [a-z]|\Z)", workflow)[1]
             condition = next(line.strip() for line in body.splitlines() if line.startswith("    if:"))
             # A status function overrides GitHub's implicit success() predicate.
             # Empty outputs after a failed selector must keep the full job selected.
             self.assertIn("!cancelled()", condition)
             self.assertIn("needs.change-scope.result != 'success' ||", condition)
-            expected = "run_rust != 'false'" if job == "rust" else "documentation_only != 'true'"
+            expected = "run_rust != 'false'" if job == "rust-tests" else "documentation_only != 'true'"
             self.assertIn("needs.change-scope.outputs." + expected, condition)
 
     def test_delete_rename_and_symlink_never_skip(self):

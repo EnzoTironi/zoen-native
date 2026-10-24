@@ -37,6 +37,7 @@ pub(crate) struct ContextRef {
 
 impl Engine {
     pub(crate) fn recovery_recipients(&mut self, space: &str) -> R<Option<Vec<(String, String)>>> {
+        self.net.mls.recovery_key_waiters.remove(space);
         // Preserve interoperability with relays and members predating agreement keys.
         if !self.net.profiles.supported {
             return Ok(None);
@@ -56,8 +57,10 @@ impl Engine {
                 recipients.push((identity, key));
             } else if self.net.profiles.no_agreement.contains(&identity) {
                 legacy = true;
+                self.net.mls.recovery_key_waiters.insert(space.into());
             } else {
                 self.net.profiles.need_agreement.insert(identity);
+                self.net.mls.recovery_key_waiters.insert(space.into());
                 waiting = true;
             }
         }
@@ -241,6 +244,7 @@ impl Engine {
         while let Some(space) = spaces.next() {
             self.net.mls.recovery_downloads.remove(&space);
             if !self.can_recover(&space) {
+                self.net.mls.recovery_key_waiters.remove(&space);
                 continue;
             }
             if pending.contains(&space)
@@ -254,6 +258,7 @@ impl Engine {
                 self.net.mls.wake_recovery(&space);
                 continue;
             }
+            self.net.mls.recovery_key_waiters.remove(&space);
             match self.try_mls_recovery(&space) {
                 Ok(true) => {
                     self.net.mls.recovery_retry_at.remove(&space);

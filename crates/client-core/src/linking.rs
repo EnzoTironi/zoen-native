@@ -212,6 +212,16 @@ impl Engine {
             .filter(|d| d.revoked)
             .map(|d| d.device.clone())
             .collect();
+        // Missing/malformed metadata cannot establish an unchanged directory.
+        let same = |key, expected: &BTreeSet<String>| -> R<bool> {
+            Ok(self
+                .store
+                .meta(key)?
+                .and_then(|raw| serde_json::from_str::<BTreeSet<String>>(&raw).ok())
+                .as_ref()
+                == Some(expected))
+        };
+        let unchanged = same(META_ACTIVE, &active)? && same(META_REVOKED, &revoked)?;
         let active = serde_json::to_string(&active).map_err(|e| CoreError::Storage {
             message: e.to_string(),
         })?;
@@ -226,8 +236,10 @@ impl Engine {
             engine.store.set_meta(META_REVOKED, &revoked)?;
             engine.mls_siblings()
         })?;
-        let spaces: Vec<SpaceId> = self.net.synced.iter().cloned().collect();
-        self.net.mls.mark_dirty(spaces);
+        if !unchanged {
+            let spaces: Vec<SpaceId> = self.net.synced.iter().cloned().collect();
+            self.net.mls.mark_dirty(spaces);
+        }
         Ok(())
     }
 
