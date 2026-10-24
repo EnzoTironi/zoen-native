@@ -19,6 +19,22 @@ const PARAMETERLESS: [&str; 7] = [
 fn actual_human_menu_rotation_admission_click_checkpoint_cold_export() -> Result<()> {
     let (mut h, mut bridge, original) = harness()?;
     stroke(&mut h, 40.0, 60.0)?;
+    // Use the actual upstream menu component harness, as its own menu tests do.
+    // Move the App/Session including Undo; there is no second document or pixel copy.
+    let app = std::mem::replace(
+        h.state_mut(),
+        PhotocraftApp::new(Session::new(), Services::default()),
+    );
+    h = Harness::builder()
+        .with_size(egui::vec2(1100.0, 800.0))
+        .build_ui_state(
+            |ui, app| {
+                menus::menu_bar(app, ui);
+            },
+            app,
+        );
+    PhotocraftApp::setup_context(&h.ctx, ThemeKind::default());
+    h.run_steps(6);
     let command = "image.imageRotation.90cw";
     assert!(
         h.state().session.is_enabled(command),
