@@ -5,7 +5,10 @@ not a second MCP server. `upstream.json` records upstream commit
 `157aa23ceb1976008aadc89eb05e3444060f09d6`, PR #89 commit
 `aafc247efb8ba0689e193557749784ea80ee4996`, exact source hashes and dependency
 source pins. The original early-notification and initial-host-context patches
-remain under `patches/`. The canonical scene adapter is separate readable source.
+remain under `patches/`. The canonical scene adapter is separate readable source. The maintained legacy
+adaptation keeps host lifecycle in `mcp-app.tsx`, streaming SVG rendering in
+`mcp-diagram.tsx`, scene conversion in `mcp-diagram-scene.ts`, and editor chrome
+in `mcp-chrome.tsx`; each remains covered by the pinned build source inventory.
 
 ## Build
 

@@ -1,37 +1,16 @@
 // Saturday hike: the hero mini-app. Map with the three routes, a carousel that drives the
 // camera, a detail page per trail, a compare table and group voting, all on shared state.
 import { createRoot } from 'react-dom/client';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import maplibregl from 'maplibre-gl';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './styles.css';
-import { zoen, useZoenState, useMembers, Carousel, GlassCircle, GlassPill, Pill, Tag, Stat, StatGrid, AvatarStack, spring, lerp } from '@zoen/ui';
+import { zoen, Carousel, GlassCircle, GlassPill, Pill, Tag, Stat, StatGrid, AvatarStack, spring, lerp } from '@zoen/ui';
 import type { Member, PickedPhoto } from '@zoen/miniapp-sdk';
-import { TRAILS, byId, bounds, haversineMi, type Trail, type TrailId } from './trails';
+import { TRAILS, byId, haversineMi, type Trail, type TrailId } from './trails';
 import { Photo } from './photos';
 import { L } from './i18n';
-import { OfflineMap } from './OfflineMap';
-
-interface HikeState {
-  title: string; area: string; day: string; dayMs?: number;
-  trails: { id: TrailId; votes: string[] }[];
-  decided: TrailId | null;
-  itinerary: { time: string; text: string }[] | null;
-  album: { by: string; dataUrl: string }[];
-}
-
-// Outside a host (a browser tab, the headless test) the app runs on this local demo state.
-const DEMO: HikeState = {
-  title: 'Saturday hike', area: 'Bay Area', day: 'Saturday',
-  trails: [{ id: 'tomales', votes: ['Marina'] }, { id: 'steep', votes: ['Lucas'] }, { id: 'lands', votes: [] }],
-  decided: null, itinerary: null, album: [],
-};
-const DEMO_MEMBERS: Member[] = [
-  { id: 'me', name: 'Enzo', initials: 'E', color: '#4F7BEF', isMe: true },
-  { id: 'm', name: 'Marina', initials: 'M', color: '#E0567A', isMe: false },
-  { id: 'l', name: 'Lucas', initials: 'L', color: '#2FA37C', isMe: false },
-  { id: 'a', name: 'Ana', initials: 'A', color: '#F0A030', isMe: false },
-];
+import { MapView } from './map-view';
+import { useHike, votersOf, type HikeState } from './hike-state';
 
 type Filter = 'all' | 'shady' | 'short' | 'ocean';
 const FILTERS: { id: Filter; label: string; test: (t: Trail) => boolean }[] = [
@@ -40,37 +19,6 @@ const FILTERS: { id: Filter; label: string; test: (t: Trail) => boolean }[] = [
   { id: 'short', label: 'Under 5 mi', test: (t) => t.miles < 5 },
   { id: 'ocean', label: 'Ocean views', test: (t) => /ocean|bridge|city/i.test(t.bestFor + t.attributes.join(' ')) },
 ];
-
-const ONLINE_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
-
-/** Critically damped spring as an easing curve (no overshoot on the camera). */
-const springEase = (t: number) => { const k = 7; return (1 - (1 + k * t) * Math.exp(-k * t)) / (1 - (1 + k) * Math.exp(-k)); };
-
-function useHike() {
-  const live = useZoenState<HikeState>();
-  const [local, setLocal] = useState<HikeState>(DEMO);
-  const hosted = zoen.capabilities.host !== 'none' && zoen.capabilities.host !== 'unknown';
-  const state = (hosted && live?.trails ? live : local) as HikeState;
-  const membersLive = useMembers();
-  const members = membersLive.length ? membersLive : DEMO_MEMBERS;
-  const me = members.find((m) => m.isMe) ?? members[0];
-  const call = useCallback(async (tool: string, args: Record<string, any> = {}) => {
-    if (hosted) return zoen.state.call(tool, args);
-    // Local demo: mimic the core.
-    setLocal((s) => {
-      const n: HikeState = JSON.parse(JSON.stringify(s));
-      if (tool === 'hike_vote') { n.trails.forEach((t) => (t.votes = t.votes.filter((v) => v !== me.name))); n.trails.find((t) => t.id === args.trail)!.votes.push(me.name); }
-      if (tool === 'hike_decide') { n.decided = [...n.trails].sort((a, b) => b.votes.length - a.votes.length)[0].id; }
-      return n;
-    });
-  }, [hosted, me?.name]);
-  return { state, members, me, call, hosted };
-}
-
-function votersOf(state: HikeState, id: TrailId, members: Member[]) {
-  const names = state.trails.find((t) => t.id === id)?.votes ?? [];
-  return names.map((n) => members.find((m) => m.name === n) ?? { id: n, name: n, initials: n.slice(0, 1).toUpperCase(), color: '#8C95A8', isMe: false });
-}
 
 function App() {
   const { state, members, me, call, hosted } = useHike();
@@ -174,65 +122,9 @@ function App() {
 
 // ── map ──
 
-function MapView({ trail }: { trail: Trail }) {
-  const [online, setOnline] = useState(false);
-  useEffect(() => {
-    let mounted = true;
-    zoen.ready().then(() => {
-      if (mounted) setOnline(zoen.capabilities.has('net:tiles.openfreemap.org') || new URLSearchParams(location.search).has('net'));
-    });
-    return () => { mounted = false; };
-  }, []);
-  return online ? <OnlineMapView trail={trail} /> : <OfflineMap trail={trail} />;
-}
-
-function OnlineMapView({ trail }: { trail: Trail }) {
-  const el = useRef<HTMLDivElement>(null);
-  const map = useRef<maplibregl.Map | null>(null);
-  const marker = useRef<maplibregl.Marker | null>(null);
-  const ready = useRef(false);
-  const latestTrail = useRef(trail);
-  const [failed, setFailed] = useState(false);
-
-  const show = (t: Trail, animate: boolean) => {
-    const m = map.current; if (!m || !ready.current) return;
-    (m.getSource('route') as maplibregl.GeoJSONSource).setData({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: t.line } });
-    const mid = t.line[Math.floor(t.line.length / 2)];
-    marker.current!.setLngLat(mid);
-    (marker.current!.getElement().firstChild as HTMLElement).textContent = t.name;
-    m.fitBounds(bounds(t.line), { padding: { top: 150, bottom: 300, left: 50, right: 50 }, duration: animate ? 1200 : 0, easing: springEase, maxZoom: 14.5 });
-  };
-
-  useEffect(() => {
-    if (failed || !el.current) return;
-    let m: maplibregl.Map;
-    try {
-      m = new maplibregl.Map({ container: el.current, style: ONLINE_STYLE, center: trail.trailhead, zoom: 11, attributionControl: { compact: true }, pitchWithRotate: false, dragRotate: false });
-    } catch { setFailed(true); return; }
-    map.current = m;
-    m.on('error', () => { if (!ready.current) setFailed(true); });
-    const pin = document.createElement('div');
-    const label = document.createElement('div'); label.className = 'marker'; pin.appendChild(label);
-    marker.current = new maplibregl.Marker({ element: pin, anchor: 'bottom', offset: [0, -6] }).setLngLat(trail.trailhead).addTo(m);
-    m.on('load', () => {
-      const current = latestTrail.current;
-      m.addSource('route', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: current.line } } });
-      m.addLayer({ id: 'route-casing', type: 'line', source: 'route', paint: { 'line-color': '#ffffff', 'line-width': 9, 'line-opacity': 0.95 }, layout: { 'line-cap': 'round', 'line-join': 'round' } });
-      m.addLayer({ id: 'route', type: 'line', source: 'route', paint: { 'line-color': '#3D7A28', 'line-width': 4.5 }, layout: { 'line-cap': 'round', 'line-join': 'round' } });
-      ready.current = true;
-      show(current, false);
-    });
-    return () => { ready.current = false; map.current = null; marker.current = null; m.remove(); };
-  }, [failed]);
-
-  useEffect(() => { latestTrail.current = trail; show(trail, true); }, [trail]);
-
-  return failed ? <OfflineMap trail={trail} /> : <div ref={el} className="map" data-map="online" aria-label={`Map of ${trail.name}`} role="img" />;
-}
-
 // ── detail (matched expansion from the card photo) ──
 
-function Detail({ id, from, state, members, me, here, onLocate, onVote, call, hosted, say, onClose }: {
+function Detail({ id, from, state, members, me, here, onLocate, onVote, call, say, onClose }: {
   id: TrailId; from: DOMRect; state: HikeState; members: Member[]; me: Member; here: [number, number] | null;
   onLocate: () => void; onVote: (id: TrailId) => void; call: (tool: string, args?: any) => Promise<any>; hosted: boolean; say: (t: string) => void; onClose: () => void;
 }) {
