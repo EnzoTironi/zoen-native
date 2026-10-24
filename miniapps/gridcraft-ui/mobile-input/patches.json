@@ -1,0 +1,52 @@
+{
+  "status": "QUALIFIED_NATIVE_UI_AND_ACTUAL_BROWSER_NOT_IPHONE",
+  "source": "6d05c8452c7dde7449c8fb0b81e0d2b3bf395563",
+  "preparedBase": "d7d7cb9d1a8b2286887885082f9927a2f2255634",
+  "archives": {
+    "eframe-0.36.2": "55ad41fac6e3149abb4866e93df37dbd33baa95db525c3368c944584e95a5dc2",
+    "egui-0.36.2": "dc938cc27cd911415e1e4d151bc56ff9df063d8db081374e87aeb805ea74b2ba"
+  },
+  "patches": [
+    {
+      "path": "patches/eframe-current-owner.patch",
+      "bytes": 15136,
+      "sha256": "05a27707faae437e681ac1b9483e670770f185e910f96a1373559d5a4bbd8ef6"
+    },
+    {
+      "path": "patches/eframe-primary-contact.patch",
+      "bytes": 12328,
+      "sha256": "52ef89a672af8316450cee77fd09ec123b836f6372ad8637a32361762e01d0bb"
+    },
+    {
+      "path": "patches/eframe-text-agent.patch",
+      "bytes": 3615,
+      "sha256": "455dab396d4d5508e46e2bc0cdd3f818a9b68f781120115be851764d937cecbb"
+    },
+    {
+      "path": "patches/egui-touch-input.patch",
+      "bytes": 11964,
+      "sha256": "f79b6d8f92c01a267f94fe67e40170e154b16259c5424164925e4ffa366345cb"
+    },
+    {
+      "path": "patches/grid-editor-owner.patch",
+      "bytes": 13117,
+      "sha256": "4f5e7addb4c23219cc9275ca9a0908fa3195ce540a2a966178eb29f693a98958"
+    },
+    {
+      "path": "patches/vendor-bindings.patch",
+      "bytes": 283,
+      "sha256": "75f4000a8281bc03c74a9188c9fd817e91b180048576856a0c028d715569141e"
+    }
+  ],
+  "baselineFiles": {
+    "Cargo.toml": "1f2b04cc8c0651fa10a6bbb36328b055e9dd383cdffb88b7a177e69cb9b84255",
+    "crates/ui-egui/src/lib.rs": "2dcc7b3065a60f9c496993215939faaf124d359c9f41ee98e469605d60016487",
+    "crates/ui-egui/src/formula_bar.rs": "af0b8c27279c705819580360bf83f1734df7331a45e57e4db0e6e1bb40e7eeba",
+    "crates/ui-egui/src/grid.rs": "bcd7e8bd22236632910eb2331e048da53a732e922f90bc0174759996fa5860b4"
+  },
+  "testLeaf": {
+    "path": "tests/touch_ui_tests.rs",
+    "sha256": "8f69cc6f9b0c09c1d044e130b64391331c4255380df2a01b2e3c84528271a106",
+    "bytes": 7271
+  }
+}

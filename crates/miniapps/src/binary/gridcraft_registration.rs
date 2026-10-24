@@ -18,12 +18,12 @@ pub const MANIFEST: &str = match option_env!("ZOEN_GRIDCRAFT_RESOURCE_MANIFEST_J
     None => include_str!("../../resources/gridcraft.manifest.json"),
 };
 const PINS: RuntimePins = RuntimePins {
-    module_file: "gridcraft-web-dab23e6ef6507ebe.js",
-    module_bytes: 77_935,
-    module_sha: "dab23e6ef6507ebe066f66b0c83a8ae2b94f03fc988f39c1ac2776ce1821f511",
-    wasm_file: "gridcraft-web-5153bf63fb5e9877_bg.wasm",
-    wasm_bytes: 20_192_554,
-    wasm_sha: "5153bf63fb5e9877655446b23e4ade78d7207dbcd7f99d71bdfbf549d161384c",
+    module_file: "gridcraft-web-342b01fb13fdf007.js",
+    module_bytes: 78_601,
+    module_sha: "342b01fb13fdf00780e518d74d64986632b4db5a8985d00856cdff0353c0fc12",
+    wasm_file: "gridcraft-web-3656ee00500b30ac_bg.wasm",
+    wasm_bytes: 20_250_956,
+    wasm_sha: "3656ee00500b30ac821bcad78553e0ef3234836d468930d4d8396cc2f47a1eea",
 };
 pub fn valid_resource(html: &str, manifest: &str) -> bool {
     resource::valid_resource(Format::Gridcraft, &PINS, html, manifest)
@@ -131,6 +131,27 @@ mod tests {
             assert!(spec().is_none());
             assert!(create(&json!({})).is_err());
         }
+    }
+    #[test]
+    fn retired_deferred_focus_package_cannot_enable_grid() {
+        let mut old = fixture();
+        let base = format!(
+            "https://runtime.invalid/gridcraft/{}/",
+            Format::Gridcraft.revision()
+        );
+        old["runtimePackage"]["module"] = json!({
+            "url": format!("{base}gridcraft-web-dab23e6ef6507ebe.js"),
+            "bytes": 77_935,
+            "sha256": "dab23e6ef6507ebe066f66b0c83a8ae2b94f03fc988f39c1ac2776ce1821f511",
+            "mime": "text/javascript"
+        });
+        old["runtimePackage"]["wasm"] = json!({
+            "url": format!("{base}gridcraft-web-5153bf63fb5e9877_bg.wasm"),
+            "bytes": 20_192_554,
+            "sha256": "5153bf63fb5e9877655446b23e4ade78d7207dbcd7f99d71bdfbf549d161384c",
+            "mime": "application/wasm"
+        });
+        assert!(!valid_resource(HTML, &old.to_string()));
     }
     #[test]
     fn forged_package_identity_or_guest_network_permissions_cannot_enable_grid() {

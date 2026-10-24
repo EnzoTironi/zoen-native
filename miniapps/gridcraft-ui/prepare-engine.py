@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 
 REVISION = "b8771d51fb4da60bd48c13cf313d6d6014dc5e66"
 ROOT = Path(__file__).resolve().parents[2]
@@ -25,7 +26,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--upstream", type=Path, required=True)
     parser.add_argument("--browser", action="store_true", help="Include the managed WebGL/WASM shell")
+    parser.add_argument("--eframe-crate", type=Path, help="Pinned eframe 0.36.2 archive for browser input")
+    parser.add_argument("--egui-crate", type=Path, help="Pinned egui 0.36.2 archive for browser input")
     args = parser.parse_args()
+    if args.browser and (sys.version_info < (3, 12) or not args.eframe_crate or not args.egui_crate):
+        parser.error("--browser requires Python 3.12+ and both pinned --eframe-crate / --egui-crate archives")
     directory = args.upstream.resolve(strict=True)
     if git(directory, "rev-parse", "HEAD") != REVISION:
         raise SystemExit("Refusing unpinned GridCraft source")
@@ -36,8 +41,7 @@ def main():
         raise SystemExit("Refusing an existing adapter directory")
     patches = [HERE / "patches/0001-managed-command-policy.patch",
                HERE / "patches/0002-web-without-filesystem.patch",
-               HERE / "patches/0003-managed-share-intent.patch",
-               HERE / "patches/0004-refused-drag-keeps-undo.patch"]
+               HERE / "patches/0003-managed-share-intent.patch"]
     for patch in patches:
         subprocess.run(["git", "-C", str(directory), "apply", "--check", str(patch)], check=True)
         subprocess.run(["git", "-C", str(directory), "apply", str(patch)], check=True)
@@ -62,13 +66,31 @@ def main():
     copy(profile, destination / "src/profile.rs")
     for source in sorted(profile.with_suffix("").rglob("*.rs")):
         copy(source, destination / "src/profile" / source.relative_to(profile.with_suffix("")))
+    if args.browser:
+        recipe = HERE / "mobile-input"
+        subprocess.run([sys.executable, str(recipe / "apply.py"), str(directory),
+                        "--eframe-crate", str(args.eframe_crate.resolve(strict=True)),
+                        "--egui-crate", str(args.egui_crate.resolve(strict=True))], check=True)
+        for source in sorted(recipe.rglob("*")):
+            if source.is_file() and "__pycache__" not in source.parts:
+                inputs[str(source.relative_to(ROOT))] = hashlib.sha256(source.read_bytes()).hexdigest()
+    # Refused pointer commands must preserve earlier undo history. Apply this
+    # after mobile ownership, whose baseline is deliberately before 0004.
+    undo = HERE / "patches/0004-refused-drag-keeps-undo.patch"
+    subprocess.run(["git", "-C", str(directory), "apply", "--check", str(undo)], check=True)
+    subprocess.run(["git", "-C", str(directory), "apply", str(undo)], check=True)
+    patches.append(undo)
     # The source checker watches this prepared tree + these exact hashes. Cargo
     # must generate/update its lockfile genuinely, never using handwritten entries.
     for patch in patches:
         inputs[str(patch.relative_to(ROOT))] = hashlib.sha256(patch.read_bytes()).hexdigest()
     (directory / "zoen-gridcraft-source.json").write_text(json.dumps({
         "schema": 1, "upstream": REVISION, "adapterAbi": "zoen-host-v1",
-        "inputs": inputs, "compiled": False, "runtimeExecuted": False,
+        "inputs": inputs,
+        "mobileInputArchives": ({key: hashlib.sha256(path.read_bytes()).hexdigest()
+            for key, path in [("eframe-0.36.2", args.eframe_crate), ("egui-0.36.2", args.egui_crate)]}
+            if args.browser else None),
+        "compiled": False, "runtimeExecuted": False,
     }, indent=2) + "\n")
     print(json.dumps({"prepared": str(destination), "upstream": REVISION, "inputs": len(inputs)}))
 

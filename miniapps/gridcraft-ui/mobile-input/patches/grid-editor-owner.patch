@@ -1,0 +1,285 @@
+--- a/crates/ui-egui/src/formula_bar.rs
++++ b/crates/ui-egui/src/formula_bar.rs
+@@ -41,7 +41,7 @@
+                 let id = egui::Id::new("gridcraft.formula_bar");
+                 let read_only = active_spill_anchor(app).is_some();
+                 if app.editor.is_some() {
+-                    editor_widget(app, &mut child, id, theme::ui_font(13.0), expanded, field.width() - 12.0);
++                    let _ = editor_widget(app, &mut child, id, theme::ui_font(13.0), expanded, field.width() - 12.0);
+                 } else {
+                     // Show the active cell's content; clicking starts editing in the bar.
+                     let text = active_input(app);
+@@ -49,9 +49,22 @@
+                     let resp = child
+                         .add(egui::Label::new(egui::RichText::new(text).font(theme::ui_font(13.0)).color(color)).truncate().sense(Sense::click()));
+                     let click = child.interact(field, id.with("click"), Sense::click());
+-                    if !read_only && (resp.clicked() || click.clicked()) {
++                    let cell = app.session.active().map(|d| d.selection.active);
++                    let target = cell.and_then(|cell| crate::text_activation::scope(app, cell, true));
++                    crate::text_activation::contact(&child, &click, target);
++                    crate::text_activation::contact(&child, &resp, target);
++                    let trigger = if resp.clicked_by(egui::PointerButton::Primary) { &resp } else { &click };
++                    let mut rendered = None;
++                    if !read_only && crate::text_activation::trigger(&child, trigger, target) {
+                         app.begin_edit(None, true);
++                        // Materialize only the same document/cell editor admitted by
++                        // this real trigger, including the trigger's padding hit area.
++                        if app.editor.is_some() {
++                            let mut editor = ui.new_child(egui::UiBuilder::new().max_rect(field.shrink2(vec2(6.0, 3.0))));
++                            rendered = editor_widget(app, &mut editor, id, theme::ui_font(13.0), expanded, field.width() - 12.0);
++                        }
+                     }
++                    crate::text_activation::publish(app, &child, trigger, true, rendered);
+                 }
+                 ui.allocate_space(vec2(avail, h - 6.0));
+                 let chevron = if expanded { Icon::ChevronUp } else { Icon::Chevron };
+@@ -173,8 +186,15 @@
+ }
+ 
+ /// The text editor used in the cell and in the formula bar (they share `app.editor`).
+-pub fn editor_widget(app: &mut SheetApp, ui: &mut egui::Ui, id: egui::Id, font: FontId, multiline: bool, width: f32) {
+-    let Some(mut ed) = app.editor.take() else { return };
++pub(crate) fn editor_widget(
++    app: &mut SheetApp,
++    ui: &mut egui::Ui,
++    id: egui::Id,
++    font: FontId,
++    multiline: bool,
++    width: f32,
++) -> Option<crate::text_activation::RenderedText> {
++    let mut ed = app.editor.take()?;
+     let mine = ed.from_formula_bar == (id == egui::Id::new("gridcraft.formula_bar"));
+     // Keys the editor handles itself (before the TextEdit sees them), only where it has focus.
+     let focused = ui.ctx().memory(|m| m.focused());
+@@ -341,7 +361,7 @@
+         ed.sync_caret = false;
+         let cursor = egui::text::CCursor::new(ed.caret);
+         output.state.cursor.set_char_range(Some(egui::text::CCursorRange::one(cursor)));
+-        output.state.store(ui.ctx(), id);
++        output.state.clone().store(ui.ctx(), id);
+     } else if resp.clicked() || resp.gained_focus() {
+         // Clicking into the other editor moves editing there.
+         ed.from_formula_bar = id == egui::Id::new("gridcraft.formula_bar");
+@@ -456,6 +476,7 @@
+             });
+         });
+     }
++    let rendered = crate::text_activation::rendered(app, ui, id, ed.cell, id == egui::Id::new("gridcraft.formula_bar"), &output);
+     app.editor = Some(ed);
+     if cancel {
+         app.cancel_edit();
+@@ -466,6 +487,7 @@
+             app.commit_edit(dr, dc, array, fill);
+         }
+     }
++    rendered
+ }
+ 
+ fn cycle_anchor(ed: &mut crate::editor::EditState) {
+--- a/crates/ui-egui/src/grid.rs
++++ b/crates/ui-egui/src/grid.rs
+@@ -794,6 +794,12 @@
+     if geo.paper.is_some() {
+         crate::paper_view::paint_rulers(app, &painter, rect, &geo, &t);
+     }
++    // Bind the custom grid trigger to the document/cell actually pressed.
++    let target = ui
++        .input(|input| input.pointer.interact_pos())
++        .filter(|at| geo.cells.contains(*at))
++        .and_then(|at| crate::text_activation::scope(app, geo.cell_at(sh, at), false));
++    crate::text_activation::contact(ui, &resp, target);
+     // Interaction.
+     let previous_popups = (app.grid.filter_menu, app.grid.list_picker, app.grid.header_menu, app.grid.fill_menu);
+     // A pan the grid never saw end (it was hidden mid-drag) must not swallow the next press.
+@@ -811,9 +817,8 @@
+     }
+     update_cursor(app, ui, &resp, &geo, sh);
+     crate::text_box::show(app, ui, &geo, sh);
+-    if app.editor.as_ref().is_some_and(|e| !e.from_formula_bar) {
+-        in_cell_editor(app, ui, &geo, sh, &wb);
+-    }
++    let rendered = if app.editor.as_ref().is_some_and(|e| !e.from_formula_bar) { in_cell_editor(app, ui, &geo, sh, &wb) } else { None };
++    crate::text_activation::publish(app, ui, &resp, false, rendered);
+     filter_menu(app, ui, &geo, previous_popups.0 == app.grid.filter_menu);
+     list_picker(app, ui, &geo, previous_popups.1 == app.grid.list_picker);
+     header_menu(app, ui, previous_popups.2 == app.grid.header_menu);
+@@ -2403,7 +2408,9 @@
+                 }
+             }
+             // Following a hyperlink requires a single click in Excel; double-click edits.
+-            app.begin_edit(None, false);
++            if crate::text_activation::trigger(ui, resp, crate::text_activation::scope(app, c, false)) {
++                app.begin_edit(None, false);
++            }
+             return;
+         }
+         app.grid.last_click = Some((c, now));
+@@ -2446,6 +2453,14 @@
+         {
+             // The first recognised drag already includes movement away from the press.
+             select_to_pointer(app, geo, sh, wb, p);
++        }
++        // A pure click is already a release. Retire its selection drag here:
++        // returning with Select would swallow a second tap before the next
++        // idle repaint, although no pointer button remains down.
++        if !pointer.any_down() {
++            app.grid.drag = Drag::None;
++            app.grid.drag_select = false;
++            format_painter_apply(app);
+         }
+         return;
+     }
+@@ -3117,10 +3132,10 @@
+     if text_w + 14.0 <= cell_w { cell_w } else { text_w + editor_slack(size) }
+ }
+ 
+-fn in_cell_editor(app: &mut SheetApp, ui: &mut egui::Ui, geo: &Geo, sh: &Sheet, wb: &Workbook) {
+-    let Some(ed) = app.editor.as_ref() else { return };
++fn in_cell_editor(app: &mut SheetApp, ui: &mut egui::Ui, geo: &Geo, sh: &Sheet, wb: &Workbook) -> Option<crate::text_activation::RenderedText> {
++    let ed = app.editor.as_ref()?;
+     if ed.sheet != wb.active_sheet {
+-        return;
++        return None;
+     }
+     let cell = ed.cell;
+     let rect = match sh.merge_at(cell) {
+@@ -3166,7 +3181,7 @@
+     // The theme's caret is meant for the UI chrome and vanishes on some fills (and, in the dark
+     // theme, on the white paper): pick black or white against the fill, like Excel.
+     child.visuals_mut().text_cursor.stroke.color = ink_on(fill);
+-    crate::formula_bar::editor_widget(app, &mut child, id, font, wrap, erect.width() - 4.0);
++    crate::formula_bar::editor_widget(app, &mut child, id, font, wrap, erect.width() - 4.0)
+ }
+ 
+ /// Test the popup itself, not whether the pointer is over any part of the app.
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -31,6 +31,7 @@
+ pub mod ribbon;
+ pub mod selection_glide;
+ pub mod tabs;
++mod text_activation;
+ pub mod text_box;
+ pub mod theme;
+ pub mod widgets;
+--- /dev/null
++++ b/crates/ui-egui/src/text_activation.rs
+@@ -0,0 +1,118 @@
++//! A real custom field trigger may admit only its same document/cell editor on release.
++//! This is transient UI ownership, never workbook content or a keyboard permission clock.
++use crate::SheetApp;
++use egui::{Id, PointerButton, Response, Ui};
++use gridcraft_engine::core::CellRef;
++
++const PULSE: &str = "eframe.text_input_activation";
++
++pub(crate) fn scope(app: &SheetApp, cell: CellRef, formula: bool) -> Option<Id> {
++    let d = app.session.active()?;
++    let sh = d.wb.active()?;
++    let cell = sh.merge_at(cell).map_or(cell, |range| range.start);
++    Some(Id::new(("gridcraft-text", d.uid, d.wb.active_sheet, cell.row, cell.col, formula)))
++}
++
++fn cancelled(ui: &Ui) -> bool {
++    ui.input(|input| {
++        let mut first = None;
++        let multiple_starts = input.events.iter().any(|event| {
++            if let egui::Event::Touch { device_id, id, phase: egui::TouchPhase::Start, .. } = event {
++                let key = (*device_id, *id);
++                let previous = first.replace(key);
++                previous.is_some_and(|previous| previous != key)
++            } else {
++                false
++            }
++        });
++        multiple_starts
++            || input.multi_touch().is_some()
++            || input.events.iter().any(|event| matches!(event, egui::Event::Touch { phase: egui::TouchPhase::Cancel, .. }))
++            || (input.events.iter().any(|event| matches!(event, egui::Event::PointerGone)) && !input.pointer.primary_released())
++    })
++}
++
++pub(crate) fn contact(ui: &Ui, response: &Response, target: Option<Id>) {
++    let key = response.id.with("text-contact");
++    if cancelled(ui) || !ui.is_enabled() {
++        ui.data_mut(|data| data.remove::<Option<Id>>(key));
++    } else if response.is_pointer_button_down_on() && ui.input(|input| input.pointer.primary_pressed()) {
++        ui.data_mut(|data| data.insert_temp(key, target));
++    }
++}
++
++pub(crate) fn trigger(ui: &Ui, response: &Response, target: Option<Id>) -> bool {
++    target.is_some()
++        && ui.is_enabled()
++        && !cancelled(ui)
++        && !response.dragged()
++        && ui.input(|input| input.pointer.primary_released())
++        && response.clicked_by(PointerButton::Primary)
++        && ui.data(|data| data.get_temp::<Option<Id>>(response.id.with("text-contact"))).flatten() == target
++}
++
++pub(crate) struct RenderedText {
++    widget: Id,
++    owner: Id,
++    frame: u64,
++    ime: egui::output::IMEOutput,
++}
++
++pub(crate) fn rendered(
++    app: &SheetApp,
++    ui: &Ui,
++    widget: Id,
++    cell: CellRef,
++    formula: bool,
++    output: &egui::text_edit::TextEditOutput,
++) -> Option<RenderedText> {
++    if !output.response.enabled() || !ui.is_rect_visible(output.text_clip_rect) {
++        return None;
++    }
++    let cursor = output.state.cursor.char_range()?.primary;
++    let cursor_rect = output.galley.pos_from_cursor(cursor).translate(output.galley_pos.to_vec2());
++    let global = ui.ctx().layer_transform_to_global(ui.layer_id()).unwrap_or_default();
++    Some(RenderedText {
++        widget,
++        owner: scope(app, cell, formula)?,
++        frame: ui.ctx().cumulative_frame_nr(),
++        ime: egui::output::IMEOutput {
++            purpose: egui::IMEPurpose::Normal,
++            rect: global * output.text_clip_rect,
++            cursor_rect: global * cursor_rect,
++            should_interrupt_composition: false,
++        },
++    })
++}
++
++pub(crate) fn publish(app: &SheetApp, ui: &Ui, response: &Response, formula: bool, rendered: Option<RenderedText>) {
++    if !ui.input(|input| input.pointer.primary_released()) {
++        return;
++    }
++    let armed = ui.data_mut(|data| data.remove_temp::<Option<Id>>(response.id.with("text-contact"))).flatten();
++    let Some(ed) = app.editor.as_ref().filter(|ed| ed.from_formula_bar == formula) else { return };
++    if !app.session.active().is_some_and(|d| d.wb.active_sheet == ed.sheet) {
++        return;
++    }
++    let Some(rendered) = rendered else { return };
++    let widget = Id::new(if formula { "gridcraft.formula_bar" } else { "gridcraft.cell_editor" });
++    if rendered.widget == widget
++        && rendered.frame == ui.ctx().cumulative_frame_nr()
++        && Some(rendered.owner) == scope(app, ed.cell, formula)
++        && armed.is_some()
++        && armed == scope(app, ed.cell, formula)
++        && !app.session.managed_frozen
++        && ui.is_enabled()
++        && !cancelled(ui)
++        && !response.dragged()
++        && response.clicked_by(PointerButton::Primary)
++    {
++        // The real release belongs to the label/grid trigger, not to the new
++        // TextEdit. Advertise only that admitted editor's actual rendered caret
++        // in this same frame; do not alter global click/focus policy or events.
++        ui.memory_mut(|memory| memory.request_focus(widget));
++        ui.output_mut(|output| output.ime = Some(rendered.ime));
++        let pulse = Some((ui.ctx().cumulative_frame_nr(), widget));
++        ui.data_mut(|data| data.insert_temp(Id::new(PULSE), pulse));
++    }
++}
