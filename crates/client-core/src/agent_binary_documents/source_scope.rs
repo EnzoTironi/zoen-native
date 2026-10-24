@@ -185,6 +185,36 @@ impl Engine {
     }
 }
 impl Client {
+    /// Publish the scoped answer under the same lock as its source/head checks.
+    /// Keep the ordinary inline source link used by host recovery and the sheet.
+    pub fn agent_artifact_reply(
+        &self,
+        space: &str,
+        source: &str,
+        serving: &str,
+        text: &str,
+    ) -> R<crate::TimelineEntry> {
+        let mut e = self.lock();
+        let (_, _, _, source_sha) = e.agent_source_binding(space, source, serving, false)?;
+        let request = e.artifact_request(space, source)?.ok_or_else(denied)?;
+        e.check_artifact_head(&request.item_id, source, &source_sha, space)?;
+        let me = e.me_id()?;
+        if matches!(
+            e.decide(&me, space, &types::ActionClass::Reply, 0),
+            grants::Decision::Block(_)
+        ) {
+            return Err(denied());
+        }
+        if let Some(answer) = e.space_state(space)?.entries.iter().find(|entry| {
+            entry.author == me
+                && matches!(&entry.body, EntryBody::Message {reply: Some(reference), ..}
+                if !reference.thread && reference.to == source)
+        }) {
+            return Ok(e.entry_dto(answer));
+        }
+        e.send_reply(space, text, source, false)
+    }
+
     /// Rust-only discovery hint. Errors must never fall back to unscoped tools;
     /// execution independently rechecks this signed source and the receipt chain.
     pub fn agent_artifact_request(

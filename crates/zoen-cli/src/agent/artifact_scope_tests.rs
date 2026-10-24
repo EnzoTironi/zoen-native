@@ -26,7 +26,7 @@ fn scoped_discovery_and_dispatch_never_fall_back_to_other_space_tools_or_cached_
         .unwrap()
         .into_iter()
         .find(
-            |e| matches!(&e.kind,EntryKind::Message{card:Some(card),..} if card.id==f.base.item_id),
+            |e| matches!(&e.kind,EntryKind::Message{card:Some(card),..} if card.item_id==f.base.item_id),
         )
         .unwrap()
         .id;
