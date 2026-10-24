@@ -116,14 +116,12 @@ impl HostBridge {
         if !wire::identifier(&m.mutation_id) || m.base.number()? == u64::MAX {
             return Err(failure("invalid_mutation"));
         }
-        if let Some(last) = &self.last {
-            if last.id == m.mutation_id {
-                return if last.fingerprint == fingerprint {
-                    Ok(Some(last.proposal.clone()))
-                } else {
-                    Err(failure("mutation_reused"))
-                };
-            }
+        if let Some(last) = self.last.as_ref().filter(|last| last.id == m.mutation_id) {
+            return if last.fingerprint == fingerprint {
+                Ok(Some(last.proposal.clone()))
+            } else {
+                Err(failure("mutation_reused"))
+            };
         }
         if let Some(p) = &self.pending {
             return if p.id == m.mutation_id && p.fingerprint == fingerprint {

@@ -137,10 +137,8 @@ impl Profile {
                     if stack.pop().is_none() {
                         return Err(INVALID);
                     }
-                    if tag.local_name().as_ref() == b"f" {
-                        if let Some(formula) = formula.take() {
-                            validate_formula(&formula)?;
-                        }
+                    if let Some(formula) = formula.take_if(|_| tag.local_name().as_ref() == b"f") {
+                        validate_formula(&formula)?;
                     }
                 }
                 Event::Text(value) => {
