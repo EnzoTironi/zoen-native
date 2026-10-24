@@ -8,6 +8,7 @@ import { pathToFileURL, fileURLToPath } from "node:url";
 import { build } from "../../../apps/zoen/node_modules/esbuild/lib/main.js";
 import { findBrowserExecutable } from "../../../tools/miniapp-build/browser-executable.ts";
 import { pauseOnCompletedTouch } from "./input-flush-assertions.mjs";
+import { rotateFromHumanMenu } from "./menu-rotation.mjs";
 const editor = "photocraft";
 const [modulePath, wasmPath, htmlPath, seedPath, output, playwrightPath] = process.argv.slice(2);
 if (
@@ -208,33 +209,45 @@ try {
   assert.deepEqual(editedPixels.white, originalPixels.white);
   assert.deepEqual(editedPixels.black, originalPixels.black);
   assert.deepEqual(editedPixels.green, originalPixels.green);
+  const menuRotation =
+    process.env.PHOTO_MENU_ROTATION === "1"
+      ? await rotateFromHumanMenu(page, output, edited, pixels)
+      : undefined;
+  const finalDocument = menuRotation ?? edited;
+  const finalPixels = menuRotation?.pixels ?? editedPixels;
   await page.setViewportSize({ width: 844, height: 390 });
   await page.screenshot({ path: resolve(output, "landscape.png") });
   assert.equal(
     await page.evaluate(() => window.probe.writes),
-    2,
-    "rotation must not save a document edit",
+    finalDocument.writes,
+    "viewport rotation must not save a document edit",
   );
   await page.setViewportSize({ width: 390, height: 844 });
   await page.evaluate(() => window.probe.close());
   files.set("/config.json", [
-    Buffer.from(JSON.stringify({ ...config, seed: edited.accepted, version: edited.version })),
+    Buffer.from(
+      JSON.stringify({ ...config, seed: finalDocument.accepted, version: finalDocument.version }),
+    ),
     "application/json",
   ]);
   await page.reload({ waitUntil: "load" });
   await page.waitForFunction(() => window.probe?.opened, undefined, { timeout: 25000 });
   assert.equal(await page.evaluate(() => window.probe.writes), 0);
-  assert.equal(await page.evaluate(() => window.probe.version), 3);
+  assert.equal(await page.evaluate(() => window.probe.version), finalDocument.version);
   for (const format of formats) await page.evaluate((f) => window.probe.share(f), format);
   const reopened = await page.evaluate(() => window.probe.exports);
   for (const file of reopened) {
     const bytes = Buffer.from(file.data, "base64");
     assert.equal(sha(bytes), file.sha256);
     if (file.format === "pcraft")
-      assert.equal(file.data, edited.accepted, "fresh renderer reopens exact accepted bytes");
+      assert.equal(
+        file.data,
+        finalDocument.accepted,
+        "fresh renderer reopens exact accepted bytes",
+      );
     await writeFile(resolve(output, `reopened.${file.format}`), bytes);
   }
-  assert.deepEqual(pixels(resolve(output, "reopened.png")), editedPixels);
+  assert.deepEqual(pixels(resolve(output, "reopened.png")), finalPixels);
   await page.screenshot({ path: resolve(output, "opened.png") });
   await page.evaluate(() => window.probe.retire());
   await assert.rejects(page.evaluate((f) => window.probe.share(f), formats[0]));
@@ -255,7 +268,12 @@ try {
     touchPause,
     editedPixels,
     edited,
-    coldReopen: { version: 3, writes: 0, sha256: sha(Buffer.from(edited.accepted, "base64")) },
+    menuRotation,
+    coldReopen: {
+      version: finalDocument.version,
+      writes: 0,
+      sha256: sha(Buffer.from(finalDocument.accepted, "base64")),
+    },
     requests,
     errors,
     consoleErrors,

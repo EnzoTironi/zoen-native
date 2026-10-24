@@ -1,20 +1,22 @@
 {
   "schema": 1,
   "source": {
-    "compiledBrowser": "c8ff3bed0d6abe9308fe20ef41a969c97363075d",
-    "validatedPins": "6d0b62dcbd7ee142e8173f11712405c3c3fb93fa",
-    "prepared": "4b8553b457e0a00d789a34fa6ce1254c6d16fe78",
+    "productionCommit": "5d74a619cb99015f97b8922a34bca5263c627f13",
     "upstream": "9b9643764f3fb77d9f0e48d7510983ae50621e11",
-    "basePhoto": "39f33ea9242cc78e82176c8f15198253a0fbe7de",
-    "releaseFocusOriginal": "2d4f0d50",
-    "releaseFocusCherryPick": "ee2414f1",
+    "browserPrepared": "519abb29eac37882f01f004811be353c676c32ac",
+    "hostPrepared": "ec9acf17c451aa4a50918ed00440de30d84b37b0",
     "retainedLockSha256": "f196b125494ad2e13ebc615633f126b16f80526e2f96ed6f45a6786a5d53e066",
-    "compiledInputEqualityAtValidatedPins": {
-      "engine": 31,
-      "bootstrap": 167
+    "browserInputEquality": "All32 prepared input files match except the native-only menu test. Production inputs are unchanged; host-only selector/component-harness overlay is recorded separately. No WASM rebuild for a host selector.",
+    "hostTestOverlay": {
+      "scope": "Only host cfg(test) selector: use upstream decorated label with uniqueness enforced by kittest query. Browser source/build remain sealed at prepared commit519abb29; production engine bytes unchanged.",
+      "file": "crates/zoen-web/src/menu_tests.rs",
+      "before": "97047a9155333ac5e4a0de3a8a4669a7e40830f3c6bb7dff3c33eb426a831da2",
+      "after": "9409b210f7c8c4304bb2475c2e020cc5f9a1aa79e8a6efaf454192477c6dd815",
+      "browserSource": "519abb29eac37882f01f004811be353c676c32ac",
+      "harness": "Move actual PhotocraftApp state into upstream menu_bar build_ui_state harness after actual pointer stroke; same Session and Undo, no copied pixels."
     }
   },
-  "artifacts": "/Users/enzotironi/.codex/builds/zoen-photocraft-browser-envelope-v592",
+  "artifacts": "/Users/enzotironi/.codex/builds/zoen-photocraft-human-menu-v595",
   "runtime": {
     "schema": 1,
     "engine": "photocraft",
@@ -28,8 +30,8 @@
     },
     "wasm": {
       "url": "https://qualification.invalid/photocraft/9b9643764f3fb77d9f0e48d7510983ae50621e11/photocraft_bg.wasm",
-      "bytes": 32678769,
-      "sha256": "2428e9ba888df43224fe3f3a3a64eb5026dbe7b520eca8b7ab3767c0b063d7d6",
+      "bytes": 32678777,
+      "sha256": "83a01d6b8089253b6d04b439ee7bcd83be7ab8c35eb885a17b898d9a6786d218",
       "mime": "application/wasm"
     }
   },
@@ -41,78 +43,159 @@
   "build": [
     {
       "name": "browser-wasm-clippy",
-      "seconds": 109.311,
+      "seconds": 42.303,
       "exit": 0,
-      "logSha256": "7d380ed260a9e601be83f296eaa208f3bb12d741d7105470e82b45f05edf8289"
+      "logSha256": "1710cddf36e3fbc663e52d88c97cb28091d5f96d433080a0c627fbe4db6243d9"
     },
     {
       "name": "browser-wasm",
-      "seconds": 435.326,
+      "seconds": 189.363,
       "exit": 0,
-      "logSha256": "e7883989c50ae8dd4cf3b67f90590856899c0c4c7c8db977fba94444fe73fb92"
+      "logSha256": "595f4e72044fe97c3462a45ea26e4e0691bbb884c19c8f6c303eeda98b2378d5"
     }
   ],
+  "hostRust": {
+    "scope": "Actual host bridge/Session and real menu component using the same moved PhotocraftApp Session/Undo after a real pointer stroke; no iOS claim.",
+    "testExecution": "PASS",
+    "passed": 21,
+    "ignored": 0,
+    "locale": {
+      "PHOTOCRAFT_LOCALE": "en"
+    },
+    "tests": [
+      {
+        "target": "photocraft_zoen_web",
+        "exit": 0,
+        "seconds": 0.254,
+        "binary": "/Users/enzotironi/.codex/builds/zoen-photocraft-human-menu-v595/target-native/debug/deps/photocraft_zoen_web-956887d3f5dc66aa",
+        "binarySha256": "baf2e87e83431d87f6bd9a751ee2c8d961cee2df431ed73dc36c2c06d9bf4e4e",
+        "logSha256": "e0fc574e889f27e580093be3ff41b1abcffaeb96dfd95324cc6c91e760c4131f",
+        "environment": {
+          "PHOTOCRAFT_LOCALE": "en"
+        },
+        "scope": "Actual compiler-produced host Rust test executable; test execution with supported upstream locale override, not iOS.",
+        "passed": 8
+      },
+      {
+        "target": "photocraft_zoen_host",
+        "exit": 0,
+        "seconds": 0.089,
+        "binary": "/Users/enzotironi/.codex/builds/zoen-photocraft-human-menu-v595/target-native/debug/deps/photocraft_zoen_host-148f81ecc826b5f3",
+        "binarySha256": "7b570edab46052608fcb87fea9086b522542f3af89f32f35996a248d283e6c45",
+        "logSha256": "266b73304c6d8faf60f870ac7a329b6b4da8abe6e3d1c615fe69432b4b9acf6b",
+        "environment": {
+          "PHOTOCRAFT_LOCALE": "en"
+        },
+        "scope": "Actual compiler-produced host Rust test executable; test execution with supported upstream locale override, not iOS.",
+        "passed": 13
+      }
+    ],
+    "bindingReceiptSha256": "db3888257d1512f8a1ae08e0ba83ee4b655afac5ac0d3a3467356df1f3420cfe",
+    "allTargetsPedanticPerfClippy": "PASS",
+    "clippyGuardSha256": "3ab0fab120e7d2b17fb518692270c96750a0e719c2271910cdc4995d0b9c72de",
+    "clippyLogSha256": "ff37f417aaf6d52173056fc53423771382b36a7a50948f6638b66f75868d71c8"
+  },
   "browser": [
     {
-      "name": "browser-command-chromium-01",
-      "exit": 0,
-      "seconds": 4.95,
-      "logSha256": "75beca9204eeebce8bc0e7cf1fc6f82941318cad4256bd33f84b0f12802174cb",
-      "receiptSha256": "57ba91449a4f210a2535a2a401c3b13dcd001a2193b37b146b4142b905a406dc",
-      "operation": {
-        "action": "rotate_clockwise",
-        "kind": "command"
+      "name": "browser-green-webkit-02",
+      "status": "PASS",
+      "receiptSha256": "517113cc424f11ffdd19135f1e14f457e0ba78b5c0f7f2603d9c8dbdca239cee",
+      "coldReopen": {
+        "version": 4,
+        "writes": 0,
+        "sha256": "7771dbdbcfa4168456a20d35147fe9b8736506ee914c793372b8529d639cb270"
       },
-      "checkpoint": {
-        "kind": "humanCheckpoint"
+      "trustedPause": {
+        "events": [
+          {
+            "trusted": true,
+            "remaining": 0
+          }
+        ],
+        "status": {
+          "dirty": true,
+          "engineRevision": "9b9643764f3fb77d9f0e48d7510983ae50621e11",
+          "frozen": true,
+          "head": {
+            "sha256": "81588c99ceddd3b79f6038d310b4829cc727cc3c6edb6d677b51db7eeb11d028",
+            "version": "1"
+          },
+          "pendingMutationId": null,
+          "profile": "raster-canvas-v1",
+          "scope": {
+            "actorId": "fixture-human",
+            "actorKind": "human",
+            "artifactId": "bootstrap-fixture"
+          }
+        },
+        "activeElement": "CANVAS"
       },
+      "manualCheckpointWrites": 1,
       "independentPixels": {
         "rotation": "clockwise90",
         "width": 480,
         "height": 640,
         "allPixelsEqual": true
-      },
-      "coldReopen": {
-        "head": {
-          "sha256": "351c27a4eee8474d12982331bc74f8dc62871425eb1ef8ee1afe27505bb1da30",
-          "version": "3"
-        },
-        "mutationRequests": 0
       }
     },
     {
-      "name": "managed-browser-chromium-01",
-      "exit": 0,
-      "seconds": 10.572,
-      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "receiptSha256": "6547b0773816a390ebccdfe58a910d518bb9ea56758da6d72fb8e6bdb3b7f9da",
-      "touchPause": {
-        "trusted": true,
-        "remaining": 0,
+      "name": "browser-green-chromium-01",
+      "status": "PASS",
+      "receiptSha256": "8832b4d11fdff02980c68b06488c68798bad70b622c1554bf2213835140a51ba",
+      "coldReopen": {
+        "version": 4,
+        "writes": 0,
+        "sha256": "7771dbdbcfa4168456a20d35147fe9b8736506ee914c793372b8529d639cb270"
+      },
+      "trustedPause": {
+        "events": [
+          {
+            "trusted": true,
+            "remaining": 0
+          }
+        ],
+        "status": {
+          "dirty": true,
+          "engineRevision": "9b9643764f3fb77d9f0e48d7510983ae50621e11",
+          "frozen": true,
+          "head": {
+            "sha256": "81588c99ceddd3b79f6038d310b4829cc727cc3c6edb6d677b51db7eeb11d028",
+            "version": "1"
+          },
+          "pendingMutationId": null,
+          "profile": "raster-canvas-v1",
+          "scope": {
+            "actorId": "fixture-human",
+            "actorKind": "human",
+            "artifactId": "bootstrap-fixture"
+          }
+        },
         "activeElement": "CANVAS"
       },
-      "edited": {
-        "writes": 2,
-        "version": 3,
-        "newBlackPixels": 495
-      },
-      "coldReopen": {
-        "version": 3,
-        "writes": 0,
-        "sha256": "34fa6a3820d32c6fbfda2832c378977ab9f34b32718c51ca9b59274ff6d0d36c"
+      "manualCheckpointWrites": 1,
+      "independentPixels": {
+        "rotation": "clockwise90",
+        "width": 480,
+        "height": 640,
+        "allPixelsEqual": true
       }
     },
     {
       "name": "browser-command-webkit-01",
-      "exit": 0,
-      "seconds": 2.569,
-      "logSha256": "582db0e5715b76a3f187429d3a504c79a2d2d508f8b2762db14308ae60444469",
-      "receiptSha256": "c60a0ee73ac0d22482df572513d34d9c34d237fb31dc6daaf8a91b4ca9857474",
-      "operation": {
+      "status": "PASS",
+      "receiptSha256": "dd073c99f83cd68508dd943876336c5ccd270fa715799f179e300a40da99b8aa",
+      "coldReopen": {
+        "head": {
+          "sha256": "351c27a4eee8474d12982331bc74f8dc62871425eb1ef8ee1afe27505bb1da30",
+          "version": "3"
+        },
+        "mutationRequests": 0
+      },
+      "commandOperation": {
         "action": "rotate_clockwise",
         "kind": "command"
       },
-      "checkpoint": {
+      "checkpointOperation": {
         "kind": "humanCheckpoint"
       },
       "independentPixels": {
@@ -120,77 +203,61 @@
         "width": 480,
         "height": 640,
         "allPixelsEqual": true
-      },
+      }
+    },
+    {
+      "name": "browser-command-chromium-01",
+      "status": "PASS",
+      "receiptSha256": "aa6f2a18eccea8e364561ee6161a66816f688e27290091e1ff3dfa0ee766f4bd",
       "coldReopen": {
         "head": {
           "sha256": "351c27a4eee8474d12982331bc74f8dc62871425eb1ef8ee1afe27505bb1da30",
           "version": "3"
         },
         "mutationRequests": 0
-      }
-    },
-    {
-      "name": "managed-browser-webkit-01",
-      "exit": 0,
-      "seconds": 3.725,
-      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "receiptSha256": "4c3cb1f8562f48451b1525c500cb5fa62b2118b86e8cc71d8163a86075a89bc6",
-      "touchPause": {
-        "trusted": true,
-        "remaining": 0,
-        "activeElement": "CANVAS"
       },
-      "edited": {
-        "writes": 2,
-        "version": 3,
-        "newBlackPixels": 495
+      "commandOperation": {
+        "action": "rotate_clockwise",
+        "kind": "command"
       },
-      "coldReopen": {
-        "version": 3,
-        "writes": 0,
-        "sha256": "34fa6a3820d32c6fbfda2832c378977ab9f34b32718c51ca9b59274ff6d0d36c"
+      "checkpointOperation": {
+        "kind": "humanCheckpoint"
+      },
+      "independentPixels": {
+        "rotation": "clockwise90",
+        "width": 480,
+        "height": 640,
+        "allPixelsEqual": true
       }
     }
   ],
-  "registration": [
-    {
-      "name": "registration-tests",
-      "seconds": 24.705,
-      "exit": 0,
-      "passed": 2,
-      "logSha256": "ca35647939243739620256601aa0b5875743e9cd2f826500c24d6bacaefecaf1"
-    },
-    {
-      "name": "miniapps-clippy-all-targets",
-      "seconds": 11.595,
-      "exit": 0,
-      "passed": null,
-      "logSha256": "1713c730ef29b55d06d06be120995d20566d2e917cf01324d93ffaffeb1fc67b"
-    }
-  ],
-  "priorActualCliWasip2Evidence": {
-    "artifacts": "/Users/enzotironi/.codex/builds/zoen-photocraft-operation-contract-v590",
-    "compiledSource": "39f33ea9242cc78e82176c8f15198253a0fbe7de",
-    "worker": {
-      "path": "/Users/enzotironi/.codex/builds/zoen-photocraft-operation-contract-v590/component/photocraft-zoen-host.wasm",
-      "sha256": "0014ef28916f686e185ff2887a1909c75c7ef755454591e94c8d65e97e166e9c"
-    },
-    "preserved": true
+  "causalRed": {
+    "hostOldPolicy": "Actual Session.is_enabled rejected upstream Null default before any click; 2/2 regression tests failed at availability/policy assertions after successful compilation.",
+    "hostLogSha256": "d349ab93b5bf1a2b880b48156ccbb605f94db89805dc7b1b60f6cef121a9c4db",
+    "browserPriorPackage": "v592 exact same final trusted-menu-tap script: disabled Image Rotation; writes remained2 instead of3.",
+    "browserReceiptSha256": "86ce48ab687fbb02e875091ca9f9f1e7cf2d3302b6c922d6dfe77b31265afa25",
+    "browserOldWasmSha256": "2428e9ba888df43224fe3f3a3a64eb5026dbe7b520eca8b7ab3767c0b063d7d6"
   },
+  "preservedHostHarnessFailure": {
+    "artifacts": [
+      "native-green.log",
+      "host-final/test.log",
+      "host-final/menu-test.log"
+    ],
+    "reason": "Auto macOS Portuguese labels did not match English selectors; full editor also exposed a raster-layer Image label. Preserve the failure; the real upstream menu component passed using the documented public PHOTOCRAFT_LOCALE=en override. No claim for all UI languages.",
+    "compilerInputsVerifiedUnchanged": 1658
+  },
+  "headlessWorker": {
+    "path": "/Users/enzotironi/.codex/builds/zoen-photocraft-operation-contract-v590/component/photocraft-zoen-host.wasm",
+    "sha256": "0014ef28916f686e185ff2887a1909c75c7ef755454591e94c8d65e97e166e9c",
+    "rebuilt": false,
+    "reason": "browser_policy is compiled only under the browser feature; the previously qualified signed WASIp2 component is unchanged."
+  },
+  "registration": "Measured JS/WASM pins updated; configured registration/native app checks are delegated to the single Root integration cohort, not repeated Core suites.",
   "limits": [
-    "Renderer ABI command cases supply synthetic scope/ACK; MCP/manual cases supply a synthetic Core read/CAS port. These are distinct from the earlier actual CLI/Core/WASIp2 regression.",
-    "No real model/provider dispatch, approval UI, native iPhone, deployment or install was exercised.",
-    "qualification.invalid identifies local qualified files; it is not an available hosted runtime. Default manifest remains unavailable without explicit configuration.",
-    "Browser source build used jobs=1, a private target and retained validated lock; no SDK, device, retained services or Root target was changed.",
-    "Final documentation/pin additions do not imply recompilation; exact 31 engine and 167 bootstrap inputs were checked byte-identical."
-  ],
-  "priorBrowserRed": {
-    "source": "c8ff3bed0d6abe9308fe20ef41a969c97363075d",
-    "exit": 1,
-    "seconds": 4.078,
-    "moduleSha256": "b2e2968f4dc9b55be26c9da07ea5c23d5a03612d658ede1058d4c38388455ac8",
-    "wasmSha256": "5a0b16fd71930d35d9fc157d85d88ae4f7417c6cd3462ddb54894970bc10a36c",
-    "logSha256": "337b55dd0c20bf47dbf5123fb9b492f8c5a79c8c8754e4986c10672a91587a41",
-    "observedFailure": "actual metadata.operation 'rotate_clockwise'; expected {kind:'command',action:'rotate_clockwise'}"
-  }
+    "Browser scope/ACK and Core read/CAS ports are synthetic; no model/provider dispatch or new certified-agent/iOS acceptance.",
+    "Only the existing five parameterless transforms and Undo/Redo accept Null or {}; extra keys, other types, frozen input and unknown IDs remain refused. Other grey menu features remain outside the managed profile.",
+    "Next integrated iOS app must validate this menu fix; prior78ef QA had manual save/cold/export PASS and menu FAIL. No device or retained QA service was touched.",
+    "qualification.invalid names local verified assets; no deployment or default runtime availability is claimed. No new PR or push to591."
+  ]
 }

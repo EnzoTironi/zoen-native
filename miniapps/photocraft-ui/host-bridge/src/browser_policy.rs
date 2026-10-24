@@ -102,7 +102,11 @@ pub fn command_policy(s: &Session, id: &str, params: &Value) -> photocraft_engin
             | "image.imageRotation.90ccw"
             | "image.imageRotation.180"
             | "edit.undo"
-            | "edit.redo" => params.as_object().is_some_and(serde_json::Map::is_empty),
+            | "edit.redo" => {
+                // Upstream menu enablement uses Null; the actual click sends {}.
+                // Both spell an absent argument list for these exact commands.
+                params.is_null() || params.as_object().is_some_and(serde_json::Map::is_empty)
+            }
             "tools.setColors" | "view.zoomIn" | "view.zoomOut" | "view.fitOnScreen"
             | "view.100" | "view.zoom" => true,
             _ => false,

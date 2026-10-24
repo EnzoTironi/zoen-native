@@ -112,7 +112,21 @@ rotation equality, independent full-pixel rotation, accepted export and a fresh
 renderer reopen. It fails against the prior raw-action package and passes against
 the normal rebuilt package. The MCP/manual consumer remains a separate test.
 
-Actual native qualification passed 12 bridge/engine cases and six PhotoApp/input
+The managed human Image Rotation menu accepts the upstream parameterless
+availability query (`null`) and click (`{}`) for the five already admitted
+transforms and Undo/Redo. Extra keys, other value types, unknown actions and
+frozen input remain refused. `PHOTO_MENU_ROTATION=1` enables trusted menu-touch
+coverage in `test/managed-browser.mjs`. It verifies one canonical checkpoint,
+compares every exported PNG pixel with an independent rotation and reopens the
+accepted document in a fresh renderer. The same regression fails
+against the prior package. This does not enable the other grey menu features.
+The Rust menu component and Session tests run on the host. Set the upstream
+public `PHOTOCRAFT_LOCALE=en` for their English menu selectors; macOS Auto may
+otherwise draw Portuguese labels. Browser results and the next iPhone
+qualification are distinct evidence. The corrected menu still needs that next
+iPhone app cohort.
+
+Prior Rust host qualification passed 12 bridge/engine cases and six PhotoApp/input
 cases, with all-target pedantic/performance Clippy. Core qualification passed
 1,028 client-core and 53 miniapps tests without skips, including configured real
 resource creation, scoped approvals, retries, lost ACK, cold SQLite reopen,
@@ -126,15 +140,13 @@ scope substitution refusal, arbitrary-command refusal and fresh-component reopen
 Synthetic supplied scope in this component consumer is not a certified model turn.
 
 The browser test runs the genuine MCP bootstrap, renderer, shared session and
-export controller with a clearly synthetic Core read/CAS port. Independent PNG
-checks decode the actual exports. It covers trusted pointer input, same-event
-pause, newer input during delayed ACK, rotation without a document write, export,
-owner retirement and fresh-renderer reopen. Chromium and WebKit each passed the complete consumer journey on the same sealed
-package. Both produced the same accepted native bytes and 495 independently
-decoded new black pixels, preserved the original colored pixels, and reopened v3
-with zero writes. The trusted completed touch focused the real canvas and the
-same-event pause included the stroke. Both runs had no page/console/cleanup
-errors. These are separate browser results, not native iPhone acceptance.
+export controller with a synthetic Core read/CAS port. Chromium and WebKit each
+passed the full manual journey: trusted touches, a same-event pause, newer input
+during delayed ACK, the actual Image Rotation menu, independent full-pixel PNG
+comparison, orientation without an extra document write, owner retirement and a
+fresh renderer reopening v4 with zero writes. The command-envelope and negative
+ABI cases also passed against this package. Browser results do not establish
+iPhone acceptance or a real model/provider turn.
 
 #556 remains open for native iPhone acceptance, the final combined configured
 consumer/native build, measured memory/usability, broader lossless profiles and
