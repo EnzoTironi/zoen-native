@@ -34,9 +34,11 @@ def main():
     destination = directory / "crates/zoen-host"
     if destination.exists():
         raise SystemExit("Refusing an existing adapter directory")
-    patch = HERE / "patches/0001-managed-command-policy.patch"
-    subprocess.run(["git", "-C", str(directory), "apply", "--check", str(patch)], check=True)
-    subprocess.run(["git", "-C", str(directory), "apply", str(patch)], check=True)
+    patches = [HERE / "patches/0001-managed-command-policy.patch",
+               HERE / "patches/0002-web-without-filesystem.patch"]
+    for patch in patches:
+        subprocess.run(["git", "-C", str(directory), "apply", "--check", str(patch)], check=True)
+        subprocess.run(["git", "-C", str(directory), "apply", str(patch)], check=True)
     inputs = {}
 
     def copy(source, target):
@@ -60,7 +62,8 @@ def main():
         copy(source, destination / "src/profile" / source.relative_to(profile.with_suffix("")))
     # The source checker watches this prepared tree + these exact hashes. Cargo
     # must generate/update its lockfile genuinely, never using handwritten entries.
-    inputs[str(patch.relative_to(ROOT))] = hashlib.sha256(patch.read_bytes()).hexdigest()
+    for patch in patches:
+        inputs[str(patch.relative_to(ROOT))] = hashlib.sha256(patch.read_bytes()).hexdigest()
     (directory / "zoen-gridcraft-source.json").write_text(json.dumps({
         "schema": 1, "upstream": REVISION, "adapterAbi": "zoen-host-v1",
         "inputs": inputs, "compiled": False, "runtimeExecuted": False,

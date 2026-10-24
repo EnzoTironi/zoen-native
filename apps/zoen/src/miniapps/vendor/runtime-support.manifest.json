@@ -1,13 +1,13 @@
 {
-  "bytes": 11188,
-  "sha256": "657c8809787dac3741152fd61d08f8199b51faedbb352dd8ec27f76bd2a58d83",
+  "bytes": 11209,
+  "sha256": "446eba93d7bfdfface922e6e7b4d051ccd10c630cdd9578a0ca7f4813374311a",
   "sources": {
     "apps/zoen/node_modules/@noble/hashes/_md.js": "60cf3010fda89e3e4d3f0e7ff1ce249e9c467f34b4fd41b6fd6101d9f69be763",
     "apps/zoen/node_modules/@noble/hashes/_u64.js": "b09da8c07fe8187c07649494cdb7cd0bcf13df90b506a9473d19e4d5f8c2e102",
     "apps/zoen/node_modules/@noble/hashes/sha2.js": "471746bba6ec4c6238ca41358d1d3b40b6ff31cf3363f0b4d550c649c1a8e83b",
     "apps/zoen/node_modules/@noble/hashes/utils.js": "037ad49adb78168b6b699598fd33f85f7877456b1d28b4d032e2a1a16807947c",
     "apps/zoen/src/miniapps/runtime-browser.ts": "0cddea30e2858628cc68086b220b0b0dacd10572ae3e52d00cbedf5a5afeb6c9",
-    "apps/zoen/src/miniapps/runtime-package.ts": "8319762dc21338f041f7664a81243abfb45b8ea5350e3336789c382ac1efe2eb"
+    "apps/zoen/src/miniapps/runtime-package.ts": "db87ca6b3fc54b23d25c015de36c876431861c6de6b7469e67ee7cd33e23c340"
   },
   "notice": "@noble/hashes 2.4.0: MIT; vendored license in miniapps/deckcraft-ui/licenses/"
 }
