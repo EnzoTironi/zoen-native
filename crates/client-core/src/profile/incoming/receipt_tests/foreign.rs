@@ -142,10 +142,12 @@ fn legitimate_absent_stale_forged_and_no_key_foreign_replies_still_drain() -> R<
     engine.sealed_profiles_arrived(vec![incoming.clone()], &asked);
     engine.profile_changed(&id);
     let asked = engine.take_need_profiles();
-    assert!(engine
-        .sealed_profiles_arrived(vec![incoming], &asked)
-        .is_empty());
+    assert!(engine.sealed_profiles_arrived(vec![old], &asked).is_empty());
     assert!(engine.profiles_answer_complete(&asked));
+    assert_eq!(
+        engine.profile_view(&id)?.name.as_deref(),
+        Some("Updated peer")
+    );
     Ok(())
 }
 

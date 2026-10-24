@@ -120,8 +120,13 @@ impl Engine {
             {
                 continue;
             }
-            let Ok(Some(row)) = self.store.profile_key(&p.identity) else {
-                continue;
+            let row = match self.store.profile_key(&p.identity) {
+                Ok(Some(row)) => row,
+                Ok(None) => continue,
+                Err(_) => {
+                    self.net.profiles.need_profiles.insert(p.identity);
+                    continue;
+                }
             };
             if self.me.as_deref() == Some(p.identity.as_str()) {
                 match self.open_own_profile(&p) {
@@ -148,13 +153,11 @@ impl Engine {
             let Some(fields) = open_profile(&key, &p.identity, p.version, &p.ciphertext) else {
                 continue;
             };
-            if self
-                .store
-                .set_profile_fields(&p.identity, p.version, &fields.to_bytes())
-                .is_ok()
-                && self.apply_fields(&p.identity).is_ok()
-            {
-                changed.push(p.identity);
+            match self.commit_foreign_profile(&p, &fields) {
+                Ok(()) => changed.push(p.identity),
+                Err(_) => {
+                    self.net.profiles.need_profiles.insert(p.identity);
+                }
             }
         }
         if own_asked {
@@ -179,6 +182,29 @@ impl Engine {
         !asked
             .iter()
             .any(|id| self.net.profiles.need_profiles.contains(id))
+    }
+
+    /// Decrypted fields and their directory projection advance together. Otherwise
+    /// a projection error would make the unchanged retry look already seen.
+    fn commit_foreign_profile(&mut self, profile: &SealedProfile, fields: &ProfileFields) -> R<()> {
+        self.store
+            .raw_execute("SAVEPOINT foreign_profile_receive")?;
+        let applied = (|| -> R<()> {
+            self.store.set_profile_fields(
+                &profile.identity,
+                profile.version,
+                &fields.to_bytes(),
+            )?;
+            self.apply_fields(&profile.identity)
+        })();
+        if let Err(error) = applied {
+            self.store
+                .raw_execute("ROLLBACK TO foreign_profile_receive")?;
+            self.store.raw_execute("RELEASE foreign_profile_receive")?;
+            return Err(error);
+        }
+        self.store.raw_execute("RELEASE foreign_profile_receive")?;
+        Ok(())
     }
 
     pub(super) fn open_own_profile(&mut self, profile: &SealedProfile) -> R<bool> {
@@ -222,6 +248,9 @@ impl Engine {
                     .set_profile_fields(&me, version, &fields.to_bytes())?;
             }
             self.save_own_profile_journal(&journal)?;
+            if adopted.is_some() {
+                self.apply_fields(&me)?;
+            }
             Ok(())
         })();
         if let Err(error) = applied {
@@ -230,9 +259,6 @@ impl Engine {
             return Err(error);
         }
         self.store.raw_execute("RELEASE own_profile_receive")?;
-        if adopted.is_some() {
-            self.apply_fields(&me)?;
-        }
         Ok(matches!(outcome, Observe::Adopt))
     }
 
