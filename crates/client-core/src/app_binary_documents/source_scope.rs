@@ -3,14 +3,14 @@ use super::*;
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct SourceReceipt {
+pub(crate) struct SourceBinding {
     pub source: String,
     pub source_sha256: String,
     pub request_id: String,
     pub base_version: u32,
     pub base_sha256: String,
 }
-impl SourceReceipt {
+impl SourceBinding {
     pub(super) fn valid(&self) -> bool {
         token(&self.source)
             && token(&self.request_id)
@@ -19,6 +19,18 @@ impl SourceReceipt {
             && self.base_version > 0
     }
 }
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct SourceReceipt {
+    pub binding: SourceBinding,
+    pub event: String,
+}
+impl SourceReceipt {
+    pub(super) fn valid(&self) -> bool {
+        self.binding.valid() && token(&self.event)
+    }
+}
+
 impl Engine {
     /// Every intervening signed version must have been accepted on this device
     /// for this exact source. Missing/evicted provenance fails closed, including
@@ -51,11 +63,16 @@ impl Engine {
                     r.item == request.item_id
                         && r.version == next
                         && r.source.as_ref().is_some_and(|s| {
-                            s.source == source
-                                && s.source_sha256 == source_sha256
-                                && s.request_id == request.request_id
-                                && s.base_version == number
-                                && s.base_sha256 == sha
+                            s.binding.source == source
+                                && s.binding.source_sha256 == source_sha256
+                                && s.binding.request_id == request.request_id
+                                && s.binding.base_version == number
+                                && s.binding.base_sha256 == sha
+                                && self.space_state(&item.space).is_ok_and(|space| space.entries.iter().any(|entry| {
+                                    entry.id() == s.event && entry.author == me
+                                        && matches!(&entry.body, crate::engine::EntryBody::ItemEdited {item: id, version, is_undo: false, ..}
+                                            if id == &request.item_id && *version == next)
+                                }))
                         })
                 })
                 .ok_or_else(stale)?;

@@ -22,27 +22,18 @@ pub(crate) fn scope(f: &mut Fixture, alter: impl FnOnce(&mut types::ReplyRef)) {
     });
     alter(&mut reference);
     let mut e = f.agent.lock();
-    e.append(
-        &f.space,
-        &f.owner,
-        types::EventBody::MessagePosted {
-            message: types::new_id("m"),
-            text: text.into(),
-            attaches: None,
-            reply: Some(reference),
-            media: None,
-            forwarded: false,
-        },
-    )
-    .unwrap();
-    f.source = e
-        .space_state(&f.space)
-        .unwrap()
-        .entries
-        .last()
-        .unwrap()
-        .id()
-        .to_owned();
+    let event = e
+        .append(
+            &f.space,
+            &f.owner,
+            types::EventBody::AppEditRequested {
+                message: types::new_id("m"),
+                text: text.into(),
+                reply: reference,
+            },
+        )
+        .unwrap();
+    f.source = event.client_id;
 }
 
 #[test]
@@ -173,6 +164,7 @@ fn own_accepted_chain_allows_multiple_steps_and_lost_ack_but_not_another_source(
 #[test]
 fn malformed_forged_and_changed_signed_scope_fail_closed_without_effects() {
     for alter in [
+        |r: &mut types::ReplyRef| r.artifact = None,
         |r: &mut types::ReplyRef| r.thread = false,
         |r: &mut types::ReplyRef| r.to = "unrelated".into(),
         |r: &mut types::ReplyRef| r.artifact.as_mut().unwrap().version = 0,
@@ -210,4 +202,112 @@ fn malformed_forged_and_changed_signed_scope_fail_closed_without_effects() {
         )
         .unwrap();
     assert!(f.agent.agent_binary_finish_read(&t).is_err());
+}
+
+#[test]
+fn scoped_receipt_survives_cold_unlock_and_requires_the_actual_signed_version_event() {
+    let mut f = fixture();
+    scope(&mut f, |_| {});
+    let t = turn(&f);
+    let accepted = f
+        .agent
+        .agent_binary_save(&t, "accepted", &"11".repeat(32), &STANDARD.encode(CHANGED))
+        .unwrap();
+    let directory = std::env::temp_dir().join(types::new_id("artifact_scope_cold"));
+    std::fs::create_dir(&directory).unwrap();
+    let path = directory.join("state.sqlite");
+    f.agent
+        .lock()
+        .store
+        .conn()
+        .execute("VACUUM INTO ?1", [path.to_str().unwrap()])
+        .unwrap();
+    let cold = Client::open(path.to_str().unwrap().into(), "en".into()).unwrap();
+    assert!(cold.unlock(f.agent_vault.clone()).unwrap());
+    assert_eq!(
+        cold.agent_binary_turn(&f.base.item_id, &f.source, &f.owner, None, None)
+            .unwrap()
+            .document
+            .version,
+        accepted.version
+    );
+    let account = cold.account().unwrap();
+    let key = format!(
+        "app_document_receipts:{}",
+        hex::encode(Sha256::digest(
+            serde_json::to_vec(&(&account.identity_id, &account.device_id, &f.base.item_id))
+                .unwrap()
+        ))
+    );
+    let mut receipts: serde_json::Value =
+        serde_json::from_str(&cold.lock().store.meta(&key).unwrap().unwrap()).unwrap();
+    let receipt = receipts
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|r| r["id"] == "accepted")
+        .unwrap();
+    assert!(receipt["source"]["event"]
+        .as_str()
+        .is_some_and(|id| id != f.source));
+    // Same version/hash/actor/source/base, but a genuine message's client_id is
+    // not the accepted ItemVersioned. This damaged hint must never authorize IO.
+    receipt["source"]["event"] = serde_json::json!(f.source);
+    cold.lock()
+        .store
+        .set_meta(&key, &receipts.to_string())
+        .unwrap();
+    assert!(cold
+        .agent_artifact_request(&f.space, &f.source, &f.owner)
+        .is_err());
+    assert!(cold
+        .agent_binary_turn(&f.base.item_id, &f.source, &f.owner, None, None)
+        .is_err());
+    drop(cold);
+    drop(f);
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn a_scoped_prompt_under_the_legacy_discriminator_is_not_projected_or_dispatched() {
+    let mut f = fixture();
+    scope(&mut f, |_| {});
+    let mut e = f.agent.lock();
+    let EntryBody::Message { text, reply, .. } = e
+        .space_state(&f.space)
+        .unwrap()
+        .entries
+        .iter()
+        .find(|e| e.id() == f.source)
+        .unwrap()
+        .body
+        .clone()
+    else {
+        panic!("source")
+    };
+    let event = e
+        .append(
+            &f.space,
+            &f.owner,
+            types::EventBody::MessagePosted {
+                message: types::new_id("m"),
+                text,
+                attaches: None,
+                reply,
+                media: None,
+                forwarded: false,
+            },
+        )
+        .unwrap();
+    assert!(!e
+        .space_state(&f.space)
+        .unwrap()
+        .entries
+        .iter()
+        .any(|e| e.id() == event.client_id));
+    drop(e);
+    assert!(f
+        .agent
+        .agent_artifact_request(&f.space, &event.client_id, &f.owner)
+        .is_err());
 }

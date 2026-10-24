@@ -16,7 +16,8 @@ use types::{
 pub(crate) const MAX_BASE64_BYTES: usize = deckcraft::MAX_BYTES.div_ceil(3) * 4;
 const MAX_RECEIPTS: usize = 64;
 mod source_scope;
-pub(crate) use source_scope::SourceReceipt;
+pub(crate) use source_scope::SourceBinding;
+use source_scope::SourceReceipt;
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record, Serialize, Deserialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct AppBinaryDocumentDto {
@@ -303,7 +304,7 @@ impl Engine {
         expected_version: u32,
         expected_sha: &str,
         data: &str,
-        intent: (&str, &str, Option<SourceReceipt>),
+        intent: (&str, &str, Option<SourceBinding>),
     ) -> R<AppBinaryDocumentDto> {
         let (mutation, intent_sha, source) = intent;
         if source.as_ref().is_some_and(|s| {
@@ -353,7 +354,7 @@ impl Engine {
             if r.fingerprint != fingerprint
                 || r.item != item
                 || r.intent != intent
-                || r.source != source
+                || r.source.as_ref().map(|s| &s.binding) != source.as_ref()
             {
                 return Err(invalid());
             }
@@ -396,7 +397,7 @@ impl Engine {
             };
             // Every accepted intent gets an attributed version, including equal bytes.
             // The pinned Session's receipt contract advances exactly base+1.
-            e.append(
+            let event = e.append(
                 &space,
                 &me,
                 EventBody::ItemVersioned {
@@ -427,7 +428,10 @@ impl Engine {
                     item: item.into(),
                     version,
                     sha256: sha,
-                    source,
+                    source: source.map(|binding| SourceReceipt {
+                        binding,
+                        event: event.client_id,
+                    }),
                 },
             )?;
             e.app_binary_read(item, Some(version), None)

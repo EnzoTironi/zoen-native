@@ -8,6 +8,11 @@ impl State {
         identities: &HashMap<IdentityId, Identity>,
         context: &BeforeEvent,
     ) -> Projection {
+        // Scoped prompts must use the discriminator old consumers cannot dispatch.
+        if matches!(&e.body, EventBody::MessagePosted {reply: Some(reply), ..} if reply.artifact.is_some())
+        {
+            return Projection::Refused;
+        }
         if let EventBody::AppEditRequested { text, reply, .. } = &e.body {
             if !self.writer(&e.space, &e.author)
                 || !crate::agent_binary_documents::source_scope::request_valid(
