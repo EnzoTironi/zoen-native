@@ -1,3 +1,4 @@
+use super::lock::ScopedLock;
 use super::state::State;
 use super::{AnchorError, Checkpoint, Deployment, Prepared, Recovery};
 use std::fs::{self, File, OpenOptions};
@@ -9,8 +10,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 /// Lock filenames must never be unlinked or replaced, including after crashes.
 pub struct AnchorWriter {
     reader: AnchorReader,
-    _writer: File,
-    retirement: Option<File>,
+    _writer: ScopedLock,
+    retirement: Option<ScopedLock>,
 }
 
 #[derive(Clone)]
@@ -22,17 +23,11 @@ pub struct AnchorReader {
 /// Relay/gateway effects retain this shared OS lock through the actual effect.
 /// It is deliberately neither Clone nor Deserialize. Retirement takes exclusive.
 pub struct GenerationGuard {
-    _lock: File,
+    _lock: ScopedLock,
 }
 
 pub(super) fn unavailable(_: std::io::Error) -> AnchorError {
     AnchorError::Unavailable
-}
-fn lock_error(error: std::fs::TryLockError) -> AnchorError {
-    match error {
-        std::fs::TryLockError::WouldBlock => AnchorError::Busy,
-        std::fs::TryLockError::Error(_) => AnchorError::Unavailable,
-    }
 }
 pub(super) fn regular(path: &Path) -> Result<(), AnchorError> {
     let metadata = fs::symlink_metadata(path).map_err(unavailable)?;
@@ -167,8 +162,7 @@ impl AnchorReader {
     }
 
     pub fn generation_guard(&self, expected: &Checkpoint) -> Result<GenerationGuard, AnchorError> {
-        let lock = lock_file(&self.directory, "generation.lock")?;
-        lock.try_lock_shared().map_err(lock_error)?;
+        let lock = ScopedLock::shared(lock_file(&self.directory, "generation.lock")?)?;
         let state = self.state()?;
         if state.prepared.is_some() || state.committed != *expected {
             return Err(AnchorError::Unreconciled);
@@ -190,8 +184,7 @@ impl AnchorReader {
         &self,
         expected: &Checkpoint,
     ) -> Result<GenerationGuard, AnchorError> {
-        let lock = lock_file(&self.directory, "generation.lock")?;
-        lock.try_lock_shared().map_err(lock_error)?;
+        let lock = ScopedLock::shared(lock_file(&self.directory, "generation.lock")?)?;
         let state = self.state()?;
         if state.committed.generation != expected.generation
             || state.committed.sequence < expected.sequence
@@ -242,8 +235,7 @@ impl AnchorWriter {
 
     pub fn open(directory: &Path, deployment: Deployment) -> Result<Self, AnchorError> {
         let reader = AnchorReader::open(directory, deployment)?;
-        let writer = lock_file(directory, "writer.lock")?;
-        writer.try_lock().map_err(lock_error)?;
+        let writer = ScopedLock::exclusive(lock_file(directory, "writer.lock")?)?;
         Ok(Self {
             reader,
             _writer: writer,
@@ -274,8 +266,8 @@ impl AnchorWriter {
             .prepare(effect, retirement)
             .ok_or(AnchorError::Invalid)?;
         if retirement {
-            let lock = lock_file(&self.reader.directory, "generation.lock")?;
-            lock.try_lock().map_err(lock_error)?;
+            let lock =
+                ScopedLock::exclusive(lock_file(&self.reader.directory, "generation.lock")?)?;
             self.retirement = Some(lock);
         }
         state.prepared = Some(prepared.clone());
@@ -299,8 +291,8 @@ impl AnchorWriter {
             .is_some_and(|prepared| prepared.retirement)
             && self.retirement.is_none()
         {
-            let lock = lock_file(&self.reader.directory, "generation.lock")?;
-            lock.try_lock().map_err(lock_error)?;
+            let lock =
+                ScopedLock::exclusive(lock_file(&self.reader.directory, "generation.lock")?)?;
             self.retirement = Some(lock);
         }
         if matches!(result, Recovery::BothBefore | Recovery::BothAfter) {
@@ -316,6 +308,22 @@ impl AnchorWriter {
                 state.committed_effect = Some(prepared);
             }
             write(&self.reader.directory, &state)?;
+        }
+        if matches!(
+            result,
+            Recovery::Clean | Recovery::BothBefore | Recovery::BothAfter
+        ) {
+            // A prior rename may have committed even when its directory fsync or
+            // unlock acknowledgement failed. Re-establish durability on Clean
+            // before releasing retained ownership; never unlock a partial state.
+            if let Some(lock) = self.retirement.as_mut() {
+                if result == Recovery::Clean {
+                    #[cfg(test)]
+                    super::faults::check(super::faults::Point::DirectorySync)?;
+                    sync_directory(&self.reader.directory)?;
+                }
+                lock.unlock()?;
+            }
             self.retirement = None;
         }
         Ok(result)
@@ -352,10 +360,16 @@ fn write(directory: &Path, state: &State) -> Result<(), AnchorError> {
         }
     }
     let (mut file, temporary) = selected.ok_or(AnchorError::Unavailable)?;
+    #[cfg(test)]
+    super::faults::check(super::faults::Point::Write)?;
     file.write_all(&bytes).map_err(unavailable)?;
+    #[cfg(test)]
+    super::faults::check(super::faults::Point::FileSync)?;
     file.sync_all().map_err(unavailable)?;
     drop(file);
     fs::rename(&temporary.0, directory.join("checkpoint.json")).map_err(unavailable)?;
+    #[cfg(test)]
+    super::faults::check(super::faults::Point::DirectorySync)?;
     // A failed acknowledgement after rename never rolls back or deletes state.
     sync_directory(directory)
 }
