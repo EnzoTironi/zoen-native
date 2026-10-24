@@ -142,6 +142,20 @@ pub trait LogStore: Send + Sync {
     async fn call_pair(&self, _space: &str, _who: &str, _peer: &str) -> Result<bool, StoreError> {
         Ok(false)
     }
+    /// One fixed membership read version, before the paired PostgreSQL snapshot.
+    async fn membership_read_version(&self) -> Result<i64, StoreError> {
+        Err(StoreError("membership snapshot unsupported".into()))
+    }
+    /// Stable keyset page at exactly `version`; no fallback to a new version.
+    async fn membership_page(
+        &self,
+        _who: &str,
+        _version: i64,
+        _after: &str,
+        _limit: usize,
+    ) -> Result<(Vec<String>, bool), StoreError> {
+        Err(StoreError("membership snapshot unsupported".into()))
+    }
     async fn spaces_of(&self, who: &str) -> Result<Vec<String>, StoreError>;
     /// Identities that share at least one Space with `who` (presence audience).
     async fn co_members(&self, who: &str) -> Result<Vec<String>, StoreError>;

@@ -8,16 +8,9 @@ impl Session {
         let me = &self.identity;
         let r = match req {
             AgentRequest::State => {
-                let member_of = self
-                    .st
-                    .log
-                    .spaces_of(me)
-                    .await
-                    .map_err(|_| "membership unavailable")?;
-                return agents::state(pool, me, &self.device, &member_of)
-                    .await
-                    .map(Reply::AgentState)
-                    .map_err(|e| e.to_string());
+                return self
+                    .complete_legacy(protocol::complete_reads::Kind::AgentState)
+                    .await;
             }
             AgentRequest::Advance { space, seq } => {
                 if !matches!(self.st.log.role(&space, me).await, Ok(Some(_))) {
@@ -145,11 +138,11 @@ impl Session {
                 Ok(Reply::RuntimeBinding(proof))
             }
             Op::CallTurn { space, peer } => self.call_turn(&space, &peer).await,
-            Op::Devices => Ok(Reply::Devices(
-                db::devices_of(pool, &self.identity)
+            Op::CompleteRead(request) => self.complete_read(request).await,
+            Op::Devices => {
+                self.complete_legacy(protocol::complete_reads::Kind::Devices)
                     .await
-                    .map_err(|e| e.to_string())?,
-            )),
+            }
             Op::Unlink { device } => {
                 let authorization = authorization.ok_or("unlink authorization unavailable")?;
                 if !db::revoke_device(authorization, &self.identity, &device)

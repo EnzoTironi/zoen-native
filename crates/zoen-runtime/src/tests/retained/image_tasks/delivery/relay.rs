@@ -24,6 +24,7 @@ impl Relay {
         std::fs::create_dir(&blobs).unwrap();
         let store = object_store::local::LocalFileSystem::new_with_prefix(&blobs).unwrap();
         let state = Arc::new(AppState {
+            read_snapshots: zoen_relay::read_snapshots::Resources::new(&pool),
             auth: zoen_relay::auth::Service::disabled(),
             turn: zoen_relay::turn::Service::disabled(),
             pool: pool.clone(),

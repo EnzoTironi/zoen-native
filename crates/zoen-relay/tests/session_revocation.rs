@@ -354,6 +354,7 @@ impl TestRelay {
             finished: Arc::default(),
         });
         let state = Arc::new(AppState {
+            read_snapshots: zoen_relay::read_snapshots::Resources::new(&pool),
             auth: zoen_relay::auth::Service::disabled(),
             turn: zoen_relay::turn::Service::disabled(),
             analytics: analytics::Analytics::load(&pool).await.unwrap(),
@@ -399,6 +400,7 @@ impl TestRelay {
 
     async fn close(mut self) {
         self.server.abort();
+        self.state.read_snapshots.close().await;
         self.state.pool.close().await;
         self.state.session_auth.close().await;
         self.state.delivery_auth.close().await;
@@ -481,3 +483,6 @@ mod reconciliation;
 mod response_loss;
 #[path = "session_revocation/sync_membership.rs"]
 mod sync_membership;
+
+#[path = "session_revocation/complete_reads.rs"]
+mod complete_reads;

@@ -39,6 +39,8 @@ pub enum AgentCitizenError {
     Revoked,
     #[error("definition version must grow")]
     Version,
+    #[error("complete_read_profile_exceeded")]
+    ReadProfile,
     #[error("the agent is not a member of that Space")]
     NotMember,
     #[error(transparent)]
@@ -121,40 +123,56 @@ async fn runtime(pool: &PgPool, agent: &str, device: &str) -> Result<(), AgentCi
 }
 
 /// kind, definition_version, definition, paused, revoked, device.
-type StateRow = (Option<String>, i32, Vec<u8>, bool, bool, String);
+type StateRow = (Option<String>, i32, Option<Vec<u8>>, bool, bool, String);
 
-/// Status, definition and cursors for the signed-in runtime. Cursors of Spaces the agent
-/// is no longer in (`member_of`) are dropped here: membership lives in FoundationDB.
+/// Compatibility helper for a caller-supplied complete membership set. Finite
+/// profile, one SQL snapshot, no destructive cursor cleanup. Wire reads instead
+/// materialize membership at an actual fixed FDB version in read_snapshots.
 pub async fn state(
     pool: &PgPool,
     agent: &str,
     device: &str,
     member_of: &[String],
 ) -> Result<AgentStateRecord, AgentCitizenError> {
-    let row: Option<StateRow> = sqlx::query_as(
-        "SELECT kind, definition_version, definition, paused_at IS NOT NULL, revoked_at IS NOT NULL, device
-         FROM agent_citizens WHERE agent = $1",
-    )
-    .bind(agent)
-    .fetch_optional(pool)
-    .await?;
+    use protocol::complete_reads as reads;
+    if member_of.len() > reads::CURSOR_ROWS
+        || member_of
+            .iter()
+            .any(|s| s.is_empty() || s.len() > reads::KEY_BYTES)
+    {
+        return Err(AgentCitizenError::ReadProfile);
+    }
+    let mut tx = pool.begin().await?;
+    sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+        .execute(&mut *tx)
+        .await?;
+    let row:Option<StateRow>=sqlx::query_as("SELECT kind,definition_version,CASE WHEN octet_length(definition)<=65536 THEN definition ELSE NULL END,paused_at IS NOT NULL,revoked_at IS NOT NULL,device FROM agent_citizens WHERE agent=$1")
+        .bind(agent).fetch_optional(&mut *tx).await?;
     let Some((kind, version, definition, paused, revoked, claimed)) = row else {
         return Err(AgentCitizenError::Device);
     };
     if claimed != device {
         return Err(AgentCitizenError::Device);
     }
-    sqlx::query("DELETE FROM agent_space_cursors WHERE agent = $1 AND NOT (space = ANY($2))")
-        .bind(agent)
-        .bind(member_of)
-        .execute(pool)
-        .await?;
-    let cursors: Vec<(String, i64)> =
-        sqlx::query_as("SELECT space, last_seq FROM agent_space_cursors WHERE agent = $1")
-            .bind(agent)
-            .fetch_all(pool)
-            .await?;
-    sqlx::query("UPDATE agent_citizens SET last_seen_at = now() WHERE agent = $1")
+    let definition = definition.ok_or(AgentCitizenError::ReadProfile)?;
+    let rows:Vec<(Option<String>,i64)>=sqlx::query_as("SELECT CASE WHEN octet_length(space)<=128 THEN space ELSE NULL END,last_seq FROM agent_space_cursors WHERE agent=$1 AND space=ANY($2) ORDER BY space COLLATE \"C\" LIMIT $3")
+        .bind(agent).bind(member_of).bind((reads::CURSOR_ROWS+1)as i64).fetch_all(&mut *tx).await?;
+    if rows.len() > reads::CURSOR_ROWS {
+        return Err(AgentCitizenError::ReadProfile);
+    }
+    let cursors = rows
+        .into_iter()
+        .map(|(space, seq)| {
+            Ok((
+                space.ok_or(AgentCitizenError::ReadProfile)?,
+                u64::try_from(seq).map_err(|_| AgentCitizenError::ReadProfile)?,
+            ))
+        })
+        .collect::<Result<Vec<_>, AgentCitizenError>>()?;
+    tx.commit().await?;
+    // Heartbeat does not grant readiness, permission, a handled cursor or imply a
+    // lost response rolled back. Do not delete concurrent Advance rows on reads.
+    sqlx::query("UPDATE agent_citizens SET last_seen_at=now() WHERE agent=$1")
         .bind(agent)
         .execute(pool)
         .await?;
@@ -168,12 +186,9 @@ pub async fn state(
         }
         .into(),
         kind: kind.unwrap_or_default(),
-        definition_version: version.max(0) as u32,
+        definition_version: u32::try_from(version).map_err(|_| AgentCitizenError::ReadProfile)?,
         definition,
-        cursors: cursors
-            .into_iter()
-            .map(|(s, q)| (s, q.max(0) as u64))
-            .collect(),
+        cursors,
     })
 }
 
