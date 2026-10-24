@@ -84,5 +84,24 @@ fn settled_groups_do_not_repeat_recovery_download_group_reads(
         downloads, 0,
         "ready groups need no HTTP candidate revalidation read"
     );
+    // A changed complete directory must still reconcile every real group.
+    peer.devices_arrived(vec![
+        protocol::DeviceRecord {
+            device: peer
+                .account()
+                .ok_or("missing fixture account")?
+                .device
+                .clone(),
+            revoked: false,
+        },
+        protocol::DeviceRecord {
+            device: Signer::generate().id(),
+            revoked: true,
+        },
+    ])?;
+    assert!(!peer.mls_settled());
+    assert!(!peer.mls_recovery_pass()?);
+    assert_eq!(recovery_probe::reads().1, 32);
+    recovery_probe::reset(Duration::ZERO);
     Ok(())
 }
