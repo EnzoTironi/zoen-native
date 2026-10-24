@@ -195,10 +195,22 @@ async fn check() -> Result<()> {
             .is_none(),
         "cold cache must be empty",
     )?;
-    let cold = phase(component, seed, directory, false, false).await?;
-    let warm = phase(component, seed, directory, true, true).await?;
+    let cold_output = output.with_extension("cold.json");
+    let warm_output = output.with_extension("new-engine.json");
     let child_output = output.with_extension("new-process.json");
-    require(!child_output.exists(), "child output already exists")?;
+    require(
+        [&cold_output, &warm_output, &child_output]
+            .iter()
+            .all(|path| !path.exists()),
+        "phase output already exists",
+    )?;
+    eprintln!("cache measurement: cold miss");
+    let cold = phase(component, seed, directory, false, false).await?;
+    write(&cold_output, &cold)?;
+    eprintln!("cache measurement: new Engine");
+    let warm = phase(component, seed, directory, true, true).await?;
+    write(&warm_output, &warm)?;
+    eprintln!("cache measurement: new process");
     let status = Command::new(std::env::current_exe().map_err(|_| "executable unavailable")?)
         .arg("warm-process")
         .arg(component)
