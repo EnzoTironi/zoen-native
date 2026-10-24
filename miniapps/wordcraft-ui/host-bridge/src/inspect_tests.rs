@@ -18,7 +18,7 @@ fn full_32k_legacy_reads_reference_one_utf8_text_and_count_omitted_rich_details(
         "漢\"\\\t".repeat(1000),
     ] {
         let (_, _, v) = inspect_text(&text)?;
-        assert_eq!(v["richDetails"]["omitted"], false);
+        assert_eq!(v["richDetails"]["paragraphsOmitted"], false);
         let p = &v["paragraphs"][0];
         assert!(p.get("text").is_none());
         assert_eq!(p["textRange"]["start"], 0);
@@ -28,6 +28,8 @@ fn full_32k_legacy_reads_reference_one_utf8_text_and_count_omitted_rich_details(
     assert_eq!(v["richDetails"]["omitted"], true);
     assert_eq!(v["richDetails"]["reason"], "metadata_limit");
     assert_eq!(v["richDetails"]["bodyParagraphs"], 1024);
+    assert_eq!(v["richDetails"]["stylesOmitted"], true);
+    assert_eq!(v["richDetails"]["paragraphsOmitted"], true);
     assert!(v.get("styles").is_none() && v.get("paragraphs").is_none());
     assert_eq!(bridge.status()["pendingMutationId"], Value::Null);
     Ok(())

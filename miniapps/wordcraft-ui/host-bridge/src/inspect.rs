@@ -35,17 +35,24 @@ pub(crate) fn document(mut value: Value, doc: &Document) -> Result<Value> {
         offset = offset.and_then(|n| n.checked_add(p.plain_text().len() + 1));
         paragraphs.push(detail);
     }
-    value["richDetails"] = json!({"omitted":false,"bodyParagraphs":paragraphs.len(),"bodyRuns":runs,"styles":doc.styles.styles.len(),"offsetUnits":"utf8"});
+    value["richDetails"] = json!({"omitted":false,"stylesOmitted":false,"paragraphsOmitted":false,"bodyParagraphs":paragraphs.len(),"bodyRuns":runs,"styles":doc.styles.styles.len(),"offsetUnits":"utf8"});
     value["paragraphs"] = json!(paragraphs);
     value["styles"] = json!(doc.styles);
     if !fits(&value) {
         let object = value
             .as_object_mut()
             .ok_or_else(|| failure("inspection_metadata_limit"))?;
-        object.remove("paragraphs");
         object.remove("styles");
         value["richDetails"]["omitted"] = json!(true);
+        value["richDetails"]["stylesOmitted"] = json!(true);
         value["richDetails"]["reason"] = json!("metadata_limit");
+    }
+    if !fits(&value) {
+        value
+            .as_object_mut()
+            .ok_or_else(|| failure("inspection_metadata_limit"))?
+            .remove("paragraphs");
+        value["richDetails"]["paragraphsOmitted"] = json!(true);
     }
     if !fits(&value) {
         // Escaping alone can exceed the wire cap. Refuse explicitly, never truncate text.
