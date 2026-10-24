@@ -187,7 +187,7 @@ fn accept_latest_undo_and_reopen(
             format: ExportFormat::Docx,
         },
     )?;
-    key(&mut h, Key::Z, Modifiers::COMMAND);
+    key(h, Key::Z, Modifiers::COMMAND);
     assert_ne!(
         h.state().session.doc.plain_text(StoryRef::Body),
         expected,
