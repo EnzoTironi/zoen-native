@@ -7,6 +7,7 @@ import * as flowModule from '../profile/blocked-people.ts';
 import { createLocalization } from '../i18n/runtime.ts';
 import { settings } from '../i18n/catalogs/settings.ts';
 import { chat } from '../i18n/catalogs/chat.ts';
+import { ownerPolicy } from '../i18n/catalogs/owner-policy.ts';
 import { telegramPresentation } from '../theme/telegram.ts';
 
 type Element = { type: any; props: Record<string, any> };
@@ -68,7 +69,7 @@ const strings = (tree: unknown): string => {
     : '';
 };
 function fixture(locale: 'en' | 'pt-BR' = 'en') {
-  const localization = createLocalization({ settings, chat }, [locale]);
+  const localization = createLocalization({ settings, chat, ownerPolicy }, [locale]);
   const state: any = {
     phase: 'ready',
     erasePending: false,
