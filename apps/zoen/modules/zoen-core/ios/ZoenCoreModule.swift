@@ -247,6 +247,9 @@ public class ZoenCoreModule: Module {
       let presenter = await MainActor.run { self.appContext?.utilities?.currentViewController() }
       try await self.session.previewRecentAttachment(request, presentationId: presentationId, presenter: presenter)
     }
+    AsyncFunction("readContactFile") { (request: String) async throws -> String in
+      try await self.session.readContactFile(request)
+    }
     AsyncFunction("previewLocalFile") { (uri: String) async throws in
       let presenter = await MainActor.run { self.appContext?.utilities?.currentViewController() }
       try await self.session.previewLocalFile(uri, presenter: presenter)

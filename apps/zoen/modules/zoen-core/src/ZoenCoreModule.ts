@@ -76,6 +76,7 @@ declare class ZoenCoreModule extends NativeModule<{
   materializeFile(itemId: string, version: number | null): Promise<string>;
   materializeRecentAttachment?(request: string): Promise<string>;
   previewRecentAttachment?(request: string, presentationId: string): Promise<void>;
+  readContactFile?(request: string): Promise<string>;
   previewLocalFile(uri: string): Promise<void>;
   previewConversationMedia?(request: string, presentationId: string): Promise<void>;
   cancelConversationMedia?(presentationId: string): Promise<void>;
