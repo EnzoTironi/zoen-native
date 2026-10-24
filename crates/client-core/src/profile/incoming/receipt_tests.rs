@@ -142,7 +142,7 @@ fn agreement_write_fault_retains_demand_without_negative_cache_until_retry() -> 
     engine.net.profiles.need_agreement.insert(peer_id.clone());
     let asked = engine.take_need_agreement();
     engine.store.raw_execute("CREATE TEMP TRIGGER fail_agreement BEFORE INSERT ON peer_agreement_keys BEGIN SELECT RAISE(ABORT, 'fixture agreement fault'); END")?;
-    engine.agreement_keys_arrived(vec![record.clone()], &asked);
+    assert!(!engine.agreement_keys_arrived(vec![record.clone()], &asked));
     assert_eq!(engine.store.peer_agreement_key(&peer_id)?, None);
     assert_eq!(engine.store.meta(META_OWN_SYNC)?, journal);
     assert_eq!(engine.my_fields(&identity.id())?.3, fields);
@@ -156,11 +156,43 @@ fn agreement_write_fault_retains_demand_without_negative_cache_until_retry() -> 
     assert!(!engine.profiles_settled());
     engine.store.raw_execute("DROP TRIGGER fail_agreement")?;
     let retry = engine.take_need_agreement();
-    engine.agreement_keys_arrived(vec![record], &retry);
+    assert!(engine.agreement_keys_arrived(vec![record.clone()], &retry));
+    assert!(engine.agreement_keys_arrived(vec![record], &retry));
     assert_eq!(engine.store.peer_agreement_key(&peer_id)?, Some(public));
     assert!(engine.take_need_agreement().is_empty());
     assert!(!engine.net.profiles.no_agreement.contains(&peer_id));
     engine.profile_share_pass()?;
     assert!(engine.profiles_settled());
+    Ok(())
+}
+
+#[test]
+fn agreement_absence_is_distinct_from_failed_storage_and_later_valid_key() -> R<()> {
+    let (mut engine, _) = fixture()?;
+    let mut peer = Engine::open(":memory:")?;
+    peer.create_account("Peer", "peer", "http://relay.test")?;
+    peer.net.profiles.supported = true;
+    let id = peer.me_id()?;
+    let asked = vec![id.clone()];
+    engine.net.profiles.need_agreement.insert(id.clone());
+    assert!(engine.agreement_keys_arrived(Vec::new(), &asked));
+    assert!(engine.net.profiles.no_agreement.contains(&id));
+    assert!(engine.take_need_agreement().is_empty());
+    let (public, signed) = peer.agreement_to_publish().expect("signed peer agreement");
+    let record = AgreementKeyRecord {
+        identity: id.clone(),
+        public: public.clone(),
+        signed,
+    };
+    engine.net.profiles.need_agreement.insert(id.clone());
+    engine.store.raw_execute("CREATE TEMP TRIGGER fail_agreement BEFORE INSERT ON peer_agreement_keys BEGIN SELECT RAISE(ABORT, 'fixture agreement fault'); END")?;
+    assert!(!engine.agreement_keys_arrived(vec![record.clone()], &asked));
+    assert!(!engine.net.profiles.no_agreement.contains(&id));
+    assert_eq!(engine.take_need_agreement(), asked);
+    engine.store.raw_execute("DROP TRIGGER fail_agreement")?;
+    assert!(engine.agreement_keys_arrived(vec![record], &asked));
+    assert_eq!(engine.store.peer_agreement_key(&id)?, Some(public));
+    assert!(!engine.net.profiles.no_agreement.contains(&id));
+    assert!(engine.take_need_agreement().is_empty());
     Ok(())
 }

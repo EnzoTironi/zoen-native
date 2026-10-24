@@ -20,18 +20,35 @@ impl Engine {
         &mut self,
         records: Vec<AgreementKeyRecord>,
         asked: &[IdentityId],
-    ) {
+    ) -> bool {
         let mut found = HashSet::new();
+        let mut failed = HashSet::new();
         for r in records {
             if asked.contains(&r.identity) && verify_agreement(&r.identity, &r.public, &r.signed) {
-                let _ = self.store.put_peer_agreement_key(&r.identity, &r.public);
-                found.insert(r.identity);
+                if self
+                    .store
+                    .put_peer_agreement_key(&r.identity, &r.public)
+                    .is_ok()
+                {
+                    failed.remove(&r.identity);
+                    found.insert(r.identity);
+                } else {
+                    failed.insert(r.identity);
+                }
             }
         }
         let p = &mut self.net.profiles;
         for id in asked {
+            if failed.contains(id) {
+                // A signed reply is not a persisted key or evidence of absence.
+                p.need_agreement.insert(id.clone());
+                p.no_agreement.remove(id);
+                continue;
+            }
             p.need_agreement.remove(id);
-            if !found.contains(id) {
+            if found.contains(id) {
+                p.no_agreement.remove(id);
+            } else {
                 p.no_agreement.insert(id.clone());
             }
         }
@@ -46,6 +63,9 @@ impl Engine {
                 })
                 .cloned(),
         );
+        !asked
+            .iter()
+            .any(|id| self.net.profiles.need_agreement.contains(id))
     }
 
     pub fn take_need_profiles(&mut self) -> Vec<IdentityId> {
@@ -104,11 +124,18 @@ impl Engine {
                 continue;
             };
             if self.me.as_deref() == Some(p.identity.as_str()) {
-                own_verified |= own_sync
-                    .as_ref()
-                    .is_some_and(|sync| p.version >= sync.published);
-                if self.open_own_profile(&p).unwrap_or(false) {
-                    changed.push(p.identity);
+                match self.open_own_profile(&p) {
+                    Ok(adopted) => {
+                        own_verified |= own_sync
+                            .as_ref()
+                            .is_some_and(|sync| p.version >= sync.published);
+                        if adopted {
+                            changed.push(p.identity);
+                        }
+                    }
+                    Err(_) => {
+                        self.net.profiles.need_profiles.insert(p.identity);
+                    }
                 }
                 continue;
             }
