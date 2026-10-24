@@ -1,0 +1,25 @@
+[package]
+name = "wordcraft-zoen-host"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+publish = false
+
+[dependencies]
+wordcraft-doc = { path = "../doc" }
+wordcraft-docx = { path = "../docx" }
+wordcraft-engine = { path = "../engine" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+zip = { workspace = true }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+unimplemented = "deny"
+todo = "deny"
