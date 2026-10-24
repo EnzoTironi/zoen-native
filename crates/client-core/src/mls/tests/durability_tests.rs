@@ -4,6 +4,7 @@ use super::*;
 use std::path::PathBuf;
 
 mod confirmation_cases;
+mod fifo_cases;
 mod receive_cases;
 
 struct Database {
@@ -291,4 +292,14 @@ fn pending_confirmation_retained_older_sealed_echo_survives_resealing() {
 #[test]
 fn pending_confirmation_sealed_outbox_read_failure_keeps_event_and_ratchet_unchanged() {
     confirmation_cases::pending_confirmation_sealed_outbox_read_failure_keeps_event_and_ratchet_unchanged();
+}
+
+#[test]
+fn cold_outbox_fifo_preserves_signed_intents_ciphertext_and_receiver_order_after_clock_rollback() {
+    fifo_cases::cold_outbox_fifo_preserves_signed_intents_ciphertext_and_receiver_order_after_clock_rollback();
+}
+
+#[test]
+fn backward_clock_welcome_stays_behind_original_commit_and_other_space_advances() {
+    fifo_cases::backward_clock_welcome_stays_behind_original_commit_and_other_space_advances();
 }

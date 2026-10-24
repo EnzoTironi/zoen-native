@@ -189,3 +189,33 @@ test('formatting retires prior inline status measurements and iOS sends possible
     }
   }
 });
+
+test('plain links and email in messages, captions and AI App text reach the same parser with exact source', () => {
+  for (const text of [
+    'See https://example.invalid/help.',
+    'www.example.invalid',
+    'person@example.invalid',
+  ]) {
+    const message = plainMessage(text);
+    const body = nodeById(render(message).tree, `message-body-${message.id}`);
+    assert.equal(body.type, 'MessageMarkdown');
+    assert.equal(body.props.text, text);
+    const file = entry(text);
+    for (const options of [{}, { albumPart: { captionOnly: true } }]) {
+      const caption = elements(render(file, options).tree).find(
+        (node) => node.type === 'MessageMarkdown',
+      )!;
+      assert.ok(caption);
+      assert.equal(caption.props.text, text);
+    }
+    const app = entry(text, {
+      author: { ...file.author, kind: 'Agent' },
+      kind: {
+        Message: { text, card: { item_id: 'deck', kind_id: 'app', app: { app_id: 'deckcraft' } } },
+      } as TimelineEntry['kind'],
+    });
+    const appBody = nodeById(render(app).tree, `message-body-${app.id}`);
+    assert.equal(appBody.type, 'MessageMarkdown');
+    assert.equal(appBody.props.text, text);
+  }
+});

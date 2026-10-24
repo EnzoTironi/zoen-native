@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Real Expo export + Cloudflare Pages + Rust CLI peers. No IDB injection or auth mocks.
 import assert from "node:assert/strict";
+import { createJourneyProcesses } from "./expo-web-processes.mjs";
 import { createHash, randomBytes } from "node:crypto";
-import { spawn, execFileSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { createRequire } from "node:module";
@@ -43,8 +44,7 @@ const evidenceRoot = resolve(
 );
 const evidencePath = join(evidenceRoot, locale);
 const privateRoot = await mkdtemp(join(tmpdir(), "zoen-expo-acceptance-"));
-const children = new Set();
-const processes = new Map();
+const { children, processes, start, stop } = createJourneyProcesses(root);
 const logs = [];
 const errors = [];
 const evidence = {
@@ -77,54 +77,6 @@ function scrub(input) {
 function step(name, details = {}) {
   evidence.steps.push({ name, ...details });
   console.log(`PASS [${locale}] ${name}`);
-}
-function start(command, args, options = {}) {
-  const child = spawn(command, args, {
-    cwd: root,
-    ...options,
-    detached: globalThis.process.platform !== "win32",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  children.add(child);
-  let stdout = "",
-    stderr = "";
-  child.stdout.on("data", (chunk) => {
-    stdout = `${stdout}${chunk}`.slice(-2_000_000);
-  });
-  child.stderr.on("data", (chunk) => {
-    stderr = `${stderr}${chunk}`.slice(-2_000_000);
-  });
-  const done = new Promise((resolveDone) => {
-    child.once("error", (error) => {
-      children.delete(child);
-      stderr += error.message;
-      resolveDone({ code: -1, signal: null, stdout, stderr });
-    });
-    child.once("exit", (code, signal) => {
-      children.delete(child);
-      resolveDone({ code, signal, stdout, stderr });
-    });
-  });
-  const process = { child, done, output: () => stdout + stderr };
-  processes.set(child, process);
-  return process;
-}
-async function stop(process) {
-  if (!process || process.child.exitCode !== null || process.child.signalCode !== null) return;
-  const signal = (value) => {
-    try {
-      if (globalThis.process.platform !== "win32" && process.child.pid)
-        globalThis.process.kill(-process.child.pid, value);
-      else process.child.kill(value);
-    } catch (error) {
-      if (error.code !== "ESRCH") throw error;
-    }
-  };
-  signal("SIGINT");
-  if (!(await Promise.race([process.done.then(() => true), delay(3000, false, { ref: false })]))) {
-    signal("SIGKILL");
-    await process.done;
-  }
 }
 async function until(predicate, message, timeout = 60_000) {
   const end = Date.now() + timeout;

@@ -1,6 +1,7 @@
 import { t } from '../i18n/index.ts';
 import { Linking, Platform, ScrollView, Text, View } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
+import { SettingsRows } from './settings-rows';
 import { useNotifications } from '../notifications/provider';
 import { useTheme } from '../theme';
 import { Icon, NativeButton, Surface } from './primitives';
@@ -32,6 +33,17 @@ export function NotificationSettings() {
       }}
     >
       <Stack.Screen options={{ title: t('notifications.notifications') }} />
+      <SettingsRows
+        testID="notification-chat-settings"
+        rows={[
+          {
+            id: 'notification-muted-chats',
+            title: t('notifications.mutedChats'),
+            icon: { ios: 'bell.slash', android: 'notifications_off', web: 'notifications_off' },
+            onPress: () => router.push('/settings/muted-chats'),
+          },
+        ]}
+      />
       <Surface>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
           <Icon
