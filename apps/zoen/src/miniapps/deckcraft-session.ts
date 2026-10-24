@@ -378,7 +378,7 @@ export function createDeckcraftSession(options: Options) {
     tail = operation;
     return operation;
   };
-  const refresh = (): Promise<void> => {
+  const refresh = (observedVersion?: number): Promise<void> => {
     try {
       lifetime.check();
     } catch (failure) {
@@ -393,7 +393,10 @@ export function createDeckcraftSession(options: Options) {
       .then(async () => {
         lifetime.check();
         if (retiring) return;
-        const response = await current.callAppTool('refresh_document');
+        const response = await current.callAppTool(
+          'refresh_document',
+          observedVersion === undefined ? {} : { version: observedVersion },
+        );
         lifetime.check();
         if (response.isError) throw new Error(t(`${messages}.saveFailed`));
         if (!recoveryRequired) {

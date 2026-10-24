@@ -125,8 +125,8 @@ test('official SDK refresh drains input and opens the new canonical head on the 
   const f = await fixture();
   t.after(f.close);
   f.advance();
-  await f.session.refresh();
-  assert.deepEqual(f.events, ['freeze:true', 'status', 'read', 'open', 'freeze:false']);
+  await f.session.refresh(2);
+  assert.deepEqual(f.events, ['status', 'freeze:true', 'status', 'read', 'open', 'freeze:false']);
   assert.deepEqual(f.port.status().head, { version: '2', sha256: hash(changed) });
   assert.equal(f.port.status().frozen, false);
   assert.equal(f.states.at(-1)?.blocked, false);
@@ -200,4 +200,17 @@ test('authority mismatch and retirement during a download never reopen or publis
   await assert.rejects(refreshing);
   assert.equal(retiring.events.includes('open'), false);
   assert.equal(retiring.mutations(), 0);
+});
+
+test('own accepted-head notification leaves newer human input editable instead of treating it as a peer conflict', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  f.port.type(changed);
+  await f.session.refresh(1);
+  assert.deepEqual(f.events, ['status']);
+  assert.equal(f.port.status().dirty, true);
+  assert.equal(f.port.status().frozen, false);
+  assert.equal(f.states.at(-1)?.blocked, false);
+  assert.equal(f.reads(), 1);
+  assert.equal(f.mutations(), 0);
 });

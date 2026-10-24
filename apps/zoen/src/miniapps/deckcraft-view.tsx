@@ -337,7 +337,7 @@ function DeckcraftDocument({
   }, [scheme, dimensions, safeAreaInsets, closeButton]);
   useEffect(() => {
     if (state.opened && !selectedHead && format.id === 'wordcraft')
-      void session.current?.refresh().catch(() => {});
+      void session.current?.refresh(item.version).catch(() => {});
   }, [item.version, state.opened, selectedHead, format.id]);
   const html = useMemo(
     () => sandboxHtml(verified.resource.text, [], verified.manifest.runtimePackage),

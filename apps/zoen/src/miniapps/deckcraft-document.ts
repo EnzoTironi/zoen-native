@@ -153,10 +153,16 @@ export class DeckcraftDocument {
     });
   }
   /** Receive a canonical higher head on this Session, never overwriting a local draft. */
-  refresh(): Promise<void> {
+  refresh(observedVersion?: number): Promise<void> {
     return this.serial(async () => {
       if (!this.opened || !this.binding) throw new Error('The document is not open.');
       if (this.readOnly) throw new Error('This historical document is read-only.');
+      if (observedVersion !== undefined) {
+        if (!positive(observedVersion)) throw new Error('Invalid document version notification.');
+        // Own receipts and stale notifications must not pause newer admitted human input.
+        const accepted = head((await this.engine('status')).metadata.head);
+        if (Number(accepted.version) >= observedVersion) return;
+      }
       const wasPaused = this.paused;
       this.paused = true;
       if (this.timer) clearTimeout(this.timer);
@@ -402,7 +408,12 @@ export async function attachDeckcraftDocument(options: Options & { app: App }) {
   options.app.oncalltool = async ({ name, arguments: input }) => {
     const args = record(input ?? {});
     if (name === 'refresh_document') {
-      await document.refresh();
+      if (
+        Object.keys(args).some((key) => key !== 'version') ||
+        (args.version !== undefined && !positive(args.version))
+      )
+        throw new Error('Invalid document version notification.');
+      await document.refresh(args.version === undefined ? undefined : Number(args.version));
       clearExport();
       return { content: [] };
     }

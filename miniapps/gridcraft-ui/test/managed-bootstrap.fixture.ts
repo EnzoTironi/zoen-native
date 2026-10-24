@@ -173,7 +173,7 @@ export async function startProbe(config: {
         throw Error("Invalid synthetic document size");
       accepted = next;
       version = nextVersion;
-      await session.refresh();
+      await session.refresh(nextVersion);
     },
     share: (kind: BinaryExportFormat) => session.share(kind),
     flush: () => session.controller.flush(),
