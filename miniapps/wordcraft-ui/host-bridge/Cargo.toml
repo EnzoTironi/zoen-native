@@ -5,10 +5,19 @@ edition = "2024"
 license = "AGPL-3.0-only"
 publish = false
 
+[features]
+qualification = ["dep:wordcraft-formats"]
+
+[[bin]]
+name = "wordcraft-clock-probe"
+path = "src/clock_probe.rs"
+required-features = ["qualification"]
+
 [dependencies]
 wordcraft-doc = { path = "../doc" }
 wordcraft-docx = { path = "../docx" }
 wordcraft-engine = { path = "../engine" }
+wordcraft-formats = { path = "../formats", optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

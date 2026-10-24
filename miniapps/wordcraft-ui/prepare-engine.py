@@ -20,7 +20,7 @@ def git(directory, *args):
     return subprocess.check_output(["git", "-C", str(directory), *args], text=True).strip()
 
 
-def prepare(directory):
+def prepare(directory, wasi=False):
     directory = directory.resolve(strict=True)
     if git(directory, "rev-parse", "HEAD") != REVISION:
         raise ValueError("Refusing unpinned WordCraft source")
@@ -40,15 +40,20 @@ def prepare(directory):
             if source.name == "Cargo.lock" or "target" in source.parts:
                 raise ValueError("Refusing generated adapter input")
             inputs.append(source)
+    patches = [HERE / "patches/0001-wasi-system-clock.patch"] if wasi else []
+    for source in patches:
+        subprocess.run(["git", "-C", str(directory), "apply", "--check", str(source)], check=True)
     hashes = {str(source.relative_to(ROOT)): hashlib.sha256(source.read_bytes()).hexdigest()
-              for source in [Path(__file__).resolve(), *inputs]}
+              for source in [Path(__file__).resolve(), *patches, *inputs]}
+    for source in patches:
+        subprocess.run(["git", "-C", str(directory), "apply", str(source)], check=True)
     for source in inputs:
         target = destination / source.relative_to(HERE / "host-bridge")
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)
     result = {"schema": 1, "upstream": REVISION, "adapterAbi": "zoen-host-v1",
               "profile": "plain-text-v1", "inputs": hashes,
-              "compiled": False, "runtimeExecuted": False, "appAvailable": False}
+              "wasiClocks": wasi, "compiled": False, "runtimeExecuted": False, "appAvailable": False}
     receipt.write_text(json.dumps(result, indent=2) + "\n")
     return result
 
@@ -56,9 +61,10 @@ def prepare(directory):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--upstream", type=Path, required=True)
+    parser.add_argument("--wasi", action="store_true", help="Use the real WASI system clocks; browser branches stay unchanged")
     args = parser.parse_args()
     try:
-        result = prepare(args.upstream)
+        result = prepare(args.upstream, wasi=args.wasi)
     except (ValueError, OSError, subprocess.SubprocessError) as error:
         parser.exit(1, str(error) + "\n")
     print(json.dumps({"upstream": result["upstream"], "inputs": len(result["inputs"]),
