@@ -279,10 +279,10 @@ pub(crate) fn drain(bridge: &mut gridcraft_zoen_host::HostBridge, app: &mut Shee
     }
     QUEUE.with(|q| {
         let q = q.borrow();
-        if !q.pending.is_empty() {
-            if let Some(ctx) = &q.ctx {
-                ctx.request_repaint();
-            }
+        if !q.pending.is_empty()
+            && let Some(ctx) = &q.ctx
+        {
+            ctx.request_repaint();
         }
     });
 }

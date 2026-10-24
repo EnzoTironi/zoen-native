@@ -68,10 +68,10 @@ impl eframe::App for Shell {
             return;
         }
         api::drain(&mut self.bridge, &mut self.app);
-        if let Some(l) = api::layout() {
-            if let Some(theme) = l.theme {
-                self.app.ui.dark = matches!(theme, Theme::Dark);
-            }
+        if let Some(l) = api::layout()
+            && let Some(theme) = l.theme
+        {
+            self.app.ui.dark = matches!(theme, Theme::Dark);
         }
         self.app.logic(ctx);
     }
