@@ -100,7 +100,7 @@ pub fn spec() -> Option<AppSpec> {
         id: APP,
         name: "WordCraft",
         description: ts(
-            "Documentos compartilhadas e criptografadas.",
+            "Documentos compartilhados e criptografados.",
             "Shared encrypted plain-text documents.",
         ),
         resource_uri: RESOURCE,

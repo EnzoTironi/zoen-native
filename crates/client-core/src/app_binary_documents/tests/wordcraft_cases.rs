@@ -174,7 +174,7 @@ fn configured_wordcraft_person_factory_creates_one_standard_card_and_same_host_f
         STANDARD.decode(&edited.data_base64).expect("base64"),
         EDITED
     );
-    let cards=f.client.timeline(f.space.clone())?.into_iter().filter(|entry|matches!(&entry.kind,EntryKind::Message{card:Some(card),..} if card.item_id==first.id)).count();
+    let cards=f.client.timeline(f.space.clone())?.into_iter().filter(|entry|matches!(&entry.kind,crate::EntryKind::Message{card:Some(card),..} if card.item_id==first.id)).count();
     assert_eq!(cards, 1);
     assert_eq!(
         f.client

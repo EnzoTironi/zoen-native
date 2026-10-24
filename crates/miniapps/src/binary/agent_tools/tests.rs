@@ -87,6 +87,12 @@ fn word_tools_keep_exact_head_text_profile_and_actor_binding_closed() {
         command("read_wordcraft", &json!({"artifactId":"it_word_abc"})).expect("read"),
         (None, None, None)
     );
+    let mut escaped = good.clone();
+    escaped["text"] = json!("\"".repeat(16384));
+    assert!(
+        command("wordcraft_text_replace", &escaped).is_err(),
+        "JSON escaping still respects the existing signed envelope limit"
+    );
     assert!(command("read_wordcraft", &good).is_err());
     assert!(command(
         "wordcraft_text_replace",
