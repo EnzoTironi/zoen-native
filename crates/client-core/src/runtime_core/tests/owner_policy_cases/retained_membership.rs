@@ -24,6 +24,8 @@ fn early_directory_then_real_welcome_reconciles_dedicated_native_sibling_after_r
     let (packages, retained) = native.prepare_initial_key_packages()?;
     native = DeviceCore::restore(retained, native_credential()?)?;
     let mut worker = DeviceCore::restore(early.ok_or("before Welcome snapshot")?, f.credential())?;
+    // This is the already registered normal worker, not the dedicated capsule.
+    worker.engine.set_registered(true)?;
     worker.engine.devices_arrived(vec![
         protocol::DeviceRecord {
             device: f.agent_device.id(),
