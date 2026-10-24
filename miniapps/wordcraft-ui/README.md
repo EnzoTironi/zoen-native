@@ -1,7 +1,7 @@
 # Managed WordCraft: bounded DOCX worker
 
 Tracks [#502](https://github.com/EnzoTironi/zoen-native/issues/502), under ArtCraft
-[#180](https://github.com/EnzoTironi/zoen-native/issues/180). This does not register
+[#180](https://github.com/EnzoTironi/zoen-native/issues/180). Default builds do not enable
 an available App, a native editor, or a PDF exporter.
 
 The adapter uses the real pinned WordCraft Session and DOCX writer. Its binary
@@ -17,8 +17,9 @@ The accepted document stays unchanged until an exact scope/mutation/next-version
 hash ACK. Retries in the same bridge return the same proposal; the canonical host
 still owns authorization, durable idempotence, CAS, FileDoc and cold recovery.
 The standalone process emits a proposal and cannot commit it. The normal Zoen worker
-resolver now recognizes an explicitly configured signed Word component; no Word
-agent tool or available browser App is advertised by this foundation.
+resolver recognizes an explicitly configured signed Word component. The reviewed
+creation/agent continuation is documented below; default builds still do not
+advertise a browser App.
 
 ## Deliberately narrow DOCX profile
 
@@ -156,6 +157,7 @@ An explicit `ZOEN_WORDCRAFT_RESOURCE_MANIFEST_JSON` must match package03's exact
 engine/ABI/JS/WASM and generated HTML. `build-resource-manifest.mjs` verifies
 actual sealed local assets independently of Rust pins. It does not deploy them.
 
-Qualification for this consumer is pending. PDF export remains unfinished
+Actual qualification for this consumer is recorded in [AGENT-EVIDENCE.md](AGENT-EVIDENCE.md).
+PDF export remains unfinished
 product work: the upstream PDF crate exists but this closed worker/browser API
 does not yet expose or qualify it. DOCX is the only currently offered export.

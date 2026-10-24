@@ -118,6 +118,7 @@ async function sourceInputs() {
       // native artifacts from another verified code package or deployment URL.
       deckcraftResourceManifest: process.env.ZOEN_DECKCRAFT_RESOURCE_MANIFEST_JSON ?? null,
       gridcraftResourceManifest: process.env.ZOEN_GRIDCRAFT_RESOURCE_MANIFEST_JSON ?? null,
+      wordcraftResourceManifest: process.env.ZOEN_WORDCRAFT_RESOURCE_MANIFEST_JSON ?? null,
     }),
   );
   // The browser core evolves independently. Hash the actual native dependency
