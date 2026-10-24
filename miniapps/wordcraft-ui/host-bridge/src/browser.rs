@@ -103,6 +103,17 @@ impl BrowserBridge {
         }
         let host = HostBridge::open(request.clone(), bytes)?;
         let doc = profile::parse(bytes)?;
+        if self.host.is_some() {
+            // A canonical revision of this artifact is an edit, not a new canvas owner.
+            // The upstream reset clears stale transient state while preserving Undo.
+            s.receive_managed_document(doc.clone())
+                .map_err(|_| failure("engine_refresh"))?;
+            self.accepted = Some(doc);
+            self.host = Some(host);
+            self.last = None;
+            s.managed_frozen = self.paused;
+            return self.status(s);
+        }
         let binding = NEXT_BINDING
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
             .map_err(|_| failure("document_generation_exhausted"))?;
@@ -151,6 +162,11 @@ impl BrowserBridge {
             } else {
                 Err(failure("proposal_pending"))
             };
+        }
+        let current: Head = serde_json::from_value(self.host()?.status()["head"].clone())
+            .map_err(|_| failure("invalid_head"))?;
+        if m.base != current {
+            return Err(failure("stale_head"));
         }
         Ok(None)
     }

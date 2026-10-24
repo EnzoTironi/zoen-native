@@ -131,6 +131,17 @@ fn rich_manual_agent_ack_cold_docx_pdf_and_undo_keep_one_actual_document() -> Re
         },
     )?;
     assert!(pdf.bytes.starts_with(b"%PDF-"));
+    if let Ok(directory) = std::env::var("ZOEN_WORDCRAFT_RICH_EVIDENCE_DIR") {
+        let directory = std::path::Path::new(&directory);
+        if !directory.is_absolute() {
+            return Err(failure("evidence_requires_absolute_path"));
+        }
+        std::fs::create_dir_all(directory).map_err(|_| failure("evidence_directory"))?;
+        std::fs::write(directory.join("rich.docx"), &exported.bytes)
+            .map_err(|_| failure("evidence_docx"))?;
+        std::fs::write(directory.join("rich.pdf"), &pdf.bytes)
+            .map_err(|_| failure("evidence_pdf"))?;
+    }
     let mut cold = BrowserBridge::default();
     let mut next = Session::new(Document::new());
     cold.open(
@@ -144,6 +155,14 @@ fn rich_manual_agent_ack_cold_docx_pdf_and_undo_keep_one_actual_document() -> Re
     assert_eq!(
         next.doc, final_model,
         "cold reopen keeps every rich property"
+    );
+    s.run("text.insert", &json!({"text":" human suffix","raw":true}))
+        .map_err(|_| failure("manual_after_agent"))?;
+    s.run("edit.undo", &json!({}))
+        .map_err(|_| failure("undo_manual_suffix"))?;
+    assert!(
+        s.doc == final_model,
+        "manual typing after ACK must not join the agent's Undo step"
     );
     s.run("edit.undo", &json!({}))
         .map_err(|_| failure("undo_edit"))?;
@@ -242,16 +261,25 @@ fn higher_head_headless_agent_refresh_undo_is_a_new_human_cas_edit() -> Result<(
     ack(&mut browser, &mut canvas, "human", "2", &human)?;
     let manual = canvas.doc.clone();
     // The real agent path has an isolated headless worker. It does not call the canvas dispatcher.
+    let mut worker_scope = scope();
+    worker_scope.actor_kind = ActorKind::Agent;
+    worker_scope.actor_id = "reviewed-agent".into();
     let mut worker = HostBridge::open(
         Open {
-            scope: scope(),
+            scope: worker_scope.clone(),
             head: head("2", &human.bytes),
         },
         &human.bytes,
     )?;
-    let change=worker.execute(request(head("2",&human.bytes),"remote-agent",json!({"command":"range.format","params":{"range":range(0,6),"format":{"bold":true,"alignment":"center"}}}))?)?;
+    let mut worker_command = request(
+        head("2", &human.bytes),
+        "remote-agent",
+        json!({"command":"range.format","params":{"range":range(0,6),"format":{"bold":true,"alignment":"center"}}}),
+    )?;
+    worker_command.mutation.scope = worker_scope.clone();
+    let change = worker.execute(worker_command)?;
     worker.accept(&Accept {
-        scope: scope(),
+        scope: worker_scope,
         mutation_id: "remote-agent".into(),
         head: head("3", &change.bytes),
     })?;
@@ -273,7 +301,10 @@ fn higher_head_headless_agent_refresh_undo_is_a_new_human_cas_edit() -> Result<(
     canvas
         .run("edit.undo", &json!({}))
         .map_err(|_| failure("remote_refresh_lost_undo"))?;
-    assert_eq!(canvas.doc, manual);
+    assert!(
+        canvas.doc == manual,
+        "Undo must restore the full manual rich model"
+    );
     assert_eq!(
         browser.status(&canvas)?["head"],
         json!(head("3", &change.bytes)),

@@ -104,7 +104,7 @@ pub(crate) fn apply(s: &mut Session, action: &Action) -> Result<()> {
     s.math = None;
     s.pending = None;
     s.also_selected.clear();
-    match action {
+    let result = match action {
         Action::TextReplace(v) => {
             run(s, "select.all", json!({"whole":true}))?;
             text(s, &v.text)
@@ -117,7 +117,11 @@ pub(crate) fn apply(s: &mut Session, action: &Action) -> Result<()> {
             select(s, &v.range)?;
             format(s, &v.format)
         }
+    };
+    if result.is_ok() {
+        s.close_typing();
     }
+    result
 }
 /// The upstream transaction preserves document/selection/Undo/Redo/typing. These
 /// additional public interaction fields can be touched by our closed commands.

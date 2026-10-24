@@ -51,6 +51,7 @@ def prepare(directory, wasi=False, browser=False, eframe_crate=None, egui_crate=
     foundation = None
     if browser:
         patches = [HERE / "patches/0003-managed-session.patch",
+                   HERE / "patches/0006-managed-refresh.patch",
                    HERE / "patches/0005-browser-native-only-helpers.patch"]
         copies.extend((source, Path("crates/zoen-web") / source.relative_to(HERE / "browser"))
                       for source in sorted((HERE / "browser").rglob("*")) if source.is_file())
