@@ -1,6 +1,8 @@
 //! Actual normal citizen ToolHost -> private IPC -> production executable.
 #[path = "account_controls.rs"]
 mod account_controls;
+#[path = "first_account_context.rs"]
+mod first_account_context;
 #[path = "owner_controls.rs"]
 mod owner_controls;
 use super::*;
@@ -15,6 +17,17 @@ use std::{
 #[path = "provider.rs"]
 mod provider;
 pub(super) use provider::Provider;
+
+pub(super) async fn initial_account_context(
+    w: &World,
+    path: &Path,
+    owner: &Client,
+    config: &config::Config,
+    space: &str,
+    provider: &Provider,
+) -> Result<(), Box<dyn std::error::Error>> {
+    first_account_context::run(w, path, owner, config, space, provider).await
+}
 
 struct Host {
     child: Child,

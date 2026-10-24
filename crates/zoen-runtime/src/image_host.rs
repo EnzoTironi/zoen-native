@@ -89,11 +89,13 @@ impl ImageRuntimeHost {
     pub async fn owner_policy_options(
         &self,
         signed: &types::owner_policy_context::SignedOwnerPolicyInquiry,
-    ) -> Result<types::owner_policy_context::OwnerPolicyOptions, RuntimeError> {
+    ) -> Result<types::owner_policy_context::OwnerPolicyOptions, OwnerPolicyContextFailure> {
         self.runtime
             .native
             .as_ref()
-            .ok_or(RuntimeError::CoreAuthorityUnavailable)?
+            .ok_or(
+                OwnerPolicyContextStage::Credential.failed(RuntimeError::CoreAuthorityUnavailable),
+            )?
             .owner_policy_options(&self.runtime, &self.config, &self.definition, signed)
             .await
     }

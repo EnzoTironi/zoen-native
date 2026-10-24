@@ -35,6 +35,8 @@ pub(crate) enum PolicyProgress {
     Unavailable {
         operation: PolicyOperation,
         code: PolicyUnavailable,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        context_stage: Option<zoen_runtime::OwnerPolicyContextStage>,
     },
     Installed {
         policy_digest: String,

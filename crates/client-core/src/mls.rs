@@ -427,3 +427,5 @@ pub(crate) fn must_seal(body: &EventBody) -> bool {
 
 #[cfg(test)]
 mod tests;
+
+pub(crate) use readiness::ReadinessRejection;
