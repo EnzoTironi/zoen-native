@@ -112,7 +112,7 @@ pub(super) fn read_block(m: &LoroMap) -> Block {
 }
 
 /// UTF-16 offset → Unicode scalar offset in `s`.
-fn u16_to_char(s: &str, u16: usize) -> usize {
+pub(super) fn u16_to_char(s: &str, u16: usize) -> usize {
     let mut n16 = 0;
     for (i, c) in s.chars().enumerate() {
         if n16 >= u16 {
@@ -124,7 +124,7 @@ fn u16_to_char(s: &str, u16: usize) -> usize {
 }
 
 /// Per-character marks of a block, from runs (`Some(value)` when set).
-fn char_marks(runs: &[Run]) -> HashMap<&'static str, Vec<Option<String>>> {
+pub(super) fn char_marks(runs: &[Run]) -> HashMap<&'static str, Vec<Option<String>>> {
     let total: usize = runs.iter().map(|r| r.text.chars().count()).sum();
     let mut out: HashMap<&'static str, Vec<Option<String>>> = HashMap::new();
     for (k, _) in MARKS {
