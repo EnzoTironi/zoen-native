@@ -10,6 +10,12 @@ import Foundation
     do { try body(); preconditionFailure("Invalid contact was accepted") } catch {}
   }
   static func main() throws {
+    if CommandLine.arguments.last == "stdin" {
+      let bytes = FileHandle.standardInput.readDataToEndOfFile()
+      let value = try ZoenContactPreview.parse(bytes, expectedHash: hash(bytes))
+      print(String(decoding: try JSONEncoder().encode(value), as: UTF8.self))
+      return
+    }
     let card = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Ana Silva\r\nN:Silva;Ana;;;\r\nTEL;TYPE=CELL:+55 11 1234\r\nEMAIL:private@example.invalid\r\nNOTE:must not be projected\r\nEND:VCARD\r\n"
     let bytes = Data(card.utf8), digest = hash(bytes)
     let contact = try ZoenContactPreview.parse(bytes, expectedHash: digest)
