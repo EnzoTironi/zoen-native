@@ -186,4 +186,11 @@ export const mediaEn = {
     other: '%{received}/%{total} parts',
   },
   shareFileLabel: 'Share %{name}',
+  contact: 'Contact',
+  openContactLabel: 'Open contact %{name}',
+  closeContact: 'Close',
+  copyContactPhone: 'Copy %{phone}',
+  shareContact: 'Share contact',
+  contactCouldNotBeOpened: 'This contact could not be opened.',
+  contactActionFailed: 'This action could not be completed.',
 } as const;

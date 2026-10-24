@@ -61,6 +61,7 @@ export const compiled = await build({
           path === './file-attachment-content' ||
           path === './inline-file-image' ||
           path === './observed-file' ||
+          path === './contact-file' ||
           path === '../sites/open-file' ||
           path.startsWith('@babel/runtime/helpers/')
             ? undefined
@@ -149,6 +150,7 @@ export function fixture(
     materializeError?: boolean;
     messageSource?: { spaceId: string; entry: TimelineEntry };
     galleryCapability?: boolean;
+    contactCapability?: boolean;
     galleryEntries?: readonly TimelineEntry[];
     actualGallery?: boolean;
     tile?: { width: number; height: number };
@@ -205,6 +207,11 @@ export function fixture(
       return file;
     },
     releaseLocalFile: async () => {},
+    readContact: options.contactCapability
+      ? async () => {
+          throw Error('routing must not read contact bytes');
+        }
+      : undefined,
     previewConversationMedia: options.galleryCapability
       ? async (_request: unknown, signal: AbortSignal) => {
           if (!options.actualGallery) return;
@@ -295,6 +302,7 @@ export function fixture(
     },
     'expo-image': { Image: 'Image' },
     'expo-sharing': {},
+    './contact-attachment': { ContactAttachment: 'ContactAttachment' },
     'expo-router': { router: { push: (route: unknown) => navigationRequests.push(route) } },
     '../i18n/index.ts': { t: (key: string) => key, formatLocale: 'en-US' },
     '../i18n': { t: (key: string) => key },
