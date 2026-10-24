@@ -246,3 +246,7 @@ mod tests {
         assert!(core.client_log_events_page(space.into(), None, 1).is_err());
     }
 }
+
+#[cfg(test)]
+#[path = "integrity_marker_tests.rs"]
+mod integrity_marker_tests;

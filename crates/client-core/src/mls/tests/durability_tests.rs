@@ -6,6 +6,7 @@ use std::path::PathBuf;
 mod confirmation_cases;
 mod fifo_cases;
 mod import_cases;
+mod integrity_marker_cases;
 mod receive_cases;
 
 struct Database {
