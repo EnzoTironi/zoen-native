@@ -98,8 +98,8 @@ private final class PageInputTestVault: SecretVault, @unchecked Sendable {
     let wholeCapture = try payload(sequence: 1, text: replacement)
     _ = try wholeLease.retainDraftSnapshot(wholeCapture, sequence: 1)
     let checkpointed = try core.pageInputLoad(scope: scope)
-    check(checkpointed.capture?.payload == wholeCapture && checkpointed.binding?.baseDocumentMarkdown == wholeSeed,
-      "Checkpoint retains exact live bytes without replacing the original base seed")
+    check(checkpointed.capture?.payload == wholeCapture && checkpointed.binding?.baseDocumentMarkdown == nil,
+      "Checkpoint retains exact live bytes; canonical seed is returned only by Open")
     check(try core.pageMarkdown(itemId: item.id) == wholeSeed, "Typing must not Apply or Share")
     let reboundLease = try ZoenPageInputLease(id: UUID().uuidString, engine: core, generation: 7,
       scope: scope, opened: checkpointed, changed: { _ in })

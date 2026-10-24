@@ -268,8 +268,12 @@ impl PageSession {
             (desired, base)
         };
         let live = doc.at(&doc.frontiers()).map_err(super::super::doc_err)?;
-        live.import(&observed.updates_since(&base))
-            .map_err(super::super::doc_err)?;
+        if observed.version() != base {
+            // A semantic no-op has no Loro update. It still receives the exact
+            // durable mutation receipt below; nonempty changes must import fully.
+            live.import(&observed.updates_since(&base))
+                .map_err(super::super::doc_err)?;
+        }
         let hash = observed.content_hash();
         let fronts = observed.frontiers().encode();
         let mut journal = journal.clone();

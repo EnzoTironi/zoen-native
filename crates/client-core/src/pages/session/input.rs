@@ -357,6 +357,19 @@ impl PageSession {
         for (offset, b) in changed.iter().enumerate() {
             order.insert(at + offset, b.id.clone());
         }
+        if binding.target == PageInputTarget::WholeDocument {
+            let original = binding
+                .base_document
+                .as_ref()
+                .ok_or_else(|| invalid("missing whole-document base"))?;
+            let original: std::collections::HashMap<_, _> = original
+                .iter()
+                .map(|block| (block.id.as_str(), block))
+                .collect();
+            // Order contains the complete observed intent; only actually edited
+            // blocks may generate CRDT writes over concurrent unobserved changes.
+            changed.retain(|block| original.get(block.id.as_str()).copied() != Some(block));
+        }
         if let SessionJournal::BinaryPage(j) = &self.journal {
             if j.receipt(id).is_some() {
                 return Err(invalid("input mutation id was already used"));
