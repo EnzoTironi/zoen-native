@@ -88,6 +88,8 @@ export class MutedChatsSession {
   private state = emptyMutedChats;
   private owner: AccountScope | null = null;
   private revision = 0;
+  // Reads may retire a review, but cannot retire a write already dispatched.
+  private readonly inFlight = new Map<string, { id: string }>();
   private readonly listeners = new Set<() => void>();
   private readonly port: MutedChatsPort;
   constructor(port: MutedChatsPort) {
@@ -107,7 +109,8 @@ export class MutedChatsSession {
   activate(owner: AccountScope | null) {
     this.owner = owner ? Object.freeze({ ...owner }) : null;
     ++this.revision;
-    this.state = { ...emptyMutedChats, scope: accountScopeKey(owner) };
+    const scope = accountScopeKey(owner);
+    this.state = { ...emptyMutedChats, scope, pending: this.inFlight.get(scope)?.id ?? null };
     this.publish({});
   }
   retire() {
@@ -132,7 +135,13 @@ export class MutedChatsSession {
     if (!this.accepts(ticket) || !this.owner) return;
     const owner = this.owner;
     const revision = ++this.revision;
-    this.publish({ phase: 'loading', chats: [], selected: null, pending: null, readFailed: false });
+    this.publish({
+      phase: 'loading',
+      chats: [],
+      selected: null,
+      pending: this.inFlight.get(this.state.scope)?.id ?? null,
+      readFailed: false,
+    });
     try {
       const snapshot = await this.port.read();
       if (!this.current(revision)) return;
@@ -175,11 +184,16 @@ export class MutedChatsSession {
       !chat ||
       this.state.phase !== 'ready' ||
       this.state.pending ||
+      this.inFlight.has(this.state.scope) ||
       this.state.selected !== id
     )
       return;
     const revision = this.revision;
     const owner = this.owner;
+    const scope = this.state.scope;
+    const write = { id };
+    let dispatched = false;
+    let failed = false;
     this.publish({ pending: id, actionFailed: false });
     try {
       if (!(await confirm()) || !this.current(revision) || this.state.selected !== id) return;
@@ -191,16 +205,24 @@ export class MutedChatsSession {
         await this.load(this.ticket());
         return;
       }
+      this.inFlight.set(scope, write);
+      dispatched = true;
       await this.port.unmute(id, owner);
-      if (this.current(revision)) await this.load(this.ticket());
     } catch {
-      if (this.current(revision)) {
+      failed = true;
+      if (!dispatched && this.current(revision)) {
         this.publish({ actionFailed: true });
-        // Acceptance may precede a lost response. Reconcile by reading, never resend.
         await this.load(this.ticket(), id);
       }
     } finally {
-      if (this.current(revision)) this.publish({ pending: null });
+      if (dispatched && this.inFlight.get(scope) === write) {
+        this.inFlight.delete(scope);
+        if (this.current() && this.state.scope === scope) {
+          // A newer read/foreground may have changed revision during the ACK.
+          // Acceptance may precede a lost response; reconcile by read, never resend.
+          await this.load(this.ticket(), failed ? id : null);
+        }
+      } else if (this.current(revision)) this.publish({ pending: null });
     }
   }
 }

@@ -225,3 +225,47 @@ test('real ClientStore sends exact scoped mute-only command and retires stale po
   await assert.rejects(port.unmute('chat-0', owner));
   assert.equal(calls.length, count);
 });
+
+for (const refresh of ['canonical', 'foreground'] as const)
+  for (const result of ['accepted', 'unknown'] as const)
+    test(`${refresh} refresh preserves a dispatched-write fence until ${result} ACK reconciliation`, async () => {
+      const f = mutedFixture();
+      await f.load();
+      f.select();
+      const started = deferred<void>();
+      const ack = deferred<void>();
+      f.write(async (id) => {
+        started.resolve();
+        await ack.promise;
+        if (result === 'unknown') throw new Error('uncertain acceptance');
+        const chat = f.snapshot().conversations.find((row) => row.id === id)!;
+        chat.muted = false;
+        chat.muted_until_ms = null;
+      });
+      const first = f.unmute();
+      await started.promise;
+      f.snapshot().conversations[1]!.title = 'Other chat changed';
+      if (refresh === 'foreground') {
+        f.session.retire();
+        f.session.activate(scope);
+      }
+      await f.load();
+      assert.equal(f.session.getSnapshot().pending, 'chat-0');
+      f.select();
+      const second = f.unmute();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      try {
+        assert.equal(f.writes().length, 1, 'reads must not release the in-flight write');
+      } finally {
+        ack.resolve();
+        await Promise.all([first, second]);
+      }
+      assert.equal(f.session.getSnapshot().pending, null);
+      assert.equal(f.session.getSnapshot().phase, 'ready');
+      assert.equal(f.session.getSnapshot().actionFailed, result === 'unknown');
+      assert.equal(
+        f.session.getSnapshot().chats.some((chat) => chat.id === 'chat-0'),
+        result === 'unknown',
+      );
+      assert.equal(f.writes().length, 1, 'terminal reconciliation only reads');
+    });
