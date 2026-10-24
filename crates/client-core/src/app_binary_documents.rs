@@ -75,7 +75,7 @@ fn hash(bytes: &[u8]) -> String {
 }
 
 mod creation;
-pub(crate) use creation::creation_item_id;
+pub(crate) use creation::creation_item_id_for;
 
 fn token(s: &str) -> bool {
     !s.is_empty()
