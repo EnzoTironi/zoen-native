@@ -1,5 +1,12 @@
 import type { LocalMediaFile, StaticLocation } from './types';
 
+function hasControls(value: string): boolean {
+  return Array.from(value).some((scalar) => {
+    const code = scalar.codePointAt(0);
+    return code !== undefined && (code < 32 || (code >= 127 && code <= 159));
+  });
+}
+
 /** Validate native metadata; bytes and current file authority remain native-owned. */
 export function nativeLocationPoint(value: unknown): StaticLocation {
   if (typeof value !== 'object' || !value || Array.isArray(value))
@@ -19,7 +26,7 @@ export function nativeLocationPoint(value: unknown): StaticLocation {
       (typeof raw.label !== 'string' ||
         !raw.label.trim() ||
         new TextEncoder().encode(raw.label).length > 256 ||
-        /[\u0000-\u001f\u007f-\u009f]/u.test(raw.label)))
+        hasControls(raw.label)))
   )
     throw new Error('location-invalid');
   return Object.freeze({
@@ -53,10 +60,10 @@ export function nativeLocationSearch(port: {
       if (
         !binding ||
         new TextEncoder().encode(binding).length > 128 ||
-        /[\u0000-\u001f\u007f-\u009f]/u.test(binding) ||
+        hasControls(binding) ||
         !query.trim() ||
         new TextEncoder().encode(query).length > 256 ||
-        /[\u0000-\u001f\u007f-\u009f]/u.test(query)
+        hasControls(query)
       )
         throw new Error('location-invalid');
       const encoded = await port.searchLocations(JSON.stringify({ binding, query }));
@@ -69,7 +76,11 @@ export function nativeLocationSearch(port: {
     cancelLocationSearch(binding: string) {
       // The UI retires its binding synchronously before this best-effort native
       // cancellation; a rejection cannot permit an old callback or resend.
-      void port.cancelLocationSearch(binding).catch(() => {});
+      try {
+        void port.cancelLocationSearch(binding).catch(() => {});
+      } catch {
+        // An already-destroyed native module can reject synchronously too.
+      }
     },
   };
 }

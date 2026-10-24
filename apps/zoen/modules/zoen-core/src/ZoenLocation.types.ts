@@ -10,6 +10,7 @@ export type LocationMapConfiguration = Readonly<{
   editable: boolean;
   point?: StaticLocation;
   accessibilityLabel?: string;
+  selectPointLabel?: string;
 }>;
 
 export type LocationPointEvent = Readonly<{

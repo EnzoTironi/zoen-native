@@ -15,6 +15,11 @@ public class ZoenCoreModule: Module {
     Events("onChange", "onPageInputStatus", "onCallState", "onCallAudio")
     Constant("sitePreviewVersion") { 2 }
     zoenSitePreviewDefinition()
+    Constant("staticLocationVersion") { 1 }
+    zoenLocationMapDefinition()
+    zoenLocationSearchDefinition(sessionOwner)
+    zoenLocationCancelDefinition()
+    zoenLocationReadDefinition(sessionOwner)
 
     // Reuse the exact pinned Telegram mosaic already used by selected previews.
     // Pure, bounded geometry only: no media bytes, authority or persistent state.
@@ -247,9 +252,7 @@ public class ZoenCoreModule: Module {
       let presenter = await MainActor.run { self.appContext?.utilities?.currentViewController() }
       try await self.session.previewRecentAttachment(request, presentationId: presentationId, presenter: presenter)
     }
-    AsyncFunction("readContactFile") { (request: String) async throws -> String in
-      try await self.session.readContactFile(request)
-    }
+    zoenContactReadDefinition(sessionOwner)
     AsyncFunction("previewLocalFile") { (uri: String) async throws in
       let presenter = await MainActor.run { self.appContext?.utilities?.currentViewController() }
       try await self.session.previewLocalFile(uri, presenter: presenter)
