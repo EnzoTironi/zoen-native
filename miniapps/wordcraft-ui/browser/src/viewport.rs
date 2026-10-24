@@ -61,10 +61,13 @@ mod tests {
                     })),
                     ..Default::default()
                 };
-                let _ = ctx.run_ui(input, |ui| {
+                let mut output = ctx.run_ui(input, |ui| {
                     app.logic(ui.ctx());
                     show(&mut app, ui);
                 });
+                // This geometry harness has no GPU; explicitly dispose the real
+                // texture updates rather than triggering egui's drop guard.
+                output.textures_delta.clear();
             }
             let safe = ctx.content_rect();
             let canvas = app.canvas.canvas_rect.ok_or("missing actual canvas")?;
