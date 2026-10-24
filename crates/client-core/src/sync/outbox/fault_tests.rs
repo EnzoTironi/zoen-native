@@ -413,3 +413,75 @@ fn unreadable_queue_or_handshake_metadata_never_becomes_an_empty_dependency_succ
         assert_eq!(f.engine.outbox_envelopes(), healthy);
     }
 }
+
+#[test]
+fn deserializable_event_cannot_replace_signed_bytes_projection_signature_or_certificate() {
+    let mut f = Fixture::new(":memory:", Privacy::Closed);
+    let independent = f.message("sp_fault_b", 0);
+    let first = f.message("sp_fault_a", 1);
+    f.message("sp_fault_a", 2);
+    let original = original_json(&f.engine, &first);
+    let healthy = f.engine.outbox_envelopes();
+    let head = f
+        .engine
+        .store
+        .outbox_heads()
+        .unwrap()
+        .into_iter()
+        .find(|h| h.client_id == first.client_id)
+        .unwrap();
+    for fault in [
+        "empty-content",
+        "body",
+        "space",
+        "cid",
+        "time",
+        "signature",
+        "certificate",
+    ] {
+        let mut invalid = first.clone();
+        match fault {
+            "empty-content" => invalid.content.clear(),
+            "body" => {
+                let EventBody::MessagePosted { text, .. } = &mut invalid.body else {
+                    panic!("actual original is a signed message");
+                };
+                *text = "Projection differs from signed bytes".into();
+            }
+            "space" => invalid.space = "sp_fault_b".into(),
+            "cid" => invalid.client_id.push_str("-different"),
+            "time" => invalid.at_ms += 1,
+            "signature" => invalid.sig.clear(),
+            "certificate" => invalid.cert = None,
+            _ => unreachable!("explicit fixture faults"),
+        }
+        set_json(
+            &f.engine,
+            &first,
+            Value::Text(serde_json::to_string(&invalid).unwrap()),
+        );
+        assert!(
+            f.engine
+                .store
+                .outbox_get(&first.client_id)
+                .unwrap()
+                .is_some(),
+            "serde accepts the damaged record; validity cannot be inferred from JSON: {fault}"
+        );
+        assert_eq!(
+            f.engine.read_outbox_head(&head).unwrap_err(),
+            OutboxHeadFailure::Corrupt,
+            "{fault}"
+        );
+        let broken = raw_queue(&f.engine);
+        let offered = f.engine.outbox_envelopes();
+        assert_eq!(
+            offered.iter().map(Envelope::client_id).collect::<Vec<_>>(),
+            [independent.client_id.as_str()],
+            "{fault}"
+        );
+        assert_eq!(raw_queue(&f.engine), broken, "{fault}");
+    }
+    set_json(&f.engine, &first, Value::Text(original));
+    assert_eq!(f.engine.outbox_envelopes(), healthy);
+}

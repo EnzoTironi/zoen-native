@@ -231,10 +231,13 @@ impl Engine {
         out
     }
 
-    /// Our queued Welcomes that wait behind a commit of ours still in the outbox.
     fn read_outbox_head(&self, head: &store::OutboxHead) -> Result<Event, OutboxHeadFailure> {
         match self.store.outbox_get(&head.client_id) {
-            Ok(Some(event)) if event.client_id == head.client_id && event.space == head.space => {
+            Ok(Some(event))
+                if event.client_id == head.client_id
+                    && event.space == head.space
+                    && event_log::verify_author(&event).is_ok() =>
+            {
                 Ok(event)
             }
             Ok(Some(_)) | Err(store::StoreError::Json(_)) => Err(OutboxHeadFailure::Corrupt),
@@ -243,6 +246,7 @@ impl Engine {
         }
     }
 
+    /// Our queued Welcomes that wait behind a commit of ours still in the outbox.
     pub(super) fn welcomes_behind_commits(&self) -> store::Result<HashSet<String>> {
         let mut committing: HashSet<String> = HashSet::new();
         let mut held = HashSet::new();
