@@ -166,8 +166,12 @@ async fn complete_agent_state_and_cli_inspection_keep_257_existing_cursors_acros
     w.set_client_env("ZOEN_SYNC_WAIT_DIAGNOSTICS", "1");
     // The real CLI consumer uses the completed state without running a model,
     // seeding a missing cursor, moving an existing one or writing a watermark.
-    let report: serde_json::Value =
-        serde_json::from_str(&w.zoen("citizen", &["agent-inspect"])).unwrap();
+    let report: serde_json::Value = serde_json::from_str(&w.zoen_env(
+        "citizen",
+        &["agent-inspect"],
+        &[("ZOEN_NET_DEBUG", "1")],
+    ))
+    .unwrap();
     let observed: BTreeMap<String, u64> =
         serde_json::from_value(report["cursors"].clone()).unwrap();
     assert_eq!(observed, expected);

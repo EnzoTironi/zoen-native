@@ -105,12 +105,19 @@ pub(super) async fn dispatch_reply(
         }
         Some(Waiting::SealedProfiles(asked)) => {
             *opening = None;
+            let request_error = result.is_err();
             let ok = if let Ok(Reply::SealedProfiles(list)) = result {
-                let (changed, complete) = engine!(|engine| {
+                let received = list.len();
+                let (changed, complete, remaining, own_pending) = engine!(|engine| {
                     let changed = engine.sealed_profiles_arrived(list, &asked);
                     let complete = engine.profiles_answer_complete(&asked);
-                    (changed, complete)
+                    let pending = &engine.net.profiles.need_profiles;
+                    let own_pending = engine.me.as_ref().is_some_and(|me| pending.contains(me));
+                    (changed, complete, pending.len(), own_pending)
                 });
+                tracing_like(&format!(
+                    "sealed profiles response asked={} received={received} complete={complete} remaining={remaining} own_pending={own_pending}", asked.len()
+                ));
                 if !changed.is_empty() {
                     dirty.insert(String::new());
                     media_kick.notify_one();
@@ -122,6 +129,10 @@ pub(super) async fn dispatch_reply(
                 }
                 complete
             } else {
+                tracing_like(&format!(
+                    "sealed profiles unusable reply asked={} request_error={request_error}",
+                    asked.len()
+                ));
                 false
             };
             settle(&mut traffic.profiles, ok);

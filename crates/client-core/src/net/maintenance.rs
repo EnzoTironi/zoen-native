@@ -117,6 +117,7 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
         if !ids.is_empty() {
             traffic.profiles = Some(tokio::time::Instant::now() + PROFILE_TIMEOUT);
             *opening = Some(tokio::time::Instant::now());
+            tracing_like(&format!("sealed profiles prepared asked={}", ids.len()));
             reqs.push((
                 Op::GetProfiles { ids: ids.clone() },
                 Waiting::SealedProfiles(ids),
@@ -185,7 +186,14 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
         Ok(false) => {}
         Err(e) => tracing_like(&format!("checkpoints: {e}")),
     }
+    let sealing_started = std::time::Instant::now();
     let sealed = engine!(|engine| engine.mls_seal_outbox());
+    if sealing_started.elapsed() >= Duration::from_millis(100) {
+        tracing_like(&format!(
+            "outbox sealing elapsed_ms={}",
+            sealing_started.elapsed().as_millis()
+        ));
+    }
     match sealed {
         Ok(true) => {
             if let Err(e) = flush(ctx, sink, sent).await {

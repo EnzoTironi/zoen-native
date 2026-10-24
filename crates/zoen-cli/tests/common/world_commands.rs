@@ -68,7 +68,15 @@ impl World {
 
     /// Runs `zoen` as `who` and returns stdout; panics with stderr on failure.
     pub fn zoen(&self, who: &str, args: &[&str]) -> String {
-        let out = debug(who, self.cmd(who, args).output().expect("run zoen"));
+        self.zoen_env(who, args, &[])
+    }
+
+    /// Extra environment for this one synthetic consumer; its original failure
+    /// still includes the actual child's stderr, without a retry or second wait.
+    pub fn zoen_env(&self, who: &str, args: &[&str], env: &[(&str, &str)]) -> String {
+        let mut command = self.cmd(who, args);
+        command.envs(env.iter().copied());
+        let out = debug(who, command.output().expect("run zoen"));
         self.diagnostics.observe(args, &out);
         let stdout = String::from_utf8_lossy(&out.stdout).to_string();
         if !out.status.success() {

@@ -48,8 +48,15 @@ impl Engine {
                     continue;
                 }
                 Err(error) => {
-                    self.net.mls.waited.remove(&space);
                     self.net.mls.dirty.remove(&space);
+                    // A failed read is not an empty reconciliation plan. Retain
+                    // the completed admin turn and coalesce work through the
+                    // existing retry schedule, without spinning on storage.
+                    self.net
+                        .mls
+                        .retry_at
+                        .entry(space.clone())
+                        .or_insert(now + CLAIM_RETRY);
                     tracing_like(&format!("group check in {space}: {error}"));
                     continue;
                 }
