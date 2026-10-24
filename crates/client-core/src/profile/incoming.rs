@@ -20,18 +20,35 @@ impl Engine {
         &mut self,
         records: Vec<AgreementKeyRecord>,
         asked: &[IdentityId],
-    ) {
+    ) -> bool {
         let mut found = HashSet::new();
+        let mut failed = HashSet::new();
         for r in records {
             if asked.contains(&r.identity) && verify_agreement(&r.identity, &r.public, &r.signed) {
-                let _ = self.store.put_peer_agreement_key(&r.identity, &r.public);
-                found.insert(r.identity);
+                if self
+                    .store
+                    .put_peer_agreement_key(&r.identity, &r.public)
+                    .is_ok()
+                {
+                    failed.remove(&r.identity);
+                    found.insert(r.identity);
+                } else {
+                    failed.insert(r.identity);
+                }
             }
         }
         let p = &mut self.net.profiles;
         for id in asked {
+            if failed.contains(id) {
+                // A signed reply is not a persisted key or evidence of absence.
+                p.need_agreement.insert(id.clone());
+                p.no_agreement.remove(id);
+                continue;
+            }
             p.need_agreement.remove(id);
-            if !found.contains(id) {
+            if found.contains(id) {
+                p.no_agreement.remove(id);
+            } else {
                 p.no_agreement.insert(id.clone());
             }
         }
@@ -46,6 +63,9 @@ impl Engine {
                 })
                 .cloned(),
         );
+        !asked
+            .iter()
+            .any(|id| self.net.profiles.need_agreement.contains(id))
     }
 
     pub fn take_need_profiles(&mut self) -> Vec<IdentityId> {
@@ -100,15 +120,27 @@ impl Engine {
             {
                 continue;
             }
-            let Ok(Some(row)) = self.store.profile_key(&p.identity) else {
-                continue;
+            let row = match self.store.profile_key(&p.identity) {
+                Ok(Some(row)) => row,
+                Ok(None) => continue,
+                Err(_) => {
+                    self.net.profiles.need_profiles.insert(p.identity);
+                    continue;
+                }
             };
             if self.me.as_deref() == Some(p.identity.as_str()) {
-                own_verified |= own_sync
-                    .as_ref()
-                    .is_some_and(|sync| p.version >= sync.published);
-                if self.open_own_profile(&p).unwrap_or(false) {
-                    changed.push(p.identity);
+                match self.open_own_profile(&p) {
+                    Ok(adopted) => {
+                        own_verified |= own_sync
+                            .as_ref()
+                            .is_some_and(|sync| p.version >= sync.published);
+                        if adopted {
+                            changed.push(p.identity);
+                        }
+                    }
+                    Err(_) => {
+                        self.net.profiles.need_profiles.insert(p.identity);
+                    }
                 }
                 continue;
             }
@@ -121,13 +153,11 @@ impl Engine {
             let Some(fields) = open_profile(&key, &p.identity, p.version, &p.ciphertext) else {
                 continue;
             };
-            if self
-                .store
-                .set_profile_fields(&p.identity, p.version, &fields.to_bytes())
-                .is_ok()
-                && self.apply_fields(&p.identity).is_ok()
-            {
-                changed.push(p.identity);
+            match self.commit_foreign_profile(&p, &fields) {
+                Ok(()) => changed.push(p.identity),
+                Err(_) => {
+                    self.net.profiles.need_profiles.insert(p.identity);
+                }
             }
         }
         if own_asked {
@@ -152,6 +182,34 @@ impl Engine {
         !asked
             .iter()
             .any(|id| self.net.profiles.need_profiles.contains(id))
+    }
+
+    /// Decrypted fields and their directory projection advance together. Otherwise
+    /// a projection error would make the unchanged retry look already seen.
+    fn commit_foreign_profile(&mut self, profile: &SealedProfile, fields: &ProfileFields) -> R<()> {
+        self.store
+            .raw_execute("SAVEPOINT foreign_profile_receive")?;
+        let applied = (|| -> R<Option<Identity>> {
+            self.store.set_profile_fields(
+                &profile.identity,
+                profile.version,
+                &fields.to_bytes(),
+            )?;
+            let projection = self.stage_fields_projection(&profile.identity)?;
+            self.store.raw_execute("RELEASE foreign_profile_receive")?;
+            Ok(projection)
+        })();
+        let projection = match applied {
+            Ok(projection) => projection,
+            Err(error) => {
+                self.store
+                    .raw_execute("ROLLBACK TO foreign_profile_receive")?;
+                self.store.raw_execute("RELEASE foreign_profile_receive")?;
+                return Err(error);
+            }
+        };
+        self.publish_fields_projection(&profile.identity, projection);
+        Ok(())
     }
 
     pub(super) fn open_own_profile(&mut self, profile: &SealedProfile) -> R<bool> {
@@ -189,22 +247,30 @@ impl Engine {
             journal.upload = None;
         }
         self.store.raw_execute("SAVEPOINT own_profile_receive")?;
-        let applied = (|| -> R<()> {
+        let applied = (|| -> R<Option<Identity>> {
             if let Some(fields) = &adopted {
                 self.store
                     .set_profile_fields(&me, version, &fields.to_bytes())?;
             }
             self.save_own_profile_journal(&journal)?;
-            Ok(())
-        })();
-        if let Err(error) = applied {
-            self.store.raw_execute("ROLLBACK TO own_profile_receive")?;
+            let projection = if adopted.is_some() {
+                self.stage_fields_projection(&me)?
+            } else {
+                None
+            };
             self.store.raw_execute("RELEASE own_profile_receive")?;
-            return Err(error);
-        }
-        self.store.raw_execute("RELEASE own_profile_receive")?;
+            Ok(projection)
+        })();
+        let projection = match applied {
+            Ok(projection) => projection,
+            Err(error) => {
+                self.store.raw_execute("ROLLBACK TO own_profile_receive")?;
+                self.store.raw_execute("RELEASE own_profile_receive")?;
+                return Err(error);
+            }
+        };
         if adopted.is_some() {
-            self.apply_fields(&me)?;
+            self.publish_fields_projection(&me, projection);
         }
         Ok(matches!(outcome, Observe::Adopt))
     }
@@ -222,3 +288,6 @@ impl Engine {
         }
     }
 }
+
+#[cfg(test)]
+mod receipt_tests;
