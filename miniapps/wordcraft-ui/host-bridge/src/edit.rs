@@ -125,6 +125,7 @@ pub(crate) fn apply(s: &mut Session, action: &Action) -> Result<()> {
 }
 /// The upstream transaction preserves document/selection/Undo/Redo/typing. These
 /// additional public interaction fields can be touched by our closed commands.
+#[cfg(feature = "browser")]
 pub(crate) fn transaction<T>(
     s: &mut Session,
     apply: impl FnOnce(&mut Session) -> Result<T>,

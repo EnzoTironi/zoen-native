@@ -14,8 +14,8 @@ const MAX_INFLATED: usize = 4 * MAX_PART;
 const MAX_PARTS: usize = 32;
 pub(crate) const INVALID: &str = "Invalid or unsupported managed DOCX document";
 pub type Result<T> = std::result::Result<T, &'static str>;
-fn failure(_: &str) -> &'static str {
-    INVALID
+fn failure(code: &'static str) -> &'static str {
+    code
 }
 /// # Errors
 /// Keeps the existing bounded XML text contract for human and agent edits.

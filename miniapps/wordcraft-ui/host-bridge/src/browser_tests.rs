@@ -228,43 +228,34 @@ fn exact_agent_proposal_visible_document_replay_and_ack_use_one_head() -> Result
 }
 
 #[test]
-fn typed_soft_break_refuses_before_mutation_while_real_paste_paragraphs_stay_supported()
--> Result<()> {
-    let (mut b, mut s, bytes) = opened("Original")?;
-    let original = s.doc.clone();
-    assert!(
-        s.run(
-            "text.insert",
-            &json!({"text":"different\nsemantics","raw":true})
-        )
-        .is_err()
-    );
-    assert_eq!(s.doc, original);
-    assert!(!s.managed_frozen);
-    assert_eq!(b.status(&s)?["dirty"], false);
+fn typed_soft_break_and_pasted_paragraphs_preserve_distinct_rich_models() -> Result<()> {
+    let (mut b, mut s, bytes) = opened("First")?;
+    s.run("caret.end", &json!({}))
+        .map_err(|_| failure("caret"))?;
+    s.run("text.insert", &json!({"text":"\nSecond","raw":true}))
+        .map_err(|_| failure("softbreak"))?;
+    assert_eq!(s.doc.body.len(), 1);
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "First\nSecond");
+    let soft = s.doc.clone();
+    let proposal = b.snapshot(&mut s, mutation(&bytes, "softbreak"))?;
     assert_eq!(
-        b.export(
-            &s,
-            &Export {
-                scope: scope(),
-                head: head("1", &bytes),
-                format: ExportFormat::Docx
-            }
-        )?
-        .bytes,
-        bytes
+        profile::parse(&proposal.bytes)?,
+        soft,
+        "a soft break must not become a new paragraph"
     );
+    let (mut b, mut s, bytes) = opened("First")?;
     s.run("select.all", &json!({"whole":true}))
-        .map_err(|_| failure("fixture_selection"))?;
+        .map_err(|_| failure("select"))?;
     s.run("edit.pasteText", &json!({"text":"First\nSecond"}))
-        .map_err(|_| failure("fixture_paste"))?;
+        .map_err(|_| failure("paste"))?;
     assert_eq!(s.doc.body.len(), 2);
     assert_eq!(s.doc.plain_text(StoryRef::Body), "First\nSecond");
-    let proposal = b.snapshot(&mut s, mutation(&bytes, "paste-paragraphs"))?;
-    assert_eq!(
-        profile::parse(&proposal.bytes)?.plain_text(StoryRef::Body),
-        "First\nSecond"
+    assert!(
+        s.doc != soft,
+        "equal plain text does not make the rich models interchangeable"
     );
+    let proposal = b.snapshot(&mut s, mutation(&bytes, "paragraphs"))?;
+    assert_eq!(profile::parse(&proposal.bytes)?, s.doc);
     Ok(())
 }
 

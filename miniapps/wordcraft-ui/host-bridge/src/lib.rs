@@ -10,7 +10,6 @@ pub mod browser;
 mod browser_policy;
 mod wire;
 pub use wire::*;
-mod archive;
 mod edit;
 mod export;
 pub mod profile;

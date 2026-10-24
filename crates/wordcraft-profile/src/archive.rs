@@ -1,7 +1,7 @@
 //! Closed ZIP32 central-directory preflight, before zip3 deduplicates file names.
 type Result<T> = std::result::Result<T, &'static str>;
-fn failure(_: &str) -> &'static str {
-    super::INVALID
+fn failure(code: &'static str) -> &'static str {
+    code
 }
 use std::collections::BTreeSet;
 
