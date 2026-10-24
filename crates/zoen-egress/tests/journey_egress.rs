@@ -162,7 +162,10 @@ async fn a_tool_reaches_only_what_it_declared_and_never_sees_the_secret() {
     assert_eq!(cards.0.lock().unwrap().len(), 1);
 
     // 3. Ana approves for this task: the request now goes through.
-    assert!(egress.approve(&card.id, ApprovalScope::Task).is_none());
+    assert!(egress
+        .approve(&card.id, ApprovalScope::Task)
+        .unwrap()
+        .is_none());
     let r = send(pport, get(&a, "docs.example.test", oport, "")).await;
     assert!(r.starts_with("HTTP/1.1 200"), "{r}");
     // ... but the GitHub secret still can't go there.
@@ -185,6 +188,7 @@ async fn a_tool_reaches_only_what_it_declared_and_never_sees_the_secret() {
     let card2 = cards.lock_last();
     let grant = egress
         .approve(&card2.id, ApprovalScope::AlwaysForTool)
+        .unwrap()
         .unwrap();
     assert_eq!(grant.grantee.as_deref(), Some("ana-agent"));
     assert!(
