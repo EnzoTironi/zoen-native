@@ -131,3 +131,55 @@ fn pdf_rejects_foreign_scope_head_and_unknown_format_without_changing_document()
     assert_eq!(bridge.inspect()["text"], "Private accepted text");
     Ok(())
 }
+
+#[cfg(feature = "browser")]
+#[test]
+fn browser_pdf_uses_accepted_snapshot_while_real_canvas_and_manual_proposal_keep_newer_input()
+-> Result<()> {
+    use crate::browser_tests::{head, mutation, opened, scope};
+    let (mut bridge, mut session, original) = opened("Original canvas")?;
+    let request = |head: Head| {
+        serde_json::from_value::<Export>(json!({"scope":scope(),"head":head,"format":"pdf"}))
+            .map_err(|_| failure("fixture_pdf"))
+    };
+    session
+        .run("select.all", &json!({"whole":true}))
+        .map_err(|_| failure("fixture_select"))?;
+    session
+        .run("edit.pasteText", &json!({"text":"Checkpoint canvas"}))
+        .map_err(|_| failure("fixture_paste"))?;
+    let proposal = bridge.snapshot(&mut session, mutation(&original, "pdf-checkpoint"))?;
+    session
+        .run("select.all", &json!({"whole":true}))
+        .map_err(|_| failure("fixture_select"))?;
+    session
+        .run("edit.pasteText", &json!({"text":"Newer unsaved canvas"}))
+        .map_err(|_| failure("fixture_paste"))?;
+    let first = request(head("1", &original))?;
+    let held = contents(&bridge.export(&session, &first)?)?;
+    assert!(held.contains("Original canvas"));
+    assert!(!held.contains("Checkpoint"));
+    assert!(!held.contains("Newer"));
+    let accepted = head("2", &proposal.bytes);
+    bridge.accept(
+        &mut session,
+        &Accept {
+            scope: scope(),
+            mutation_id: "pdf-checkpoint".into(),
+            head: accepted.clone(),
+        },
+    )?;
+    let current = request(accepted)?;
+    let text = contents(&bridge.export(&session, &current)?)?;
+    assert!(text.contains("Checkpoint canvas"));
+    assert!(!text.contains("Newer"));
+    assert!(bridge.status(&session)?["dirty"] == true);
+    assert_eq!(
+        session.doc.plain_text(wordcraft_doc::StoryRef::Body),
+        "Newer unsaved canvas"
+    );
+    assert!(bridge.export(&session, &first).is_err());
+    session.set_document(wordcraft_doc::Document::from_text("Foreign session"));
+    assert!(bridge.export(&session, &current).is_err());
+    Ok(())
+}

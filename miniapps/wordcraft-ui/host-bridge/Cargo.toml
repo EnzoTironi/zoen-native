@@ -22,6 +22,7 @@ egui_kittest = { version = "0.36", default-features = false, optional = true }
 wordcraft-doc = { path = "../doc" }
 wordcraft-docx = { path = "../docx" }
 wordcraft-engine = { path = "../engine" }
+wordcraft-pdf = { path = "../pdf" }
 wordcraft-formats = { path = "../formats", optional = true }
 wordcraft-layout = { path = "../layout", optional = true }
 serde = { workspace = true }

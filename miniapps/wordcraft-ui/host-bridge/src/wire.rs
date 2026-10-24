@@ -88,6 +88,7 @@ pub struct Export {
 #[serde(rename_all = "lowercase")]
 pub enum ExportFormat {
     Docx,
+    Pdf,
 }
 #[derive(Clone)]
 pub struct Proposal {

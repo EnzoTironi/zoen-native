@@ -11,6 +11,7 @@ mod browser_policy;
 mod wire;
 pub use wire::*;
 mod archive;
+mod export;
 pub mod profile;
 #[cfg(test)]
 mod tests;
@@ -201,19 +202,20 @@ impl HostBridge {
         Ok(self.status())
     }
 
-    /// Export the exact accepted bytes, without adopting an unacknowledged proposal.
+    /// Export the exact accepted DOCX or its upstream PDF, never an unacknowledged proposal.
     /// # Errors
-    /// Refuses another scope or an unobserved accepted head.
+    /// Refuses another scope/head, PDF layout/write failure or an oversized export.
     pub fn export(&self, request: &Export) -> Result<Proposal> {
         self.scope(&request.scope)?;
         if request.head != self.head {
             return Err(failure("stale_head"));
         }
+        let (bytes, format, mime) = export::accepted(&self.accepted_bytes, &request.format)?;
         Ok(Proposal {
-            bytes: self.accepted_bytes.clone(),
-            metadata: json!({"scope":self.scope,"sourceHead":self.head,"format":"docx","mime":profile::MIME,
-                "sha256":hash(&self.accepted_bytes),"byteLength":self.accepted_bytes.len(),
+            metadata: json!({"scope":self.scope,"sourceHead":self.head,"format":format,"mime":mime,
+                "sha256":hash(&bytes),"byteLength":bytes.len(),
                 "engineRevision":profile::ENGINE_REVISION}),
+            bytes,
         })
     }
 }

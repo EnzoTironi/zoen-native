@@ -2,7 +2,7 @@
 use serde::Deserialize;
 use serde_json::json;
 use std::io::{Read, Write};
-use wordcraft_zoen_host::{Command, HostBridge, Open, Proposal, profile};
+use wordcraft_zoen_host::{Command, Export, HostBridge, Open, Proposal, profile};
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -10,6 +10,7 @@ struct Request {
     schema: u8,
     open: Open,
     command: Option<Command>,
+    export: Option<Export>,
 }
 
 fn run() -> Result<Proposal, String> {
@@ -34,9 +35,11 @@ fn run() -> Result<Proposal, String> {
         .read_to_end(&mut bytes)
         .map_err(|_| "incomplete document")?;
     let mut bridge = HostBridge::open(request.open, &bytes)?;
-    match request.command {
-        Some(command) => bridge.execute(command),
-        None => Ok(Proposal {
+    match (request.command, request.export) {
+        (Some(_), Some(_)) => Err("ambiguous operation".into()),
+        (Some(command), None) => bridge.execute(command),
+        (None, Some(export)) => bridge.export(&export),
+        (None, None) => Ok(Proposal {
             metadata: bridge.inspect(),
             bytes: Vec::new(),
         }),

@@ -42,13 +42,14 @@ function doc(bytes = seed): AppBinaryDocumentDto {
 function content(reply: Awaited<ReturnType<CanonicalBinaryHost['call']>>) {
   return reply.structuredContent as Record<string, unknown>;
 }
-test('Word is a closed DOCX profile; adding it cannot widen existing editors or OS export types', () => {
+test('Word exports only DOCX and genuine PDF; other editors and OS types stay closed', () => {
   assert.equal(binaryEditorFormat('wordcraft').maxDocumentBytes, 512 * 1024);
   assert.equal(binaryEditorFormat('wordcraft').engineRevision, WORDCRAFT_ENGINE_REVISION);
-  assert.deepEqual(binaryEditorFormat('wordcraft').exports, ['docx']);
-  for (const format of ['pptx', 'pdf', 'xlsx', 'html'])
+  assert.deepEqual(binaryEditorFormat('wordcraft').exports, ['docx', 'pdf']);
+  for (const format of ['pptx', 'xlsx', 'html'])
     assert.ok(!binaryExportAllowed('wordcraft', format));
   assert.ok(binaryExportAllowed('wordcraft', 'docx'));
+  assert.ok(binaryExportAllowed('wordcraft', 'pdf'));
   assert.ok(!binaryExportAllowed('deckcraft', 'docx'));
   assert.ok(!binaryExportAllowed('gridcraft', 'docx'));
   assert.deepEqual(binaryExportFileType('docx'), {
