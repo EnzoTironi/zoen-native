@@ -58,6 +58,8 @@ export function received(
   if (frame.kind === 'ready') this.cursorRepair.start(generation, readyAt);
   return this.enqueue(async () => {
     if (generation !== this.generation || this.connection.kind !== 'ready') return;
+    if (frame.kind === 'ready')
+      await this.core.text({ kind: 'read_capability', enabled: this.transport.completeReads });
     if (frame.kind === 'ready' || frame.kind === 'pong')
       await this.core.text({ kind: 'claim_clock', value: this.transport.claimClock });
     if (!this.cursorRepair.check(generation)) return;

@@ -58,6 +58,7 @@ declare module '*/core/zoen_web_core.js' {
     queue_attachment(request: string, framed: Uint8Array, now: number): string;
     queue_attachment_batch(request: string, framed: Uint8Array, now: number): string;
     queue_file_record(space: string, doc: string, now: number): string;
+    read_capability(enabled: boolean): string;
     claim_clock(value: string): string;
     maintenance(now: number): string;
     membership_request(request: string, now: number): string;

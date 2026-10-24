@@ -213,6 +213,18 @@ impl LogStore for FdbLog {
             .map_err(store_err)
     }
 
+    async fn membership_read_version(&self) -> Result<i64, StoreError> {
+        self.membership_read_version_impl().await
+    }
+    async fn membership_page(
+        &self,
+        who: &str,
+        version: i64,
+        after: &str,
+        limit: usize,
+    ) -> Result<(Vec<String>, bool), StoreError> {
+        self.membership_page_impl(who, version, after, limit).await
+    }
     async fn spaces_of(&self, who: &str) -> Result<Vec<String>, StoreError> {
         let range = self.cell.root.subspace(&("i", who));
         self.cell

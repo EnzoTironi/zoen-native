@@ -308,6 +308,15 @@ async fn cursors_never_move_back_and_leave_with_the_space() {
         .await
         .unwrap();
     assert_eq!(st.cursors, vec![("sp_a".to_string(), 5)]);
+    // Reads filter membership but cannot destroy a physical high watermark; an
+    // unproven timestamp cleanup fence must not erase a concurrent Advance.
+    agents::advance_cursor(&d.pool, &bot.id, bd, "sp_b", 9)
+        .await
+        .unwrap();
+    let restored = agents::state(&d.pool, &bot.id, bd, &["sp_b".into()])
+        .await
+        .unwrap();
+    assert_eq!(restored.cursors, vec![("sp_b".into(), 9)]);
     d.finish().await;
 }
 
