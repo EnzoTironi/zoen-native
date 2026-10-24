@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
 import * as React from 'react';
 import { createReactTestRoot } from './react-test-root.fixtures.ts';
+import { chatNativeMetricsModule } from './chat-native-metrics.fixtures.ts';
 import { ClientStore } from './store.ts';
 import { Driver, draftSession, deferred } from './store.fixtures.ts';
 import * as conversationSearch from './conversation-search.ts';
@@ -96,7 +97,9 @@ export async function chatSearchReactFixture() {
     '../components/dialogs': { useDialogs: () => ({ inform: async () => {} }) },
     '../components/keyboard-motion': { useKeyboardMotion: () => ({ progress: { value: 0 } }) },
     '../components/use-message-actions': { useMessageActions: () => ({}) },
-    './navigation-container': { navigationMetricsAvailable: false },
+    './use-chat-native-metrics': chatNativeMetricsModule({
+      useFocusEffect: focus.exports.useFocusEffect as (callback: () => void | (() => void)) => void,
+    }),
     '../core/conversation-reveal': conversationReveal,
     '../core/conversation-reveal-content': conversationContent,
     '../core/conversation-search': conversationSearch,

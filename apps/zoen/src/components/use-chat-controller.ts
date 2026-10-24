@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDialogs } from '../components/dialogs';
 import { useKeyboardMotion } from '../components/keyboard-motion';
 import { useMessageActions } from '../components/use-message-actions';
-import { navigationMetricsAvailable, type NavigationMetricsHandle } from './navigation-container';
+import { useChatNativeMetrics } from './use-chat-native-metrics';
 import { ConversationReveal } from '../core/conversation-reveal';
 import {
   conversationRevealContent,
@@ -46,7 +46,8 @@ export function useChatController() {
   const headerHeight = useHeaderHeight();
   const { top: statusBarHeight } = useSafeAreaInsets();
   const timelineTopInset = process.env.EXPO_OS === 'ios' ? 0 : statusBarHeight;
-  const { progress: keyboardProgress } = useKeyboardMotion();
+  const keyboard = useKeyboardMotion();
+  const { progress: keyboardProgress } = keyboard;
   const conversationMiniapps = cards.visible;
   const { inform } = useDialogs();
   const input = useRef<TextInputInstance>(null);
@@ -135,15 +136,17 @@ export function useChatController() {
   });
   const searchReveal = useMemo(() => new ConversationReveal(`${id}:${owner}`), [id, owner]);
   const metricsFocused = useIsFocused();
-  const metricsRef = useRef<NavigationMetricsHandle | null>(null);
-  const navigationMetrics = useMemo(
-    () => ({
-      binding: metricsFocused && searchState.active ? searchReveal.nativeBinding : '',
-      ref: metricsRef,
-      changed: searchReveal.nativeMetricsChanged,
-    }),
-    [searchReveal, metricsFocused, searchState.active],
-  );
+  const { navigationMetrics, observe: observeNativeMetrics } = useChatNativeMetrics({
+    reveal: searchReveal,
+    focused: metricsFocused,
+    searchActive: searchState.active,
+    current: () => focused.current && search.isCurrent(),
+    list,
+    rows: visibleEntries.length,
+    keyboard,
+    reply: Boolean(reply),
+    editing: Boolean(editing),
+  });
   const searchContent = useRef<{
     scope: ConversationReveal;
     id: string;
@@ -160,14 +163,7 @@ export function useChatController() {
   );
   useLayoutEffect(() => {
     searchReveal.connect({
-      observe: navigationMetricsAvailable
-        ? async () => {
-            const native = metricsRef.current;
-            if (!native) return null;
-            const packet = await native.sampleScroll(searchReveal.nativeBinding);
-            return metricsRef.current === native ? packet : null;
-          }
-        : undefined,
+      observe: observeNativeMetrics,
       current: (target) => {
         const current = search.getSnapshot();
         return (
@@ -222,7 +218,7 @@ export function useChatController() {
           }
         : undefined,
     });
-  }, [searchReveal, search, keyboardProgress]);
+  }, [searchReveal, search, keyboardProgress, observeNativeMetrics]);
   useLayoutEffect(() => {
     revealLayout.current = {
       entries: visibleEntries,
