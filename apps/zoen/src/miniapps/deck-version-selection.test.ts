@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { binaryEditorFormat, type BinaryEditorId } from './binary-formats.ts';
 import assert from 'node:assert/strict';
 import type { ClientStore } from '../core/store';
 import type { ItemDetail } from '../core/types';
@@ -9,7 +10,7 @@ import {
 } from './deck-version-selection.ts';
 import { dto, original } from './canonical-binary.fixtures.ts';
 
-function fixture() {
+function fixture(editor: BinaryEditorId = 'deckcraft') {
   let release!: () => void;
   const held = new Promise<void>((resolve) => {
     release = resolve;
@@ -24,6 +25,11 @@ function fixture() {
     },
   };
   const calls: unknown[] = [];
+  const source = {
+    ...dto(original),
+    kind: editor,
+    engine_revision: binaryEditorFormat(editor).engineRevision,
+  };
   const store = {
     sessionEpoch: 1,
     getSnapshot: () => state,
@@ -31,7 +37,7 @@ function fixture() {
       request: async (command: unknown) => {
         calls.push(command);
         await held;
-        return dto(original);
+        return source;
       },
     },
   } as unknown as ClientStore;
@@ -39,9 +45,9 @@ function fixture() {
     id: 'it_deck',
     space_id: 'space',
     version: 1,
-    app: { app_id: 'deckcraft' },
+    app: { app_id: editor },
   } as ItemDetail)!;
-  return { state, store, binding, calls, release };
+  return { state, store, binding, calls, release, source };
 }
 test('history capture asks Core for the exact observed version, independently of current metadata', async () => {
   const f = fixture();
@@ -75,4 +81,17 @@ test('partial/malformed historical route binding never falls back to current', (
   for (const sha of [undefined, '', 'a'.repeat(63), 'A'.repeat(64), ['a'.repeat(64)]])
     assert.equal(selectedDeckHead('1', sha), null);
   assert.deepEqual(selectedDeckHead('1', 'a'.repeat(64)), { version: '1', sha256: 'a'.repeat(64) });
+});
+
+test('Grid historical capture pins its own revision and refuses a Deck response for the same Item', async () => {
+  const f = fixture('gridcraft');
+  const read = observeDeckVersion(f.store, f.binding, () => true);
+  f.release();
+  assert.equal((await read)?.sha256, f.source.sha256);
+  const wrong = fixture('gridcraft');
+  wrong.source.kind = 'deckcraft';
+  wrong.source.engine_revision = binaryEditorFormat('deckcraft').engineRevision;
+  const refused = observeDeckVersion(wrong.store, wrong.binding, () => true);
+  wrong.release();
+  await assert.rejects(refused, /selected document version/);
 });

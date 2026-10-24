@@ -102,7 +102,12 @@ impl Client {
             return Err(stale());
         }
         // Core Block remains non-overridable. No budget or standing grant is added.
-        let action = if req.tool_proposal.as_ref().unwrap().canonical_tool == "read_deckcraft" {
+        let action = if agent_tools::is_read(
+            &req.tool_proposal
+                .as_ref()
+                .ok_or_else(malformed)?
+                .canonical_tool,
+        ) {
             ActionClass::Reply
         } else {
             ActionClass::Reversible

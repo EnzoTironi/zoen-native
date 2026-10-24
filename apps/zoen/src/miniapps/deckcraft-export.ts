@@ -1,7 +1,13 @@
+import {
+  binaryExportAllowed,
+  type BinaryEditorId,
+  type BinaryExportFormat,
+} from './binary-formats.ts';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { decode64 } from './canonical-scene.ts';
 
-export type DeckcraftExportFormat = 'pptx' | 'pdf';
+/** Kept for existing Deck callers; trusted editor selection controls the actual set. */
+export type DeckcraftExportFormat = BinaryExportFormat;
 export type DeckcraftExportHead = { version: string; sha256: string };
 export type DeckcraftExportFile = {
   write: (bytes: Uint8Array) => Promise<void>;
@@ -10,6 +16,7 @@ export type DeckcraftExportFile = {
   dispose: () => void;
 };
 export type DeckcraftExportOptions = {
+  editor?: BinaryEditorId;
   title: string;
   format: DeckcraftExportFormat;
   head: DeckcraftExportHead;
@@ -42,7 +49,7 @@ export function deckcraftExportFilename(
       .replace(/[^\p{L}\p{N} _.-]/gu, '')
       .replace(/^\.+/, '')
       .trim()
-      .slice(0, 80) || 'presentation';
+      .slice(0, 80) || (format === 'xlsx' ? 'workbook' : 'presentation');
   return `${name}-v${head.version}.${format}`;
 }
 
@@ -51,7 +58,7 @@ export function deckcraftExportFilename(
 export async function streamDeckcraftExport(options: DeckcraftExportOptions): Promise<void> {
   options.check();
   if (
-    !['pptx', 'pdf'].includes(options.format) ||
+    !binaryExportAllowed(options.editor ?? 'deckcraft', options.format) ||
     !/^[1-9][0-9]{0,9}$/.test(options.head.version) ||
     !digest(options.head.sha256)
   )

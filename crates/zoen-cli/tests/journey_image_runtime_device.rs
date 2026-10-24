@@ -144,6 +144,7 @@ fn dedicated_runtime_and_citizen_open_the_same_source_from_their_own_welcome() {
         let config = config::Config::read(&path).unwrap();
         let secrets: Arc<dyn SecretVault> = vault.clone();
         let runtime = RuntimeAuthority::open_with_native_device(config.runtime(&vault).unwrap(), secrets, &agent, &pairing.device, 1).await.unwrap();
+        host_journey::initial_account_context(&w, &path, &owner_client, &config, &space, &provider).await.expect("first native account context");
         let scan = runtime.sync_reply_runs(&agent, &pairing.device, &space).await.unwrap();
         assert!(scan.caught_up && scan.discovery_complete, "native source did not converge: {scan:?}");
         assert!(scan.runs.is_empty(), "a source without the owner's grant became executable");

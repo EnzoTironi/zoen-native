@@ -7,7 +7,11 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import { AppState, Linking, ScrollView, Text, View } from 'react-native';
+import { AppState, Linking, Text, View } from 'react-native';
+import {
+  KeyboardAwareScrollView,
+  type KeyboardAwareScrollViewRef,
+} from 'react-native-keyboard-controller';
 import { Stack, router, useFocusEffect, usePreventRemove } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import { useDialogs } from '../components/dialogs';
@@ -70,6 +74,7 @@ export function AttachmentRoute({
     noSnapshot,
   );
   const input = useRef<ArticleEditorHandle>(null);
+  const scroll = useRef<KeyboardAwareScrollViewRef>(null);
   const routeClosed = useRef(false);
   const mounted = useRef(true),
     focused = useRef(false),
@@ -272,11 +277,17 @@ export function AttachmentRoute({
   const locked = busy || !available;
   const title = t(`attachmentTabs.${kind}`);
   return (
-    <ScrollView
+    <KeyboardAwareScrollView
+      ref={scroll}
+      onLayout={() => {
+        // Detent/rotation relayouts can leave the keyboard open without a new focus event.
+        if (current()) scroll.current?.assureFocusedInputVisible();
+      }}
+      bottomOffset={16}
       testID={`attachment-${kind}-route`}
       style={{ flex: 1 }}
       contentInsetAdjustmentBehavior="automatic"
-      automaticallyAdjustKeyboardInsets
+      automaticallyAdjustKeyboardInsets={false}
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={{
         padding: 16,
@@ -549,6 +560,6 @@ export function AttachmentRoute({
           ) : null}
         </View>
       ) : null}
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }

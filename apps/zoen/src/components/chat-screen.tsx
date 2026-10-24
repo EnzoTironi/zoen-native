@@ -29,6 +29,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
     input,
     initialEnd,
     searchReveal,
+    navigationMetrics,
     onSearchContentLayout,
     normalDraft,
     editing,
@@ -77,6 +78,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
       <ChatHeader
         id={id}
         scrollViewTag={nativeScrollTag}
+        navigationMetrics={navigationMetrics}
         title={chat.title}
         counterpart={chat.counterpart}
         activityLabel={activityLabel}

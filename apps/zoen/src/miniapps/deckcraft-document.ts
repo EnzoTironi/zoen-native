@@ -5,7 +5,13 @@ import {
   hash,
   CANONICAL_SCENE_CHUNK_BYTES as CHUNK,
 } from './canonical-scene.ts';
-import { DECKCRAFT_ENGINE_REVISION, MAX_BINARY_DOCUMENT_BYTES } from './canonical-binary.ts';
+import { MAX_BINARY_DOCUMENT_BYTES } from './canonical-binary.ts';
+import {
+  binaryEditorFormat,
+  binaryExportAllowed,
+  type BinaryEditorId,
+  type BinaryExportFormat,
+} from './binary-formats.ts';
 import { deckcraftInteractionRefusal, type DeckcraftFeedbackReason } from './deckcraft-feedback.ts';
 
 type Scope = { artifactId: string; actorId: string; actorKind: 'human' | 'agent' };
@@ -17,6 +23,7 @@ export type DeckcraftBindings = {
   zoenHostRetire: () => void;
 };
 type Options = {
+  editor?: BinaryEditorId;
   app: Pick<App, 'callServerTool'>;
   engine: DeckcraftBindings;
   itemId: string;
@@ -80,7 +87,7 @@ export class DeckcraftDocument {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private readonly options: Options;
   constructor(options: Options) {
-    this.options = options;
+    this.options = { ...options, editor: binaryEditorFormat(options.editor).id };
     if (!token(options.itemId)) throw new Error('Invalid document Item.');
   }
   private check() {
@@ -136,7 +143,7 @@ export class DeckcraftDocument {
     )
       throw new Error('Invalid engine response.');
     const metadata = record(JSON.parse(response.metadata));
-    if (metadata.engineRevision !== DECKCRAFT_ENGINE_REVISION)
+    if (metadata.engineRevision !== binaryEditorFormat(this.options.editor).engineRevision)
       throw new Error('The document engine revision changed.');
     if (this.binding && !scopeEqual(scope(metadata.scope, this.options.itemId), this.binding))
       throw new Error('The document authority changed.');
@@ -155,7 +162,7 @@ export class DeckcraftDocument {
         read.bytes > MAX_BINARY_DOCUMENT_BYTES ||
         read.chunkBytes !== CHUNK ||
         !token(read.transferId) ||
-        read.engineRevision !== DECKCRAFT_ENGINE_REVISION
+        read.engineRevision !== binaryEditorFormat(this.options.editor).engineRevision
       )
         throw new Error('Invalid canonical document.');
       this.binding = scope(read.scope, this.options.itemId);
@@ -257,7 +264,7 @@ export class DeckcraftDocument {
       accepted.sha256 !== p.sha256 ||
       !positive(receipt.currentVersion) ||
       Number(receipt.currentVersion) < Number(accepted.version) ||
-      receipt.engineRevision !== DECKCRAFT_ENGINE_REVISION
+      receipt.engineRevision !== binaryEditorFormat(this.options.editor).engineRevision
     )
       throw new Error('The save did not accept this proposal.');
     await this.engine('accept', { scope: this.binding, mutationId: p.mutationId, head: accepted });
@@ -335,8 +342,10 @@ export class DeckcraftDocument {
       if ((await this.engine('status')).metadata.dirty) this.schedule();
     });
   }
-  export(format: 'pptx' | 'pdf', selected: Head) {
+  export(format: BinaryExportFormat, selected: Head) {
     return this.serial(async () => {
+      if (!binaryExportAllowed(this.options.editor ?? 'deckcraft', format))
+        throw new Error('Invalid document export format.');
       if (!this.binding) throw new Error('The document is not open.');
       selected = head(selected);
       const source = await this.tool('app_binary_export_source', {
@@ -411,9 +420,9 @@ export async function attachDeckcraftDocument(options: Options & { app: App }) {
       return { content: [] };
     }
     if (name === 'prepare_document_export') {
-      if (!['pptx', 'pdf'].includes(String(args.format)))
+      if (!binaryExportAllowed(options.editor ?? 'deckcraft', args.format))
         throw new Error('Invalid document export format.');
-      const output = await document.export(args.format as 'pptx' | 'pdf', head(args.head));
+      const output = await document.export(args.format, head(args.head));
       clearExport();
       const id = options.id();
       if (!token(id)) throw new Error('Invalid export identifier.');

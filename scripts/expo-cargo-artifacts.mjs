@@ -16,6 +16,7 @@ const defaultInputEnvironment = [
   'LIBRARY_PATH',
   'DYLD_LIBRARY_PATH',
   'ZOEN_DECKCRAFT_RESOURCE_MANIFEST_JSON',
+  'ZOEN_GRIDCRAFT_RESOURCE_MANIFEST_JSON',
 ];
 
 async function sha256(path) {

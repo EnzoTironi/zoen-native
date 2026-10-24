@@ -217,6 +217,7 @@ test('artifact consumer rejects raced bytes, missing artifacts and changed sourc
   await guarded.build(['-p', 'probe'], specification, { SDKROOT: '/sdk/host' });
   assert.equal(commands[0].environment.SDKROOT, '/sdk/host');
   assert(commands[0].args.includes('ZOEN_DECKCRAFT_RESOURCE_MANIFEST_JSON'));
+  assert(commands[0].args.includes('ZOEN_GRIDCRAFT_RESOURCE_MANIFEST_JSON'));
   assert(!commands[0].args.includes('--adopt-idle-target'));
   mode = 'changed-source';
   await assert.rejects(guarded.build([], specification), /source changed between/);
@@ -224,4 +225,27 @@ test('artifact consumer rejects raced bytes, missing artifacts and changed sourc
   await assert.rejects(guarded.build([], specification), /Expected one qualified/);
   mode = 'raced';
   await assert.rejects(guarded.build([], specification), /changed before copying/);
+});
+
+// Actual private Cargo/exporter fixture; only its deployment input changes.
+test('Grid resource-only changes invalidate the native source stamp and are guarded inputs', async (t) => {
+  const path = await fixture(t);
+  const root = join(path, 'workspace');
+  const target = join(path, 'shared');
+  await workspace(root, 'grid-resource-input');
+  await build(root, target, { ZOEN_GRIDCRAFT_RESOURCE_MANIFEST_JSON: '{"fixture":"grid-A"}' });
+  const before = await stamp(root);
+  await build(root, target, { ZOEN_GRIDCRAFT_RESOURCE_MANIFEST_JSON: '{"fixture":"grid-B"}' });
+  const after = await stamp(root);
+  assert.notEqual(after.sha256, before.sha256);
+  assert.notEqual(after.cargoQualification, before.cargoQualification);
+  const qualification = JSON.parse(await readFile(after.cargoQualification, 'utf8'));
+  const guard = JSON.parse(await readFile(qualification.builds[0].receipt, 'utf8'));
+  assert.equal(guard.status, 'PASS');
+  assert.equal(
+    guard.before.context.environment.ZOEN_GRIDCRAFT_RESOURCE_MANIFEST_JSON,
+    createHash('sha256').update(JSON.stringify('{"fixture":"grid-B"}')).digest('hex'),
+  );
+  assert.equal(await readFile(join(root, 'apps/zoen/src/core/generated/Command.ts'), 'utf8'),
+    `grid-resource-input|${join(root, 'crates/client-core')}`);
 });

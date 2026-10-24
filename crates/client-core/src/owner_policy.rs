@@ -1,5 +1,6 @@
 //! Explicit owner-wide spending policy, sent through the existing encrypted DM.
 //! A queued submission never proves installation in the Runtime authority.
+mod context_rejection;
 mod control;
 mod image_context;
 mod options;
@@ -8,6 +9,8 @@ use crate::{
     engine::{Engine, R},
     Client, CoreError,
 };
+use context_rejection::ContextAdmissionFailure;
+pub use context_rejection::OwnerPolicyContextRejection;
 pub use control::OwnerPolicySubmission;
 pub use options::{
     OwnerPolicyContext, OwnerPolicyInquiryControl, OwnerPolicyInquiryCounts,

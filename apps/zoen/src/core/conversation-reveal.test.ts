@@ -1,30 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import {
-  ConversationReveal,
-  conversationRevealOffset,
-  type ConversationRevealGeometry,
-  type ConversationRevealItem,
-} from './conversation-reveal.ts';
-
-const geometry = (patch: Partial<ConversationRevealGeometry> = {}): ConversationRevealGeometry => ({
-  contentOffset: { y: 360 },
-  contentSize: { height: 760 },
-  layoutMeasurement: { height: 760 },
-  contentInset: { top: 0, bottom: 360 },
-  ...patch,
-});
-const item = (patch: Partial<ConversationRevealItem> = {}): ConversationRevealItem => ({
-  y: 0,
-  height: 90,
-  measured: true,
-  firstItemOffset: 64,
-  childHeight: 200,
-  windowHeight: 760,
-  topObstruction: 64,
-  bottomAligned: true,
-  ...patch,
-});
+import { conversationRevealOffset } from './conversation-reveal.ts';
+import { fixture, geometry, item } from './conversation-reveal.fixtures.ts';
 
 test('two short bottom-aligned rows stay above an open keyboard instead of jumping to FlashList max zero', () => {
   const native = geometry();
@@ -73,70 +50,16 @@ test('closed keyboard, native top inset, and invalid or occluded geometry retain
   assert.equal(conversationRevealOffset(geometry({ contentSize: { height: NaN } }), item()), null);
 });
 
-function fixture(trace?: (record: Readonly<Record<string, unknown>>) => void) {
-  const frames: { run: () => void; cancelled: boolean }[] = [];
-  const offsets: number[] = [];
-  const animations: boolean[] = [];
-  let data: readonly unknown[] = [];
-  let current = true;
-  let row: ConversationRevealItem | null = item({ y: 90, height: 110 });
-  const reveal = new ConversationReveal('test-chat', {
-    current: () => current,
-    item: () => row,
-    frame: (run) => {
-      const frame = { run, cancelled: false };
-      frames.push(frame);
-      return () => {
-        frame.cancelled = true;
-      };
-    },
-    scroll: (offset, animated) => {
-      offsets.push(offset);
-      animations.push(animated);
-    },
-    trace,
-  });
-  reveal.onData(data);
-  reveal.onCommit(data);
-  return {
-    reveal,
-    offsets,
-    animations,
-    setData: (next: readonly unknown[]) => {
-      data = next;
-      reveal.onData(next);
-    },
-    commit: (committed = data) => reveal.onCommit(committed),
-    frames,
-    setCurrent: (value: boolean) => {
-      current = value;
-    },
-    setRow: (value: ConversationRevealItem | null) => {
-      row = value;
-    },
-    ready: (native = geometry({ contentOffset: { y: 0 } })) => {
-      reveal.onLayout(native.layoutMeasurement.height);
-      reveal.onContentSize(402, native.contentSize.height);
-      reveal.onInset({ top: native.contentInset.top ?? 0, bottom: native.contentInset.bottom });
-      reveal.onScroll(native);
-    },
-    frame: () => {
-      const frame = frames.at(-1);
-      assert.ok(frame, 'native geometry must schedule a real frame');
-      if (!frame.cancelled) frame.run();
-    },
-  };
-}
-
-test('a search request waits for actual native scroll geometry with the latest keyboard inset', () => {
+test('a search seeks with actual native bounds and refines after the latest keyboard inset is acknowledged', () => {
   const f = fixture();
   f.ready(geometry({ contentOffset: { y: 0 }, contentInset: { bottom: 100 } }));
   f.reveal.onInset({ top: 0, bottom: 360 });
   f.reveal.request('selected');
-  assert.equal(f.frames.length, 0);
+  f.frame();
+  assert.deepEqual(f.offsets, [100], 'the desired inset cannot replace measured native bounds');
   f.reveal.onScroll(geometry({ contentOffset: { y: 0 } }));
   f.frame();
-  assert.deepEqual(f.offsets, [360]);
+  assert.deepEqual(f.offsets, [100, 360]);
 });
 
 test('content and layout changes invalidate an already scheduled frame until native measurements catch up', () => {

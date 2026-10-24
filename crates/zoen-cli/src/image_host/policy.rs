@@ -33,7 +33,11 @@ pub(super) async fn execute(
                     options: Box::new(options),
                 }),
                 Ok(_) => Err("owner policy context differs".into()),
-                Err(error) => Ok(unavailable(PolicyOperation::Context, error)),
+                Err(error) => Ok(PolicyProgress::Unavailable {
+                    operation: PolicyOperation::Context,
+                    code: category(error.error),
+                    context_stage: Some(error.stage),
+                }),
             }
         }
         _ => Err("typed owner policy command required".into()),
@@ -60,6 +64,7 @@ fn unavailable(operation: PolicyOperation, error: zoen_runtime::RuntimeError) ->
     PolicyProgress::Unavailable {
         operation,
         code: category(error),
+        context_stage: None,
     }
 }
 #[cfg(test)]
@@ -81,7 +86,8 @@ mod tests {
             progress,
             PolicyProgress::Unavailable {
                 operation: PolicyOperation::Import,
-                code: PolicyUnavailable::Unavailable
+                code: PolicyUnavailable::Unavailable,
+                context_stage: None,
             }
         ));
     }

@@ -153,7 +153,7 @@ pub(super) async fn run(
     drop(cold);
     println!("account budget product: no pending Request -> paused private typed inquiry -> actual quote/latest policy -> explicit signed disable -> exact Runtime Installed -> cold disabled current-context read, no model/provider/financial effects PASS");
 }
-async fn options(
+pub(super) async fn options(
     owner: &Client,
     scope: &OwnerPolicyScope,
     source: &str,

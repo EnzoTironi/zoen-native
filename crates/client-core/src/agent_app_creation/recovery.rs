@@ -38,13 +38,14 @@ impl Client {
             }
             let call = &step["call"];
             let name = call["name"].as_str().ok_or_else(invalid)?;
-            let tool = agent_tools::tools()
-                .into_iter()
-                .find(|tool| {
-                    agent_tools::model_name(&tool.name, &p.artifact).as_deref() == Some(name)
-                })
-                .ok_or_else(invalid)?
-                .name;
+            let tool =
+                agent_tools::tools_for(creation_format(&p.canonical_tool).ok_or_else(invalid)?)
+                    .into_iter()
+                    .find(|tool| {
+                        agent_tools::model_name(&tool.name, &p.artifact).as_deref() == Some(name)
+                    })
+                    .ok_or_else(invalid)?
+                    .name;
             let (version, head, action) =
                 agent_tools::command(&tool, &call["arguments"]).map_err(|_| invalid())?;
             if call["arguments"]["artifactId"] != p.artifact {
@@ -68,7 +69,7 @@ impl Client {
                         &p.artifact,
                         command.version,
                         &command.sha256,
-                        &format!("deckcmd_{intent}"),
+                        &shared::mutation_id(&command, &intent),
                         &intent,
                     )?
                     .ok_or_else(stale)?;

@@ -9,31 +9,63 @@ impl Engine {
         inquiry: &OwnerPolicyInquiry,
         at_ms: i64,
     ) -> R<()> {
-        if !inquiry.fresh_at(at_ms) {
-            return Err(denied());
-        }
-        self.owner_policy_inquiry_membership(inquiry)
+        self.owner_policy_scope_checked(inquiry, at_ms)
+            .map_err(|failure| failure.cause)
     }
 
-    fn owner_policy_inquiry_membership(&self, inquiry: &OwnerPolicyInquiry) -> R<()> {
-        let agent = self.identities.get(&inquiry.agent).ok_or_else(denied)?;
-        let owner = self.identities.get(&inquiry.owner).ok_or_else(denied)?;
-        let space = self.space_state(&inquiry.space)?;
-        if !inquiry.valid_shape()
-            || owner.kind != IdentityKind::Person
+    fn owner_policy_scope_checked(
+        &self,
+        inquiry: &OwnerPolicyInquiry,
+        at_ms: i64,
+    ) -> std::result::Result<(), ContextAdmissionFailure> {
+        if !inquiry.fresh_at(at_ms) {
+            return Err(OwnerPolicyContextRejection::Freshness.denied());
+        }
+        self.owner_policy_membership_checked(inquiry)
+    }
+
+    fn owner_policy_membership_checked(
+        &self,
+        inquiry: &OwnerPolicyInquiry,
+    ) -> std::result::Result<(), ContextAdmissionFailure> {
+        use OwnerPolicyContextRejection as E;
+        let agent = self
+            .identities
+            .get(&inquiry.agent)
+            .ok_or_else(|| E::Profiles.denied())?;
+        let owner = self
+            .identities
+            .get(&inquiry.owner)
+            .ok_or_else(|| E::Profiles.denied())?;
+        let space = self
+            .space_state(&inquiry.space)
+            .map_err(|error| E::Conversation.failed(error))?;
+        if !inquiry.valid_shape() {
+            return Err(E::Inquiry.denied());
+        }
+        if owner.kind != IdentityKind::Person
             || agent.kind != IdentityKind::Agent
             || agent.owner.as_deref() != Some(inquiry.owner.as_str())
             || !event_log::agent_owner::profile_authorized(agent)
-            || space.kind != SpaceKind::Direct
+        {
+            return Err(E::Profiles.denied());
+        }
+        if space.kind != SpaceKind::Direct
             || space.privacy != Privacy::EndToEnd
             || space.members.len() != 2
-            || space.integrity_error.is_some()
-            || !self.is_member(&inquiry.space, &inquiry.owner)
-            || !self.is_member(&inquiry.space, &inquiry.agent)
-            || self.ready_epoch(&inquiry.space).is_none()
         {
-            return Err(denied());
+            return Err(E::Conversation.denied());
         }
+        if space.integrity_error.is_some() {
+            return Err(E::Integrity.denied());
+        }
+        if !self.is_member(&inquiry.space, &inquiry.owner)
+            || !self.is_member(&inquiry.space, &inquiry.agent)
+        {
+            return Err(E::Membership.denied());
+        }
+        self.ready_epoch_checked(&inquiry.space, &self.state)
+            .map_err(|reason| E::from(reason).denied())?;
         Ok(())
     }
 
@@ -42,8 +74,17 @@ impl Engine {
         inquiry: &OwnerPolicyInquiry,
         at_ms: i64,
     ) -> R<Option<ImageTaskInput>> {
-        self.owner_policy_inquiry_scope(inquiry, at_ms)?;
-        self.owner_policy_context_reference(inquiry, at_ms)
+        self.owner_policy_context_admission(inquiry, at_ms)
+            .map_err(|failure| failure.cause)
+    }
+
+    pub(crate) fn owner_policy_context_admission(
+        &self,
+        inquiry: &OwnerPolicyInquiry,
+        at_ms: i64,
+    ) -> std::result::Result<Option<ImageTaskInput>, ContextAdmissionFailure> {
+        self.owner_policy_scope_checked(inquiry, at_ms)?;
+        self.owner_policy_reference_checked(inquiry, at_ms)
     }
 
     /// Read-only terminal classification. It never admits an expired quote,
@@ -59,25 +100,28 @@ impl Engine {
         if at_ms.saturating_sub(inquiry.at_ms) <= types::owner_policy_context::CONTEXT_TTL_MS {
             return Ok(false);
         }
-        self.owner_policy_context_reference(inquiry, at_ms)?;
+        self.owner_policy_reference_checked(inquiry, at_ms)
+            .map_err(|failure| failure.cause)?;
         Ok(true)
     }
 
-    fn owner_policy_context_reference(
+    fn owner_policy_reference_checked(
         &self,
         inquiry: &OwnerPolicyInquiry,
         at_ms: i64,
-    ) -> R<Option<ImageTaskInput>> {
-        self.owner_policy_inquiry_membership(inquiry)?;
+    ) -> std::result::Result<Option<ImageTaskInput>, ContextAdmissionFailure> {
+        self.owner_policy_membership_checked(inquiry)?;
         if inquiry.purpose.is_some() {
             if !self.state.writer(&inquiry.space, &inquiry.owner)
                 || !self.state.writer(&inquiry.space, &inquiry.agent)
             {
-                return Err(denied());
+                return Err(OwnerPolicyContextRejection::Writer.denied());
             }
             return Ok(None);
         }
-        self.owner_policy_image_reference(inquiry, at_ms).map(Some)
+        self.owner_policy_image_reference(inquiry, at_ms)
+            .map(Some)
+            .map_err(|error| OwnerPolicyContextRejection::ImageReference.failed(error))
     }
 
     pub(crate) fn owner_policy_image_input(

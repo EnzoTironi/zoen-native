@@ -38,6 +38,16 @@ pub(crate) fn fixture() -> Fixture {
     fixture_with_privacy(Privacy::Closed)
 }
 pub(crate) fn fixture_with_privacy(privacy: Privacy) -> Fixture {
+    fixture_binary(privacy, "deckcraft", ORIGINAL)
+}
+pub(crate) fn grid_fixture() -> Fixture {
+    fixture_binary(
+        Privacy::Closed,
+        "gridcraft",
+        include_bytes!("../../../miniapps/resources/gridcraft-empty.xlsx"),
+    )
+}
+fn fixture_binary(privacy: Privacy, app: &str, bytes: &[u8]) -> Fixture {
     let owner = Client::open(":memory:".into(), "en".into()).unwrap();
     let vault = Arc::new(Vault::default());
     let owner_id = owner
@@ -108,10 +118,15 @@ pub(crate) fn fixture_with_privacy(privacy: Privacy) -> Fixture {
         .unwrap();
     }
     let base = agent
-        .app_binary_create(
+        .app_binary_create_for(
+            app.into(),
             space.clone(),
-            "Deck".into(),
-            STANDARD.encode(ORIGINAL),
+            if app == "deckcraft" {
+                "Deck".into()
+            } else {
+                "Grid".into()
+            },
+            STANDARD.encode(bytes),
             "create_worker".into(),
         )
         .unwrap();

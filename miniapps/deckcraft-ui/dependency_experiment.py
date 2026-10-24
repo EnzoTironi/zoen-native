@@ -27,6 +27,10 @@ IOS_INPUT_PATCHES = (
     'patches/0017d-deckcraft-text-admission.patch',
     'patches/0017e-deckcraft-input-contracts.patch',
 )
+TOUCH_INPUT_PATCHES = (
+    'patches/0018-egui-touch-input.patch',
+    'patches/0019-notes-owner-contract.patch',
+)
 EXPERIMENT_CHAINS = (('eframe-shift',), ('eframe-ios-input',),
                      ('eframe-ios-input', 'egui-touch-input'))
 EXPERIMENT_SOURCE_FILES = {
@@ -76,10 +80,12 @@ def experiment_patches(data):
     if 'patches' not in data:
         return [data.get('patch')]
     patches = data['patches']
-    if ('patch' in data or data.get('name') != 'eframe-ios-input'
+    expected = {'eframe-ios-input': IOS_INPUT_PATCHES,
+                'egui-touch-input': TOUCH_INPUT_PATCHES}.get(data.get('name'))
+    if ('patch' in data or expected is None
             or not isinstance(patches, list)
             or any(not isinstance(item, dict) for item in patches)
-            or [item.get('path') for item in patches] != list(IOS_INPUT_PATCHES)):
+            or [item.get('path') for item in patches] != list(expected)):
         raise ValueError('Unexpected experiment patch sequence')
     return patches
 

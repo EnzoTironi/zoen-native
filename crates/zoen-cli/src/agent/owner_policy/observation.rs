@@ -66,6 +66,7 @@ pub(super) struct Counts {
     pub core_error: Option<CoreFailure>,
     pub ipc_error: Option<image_ipc::Failure>,
     pub runtime_error: Option<PolicyUnavailable>,
+    pub runtime_stage: Option<zoen_runtime::OwnerPolicyContextStage>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub(super) struct Summary {

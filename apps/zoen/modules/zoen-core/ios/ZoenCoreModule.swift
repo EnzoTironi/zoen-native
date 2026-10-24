@@ -94,11 +94,8 @@ public class ZoenCoreModule: Module {
     Constant("failedMediaRecoveryVersion") { 1 }
     Constant("nativePushPresentationVersion") { 1 }
     Constant("navigationContainerVersion") { 1 }
-    View(ZoenNavigationContainer.self) {
-      ViewName("NavigationContainer")
-      Prop("scrollViewTag") { (view: ZoenNavigationContainer, value: Int) in view.scrollViewTag = value }
-      OnViewDidUpdateProps { (view: ZoenNavigationContainer) in view.bind() }
-    }
+    Constant("navigationMetricsVersion") { 1 }
+    zoenNavigationContainerDefinition()
     View(ZoenComposerGlassSurface.self) {
       ViewName("ComposerGlassSurface")
       Prop("isDark") { (view: ZoenComposerGlassSurface, value: Bool) in view.isDark = value }

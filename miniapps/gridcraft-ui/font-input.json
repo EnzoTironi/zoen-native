@@ -1,0 +1,25 @@
+{
+  "source": "epaint_default_fonts",
+  "version": "0.36.2",
+  "mechanism": "actual eframe default_fonts feature; font bytes embedded by upstream epaint, no system lookup on wasm",
+  "fonts": {
+    "Ubuntu-Light.ttf": {
+      "bytes": 361676,
+      "sha256": "80307b8da7649aa4ee4d484b232140e3ce1ec0ca093073d3c53c8f5a5ced7a70"
+    },
+    "Hack-Regular.ttf": {
+      "bytes": 309408,
+      "sha256": "15f55cc0c85a2988d2b4b3a8cdb5d77fdfbaf319e1bb5309d725db9818fb7125"
+    },
+    "NotoEmoji-Regular.ttf": {
+      "bytes": 418804,
+      "sha256": "415dc6290378574135b64c808dc640c1df7531973290c4970c51fdeb849cb0c5"
+    },
+    "emoji-icon-font.ttf": {
+      "bytes": 324132,
+      "sha256": "f426bec371f484646d002717e2c555a95cd5145e635d83a48bbef83f3abf18ca"
+    }
+  },
+  "extraFonts": [],
+  "craftFontsUsed": false
+}

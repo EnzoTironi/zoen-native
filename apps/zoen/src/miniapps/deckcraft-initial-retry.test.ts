@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { binaryEditorFormat } from './binary-formats.ts';
 import { homeSpacesFor } from '../home/access.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -38,7 +39,7 @@ function findType(tree: any, type: string): Element | undefined {
   if (!tree?.props) return;
   return tree.type === type ? tree : findType(tree.props.children, type);
 }
-function fixture(historical = false) {
+function fixture(historical = false, editor: 'deckcraft' | 'gridcraft' = 'deckcraft') {
   const slots: any[] = [];
   let cursor = 0;
   let effects: (() => void)[] = [];
@@ -121,7 +122,7 @@ function fixture(historical = false) {
     },
     '../theme': { useTheme: () => theme },
     './app-sheet-context': { useAppSheetCloseButton: () => null },
-    './canonical-binary': {},
+    './binary-formats': { binaryEditorFormat },
     './deckcraft-export-files': {},
     './frame': { MiniappFrame: 'MiniappFrame' },
     './resource-load': {},
@@ -157,7 +158,7 @@ function fixture(historical = false) {
     selectedHead: historical ? { version: '1', sha256: 'a'.repeat(64) } : undefined,
     item: { id: 'owned', title: 'Owned' },
     fill: true,
-    verified: { resource: { text: '<p>Owned</p>' }, manifest: {} },
+    verified: { resource: { text: '<p>Owned</p>' }, manifest: { id: editor } },
     checkOwner: () => {},
     registerClose: () => () => {},
     onInitialRetry: () => {
@@ -335,4 +336,25 @@ test('compiled historical controls export from the displayed owner and stale but
   f.close();
   replacement.props.onPress();
   assert.deepEqual(f.shares, ['pdf', 'pptx', 'pdf']);
+});
+
+test('compiled Grid history offers only XLSX and keeps retired controls bound to their original frame', () => {
+  const f = fixture(true, 'gridcraft');
+  try {
+    f.opened();
+    const tree = f.render();
+    assert.equal(find(tree, 'gridcraft-history-export-pdf'), undefined);
+    assert.equal(find(tree, 'gridcraft-history-export-pptx'), undefined);
+    const xlsx = find(tree, 'gridcraft-history-export-xlsx')!;
+    assert.ok(xlsx);
+    assert.equal(xlsx.props.label, 'Excel');
+    xlsx.props.onPress();
+    assert.deepEqual(f.shares, ['xlsx']);
+    f.select();
+    f.render();
+    xlsx.props.onPress();
+    assert.deepEqual(f.shares, ['xlsx']);
+  } finally {
+    f.close();
+  }
 });
