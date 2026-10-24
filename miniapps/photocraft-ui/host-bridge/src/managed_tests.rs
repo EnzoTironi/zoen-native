@@ -54,6 +54,10 @@ fn actual_worker_proposal_exact_ack_cold_reopen_and_accepted_png() -> Result<()>
         action: Operation::FlipHorizontal,
     };
     let p = host.execute(command.clone())?;
+    assert_eq!(
+        p.metadata["operation"],
+        json!({"kind":"command","action":"flip_horizontal"})
+    );
     assert_eq!(host.execute(command)?.bytes, p.bytes);
     assert_eq!(
         host.export(&Export {
