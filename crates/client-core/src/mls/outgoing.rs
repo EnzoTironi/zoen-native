@@ -36,25 +36,41 @@ impl Engine {
         if self.net.pending.is_empty() {
             return Ok(false);
         }
-        // Runs after every write: look at the queue without decoding it, and read only the
-        // events that still need sealing for their group's current epoch.
+        // Validate retained originals before any cryptographic effect, including
+        // successors of a damaged head that already has a cached ciphertext.
         let heads = self.store.outbox_heads()?;
         let mut ready: HashMap<SpaceId, Option<u64>> = HashMap::new();
         let mut sealed = false;
+        let mut blocked = HashSet::new();
         for h in heads {
-            if h.failed || !self.is_e2e(&h.space) {
+            if h.failed {
+                continue;
+            }
+            let e = match self.read_outbox_head(&h) {
+                Ok(event) => event,
+                Err(failure) => {
+                    failure.trace();
+                    if let Some(space) = self.unreadable_outbox_space(&h) {
+                        blocked.insert(space.to_string());
+                        continue;
+                    }
+                    // No reliable lane: stop rather than encrypt successors
+                    // under an association reconstructed from corrupt metadata.
+                    return Err(storage("outbox head has no reliable Space association"));
+                }
+            };
+            // SQL Space metadata is not a selection authority. Resolve the
+            // signed original before deciding the lane, readiness or cache hit.
+            if blocked.contains(&e.space) || !self.is_e2e(&e.space) {
                 continue;
             }
             let epoch = *ready
-                .entry(h.space.clone())
-                .or_insert_with(|| self.ready_epoch(&h.space));
+                .entry(e.space.clone())
+                .or_insert_with(|| self.ready_epoch(&e.space));
             let Some(epoch) = epoch else { continue };
             if self.sealed_epoch_of(&h.client_id) == Some(epoch) {
                 continue;
             }
-            let Some(e) = self.store.outbox_get(&h.client_id)? else {
-                continue;
-            };
             if !must_seal(&e.body) {
                 continue;
             }
