@@ -3,7 +3,7 @@ use super::*;
 use event_log::content::Sealed;
 use rusqlite::{params, types::Value};
 
-struct OwnedDatabase(std::path::PathBuf);
+pub(super) struct OwnedDatabase(pub(super) std::path::PathBuf);
 impl Drop for OwnedDatabase {
     fn drop(&mut self) {
         if self.0.exists() {
@@ -15,10 +15,10 @@ impl Drop for OwnedDatabase {
     }
 }
 
-struct Fixture {
-    engine: Engine,
+pub(super) struct Fixture {
+    pub(super) engine: Engine,
     root: [u8; 32],
-    device: [u8; 32],
+    pub(super) device: [u8; 32],
 }
 
 fn sequence(engine: &Engine, env: Envelope) -> Sequenced {
@@ -36,13 +36,21 @@ fn sequence(engine: &Engine, env: Envelope) -> Sequenced {
 
 impl Fixture {
     fn new(path: &str, second_privacy: Privacy) -> Self {
+        Self::with_privacies(path, Privacy::Closed, second_privacy)
+    }
+
+    pub(super) fn with_privacies(
+        path: &str,
+        first_privacy: Privacy,
+        second_privacy: Privacy,
+    ) -> Self {
         let mut engine = Engine::open(path).unwrap();
         let (root, device, _) = engine
             .create_account("Queue faults", "queue_faults", "http://127.0.0.1:1")
             .unwrap();
         let author = engine.net.author.clone().unwrap();
         for (space, privacy) in [
-            ("sp_fault_a", Privacy::Closed),
+            ("sp_fault_a", first_privacy),
             ("sp_fault_b", second_privacy),
         ] {
             let env = Envelope::plain(&author.sign_event(
@@ -65,7 +73,7 @@ impl Fixture {
         }
     }
 
-    fn message(&mut self, space: &str, n: i64) -> Event {
+    pub(super) fn message(&mut self, space: &str, n: i64) -> Event {
         let author = self.engine.net.author.clone().unwrap();
         self.engine
             .append_synced(
@@ -133,7 +141,7 @@ impl Fixture {
 }
 
 type RawRow = (String, String, Value, i64, Option<String>, i64, i64, i64);
-fn raw_queue(engine: &Engine) -> Vec<RawRow> {
+pub(super) fn raw_queue(engine: &Engine) -> Vec<RawRow> {
     let mut stmt = engine.store.conn().prepare("SELECT client_id,space,json,attempts,last_error,failed,created_ms,queue_order FROM outbox ORDER BY queue_order").unwrap();
     stmt.query_map([], |r| {
         Ok((
@@ -152,7 +160,7 @@ fn raw_queue(engine: &Engine) -> Vec<RawRow> {
     .unwrap()
 }
 
-fn original_json(engine: &Engine, event: &Event) -> String {
+pub(super) fn original_json(engine: &Engine, event: &Event) -> String {
     engine
         .store
         .conn()
@@ -164,7 +172,7 @@ fn original_json(engine: &Engine, event: &Event) -> String {
         .unwrap()
 }
 
-fn set_json(engine: &Engine, event: &Event, json: Value) {
+pub(super) fn set_json(engine: &Engine, event: &Event, json: Value) {
     assert_eq!(
         engine
             .store

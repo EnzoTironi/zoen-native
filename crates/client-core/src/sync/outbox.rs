@@ -4,6 +4,8 @@ use super::*;
 
 #[cfg(test)]
 mod fault_tests;
+#[cfg(test)]
+mod sealing_tests;
 
 /// These are local read outcomes, never a terminal refusal or permission to
 /// reconstruct, discard, re-sign or retry an unreadable signed intent.
