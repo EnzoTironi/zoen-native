@@ -892,6 +892,7 @@ dependencies = [
  "zeroize",
  "zip 8.6.0",
  "zoen-liveview",
+ "zoen-word-profile",
 ]
 
 [[package]]
