@@ -50,21 +50,42 @@ mod tests {
     #[test]
     fn context_stage_survives_without_becoming_an_authenticated_refusal(
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let progress: PolicyProgress = serde_json::from_str(
-            r#"{"status":"unavailable","operation":"context","code":"denied","context_stage":"admission"}"#,
-        )?;
-        let OptionsReply::Pending(fault) = options(Ok(progress), "digest") else {
-            panic!("unavailable context became an authoritative outcome");
-        };
-        let mut counts = Counts::default();
-        observe(&mut counts, fault);
-        assert_eq!(counts.runtime_error, Some(PolicyUnavailable::Denied));
-        assert_eq!(
-            counts.runtime_stage,
-            Some(zoen_runtime::OwnerPolicyContextStage::Admission)
-        );
-        assert_eq!(counts.report_accepted, 0);
-        assert_eq!(counts.refusal_accepted, 0);
+        for stage in [
+            "admission",
+            "admission_unusable",
+            "admission_inquiry",
+            "admission_principal",
+            "admission_signature",
+            "admission_freshness",
+            "admission_profiles",
+            "admission_conversation",
+            "admission_integrity",
+            "admission_membership",
+            "admission_writer",
+            "admission_image_reference",
+            "admission_mls_credential",
+            "admission_mls_group",
+            "admission_mls_pending",
+            "admission_mls_reconciliation",
+            "admission_mls_storage",
+            "admission_mls_welcome",
+            "admission_mls_membership",
+            "admission_mls_behind",
+            "admission_mls_adding",
+        ] {
+            let wire = serde_json::json!({"status":"unavailable", "operation":"context",
+                "code":"denied", "context_stage":stage});
+            let progress: PolicyProgress = serde_json::from_value(wire)?;
+            let OptionsReply::Pending(fault) = options(Ok(progress), "digest") else {
+                panic!("unavailable context became an authoritative outcome");
+            };
+            let mut counts = Counts::default();
+            observe(&mut counts, fault);
+            assert_eq!(counts.runtime_error, Some(PolicyUnavailable::Denied));
+            assert_eq!(serde_json::to_value(counts.runtime_stage)?, stage);
+            assert_eq!(counts.report_accepted, 0);
+            assert_eq!(counts.refusal_accepted, 0);
+        }
         assert!(serde_json::from_str::<PolicyProgress>(
             r#"{"status":"unavailable","operation":"context","code":"denied","context_stage":"private-token/path"}"#
         ).is_err());

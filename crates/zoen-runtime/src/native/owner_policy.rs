@@ -93,8 +93,8 @@ impl NativeCustody {
                 .await
                 .map_err(|error| Stage::Clock.failed(error))?;
             if signed.inquiry.purpose.is_some() {
-                core.owner_policy_account_context(signed, now)
-                    .map_err(|_| Stage::Admission.failed(RuntimeError::Denied))?;
+                core.owner_policy_account_admission(signed, now)
+                    .map_err(|reason| Stage::from(reason).failed(RuntimeError::Denied))?;
             } else {
                 let input = core
                     .owner_policy_image_context(signed, now)
