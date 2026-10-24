@@ -22,13 +22,26 @@ def violations(root: Path) -> list[str]:
                 f"{manifest.relative_to(root)} must inherit [lints] workspace = true; "
                 "fix the diagnostic instead of replacing the shared policy."
             )
-    clippy = workspace.get("lints", {}).get("clippy", {})
-    for name in ("all", "pedantic", "perf"):
-        if clippy.get(name) != {"level": "warn", "priority": -1}:
-            errors.append(f"workspace.lints.clippy.{name} must remain enabled at warn/-1")
-    for name in ("unwrap_used", "expect_used"):
+    policy = workspace.get("lints", {})
+    rust = policy.get("rust", {})
+    for name in ("unused_must_use", "unsafe_op_in_unsafe_fn"):
+        if rust.get(name) != "deny":
+            errors.append(f"workspace.lints.rust.{name} must remain deny")
+    clippy = policy.get("clippy", {})
+    for name, level in (("all", "warn"), ("pedantic", "warn"), ("perf", "warn"),
+                        ("correctness", "deny")):
+        if clippy.get(name) != {"level": level, "priority": -1}:
+            errors.append(f"workspace.lints.clippy.{name} must remain enabled at {level}/-1")
+    for name in ("unwrap_used", "expect_used", "dbg_macro", "todo", "unimplemented",
+                 "await_holding_lock", "undocumented_unsafe_blocks"):
         if clippy.get(name) != "deny":
             errors.append(f"workspace.lints.clippy.{name} must remain deny")
+    for name in ("redundant_clone", "significant_drop_in_scrutinee"):
+        if clippy.get(name) != "warn":
+            errors.append(f"workspace.lints.clippy.{name} must remain warn")
+    for name in ("restriction", "nursery"):
+        if name in clippy:
+            errors.append(f"Select individual {name} rules; do not configure the entire group")
     return errors
 
 
