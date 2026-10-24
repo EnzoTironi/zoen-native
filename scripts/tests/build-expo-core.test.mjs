@@ -249,3 +249,49 @@ test('Grid resource-only changes invalidate the native source stamp and are guar
   assert.equal(await readFile(join(root, 'apps/zoen/src/core/generated/Command.ts'), 'utf8'),
     `grid-resource-input|${join(root, 'crates/client-core')}`);
 });
+
+test('compiled Grid seed bytes invalidate the native input stamp without a Rust source edit', async (t) => {
+  const path = await fixture(t);
+  const root = join(path, 'workspace');
+  const target = join(path, 'shared');
+  await workspace(root, 'grid-seed');
+  const seed = join(root, 'crates/client-core/resources/gridcraft-empty.xlsx');
+  const first = await readFile(join(source, 'crates/miniapps/resources/gridcraft-empty.xlsx'));
+  const next = await readFile(
+    join(source, 'crates/client-core/src/app_binary_documents/fixtures/managed-grid-changed.xlsx'),
+  );
+  assert(!first.equals(next));
+  await write(seed, first);
+  // Compile the actual binary input into a tiny genuine exporter. This checks
+  // sourceInputs shared by native caching/types, not a native framework build.
+  await write(
+    join(root, 'crates/client-core/examples/export-client-types.rs'),
+    `
+    fn main() {
+      let out = std::path::PathBuf::from(std::env::args().nth(1).unwrap());
+      std::fs::create_dir_all(&out).unwrap();
+      let bytes = include_bytes!("../resources/gridcraft-empty.xlsx");
+      let value = bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
+      for name in ["Command.ts", "Snapshot.ts"] {
+        std::fs::write(out.join(name), &value).unwrap();
+      }
+    }
+  `,
+  );
+  await execute('git', ['add', '.'], { cwd: root });
+  await build(root, target);
+  const before = await stamp(root);
+  assert.equal(
+    await readFile(join(root, 'apps/zoen/src/core/generated/Command.ts'), 'utf8'),
+    first.toString('hex'),
+  );
+  await write(seed, next);
+  await execute('git', ['add', '.'], { cwd: root });
+  await build(root, target);
+  const after = await stamp(root);
+  assert.equal(
+    await readFile(join(root, 'apps/zoen/src/core/generated/Command.ts'), 'utf8'),
+    next.toString('hex'),
+  );
+  assert.notEqual(after.sha256, before.sha256, 'native cache stamp ignored changed compiled XLSX');
+});
