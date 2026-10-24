@@ -21,6 +21,8 @@ export default function NewPage() {
   return (
     <ScrollView
       contentInsetAdjustmentBehavior="automatic"
+      automaticallyAdjustKeyboardInsets
+      keyboardDismissMode="interactive"
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={{ padding: 26, gap: 24 }}
     >
