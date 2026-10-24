@@ -3,6 +3,7 @@ import {
   ConversationReveal,
   type ConversationRevealGeometry,
   type ConversationRevealItem,
+  type ConversationNativeMetrics,
 } from './conversation-reveal.ts';
 
 export const geometry = (
@@ -26,7 +27,10 @@ export const item = (patch: Partial<ConversationRevealItem> = {}): ConversationR
   ...patch,
 });
 
-export function fixture(trace?: (record: Readonly<Record<string, unknown>>) => void) {
+export function fixture(
+  trace?: (record: Readonly<Record<string, unknown>>) => void,
+  observe?: () => Promise<ConversationNativeMetrics | null>,
+) {
   const frames: { run: () => void; cancelled: boolean }[] = [];
   const offsets: number[] = [];
   const animations: boolean[] = [];
@@ -48,6 +52,7 @@ export function fixture(trace?: (record: Readonly<Record<string, unknown>>) => v
       animations.push(animated);
     },
     trace,
+    observe,
   });
   reveal.onData(data);
   reveal.onCommit(data);

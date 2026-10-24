@@ -1,5 +1,5 @@
 import { type FlashListRef } from '@shopify/flash-list';
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { useHeaderHeight } from 'expo-router/react-navigation';
 import {
   useCallback,
@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDialogs } from '../components/dialogs';
 import { useKeyboardMotion } from '../components/keyboard-motion';
 import { useMessageActions } from '../components/use-message-actions';
+import { navigationMetricsAvailable, type NavigationMetricsHandle } from './navigation-container';
 import { ConversationReveal } from '../core/conversation-reveal';
 import {
   conversationRevealContent,
@@ -168,6 +169,16 @@ export function useChatController() {
     noticeHeight,
   });
   const searchReveal = useMemo(() => new ConversationReveal(`${id}:${owner}`), [id, owner]);
+  const metricsFocused = useIsFocused();
+  const metricsRef = useRef<NavigationMetricsHandle | null>(null);
+  const navigationMetrics = useMemo(
+    () => ({
+      binding: metricsFocused && searchState.active ? searchReveal.nativeBinding : '',
+      ref: metricsRef,
+      changed: searchReveal.nativeMetricsChanged,
+    }),
+    [searchReveal, metricsFocused, searchState.active],
+  );
   const searchContent = useRef<{
     scope: ConversationReveal;
     id: string;
@@ -184,6 +195,14 @@ export function useChatController() {
   );
   useLayoutEffect(() => {
     searchReveal.connect({
+      observe: navigationMetricsAvailable
+        ? async () => {
+            const native = metricsRef.current;
+            if (!native) return null;
+            const packet = await native.sampleScroll(searchReveal.nativeBinding);
+            return metricsRef.current === native ? packet : null;
+          }
+        : undefined,
       current: (target) => {
         const current = search.getSnapshot();
         return (
@@ -529,6 +548,7 @@ export function useChatController() {
     input,
     initialEnd,
     searchReveal,
+    navigationMetrics,
     onSearchContentLayout,
     normalDraft,
     editing,

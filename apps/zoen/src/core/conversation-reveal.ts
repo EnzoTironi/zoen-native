@@ -5,6 +5,13 @@ export type ConversationRevealGeometry = Readonly<{
   contentInset: { top?: number; bottom: number };
   responderIgnoreScroll?: boolean;
 }>;
+export type ConversationNativeMetrics = Readonly<{
+  binding: string;
+  sequence: string;
+  geometry: ConversationRevealGeometry;
+}>;
+let nativeBindingSequence = 0n;
+
 export type ConversationRevealItem = Readonly<{
   y: number;
   height: number;
@@ -90,6 +97,7 @@ type RevealPort = Readonly<{
   item: (id: string) => ConversationRevealItem | null;
   frame: (work: () => void) => () => void;
   scroll: (offset: number, animated: boolean) => void;
+  observe?: () => Promise<ConversationNativeMetrics | null>;
   trace?: (record: Readonly<Record<string, unknown>>) => void;
 }>;
 
@@ -97,6 +105,11 @@ type RevealPort = Readonly<{
  * inset/content/layout. A changed query, route or user drag cancels pending work. */
 export class ConversationReveal {
   readonly scope: string;
+  readonly nativeBinding = `conversation-${++nativeBindingSequence}`;
+  private nativeSequence = 0n;
+  private observationRevision = 0;
+  private observed = false;
+  private observing = false;
   private port: RevealPort | null;
   private geometry: ConversationRevealGeometry | null = null;
   private inset: { top: number; bottom: number } | null = null;
@@ -120,6 +133,7 @@ export class ConversationReveal {
   }
   connect(port: RevealPort) {
     this.port = port;
+    this.invalidateObservation();
     this.trace('connect');
     this.schedule();
   }
@@ -138,6 +152,7 @@ export class ConversationReveal {
   cancel = (reason = 'explicit') => {
     this.trace('cancel', { reason });
     ++this.cancellation;
+    this.invalidateObservation();
     ++this.revision;
     this.target = null;
     this.settledTarget = null;
@@ -150,6 +165,7 @@ export class ConversationReveal {
     // User scrolling cancels this intent, but its geometry is still the basis
     // for the next explicit search or arrow press.
     this.geometry = geometry;
+    this.invalidateObservation();
     this.trace('scroll');
     if (geometry.responderIgnoreScroll === false) {
       this.cancel('native-user-scroll');
@@ -162,12 +178,14 @@ export class ConversationReveal {
     if (this.inset && (this.inset.top !== top || this.inset.bottom !== bottom))
       this.resumeSettledTarget();
     this.inset = { top, bottom };
+    this.invalidateObservation();
     this.trace('inset');
     this.schedule();
   };
   onContentSize = (_width: number, height: number) => {
     if (!Number.isFinite(height) || height <= 0) return;
     this.contentHeight = height;
+    this.invalidateObservation();
     this.trace('content-size');
     this.schedule();
   };
@@ -175,16 +193,19 @@ export class ConversationReveal {
     if (!Number.isFinite(height) || height <= 0) return;
     if (this.viewportHeight !== null && this.viewportHeight !== height) this.resumeSettledTarget();
     this.viewportHeight = height;
+    this.invalidateObservation();
     this.trace('viewport');
     this.schedule();
   };
   onItemLayout = () => {
+    this.invalidateObservation();
     this.trace('item-layout');
     this.schedule();
   };
   onData = (data: readonly unknown[]) => {
     if (this.data !== data) {
       this.data = data;
+      this.invalidateObservation();
       this.commandLayout = null;
       this.engagementCommit = null;
       this.trace('data');
@@ -193,10 +214,89 @@ export class ConversationReveal {
   };
   onCommit = (data: readonly unknown[]) => {
     this.committedData = data;
+    this.invalidateObservation();
     ++this.commit;
     this.trace('commit');
     this.schedule();
   };
+
+  private invalidateObservation() {
+    this.observed = false;
+    ++this.observationRevision;
+  }
+  private validObservation(packet: ConversationNativeMetrics): boolean {
+    const geometry = packet?.geometry;
+    return Boolean(
+      packet?.binding === this.nativeBinding &&
+      typeof packet.sequence === 'string' &&
+      /^(0|[1-9][0-9]{0,19})$/.test(packet.sequence) &&
+      BigInt(packet.sequence) <= 18446744073709551615n &&
+      geometry &&
+      [
+        geometry.contentOffset?.y,
+        geometry.contentSize?.height,
+        geometry.layoutMeasurement?.height,
+        geometry.contentInset?.top,
+        geometry.contentInset?.bottom,
+      ].every(Number.isFinite) &&
+      geometry.contentSize.height > 0 &&
+      geometry.layoutMeasurement.height > 0 &&
+      geometry.contentInset.top !== undefined &&
+      geometry.contentInset.top >= 0 &&
+      geometry.contentInset.bottom >= 0,
+    );
+  }
+  nativeMetricsChanged = (packet: ConversationNativeMetrics) => {
+    if (!this.validObservation(packet) || BigInt(packet.sequence) <= this.nativeSequence) return;
+    this.nativeSequence = BigInt(packet.sequence);
+    const before = this.geometry;
+    const after = packet.geometry;
+    if (
+      before &&
+      (before.layoutMeasurement.height !== after.layoutMeasurement.height ||
+        before.contentInset.top !== after.contentInset.top ||
+        before.contentInset.bottom !== after.contentInset.bottom)
+    )
+      this.resumeSettledTarget();
+    // A queued event is a wake-up, never completion proof. Read the currently
+    // bound UIScrollView again for the current query/cancellation generation.
+    this.invalidateObservation();
+    this.schedule();
+  };
+  private observe() {
+    const observe = this.port?.observe;
+    if (!observe || this.observing) return;
+    this.observing = true;
+    const revision = this.observationRevision;
+    const cancellation = this.cancellation;
+    let accepted = false;
+    void observe()
+      .then((packet) => {
+        if (
+          cancellation !== this.cancellation ||
+          revision !== this.observationRevision ||
+          !packet ||
+          !this.validObservation(packet) ||
+          BigInt(packet.sequence) <= this.nativeSequence
+        )
+          return;
+        this.nativeSequence = BigInt(packet.sequence);
+        this.geometry = packet.geometry;
+        this.contentHeight = packet.geometry.contentSize.height;
+        this.observed = accepted = true;
+      })
+      .catch(() => {
+        this.trace('native-observation-unavailable');
+      })
+      .finally(() => {
+        this.observing = false;
+        if (
+          this.target &&
+          (accepted || cancellation !== this.cancellation || revision !== this.observationRevision)
+        )
+          this.schedule();
+      });
+  }
 
   private resumeSettledTarget() {
     if (!this.settledTarget) return;
@@ -208,7 +308,8 @@ export class ConversationReveal {
   // The SDK's effective inset callback and native onScroll are independent.
   // Waiting for their equality before issuing the explicit search can deadlock:
   // an inset-only update need not emit any scroll packet. Seek against measured
-  // native bounds, then require their convergence before claiming completion.
+  // native bounds. Complete only from a fresh bound UIKit sample, or from the
+  // legacy event path after its native inset acknowledgement converges.
   private canSeek(): boolean {
     const geometry = this.geometry;
     return Boolean(
@@ -227,8 +328,10 @@ export class ConversationReveal {
       this.canSeek() &&
       geometry &&
       this.inset &&
-      Math.abs((geometry.contentInset.top ?? 0) - this.inset.top) <= 1 &&
-      Math.abs(geometry.contentInset.bottom - this.inset.bottom) <= 1,
+      (this.port?.observe
+        ? this.observed
+        : Math.abs((geometry.contentInset.top ?? 0) - this.inset.top) <= 1 &&
+          Math.abs(geometry.contentInset.bottom - this.inset.bottom) <= 1),
     );
   }
   private measuredGeometry(): ConversationRevealGeometry | null {
@@ -263,7 +366,8 @@ export class ConversationReveal {
     if (!this.inset) waiting.push('inset');
     if (this.contentHeight === null) waiting.push('content-size');
     if (this.viewportHeight === null) waiting.push('viewport');
-    if (native && this.inset) {
+    if (this.port?.observe && !this.observed) waiting.push('native-observation');
+    if (native && this.inset && !this.observed) {
       if (Math.abs((native.contentInset.top ?? 0) - this.inset.top) > 1)
         waiting.push('native-top-inset');
       if (Math.abs(native.contentInset.bottom - this.inset.bottom) > 1)
@@ -284,6 +388,7 @@ export class ConversationReveal {
         engagementCommit: this.engagementCommit,
         ready: this.ready(),
         seekReady: this.canSeek(),
+        nativeObserved: this.observed,
         waiting,
         native: native
           ? {
@@ -312,7 +417,7 @@ export class ConversationReveal {
     this.cancelFrame?.();
     this.cancelFrame = null;
     const port = this.port;
-    if (!port || !this.target || !this.canSeek()) {
+    if (!port || !this.target || (!this.canSeek() && !port.observe)) {
       if (this.target) this.trace('wait');
       return;
     }
@@ -323,6 +428,10 @@ export class ConversationReveal {
       this.cancelFrame = null;
       if (!port.current(id)) {
         this.cancel('not-current');
+        return;
+      }
+      if (port.observe && !this.observed) {
+        this.observe();
         return;
       }
       const geometry = this.measuredGeometry();
@@ -393,6 +502,7 @@ export class ConversationReveal {
       this.engagementCommit ??= this.commit;
       this.commandLayout = layout;
       this.trace('issue', { offset, animated: item.measured });
+      this.invalidateObservation();
       port.scroll(offset, item.measured);
     });
   }
