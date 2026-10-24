@@ -1,5 +1,6 @@
 import { t } from '../i18n/index.ts';
 import { Pressable, Text, View } from 'react-native';
+import { canDuplicateBlock } from './page-duplicate';
 import { PageImageBlock } from './page-image-block';
 import { usePageImageItems } from './page-image-items';
 import type { PageDto } from '../core/types';
@@ -19,6 +20,7 @@ export function PageBlocks({
   onToggle,
   onMove,
   onDelete,
+  onDuplicate,
 }: {
   blocks: readonly PageBlockDto[];
   page?: PageDto;
@@ -30,6 +32,7 @@ export function PageBlocks({
   onToggle?: (block: PageBlockDto) => void;
   onMove?: (block: PageBlockDto, direction: -1 | 1) => void;
   onDelete?: (block: PageBlockDto) => void;
+  onDuplicate?: (block: PageBlockDto) => void;
 }) {
   const { colors } = useTheme();
   const images = usePageImageItems(
@@ -182,6 +185,20 @@ export function PageBlocks({
                 disabled={busy || index === blocks.length - 1}
                 onPress={() => onMove?.(block, 1)}
               />
+              {!historical && canDuplicateBlock(block) && onDuplicate ? (
+                <IconButton
+                  label={t('documents.duplicateBlockPosition', { position: index + 1 })}
+                  name={{
+                    ios: 'plus.square.on.square',
+                    android: 'content_copy',
+                    web: 'content_copy',
+                  }}
+                  disabled={busy}
+                  onPress={() => {
+                    if (!busy) onDuplicate(block);
+                  }}
+                />
+              ) : null}
               <IconButton
                 label={t('documents.deleteBlockPosition', { position: index + 1 })}
                 name={{ ios: 'trash', android: 'delete', web: 'delete' }}
