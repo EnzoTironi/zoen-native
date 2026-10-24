@@ -91,7 +91,9 @@ impl Client {
     ) -> R<WorkerGroupObservation> {
         // Existing global order: Net then Engine. Stop/account transitions
         // cannot replace this channel between the scope check and snapshot.
-        let net = self.net.lock().unwrap_or_else(|p| p.into_inner());
+        let net = self.net.lock().map_err(|_| CoreError::Storage {
+            message: "Owner-control connection observation unavailable.".into(),
+        })?;
         let mut observed = self.lock().owner_policy_worker_observation(query)?;
         let status = net.as_ref().map(crate::net::Net::status);
         observed.socket = match status.as_ref().map(|status| &status.state) {

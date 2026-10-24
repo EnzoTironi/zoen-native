@@ -91,6 +91,22 @@ fn authenticated_worker_snapshot_is_bounded_payload_free_and_read_only() -> Test
     assert!(offline.space_synced);
     assert_eq!(offline.socket, C::Offline);
     assert_eq!(offline.socket_synced, Some(false));
+    let before = client.lock().store.memory_image()?;
+    let poison = client.clone();
+    assert!(std::thread::spawn(move || {
+        let _guard = poison
+            .net
+            .lock()
+            .expect("controlled healthy fixture socket mutex");
+        panic!("controlled socket observation poisoning");
+    })
+    .join()
+    .is_err());
+    assert!(matches!(
+        client.owner_policy_worker_observation(&query),
+        Err(CoreError::Storage { .. })
+    ));
+    assert_eq!(client.lock().store.memory_image()?, before);
     Ok(())
 }
 
