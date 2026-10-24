@@ -481,7 +481,11 @@ impl MediaDownloadRetries {
 
 pub(crate) fn tracing_like(msg: &str) {
     if std::env::var_os("ZOEN_NET_DEBUG").is_some() {
-        eprintln!("[zoen-net] {msg}");
+        // Relative process-local time correlates existing request/arrival facts.
+        // It neither changes scheduling nor exports a wall clock or private scope.
+        static ORIGIN: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+        let elapsed = ORIGIN.get_or_init(std::time::Instant::now).elapsed();
+        eprintln!("[zoen-net] t_ms={} {msg}", elapsed.as_millis());
     }
 }
 

@@ -140,9 +140,17 @@ impl Engine {
         if !(self.is_e2e(&e.space) && must_seal(&e.body)) {
             return Some(Envelope::plain(e));
         }
-        let epoch = *ready
-            .entry(e.space.clone())
-            .or_insert_with(|| self.ready_epoch(&e.space));
+        let epoch = *ready.entry(e.space.clone()).or_insert_with(|| {
+            match self.ready_epoch_checked(&e.space, &self.state) {
+                Ok(epoch) => Some(epoch),
+                Err(reason) => {
+                    // Same gate and per-Space memoization, with a closed diagnostic.
+                    // Never infer readiness from profiles or discard an original intent.
+                    tracing_like(&format!("publication waiting ready_epoch={reason:?}"));
+                    None
+                }
+            }
+        });
         // Cheap check first: only decode the sealed copy when it is for this epoch.
         if epoch.is_none() || self.sealed_epoch(e) != epoch {
             return None;

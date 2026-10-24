@@ -5,7 +5,7 @@ MODE=config['mode']
 MARKER=config['marker']
 EXPECTED=config['expected']
 if '--version' in sys.argv:
- print('codex-cli '+('0.162.0' if MODE=='version' else '0.163.0'));sys.exit(0)
+ print('codex-cli '+('0.162.0' if MODE=='version' else '0.164.0'));sys.exit(0)
 settings=[sys.argv[i+1]for i,a in enumerate(sys.argv[:-1])if a=='-c']
 flags={s.split('=',1)[0].replace('features.',''):False for s in settings if s.startswith('features.')and s.endswith('=false')}
 assert 'features.shell_tool=false'in settings and 'features.unified_exec=false'in settings
@@ -16,7 +16,7 @@ for raw in sys.stdin:
  m=json.loads(raw);method=m.get('method');i=m.get('id')
  def send(v):print(json.dumps(v),flush=True)
  if method=='initialized':continue
- if method=='initialize':result={'userAgent':'fixture/0.163.0'}
+ if method=='initialize':result={'userAgent':'fixture/0.164.0'}
  elif method=='config/read':
   denied=any(s.startswith('mcp_servers={')and'enabled=false'in s for s in settings)
   result={'config':{'features':flags,'web_search':'disabled','project_doc_max_bytes':0,'mcp_servers':{'existing':{'enabled':False if denied and MODE!='mcp'else True}},'notify':['forbidden-callback']if MODE=='notify'else[]}}

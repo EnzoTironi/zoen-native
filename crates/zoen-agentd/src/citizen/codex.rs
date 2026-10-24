@@ -12,7 +12,7 @@ use tokio::{
     process::{Child, ChildStdin, ChildStdout, Command},
 };
 
-const VERSION: &str = "codex-cli 0.163.0";
+const VERSION: &str = "codex-cli 0.164.0";
 const MAX_INPUT: usize = 256 * 1024;
 const MAX_FRAME: usize = 1024 * 1024;
 const MAX_WIRE: usize = 4 * 1024 * 1024;

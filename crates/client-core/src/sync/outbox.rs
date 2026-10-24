@@ -130,11 +130,19 @@ impl Engine {
             if p.failed || sent.contains_key(&p.client_id) || held.contains(&p.client_id) {
                 continue;
             }
-            if *forked
+            match forked
                 .entry(p.space.clone())
                 .or_insert_with(|| self.fork_recorded(&p.space))
             {
-                continue;
+                Ok(false) => {}
+                Ok(true) => continue,
+                Err(_) => {
+                    crate::net::tracing_like(
+                        "outbox: integrity marker unavailable; publication paused",
+                    );
+                    blocked.insert(p.space.clone());
+                    continue;
+                }
             }
             // Refused for being clear in a Space that went end-to-end: it waits until this
             // device has caught up with that, then goes out sealed.

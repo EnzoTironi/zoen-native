@@ -41,7 +41,7 @@ pub(super) fn conflicting_sealed_seen_blocks_cold_restore_with_valid_pending_cre
     assert!(matches!(got, Ingest::Invalid(_)), "{got:?}");
     assert_eq!(fixture.core.retained_head(SPACE).unwrap(), Some(before));
     assert!(fixture.core.snapshot_outbox().unwrap() == pending);
-    assert!(fixture.core.engine.fork_recorded(SPACE));
+    assert!(matches!(fixture.core.engine.fork_recorded(SPACE), Ok(true)));
     assert!(fixture.core.engine.outbox_envelopes().is_empty());
     assert!(matches!(
         DeviceCore::restore(fixture.core.image().unwrap(), fixture.credential()),

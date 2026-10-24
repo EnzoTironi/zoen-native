@@ -3,6 +3,7 @@
 import { App } from '@modelcontextprotocol/ext-apps';
 import { attachDeckcraftDocument, type DeckcraftBindings } from './deckcraft-document.ts';
 import { deckcraftFeedbackReason } from './deckcraft-feedback.ts';
+import type { RuntimeClient } from './runtime-browser.ts';
 import {
   binaryEditorFormat,
   type BinaryEditorId,
@@ -57,7 +58,9 @@ export function startManagedBinaryApp(config: {
   );
   type Owner = Awaited<ReturnType<typeof attachDeckcraftDocument>>;
   const runtime = (
-    window as Window & { __zoenRuntime?: { load(): Promise<DeckcraftBindings>; dispose(): void } }
+    window as Window & {
+      __zoenRuntime?: Omit<RuntimeClient, 'load'> & { load(): Promise<DeckcraftBindings> };
+    }
   ).__zoenRuntime;
   let active = true;
   let connected = false;
@@ -97,10 +100,14 @@ export function startManagedBinaryApp(config: {
   function retire() {
     if (!active) return;
     active = false;
-    hostUI?.dispose();
-    owner?.retireAuthority();
-    runtime?.dispose();
+    try {
+      hostUI?.dispose();
+      owner?.retireAuthority();
+    } finally {
+      runtime?.dispose();
+    }
   }
+  runtime?.onBeforeDispose(retire);
   function start() {
     if (!active || !connected || paused || !checkpoint || opening || owner || failedInitialOpen)
       return;
