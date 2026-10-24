@@ -183,7 +183,7 @@ pub(super) fn media_contract_refused_duplicate_creation(
             file.at_ms + 1,
             None,
             file.body,
-        );
+        )?;
     f.engine.lock().store.outbox_put(&duplicate).unwrap();
     assert!(f
         .engine
@@ -281,8 +281,8 @@ pub(super) fn media_contract_receive(
         crate::engine::now_ms(),
         relay.head(),
         body,
-    );
-    let event = relay.sequence(signed);
+    )?;
+    let event = relay.sequence(signed)?;
     let _ = engine.ingest(protocol::Sequenced {
         seq: event.seq,
         prev: event.prev.clone(),

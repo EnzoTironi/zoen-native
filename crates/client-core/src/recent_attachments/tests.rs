@@ -85,8 +85,8 @@ fn receive(
         crate::engine::now_ms(),
         relay.head(),
         body,
-    );
-    let event = relay.sequence(signed);
+    )?;
+    let event = relay.sequence(signed)?;
     let _ = core.ingest(protocol::Sequenced {
         seq: event.seq,
         prev: event.prev.clone(),

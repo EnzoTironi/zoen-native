@@ -48,7 +48,9 @@ impl<S: Signer> Client<S> {
             device: Some(self.account.device.clone()),
             at_ms: now_ms,
             seen: self.head(space).as_ref().map(Into::into),
-            payload: Some(Payload::Body(event_log::content::encode_body(&body))),
+            payload: Some(Payload::Body(
+                event_log::content::encode_body(&body).map_err(|error| error.to_string())?,
+            )),
         }
         .encode();
         self.sign_content(content, false)

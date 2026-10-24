@@ -15,7 +15,7 @@ pub(super) fn plain_receive_scope_failure_rolls_back_event_and_delivered_progres
         10,
         seen(&receiver, space),
         post("Retain me only after the complete receipt commits"),
-    );
+    )?;
     let frame = ordered(&receiver, Envelope::plain(&pending));
     let before = receiver.store.event_count().unwrap();
     let delivered_before = receiver.delivered_to_announce(space);

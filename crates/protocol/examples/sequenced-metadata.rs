@@ -63,7 +63,7 @@ fn project(input: impl Read, space: &str) -> Result<Projection, Rejected> {
         if entry.seq != u64::try_from(rows.len()).map_err(|_| Rejected::Bounds)?
             || entry.env.space() != space
             || entry.prev != previous
-            || event_log::chain_hash(space, entry.seq, &entry.prev, &entry.env.wire_hash())
+            || event_log::chain_hash(space, entry.seq, &entry.prev, &entry.env.wire_hash())?
                 != entry.hash
         {
             return Err(Rejected::Chain);

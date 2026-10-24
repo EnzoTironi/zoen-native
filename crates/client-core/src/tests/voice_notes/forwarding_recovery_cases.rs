@@ -189,7 +189,7 @@ pub(super) fn forwarded_voice_survives_cold_reopen_and_a_destination_only_peer_d
     let pending = sender.lock().store.outbox().unwrap();
     assert_eq!(pending.len(), 1);
     for event in pending {
-        relay.sequence(event.event);
+        relay.sequence(event.event)?;
     }
     let receiver = Client::open(":memory:".into(), "en".into()).unwrap();
     for event in relay.events() {

@@ -93,7 +93,7 @@ fn control_echo_rejects_missing_or_changed_producer_proof_and_signed_header() ->
                         policy_digest: "cc".repeat(32),
                         outcome: types::OwnerPolicyOutcome::Installed,
                     },
-                );
+                )?;
                 f.core.engine.store.conn().execute(
                     "UPDATE outbox SET json=?1 WHERE client_id=?2",
                     rusqlite::params![serde_json::to_string(&event)?, client_id],

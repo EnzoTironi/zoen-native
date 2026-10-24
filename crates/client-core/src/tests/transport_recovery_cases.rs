@@ -69,7 +69,7 @@ pub(super) fn unconfirmed_genesis_holds_its_descendants_across_retry_and_relaunc
     let ev = Sequenced {
         seq: 0,
         prev: GENESIS_PREV.into(),
-        hash: chain_hash(&space, 0, GENESIS_PREV, &genesis.wire_hash()),
+        hash: chain_hash(&space, 0, GENESIS_PREV, &genesis.wire_hash())?,
         env: genesis,
     };
     assert_eq!(e.lock().ingest(ev), crate::sync::Ingest::Confirmed);
@@ -244,7 +244,7 @@ pub(super) fn a_device_refuses_a_relay_that_hides_a_message_and_rehashes(
                 kind: SpaceKind::Group,
                 privacy: Privacy::Closed,
             },
-        ))
+        )?)?
         .clone();
     let seen = honest.head();
     let hidden = honest
@@ -261,7 +261,7 @@ pub(super) fn a_device_refuses_a_relay_that_hides_a_message_and_rehashes(
                 media: None,
                 forwarded: false,
             },
-        ))
+        )?)?
         .clone();
     let reply = bia.sign_event(
         "sp_fork",
@@ -276,7 +276,7 @@ pub(super) fn a_device_refuses_a_relay_that_hides_a_message_and_rehashes(
             media: None,
             forwarded: false,
         },
-    );
+    )?;
     assert_eq!(
         reply.seen.as_ref().map(|s| s.hash.as_str()),
         Some(hidden.hash.as_str())

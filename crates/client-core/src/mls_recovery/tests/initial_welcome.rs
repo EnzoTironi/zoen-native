@@ -78,7 +78,7 @@ fn initial_welcome_beats_recovery(
     ] {
         let frame = ordered(
             &owner,
-            Envelope::plain(&author.sign_event(space, cid, 1, seen(&owner, space), body)),
+            Envelope::plain(&author.sign_event(space, cid, 1, seen(&owner, space), body)?),
         );
         assert_eq!(owner.ingest(frame.clone()), Ingest::Applied);
         assert_eq!(peer.ingest(frame), Ingest::Applied);

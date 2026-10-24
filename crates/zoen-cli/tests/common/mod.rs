@@ -395,7 +395,8 @@ impl RawClient {
     ) -> Result<Sequenced, String> {
         let e = self
             .author
-            .sign_event(space, &types::new_ulid(now_ms()), now_ms(), seen, body);
+            .sign_event(space, &types::new_ulid(now_ms()), now_ms(), seen, body)
+            .map_err(|error| error.to_string())?;
         self.publish_signed(e.content, e.sig, e.cert).await
     }
 
@@ -417,7 +418,8 @@ impl RawClient {
         };
         let e = self
             .author
-            .sign_event(space, &types::new_ulid(now_ms()), now_ms(), None, body);
+            .sign_event(space, &types::new_ulid(now_ms()), now_ms(), None, body)
+            .map_err(|error| error.to_string())?;
         let mut env = Envelope::new(e.content, e.sig, e.cert, None).ok_or("not a v3 content")?;
         env.invite = Some(code.to_string());
         self.publish_env(env).await

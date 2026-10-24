@@ -55,7 +55,7 @@ pub(super) fn colliding_native_reply(
             media: None,
             forwarded: false,
         },
-    );
+    )?;
     let bytes = fork
         .engine
         .device()

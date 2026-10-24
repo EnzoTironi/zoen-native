@@ -118,7 +118,7 @@ pub(super) fn failed_media_recovery_revalidates_actual_signed_outbox_device_and_
                             event.at_ms,
                             event.seen.clone(),
                             event.body.clone(),
-                        );
+                        )?;
                         assert!(event_log::verify_author(&event).is_ok());
                         assert_eq!(event.author, f.scope.expected_identity_id);
                         assert_ne!(
@@ -145,7 +145,7 @@ pub(super) fn failed_media_recovery_revalidates_actual_signed_outbox_device_and_
                                 event.at_ms,
                                 event.seen.clone(),
                                 event.body.clone(),
-                            );
+                            )?;
                     }
                     "partial_confirmation" => {}
                     _ => unreachable!(),

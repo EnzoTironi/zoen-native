@@ -176,7 +176,7 @@ impl Fixture {
     ) -> std::result::Result<String, Box<dyn std::error::Error>> {
         let author = self.owner.net.author.as_ref().unwrap();
         let seen = self.owner.logs.get(&self.space).and_then(SpaceLog::head);
-        let event = author.sign_event(&self.space, &new_id("clear")?, 100, seen, body);
+        let event = author.sign_event(&self.space, &new_id("clear")?, 100, seen, body)?;
         let frame = ordered(&self.owner, Envelope::plain(&event));
         assert_eq!(self.owner.ingest(frame.clone()), Ingest::Applied);
         self.core.ingest(vec![frame.clone()]).unwrap();

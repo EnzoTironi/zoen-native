@@ -44,7 +44,7 @@ fn linked(
         action: ActionClass::Money {
             cents: line.cost_cents,
         },
-        content_hash: content_hash(&(&line.text, line.cost_cents)),
+        content_hash: content_hash(&(&line.text, line.cost_cents))?,
         item: Some(fixture.item.clone()),
         line: Some(line.id.clone()),
         proposal: None,

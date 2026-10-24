@@ -202,7 +202,7 @@ pub(super) fn receipt_prefix_validates_original_pending_before_reading_unrelated
                         media: None,
                         forwarded: false,
                     },
-                );
+                )?;
                 fixture.core.engine.store.outbox_remove(&cid).unwrap();
                 fixture.core.engine.store.outbox_put(&event).unwrap();
             }

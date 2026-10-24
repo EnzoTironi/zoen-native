@@ -138,8 +138,8 @@ fn ingest_signed(
         crate::engine::now_ms(),
         log.head(),
         body,
-    );
-    let event = log.sequence(signed).clone();
+    )?;
+    let event = log.sequence(signed)?.clone();
     let frame = protocol::Sequenced {
         seq: event.seq,
         prev: event.prev.clone(),

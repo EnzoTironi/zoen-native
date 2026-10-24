@@ -185,7 +185,9 @@ impl RuntimeSource {
         let entry = self.entry_in(trx, space, seq).await?;
         if entry.env.is_pruned()
             || entry.env.verify().is_err()
-            || event_log::chain_hash(space, seq, &entry.prev, &entry.env.wire_hash()) != entry.hash
+            || event_log::chain_hash(space, seq, &entry.prev, &entry.env.wire_hash())
+                .map_err(|error| StoreError(error.to_string()))?
+                != entry.hash
         {
             return Err(invalid());
         }

@@ -123,7 +123,7 @@ pub(super) fn diverged_member_checkpoint_parks_live_and_cold_core(
             epoch,
             digest: digest.clone(),
         },
-    );
+    )?;
     let on_core = author.sign_event(
         SPACE,
         "diverge-core",
@@ -134,7 +134,7 @@ pub(super) fn diverged_member_checkpoint_parks_live_and_cold_core(
             epoch,
             digest,
         },
-    );
+    )?;
     assert_eq!(
         fixture
             .owner
@@ -166,7 +166,7 @@ pub(super) fn diverged_member_checkpoint_parks_live_and_cold_core(
             epoch: 1,
             digest: "ab".repeat(32),
         },
-    );
+    )?;
     let got = fixture
         .core
         .engine

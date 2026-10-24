@@ -26,7 +26,7 @@ pub(super) fn publish_window_keeps_a_reordered_burst_decryptable(
             kind: SpaceKind::Group,
             privacy: Privacy::EndToEnd,
         },
-    ));
+    )?);
     assert_eq!(engine.ingest(ordered(&engine, genesis)), Ingest::Applied);
     engine.create_mls_group(space).unwrap();
 

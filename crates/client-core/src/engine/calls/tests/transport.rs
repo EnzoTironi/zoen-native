@@ -26,7 +26,7 @@ fn event(
         400,
         f.log.head(),
         EventBody::CallTransportV1 { signal },
-    ))
+    )?)
 }
 fn accepted() -> std::result::Result<(Fixture, CallRecord), Box<dyn std::error::Error>> {
     let mut f = Fixture::new()?;

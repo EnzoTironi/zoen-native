@@ -108,7 +108,7 @@ pub(super) fn backup_restore_and_device_erase_never_carry_a_private_media_draft_
         .into_iter()
         .filter(|p| p.event.space == f.scope.space_id)
     {
-        let event = relay.sequence(pending.event);
+        let event = relay.sequence(pending.event)?;
         assert!(matches!(
             f.engine.lock().ingest(protocol::Sequenced {
                 seq: event.seq,

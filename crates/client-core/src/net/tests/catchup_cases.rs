@@ -81,7 +81,7 @@ pub(super) async fn live_event_overtaking_final_replay_page_reconciles_once_with
         ),
     ] {
         let ev = sequence(
-            Envelope::plain(&author.sign_event(space, id, 1, head.clone(), body)),
+            Envelope::plain(&author.sign_event(space, id, 1, head.clone(), body)?),
             &mut head,
         );
         canonical.append_event(&ev.plain_event().unwrap()).unwrap();
@@ -101,7 +101,7 @@ pub(super) async fn live_event_overtaking_final_replay_page_reconciles_once_with
                 media: None,
                 forwarded: false,
             },
-        )),
+        )?),
         &mut head,
     );
     canonical
@@ -124,7 +124,7 @@ pub(super) async fn live_event_overtaking_final_replay_page_reconciles_once_with
                 media: None,
                 forwarded: false,
             },
-        )),
+        )?),
         &mut head,
     );
     let engine = Arc::new(Mutex::new(engine));

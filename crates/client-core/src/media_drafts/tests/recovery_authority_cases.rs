@@ -62,7 +62,7 @@ pub(super) fn media_contract_recovery_only_file_refuses_signed_projection_and_in
                     crate::engine::now_ms(),
                     engine.logs[&f.scope.space_id].head(),
                     body.clone(),
-                );
+                )?;
             event_log::verify_author(&event).unwrap();
             let context = crate::pages::PlanReplay::new(&engine.store, &engine.logs)
                 .local(&engine.state, &engine.identities, &event)
@@ -153,7 +153,7 @@ pub(super) fn media_contract_recovery_reservation_yields_to_a_validated_file_cre
         event_log::verify_author(&source).unwrap();
         let event = engine.logs[&f.scope.space_id]
             .clone()
-            .sequence(source)
+            .sequence(source)?
             .clone();
         let _ = engine.ingest(protocol::Sequenced {
             seq: event.seq,

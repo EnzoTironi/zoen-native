@@ -59,7 +59,7 @@ pub(super) async fn healthy_socket_recovers_final_unannounced_event_without_reco
         ),
     ] {
         let ev = sequence(
-            Envelope::plain(&owner.sign_event(SPACE, id, AT, head.clone(), body)),
+            Envelope::plain(&owner.sign_event(SPACE, id, AT, head.clone(), body)?),
             &mut head,
         );
         canonical.append_event(&ev.plain_event().unwrap()).unwrap();
@@ -79,7 +79,7 @@ pub(super) async fn healthy_socket_recovers_final_unannounced_event_without_reco
                 media: None,
                 forwarded: false,
             },
-        )),
+        )?),
         &mut head,
     );
     let engine = Arc::new(Mutex::new(engine));
@@ -344,7 +344,7 @@ pub(super) async fn healthy_socket_discovers_new_authorized_space_when_joined_an
             ),
         ] {
             let event = sequence(
-                Envelope::plain(&peer.sign_event(SPACE, id, AT, head.clone(), body)),
+                Envelope::plain(&peer.sign_event(SPACE, id, AT, head.clone(), body)?),
                 &mut head,
             );
             canonical
@@ -365,7 +365,7 @@ pub(super) async fn healthy_socket_discovers_new_authorized_space_when_joined_an
                     media: None,
                     forwarded: false,
                 },
-            )),
+            )?),
             &mut head,
         );
         canonical

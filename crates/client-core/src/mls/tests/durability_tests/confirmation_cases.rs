@@ -86,7 +86,7 @@ pub(super) fn pending_confirmation_other_member_does_not_ack_or_stamp_our_plain_
         pending.at_ms + 1,
         pending.seen.clone(),
         post("Peer is independently applied"),
-    );
+    )?;
     let frame = ordered(&owner, Envelope::plain(&remote));
     assert_eq!(owner.ingest(frame.clone()), Ingest::Applied);
     assert_pending_confirmation_retained(&owner, &pending);
@@ -144,7 +144,7 @@ pub(super) fn pending_confirmation_another_certified_device_cannot_ack_this_devi
         pending.at_ms + 1,
         pending.seen.clone(),
         post("Other certified device"),
-    );
+    )?;
     event_log::verify_author(&remote).unwrap();
     let frame = ordered(&owner, Envelope::plain(&remote));
     assert_eq!(owner.ingest(frame.clone()), Ingest::Applied);
@@ -200,7 +200,7 @@ pub(super) fn pending_confirmation_other_space_cannot_remove_a_pending_event_on_
         pending.at_ms + 1,
         seen(&owner, "remote-space"),
         post("Same label in a different space"),
-    );
+    )?;
     let frame = ordered(&owner, Envelope::plain(&remote));
     assert_eq!(owner.ingest(frame.clone()), Ingest::Applied);
     assert_pending_confirmation_retained(&owner, &pending);
@@ -228,7 +228,7 @@ pub(super) fn pending_confirmation_other_mls_member_keeps_pending_overlay_and_co
         pending.at_ms + 1,
         seen(&peer, space),
         post("Authenticated other MLS member"),
-    );
+    )?;
     peer.seal_outgoing(&remote, peer.ready_epoch(space).unwrap())
         .unwrap();
     let envelope = peer.sealed_copy(&remote).unwrap().1;

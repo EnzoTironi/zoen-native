@@ -173,8 +173,8 @@ pub(crate) fn append_at(
         at,
         log.head(),
         EventBody::RequestOpened { request },
-    );
-    let event = log.sequence(signed).clone();
+    )?;
+    let event = log.sequence(signed)?.clone();
     let frame = protocol::Sequenced {
         seq: event.seq,
         prev: event.prev.clone(),

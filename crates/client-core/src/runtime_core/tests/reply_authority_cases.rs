@@ -305,7 +305,7 @@ pub(super) fn no_default_or_optimistic_grant_can_start_a_reply(
                 expires_at_ms: None,
             },
         },
-    );
+    )?;
     fixture.core.engine.store.outbox_put(&pending).unwrap();
     fixture.core.engine.reload().unwrap();
     assert!(fixture

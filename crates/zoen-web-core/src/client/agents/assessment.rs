@@ -54,16 +54,16 @@ impl<S: Signer> Client<S> {
                 if !read.ready {
                     return Ok(RequestScope::Waiting);
                 }
-                Ok(
-                    if read.document.line(line).is_some_and(|line| {
-                        event_log::content_hash(&(&line.text, line.cost_cents))
-                            == request.content_hash
-                    }) {
-                        RequestScope::Current
-                    } else {
-                        RequestScope::Changed
-                    },
-                )
+                let Some(line) = read.document.line(line) else {
+                    return Ok(RequestScope::Changed);
+                };
+                let hash = event_log::content_hash(&(&line.text, line.cost_cents))
+                    .map_err(|error| error.to_string())?;
+                Ok(if hash == request.content_hash {
+                    RequestScope::Current
+                } else {
+                    RequestScope::Changed
+                })
             }
             (None, None) => Ok(
                 if request.action != ActionClass::Reversible
@@ -71,7 +71,9 @@ impl<S: Signer> Client<S> {
                         &request.title,
                         &request.detail,
                         &request.audience,
-                    )) == request.content_hash
+                    ))
+                    .map_err(|error| error.to_string())?
+                        == request.content_hash
                 {
                     RequestScope::Current
                 } else {

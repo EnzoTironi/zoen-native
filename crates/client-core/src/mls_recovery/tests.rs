@@ -138,7 +138,7 @@ fn staged_recovery(
             },
         ),
     ] {
-        let env = Envelope::plain(&author.sign_event(space, cid, 1, seen(&engine, space), body));
+        let env = Envelope::plain(&author.sign_event(space, cid, 1, seen(&engine, space), body)?);
         let confirmed = ordered(&engine, env);
         assert_eq!(engine.ingest(confirmed.clone()), Ingest::Applied);
         baseline.push(confirmed);

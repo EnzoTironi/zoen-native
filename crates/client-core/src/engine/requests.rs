@@ -200,10 +200,10 @@ impl Engine {
                             plan.document
                                 .line(line)
                                 .ok_or_else(|| not_found(&t("linha", "line")))?,
-                        )
+                        )?
                     }
-                    Some(_) => content_hash(&title),
-                    None => content_hash(&(title, detail, audience)),
+                    Some(_) => content_hash(&title)?,
+                    None => content_hash(&(title, detail, audience))?,
                 };
                 let req = AgentRequest {
                     tool_proposal: None,

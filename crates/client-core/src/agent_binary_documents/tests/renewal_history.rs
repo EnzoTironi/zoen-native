@@ -16,8 +16,8 @@ pub(crate) fn signed(
         at,
         log.head(),
         body,
-    );
-    let event = log.sequence(signed).clone();
+    )?;
+    let event = log.sequence(signed)?.clone();
     assert_eq!(
         e.ingest(protocol::Sequenced {
             seq: event.seq,

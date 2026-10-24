@@ -169,7 +169,7 @@ pub(super) fn pending_membership_cannot_admit_a_new_peer_or_suppress_a_confirmed
             matches!(&row.event.body, EventBody::MemberAdded { identity, .. } if identity == &c.outsider)
         }).unwrap().event;
         let mut relay = engine.logs[&c.space].clone();
-        let event = relay.sequence(pending).clone();
+        let event = relay.sequence(pending)?.clone();
         assert_eq!(
             engine.ingest(protocol::Sequenced {
                 seq: event.seq,

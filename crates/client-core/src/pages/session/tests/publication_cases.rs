@@ -185,7 +185,7 @@ pub(super) fn only_complete_canonical_exact_source_acks(
         event.at_ms,
         event.seen.clone(),
         different,
-    );
+    )?;
     assert_ne!(
         plan::source(&f.space, &f.item, &wrong_digest, false).event_id,
         plan::source(&f.space, &f.item, &event, false).event_id

@@ -2,6 +2,8 @@ use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum LogError {
+    #[error("event #{seq} could not be serialized for chain verification")]
+    Serialization { seq: u64 },
     #[error("evento #{seq} pertence a outro Espaço")]
     WrongSpace { seq: u64 },
     #[error("sequência quebrada: esperava #{expected}, veio #{got}")]
@@ -24,4 +26,13 @@ pub enum LogError {
     MissingCausalLink { seq: u64 },
     #[error("o evento #{seq} cria de novo um Espaço que já existe")]
     Recreated { seq: u64 },
+}
+
+/// A local append cannot publish a partial identifier or serialized event.
+#[derive(Debug, Error)]
+pub enum AppendError {
+    #[error(transparent)]
+    Identifier(#[from] types::IdError),
+    #[error(transparent)]
+    Serialization(#[from] serde_json::Error),
 }

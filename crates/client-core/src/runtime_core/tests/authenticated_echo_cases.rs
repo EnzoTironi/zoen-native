@@ -138,20 +138,27 @@ pub(super) fn own_echo_requires_valid_original_inner_and_historical_sealing_copy
                 fixture.core.engine.store.outbox_put(&pending).unwrap();
             }
             "signed-inner" => {
-                let pending = fixture.core.engine.net.author.as_ref().unwrap().sign_event(
-                    SPACE,
-                    envelope.client_id(),
-                    envelope.at_ms(),
-                    envelope.seen(),
-                    EventBody::MessagePosted {
-                        message: prepared.message().into(),
-                        text: "Another genuinely signed native inner".into(),
-                        attaches: None,
-                        reply: None,
-                        media: None,
-                        forwarded: false,
-                    },
-                );
+                let pending = fixture
+                    .core
+                    .engine
+                    .net
+                    .author
+                    .as_ref()
+                    .unwrap()
+                    .sign_event(
+                        SPACE,
+                        envelope.client_id(),
+                        envelope.at_ms(),
+                        envelope.seen(),
+                        EventBody::MessagePosted {
+                            message: prepared.message().into(),
+                            text: "Another genuinely signed native inner".into(),
+                            attaches: None,
+                            reply: None,
+                            media: None,
+                            forwarded: false,
+                        },
+                    )?;
                 event_log::verify_author(&pending).unwrap();
                 assert_ne!(
                     event_log::content_hash_of(&pending),
@@ -342,7 +349,7 @@ pub(super) fn later_colliding_echo_invalidates_an_entire_partially_ingested_batc
             epoch,
             digest,
         },
-    );
+    )?;
     let first = ordered(&fixture.owner, Envelope::plain(&preceding));
     assert_eq!(fixture.owner.ingest(first.clone()), Ingest::Applied);
     let second = ordered(&fixture.owner, different);
@@ -420,7 +427,7 @@ pub(super) fn own_echo_is_context_only_and_mismatching_mls_sender_cannot_refresh
             media: None,
             forwarded: false,
         },
-    );
+    )?;
     let plaintext = event_log::content::InnerEvent {
         content: inner.content,
         sig: inner.sig,

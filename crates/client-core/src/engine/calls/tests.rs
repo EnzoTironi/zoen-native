@@ -73,7 +73,7 @@ impl Fixture {
             at,
             self.log.head(),
             EventBody::CallV1 { signal },
-        ))
+        )?)
     }
     fn push(
         &mut self,
@@ -81,8 +81,8 @@ impl Fixture {
         at: i64,
         body: EventBody,
     ) -> std::result::Result<Event, Box<dyn std::error::Error>> {
-        let event = by.sign_event("sp_calls", &new_ulid(at)?, at, self.log.head(), body);
-        let event = self.log.sequence(event).clone();
+        let event = by.sign_event("sp_calls", &new_ulid(at)?, at, self.log.head(), body)?;
+        let event = self.log.sequence(event)?.clone();
         self.engine.store.append_event(&event).unwrap();
         self.engine.reload().unwrap();
         Ok(event)

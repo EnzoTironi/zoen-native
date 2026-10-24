@@ -18,7 +18,7 @@ pub(super) fn a_member_seen_at_or_beyond_the_event_seq_is_a_fork(
             hash: "12".repeat(32),
         }),
         claim(9_000, &"12".repeat(32)),
-    );
+    )?;
     let got = deliver(&mut engine, event);
     assert!(9_000 >= next);
     assert!(matches!(got, Ingest::Invalid(_)), "{got:?}");
@@ -55,7 +55,7 @@ pub(super) fn an_event_ahead_of_the_local_head_stays_a_gap(
             hash: seen_hash.clone(),
         }),
         claim(seen_seq, &seen_hash),
-    );
+    )?;
     let mut ev = ordered(&engine, Envelope::plain(&event));
     ev.seq = next + 3;
     let got = engine.ingest(ev);
@@ -84,7 +84,7 @@ pub(super) fn a_non_member_seen_beyond_the_event_is_refused_without_a_fork(
             hash: "12".repeat(32),
         }),
         claim(9_000, &"12".repeat(32)),
-    );
+    )?;
     let got = deliver(&mut engine, event);
     assert!(matches!(got, Ingest::Invalid(_)), "{got:?}");
     assert_eq!(integrity(&engine, space), None);
@@ -113,7 +113,7 @@ pub(super) fn a_forged_signature_is_refused_without_a_fork(
             hash: "11".repeat(32),
         }),
         claim(0, &"11".repeat(32)),
-    );
+    )?;
     event.sig = "00".repeat(64);
     let got = deliver(&mut engine, event);
     assert!(matches!(got, Ingest::Invalid(_)));
@@ -143,7 +143,7 @@ pub(super) fn a_non_member_diverged_seen_is_refused_without_a_fork(
             hash: "11".repeat(32),
         }),
         claim(0, &"11".repeat(32)),
-    );
+    )?;
     let got = deliver(&mut engine, event);
     assert!(matches!(got, Ingest::Invalid(_)));
     assert_eq!(integrity(&engine, space), None);

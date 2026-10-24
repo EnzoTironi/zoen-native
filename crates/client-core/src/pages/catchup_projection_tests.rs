@@ -71,7 +71,7 @@ impl Fixture {
             1_800_000_000_000,
             head.clone(),
             body,
-        );
+        )?;
         assert_eq!(
             self.engine
                 .ingest(frame(Envelope::plain(&event), &mut head)),

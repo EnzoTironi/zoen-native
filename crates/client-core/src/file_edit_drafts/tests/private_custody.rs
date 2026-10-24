@@ -63,7 +63,7 @@ pub(super) fn backup_restore_and_device_erase_exclude_private_pdf_journals_even_
         .into_iter()
         .filter(|p| p.event.space == f.scope.space_id)
     {
-        let event = relay.sequence(pending.event);
+        let event = relay.sequence(pending.event)?;
         assert!(matches!(
             f.engine.lock().ingest(protocol::Sequenced {
                 seq: event.seq,

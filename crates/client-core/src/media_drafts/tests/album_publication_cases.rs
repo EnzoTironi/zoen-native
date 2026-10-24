@@ -155,7 +155,7 @@ pub(super) fn media_contract_transient_first_album_refusal_preserves_all_confirm
                 .outbox_get(env.client_id())
                 .unwrap()
                 .unwrap();
-            let accepted = relay.sequence(event).clone();
+            let accepted = relay.sequence(event)?.clone();
             assert_eq!(
                 f.engine.lock().ingest(frame(&accepted)),
                 crate::sync::Ingest::Confirmed
@@ -288,7 +288,7 @@ pub(super) fn media_contract_single_media_transient_file_refusal_survives_cold_r
                     continue;
                 }
             }
-            let accepted = relay.sequence(event).clone();
+            let accepted = relay.sequence(event)?.clone();
             assert_eq!(
                 f.engine.lock().ingest(frame(&accepted)),
                 crate::sync::Ingest::Confirmed

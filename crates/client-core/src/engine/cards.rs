@@ -2,8 +2,8 @@
 use super::*;
 
 impl Engine {
-    pub(super) fn line_hash(line: &PlanLine) -> String {
-        content_hash(&(&line.text, line.cost_cents))
+    pub(super) fn line_hash(line: &PlanLine) -> R<String> {
+        Ok(content_hash(&(&line.text, line.cost_cents))?)
     }
 
     // ── conversões para DTO ──

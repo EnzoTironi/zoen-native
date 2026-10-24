@@ -36,7 +36,7 @@ pub(super) fn a_removal_during_held_recovery_survives_restart_and_repairs_before
         EventBody::MemberRemoved {
             identity: fixture.peer.identity.clone(),
         },
-    ));
+    )?);
     assert_eq!(engine.ingest(ordered(&engine, removal)), Ingest::Applied);
     assert!(engine.device().unwrap().recovery_pending(space));
     assert!(engine.outbox_envelopes().is_empty());

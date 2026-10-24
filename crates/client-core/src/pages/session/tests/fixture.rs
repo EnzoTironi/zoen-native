@@ -72,7 +72,7 @@ impl Fixture {
             1_800_000_000_000,
             self.engine.logs.get(&self.space).and_then(|log| log.head()),
             body,
-        ))
+        )?)
     }
     pub(super) fn ordered(
         &mut self,

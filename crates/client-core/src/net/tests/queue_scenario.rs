@@ -25,7 +25,7 @@ pub(super) async fn queued_messages_round_trip(
                 kind: SpaceKind::Group,
                 privacy: Privacy::EndToEnd,
             },
-        )),
+        )?),
         &mut head,
     );
     assert_eq!(engine.ingest(genesis), Ingest::Applied);

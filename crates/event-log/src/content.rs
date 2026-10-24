@@ -398,9 +398,12 @@ pub fn decode_body(json: &[u8]) -> EventBody {
     })
 }
 
-#[must_use]
-pub fn encode_body(body: &EventBody) -> Vec<u8> {
-    serde_json::to_vec(body).expect("event bodies always serialize")
+/// Encodes exactly the JSON bytes carried in a signed event.
+///
+/// # Errors
+/// Returns the serializer error before any bytes are signed or published.
+pub fn encode_body(body: &EventBody) -> Result<Vec<u8>, serde_json::Error> {
+    serde_json::to_vec(body)
 }
 
 impl SignedContent {

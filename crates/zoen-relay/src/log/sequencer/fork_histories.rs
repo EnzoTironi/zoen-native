@@ -33,15 +33,20 @@ pub fn armed(space: &str) -> bool {
     load().spaces.contains(space)
 }
 
-pub fn view(space: &str, reader: &str, from: u64, canonical: Vec<Sequenced>) -> Vec<Sequenced> {
+pub fn view(
+    space: &str,
+    reader: &str,
+    from: u64,
+    canonical: Vec<Sequenced>,
+) -> Result<Vec<Sequenced>, serde_json::Error> {
     if !armed(space) {
-        return canonical.into_iter().filter(|ev| ev.seq >= from).collect();
+        return Ok(canonical.into_iter().filter(|ev| ev.seq >= from).collect());
     }
     let reach = load().reach.contains(space);
-    let mut chain = cross(reader, &canonical);
-    append_held(space, reader, &mut chain);
-    chain = apply_far(chain, reach);
-    chain.into_iter().filter(|ev| ev.seq >= from).collect()
+    let mut chain = cross(reader, &canonical)?;
+    append_held(space, reader, &mut chain)?;
+    chain = apply_far(chain, reach)?;
+    Ok(chain.into_iter().filter(|ev| ev.seq >= from).collect())
 }
 
 pub(crate) fn observe(space: &str, pending: &[Pending], applied: &Applied) {
@@ -107,7 +112,7 @@ fn parse(text: &str) -> Switch {
     out
 }
 
-fn cross(reader: &str, events: &[Sequenced]) -> Vec<Sequenced> {
+fn cross(reader: &str, events: &[Sequenced]) -> Result<Vec<Sequenced>, serde_json::Error> {
     let mut out = Vec::new();
     let mut i = 0;
     while i < events.len() {
@@ -126,14 +131,18 @@ fn cross(reader: &str, events: &[Sequenced]) -> Vec<Sequenced> {
             if drop_own && ev.env.author() == reader {
                 continue;
             }
-            push_linked(&mut out, ev);
+            push_linked(&mut out, ev)?;
         }
         i = end;
     }
-    out
+    Ok(out)
 }
 
-fn append_held(space: &str, reader: &str, chain: &mut Vec<Sequenced>) {
+fn append_held(
+    space: &str,
+    reader: &str,
+    chain: &mut Vec<Sequenced>,
+) -> Result<(), serde_json::Error> {
     let held = HELD
         .lock()
         .expect("fork histories")
@@ -155,36 +164,37 @@ fn append_held(space: &str, reader: &str, chain: &mut Vec<Sequenced>) {
                 hash: String::new(),
                 env,
             },
-        );
+        )?;
     }
+    Ok(())
 }
 
-fn apply_far(chain: Vec<Sequenced>, reach: bool) -> Vec<Sequenced> {
+fn apply_far(chain: Vec<Sequenced>, reach: bool) -> Result<Vec<Sequenced>, serde_json::Error> {
     let Some(index) = chain.iter().position(is_far) else {
-        return chain;
+        return Ok(chain);
     };
     let checkpoint = &chain[index];
     let Some(seen) = checkpoint.env.seen() else {
-        return chain;
+        return Ok(chain);
     };
     let client = checkpoint.env.client_id();
     let mut out = Vec::new();
     for ev in chain.iter().filter(|ev| ev.seq <= seen.seq) {
-        push_linked(&mut out, ev);
+        push_linked(&mut out, ev)?;
     }
     let already = out.last().is_some_and(|ev| ev.env.client_id() == client);
     if !already {
-        push_linked(&mut out, checkpoint);
+        push_linked(&mut out, checkpoint)?;
     }
     if reach {
         for ev in chain
             .iter()
             .filter(|ev| ev.seq > seen.seq && ev.env.client_id() != client)
         {
-            push_linked(&mut out, ev);
+            push_linked(&mut out, ev)?;
         }
     }
-    out
+    Ok(out)
 }
 
 fn is_far(ev: &Sequenced) -> bool {
@@ -197,23 +207,24 @@ fn is_far(ev: &Sequenced) -> bool {
     }
 }
 
-fn push_linked(out: &mut Vec<Sequenced>, ev: &Sequenced) {
+fn push_linked(out: &mut Vec<Sequenced>, ev: &Sequenced) -> Result<(), serde_json::Error> {
     if linked(out.last(), ev) {
         out.push(ev.clone());
-        return;
+        return Ok(());
     }
     let seq = out.last().map(|prev| prev.seq + 1).unwrap_or(0);
     let prev = out
         .last()
         .map(|prev| prev.hash.clone())
         .unwrap_or_else(|| types::GENESIS_PREV.to_string());
-    let hash = event_log::chain_hash(ev.env.space(), seq, &prev, &ev.env.wire_hash());
+    let hash = event_log::chain_hash(ev.env.space(), seq, &prev, &ev.env.wire_hash())?;
     out.push(Sequenced {
         seq,
         prev,
         hash,
         env: ev.env.clone(),
     });
+    Ok(())
 }
 
 fn linked(prev: Option<&Sequenced>, ev: &Sequenced) -> bool {

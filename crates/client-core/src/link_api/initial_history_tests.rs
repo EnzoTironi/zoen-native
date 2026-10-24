@@ -99,7 +99,7 @@ fn encrypted_record(
             media: None,
             forwarded: false,
         },
-    );
+    )?;
     let (content, sig) = author.sign_sealed(
         log.space(),
         "msg_initial",
@@ -116,7 +116,7 @@ fn encrypted_record(
         String::new(),
     )
     .unwrap();
-    let local = log.sequence(outer).clone();
+    let local = log.sequence(outer)?.clone();
     opened.seq = local.seq;
     opened.sealed_wire = Some(event_log::content_hash_of(&local));
     let mut e = core.lock();

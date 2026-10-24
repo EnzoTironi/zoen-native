@@ -110,7 +110,8 @@ impl LogStore for BlockedLog {
         );
         tokio::spawn(async move {
             release.acquire().await.unwrap().forget();
-            let hash = event_log::chain_hash(env.space(), 0, types::GENESIS_PREV, &env.wire_hash());
+            let hash =
+                event_log::chain_hash(env.space(), 0, types::GENESIS_PREV, &env.wire_hash())?;
             let ev = Sequenced {
                 seq: 0,
                 prev: types::GENESIS_PREV.into(),

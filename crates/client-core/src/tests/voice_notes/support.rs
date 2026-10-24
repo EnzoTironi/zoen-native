@@ -14,9 +14,9 @@ pub(super) fn ingest_as(
         crate::engine::now_ms(),
         engine.logs[space].head(),
         body,
-    );
+    )?;
     let mut relay = engine.logs[space].clone();
-    let event = relay.sequence(event);
+    let event = relay.sequence(event)?;
     assert_eq!(
         engine.ingest(protocol::Sequenced {
             seq: event.seq,

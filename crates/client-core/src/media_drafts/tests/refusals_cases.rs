@@ -203,7 +203,7 @@ pub(super) fn media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped
             original.at_ms + 10,
             None,
             original.body.clone(),
-        );
+        )?;
         f.engine.lock().store.outbox_put(&event).unwrap();
         unrelated.push(event.client_id);
     }
@@ -231,7 +231,7 @@ pub(super) fn media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped
             original.at_ms + 11,
             None,
             body,
-        );
+        )?;
         if drift == "signature" {
             event.sig.push('x');
         }
