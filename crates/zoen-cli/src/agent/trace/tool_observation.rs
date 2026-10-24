@@ -6,7 +6,7 @@ use std::io::{self, Write};
 use zoen_agentd::{ToolCall, ToolDef, ToolObservation, ToolStep};
 
 const EVENT: &str = "zoen.agent.tools.v1";
-const KINDS: [&str; 11] = [
+const KINDS: &[&str] = &[
     "create_site",
     "read_site",
     "replace_site_source",
