@@ -9,13 +9,13 @@
   "patches": [
     {
       "path": "patches/eframe-current-owner.patch",
-      "bytes": 15136,
-      "sha256": "05a27707faae437e681ac1b9483e670770f185e910f96a1373559d5a4bbd8ef6"
+      "bytes": 17072,
+      "sha256": "bbd41a7a691732a138c22c4abf07bfd5bc3e04757fe58d4b5bf838e7caad9d89"
     },
     {
       "path": "patches/eframe-primary-contact.patch",
-      "bytes": 13903,
-      "sha256": "6bbab724a3c080b046b2eb711f9e2a9e3cd0a1c6b7bd89de68b6e674c108251d"
+      "bytes": 13991,
+      "sha256": "7b8a2bfcce4df8d458b4419fc980095c2e16f35f1a44fb1437b30002b49d69fb"
     },
     {
       "path": "patches/eframe-text-agent.patch",
@@ -49,5 +49,5 @@
     "sha256": "632cacd0cea5b264a82dd0594870dd7d3ab7e0391585cdc16a71c54abb9ee424",
     "bytes": 9118
   },
-  "revisionNote": "Canvas focus retries on admitted trusted tap release before IME output; active text-agent/composition, drag, cancel, secondary-contact and owner gates preserved. Top-level source/status retain historical qualification; current patches require per-consumer compilation/browser/native qualification."
+  "revisionNote": "A live admitted trusted primary contact owns logical canvas focus across press/repaints/release even when DOM focus is delayed. Only its current enabled textual owner/IME may activate on the genuine release; cancel/secondary/block and load/reopen never grant activation. Per-consumer and native qualification remain required."
 }

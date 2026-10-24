@@ -1,6 +1,6 @@
 --- /dev/null
 +++ b/vendor/eframe-0.36.2/src/web/text_input_activation.rs
-@@ -0,0 +1,224 @@
+@@ -0,0 +1,252 @@
 +//! A primary contact has one release-family owner. This is not a gesture clock:
 +//! egui remains responsible for click/drag thresholds and textual admission.
 +
@@ -60,6 +60,12 @@
 +        }
 +        self.ended = true;
 +        Some(!self.blocked)
++    }
++
++    /// The current admitted contact owns logical canvas focus until release.
++    /// A delayed DOM focus grant must not erase its press/selection state.
++    pub fn is_active(&self) -> bool {
++        self.owner.is_some() && !self.ended && !self.blocked
 +    }
 +
 +    pub fn block(&mut self) {
@@ -134,6 +140,28 @@
 +#[cfg(test)]
 +mod tests {
 +    use super::*;
++
++    #[test]
++    fn logical_focus_ends_with_its_contact_and_never_survives_block_or_cancel() {
++        let mut contact = PrimaryContact::default();
++        assert!(!contact.is_active());
++        assert!(!contact.start(Family::Pointer, 1, false));
++        assert!(!contact.is_active());
++        assert!(contact.start(Family::Pointer, 2, true));
++        assert!(contact.is_active());
++        assert!(!contact.start(Family::Touch, 8, true));
++        assert_eq!(contact.end(Family::Pointer, 2), None);
++        assert!(contact.is_active());
++        assert_eq!(contact.end(Family::Touch, 8), Some(true));
++        assert!(!contact.is_active());
++        assert!(contact.start(Family::Touch, 3, true));
++        contact.block();
++        assert!(!contact.is_active());
++        assert_eq!(contact.end(Family::Touch, 3), Some(false));
++        assert!(contact.start(Family::Touch, 4, true));
++        assert!(contact.cancel());
++        assert!(!contact.is_active());
++    }
 +
 +    #[test]
 +    fn pointer_only_and_touch_only_admit_one_pair_and_release() {
@@ -279,7 +307,19 @@
              screenshot_commands_with_frame_delay: vec![],
              textures_delta: Default::default(),
              clipped_primitives: None,
-@@ -251,7 +255,16 @@
+@@ -237,5 +241,10 @@
+     pub fn update_focus(&mut self) {
+-        let has_focus = self.has_focus();
++        // A genuine contact owns logical focus even if the DOM grant is delayed.
++        // Its press state survives repaints; only the same accepted release may
++        // activate the current textual owner, within that trusted callback.
++        let has_focus = self.has_focus()
++            || self.input.primary_contact.is_active()
++            || (self.pointer_callback && self.allow_text_activation);
+         if self.input.raw.focused != has_focus {
+             log::trace!("{} Focus changed to {has_focus}", self.canvas().id());
+             self.input.set_focus(has_focus);
+@@ -251,7 +260,16 @@
      /// Runs the logic, but doesn't paint the result.
      ///
      /// The result can be painted later with a call to [`Self::run_and_paint`] or [`Self::paint`].
@@ -296,7 +336,7 @@
          // We sometimes miss blur/focus events due to the text agent, so let's just poll each frame:
          self.update_focus();
          // We might have received a screenshot
-@@ -412,21 +425,11 @@
+@@ -412,21 +430,11 @@
  
          super::set_cursor_icon(self.canvas(), cursor_icon);
  
@@ -323,7 +363,7 @@
          if let Err(err) = self
              .text_agent
              .update(ime, self.canvas(), self.egui_ctx.zoom_factor())
-@@ -436,6 +439,34 @@
+@@ -436,6 +444,34 @@
                  super::string_from_js_value(&err)
              );
          }
