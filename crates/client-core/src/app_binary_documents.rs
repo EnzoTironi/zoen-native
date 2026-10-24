@@ -1,16 +1,16 @@
 //! Typed binary Apps share the existing signed Item/FileDoc, encrypted chunks and
 //! atomic event/outbox transaction. This module is not another document database.
 use crate::{
-    engine::{Engine, R},
     Client, CoreError,
+    engine::{Engine, R},
 };
-use base64::{engine::general_purpose::STANDARD, Engine as _};
-use miniapps::deckcraft::{self, Document};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
+use miniapps::{binary::Format, deckcraft};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeSet, HashMap};
 use types::{
-    new_id, AppDoc, Capability, EventBody, Grant, GrantScope, ItemContent, ItemKind, TrustLevel,
+    AppDoc, Capability, EventBody, Grant, GrantScope, ItemContent, ItemKind, TrustLevel, new_id,
 };
 
 pub(crate) const MAX_BASE64_BYTES: usize = deckcraft::MAX_BYTES.div_ceil(3) * 4;
@@ -44,8 +44,8 @@ struct Receipt {
 fn invalid() -> CoreError {
     CoreError::Invalid {
         reason: crate::i18n::t(
-            "Documento de apresentação inválido ou incompatível.",
-            "Invalid or unsupported DeckCraft document.",
+            "Documento deste App inválido ou incompatível.",
+            "Invalid or unsupported App document.",
         ),
     }
 }
@@ -88,26 +88,30 @@ fn digest(s: &str) -> bool {
         && s.bytes()
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
-fn decode(data: &str) -> R<Vec<u8>> {
+fn decode(data: &str, format: Format) -> R<Vec<u8>> {
     if data.is_empty() || data.len() > MAX_BASE64_BYTES {
         return Err(invalid());
     }
     let bytes = STANDARD.decode(data).map_err(|_| invalid())?;
-    if bytes.len() > deckcraft::MAX_BYTES || STANDARD.encode(&bytes) != data {
+    if bytes.len() > format.max_bytes() || STANDARD.encode(&bytes) != data {
         return Err(invalid());
     }
-    Document::parse(&bytes).map_err(|_| invalid())?;
     Ok(bytes)
 }
+fn format(app: &AppDoc) -> R<Format> {
+    let format = Format::for_id(&app.app).ok_or_else(invalid)?;
+    if app.resource_uri != format.resource() {
+        return Err(invalid());
+    }
+    Ok(format)
+}
 fn app(app: &AppDoc) -> R<&types::FileDoc> {
-    if app.app != deckcraft::APP || app.resource_uri != deckcraft::RESOURCE {
-        return Err(invalid());
-    }
+    let format = format(app)?;
     let file = app.document.as_ref().ok_or_else(invalid)?;
-    if file.mime != deckcraft::MIME || file.voice.is_some() || !file.path.is_empty() {
+    if file.mime != format.mime() || file.voice.is_some() || !file.path.is_empty() {
         return Err(invalid());
     }
-    crate::files::validate_file(file, deckcraft::MAX_BYTES as u64)?;
+    crate::files::validate_file(file, format.max_bytes() as u64)?;
     Ok(file)
 }
 impl Engine {
@@ -197,143 +201,34 @@ impl Engine {
         let ItemContent::App(document) = &selected.content else {
             return Err(invalid());
         };
+        let format = format(document)?;
         let file = app(document)?;
         if expected_sha.is_some_and(|sha| sha != file.sha256) {
             return Err(stale());
         }
         let bytes = self
-            .owned_file_bytes(file, deckcraft::MAX_BYTES as u64)?
+            .owned_file_bytes(file, format.max_bytes() as u64)?
             .ok_or_else(|| CoreError::Invalid {
                 reason: crate::i18n::t(
                     "O documento deste App ainda está chegando.",
                     "The App document is still arriving.",
                 ),
             })?;
-        Document::parse(&bytes).map_err(|_| invalid())?;
+        format
+            .metadata(&bytes, &document.title)
+            .map_err(|_| invalid())?;
         Ok(AppBinaryDocumentDto {
             item_id: item.into(),
-            kind: deckcraft::APP.into(),
+            kind: format.id().into(),
             version: number,
             current_version,
             sha256: file.sha256.clone(),
             byte_length: bytes.len() as u32,
             data_base64: STANDARD.encode(bytes),
-            engine_revision: deckcraft::ENGINE_REVISION.into(),
+            engine_revision: format.revision().into(),
             author_id: selected.author.clone(),
             actor_id,
             actor_kind: actor_kind.into(),
-        })
-    }
-    pub(crate) fn app_binary_create(
-        &mut self,
-        space: &str,
-        title: &str,
-        data: &str,
-        mutation: &str,
-    ) -> R<AppBinaryDocumentDto> {
-        if !token(space)
-            || !token(mutation)
-            || title.trim().is_empty()
-            || title.chars().count() > 160
-            || title.chars().any(char::is_control)
-        {
-            return Err(invalid());
-        }
-        let (me, device) = self.app_document_identity(space)?;
-        if !self.state.writer(space, &me) {
-            return Err(unavailable());
-        }
-        let bytes = decode(data)?;
-        let doc = Document::parse(&bytes).map_err(|_| invalid())?;
-        let sha = hash(&bytes);
-        let owner =
-            serde_json::to_vec(&(&me, &device, space, deckcraft::APP)).map_err(|_| invalid())?;
-        let key = format!("app_document_create_receipts:{}", hash(&owner));
-        let fingerprint = hash(
-            &serde_json::to_vec(&(&me, &device, space, title, &sha, deckcraft::ENGINE_REVISION))
-                .map_err(|_| invalid())?,
-        );
-        let receipts = self.binary_receipts(&key)?;
-        if let Some(r) = receipts.iter().find(|r| r.id == mutation) {
-            if r.fingerprint != fingerprint {
-                return Err(invalid());
-            }
-            let accepted = self.app_binary_read(&r.item, Some(r.version), Some(&r.sha256))?;
-            if self.item_state(&r.item)?.space != space || accepted.sha256 != sha {
-                return Err(storage());
-            }
-            return Ok(accepted);
-        }
-        let item = creation_item_id(&me, &device, space, mutation)?;
-        if self.state.items.contains_key(&item) {
-            return Err(stale());
-        }
-        self.atomic_agent_action(|e| {
-            let file_key = e.file_key(None)?;
-            let file = e.file_doc(
-                space,
-                &file_key,
-                "presentation.deckcraft",
-                "",
-                deckcraft::MIME,
-                &bytes,
-                None,
-                &HashMap::new(),
-            )?;
-            e.store
-                .set_meta(&format!("file_key:{item}"), &hex::encode(file_key))?;
-            e.append(
-                space,
-                &me,
-                EventBody::ItemCreated {
-                    item: item.clone(),
-                    kind: ItemKind::App,
-                    content: ItemContent::App(AppDoc {
-                        app: deckcraft::APP.into(),
-                        resource_uri: deckcraft::RESOURCE.into(),
-                        title: title.into(),
-                        state_json: doc.metadata(title),
-                        document: Some(file),
-                    }),
-                    origin: crate::i18n::t("Apresentação criada", "Created presentation"),
-                },
-            )?;
-            e.append(
-                space,
-                &me,
-                EventBody::GrantIssued {
-                    grant: Grant {
-                        id: new_id("gr"),
-                        grantor: me.clone(),
-                        grantee: Some(format!("app:{item}")),
-                        scope: GrantScope::Item(item.clone()),
-                        capability: Capability::Trust(TrustLevel::Act),
-                        expires_at_ms: None,
-                    },
-                },
-            )?;
-            e.post_as(
-                space,
-                &me,
-                &crate::i18n::t(
-                    "Apresentação adicionada a esta conversa.",
-                    "Presentation added to this conversation.",
-                ),
-                Some(item.clone()),
-            )?;
-            e.binary_receipt(
-                &key,
-                receipts,
-                Receipt {
-                    id: mutation.into(),
-                    intent: fingerprint.clone(),
-                    fingerprint,
-                    item: item.clone(),
-                    version: 1,
-                    sha256: sha,
-                },
-            )?;
-            e.app_binary_read(&item, Some(1), None)
         })
     }
     /// Resolve a durable command intent before executing an engine after a lost response.
@@ -394,8 +289,11 @@ impl Engine {
             return Err(invalid());
         }
         let (me, device, space, current_version, previous) = self.binary_scope(item, true)?;
-        let bytes = decode(data)?;
-        let document = Document::parse(&bytes).map_err(|_| invalid())?;
+        let format = format(&previous)?;
+        let bytes = decode(data, format)?;
+        let metadata = format
+            .metadata(&bytes, &previous.title)
+            .map_err(|_| invalid())?;
         let sha = hash(&bytes);
         let owner = serde_json::to_vec(&(&me, &device, item)).map_err(|_| invalid())?;
         let key = format!("app_document_receipts:{}", hash(&owner));
@@ -408,7 +306,7 @@ impl Engine {
                 expected_sha,
                 &sha,
                 intent_sha,
-                deckcraft::ENGINE_REVISION,
+                format.revision(),
             ))
             .map_err(|_| invalid())?,
         );
@@ -451,9 +349,9 @@ impl Engine {
             let file = e.file_doc(
                 &space,
                 &file_key,
-                "presentation.deckcraft",
+                format.filename(),
                 "",
-                deckcraft::MIME,
+                format.mime(),
                 &bytes,
                 None,
                 &prior,
@@ -461,7 +359,7 @@ impl Engine {
             e.store
                 .set_meta(&format!("file_key:{item}"), &hex::encode(file_key))?;
             let next = AppDoc {
-                state_json: document.metadata(&previous.title),
+                state_json: metadata,
                 document: Some(file),
                 ..previous
             };
@@ -473,7 +371,14 @@ impl Engine {
                 EventBody::ItemVersioned {
                     item: item.into(),
                     content: ItemContent::App(next),
-                    note: crate::i18n::t("Apresentação atualizada", "Updated presentation"),
+                    note: match format {
+                        Format::Deckcraft => {
+                            crate::i18n::t("Apresentação atualizada", "Updated presentation")
+                        }
+                        Format::Gridcraft => {
+                            crate::i18n::t("Planilha atualizada", "Updated spreadsheet")
+                        }
+                    },
                 },
             )?;
             let version = e.item_state(item)?.current().number;
@@ -515,6 +420,19 @@ impl Client {
         let _g = crate::i18n::enter(self.lang);
         self.lock()
             .app_binary_create(&space_id, &title, &data_base64, &mutation_id)
+    }
+    pub fn app_binary_create_for(
+        &self,
+        app_id: String,
+        space_id: String,
+        title: String,
+        data_base64: String,
+        mutation_id: String,
+    ) -> R<AppBinaryDocumentDto> {
+        let _g = crate::i18n::enter(self.lang);
+        let format = Format::for_id(&app_id).ok_or_else(invalid)?;
+        self.lock()
+            .app_binary_create_format(format, &space_id, &title, &data_base64, &mutation_id)
     }
     pub fn app_binary_result(
         &self,

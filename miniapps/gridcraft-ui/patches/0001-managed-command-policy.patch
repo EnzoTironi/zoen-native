@@ -1,0 +1,48 @@
+--- a/crates/engine/src/lib.rs
++++ b/crates/engine/src/lib.rs
+@@ -290,6 +290,10 @@
+
+ #[derive(Default)]
+ pub struct Session {
++    /// Embedding policy checked before every nested/UI/headless command.
++    pub command_policy: Option<fn(&Session, &str, &Json) -> Result<()>>,
++    /// Local input freeze while the host owns an unacknowledged CAS proposal.
++    pub managed_frozen: bool,
+     docs: Vec<DocState>,
+     active: usize,
+     pub clipboard: Option<Clipboard>,
+@@ -415,6 +419,7 @@
+     /// Runs a command by id. Undoable commands record a history step when the workbook changed.
+     /// Panics inside commands are caught and reported; the workbook is restored.
+     pub fn execute(&mut self, id: &str, params: Json) -> Result<Json> {
++        if let Some(policy) = self.command_policy { policy(self, id, &params)?; }
+         let spec = find_command(id).ok_or_else(|| EngineError::UnknownCommand(id.to_string()))?;
+         if let Err(why) = (spec.enabled)(self) {
+             return Err(EngineError::Disabled(id.to_string(), why));
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -395,6 +395,9 @@
+     }
+
+     fn run_command(&mut self, id: &str, params: Json) -> Result<Json, String> {
++        if let Some(policy) = self.session.command_policy {
++            policy(&self.session, id, &params).map_err(|error| error.to_string())?;
++        }
+         if matches!(id, "file.save" | "file.saveAs" | "file.saveBytes") {
+             self.store_view_state();
+         }
+--- a/crates/ui-egui/src/grid.rs
++++ b/crates/ui-egui/src/grid.rs
+@@ -3187,6 +3187,12 @@
+ }
+
+ fn filter_menu(app: &mut SheetApp, ui: &mut egui::Ui, geo: &Geo, was_open: bool) {
++    if let Some(policy) = app.session.command_policy
++        && policy(&app.session, "data.filter", &json!({})).is_err()
++    {
++        app.grid.filter_menu = None;
++        return;
++    }
+     let Some((col, row, at)) = app.grid.filter_menu else { return };
+     let Some(d) = app.session.active() else { return };
+     let wb = d.wb.clone();

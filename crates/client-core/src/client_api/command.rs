@@ -499,6 +499,13 @@ pub(super) enum Command {
         data_base64: String,
         mutation_id: String,
     },
+    AppBinaryCreateFor {
+        app_id: String,
+        space_id: String,
+        title: String,
+        data_base64: String,
+        mutation_id: String,
+    },
     AppBinarySave {
         item_id: String,
         expected_version: u32,
