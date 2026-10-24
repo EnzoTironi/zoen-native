@@ -34,10 +34,10 @@ index d3ae79e..7331bb3 100644
  pub mod colors;
 diff --git a/crates/ui-egui/src/text_activation.rs b/crates/ui-egui/src/text_activation.rs
 new file mode 100644
-index 0000000..1c167fb
+index 0000000..4375643
 --- /dev/null
 +++ b/crates/ui-egui/src/text_activation.rs
-@@ -0,0 +1,129 @@
+@@ -0,0 +1,130 @@
 +//! A real managed Word canvas contact owns only its current document's rendered caret.
 +//! This is ephemeral UI ownership, never a document/permission/keyboard clock.
 +use crate::WordApp;
@@ -160,10 +160,11 @@ index 0000000..1c167fb
 +            should_interrupt_composition: interrupt,
 +        })
 +    });
++    let frame = ui.ctx().cumulative_frame_nr();
 +    ui.data_mut(|data| {
 +        data.insert_temp(
 +            Id::new("eframe.text_input_activation"),
-+            Some((ui.ctx().cumulative_frame_nr(), owner)),
++            Some((frame, owner)),
 +        )
 +    });
 +}

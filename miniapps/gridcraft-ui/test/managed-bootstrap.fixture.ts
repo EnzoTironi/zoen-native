@@ -2,6 +2,7 @@ import { createDeckcraftSession } from "../../../apps/zoen/src/miniapps/deckcraf
 import { streamDeckcraftExport } from "../../../apps/zoen/src/miniapps/deckcraft-export";
 import {
   binaryEditorFormat,
+  type BinaryExportFormat,
   type BinaryEditorId,
 } from "../../../apps/zoen/src/miniapps/binary-formats";
 import { sandboxHtml, type VerifiedMiniappResource } from "../../../apps/zoen/src/miniapps/sandbox";
@@ -149,7 +150,7 @@ export async function startProbe(config: {
     get accepted() {
       return encode64(accepted);
     },
-    share: (kind: "xlsx" | "pdf" | "pptx") => session.share(kind),
+    share: (kind: BinaryExportFormat) => session.share(kind),
     flush: () => session.controller.flush(),
     retire: () => {
       active = false;
