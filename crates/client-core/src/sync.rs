@@ -235,6 +235,7 @@ fn same_media_group(first: &Event, second: &Event) -> bool {
 
 mod account;
 mod ingestion;
+mod member_controls;
 mod outbox;
 mod prepared_account;
 mod profiles;
@@ -244,7 +245,6 @@ mod rejections;
 #[cfg(test)]
 pub(crate) mod replay_probe;
 mod spaces;
-mod member_controls;
 
 impl Engine {
     /// OpenMLS `SenderRatchetConfiguration` default `out_of_order_tolerance`.
