@@ -43,6 +43,7 @@ impl CallTransportPayload {
             }
         }
     }
+    #[must_use]
     pub fn valid_shape(&self) -> bool {
         match self {
             Self::Offer { sdp } | Self::Answer { sdp } => {

@@ -16,3 +16,6 @@ zoen-liveview.workspace = true
 [[bin]]
 name = "zoen-guestd"
 path = "src/main.rs"
+
+[lints]
+workspace = true

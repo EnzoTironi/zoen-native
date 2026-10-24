@@ -32,6 +32,7 @@ fn locator(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
 }
 impl OwnerPolicyInquiry {
+    #[must_use]
     pub fn valid_shape(&self) -> bool {
         locator(&self.id)
             && digest_id(&self.owner)
@@ -52,6 +53,7 @@ impl OwnerPolicyInquiry {
             }
             && self.at_ms > 0
     }
+    #[must_use]
     pub fn fresh_at(&self, at_ms: i64) -> bool {
         self.valid_shape()
             && at_ms > 0
@@ -75,6 +77,7 @@ pub struct OwnerPolicyImageSpec {
     pub quality: String,
 }
 impl OwnerPolicyImageSpec {
+    #[must_use]
     pub fn valid_shape(&self) -> bool {
         ["1024x1024", "1536x1024", "1024x1536"].contains(&self.size.as_str())
             && ["low", "medium", "high"].contains(&self.quality.as_str())

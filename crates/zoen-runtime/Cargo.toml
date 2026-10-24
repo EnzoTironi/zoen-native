@@ -40,3 +40,6 @@ png = "0.18.1"
 mls.workspace = true
 store.workspace = true
 tokio = { version = "1", features = ["net", "io-util"] }
+
+[lints]
+workspace = true

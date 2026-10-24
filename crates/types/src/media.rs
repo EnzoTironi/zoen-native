@@ -57,10 +57,12 @@ impl std::error::Error for MediaMetadataError {
 }
 
 impl AttachmentSendOptions {
+    #[must_use]
     pub fn is_default(&self) -> bool {
         *self == Self::default()
     }
 
+    #[must_use]
     pub fn validate_count(&self, count: usize) -> bool {
         (1..=10).contains(&count) && (self.grouping != AttachmentGrouping::Grouped || count >= 2)
     }
@@ -129,6 +131,7 @@ pub struct MediaGroup {
 }
 
 impl MediaGroup {
+    #[must_use]
     pub fn is_valid(&self) -> bool {
         self.id.strip_prefix("album_").is_some_and(|hash| {
             hash.len() == 64
@@ -153,6 +156,7 @@ impl MessageMedia {
         self.group.as_ref().is_none_or(MediaGroup::is_valid)
     }
     /// Forwarding one message keeps presentation but never joins the source album.
+    #[must_use]
     pub fn without_group(&self) -> Self {
         Self {
             presentation: self.presentation,
@@ -175,6 +179,7 @@ struct GroupCursor {
     reply: Option<crate::ReplyRef>,
 }
 impl MediaGroupTracker {
+    #[must_use]
     pub fn allows(
         &self,
         space: &str,

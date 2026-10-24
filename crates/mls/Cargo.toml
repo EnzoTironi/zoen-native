@@ -30,3 +30,6 @@ hmac = { version = "0.12", optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
+
+[lints]
+workspace = true

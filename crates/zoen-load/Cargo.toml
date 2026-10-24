@@ -17,3 +17,6 @@ tokio-tungstenite = { version = "0.30", default-features = false, features = ["c
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 hdrhistogram = { version = "7", default-features = false }
 fastrand = "2"
+
+[lints]
+workspace = true

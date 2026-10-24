@@ -9,3 +9,6 @@ publish.workspace = true
 [dependencies]
 types.workspace = true
 serde.workspace = true
+
+[lints]
+workspace = true

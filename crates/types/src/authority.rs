@@ -58,7 +58,7 @@ pub enum Capability {
     },
     /// A standing decision on an agent's requests: "always approve" / "always deny" this
     /// kind of action (`grants::standing_key`) in the grant's scope. Issued by the
-    /// agent's owner from the approvals stack; revoking it (GrantRevoked) makes the agent
+    /// agent's owner from the approvals stack; revoking it (`GrantRevoked`) makes the agent
     /// ask again. Red lines can't be always-approved (`standing_allow_permitted`).
     Standing {
         action: String,
@@ -96,7 +96,7 @@ pub enum ActionClass {
     Reply,
     /// Criar/editar/mover dentro do Espaço. Tudo é versionado → desfazível.
     Reversible,
-    /// Mandar algo para fora (e-mail, WhatsApp, agenda).
+    /// Mandar algo para fora (e-mail, `WhatsApp`, agenda).
     External,
     /// Apagar de verdade.
     Irreversible,
@@ -186,6 +186,7 @@ pub struct ItemProposal {
 }
 
 impl AgentRequest {
+    #[must_use]
     pub fn tool_proposal_hash(&self, space: &str) -> Option<String> {
         use sha2::{Digest, Sha256};
         let proposal = self.tool_proposal.as_ref()?;
@@ -203,6 +204,7 @@ impl AgentRequest {
         .ok()?;
         Some(hex::encode(Sha256::digest(bytes)))
     }
+    #[must_use]
     pub fn proposal_hash(&self, space: &str) -> Option<String> {
         use sha2::{Digest, Sha256};
         let proposal = self.proposal.as_ref()?;
@@ -217,7 +219,7 @@ impl AgentRequest {
             &self.action,
             proposal,
         ))
-        .expect("an item proposal serializes");
+        .ok()?;
         Some(hex::encode(Sha256::digest(bytes)))
     }
 }

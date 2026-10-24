@@ -113,6 +113,11 @@ jobs:
           # The WASM tier's journey builds its tools as WASI p2 components (ADR 0028 T0).
           rustup target add wasm32-wasip2
 
+      - name: Shared Rust lint policy
+        run: |
+          python3 scripts/check-rust-lint-policy.py
+          python3 -m unittest discover -s scripts/tests -p 'test_rust_lint*.py' -v
+
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Shared Cargo source qualification guard
