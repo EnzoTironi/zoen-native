@@ -37,6 +37,7 @@ impl Engine {
         let dirty: Vec<SpaceId> = self.net.mls.dirty.iter().cloned().collect();
         let mut unsupported = false;
         for space in dirty {
+            self.mls_siblings_in(&space)?;
             self.settle_rewelcome(&space);
             self.settle_joins(&space);
             let owed = match self.owed(&space) {
