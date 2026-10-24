@@ -279,14 +279,13 @@
              screenshot_commands_with_frame_delay: vec![],
              textures_delta: Default::default(),
              clipped_primitives: None,
-@@ -237,5 +241,9 @@
+@@ -237,5 +241,8 @@
      pub fn update_focus(&mut self) {
 -        let has_focus = self.has_focus();
 +        // The current trusted textual release already focuses this app. WebKit
 +        // may grant DOM canvas focus later; do not postpone its IME admission
 +        // to an ordinary RAF outside that genuine user callback.
-+        let has_focus = self.has_focus()
-+            || (self.pointer_callback && self.allow_text_activation);
++        let has_focus = self.has_focus() || (self.pointer_callback && self.allow_text_activation);
          if self.input.raw.focused != has_focus {
              log::trace!("{} Focus changed to {has_focus}", self.canvas().id());
              self.input.set_focus(has_focus);

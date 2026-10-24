@@ -9,8 +9,8 @@
   "patches": [
     {
       "path": "patches/eframe-current-owner.patch",
-      "bytes": 15755,
-      "sha256": "07e723549084e9f1325278b6f12038c1a0ed21a4ca93423da0cbbb6bf6b08fb4"
+      "bytes": 15742,
+      "sha256": "2054c21aa282bf24e51b3d93c94371aa3ef5c4e986364fb0c2c1b1625c1ccc38"
     },
     {
       "path": "patches/eframe-primary-contact.patch",
