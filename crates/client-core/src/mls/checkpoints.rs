@@ -14,15 +14,24 @@ impl Engine {
             .cloned()
             .collect();
         for space in spaces {
-            if !self.device().is_ok_and(|d| d.has_group(&space)) {
-                continue;
-            }
             let last: Option<i64> = self
                 .store
                 .meta(&checkpointed_ms_meta(&space))
                 .ok()
                 .flatten()
                 .and_then(|v| v.parse().ok());
+            // A recent clock needs no new checkpoint. Loading every group's
+            // encrypted MLS state first blocks cold catch-up for unrelated work.
+            // This skips only this refresh scan; dirty/recovery/publication gates
+            // still inspect their own real group state normally.
+            if last.is_some_and(|last| now.saturating_sub(last) < checkpoint_refresh_ms()) {
+                continue;
+            }
+            #[cfg(test)]
+            refresh_probe::before_group_read();
+            if !self.device().is_ok_and(|d| d.has_group(&space)) {
+                continue;
+            }
             // A group this device never checkpointed starts its clock now: its hold (from
             // when it was added) is fresh, and a device in many new groups must not
             // checkpoint them all at its next launch.
@@ -32,7 +41,7 @@ impl Engine {
                     .set_meta(&checkpointed_ms_meta(&space), &now.to_string());
                 continue;
             };
-            if now - last >= checkpoint_refresh_ms() {
+            if now.saturating_sub(last) >= checkpoint_refresh_ms() {
                 self.net.mls.checkpoint_due.insert(space);
             }
         }
@@ -140,3 +149,7 @@ impl Engine {
         Ok(queued)
     }
 }
+
+#[cfg(test)]
+#[path = "checkpoints/refresh_probe.rs"]
+pub(crate) mod refresh_probe;
