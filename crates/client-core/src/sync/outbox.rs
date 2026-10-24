@@ -2,6 +2,9 @@
 
 use super::*;
 
+#[cfg(test)]
+mod fault_tests;
+
 impl Engine {
     /// Upload availability is not write authority: signed/canonical admission still
     /// runs normally. This only resolves the File bytes an outbox intent references.
