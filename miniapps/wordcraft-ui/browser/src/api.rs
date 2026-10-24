@@ -95,13 +95,12 @@ pub(crate) fn layout() -> Option<Layout> {
 }
 
 #[wasm_bindgen(js_name=zoenHostRequest)]
-pub fn request(envelope: String, bytes: Vec<u8>) -> Promise {
+pub fn request(envelope: &str, bytes: Vec<u8>) -> Promise {
     if envelope.len() > 65_536 || bytes.len() > MAX_DOCUMENT {
         return Promise::reject(&error("request_too_large"));
     }
-    let request = match serde_json::from_str::<Request>(&envelope) {
-        Ok(r) => r,
-        Err(_) => return Promise::reject(&error("invalid_request")),
+    let Ok(request) = serde_json::from_str::<Request>(envelope) else {
+        return Promise::reject(&error("invalid_request"));
     };
     if !matches!(request, Request::Open(_)) && !bytes.is_empty() {
         return Promise::reject(&error("unexpected_binary_input"));
@@ -139,6 +138,8 @@ pub fn request(envelope: String, bytes: Vec<u8>) -> Promise {
     })
 }
 #[wasm_bindgen(js_name=zoenHostOnChange)]
+/// # Errors
+/// Refuses callback replacement before startup or after owner retirement.
 pub fn on_change(callback: Option<Function>) -> Result<(), JsValue> {
     QUEUE.with(|q| {
         let mut q = q.borrow_mut();
@@ -150,6 +151,8 @@ pub fn on_change(callback: Option<Function>) -> Result<(), JsValue> {
     })
 }
 #[wasm_bindgen(js_name=zoenHostOnExport)]
+/// # Errors
+/// Refuses callback replacement before startup or after owner retirement.
 pub fn on_export(callback: Option<Function>) -> Result<(), JsValue> {
     QUEUE.with(|q| {
         let mut q = q.borrow_mut();
@@ -231,11 +234,11 @@ pub(crate) fn drain(bridge: &mut wordcraft_zoen_host::browser::BrowserBridge, ap
             }
         }
         Request::Layout(r) => {
-            if !r.valid() {
-                Err("invalid_host_layout".into())
-            } else {
+            if r.valid() {
                 QUEUE.with(|q| q.borrow_mut().layout = Some(r));
                 Ok(empty(json!({"layoutAccepted":true})))
+            } else {
+                Err("invalid_host_layout".into())
             }
         }
     };

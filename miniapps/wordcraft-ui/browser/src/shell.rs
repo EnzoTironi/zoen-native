@@ -2,7 +2,7 @@ use crate::{api, layout::Theme};
 use wasm_bindgen::{JsCast as _, JsValue};
 use wordcraft_doc::Document;
 use wordcraft_engine::Session;
-use wordcraft_ui_egui::WordApp;
+use wordcraft_ui_egui::{Services, WordApp};
 use wordcraft_zoen_host::browser::BrowserBridge;
 
 pub async fn start() -> Result<(), JsValue> {
@@ -25,7 +25,7 @@ pub async fn start() -> Result<(), JsValue> {
                 }
                 // No standalone preferences, inbox, file/print/link/font services, storage, recovery
                 // path or collaboration is installed. These are the actual upstream canvas and keys.
-                let mut app = WordApp::new(Session::new(Document::new()), Default::default());
+                let mut app = WordApp::new(Session::new(Document::new()), Services::default());
                 app.autosave = false;
                 api::install(cc.egui_ctx.clone());
                 Ok(Box::new(Shell {
@@ -47,7 +47,7 @@ impl eframe::App for Shell {
     fn logic(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
         if api::retired() {
             if !self.wiped {
-                self.app = WordApp::new(Session::new(Document::new()), Default::default());
+                self.app = WordApp::new(Session::new(Document::new()), Services::default());
                 self.bridge = BrowserBridge::default();
                 self.wiped = true;
             }
