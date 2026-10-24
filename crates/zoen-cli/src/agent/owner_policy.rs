@@ -83,12 +83,33 @@ async fn reconcile(e: &Client, agent: &str, space: &str, summary: &mut Summary) 
                     continue;
                 }
                 counts.rechecked += 1;
+                // Incomplete directory blocks a recovery mutation, not the
+                // unchanged read-only Runtime options path. Preserve its error.
+                let welcome_attempt = e.owner_policy_welcome_attempt(&current);
                 let command = Command::PolicyContext {
                     agent: agent.into(),
                     signed: Box::new(current.signed().clone()),
                 };
                 counts.ipc_calls += 1;
                 match reply::options(image_ipc::execute_observed(command).await, current.digest()) {
+                    reply::OptionsReply::NeedsWelcome(device) => {
+                        let recovery = welcome_attempt.and_then(|attempt| {
+                            e.request_owner_policy_welcome(&current, &attempt, &device)
+                        });
+                        if let Err(error) = recovery {
+                            counts.core_error =
+                                Some(observation::failure(CoreStage::Recheck, &error));
+                        }
+                        // Delayed Welcome remains pending. Only a subsequent
+                        // actual Runtime options admission may report success.
+                        match e.owner_policy_worker_observation(&current) {
+                            Ok(observed) => counts.worker_group = Some(observed),
+                            Err(error) => {
+                                counts.core_error =
+                                    Some(observation::failure(CoreStage::Observation, &error))
+                            }
+                        }
+                    }
                     reply::OptionsReply::Report(options) => {
                         match e.report_owner_policy_options(&current, *options) {
                             Ok(()) => counts.report_accepted += 1,

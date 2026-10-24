@@ -25,7 +25,11 @@ fn ingest_at(core: &mut DeviceCore, entries: Vec<Sequenced>, phase: &str) -> Tes
         .map_err(|error| format!("{phase}: {error:?}").into())
 }
 
-fn deliver_handshakes(owner: &mut Engine, worker: &mut DeviceCore, phase: &str) -> TestResult {
+pub(super) fn deliver_handshakes(
+    owner: &mut Engine,
+    worker: &mut DeviceCore,
+    phase: &str,
+) -> TestResult {
     for (sha, _) in owner.pending_uploads(100) {
         owner.upload_done(&sha);
     }
@@ -47,6 +51,15 @@ fn deliver_handshakes(owner: &mut Engine, worker: &mut DeviceCore, phase: &str) 
 #[test]
 fn cold_capsule_with_pruned_welcome_needs_its_own_fresh_welcome_not_worker_readiness() -> TestResult
 {
+    recovery(false)
+}
+
+#[test]
+fn typed_runtime_missing_group_hint_recovers_one_original_across_ack_loss_and_cold() -> TestResult {
+    recovery(true)
+}
+
+fn recovery(typed: bool) -> TestResult {
     let mut before_welcome = None;
     let mut public_stock = None;
     let mut f = Fixture::new_with_key_package(SPACE, |core| {
@@ -178,13 +191,69 @@ fn cold_capsule_with_pruned_welcome_needs_its_own_fresh_welcome_not_worker_readi
 
     // A normal signed sibling rejoin and fresh genuine package recover this
     // capsule. Neither the worker's group nor an approval is copied into it.
-    worker.engine.append(
-        SPACE,
-        &f.agent_profile.id,
-        EventBody::DeviceJoining {
-            device: f.agent_device.id(),
-        },
-    )?;
+    let mut late_attempt = None;
+    let mut second_query = None;
+    if typed {
+        worker.engine.devices_arrived(vec![
+            protocol::DeviceRecord {
+                device: worker_key.id(),
+                revoked: false,
+            },
+            protocol::DeviceRecord {
+                device: f.agent_device.id(),
+                revoked: false,
+            },
+        ])?;
+        let other = f.owner.request_account_policy_options(&scope)?;
+        f.owner.mls_seal_outbox()?;
+        for envelope in f.owner.outbox_envelopes() {
+            let entry = ordered(&f.owner, envelope);
+            assert_eq!(f.owner.ingest(entry.clone()), Ingest::Confirmed);
+            ingest_at(
+                &mut worker,
+                vec![entry.clone()],
+                "second original on worker",
+            )?;
+            ingest_at(&mut cold, vec![entry], "second original on cold native")?;
+        }
+        let other = worker.engine.owner_policy_inquiry(SPACE, &other.source)?;
+        let attempt = worker.engine.owner_policy_welcome_attempt(&query)?;
+        late_attempt = Some(worker.engine.owner_policy_welcome_attempt(&other)?);
+        assert!(worker.engine.request_owner_policy_welcome(
+            &query,
+            &attempt,
+            &f.agent_device.id()
+        )?);
+        assert!(!worker.engine.request_owner_policy_welcome(
+            &query,
+            &attempt,
+            &f.agent_device.id()
+        )?);
+        let original = worker.engine.outbox_envelopes();
+        assert_eq!(original.len(), 1);
+        worker = DeviceCore::restore(worker.image()?, worker_credential()?)?;
+        worker.engine.set_registered(true)?;
+        let retry = worker.engine.owner_policy_welcome_attempt(&other)?;
+        assert!(!worker.engine.request_owner_policy_welcome(
+            &other,
+            &retry,
+            &f.agent_device.id()
+        )?);
+        assert_eq!(
+            worker.engine.outbox_envelopes(),
+            original,
+            "one retained signed joining after cold/ACK loss"
+        );
+        second_query = Some(other);
+    } else {
+        worker.engine.append(
+            SPACE,
+            &f.agent_profile.id,
+            EventBody::DeviceJoining {
+                device: f.agent_device.id(),
+            },
+        )?;
+    }
     for envelope in worker.engine.outbox_envelopes() {
         let entry = ordered(&f.owner, envelope);
         assert_eq!(f.owner.ingest(entry.clone()), Ingest::Applied);
@@ -252,6 +321,32 @@ fn cold_capsule_with_pruned_welcome_needs_its_own_fresh_welcome_not_worker_readi
         "fresh rejoin handshake on native",
     )?;
     cold.owner_policy_account_context(query.signed(), crate::engine::now_ms())?;
+    if let (Some(other), Some(late)) = (second_query.as_ref(), late_attempt.as_ref()) {
+        assert!(
+            worker
+                .engine
+                .request_owner_policy_welcome(other, late, &f.agent_device.id())
+                .is_err(),
+            "retired epoch cannot borrow the fresh leaf"
+        );
+        let fresh = worker.engine.owner_policy_welcome_attempt(other)?;
+        assert!(
+            !worker
+                .engine
+                .request_owner_policy_welcome(other, &fresh, &f.agent_device.id())?,
+            "another old inquiry cannot rotate the recovered leaf"
+        );
+        worker = DeviceCore::restore(worker.image()?, worker_credential()?)?;
+        worker.engine.set_registered(true)?;
+        let fresh = worker.engine.owner_policy_welcome_attempt(other)?;
+        assert!(
+            !worker
+                .engine
+                .request_owner_policy_welcome(other, &fresh, &f.agent_device.id())?,
+            "accepted association survives cold restore"
+        );
+        assert!(worker.engine.store.outbox()?.is_empty());
+    }
     cold = DeviceCore::restore(cold.image()?, f.credential())?;
     cold.owner_policy_account_context(query.signed(), crate::engine::now_ms())?;
     assert!(cold.engine.store.outbox()?.is_empty());

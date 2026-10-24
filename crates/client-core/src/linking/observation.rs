@@ -21,6 +21,21 @@ fn directory_set(raw: &str) -> Option<BTreeSet<String>> {
     (n == unique.len()).then_some(unique)
 }
 impl Engine {
+    /// Mutations require both complete sets, never missing/corrupt-as-empty.
+    pub(crate) fn linked_device_directory(&self) -> R<(BTreeSet<String>, BTreeSet<String>)> {
+        let reject = || CoreError::Forbidden {
+            reason: "Complete current linked-device directory required.".into(),
+        };
+        let active = self.store.meta(META_ACTIVE)?.ok_or_else(reject)?;
+        let revoked = self.store.meta(META_REVOKED)?.ok_or_else(reject)?;
+        let active = directory_set(&active).ok_or_else(reject)?;
+        let revoked = directory_set(&revoked).ok_or_else(reject)?;
+        if !active.is_disjoint(&revoked) {
+            return Err(reject());
+        }
+        Ok((active, revoked))
+    }
+
     pub(crate) fn linked_group_observation(&self, space: &str) -> R<WorkerGroupObservation> {
         let account = self.account().ok_or_else(|| CoreError::Forbidden {
             reason: "Current owner-control account unavailable.".into(),

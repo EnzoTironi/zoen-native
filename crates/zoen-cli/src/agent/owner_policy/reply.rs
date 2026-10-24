@@ -10,6 +10,7 @@ pub(super) enum Fault {
     Mismatch,
 }
 pub(super) enum OptionsReply {
+    NeedsWelcome(String),
     Report(Box<types::owner_policy_context::OwnerPolicyOptions>),
     Refuse,
     Pending(Fault),
@@ -19,6 +20,15 @@ pub(super) fn options(
     digest: &str,
 ) -> OptionsReply {
     match reply {
+        Ok(PolicyProgress::NeedsWelcome {
+            inquiry_digest,
+            device,
+        }) if inquiry_digest == digest
+            && device.len() == 64
+            && device.bytes().all(|byte| byte.is_ascii_hexdigit()) =>
+        {
+            OptionsReply::NeedsWelcome(device)
+        }
         Ok(PolicyProgress::Options { options }) if options.inquiry_digest == digest => {
             OptionsReply::Report(options)
         }
@@ -47,6 +57,25 @@ pub(super) fn observe(counts: &mut Counts, fault: Fault) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn welcome_hint_is_not_a_report_and_requires_exact_digest_and_public_device() {
+        let device = "ab".repeat(32);
+        assert!(matches!(options(Ok(PolicyProgress::NeedsWelcome {
+            inquiry_digest: "exact".into(), device: device.clone(),
+        }), "exact"), OptionsReply::NeedsWelcome(actual) if actual == device));
+        for (digest, device) in [("wrong", device.as_str()), ("exact", "bad/public/device")] {
+            assert!(matches!(
+                options(
+                    Ok(PolicyProgress::NeedsWelcome {
+                        inquiry_digest: digest.into(),
+                        device: device.into(),
+                    }),
+                    "exact"
+                ),
+                OptionsReply::Pending(Fault::Mismatch)
+            ));
+        }
+    }
     #[test]
     fn context_stage_survives_without_becoming_an_authenticated_refusal(
     ) -> Result<(), Box<dyn std::error::Error>> {

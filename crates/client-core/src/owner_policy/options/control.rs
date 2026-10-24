@@ -136,7 +136,10 @@ impl Engine {
             digest: event_log::owner_policy_inquiry::digest(&signed.inquiry).ok_or_else(invalid)?,
         })
     }
-    fn owner_policy_options_reported(&self, query: &OwnerPolicyInquiryControl) -> R<bool> {
+    pub(in crate::owner_policy) fn owner_policy_options_reported(
+        &self,
+        query: &OwnerPolicyInquiryControl,
+    ) -> R<bool> {
         let pending = self.store.outbox()?;
         Ok(pending
             .iter()

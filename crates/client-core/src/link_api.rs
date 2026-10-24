@@ -30,6 +30,7 @@ use crate::{
     sync::{VAULT_DEVICE, VAULT_IDENTITY},
     AccountDto, Client, CoreError,
 };
+pub(crate) use directory::DirectoryOwner;
 
 const VAULT_PEERS: &str = "link.peers";
 const META_HISTORY: &str = "link.history";

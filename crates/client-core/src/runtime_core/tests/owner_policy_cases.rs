@@ -14,6 +14,7 @@ mod inquiry_recovery;
 mod publication_cases;
 mod retained_membership;
 mod retained_welcome;
+mod welcome_recovery;
 mod worker_observation;
 
 fn setup() -> StdResult<(Fixture, OwnerPolicyScope, String), Box<dyn std::error::Error>> {
