@@ -5,8 +5,8 @@ use protocol::{ClientFrame, DeviceRecord, ServerFrame, PROTOCOL_VERSION};
 use std::{cell::Cell, sync::Arc, time::Duration};
 use tokio_tungstenite::tungstenite::Message;
 
-struct Relay {
-    url: String,
+pub(crate) struct Relay {
+    pub(crate) url: String,
     task: tokio::task::JoinHandle<()>,
 }
 impl Drop for Relay {
@@ -15,7 +15,7 @@ impl Drop for Relay {
     }
 }
 
-async fn relay(peer: String) -> Relay {
+pub(crate) async fn relay(peer: String) -> Relay {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
     let task = tokio::spawn(async move {
@@ -142,7 +142,7 @@ impl Drop for Fixture {
         self.client.stop_sync();
     }
 }
-async fn online(client: &Client) {
+pub(crate) async fn online(client: &Client) {
     client.start_sync(None).unwrap();
     tokio::time::timeout(Duration::from_secs(5), async {
         while client.connection().state != "online" || !client.connection().synced {

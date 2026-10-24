@@ -6,6 +6,7 @@ mod image_context;
 mod observation;
 mod options;
 mod publication;
+mod welcome;
 use crate::{
     engine::{Engine, R},
     Client, CoreError,
@@ -22,6 +23,7 @@ pub use options::{
 };
 use serde::{Deserialize, Serialize};
 use types::{owner_budget::OwnerPeriodPolicy, EventBody, IdentityKind, Privacy, SpaceKind};
+pub use welcome::OwnerPolicyWelcomeAttempt;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]

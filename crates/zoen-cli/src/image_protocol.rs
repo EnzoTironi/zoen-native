@@ -31,6 +31,12 @@ pub(crate) enum Command {
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum PolicyProgress {
+    /// Only a precise missing-group rejection from the configured native core.
+    /// Not a quote/refusal, and never evidence that a Welcome has arrived.
+    NeedsWelcome {
+        inquiry_digest: String,
+        device: String,
+    },
     /// A diagnostic outcome only: never a refusal, receipt or retry permission.
     Unavailable {
         operation: PolicyOperation,

@@ -51,6 +51,60 @@ fn encrypted_genesis_and_add_create_holds_before_any_welcome_can_be_pruned() {
 }
 
 #[test]
+fn a_worker_checkpoint_does_not_create_a_cold_siblings_retention_hold() {
+    for native_announced in [false, true] {
+        let people = members();
+        let mut epoch = None;
+        let mut holds = Holds::from([
+            (("owner".into(), ADDED.into()), (0, 1000)),
+            (("peer".into(), ADDED.into()), (1, 1000)),
+        ]);
+        if native_announced {
+            let writes = transition(
+                &Effect::Hold {
+                    device: "cold-native".into(),
+                },
+                Some(Privacy::EndToEnd),
+                "peer",
+                2,
+                1001,
+                &people,
+                &holds,
+            )
+            .unwrap();
+            apply(&mut epoch, &mut holds, &writes);
+        }
+        // Both warm devices checkpoint beyond a Welcome at sequence 3. The
+        // shared identity sentinel is removed by peer/worker's checkpoint.
+        for (author, device) in [("owner", "owner-device"), ("peer", "worker")] {
+            let writes = transition(
+                &Effect::Checkpoint {
+                    device: device.into(),
+                    upto: 8,
+                },
+                Some(Privacy::EndToEnd),
+                author,
+                9,
+                1002,
+                &people,
+                &holds,
+            )
+            .unwrap();
+            apply(&mut epoch, &mut holds, &writes);
+        }
+        assert!(!holds.contains_key(&("peer".into(), ADDED.into())));
+        assert_eq!(
+            holds.contains_key(&("peer".into(), "cold-native".into())),
+            native_announced
+        );
+        assert_eq!(
+            prune_floor(Some(Privacy::EndToEnd), &people, &holds, 1003, 3000),
+            Some(if native_announced { 2 } else { 8 })
+        );
+    }
+}
+
+#[test]
 fn encryption_installs_every_member_hold_and_removal_drops_all_their_devices() {
     let plan = transition(
         &Effect::Encrypt,

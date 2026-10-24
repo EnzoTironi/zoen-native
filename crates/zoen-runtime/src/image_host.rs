@@ -56,6 +56,12 @@ pub enum ImageHostProgress {
 }
 
 impl ImageRuntimeHost {
+    /// Public certified device selected by the operator, never a caller locator.
+    /// It identifies a recovery request, not MLS readiness or output authority.
+    pub fn configured_device(&self) -> &str {
+        &self.config.device
+    }
+
     pub fn configured(
         runtime: Arc<RuntimeAuthority>,
         vault: Arc<dyn SecretVault>,
