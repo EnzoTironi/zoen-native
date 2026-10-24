@@ -20,7 +20,7 @@ def git(directory, *args):
     return subprocess.check_output(["git", "-C", str(directory), *args], text=True).strip()
 
 
-def prepare(directory, wasi=False):
+def prepare(directory, wasi=False, browser=False):
     directory = directory.resolve(strict=True)
     if git(directory, "rev-parse", "HEAD") != REVISION:
         raise ValueError("Refusing unpinned WordCraft source")
@@ -41,7 +41,14 @@ def prepare(directory, wasi=False):
                 raise ValueError("Refusing generated adapter input")
             inputs.append(source)
     patches = [HERE / "patches/0001-wasi-system-clock.patch",
-               HERE / "patches/0002-wasi-native-only-helpers.patch"] if wasi else []
+               HERE / "patches/0002-wasi-native-only-helpers.patch"] if wasi else ([HERE / "patches/0003-managed-session.patch"] if browser else [])
+    if browser:
+        for source in sorted((HERE / "browser").rglob("*")):
+            if source.is_symlink():
+                raise ValueError("Refusing symlinked browser input")
+            if source.is_file():
+                inputs.append(source)
+        inputs.append(HERE.parent / "gridcraft-ui/browser/src/layout.rs")
     for source in patches:
         subprocess.run(["git", "-C", str(directory), "apply", "--check", str(source)], check=True)
     hashes = {str(source.relative_to(ROOT)): hashlib.sha256(source.read_bytes()).hexdigest()
@@ -49,12 +56,17 @@ def prepare(directory, wasi=False):
     for source in patches:
         subprocess.run(["git", "-C", str(directory), "apply", str(source)], check=True)
     for source in inputs:
-        target = destination / source.relative_to(HERE / "host-bridge")
+        if source.is_relative_to(HERE / "browser"):
+            target = directory / "crates/zoen-web" / source.relative_to(HERE / "browser")
+        elif source.name == "layout.rs":
+            target = directory / "crates/zoen-web/src/layout.rs"
+        else:
+            target = destination / source.relative_to(HERE / "host-bridge")
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)
     result = {"schema": 1, "upstream": REVISION, "adapterAbi": "zoen-host-v1",
               "profile": "plain-text-v1", "inputs": hashes,
-              "wasiClocks": wasi, "compiled": False, "runtimeExecuted": False, "appAvailable": False}
+              "wasiClocks": wasi, "browser": browser, "compiled": False, "runtimeExecuted": False, "appAvailable": False}
     receipt.write_text(json.dumps(result, indent=2) + "\n")
     return result
 
@@ -63,9 +75,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--upstream", type=Path, required=True)
     parser.add_argument("--wasi", action="store_true", help="Use the real WASI system clocks; browser branches stay unchanged")
+    parser.add_argument("--browser", action="store_true", help="Prepare the actual upstream WordApp browser host")
     args = parser.parse_args()
+    if args.browser and args.wasi:
+        parser.error("Use separate owned browser and WASI checkouts")
     try:
-        result = prepare(args.upstream, wasi=args.wasi)
+        result = prepare(args.upstream, wasi=args.wasi, browser=args.browser)
     except (ValueError, OSError, subprocess.SubprocessError) as error:
         parser.exit(1, str(error) + "\n")
     print(json.dumps({"upstream": result["upstream"], "inputs": len(result["inputs"]),

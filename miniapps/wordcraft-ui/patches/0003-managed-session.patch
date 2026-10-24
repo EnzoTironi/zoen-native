@@ -1,0 +1,127 @@
+diff --git a/crates/engine/src/session.rs b/crates/engine/src/session.rs
+index 671a53c..7182428 100644
+--- a/crates/engine/src/session.rs
++++ b/crates/engine/src/session.rs
+@@ -351,6 +351,12 @@ impl EditSnapshot {
+ 
+ /// An editing session.
+ pub struct Session {
++    /// Embedding policy, checked before every direct or nested command. No host authority.
++    pub managed_policy: Option<fn(&Session, &str, &Value) -> Result<(), CmdError>>,
++    /// Temporary input freeze while the canonical host owns a pending proposal or pause.
++    pub managed_frozen: bool,
++    /// Ephemeral managed canvas binding, never a persisted identity or authorization.
++    pub managed_binding: Option<u64>,
+     pub doc: Document,
+     pub sel: Selection,
+     pub view: ViewState,
+@@ -629,6 +635,9 @@ impl Session {
+         let start = doc.start_of(StoryRef::Body);
+         let bib_style = doc_bib_style(&doc);
+         Session {
++            managed_policy: None,
++            managed_frozen: false,
++            managed_binding: None,
+             doc,
+             sel: Selection::caret(start),
+             view: ViewState::default(),
+@@ -1145,6 +1154,10 @@ impl Session {
+     /// whether a snapshot must cover it.
+     pub fn edit_snapshot(&self) -> EditSnapshot {
+         let Session {
++            // Host wiring and presentation pause are not document edits or undo state.
++            managed_policy: _,
++            managed_frozen: _,
++            managed_binding: _,
+             doc,
+             sel,
+             view: _,
+@@ -1280,6 +1293,7 @@ impl Session {
+     /// control channel). Mutating commands are undoable; a failed command leaves the document as
+     /// it was; a panic inside a command becomes an error.
+     pub fn run(&mut self, id: &str, params: &Value) -> Result<Value, CmdError> {
++        if let Some(policy) = self.managed_policy { policy(self, id, params)?; }
+         let join = std::mem::take(&mut self.join_next);
+         let reg = self.registry.clone();
+         let Some(spec) = reg.get(id) else { return Err(CmdError::Unknown(id.to_string())) };
+diff --git a/crates/ui-egui/src/canvas.rs b/crates/ui-egui/src/canvas.rs
+index fabe1d4..3d052d3 100644
+--- a/crates/ui-egui/src/canvas.rs
++++ b/crates/ui-egui/src/canvas.rs
+@@ -314,6 +314,14 @@ fn press_count(last: Option<(f64, Pos2, u8)>, now: f64, at: Pos2, delay: f64, di
+ }
+ 
+ impl CanvasState {
++    /// An in-progress human gesture/composition cannot be replaced by a managed request.
++    pub fn host_interaction(&self) -> bool {
++        self.dragging || self.column_drag.is_some() || self.unit_drag.is_some()
++            || !self.ime_preedit.is_empty() || self.obj_drag.is_some()
++            || self.crop_drag.is_some() || self.ink.is_some() || self.erasing.is_some()
++            || self.table_stroke.is_some() || self.table_resize.is_some()
++            || self.table_drag.is_some() || self.tab_drag.is_some()
++    }
+     /// True while a mouse drag-select is in progress (the mini toolbar waits for mouse-up).
+     pub fn drag_selecting(&self) -> bool {
+         self.dragging
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index c7f687a..d3ae79e 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -844,6 +844,9 @@ impl WordApp {
+     /// Close, Envelopes, Labels and Finish & Merge on a document with unsaved changes first ask
+     /// Save / Don't Save / Cancel, and the command runs once that is answered (`ui.saveChanges`).
+     pub fn run(&mut self, id: &str, params: Value) -> Result<Value, String> {
++        if let Some(policy) = self.session.managed_policy {
++            policy(&self.session, id, &params).map_err(|e| e.to_string())?;
++        }
+         // Comment text still being typed is written first, so a save or export has it and a
+         // close, New or Open counts it as a change (#1348). A draft the document refuses is not
+         // part of it: saving and exporting go on without it (the refusal stays on the status
+@@ -915,6 +918,9 @@ impl WordApp {
+     /// Run a command for a script or an agent (control channel, MCP bridge): never asks first.
+     /// UI-level commands (`ui.*`) are handled here, the rest by the engine.
+     pub fn execute(&mut self, id: &str, params: Value) -> Result<Value, String> {
++        if let Some(policy) = self.session.managed_policy {
++            policy(&self.session, id, &params).map_err(|e| e.to_string())?;
++        }
+         // A pending Change Picture only survives until the next action (#147).
+         if !matches!(id, "ui.changePicture" | "picture.change" | "insert.picture") {
+             self.change_picture_target = None;
+@@ -1944,7 +1950,7 @@ impl WordApp {
+         i18n::set_current(lang);
+         // New documents are written in the interface's language when WordCraft can proof it
+         // (a Polish interface: Polish spelling, grammar and hyphenation from the first word).
+-        if self.applied_editing != Some(lang) {
++        if self.session.managed_policy.is_none() && self.applied_editing != Some(lang) {
+             self.session.set_editing_language(lang.editing_lang());
+             self.applied_editing = Some(lang);
+         }
+@@ -2216,12 +2222,12 @@ impl WordApp {
+             backstage::show(self, ui);
+         } else if !self.has_document() {
+             // No document open (#1129): the ribbon greyed out but for Help, and no page.
+-            chrome::title_bar(self, ui);
++            if self.session.managed_policy.is_none() { chrome::title_bar(self, ui); }
+             ribbon::show(self, ui);
+             chrome::status_bar(self, ui);
+             egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.canvas)).show(ui, |_| {});
+         } else {
+-            chrome::title_bar(self, ui);
++            if self.session.managed_policy.is_none() { chrome::title_bar(self, ui); }
+             if !self.session.view.focus_mode {
+                 ribbon::show(self, ui);
+                 chrome::status_bar(self, ui);
+diff --git a/crates/ui-egui/src/widgets.rs b/crates/ui-egui/src/widgets.rs
+index f27f5c0..fb164a8 100644
+--- a/crates/ui-egui/src/widgets.rs
++++ b/crates/ui-egui/src/widgets.rs
+@@ -173,6 +173,9 @@ fn keytip_badge(ui: &Ui, rect: Rect, id: &str, name: &str) {
+ 
+ /// Whether a command exists and is enabled.
+ pub fn enabled(app: &WordApp, id: &str) -> bool {
++    if let Some(policy) = app.session.managed_policy
++        && policy(&app.session, id, &serde_json::json!({})).is_err()
++    { return false; }
+     // No document open (#1129): only what opens one, Help and the settings.
+     if !app.has_document() && !crate::works_without_document(id) {
+         return false;

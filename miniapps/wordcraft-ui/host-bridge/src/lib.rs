@@ -4,6 +4,10 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use wordcraft_doc::StoryRef;
 use wordcraft_engine::Session;
+#[cfg(feature = "browser")]
+pub mod browser;
+#[cfg(feature = "browser")]
+mod browser_policy;
 mod wire;
 pub use wire::*;
 mod archive;
@@ -213,3 +217,8 @@ impl HostBridge {
         })
     }
 }
+
+#[cfg(all(test, feature = "browser"))]
+mod browser_tests;
+#[cfg(all(test, feature = "ui-tests"))]
+mod browser_ui_tests;

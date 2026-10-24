@@ -1,0 +1,28 @@
+[package]
+name = "wordcraft-zoen-web"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wordcraft-engine = { path = "../engine" }
+wordcraft-doc = { path = "../doc" }
+wordcraft-zoen-host = { path = "../zoen-host", features = ["browser"] }
+wordcraft-ui-egui = { path = "../ui-egui" }
+egui = "0.36"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+eframe = { version = "0.36", default-features = false, features = ["glow", "default_fonts", "accesskit"] }
+wasm-bindgen = "=0.2.129"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["Window", "Document", "HtmlCanvasElement"] }
+
+[lints.rust]
+unsafe_code = "forbid"

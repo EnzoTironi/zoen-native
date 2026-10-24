@@ -6,6 +6,8 @@ license = "AGPL-3.0-only"
 publish = false
 
 [features]
+browser = []
+ui-tests = ["browser", "dep:wordcraft-ui-egui", "dep:egui", "dep:egui_kittest"]
 qualification = ["dep:wordcraft-formats", "dep:wordcraft-layout"]
 
 [[bin]]
@@ -14,6 +16,9 @@ path = "src/clock_probe.rs"
 required-features = ["qualification"]
 
 [dependencies]
+wordcraft-ui-egui = { path = "../ui-egui", optional = true }
+egui = { workspace = true, optional = true }
+egui_kittest = { version = "0.36", default-features = false, optional = true }
 wordcraft-doc = { path = "../doc" }
 wordcraft-docx = { path = "../docx" }
 wordcraft-engine = { path = "../engine" }
