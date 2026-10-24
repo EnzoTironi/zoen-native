@@ -1,3 +1,4 @@
+import { binaryEditorFormat, isBinaryEditorId } from './binary-formats';
 import { selectedDeckHead } from './deck-version-selection';
 import { t } from '../i18n/index.ts';
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -43,12 +44,13 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
   const [document, setDocument] = useState<MiniappDocumentController | null>(null);
   const [leaving, setLeaving] = useState(false);
   const navigating = useRef(false);
-  const documentNamespace =
-    read.data?.app?.app_id === 'deckcraft'
-      ? 'decks'
-      : read.data?.app?.app_id === 'gridcraft'
-        ? 'workbooks'
-        : 'drawing';
+  const editor = read.data?.app?.app_id;
+  const documentNamespace = isBinaryEditorId(editor)
+    ? binaryEditorFormat(editor).messages
+    : 'drawing';
+  const unavailable = isBinaryEditorId(editor)
+    ? t(`${binaryEditorFormat(editor).messages}.unavailable`)
+    : t('miniapps.theMiniappCouldNotBeOpened');
   const registerDocument = useCallback((controller: MiniappDocumentController | null) => {
     setDocument(controller);
     if (controller) setLeaving(false);
@@ -98,24 +100,11 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
   const item = read.data;
   const cards = useConversationCards(item?.space_id ?? '');
   const app = item?.app;
-  if (historical && manage)
-    return (
-      <EmptyState
-        title={t(
-          read.data?.app?.app_id === 'gridcraft' ? 'workbooks.unavailable' : 'decks.unavailable',
-        )}
-      />
-    );
+  if (historical && manage) return <EmptyState title={unavailable} />;
   if (historical && !selectedHead)
     return <EmptyState title={t('documents.thisVersionCouldNotBeLoaded')} />;
-  if (historical && item && !['deckcraft', 'gridcraft'].includes(item.app?.app_id ?? ''))
-    return (
-      <EmptyState
-        title={t(
-          read.data?.app?.app_id === 'gridcraft' ? 'workbooks.unavailable' : 'decks.unavailable',
-        )}
-      />
-    );
+  if (historical && item && !isBinaryEditorId(item.app?.app_id))
+    return <EmptyState title={unavailable} />;
   if (!item)
     return read.error ? (
       <EmptyState title={t('miniapps.theMiniappCouldNotBeOpened')} detail={read.error}>
@@ -133,30 +122,14 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
     );
   const spec = specs.data?.find((spec) => spec.id === app.app_id);
   if (historical && !spec)
-    return specs.error ? (
-      <EmptyState
-        title={t(
-          read.data?.app?.app_id === 'gridcraft' ? 'workbooks.unavailable' : 'decks.unavailable',
-        )}
-        detail={specs.error}
-      />
-    ) : (
-      <Loading />
-    );
-  if (historical && !spec?.has_view)
-    return (
-      <EmptyState
-        title={t(
-          read.data?.app?.app_id === 'gridcraft' ? 'workbooks.unavailable' : 'decks.unavailable',
-        )}
-      />
-    );
+    return specs.error ? <EmptyState title={unavailable} detail={specs.error} /> : <Loading />;
+  if (historical && !spec?.has_view) return <EmptyState title={unavailable} />;
   const tools =
     spec?.tools.filter(
       (tool) =>
         tool.visibility.includes('app') &&
         !(spec.id === 'excalidraw' && tool.name.startsWith('app_document_')) &&
-        !(['deckcraft', 'gridcraft'].includes(spec.id) && tool.name.startsWith('app_binary_')),
+        !(isBinaryEditorId(spec.id) && tool.name.startsWith('app_binary_')),
     ) ?? [];
   function call(tool: string, args: Record<string, unknown>) {
     if (busy) return;

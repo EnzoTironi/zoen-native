@@ -60,20 +60,22 @@ test('history capture asks Core for the exact observed version, independently of
   assert.equal(selected?.version, '1');
   assert.equal(selected?.sha256, dto(original).sha256);
 });
-for (const change of ['focus', 'account', 'device', 'membership', 'erase', 'epoch'] as const) {
-  test(`late historical capture cannot navigate after ${change} retirement`, async () => {
-    const f = fixture();
-    let active = true;
-    const result = observeDeckVersion(f.store, f.binding, () => active);
-    if (change === 'focus') active = false;
-    if (change === 'account') f.state.snapshot.account.identity_id = 'replacement';
-    if (change === 'device') f.state.snapshot.account.device_id = 'new-device';
-    if (change === 'membership') f.state.snapshot.conversations[0]!.members = [];
-    if (change === 'erase') Object.assign(f.state, { erasePending: true });
-    if (change === 'epoch') Object.assign(f.store, { sessionEpoch: 2 });
-    f.release();
-    assert.equal(await result, null);
-  });
+for (const editor of ['deckcraft', 'gridcraft', 'wordcraft'] as const) {
+  for (const change of ['focus', 'account', 'device', 'membership', 'erase', 'epoch'] as const) {
+    test(`${editor} historical capture cannot navigate after ${change} retirement`, async () => {
+      const f = fixture(editor);
+      let active = true;
+      const result = observeDeckVersion(f.store, f.binding, () => active);
+      if (change === 'focus') active = false;
+      if (change === 'account') f.state.snapshot.account.identity_id = 'replacement';
+      if (change === 'device') f.state.snapshot.account.device_id = 'new-device';
+      if (change === 'membership') f.state.snapshot.conversations[0]!.members = [];
+      if (change === 'erase') Object.assign(f.state, { erasePending: true });
+      if (change === 'epoch') Object.assign(f.store, { sessionEpoch: 2 });
+      f.release();
+      assert.equal(await result, null);
+    });
+  }
 }
 test('partial/malformed historical route binding never falls back to current', () => {
   for (const version of [undefined, '', '0', '-1', '01', '4294967296', ['1']])
@@ -91,6 +93,20 @@ test('Grid historical capture pins its own revision and refuses a Deck response 
   const wrong = fixture('gridcraft');
   wrong.source.kind = 'deckcraft';
   wrong.source.engine_revision = binaryEditorFormat('deckcraft').engineRevision;
+  const refused = observeDeckVersion(wrong.store, wrong.binding, () => true);
+  wrong.release();
+  await assert.rejects(refused, /selected document version/);
+});
+
+test('Word history binds the selected DOCX version and rejects another format for the same Item', async () => {
+  const f = fixture('wordcraft');
+  assert.ok(f.binding, 'Word must have a managed historical document binding');
+  const read = observeDeckVersion(f.store, f.binding, () => true);
+  f.release();
+  assert.deepEqual(await read, { version: '1', sha256: f.source.sha256 });
+  const wrong = fixture('wordcraft');
+  wrong.source.kind = 'gridcraft';
+  wrong.source.engine_revision = binaryEditorFormat('gridcraft').engineRevision;
   const refused = observeDeckVersion(wrong.store, wrong.binding, () => true);
   wrong.release();
   await assert.rejects(refused, /selected document version/);
