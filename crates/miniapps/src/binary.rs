@@ -4,8 +4,8 @@ use crate::{deckcraft, gridcraft, wordcraft};
 
 pub mod agent_tools;
 pub mod gridcraft_registration;
-pub mod wordcraft_registration;
 pub(crate) mod resource;
+pub mod wordcraft_registration;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Format {

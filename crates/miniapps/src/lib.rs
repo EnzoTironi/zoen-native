@@ -32,10 +32,10 @@ mod defaults;
 pub mod excalidraw;
 mod execution;
 pub mod gridcraft;
-pub mod wordcraft;
 mod projection;
 mod schedule;
 mod scoped;
+pub mod wordcraft;
 
 pub use catalog::{spec, spec_for_start_tool, spec_for_uri, specs};
 pub use creation::create;
