@@ -237,3 +237,32 @@ fn command_scope_capacity_external_io_and_invalid_formula_never_mutate_workbook(
     );
     assert!(Arc::ptr_eq(&before, &s.doc().unwrap().wb));
 }
+
+#[test]
+fn paused_flush_accept_keeps_keyboard_frozen_and_resume_cannot_release_pending() {
+    let (mut s, mut b, scope, head, _) = open();
+    s.execute("cell.set", json!({"cell":"A1","input":"7"}))
+        .unwrap();
+    assert_eq!(b.freeze(&mut s, true).unwrap()["frozen"], true);
+    let p = b
+        .snapshot(
+            &mut s,
+            Mutation {
+                scope: scope.clone(),
+                base: head,
+                mutation_id: "paused".into(),
+            },
+        )
+        .unwrap();
+    assert_eq!(b.freeze(&mut s, false).unwrap()["frozen"], true);
+    b.freeze(&mut s, true).unwrap();
+    accept(&mut s, &mut b, &scope, "paused", "2", &p);
+    assert_eq!(b.status(&s)["frozen"], true);
+    assert!(
+        s.execute("cell.set", json!({"cell":"A2","input":"9"}))
+            .is_err()
+    );
+    assert_eq!(b.freeze(&mut s, false).unwrap()["frozen"], false);
+    s.execute("cell.set", json!({"cell":"A2","input":"9"}))
+        .unwrap();
+}

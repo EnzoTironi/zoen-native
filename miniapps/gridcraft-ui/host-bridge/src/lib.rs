@@ -44,6 +44,7 @@ pub struct HostBridge {
     accepted_bytes: Vec<u8>,
     pending: Option<Pending>,
     last: Option<Accepted>,
+    paused: bool,
 }
 impl HostBridge {
     fn document(&self, s: &Session) -> Result<()> {
@@ -66,7 +67,17 @@ impl HostBridge {
         }
     }
     pub fn status(&self, s: &Session) -> Value {
-        json!({"engineRevision":profile::ENGINE_REVISION,"scope":self.scope,"head":self.head,"dirty":self.dirty(s),"pendingMutationId":self.pending.as_ref().map(|p|&p.id)})
+        json!({"engineRevision":profile::ENGINE_REVISION,"scope":self.scope,"head":self.head,"dirty":self.dirty(s),"frozen":s.managed_frozen,"pendingMutationId":self.pending.as_ref().map(|p|&p.id)})
+    }
+    /// Presentation pause is independent of an unresolved durable proposal.
+    pub fn freeze(&mut self, s: &mut Session, frozen: bool) -> Result<Value> {
+        self.document(s)?;
+        if frozen && !matches!(s.mode, gridcraft_engine::Mode::Ready) {
+            return Err(failure("human_interaction"));
+        }
+        self.paused = frozen;
+        s.managed_frozen = frozen || self.pending.is_some();
+        Ok(self.status(s))
     }
     pub fn open(&mut self, s: &mut Session, request: Open, bytes: &[u8]) -> Result<Value> {
         if !wire::identifier(&request.scope.artifact_id)
@@ -100,6 +111,7 @@ impl HostBridge {
         next.prefs.user_name = request.scope.actor_id.clone();
         next.add_document(DocState::new(wb, None, "Workbook".into()));
         next.command_policy = Some(managed_command_policy);
+        next.managed_frozen = self.paused;
         self.uid = next.active().map(|d| d.uid);
         self.accepted = next.active().map(|d| d.wb.clone());
         self.accepted_bytes = bytes.to_vec();
@@ -249,7 +261,7 @@ impl HostBridge {
             fingerprint: p.fingerprint,
             proposal: p.proposal,
         });
-        s.managed_frozen = false;
+        s.managed_frozen = self.paused;
         Ok(self.status(s))
     }
     pub fn export(&self, s: &Session, r: Export) -> Result<Proposal> {

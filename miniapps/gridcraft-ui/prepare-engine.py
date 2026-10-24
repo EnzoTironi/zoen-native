@@ -24,6 +24,7 @@ def git(directory, *args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--upstream", type=Path, required=True)
+    parser.add_argument("--browser", action="store_true", help="Include the managed WebGL/WASM shell")
     args = parser.parse_args()
     directory = args.upstream.resolve(strict=True)
     if git(directory, "rev-parse", "HEAD") != REVISION:
@@ -46,6 +47,13 @@ def main():
     for source in sorted((HERE / "host-bridge").rglob("*")):
         if source.is_file():
             copy(source, destination / source.relative_to(HERE / "host-bridge"))
+    if args.browser:
+        browser = directory / "crates/zoen-web"
+        if browser.exists():
+            raise SystemExit("Refusing an existing browser adapter directory")
+        for source in sorted((HERE / "browser").rglob("*")):
+            if source.is_file():
+                copy(source, browser / source.relative_to(HERE / "browser"))
     profile = ROOT / "crates/miniapps/src/gridcraft.rs"
     copy(profile, destination / "src/profile.rs")
     for source in sorted(profile.with_suffix("").rglob("*.rs")):
