@@ -6,7 +6,7 @@ license = "AGPL-3.0-only"
 publish = false
 
 [features]
-qualification = ["dep:wordcraft-formats"]
+qualification = ["dep:wordcraft-formats", "dep:wordcraft-layout"]
 
 [[bin]]
 name = "wordcraft-clock-probe"
@@ -18,6 +18,7 @@ wordcraft-doc = { path = "../doc" }
 wordcraft-docx = { path = "../docx" }
 wordcraft-engine = { path = "../engine" }
 wordcraft-formats = { path = "../formats", optional = true }
+wordcraft-layout = { path = "../layout", optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

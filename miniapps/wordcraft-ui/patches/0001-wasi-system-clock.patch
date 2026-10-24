@@ -63,3 +63,69 @@ index 2df9d45..95b12a2 100644
      {
          let ms = js_sys::Date::now();
          if ms.is_finite() && ms > 0.0 { (ms / 1000.0) as i64 } else { 0 }
+diff --git a/crates/layout/Cargo.toml b/crates/layout/Cargo.toml
+index afb8f0a..c9109c8 100644
+--- a/crates/layout/Cargo.toml
++++ b/crates/layout/Cargo.toml
+@@ -22,6 +22,6 @@ serde_json = { workspace = true }
+ image = { workspace = true }
+ log = { workspace = true }
+ 
+-[target.'cfg(target_arch = "wasm32")'.dependencies]
++[target.'cfg(all(target_arch = "wasm32", not(target_os = "wasi")))'.dependencies]
+ # The browser clock (`SystemTime::now()`/`Instant::now()` panic on wasm32).
+ js-sys = "0.3"
+diff --git a/crates/layout/src/lib.rs b/crates/layout/src/lib.rs
+index a60c5f9..cbf1e9c 100644
+--- a/crates/layout/src/lib.rs
++++ b/crates/layout/src/lib.rs
+@@ -4571,13 +4571,13 @@ pub fn is_floating(o: &InlineObject) -> bool {
+ 
+ /// Milliseconds since an arbitrary epoch (monotonic on native; the browser's clock on the web).
+ pub fn now_ms() -> f64 {
+-    #[cfg(not(target_arch = "wasm32"))]
++    #[cfg(any(not(target_arch = "wasm32"), target_os = "wasi"))]
+     {
+         static T0: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+         T0.get_or_init(std::time::Instant::now).elapsed().as_secs_f64() * 1000.0
+     }
+     // `Instant::now()` panics on wasm32-unknown-unknown, so ask the browser's clock.
+-    #[cfg(target_arch = "wasm32")]
++    #[cfg(all(target_arch = "wasm32", not(target_os = "wasi")))]
+     {
+         let ms = js_sys::Date::now();
+         if ms.is_finite() { ms } else { 0.0 }
+diff --git a/crates/pdf/Cargo.toml b/crates/pdf/Cargo.toml
+index d85446e..0677640 100644
+--- a/crates/pdf/Cargo.toml
++++ b/crates/pdf/Cargo.toml
+@@ -20,7 +20,7 @@ image = { workspace = true }
+ thiserror = { workspace = true }
+ log = { workspace = true }
+ 
+-[target.'cfg(target_arch = "wasm32")'.dependencies]
++[target.'cfg(all(target_arch = "wasm32", not(target_os = "wasi")))'.dependencies]
+ # The browser clock (`SystemTime::now()` panics on wasm32).
+ js-sys = "0.3"
+ 
+diff --git a/crates/pdf/src/lib.rs b/crates/pdf/src/lib.rs
+index 7e85324..9e1e0a3 100644
+--- a/crates/pdf/src/lib.rs
++++ b/crates/pdf/src/lib.rs
+@@ -443,14 +443,14 @@ fn parse_iso(s: &str) -> Option<Civil> {
+ 
+ /// The system clock, or the browser's on the web.
+ fn now_unix() -> Option<i64> {
+-    #[cfg(not(target_arch = "wasm32"))]
++    #[cfg(any(not(target_arch = "wasm32"), target_os = "wasi"))]
+     {
+         use std::time::{SystemTime, UNIX_EPOCH};
+         let secs = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs();
+         i64::try_from(secs).ok()
+     }
+     // `SystemTime::now()` panics on wasm32-unknown-unknown, so ask the browser's clock.
+-    #[cfg(target_arch = "wasm32")]
++    #[cfg(all(target_arch = "wasm32", not(target_os = "wasi")))]
+     {
+         let ms = js_sys::Date::now();
+         (ms.is_finite() && ms > 0.0).then(|| (ms / 1000.0) as i64)

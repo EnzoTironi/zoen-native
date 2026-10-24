@@ -6,6 +6,9 @@ use wordcraft_engine::Session;
 
 fn main() -> Result<(), String> {
     let engine = wordcraft_engine::cmd::now_unix();
+    let layout_before = wordcraft_layout::now_ms();
+    std::thread::sleep(std::time::Duration::from_millis(25));
+    let layout_after = wordcraft_layout::now_ms();
     let mut session = Session::new(Document::new());
     session.doc.settings.track_changes = true;
     session
@@ -48,6 +51,7 @@ fn main() -> Result<(), String> {
     println!(
         "{}",
         json!({"engineUnixSeconds":engine,"engineUnixAfter":after,
+        "layoutBeforeMs":layout_before,"layoutAfterMs":layout_after,
         "engineIsoBefore":wordcraft_engine::cmd::iso_from_unix_secs(engine),
         "engineIsoAfter":wordcraft_engine::cmd::iso_from_unix_secs(after),"formatChangeDate":date})
     );

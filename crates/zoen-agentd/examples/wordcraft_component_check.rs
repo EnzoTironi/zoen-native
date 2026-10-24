@@ -180,6 +180,18 @@ async fn run_clock(tier: &WasmTier, tool: &WasmTool) -> Result<(Value, u64)> {
     let after = now()?;
     let clock: Value =
         serde_json::from_slice(&clock_output.stdout).map_err(|_| "invalid clock output")?;
+    let layout_before = clock["layoutBeforeMs"]
+        .as_f64()
+        .ok_or("missing actual layout clock")?;
+    let layout_after = clock["layoutAfterMs"]
+        .as_f64()
+        .ok_or("missing actual layout clock after wait")?;
+    require(
+        layout_before.is_finite()
+            && layout_after.is_finite()
+            && layout_after >= layout_before + 15.0,
+        "layout monotonic clock did not progress",
+    )?;
     let seconds = clock["engineUnixSeconds"]
         .as_u64()
         .ok_or("missing engine clock")?;
@@ -324,7 +336,7 @@ async fn check(paths: &[PathBuf]) -> Result<()> {
         serde_json::to_vec_pretty(&result).map_err(|_| "receipt invalid")?,
     )
     .map_err(|_| "receipt unavailable")?;
-    println!("WordCraft actual WASI component + two real clocks + 8 framed calls PASS");
+    println!("WordCraft actual WASI component + three real clocks + 8 framed calls PASS");
     Ok(())
 }
 

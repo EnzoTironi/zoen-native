@@ -40,7 +40,8 @@ def prepare(directory, wasi=False):
             if source.name == "Cargo.lock" or "target" in source.parts:
                 raise ValueError("Refusing generated adapter input")
             inputs.append(source)
-    patches = [HERE / "patches/0001-wasi-system-clock.patch"] if wasi else []
+    patches = [HERE / "patches/0001-wasi-system-clock.patch",
+               HERE / "patches/0002-wasi-native-only-helpers.patch"] if wasi else []
     for source in patches:
         subprocess.run(["git", "-C", str(directory), "apply", "--check", str(source)], check=True)
     hashes = {str(source.relative_to(ROOT)): hashlib.sha256(source.read_bytes()).hexdigest()
