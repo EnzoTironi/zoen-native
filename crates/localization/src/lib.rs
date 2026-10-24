@@ -135,7 +135,7 @@ pub fn money_in(lang: Lang, cents: i64) -> String {
 
 /// Thousands separator for plain numbers (scores): "4,893" / "4.893".
 pub fn thousands(n: i64) -> String {
-    let s = n.abs().to_string();
+    let s = n.unsigned_abs().to_string();
     let sep = if is_en() { ',' } else { '.' };
     let mut out = String::new();
     for (i, ch) in s.chars().enumerate() {
@@ -257,6 +257,38 @@ mod scope_tests {
 #[cfg(test)]
 mod money_currency_tests {
     use super::{money_in, Lang};
+
+    #[test]
+    fn signed_score_boundaries_preserve_the_full_magnitude() {
+        for (language, cases) in [
+            (
+                Lang::En,
+                [
+                    (i64::MIN, "-9,223,372,036,854,775,808"),
+                    (i64::MAX, "9,223,372,036,854,775,807"),
+                    (0, "0"),
+                    (-1, "-1"),
+                    (1000, "1,000"),
+                ],
+            ),
+            (
+                Lang::Pt,
+                [
+                    (i64::MIN, "-9.223.372.036.854.775.808"),
+                    (i64::MAX, "9.223.372.036.854.775.807"),
+                    (0, "0"),
+                    (-1, "-1"),
+                    (1000, "1.000"),
+                ],
+            ),
+        ] {
+            super::with_lang(language, || {
+                for (number, expected) in cases {
+                    assert_eq!(super::thousands(number), expected, "{language:?}/{number}");
+                }
+            });
+        }
+    }
 
     #[test]
     fn known_brl_domain_never_changes_currency_with_language() {
