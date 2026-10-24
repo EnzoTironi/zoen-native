@@ -21,6 +21,7 @@ impl Profile {
         let mut reader = Reader::from_str(text);
         let mut stack: Vec<Vec<u8>> = Vec::new();
         let mut roots = 0;
+        let mut version = quick_xml::XmlVersion::Implicit1_0;
         let mut events = 0;
         let mut cell_keys = BTreeSet::new();
         let mut formula: Option<String> = None;
@@ -46,7 +47,7 @@ impl Profile {
                             return Err(INVALID);
                         }
                     }
-                    let attrs = attributes(&tag, &reader)?;
+                    let attrs = attributes(&tag, &reader, version)?;
                     if part == "[Content_Types].xml"
                         && name == b"Override"
                         && attrs.get("PartName").map(String::as_str) == Some("/xl/workbook.xml")
@@ -175,7 +176,16 @@ impl Profile {
                         }
                     }
                 }
-                Event::Decl(_) | Event::Comment(_) => {}
+                Event::Decl(declaration) => {
+                    if roots != 0 || version != quick_xml::XmlVersion::Implicit1_0 {
+                        return Err(INVALID);
+                    }
+                    version = declaration.xml_version().map_err(|_| INVALID)?;
+                    if version != quick_xml::XmlVersion::Explicit1_0 {
+                        return Err(INVALID);
+                    }
+                }
+                Event::Comment(_) => {}
                 Event::Eof => break,
                 // No DTDs, entity declarations, CDATA or processing instructions.
                 _ => return Err(INVALID),
@@ -238,6 +248,7 @@ pub(super) fn validate_formula(formula: &str) -> Result<(), &'static str> {
 fn attributes(
     tag: &BytesStart<'_>,
     reader: &Reader<&[u8]>,
+    version: quick_xml::XmlVersion,
 ) -> Result<BTreeMap<String, String>, &'static str> {
     let mut out = BTreeMap::new();
     for attr in tag.attributes() {
@@ -249,7 +260,7 @@ fn attributes(
             .map_err(|_| INVALID)?
             .to_owned();
         let value = attr
-            .decoded_and_normalized_value(reader.decoder())
+            .decoded_and_normalized_value(version, reader.decoder())
             .map_err(|_| INVALID)?
             .into_owned();
         if out.insert(key, value).is_some() {
