@@ -25,7 +25,7 @@ fn fixture() -> Result<Engine, Box<dyn std::error::Error>> {
     let mut engine = Engine::open(":memory:")?;
     let me = person(&mut engine, "owner")?;
     let signer = engine.signers.get(&me).ok_or("missing owner signer")?;
-    let author = Author::device(signer, Signer::generate());
+    let author = Author::device(signer, Signer::generate()?);
     engine.store.set_meta("me", &me)?;
     engine.me = Some(me.clone());
     engine.net.author = Some(author);
@@ -132,7 +132,7 @@ fn add_peer_space(engine: &mut Engine, space: &str, peer: &str) -> TestResult {
         .into_iter()
         .filter(|p| p.event.space == space)
     {
-        let event = log.sequence(row.event).clone();
+        let event = log.sequence(row.event)?.clone();
         assert!(matches!(
             engine.ingest(protocol::Sequenced {
                 seq: event.seq,
@@ -152,8 +152,8 @@ fn partial_write_retry_preserves_first_signed_share_and_does_not_duplicate_it() 
     let mut engine = fixture()?;
     let first = person(&mut engine, "first")?;
     let second = person(&mut engine, "second")?;
-    let first_key = AgreementKey::generate();
-    let second_key = AgreementKey::generate();
+    let first_key = AgreementKey::generate()?;
+    let second_key = AgreementKey::generate()?;
     engine
         .store
         .put_peer_agreement_key(&first, &first_key.public_hex())?;

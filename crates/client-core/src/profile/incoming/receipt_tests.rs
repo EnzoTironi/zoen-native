@@ -32,7 +32,7 @@ fn remote(engine: &Engine, identity: &Signer, version: u64) -> R<SealedProfile> 
             name: "Other device".into(),
             ..Default::default()
         },
-    );
+    )?;
     Ok(SealedProfile {
         identity: identity.id(),
         version,
