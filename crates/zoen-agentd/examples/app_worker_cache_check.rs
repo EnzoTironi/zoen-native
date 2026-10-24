@@ -1,4 +1,4 @@
-//! Opt-in offline measurement using the genuine signed WordCraft WASIp2 worker.
+//! Opt-in offline measurement using the genuine signed `WordCraft` `WASIp2` worker.
 //! Measures actual disk hits in fresh Engines/processes; no account/provider/relay.
 #![deny(
     clippy::pedantic,
