@@ -20,21 +20,20 @@ export function prepareGalleryPreview(
   );
   if (JSON.stringify(pending) !== JSON.stringify(owner.state().previewUris))
     owner.publish({ previewUris: pending });
+  const currentSelection = () =>
+    owner.current() &&
+    selected.length === owner.state().selected.length &&
+    selected.every((item, i) => item.id === owner.state().selected[i]?.id);
   const task = save ? journal.update(selected, captions, owner.port) : Promise.resolve();
   void task
     .then(async () => {
-      if (!owner.current() || !selected.length) return;
+      if (!currentSelection() || !selected.length) return;
       const previewUris = await journal.preview(selected);
-      if (
-        !owner.current() ||
-        selected.length !== owner.state().selected.length ||
-        selected.some((item, i) => item.id !== owner.state().selected[i]?.id)
-      )
-        return;
+      if (!currentSelection()) return;
       if (JSON.stringify(previewUris) !== JSON.stringify(owner.state().previewUris))
         owner.publish({ previewUris });
     })
     .catch((error) => {
-      if (owner.current()) owner.publish({ error });
+      if (currentSelection()) owner.publish({ error });
     });
 }

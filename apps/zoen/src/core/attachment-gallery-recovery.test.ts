@@ -109,6 +109,12 @@ test('each gallery caption and order cold-restore to selected Photos without re-
   session.reorder([second.id, image.id]);
   await tick();
   await f.channel.flush();
+  await tick();
+  assert.equal(
+    session.getSnapshot().error,
+    null,
+    'superseded previews cannot report conflict after the latest order is saved',
+  );
   assert.deepEqual(
     content(f).items.map((item: { caption: string }) => item.caption),
     ['Segunda', 'Cachoeira 🌊'],
