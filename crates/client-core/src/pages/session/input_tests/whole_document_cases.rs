@@ -240,8 +240,9 @@ fn whole_document_observed_seed_and_merge_preserve_concurrent_unobserved_changes
         )
         .unwrap();
     let blocks = &applied.edit.page.blocks;
-    assert!(
-        blocks.contains(&changed),
+    assert_eq!(
+        blocks.iter().find(|b| b.id == changed.id),
+        Some(&changed),
         "an unchanged observed block cannot overwrite a concurrent edit"
     );
     assert!(
@@ -254,6 +255,73 @@ fn whole_document_observed_seed_and_merge_preserve_concurrent_unobserved_changes
             .filter(|b| b.text == "Added from source")
             .count(),
         1
+    );
+}
+
+#[test]
+fn native_block_input_does_not_inherit_another_editor_continuation() {
+    let (_db, f) = cold_input_fixture(ItemKind::Page);
+    let page = seed_document(&f, "# Original\n\nOther\n");
+    let mut concurrent = page.blocks[1].clone();
+    concurrent.text = "Concurrent block change".into();
+    f.engine
+        .page_apply_from(
+            &f.item,
+            "other-editor",
+            &page.edit_context,
+            &page.blocks.iter().map(|b| b.id.clone()).collect::<Vec<_>>(),
+            std::slice::from_ref(&concurrent),
+        )
+        .unwrap();
+    let scope = input_scope(&f);
+    let input = f.engine.page_input_load(&scope).unwrap();
+    let opened = f
+        .engine
+        .page_input_open(
+            &scope,
+            input.revision,
+            WRITER_A,
+            PageInputTarget::Block {
+                block_id: page.blocks[0].id.clone(),
+            },
+            PageInputMode::Markdown,
+            &page.edit_context,
+        )
+        .unwrap();
+    let captured = f
+        .engine
+        .page_input_checkpoint(
+            &scope,
+            WRITER_A,
+            opened.revision,
+            1,
+            &markdown_payload(1, "# Changed natively"),
+        )
+        .unwrap();
+    let capture = captured.current.capture.as_ref().unwrap();
+    let applied = f
+        .engine
+        .page_input_apply(
+            &scope,
+            WRITER_A,
+            captured.current.revision,
+            1,
+            &capture.sha256,
+            "apply-distinct-native-editor",
+        )
+        .unwrap();
+    let blocks = &applied.edit.page.blocks;
+    assert_eq!(
+        blocks.iter().find(|b| b.id == concurrent.id),
+        Some(&concurrent)
+    );
+    assert_eq!(
+        blocks
+            .iter()
+            .find(|b| b.id == page.blocks[0].id)
+            .unwrap()
+            .text,
+        "Changed natively"
     );
 }
 

@@ -239,7 +239,15 @@ impl PageSession {
             })
             .collect::<R<Vec<_>>>()?;
         let context_hash = drafts::context_hash(context);
-        let (observed, base) = if let Some(prior) = journal.continuation(&context_hash) {
+        // One native capture is consumed once, then its exact receipt replays.
+        // It is a distinct editor intent, never a replacement of another
+        // editor's earlier draft merely because they observed the same context.
+        let continuation = if input_fingerprint.is_none() {
+            journal.continuation(&context_hash)
+        } else {
+            None
+        };
+        let (observed, base) = if let Some(prior) = continuation {
             desired
                 .apply_editor(order, &edits)
                 .map_err(super::super::doc_err)?;
