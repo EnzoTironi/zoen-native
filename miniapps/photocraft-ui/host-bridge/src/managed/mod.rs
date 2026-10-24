@@ -64,6 +64,17 @@ impl HostBridge {
             "head":self.head,"profile":"raster-canvas-v1",
             "pendingMutationId":self.pending.as_ref().map(|p|&p.mutation.mutation_id)})
     }
+    /// # Errors
+    /// Reads dimensions from the actual accepted document, never from pending pixels.
+    pub fn inspect(&self) -> Result<Value> {
+        let metadata = crate::inspect(&self.accepted, &Sha256::digest(&self.accepted).into())
+            .map_err(|_| failure("accepted_document_refused"))?;
+        let mut value = self.status();
+        value["width"] = json!(metadata.width);
+        value["height"] = json!(metadata.height);
+        value["layers"] = json!(metadata.layers);
+        Ok(value)
+    }
     fn scope(&self, scope: &Scope) -> Result<()> {
         if *scope != self.scope {
             return Err(failure("scope_changed"));

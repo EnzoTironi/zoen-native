@@ -40,7 +40,7 @@ fn run() -> Result<Proposal, String> {
     match request.command {
         Some(command) => bridge.execute(command),
         None => Ok(Proposal {
-            metadata: bridge.inspect(),
+            metadata: bridge.inspect()?,
             bytes: Vec::new(),
         }),
     }
