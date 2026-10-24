@@ -26,7 +26,7 @@ import UIKit
     map.isHidden = true
     accessibilityIdentifier = "attachment-gallery-location"
   }
-  required init?(coder: NSCoder) { nil }
+  required init?(coder: NSCoder) { return nil }
   override func layoutSubviews() {
     super.layoutSubviews()
     map.frame = bounds
