@@ -201,6 +201,28 @@ fn cold_capsule_with_pruned_welcome_needs_its_own_fresh_welcome_not_worker_readi
     assert_ne!(public_stock[0], public_stock[1]);
     let clock = KeyPackageClaimClock::from_server_ms(crate::engine::now_ms())
         .ok_or("actual claim clock")?;
+    // Normal rejoin is two ordered changes: first remove the stale leaf,
+    // confirm that commit, then claim a fresh package for its replacement.
+    assert!(f.owner.mls_to_claim(Some(clock))?.is_none());
+    assert!(f.owner.store.outbox()?.iter().any(|pending| matches!(
+        &pending.event.body,
+        EventBody::Sealed { kind } if kind == SealedKind::Commit.name()
+    )));
+    let before_removal = cold.retained_head(SPACE)?.ok_or("retained rejoin")?.seq;
+    deliver_handshakes(&mut f.owner, &mut worker, "normal stale-leaf removal")?;
+    assert!(!f
+        .owner
+        .mls_leaves(SPACE)
+        .ok_or("owner leaves after stale removal")?
+        .contains(&(f.agent_profile.id.clone(), f.agent_device.id())));
+    ingest_at(
+        &mut cold,
+        history(&f.owner)?
+            .into_iter()
+            .filter(|entry| entry.seq > before_removal)
+            .collect(),
+        "cold native stale-leaf removal",
+    )?;
     let (_, targets, operation) = f
         .owner
         .mls_to_claim(Some(clock))?
