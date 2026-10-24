@@ -120,3 +120,122 @@ fn transient_owed_read_failure_retries_without_losing_original_pages() {
     owner.logs[&space].verify().unwrap();
     peer.logs[&space].verify().unwrap();
 }
+
+#[test]
+fn scoped_owed_storage_failure_keeps_other_chat_publishable_and_recovers() {
+    let (mut owner, mut first_peer, first_space, pages) = queued_pages();
+    let first_group = owner.mls_status(&first_space);
+    let mut second_peer = Engine::open(":memory:").unwrap();
+    second_peer
+        .create_account("Carla", "carla", "http://relay.test")
+        .unwrap();
+    let second_space = "owed-independent-chat";
+    for frame in claim_group(
+        &mut owner,
+        second_space,
+        std::slice::from_mut(&mut second_peer),
+    ) {
+        assert_eq!(second_peer.ingest(frame), Ingest::Applied);
+    }
+    let independent = owner
+        .page_import_markdown(
+            second_space,
+            "independent.md",
+            "# Independent\n\nStill sendable.\n",
+        )
+        .unwrap();
+    // This exact derived row has a reliable Space association, but SQLite cannot
+    // read its storage class as text. No signed record or provider byte is forged.
+    let key = rewelcome_meta(&first_space);
+    assert!(owner.store.meta(&key).unwrap().is_none());
+    owner
+        .store
+        .conn()
+        .execute(
+            "INSERT INTO meta(key,value) VALUES (?1,?2)",
+            (&key, vec![0_u8]),
+        )
+        .unwrap();
+    assert!(owner.owed(&first_space).is_err());
+    let clock =
+        Some(protocol::KeyPackageClaimClock::from_server_ms(crate::engine::now_ms()).unwrap());
+    let (space, targets, operation) = owner.mls_to_claim(clock).unwrap().unwrap();
+    assert_eq!(space, second_space);
+    // The other dirty group may have been first in the HashSet. Either iteration
+    // order must process the fault without consuming or blocking that valid claim.
+    assert!(owner.mls_to_claim(clock).unwrap().is_none());
+    assert!(owner.net.mls.retry_at.contains_key(&first_space));
+    let due = owner.net.mls.retry_at[&first_space];
+    let records = claimed_records(std::slice::from_mut(&mut second_peer), &targets);
+    owner.mls_claimed(second_space, &operation, Ok(records));
+    for _ in 0..10 {
+        for (blob, _) in owner.pending_uploads(100) {
+            owner.upload_done(&blob);
+        }
+        owner.mls_seal_outbox().unwrap();
+        let envelopes = owner.outbox_envelopes();
+        if envelopes.is_empty() {
+            break;
+        }
+        for env in envelopes {
+            assert_eq!(
+                env.space(),
+                second_space,
+                "failed group's pages escaped before repair"
+            );
+            let frame = ordered(&owner, env);
+            assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
+            assert_eq!(second_peer.ingest(frame), Ingest::Applied);
+        }
+    }
+    assert_eq!(
+        second_peer.page_markdown(&independent).unwrap(),
+        "# Independent\n\nStill sendable.\n"
+    );
+    assert_eq!(owner.mls_status(&first_space), first_group);
+    let retained: Vec<_> = owner
+        .store
+        .outbox()
+        .unwrap()
+        .into_iter()
+        .map(|row| row.event)
+        .collect();
+    assert_eq!(retained.len(), pages.len());
+    assert!(retained.iter().all(|event| event.space == first_space));
+    assert!(owner.mls_to_claim(clock).unwrap().is_none());
+    assert_eq!(
+        owner.net.mls.retry_at[&first_space], due,
+        "an early maintenance pass moved the original retry deadline"
+    );
+    assert_eq!(owner.net.mls.retry_at.len(), 1);
+    owner.store.meta_delete(&key).unwrap();
+    owner
+        .net
+        .mls
+        .retry_at
+        .insert(first_space.clone(), Instant::now());
+    let (space, targets, operation) = owner.mls_to_claim(clock).unwrap().unwrap();
+    assert_eq!(space, first_space);
+    let records = claimed_records(std::slice::from_mut(&mut first_peer), &targets);
+    owner.mls_claimed(&first_space, &operation, Ok(records));
+    let published = relay_ready_to_peer(&mut owner, &mut first_peer);
+    for (id, markdown) in pages {
+        assert_eq!(first_peer.page_markdown(&id).unwrap(), markdown);
+        let original = retained
+            .iter()
+            .find(|event| matches!(&event.body, EventBody::ItemCreated { item, .. } if item == &id))
+            .unwrap();
+        assert_eq!(
+            published
+                .iter()
+                .filter(|frame| frame.env.client_id() == original.client_id)
+                .count(),
+            1
+        );
+    }
+    assert_eq!(owner.outbox_len(), 0);
+    assert_eq!(owner.net.mls.retry_at.len(), 0);
+    for space in [first_space.as_str(), second_space] {
+        owner.logs[space].verify().unwrap();
+    }
+}
