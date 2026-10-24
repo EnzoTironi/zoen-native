@@ -16,8 +16,11 @@ asset delivery and iPhone acceptance remain separate requirements.
 
 `host-bridge/` runs the actual pinned GridCraft `Session`, `cell.set`, calculation,
 undo and native XLSX writer. It uses the existing Deck scope/head/proposal/accept
-contract. A pending proposal freezes input; only its exact next-version/hash
-receipt unfreezes it. Export returns the selected accepted native XLSX bytes,
+contract. A manual checkpoint keeps its original proposal immutable while newer
+manual input/Undo stays in the same Session. Its exact next-version/hash receipt
+advances only the accepted baseline; newer work requires a later checkpoint.
+Pending agent proposals, history and explicit host pause still freeze input.
+Export returns the selected accepted native XLSX bytes,
 including after cold open, rather than a newer unsaved draft. No general command,
 filesystem, URI or automation API is exposed to agents. The first reviewed
 mutation is one bounded `cell.set`; generic upstream commands remain unavailable.
