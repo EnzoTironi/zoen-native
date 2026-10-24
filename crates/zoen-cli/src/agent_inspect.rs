@@ -211,14 +211,28 @@ pub(crate) async fn inspect(client: &Client, timeout_ms: u64) -> Result<String> 
         .wait_until_settled(timeout_ms)
         .await
         .map_err(|_| "agent_inspect_sync_unsettled")?;
+    let before_state = started.elapsed();
+    let state_started = tokio::time::Instant::now();
     let state = tokio::time::timeout_at(deadline, client.agent_state())
         .await
         .map_err(|_| {
-            failure::trace(None, timeout_ms, started.elapsed());
+            failure::trace(
+                None,
+                timeout_ms,
+                started.elapsed(),
+                before_state,
+                state_started.elapsed(),
+            );
             "agent_inspect_state_unavailable"
         })?
         .map_err(|error| {
-            failure::trace(Some(&error), timeout_ms, started.elapsed());
+            failure::trace(
+                Some(&error),
+                timeout_ms,
+                started.elapsed(),
+                before_state,
+                state_started.elapsed(),
+            );
             "agent_inspect_state_unavailable"
         })?;
     if !matches!(state.status.as_str(), "active" | "paused" | "revoked")

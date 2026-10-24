@@ -94,7 +94,13 @@ pub(super) async fn page(
                     );
                     return Ok(None);
                 }
-                Ok(None) => (*assembly).finish().map_err(str::to_owned),
+                Ok(None) => {
+                    let result = (*assembly).finish().map_err(str::to_owned);
+                    if matches!(&result, Ok(Reply::AgentState(_))) {
+                        tracing_like("agent state read complete terminal validated");
+                    }
+                    result
+                }
                 Err(error) => Err(error.into()),
             }
         }
@@ -116,10 +122,15 @@ pub(super) async fn submit(
     next_id: &mut u64,
     deferred: &mut Deferred,
 ) -> Result<(), String> {
+    let agent_state = matches!(&op, Op::CompleteRead(r)
+        if r.kind == Kind::AgentState as i32 && r.ordinal == 0);
     if matches!(&op,Op::CompleteRead(r) if r.snapshot.is_empty()) && active(waiting) {
         if deferred.len() >= 32 {
             done.fail("complete_read_busy");
         } else {
+            if agent_state {
+                tracing_like("agent state read deferred behind active snapshot");
+            }
             deferred.push_back((op, done));
         }
         return Ok(());
@@ -139,6 +150,9 @@ pub(super) async fn submit(
     }
     if let Some(count) = profile_count {
         tracing_like(&format!("sealed profiles submitted asked={count}"));
+    }
+    if agent_state {
+        tracing_like("agent state read submitted");
     }
     remember_waiting(waiting, id, done);
     Ok(())
