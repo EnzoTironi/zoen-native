@@ -204,14 +204,10 @@ pub(crate) enum Phase {
     BeforeInput,
     AfterInput,
 }
-pub(crate) fn drain(
-    bridge: &mut photocraft_zoen_host::browser::BrowserBridge,
-    app: &mut PhotocraftApp,
-    phase: Phase,
-) {
-    let work = QUEUE.with(|q| {
+fn next(open: bool, phase: Phase) -> Option<(Pending, bool)> {
+    QUEUE.with(|q| {
         let mut q = q.borrow_mut();
-        let pause = bridge.is_open()
+        let pause = open
             && q.pending
                 .front()
                 .is_some_and(|p| matches!(&p.request, Request::Freeze(Freeze { frozen: true })));
@@ -234,7 +230,14 @@ pub(crate) fn drain(
             q.bytes = q.bytes.saturating_sub(p.bytes.len());
         }
         p.map(|p| (p, pause && hidden))
-    });
+    })
+}
+pub(crate) fn drain(
+    bridge: &mut photocraft_zoen_host::browser::BrowserBridge,
+    app: &mut PhotocraftApp,
+    phase: Phase,
+) {
+    let work = next(bridge.is_open(), phase);
     let Some((mut work, input_unavailable)) = work else {
         return;
     };
