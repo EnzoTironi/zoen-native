@@ -247,55 +247,74 @@ test('Grid resource-only changes invalidate the native source stamp and are guar
     guard.before.context.environment.ZOEN_GRIDCRAFT_RESOURCE_MANIFEST_JSON,
     createHash('sha256').update(JSON.stringify('{"fixture":"grid-B"}')).digest('hex'),
   );
-  assert.equal(await readFile(join(root, 'apps/zoen/src/core/generated/Command.ts'), 'utf8'),
-    `grid-resource-input|${join(root, 'crates/client-core')}`);
+  assert.equal(
+    await readFile(join(root, 'apps/zoen/src/core/generated/Command.ts'), 'utf8'),
+    `grid-resource-input|${join(root, 'crates/client-core')}`,
+  );
 });
 
-test('compiled Grid seed bytes invalidate the native input stamp without a Rust source edit', async (t) => {
-  const path = await fixture(t);
-  const root = join(path, 'workspace');
-  const target = join(path, 'shared');
-  await workspace(root, 'grid-seed');
-  const seed = join(root, 'crates/client-core/resources/gridcraft-empty.xlsx');
-  const first = await readFile(join(source, 'crates/miniapps/resources/gridcraft-empty.xlsx'));
-  const next = await readFile(
-    join(source, 'crates/client-core/src/app_binary_documents/fixtures/managed-grid-changed.xlsx'),
-  );
-  assert(!first.equals(next));
-  await write(seed, first);
-  // Compile the actual binary input into a tiny genuine exporter. This checks
-  // sourceInputs shared by native caching/types, not a native framework build.
-  await write(
-    join(root, 'crates/client-core/examples/export-client-types.rs'),
-    `
+for (const [app, extension, firstFile, changedFile] of [
+  [
+    'Grid',
+    'xlsx',
+    'crates/miniapps/resources/gridcraft-empty.xlsx',
+    'crates/client-core/src/app_binary_documents/fixtures/managed-grid-changed.xlsx',
+  ],
+  [
+    'Word',
+    'docx',
+    'crates/miniapps/resources/wordcraft-empty.docx',
+    'crates/miniapps/src/wordcraft/fixtures/actual-special.docx',
+  ],
+]) {
+  test(`compiled ${app} seed bytes invalidate the native input stamp without a Rust source edit`, async (t) => {
+    const path = await fixture(t);
+    const root = join(path, 'workspace');
+    const target = join(path, 'shared');
+    await workspace(root, `${app}-seed`);
+    const seed = join(root, `crates/client-core/resources/seed.${extension}`);
+    const first = await readFile(join(source, firstFile));
+    const next = await readFile(join(source, changedFile));
+    assert(!first.equals(next));
+    await write(seed, first);
+    // Compile the actual binary input into a tiny genuine exporter. This checks
+    // sourceInputs shared by native caching/types, not a native framework build.
+    await write(
+      join(root, 'crates/client-core/examples/export-client-types.rs'),
+      `
     fn main() {
       let out = std::path::PathBuf::from(std::env::args().nth(1).unwrap());
       std::fs::create_dir_all(&out).unwrap();
-      let bytes = include_bytes!("../resources/gridcraft-empty.xlsx");
+      let bytes = include_bytes!("../resources/seed.${extension}");
       let value = bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
       for name in ["Command.ts", "Snapshot.ts"] {
         std::fs::write(out.join(name), &value).unwrap();
       }
     }
   `,
-  );
-  await execute('git', ['add', '.'], { cwd: root });
-  await build(root, target);
-  const before = await stamp(root);
-  assert.equal(
-    await readFile(join(root, 'apps/zoen/src/core/generated/Command.ts'), 'utf8'),
-    first.toString('hex'),
-  );
-  await write(seed, next);
-  await execute('git', ['add', '.'], { cwd: root });
-  await build(root, target);
-  const after = await stamp(root);
-  assert.equal(
-    await readFile(join(root, 'apps/zoen/src/core/generated/Command.ts'), 'utf8'),
-    next.toString('hex'),
-  );
-  assert.notEqual(after.sha256, before.sha256, 'native cache stamp ignored changed compiled XLSX');
-});
+    );
+    await execute('git', ['add', '.'], { cwd: root });
+    await build(root, target);
+    const before = await stamp(root);
+    assert.equal(
+      await readFile(join(root, 'apps/zoen/src/core/generated/Command.ts'), 'utf8'),
+      first.toString('hex'),
+    );
+    await write(seed, next);
+    await execute('git', ['add', '.'], { cwd: root });
+    await build(root, target);
+    const after = await stamp(root);
+    assert.equal(
+      await readFile(join(root, 'apps/zoen/src/core/generated/Command.ts'), 'utf8'),
+      next.toString('hex'),
+    );
+    assert.notEqual(
+      after.sha256,
+      before.sha256,
+      `native cache stamp ignored changed compiled ${app}`,
+    );
+  });
+}
 
 test('Word resource-only changes invalidate the native source stamp and are guarded inputs', async (t) => {
   const path = await fixture(t);
@@ -315,6 +334,8 @@ test('Word resource-only changes invalidate the native source stamp and are guar
     guard.before.context.environment.ZOEN_WORDCRAFT_RESOURCE_MANIFEST_JSON,
     createHash('sha256').update(JSON.stringify('{"fixture":"word-B"}')).digest('hex'),
   );
-  assert.equal(await readFile(join(root, 'apps/zoen/src/core/generated/Command.ts'), 'utf8'),
-    `word-resource-input|${join(root, 'crates/client-core')}`);
+  assert.equal(
+    await readFile(join(root, 'apps/zoen/src/core/generated/Command.ts'), 'utf8'),
+    `word-resource-input|${join(root, 'crates/client-core')}`,
+  );
 });

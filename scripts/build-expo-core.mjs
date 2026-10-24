@@ -53,8 +53,8 @@ async function inputs(directory) {
   for (const entry of entries) {
     const path = join(directory, entry.name);
     if (entry.isDirectory()) result.push(...(await inputs(path)));
-    // Grid's canonical starter workbook is embedded by Rust include_bytes!.
-    else if (/\.(rs|toml|json|html|deckcraft|xlsx)$/.test(path)) result.push(path);
+    // Canonical starter documents are embedded by Rust include_bytes!.
+    else if (/\.(rs|toml|json|html|deckcraft|xlsx|docx)$/.test(path)) result.push(path);
   }
   return result;
 }

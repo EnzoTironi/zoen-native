@@ -39,7 +39,7 @@ FRONTEND_CONTRACTS = {
     "miniapps/deckcraft-ui/build-bootstrap.mjs": "ecf7c02ddf67fac3f3bbb566b00940c2c5becc5a8f94060bf410a0f9b74fb57e",
     "miniapps/gridcraft-ui/build-bootstrap.mjs": "0ed258e83d06338d27393778c552a1094e694ca1a0f585c28dec11728ecc64ec",
     "tools/miniapp-build/managed-binary-bootstrap.mjs": "93196f98be23a6c1eff4db0b68cc9758dbb2906f53f94ca48595a0028dba7f55",
-    "scripts/build-expo-core.mjs": "8b58f32e98077ac464faafb9d7d7d61816b892d71c22418e02bb4170c291204f",
+    "scripts/build-expo-core.mjs": "af2c2f49e2c754b6d5d8be46bf9dd09fc4460b1b8b2613bc657251a6c57c2a64",
     "scripts/build-expo-web-core.mjs": "9504ad593e1413ed9b8e36c4b79032df1336e7ad740adbac18b5e9361fa8dfd2",
 }
 RESOURCE_MANIFESTS = (
