@@ -16,8 +16,9 @@ command dispatcher. Human and agent callers follow the same proposal boundary.
 The accepted document stays unchanged until an exact scope/mutation/next-version/
 hash ACK. Retries in the same bridge return the same proposal; the canonical host
 still owns authorization, durable idempotence, CAS, FileDoc and cold recovery.
-The standalone process emits a proposal and cannot commit it. The existing Zoen
-worker resolver does not yet advertise WordCraft.
+The standalone process emits a proposal and cannot commit it. The normal Zoen worker
+resolver now recognizes an explicitly configured signed Word component; no Word
+agent tool or available browser App is advertised by this foundation.
 
 ## Deliberately narrow DOCX profile
 
@@ -121,7 +122,13 @@ request. No cache/prewarm implementation or unverified AOT deserialization is
 introduced here. App availability still requires a canonical host/resource and
 browser integration with deployment readiness, permissions and recovery proof.
 
-Remaining vertical acceptance: real managed browser/manual editing, canonical
-binary host registration and permission/CAS recovery, agent action approval,
-native open/edit/save/cold recovery/export, accessibility and orientation. Keep
-#502 and #180 open until their actual journey criteria pass.
+The canonical plain-DOCX Format/Core/worker continuation and its actual signed
+WASIp2 -> encrypted FileDoc -> CAS -> cold original ACK/history proof are recorded
+in [CANONICAL-EVIDENCE.md](CANONICAL-EVIDENCE.md). This includes a serializer-loss
+RED and its strict XML/round-trip correction; the old sealed components above
+remain preserved.
+
+Remaining vertical acceptance: the real managed upstream editor/canvas, browser
+resource/host registration and lifecycle, certified-agent action approval, native
+open/edit/save/cold recovery/export, accessibility and orientation. Keep #502 and
+#180 open until their actual journey criteria pass.
