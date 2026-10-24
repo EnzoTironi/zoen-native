@@ -63,6 +63,24 @@ calls, checkpoint ownership and saving continue through the same live official
 Excalidraw MCP connection. The generic host has no timing workaround or launch
 data replay on layout changes.
 
+## Native viewport and embedded renderer contract
+
+The host resizes the actual native frame for the keyboard and sends current
+layout, safe insets and its close-button rectangle through the existing context.
+A geometry acknowledgement does not prove that the renderer consumed it. The
+renderer must constrain its content and clipping to that current safe rectangle
+once, including when its embedding parent already supplies a smaller rectangle.
+Do not reload the document or replace the current editor to respond to layout.
+
+In pinned egui/eframe0.36, the root `Ui` starts at `viewport_rect()`; merely setting
+`RawInput.safe_area_insets` does **not** relocate the App's panels. The Grid
+adaptation intersects the parent's available rectangle with `content_rect()`
+and uses that rectangle for the child layout and clip. Its short-viewport editing
+policy keeps the same TextEdit ID/buffer/cursor/composition, existing confirmation
+and command policy, and saved UI preferences. See the [Grid recipe and scope](../../miniapps/gridcraft-ui/README.md).
+This is a reusable contract for Deck, Word and future renderers, not evidence
+that those independent engines have received or passed the same adaptation.
+
 ## Bundled miniapp views
 
 All nine bundled AppSpecs now provide MCP Apps resources with integrity manifests.
