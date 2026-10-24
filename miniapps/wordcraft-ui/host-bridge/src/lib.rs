@@ -6,6 +6,7 @@ use wordcraft_doc::StoryRef;
 use wordcraft_engine::Session;
 mod wire;
 pub use wire::*;
+mod archive;
 pub mod profile;
 #[cfg(test)]
 mod tests;
@@ -15,7 +16,13 @@ pub fn failure(code: &str) -> String {
     code.to_owned()
 }
 pub fn hash(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut encoded = String::with_capacity(64);
+    for &byte in Sha256::digest(bytes).iter() {
+        encoded.push(char::from(HEX[usize::from(byte >> 4)]));
+        encoded.push(char::from(HEX[usize::from(byte & 15)]));
+    }
+    encoded
 }
 
 struct Pending {

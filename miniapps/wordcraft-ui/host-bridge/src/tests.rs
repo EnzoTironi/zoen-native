@@ -202,7 +202,17 @@ fn lenient_reader_extra_parts_and_rich_document_are_not_editable() -> Result<()>
     );
     // ZipWriter rejects duplicate names. Forge equal-length local/central names in a
     // genuine writer package so the parser, rather than the fixture builder, refuses it.
-    let mut duplicate = with_extra(&original, "word/forgedxx.xml", b"<ignored/>")?;
+    let mut reader =
+        zip::ZipArchive::new(Cursor::new(&original)).map_err(|_| failure("fixture_zip"))?;
+    let mut canonical_xml = Vec::new();
+    std::io::Read::read_to_end(
+        &mut reader
+            .by_name("word/document.xml")
+            .map_err(|_| failure("fixture_zip"))?,
+        &mut canonical_xml,
+    )
+    .map_err(|_| failure("fixture_zip"))?;
+    let mut duplicate = with_extra(&original, "word/forgedxx.xml", &canonical_xml)?;
     let old = b"word/forgedxx.xml";
     let new = b"word/document.xml";
     assert_eq!(old.len(), new.len());

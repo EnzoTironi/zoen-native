@@ -28,10 +28,11 @@ fn parts(bytes: &[u8]) -> Result<BTreeMap<String, Vec<u8>>> {
     if bytes.is_empty() || bytes.len() > MAX_DOCUMENT {
         return Err(failure("document_size"));
     }
+    let expected = crate::archive::preflight(bytes, MAX_PARTS, MAX_PART, MAX_INFLATED)?;
     let mut archive =
         zip::ZipArchive::new(Cursor::new(bytes)).map_err(|_| failure("invalid_zip"))?;
-    if archive.len() > MAX_PARTS {
-        return Err(failure("part_count"));
+    if archive.len() != expected {
+        return Err(failure("invalid_zip"));
     }
     let mut declared = 0u64;
     for i in 0..archive.len() {
