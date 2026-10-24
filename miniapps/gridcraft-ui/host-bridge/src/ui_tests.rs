@@ -47,7 +47,7 @@ fn value(h: &Harness, cell: &str) -> gridcraft_engine::core::Value {
         .value(gridcraft_engine::core::CellRef::parse(cell).unwrap())
 }
 #[test]
-fn actual_keyboard_enter_checkpoint_and_pending_receipt_freeze_at_phone_geometry() {
+fn actual_keyboard_enter_checkpoint_and_explicit_host_pause_at_phone_geometry() {
     let (mut h, mut b, scope, head) = harness();
     text(&mut h, "7");
     key(&mut h, Key::Enter);
@@ -62,18 +62,20 @@ fn actual_keyboard_enter_checkpoint_and_pending_receipt_freeze_at_phone_geometry
             },
         )
         .unwrap();
-    // Raw text, Enter and menu command cannot commit a second edit while CAS is unresolved.
+    assert!(b.freeze(&mut h.state_mut().session, true).is_ok());
+    // Explicit host pause still refuses text, Enter and menu commands during the save.
     text(&mut h, "9");
     key(&mut h, Key::Enter);
     assert_eq!(value(&h, "A2"), gridcraft_engine::core::Value::Empty);
     assert!(
         h.state().editor.is_none(),
-        "pending input must not create a later draft"
+        "an explicit host pause must not create a later draft"
     );
-    assert!(h
-        .state_mut()
-        .run("cell.set", json!({"cell":"A2","input":"9"}))
-        .is_err());
+    assert!(
+        h.state_mut()
+            .run("cell.set", json!({"cell":"A2","input":"9"}))
+            .is_err()
+    );
     super::tests::accept(
         &mut h.state_mut().session,
         &mut b,
@@ -82,6 +84,11 @@ fn actual_keyboard_enter_checkpoint_and_pending_receipt_freeze_at_phone_geometry
         "2",
         &p,
     );
+    assert!(
+        h.state().session.managed_frozen,
+        "ACK cannot remove the host pause"
+    );
+    assert!(b.freeze(&mut h.state_mut().session, false).is_ok());
     key(&mut h, Key::Escape);
     text(&mut h, "9");
     key(&mut h, Key::Enter);
@@ -97,8 +104,8 @@ fn invalid_external_formula_stays_a_human_draft_and_never_becomes_saved() {
         h.state().editor.is_some(),
         "invalid draft must remain recoverable"
     );
-    assert!(b
-        .snapshot(
+    assert!(
+        b.snapshot(
             &mut h.state_mut().session,
             Mutation {
                 scope,
@@ -106,7 +113,8 @@ fn invalid_external_formula_stays_a_human_draft_and_never_becomes_saved() {
                 mutation_id: "invalid".into()
             }
         )
-        .is_err());
+        .is_err()
+    );
 }
 
 #[test]
@@ -227,3 +235,6 @@ fn actual_refused_column_drag_preserves_two_accepted_cell_undo_steps() {
         "local undo does not invent an accepted version"
     );
 }
+
+#[path = "ui_pending_tests.rs"]
+mod pending;

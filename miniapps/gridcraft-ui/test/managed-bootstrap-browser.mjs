@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { exerciseWord, inspectWord, reopenWord } from "./word-bootstrap-assertions.mjs";
+import { exerciseGrid, assertGridExport, reopenGrid } from "./grid-bootstrap-assertions.mjs";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
@@ -133,16 +134,8 @@ try {
   const formats =
     editor === "deckcraft" ? ["pptx", "pdf"] : editor === "gridcraft" ? ["xlsx"] : ["docx"];
   for (const format of formats) await page.evaluate((f) => window.probe.share(f), format);
-  if (editor === "gridcraft") {
-    const frame = page.frames().find((f) => f !== page.mainFrame());
-    assert.ok(frame);
-    await frame.locator("#gridcraft_canvas").focus();
-    await page.keyboard.type("7");
-    await page.keyboard.press("Enter");
-    await page.waitForFunction(() => window.probe.writes === 1, undefined, { timeout: 8000 });
-    await page.evaluate(() => window.probe.share("xlsx"));
-  }
   const word = editor === "wordcraft" ? await exerciseWord(page, wordInspector, output) : undefined;
+  const input = editor === "gridcraft" ? await exerciseGrid(page) : undefined;
   const result = await page.evaluate(() => ({
     states: window.probe.states,
     exports: window.probe.exports,
@@ -155,8 +148,8 @@ try {
     assert.ok(result.writes >= 2);
     assert.equal(result.version, result.writes + 1);
   } else {
-    assert.equal(result.writes, editor !== "deckcraft" ? 1 : 0);
-    assert.equal(result.version, editor !== "deckcraft" ? 2 : 1);
+    assert.equal(result.writes, editor === "gridcraft" ? 2 : 0);
+    assert.equal(result.version, editor === "gridcraft" ? 3 : 1);
   }
   if (editor === "deckcraft") assert.equal(result.accepted, seed.toString("base64"));
   else assert.notEqual(result.accepted, seed.toString("base64"));
@@ -175,6 +168,8 @@ try {
       assert.equal(file.format, "docx");
       assert.equal(inspectWord(b, wordInspector), index === 0 ? "" : "Word browser\nSecond line");
     }
+    if (editor === "gridcraft" && index > 0)
+      assertGridExport(resolve(output, `accepted-${index + 1}.${file.format}`));
     delete file.data;
     file.bytes = b.length;
   }
@@ -193,6 +188,21 @@ try {
   await assert.rejects(
     page.evaluate((f) => window.probe.share(f), editor === "deckcraft" ? "xlsx" : "pdf"),
   );
+  const reopened =
+    editor === "gridcraft"
+      ? await reopenGrid(
+          page,
+          (retained) => {
+            files.set("/config.json", [
+              Buffer.from(
+                JSON.stringify({ ...config, seed: retained.data, version: retained.version }),
+              ),
+              "application/json",
+            ]);
+          },
+          output,
+        )
+      : undefined;
   await page.screenshot({ path: resolve(output, "opened.png") });
   await page.evaluate(() => window.probe.retire());
   await assert.rejects(page.evaluate((f) => window.probe.share(f), formats[0]));
@@ -210,6 +220,8 @@ try {
     fixtureBundleSha256: sha(bundled.outputFiles[0].contents),
     ...result,
     ...(word ? { word } : {}),
+    input,
+    reopened,
     requests,
     errors,
     consoleErrors,

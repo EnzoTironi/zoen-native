@@ -12,7 +12,9 @@ import { verifyRetiredAgent } from "./retired-agent.mjs";
 
 const [dist, seedPath, outputPath, playwrightModule] = process.argv.slice(2);
 if (![dist, seedPath, outputPath, playwrightModule].every((v) => v && isAbsolute(v)))
-  throw Error("Usage: browser.mjs ABS_PINNED_DIST ABS_ACTUAL_ENGINE_SEED ABS_OUTPUT ABS_PLAYWRIGHT_MODULE");
+  throw Error(
+    "Usage: browser.mjs ABS_PINNED_DIST ABS_ACTUAL_ENGINE_SEED ABS_OUTPUT ABS_PLAYWRIGHT_MODULE",
+  );
 const output = resolve(outputPath);
 await mkdir(output, { recursive: true, mode: 0o700 });
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -31,18 +33,27 @@ const asset = (bytes, ext, mime) => ({
   mime,
 });
 const runtime = {
-  schema: 1, engine: "gridcraft", revision, abi: "zoen-host-v1",
+  schema: 1,
+  engine: "gridcraft",
+  revision,
+  abi: "zoen-host-v1",
   module: asset(moduleBytes, "js", "text/javascript"),
   wasm: asset(wasm, "wasm", "application/wasm"),
 };
 function sheetCells(path) {
   const reader = fileURLToPath(new URL("./xlsx_export.py", import.meta.url));
-  return JSON.parse(execFileSync("python3", [reader, "cells", path], {
-    encoding: "utf8", timeout: 10000,
-  }));
+  return JSON.parse(
+    execFileSync("python3", [reader, "cells", path], {
+      encoding: "utf8",
+      timeout: 10000,
+    }),
+  );
 }
 const child = sandboxHtml(childHtml(seed.toString("base64"), sha(seed)), [], runtime);
-const requests = [], errors = [], consoleErrors = [], cleanupErrors = [];
+const requests = [],
+  errors = [],
+  consoleErrors = [],
+  cleanupErrors = [];
 const files = new Map([
   ["/module.js", [moduleBytes, "text/javascript"]],
   ["/engine.wasm", [wasm, "application/wasm"]],
@@ -57,80 +68,201 @@ files.set("/", [Buffer.from(html), "text/html"]);
 const server = createServer((request, response) => {
   requests.push({ method: request.method, path: request.url });
   const value = files.get(request.url);
-  if (request.method !== "GET" || !value) { response.writeHead(404); response.end(); return; }
-  response.writeHead(200, { "Content-Type": value[1], "Content-Length": value[0].length, "Cache-Control": "no-store" });
+  if (request.method !== "GET" || !value) {
+    response.writeHead(404);
+    response.end();
+    return;
+  }
+  response.writeHead(200, {
+    "Content-Type": value[1],
+    "Content-Length": value[0].length,
+    "Cache-Control": "no-store",
+  });
   response.end(value[0]);
 });
 const { chromium } = await import(pathToFileURL(playwrightModule).href);
 const executablePath = await findBrowserExecutable();
 assert.ok(executablePath, "Actual owned Chrome required");
-let browser, page, receipt, result = "FAIL";
+let browser,
+  page,
+  receipt,
+  result = "FAIL";
 try {
-  await new Promise((done, fail) => { server.once("error", fail); server.listen(0, "127.0.0.1", done); });
-  browser = await chromium.launch({ executablePath, headless: true, timeout: 30_000, args: ["--enable-unsafe-swiftshader", "--use-angle=swiftshader", "--disable-background-networking", "--disable-component-update"] });
-  const retiredAgent = await verifyRetiredAgent(browser, `http://127.0.0.1:${server.address().port}/`, output);
+  await new Promise((done, fail) => {
+    server.once("error", fail);
+    server.listen(0, "127.0.0.1", done);
+  });
+  browser = await chromium.launch({
+    executablePath,
+    headless: true,
+    timeout: 30_000,
+    args: [
+      "--enable-unsafe-swiftshader",
+      "--use-angle=swiftshader",
+      "--disable-background-networking",
+      "--disable-component-update",
+    ],
+  });
+  const retiredAgent = await verifyRetiredAgent(
+    browser,
+    `http://127.0.0.1:${server.address().port}/`,
+    output,
+  );
   page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
   page.on("pageerror", (e) => errors.push(String(e)));
-  page.on("console", (e) => { if (e.type() === "error") consoleErrors.push(e.text()); });
+  page.on("console", (e) => {
+    if (e.type() === "error") consoleErrors.push(e.text());
+  });
   await page.goto(`http://127.0.0.1:${server.address().port}/`, { waitUntil: "load" });
   const frame = page.frames().find((f) => f !== page.mainFrame());
   assert.ok(frame);
-  await frame.waitForFunction(() => window.probe?.ready || window.probe?.failed, undefined, { timeout: 18_000 });
+  await frame.waitForFunction(() => window.probe?.ready || window.probe?.failed, undefined, {
+    timeout: 18_000,
+  });
   assert.equal(await frame.evaluate(() => window.probe.failed), undefined);
   const original = await frame.evaluate(() => window.probe.export());
   assert.equal(original.metadata.sha256, sha(seed));
-  assert.equal(original.data, seed.toString("base64"), "Cold selected export is exact native bytes");
-  await frame.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+  assert.equal(
+    original.data,
+    seed.toString("base64"),
+    "Cold selected export is exact native bytes",
+  );
+  await frame.evaluate(
+    () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+  );
   await page.screenshot({ path: resolve(output, "opened.png") });
   // Real browser keyboard events into the actual upstream canvas/input handler.
+  // Keyboard-only ABI coverage; trusted touch ownership is checked separately above.
   await frame.locator("#gridcraft_canvas").focus();
   await page.keyboard.type("7");
   await page.keyboard.press("Enter");
-  await frame.waitForFunction(() => window.probe.changes.some((s) => s.dirty), undefined, { timeout: 5000 });
+  await frame.waitForFunction(() => window.probe.changes.some((s) => s.dirty), undefined, {
+    timeout: 5000,
+  });
   const manual = await frame.evaluate(() => window.probe.snapshot("browser-manual"));
   assert.equal(manual.metadata.operation.kind, "humanCheckpoint");
   assert.equal(sha(Buffer.from(manual.data, "base64")), manual.metadata.sha256);
-  assert.equal((await frame.evaluate(() => window.probe.status())).frozen, true);
-  await assert.rejects(frame.evaluate(() => window.probe.wrongAccept()), /receipt_mismatch/);
-  await page.keyboard.type("9"); await page.keyboard.press("Enter");
+  assert.equal(
+    (await frame.evaluate(() => window.probe.status())).frozen,
+    false,
+    "Manual autosave does not freeze newer input",
+  );
+  await assert.rejects(
+    frame.evaluate(() => window.probe.wrongAccept()),
+    /receipt_mismatch/,
+  );
+  await page.keyboard.type("9");
+  await page.keyboard.press("Enter");
+  await frame.evaluate(
+    () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+  );
   await frame.evaluate(() => window.probe.freeze(true));
   const accepted = await frame.evaluate(() => window.probe.accept());
   assert.equal(accepted.frozen, true, "Durable ACK must not undo the close/flush pause");
   const manualExport = await frame.evaluate(() => window.probe.export());
   assert.equal(manualExport.data, manual.data);
   await writeFile(resolve(output, "manual.xlsx"), Buffer.from(manual.data, "base64"));
-  const manualCells=sheetCells(resolve(output, "manual.xlsx"));
-  assert.equal(Number(manualCells.A1?.value),7,"Real browser keyboard committed to A1");
-  assert.ok(!manualCells.A2?.value,"Pending keyboard input did not write A2");
+  const manualCells = sheetCells(resolve(output, "manual.xlsx"));
+  assert.equal(Number(manualCells.A1?.value), 7, "Real browser keyboard committed to A1");
+  assert.ok(!manualCells.A2?.value, "Original pending XLSX remains immutable despite newer input");
   await frame.evaluate(() => window.probe.freeze(false));
-  const command = await frame.evaluate(() => window.probe.command("browser-command", "Sheet1", "A2", "=A1*2"));
-  const repeated = await frame.evaluate(() => window.probe.command("browser-command", "Sheet1", "A2", "=A1*2"));
+  const newer = await frame.evaluate(() => window.probe.snapshot("browser-newer-manual"));
+  assert.equal(newer.metadata.base.version, "2");
+  await assert.rejects(
+    frame.evaluate(
+      (oldHash) =>
+        window.probe.request("accept", {
+          scope: {
+            artifactId: "browser-component-workbook",
+            actorId: "fixture-human",
+            actorKind: "human",
+          },
+          mutationId: "browser-manual",
+          head: { version: "2", sha256: oldHash },
+        }),
+      manual.metadata.sha256,
+    ),
+    /receipt_mismatch/,
+  );
+  await frame.evaluate(() => window.probe.accept());
+  await writeFile(resolve(output, "newer-manual.xlsx"), Buffer.from(newer.data, "base64"));
+  const newerCells = sheetCells(resolve(output, "newer-manual.xlsx"));
+  assert.equal(Number(newerCells.A1?.value), 7);
+  assert.equal(
+    Number(newerCells.A2?.value),
+    9,
+    "Newer actual keyboard input survives original ACK",
+  );
+  const command = await frame.evaluate(() =>
+    window.probe.command("browser-command", "Sheet1", "A2", "=A1*2"),
+  );
+  const repeated = await frame.evaluate(() =>
+    window.probe.command("browser-command", "Sheet1", "A2", "=A1*2"),
+  );
   assert.deepEqual(repeated, command, "Exact pending command retries never reexecute");
   const commandAccepted = await frame.evaluate(() => window.probe.accept());
   const exported = await frame.evaluate(() => window.probe.export());
   assert.equal(exported.data, command.data);
   await writeFile(resolve(output, "command.xlsx"), Buffer.from(exported.data, "base64"));
-  const commandCells=sheetCells(resolve(output,"command.xlsx"));
-  assert.equal(Number(commandCells.A1?.value),7);
-  assert.equal(commandCells.A2?.formula,"A1*2");
-  assert.equal(Number(commandCells.A2?.value),14,"Actual WASM calculation is exported");
-  await frame.evaluate(({ data, head }) => window.probe.reopen(data, head), { data: exported.data, head: commandAccepted.head });
+  const commandCells = sheetCells(resolve(output, "command.xlsx"));
+  assert.equal(Number(commandCells.A1?.value), 7);
+  assert.equal(commandCells.A2?.formula, "A1*2");
+  assert.equal(Number(commandCells.A2?.value), 14, "Actual WASM calculation is exported");
+  await frame.evaluate(({ data, head }) => window.probe.reopen(data, head), {
+    data: exported.data,
+    head: commandAccepted.head,
+  });
   assert.equal((await frame.evaluate(() => window.probe.export())).data, exported.data);
-  for (const [width, height] of [[844, 390], [390, 460], [390, 844]]) {
+  for (const [width, height] of [
+    [844, 390],
+    [390, 460],
+    [390, 844],
+  ]) {
     await page.setViewportSize({ width, height });
-    assert.equal((await frame.evaluate(([w, h]) => window.probe.layout(w, h), [width, height])).layoutAccepted, true);
+    assert.equal(
+      (await frame.evaluate(([w, h]) => window.probe.layout(w, h), [width, height])).layoutAccepted,
+      true,
+    );
     assert.equal((await frame.evaluate(() => window.probe.export())).data, exported.data);
   }
-  await assert.rejects(frame.evaluate(() => window.probe.command("external", "Sheet1", "A3", '=WEBSERVICE("https://example.invalid")')), /unavailable/);
+  await assert.rejects(
+    frame.evaluate(() =>
+      window.probe.command("external", "Sheet1", "A3", '=WEBSERVICE("https://example.invalid")'),
+    ),
+    /unavailable/,
+  );
   assert.equal((await frame.evaluate(() => window.probe.export())).data, exported.data);
   await page.screenshot({ path: resolve(output, "edited.png") });
   await frame.evaluate(() => window.probe.retire());
-  await assert.rejects(frame.evaluate(() => window.probe.status()), /retired|unavailable/);
-  await assert.rejects(frame.evaluate(() => window.__zoenRuntime.load().then((e) => e.zoenHostStart())), /retired/);
+  await assert.rejects(
+    frame.evaluate(() => window.probe.status()),
+    /retired|unavailable/,
+  );
+  await assert.rejects(
+    frame.evaluate(() => window.__zoenRuntime.load().then((e) => e.zoenHostStart())),
+    /retired/,
+  );
   assert.deepEqual(errors, []);
   assert.deepEqual(consoleErrors, []);
-  assert.ok(!requests.some((r) => !["/", "/module.js", "/engine.wasm", "/favicon.ico"].includes(r.path)), "No document/formula/engine network traffic");
-  receipt = { runtime, retiredAgent, manualHash: manual.metadata.sha256, commandHash: exported.metadata.sha256, commandAccepted, manualCells, commandCells, requests, errors, consoleErrors, scope: "actual opaque-sandbox browser engine ABI/manual input/export; synthetic receipts, not Core or agent admission" };
+  assert.ok(
+    !requests.some((r) => !["/", "/module.js", "/engine.wasm", "/favicon.ico"].includes(r.path)),
+    "No document/formula/engine network traffic",
+  );
+  receipt = {
+    runtime,
+    retiredAgent,
+    manualHash: manual.metadata.sha256,
+    commandHash: exported.metadata.sha256,
+    commandAccepted,
+    manualCells,
+    newerCells,
+    commandCells,
+    requests,
+    errors,
+    consoleErrors,
+    scope:
+      "actual opaque-sandbox browser engine ABI/manual input/export; synthetic receipts, not Core or agent admission",
+  };
   result = "PASS";
 } catch (error) {
   receipt = { error: String(error), stack: error.stack, requests, errors, consoleErrors };
@@ -138,6 +270,10 @@ try {
 } finally {
   if (browser) await browser.close().catch((e) => cleanupErrors.push(String(e)));
   await new Promise((done) => server.close(done));
-  await writeFile(resolve(output, "result.json"), JSON.stringify({ result, ...receipt, cleanupErrors }, null, 2) + "\n");
+  await writeFile(
+    resolve(output, "result.json"),
+    JSON.stringify({ result, ...receipt, cleanupErrors }, null, 2) + "\n",
+  );
 }
-if (result !== "PASS" || cleanupErrors.length) throw Error("Actual Grid browser qualification failed; see result.json");
+if (result !== "PASS" || cleanupErrors.length)
+  throw Error("Actual Grid browser qualification failed; see result.json");

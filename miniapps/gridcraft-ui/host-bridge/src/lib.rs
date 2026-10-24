@@ -24,7 +24,12 @@ pub fn hash(bytes: &[u8]) -> String {
 fn engine(e: gridcraft_engine::EngineError) -> String {
     format!("engine: {e}")
 }
+enum PendingKind {
+    Manual,
+    Agent,
+}
 struct Pending {
+    kind: PendingKind,
     id: String,
     fingerprint: String,
     doc: Arc<Workbook>,
@@ -79,7 +84,11 @@ impl HostBridge {
             return Err(failure("human_interaction"));
         }
         self.paused = frozen;
-        s.managed_frozen = frozen || self.pending.is_some();
+        s.managed_frozen = frozen
+            || self
+                .pending
+                .as_ref()
+                .is_some_and(|p| matches!(p.kind, PendingKind::Agent));
         Ok(self.status(s))
     }
     pub fn open(&mut self, s: &mut Session, request: Open, bytes: &[u8]) -> Result<Value> {
@@ -165,6 +174,7 @@ impl HostBridge {
         m: Mutation,
         fingerprint: String,
         operation: Value,
+        kind: PendingKind,
     ) -> Result<Proposal> {
         let doc = s.doc().map_err(engine)?.wb.clone();
         let bytes = io::save_bytes(&doc, "Workbook.xlsx").map_err(engine)?;
@@ -173,13 +183,15 @@ impl HostBridge {
             metadata: json!({"scope":m.scope,"base":m.base,"mutationId":m.mutation_id,"sha256":hash(&bytes),"byteLength":bytes.len(),"engineRevision":profile::ENGINE_REVISION,"operation":operation,"acceptedHead":null}),
             bytes,
         };
+        let frozen = self.paused || matches!(kind, PendingKind::Agent);
         self.pending = Some(Pending {
+            kind,
             id: m.mutation_id,
             fingerprint,
             doc,
             proposal: proposal.clone(),
         });
-        s.managed_frozen = true;
+        s.managed_frozen = frozen;
         Ok(proposal)
     }
     pub fn snapshot(&mut self, s: &mut Session, m: Mutation) -> Result<Proposal> {
@@ -190,7 +202,13 @@ impl HostBridge {
         if let Some(p) = self.admission(s, &m, &fingerprint)? {
             return Ok(p);
         }
-        self.prepare(s, m, fingerprint, json!({"kind":"humanCheckpoint"}))
+        self.prepare(
+            s,
+            m,
+            fingerprint,
+            json!({"kind":"humanCheckpoint"}),
+            PendingKind::Manual,
+        )
     }
     pub fn execute(&mut self, s: &mut Session, c: Command) -> Result<Proposal> {
         let fingerprint = hash(&serde_json::to_vec(&c).map_err(|_| failure("invalid_request"))?);
@@ -216,6 +234,7 @@ impl HostBridge {
                 c.mutation,
                 fingerprint,
                 json!({"kind":"command","action":c.action,"result":value}),
+                PendingKind::Agent,
             )
         })();
         if result.is_err() {
