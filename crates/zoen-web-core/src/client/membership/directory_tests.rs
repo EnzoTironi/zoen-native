@@ -1,7 +1,7 @@
 use super::*;
 use crate::client::tests::{account, HostSigner};
 use event_log::Signer as NativeSigner;
-use protocol::complete_reads::{self as reads, Device, Kind, Page};
+use protocol::complete_reads::{Device, Kind, Page};
 
 fn fixture() -> Client<HostSigner> {
     let root = NativeSigner::from_secret(&[201; 32]);
