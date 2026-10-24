@@ -190,7 +190,9 @@ async fn complete_devices_keeps_one_snapshot_across_late_commit_and_revocation()
 }
 #[tokio::test]
 async fn snapshot_tokens_are_connection_bound_and_cancel_releases_the_global_slot() {
-    let test = TestRelay::new().await;
+    // This case intentionally exhausts the real process-global capacity. Other
+    // test relays retain shared leases, so only this case runs in isolation.
+    let test = TestRelay::exclusive_snapshots().await;
     let root = Signer::generate();
     let (author, mut first, _) = setup(&test, &root).await;
     let p = next(&mut first, 20, Request::begin(Kind::Devices)).await;
