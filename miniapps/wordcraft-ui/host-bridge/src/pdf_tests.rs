@@ -132,6 +132,52 @@ fn pdf_rejects_foreign_scope_head_and_unknown_format_without_changing_document()
     Ok(())
 }
 
+#[test]
+fn pdf_refuses_missing_font_glyphs_without_losing_unicode_docx_or_pending_input() -> Result<()> {
+    let bytes = profile::encode("Original Olá 日本語 👩🏽‍💻")?;
+    let original = head("1", &bytes);
+    let mut bridge = HostBridge::open(
+        Open {
+            scope: scope(),
+            head: original.clone(),
+        },
+        &bytes,
+    )?;
+    bridge.execute(Command {
+        mutation: Mutation {
+            scope: scope(),
+            base: original.clone(),
+            mutation_id: "held-unicode".into(),
+        },
+        action: Action::TextReplace(TextReplace {
+            text: "Newer unaccepted input".into(),
+        }),
+    })?;
+    let pending = bridge.status();
+    assert_eq!(
+        bridge.export(&pdf_request(&original)?).err().as_deref(),
+        Some("pdf_missing_glyph")
+    );
+    assert_eq!(bridge.status(), pending);
+    let docx: Export =
+        serde_json::from_value(json!({"scope":scope(),"head":original,"format":"docx"}))
+            .map_err(|_| failure("fixture_docx"))?;
+    assert_eq!(bridge.export(&docx)?.bytes, bytes);
+    let cold = HostBridge::open(
+        Open {
+            scope: scope(),
+            head: original.clone(),
+        },
+        &bytes,
+    )?;
+    assert_eq!(
+        cold.export(&pdf_request(&original)?).err().as_deref(),
+        Some("pdf_missing_glyph")
+    );
+    assert_eq!(cold.inspect()["text"], "Original Olá 日本語 👩🏽‍💻");
+    Ok(())
+}
+
 #[cfg(feature = "browser")]
 #[test]
 fn browser_pdf_uses_accepted_snapshot_while_real_canvas_and_manual_proposal_keep_newer_input()
