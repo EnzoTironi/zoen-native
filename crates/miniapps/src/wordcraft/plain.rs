@@ -1,4 +1,4 @@
-//! Verify the actual pinned writer's plain paragraph/run grammar, not general WordML.
+//! Verify the actual pinned writer's plain paragraph/run grammar, not general `WordML`.
 //! All non-body bytes and namespaces must equal the real --seed document.
 use super::{valid_text, INVALID};
 const EMPTY: &str = "<w:p></w:p>";
