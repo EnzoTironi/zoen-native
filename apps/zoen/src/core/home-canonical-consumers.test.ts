@@ -13,6 +13,7 @@ import {
 import { messageCard } from './message-presentation.ts';
 import { conversationScope } from './conversation-scope.ts';
 import { conversationRevealContent } from './conversation-reveal-content.ts';
+import * as binaryFormats from '../miniapps/binary-formats.ts';
 import { selectedDeckHead } from '../miniapps/deck-version-selection.ts';
 import type { ItemDetail, TimelineEntry } from './types';
 import type { ItemCard } from './generated/ItemCard';
@@ -277,6 +278,7 @@ function renderScreen(
     if (path === './deck-version-selection') return { selectedDeckHead };
     if (path === './state-view') return { MiniappState: 'MiniappState' };
     if (path === './view-host') return { MiniappView: 'MiniappView' };
+    if (path === './binary-formats') return binaryFormats;
     if (path.endsWith('/native-surfaces/controls'))
       return { MiniappSurfaceControls: 'MiniappSurfaceControls' };
     if (path === './actions' || path.endsWith('/assistant/launch')) return {};
