@@ -140,7 +140,11 @@ export function useChatController() {
     reveal: searchReveal,
     focused: metricsFocused,
     searchActive: searchState.active,
-    current: () => focused.current && search.isCurrent(),
+    current: () =>
+      focused.current &&
+      owner !== null &&
+      !store.isSessionRetiring &&
+      conversationScope(store.getSnapshot(), store.sessionEpoch, id) === owner,
     list,
     rows: visibleEntries.length,
     keyboard,
