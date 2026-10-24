@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { toolApprovalValid } from '../core/tool-request-decision';
 import { useClient } from '../core/provider';
+import { accountScope } from '../core/account-scope';
 import {
   createReviewPort,
   ToolReviewSession,
@@ -10,11 +11,12 @@ import {
 } from '../core/tool-review-renewal.ts';
 
 export function useToolReview(id: string) {
-  const { store } = useClient();
+  const client = useClient();
+  const { store } = client;
   const port = useMemo(() => createReviewPort(store), [store]);
   const session = useMemo(() => new ToolReviewSession(port, id), [port, id]);
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
-  const key = reviewScopeKey(port.scope());
+  const key = reviewScopeKey(accountScope(store, client));
   useFocusEffect(
     useCallback(() => {
       let foreground = AppState.currentState === 'active';
