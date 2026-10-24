@@ -77,12 +77,12 @@ fn authenticated_worker_snapshot_is_bounded_payload_free_and_read_only() -> Test
     ] {
         assert!(!wire.contains(private));
     }
-    assert_eq!(f.core.image()?.as_bytes(), before.as_bytes());
+    assert!(f.core.image()?.as_bytes() == before.as_bytes());
     assert_eq!(
         f.core.engine.owner_policy_worker_observation(&query)?,
         observed
     );
-    assert_eq!(f.core.image()?.as_bytes(), before.as_bytes());
+    assert!(f.core.image()?.as_bytes() == before.as_bytes());
     assert_eq!(observed.socket, C::Unobserved);
     assert_eq!(observed.socket_synced, None);
     let client = crate::Client::open(":memory:".into(), "en".into())?;
@@ -106,7 +106,7 @@ fn authenticated_worker_snapshot_is_bounded_payload_free_and_read_only() -> Test
         client.owner_policy_worker_observation(&query),
         Err(CoreError::Storage { .. })
     ));
-    assert_eq!(client.lock().store.memory_image()?, before);
+    assert!(client.lock().store.memory_image()? == before);
     Ok(())
 }
 
@@ -172,7 +172,7 @@ fn missing_and_unreadable_worker_groups_are_distinct_but_both_stay_denied() -> T
             .engine
             .report_owner_policy_options(&query, options)
             .is_err());
-        assert_eq!(f.core.image()?.as_bytes(), before.as_bytes());
+        assert!(f.core.image()?.as_bytes() == before.as_bytes());
         if storage_fault {
             f.core
                 .engine
@@ -227,7 +227,7 @@ fn real_unconfirmed_mls_commit_is_observed_pending_and_never_admits_account_cont
         .engine
         .owner_policy_inquiry(&scope.space_id, &pending.source)
         .is_err());
-    assert_eq!(f.core.image()?.as_bytes(), before.as_bytes());
+    assert!(f.core.image()?.as_bytes() == before.as_bytes());
     assert!(
         f.core.engine.store.outbox()?.is_empty(),
         "diagnostic publishes no handshake or receipt"
@@ -261,7 +261,7 @@ fn diagnostic_rechecks_expiry_foreign_account_and_directory_corruption_without_d
         .engine
         .owner_policy_worker_observation(&query)
         .is_err());
-    assert_eq!(f.core.image()?.as_bytes(), before.as_bytes());
+    assert!(f.core.image()?.as_bytes() == before.as_bytes());
     // The retained cache is not substituted with an empty successful directory.
     f.core.engine.store.set_meta("devices.active", "not-json")?;
     f.core.engine.store.set_meta("devices.revoked", "[]")?;
@@ -270,6 +270,6 @@ fn diagnostic_rechecks_expiry_foreign_account_and_directory_corruption_without_d
     assert_eq!(observed.directory, D::Invalid);
     assert_eq!(observed.active_devices, None);
     assert_eq!(observed.self_active, None);
-    assert_eq!(f.core.image()?.as_bytes(), before.as_bytes());
+    assert!(f.core.image()?.as_bytes() == before.as_bytes());
     Ok(())
 }
