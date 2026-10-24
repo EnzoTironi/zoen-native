@@ -7,6 +7,11 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 for (const variant of [
+  {
+    name: 'draft-source',
+    sources: ['ios/Location/ZoenDraftLocationSource.swift', 'tests/DraftLocationSourceTests.swift'],
+    marker: /Draft location held-copy\/hash PASS/,
+  },
   { name: 'parser', sources: ['tests/LocationPreviewTests.swift'], marker: /Location parser PASS/ },
   {
     name: 'session',
@@ -90,6 +95,8 @@ test(
         '-parse',
         ...[
           'Location/ZoenLocationMap.swift',
+          'Location/ZoenDraftLocationGallery.swift',
+          'ZoenAttachmentGalleryAssets.swift',
           'Location/ZoenLocationModule.swift',
           'ZoenCoreModule.swift',
         ].map((path) => fileURLToPath(new URL(path, root))),

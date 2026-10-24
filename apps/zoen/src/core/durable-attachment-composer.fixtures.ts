@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import type { AttachmentApprovalProps } from '../media/attachment-approval.types.ts';
+import * as locationFile from '../media/location-file.ts';
 import * as attachmentCategories from '../media/attachment-categories.ts';
 import type { AttachmentComposerOptions } from '../media/attachment-composer.tsx';
 import type { AttachmentAsset } from '../media/attachment-draft.ts';
@@ -347,6 +348,7 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
       },
     },
     './attachment-draft-strip': { AttachmentDraftStrip: 'AttachmentDraftStrip' },
+    './location-file': locationFile,
     './attachment-approval': {
       AttachmentApproval: 'AttachmentApproval',
       supportsMediaApproval: true,
