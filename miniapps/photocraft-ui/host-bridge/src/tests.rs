@@ -13,8 +13,8 @@ fn seed() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     );
     let mut layer = Layer::raster("Pixels", doc.pixel_format());
     let surface = layer.surface_mut().ok_or("missing real raster surface")?;
-    surface.fill_rect(Rect::new(0, 0, 1, 1), &[255, 0, 0, 255]);
-    surface.fill_rect(Rect::new(1, 0, 1, 1), &[0, 0, 255, 255]);
+    surface.fill_rect(Rect::new(0, 0, 1, 1), &[1.0, 0.0, 0.0, 1.0]);
+    surface.fill_rect(Rect::new(1, 0, 1, 1), &[0.0, 0.0, 1.0, 1.0]);
     doc.layers.push(layer);
     Ok(photocraft_format::save_to_bytes(
         &doc,
@@ -51,6 +51,10 @@ fn upstream_flip_then_cold_png_preserves_real_pixels_and_source() -> TestResult 
     let first = inspect(&source, &sha(&source))?;
     assert_eq!((first.width, first.height), (2, 1));
     let changed = transform(&source, &sha(&source), Operation::FlipHorizontal)?;
+    assert_eq!(
+        changed,
+        transform(&source, &sha(&source), Operation::FlipHorizontal)?
+    );
     // Export opens the saved bytes in a new actual engine/document path.
     let png = export_png(&changed, &sha(&changed))?;
     assert_eq!(
@@ -175,6 +179,25 @@ fn bounded_archive_and_canvas_fail_before_decode_or_command() -> TestResult {
     assert_eq!(
         inspect(&outside, &sha(&outside)),
         Err(Error::UnsupportedProfile)
+    );
+    Ok(())
+}
+
+#[test]
+fn sparse_raster_crosses_real_tile_boundaries_without_losing_original_pixels() -> TestResult {
+    let source = changed_manifest(&seed()?, |m| {
+        m["document"]["size"]["width"] = serde_json::json!(513);
+    })?;
+    let flipped = transform(&source, &sha(&source), Operation::FlipHorizontal)?;
+    let png = export_png(&flipped, &sha(&flipped))?;
+    let pixels = photocraft_codecs::decode(&png)?.to_rgba8();
+    assert_eq!(pixels.len(), 513 * 4);
+    assert!(pixels[..511 * 4].iter().all(|b| *b == 0));
+    assert_eq!(&pixels[511 * 4..], [0, 0, 255, 255, 255, 0, 0, 255]);
+    let restored = transform(&flipped, &sha(&flipped), Operation::FlipHorizontal)?;
+    assert_eq!(
+        archive::check(&source)?.document,
+        archive::check(&restored)?.document
     );
     Ok(())
 }
