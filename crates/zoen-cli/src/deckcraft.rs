@@ -68,6 +68,7 @@ pub fn configured() -> Result<Option<Arc<DeckcraftWorker>>, String> {
             "ZOEN_PHOTOCRAFT_WORKER_MANIFEST",
             "ZOEN_PHOTOCRAFT_WORKER_PUBLISHER",
         ],
+        cache.as_ref(),
     )?;
     let mut configured: Option<DeckcraftWorker> = None;
     for worker in [deck, grid, word, photo].into_iter().flatten() {

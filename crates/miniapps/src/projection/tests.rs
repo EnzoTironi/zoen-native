@@ -1,5 +1,21 @@
-use super::{headline, view};
+use super::{headline, snapshot, view};
 use serde_json::json;
+
+#[test]
+fn word_card_uses_the_shared_caption_template_and_exact_document_link() {
+    let state = json!({"title":"Meeting notes","words":3});
+    let before = state.clone();
+    let Some(card) = snapshot("wordcraft", &state, "it_word_notes", 0) else {
+        panic!("Word must have a card");
+    };
+    assert_eq!(card["template"], "caption");
+    assert_eq!(card["title"], "Meeting notes");
+    assert_eq!(card["symbol"], "doc.text");
+    assert_eq!(card["deepLink"], "zoen://app/it_word_notes");
+    assert_eq!(card["detail"], headline("wordcraft", &state, 0).0);
+    assert_eq!(state, before);
+    assert!(!card.to_string().contains("http"));
+}
 
 #[test]
 fn pet_elapsed_time_handles_the_entire_signed_clock_range_without_mutating_state() {

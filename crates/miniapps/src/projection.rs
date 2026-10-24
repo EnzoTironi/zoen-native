@@ -67,6 +67,15 @@ pub(super) fn pet_mood(v: &Value) -> &'static str {
 pub fn headline(app: &str, state: &Value, now: i64) -> (String, Vec<(String, f64)>) {
     let v = view(app, state, now);
     match app {
+        "wordcraft" => {
+            let words = state["words"].as_u64().unwrap_or(0);
+            let label = if words == 1 {
+                t("1 palavra", "1 word")
+            } else {
+                tr!("{} palavras", "{} words", words)
+            };
+            (label, vec![])
+        }
         "photocraft" => {
             let width = state["width"].as_u64().unwrap_or(0);
             let height = state["height"].as_u64().unwrap_or(0);
@@ -276,12 +285,14 @@ pub fn headline(app: &str, state: &Value, now: i64) -> (String, Vec<(String, f64
     }
 }
 
-/// The mini-app's widget snapshot (one of a few native templates; see `WidgetSnapshot` in
-/// the Apple app). Content only, no labels about the app itself. `None` = no widget.
+/// Content for native cards and platform widgets. `None` means no widget.
 pub fn snapshot(app: &str, state: &Value, item_id: &str, now: i64) -> Option<Value> {
     let v = view(app, state, now);
     let link = format!("zoen://app/{item_id}");
     let snap = match app {
+        "wordcraft" => {
+            json!({"template":"caption","title":state["title"],"eyebrow":t("Documento", "Document"),"detail":headline(app,state,now).0,"accentHex":"#667C99","symbol":"doc.text"})
+        }
         "photocraft" => {
             json!({"template":"caption","title":state["title"],"eyebrow":t("Imagem", "Image"),"detail":headline(app,state,now).0,"accentHex":"#447B83","symbol":"photo"})
         }
