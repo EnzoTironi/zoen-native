@@ -110,3 +110,31 @@ fn invalid_external_formula_stays_a_human_draft_and_never_becomes_saved() {
         .is_err()
     );
 }
+
+#[test]
+fn native_share_is_accessible_host_intent_without_saving_or_exporting_its_draft() {
+    use egui_kittest::kittest::Queryable;
+    use std::{cell::Cell, rc::Rc};
+    let (mut h, b, _, _) = harness();
+    text(&mut h, "7");
+    key(&mut h, Key::Enter);
+    assert!(b.dirty(&h.state().session));
+    let calls = Rc::new(Cell::new(0));
+    let observed = calls.clone();
+    h.state_mut().services.host_export_intent = Some(Box::new(move |format| {
+        assert_eq!(format, "xlsx");
+        observed.set(observed.get() + 1);
+        true
+    }));
+    h.run_steps(2);
+    h.get_by_label("Share").click();
+    h.run_steps(2);
+    assert_eq!(calls.get(), 1);
+    assert!(b.dirty(&h.state().session));
+    h.state_mut().run("file.save", json!({})).unwrap();
+    assert_eq!(calls.get(), 2);
+    assert!(b.dirty(&h.state().session));
+    h.state_mut().services.host_export_intent = Some(Box::new(|_| false));
+    assert!(h.state_mut().run("file.save", json!({})).is_err());
+    assert!(b.dirty(&h.state().session));
+}

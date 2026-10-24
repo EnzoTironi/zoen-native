@@ -266,3 +266,24 @@ fn paused_flush_accept_keeps_keyboard_frozen_and_resume_cannot_release_pending()
     s.execute("cell.set", json!({"cell":"A2","input":"9"}))
         .unwrap();
 }
+
+#[test]
+fn canonical_open_never_adopts_or_overwrites_a_standalone_draft() {
+    let (_, _, scope, head, bytes) = open();
+    let mut standalone = Session::new();
+    standalone.new_workbook();
+    standalone
+        .execute("cell.set", json!({"cell":"A1","input":"private draft"}))
+        .unwrap();
+    let before = standalone.doc().unwrap().wb.clone();
+    let mut bridge = HostBridge::default();
+    assert!(!bridge.is_open());
+    assert_eq!(
+        bridge
+            .open(&mut standalone, Open { scope, head }, &bytes)
+            .unwrap_err(),
+        "unbound_session"
+    );
+    assert!(Arc::ptr_eq(&before, &standalone.doc().unwrap().wb));
+    assert!(!bridge.is_open());
+}

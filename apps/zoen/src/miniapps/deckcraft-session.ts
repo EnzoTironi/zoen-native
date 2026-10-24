@@ -1,4 +1,5 @@
 import { t } from '../i18n/index.ts';
+import { binaryEditorFormat, binaryExportAllowed, type BinaryEditorId } from './binary-formats.ts';
 import type { CoreDriver } from '../core/types';
 import type { VerifiedMiniappResource } from './sandbox';
 import { createNativeCanonicalBinaryHost } from './canonical-binary-native.ts';
@@ -11,6 +12,7 @@ import { deckcraftFeedbackReason, type DeckcraftFeedbackReason } from './deckcra
 
 type Phase = 'saved' | 'saving' | 'pending' | 'error';
 type Options = {
+  editor?: BinaryEditorId;
   itemId: string;
   selectedHead?: DeckcraftExportHead;
   title: () => string;
@@ -40,6 +42,7 @@ type Options = {
 /** One focused document owns its official protocol, bounded transfers and final
  * save. React owns presentation only; the Rust core remains the sole journal. */
 export function createDeckcraftSession(options: Options) {
+  const editor = binaryEditorFormat(options.editor).id;
   const lifetime = frameAuthority(options.check);
   // A history frame has no write authority, even if its guest requests save tools.
   const selected = options.selectedHead ? Object.freeze({ ...options.selectedHead }) : null;
@@ -71,6 +74,7 @@ export function createDeckcraftSession(options: Options) {
     }) as CoreDriver['request'],
   };
   const binary = createNativeCanonicalBinaryHost({
+    editor,
     itemId: options.itemId,
     driver: readDriver,
     mutate: options.mutate,
@@ -130,7 +134,7 @@ export function createDeckcraftSession(options: Options) {
       if (name === 'app_binary_share') {
         if (
           args.id !== options.itemId ||
-          !['pdf', 'pptx'].includes(String(args.format)) ||
+          !binaryExportAllowed(editor, args.format) ||
           Object.keys(args).some((key) => !['id', 'format'].includes(key))
         )
           throw Error(t('decks.exportFailed'));
@@ -295,7 +299,8 @@ export function createDeckcraftSession(options: Options) {
     } catch (error) {
       return Promise.reject(error);
     }
-    if (!opened || retiring) return Promise.reject(new Error(t('decks.exportFailed')));
+    if (!binaryExportAllowed(editor, format) || !opened || retiring)
+      return Promise.reject(new Error(t('decks.exportFailed')));
     queued++;
     publish();
     let resumed = false;

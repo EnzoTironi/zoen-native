@@ -13,7 +13,7 @@ function gate() {
   });
   return { promise, resolve };
 }
-async function fixture() {
+async function fixture(editor: 'deckcraft' | 'gridcraft' = 'deckcraft') {
   let active = true;
   let disposals = 0;
   let transport: Transport;
@@ -40,11 +40,12 @@ async function fixture() {
     return { content: [] };
   };
   const session = createDeckcraftSession({
+    editor,
     itemId: 'deck-one',
     title: () => 'Owned presentation',
     verified: {
       resource: {
-        uri: 'ui://zoen/deckcraft/index.html',
+        uri: `ui://zoen/${editor}/index.html`,
         mime_type: 'text/html;profile=mcp-app',
         text: '<p>Owned</p>',
       },
@@ -525,4 +526,34 @@ test('unopened startup failure uses a fixed localized reason and never echoes gu
   });
   assert.doesNotMatch(f.states.at(-1)!.error!, /Private document/);
   assert.equal(f.session.opened, false);
+});
+
+test('Grid uses the same official MCP share lifetime with its fixed XLSX policy', async (t) => {
+  const f = await fixture('gridcraft');
+  t.after(f.close);
+  await f.open();
+  await f.app.callServerTool({
+    name: 'app_binary_share',
+    arguments: { id: 'deck-one', format: 'xlsx' },
+  });
+  assert.deepEqual(f.shares, [{ format: 'xlsx', head: { version: '7', sha256: 'a'.repeat(64) } }]);
+  assert.ok(f.calls.includes('flush'));
+  assert.ok(f.calls.includes('resume_document'));
+});
+test('editor-specific format refusal happens before either public or MCP sharing can flush/read', async (t) => {
+  for (const editor of ['deckcraft', 'gridcraft'] as const) {
+    const f = await fixture(editor);
+    t.after(f.close);
+    await f.open();
+    for (const format of editor === 'deckcraft'
+      ? (['xlsx'] as const)
+      : (['pptx', 'pdf'] as const)) {
+      await assert.rejects(f.session.share(format));
+      await assert.rejects(
+        f.app.callServerTool({ name: 'app_binary_share', arguments: { id: 'deck-one', format } }),
+      );
+    }
+    assert.deepEqual(f.calls, []);
+    assert.deepEqual(f.shares, []);
+  }
 });

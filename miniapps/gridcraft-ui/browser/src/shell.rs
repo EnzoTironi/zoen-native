@@ -26,7 +26,11 @@ pub async fn start() -> Result<(), JsValue> {
                 if api::retired() {
                     return Err("host_retired".into());
                 }
-                let mut app = SheetApp::new(Session::new(), Default::default());
+                let services = gridcraft_ui_egui::Services {
+                    host_export_intent: Some(Box::new(|_| api::export_intent())),
+                    ..Default::default()
+                };
+                let mut app = SheetApp::new(Session::new(), services);
                 app.chrome.title_bar = false;
                 app.chrome.file_tab = false;
                 // Never restore standalone localStorage/eframe state or install file,
@@ -73,7 +77,9 @@ impl eframe::App for Shell {
         {
             self.app.ui.dark = matches!(theme, Theme::Dark);
         }
-        self.app.logic(ctx);
+        if self.bridge.is_open() {
+            self.app.logic(ctx);
+        }
     }
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
         // Dragged files cannot bypass the Core open contract. File pickers and
@@ -83,31 +89,17 @@ impl eframe::App for Shell {
         if let Some(l) = api::layout() {
             raw.safe_area_insets = Some(l.safe_insets());
         }
-        if api::retired() {
+        if api::retired() || !self.bridge.is_open() {
             raw.events.clear();
             return;
         }
         self.app.raw_input_hook(raw);
     }
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        if api::retired() {
+        if api::retired() || !self.bridge.is_open() {
             return;
         }
         self.app.ui(ui);
-        if self.app.session.active().is_some() {
-            egui::Area::new("zoen-grid-export".into())
-                .anchor(egui::Align2::RIGHT_BOTTOM, [-8.0, -8.0])
-                .show(ui.ctx(), |ui| {
-                    let label = if self.app.ui.language == gridcraft_ui_egui::i18n::Language::PtBr {
-                        "Compartilhar"
-                    } else {
-                        "Share"
-                    };
-                    if ui.button(label).clicked() {
-                        let _ = api::export_intent();
-                    }
-                });
-        }
         api::changed(&self.bridge, &self.app);
     }
 }

@@ -47,6 +47,9 @@ pub struct HostBridge {
     paused: bool,
 }
 impl HostBridge {
+    pub fn is_open(&self) -> bool {
+        self.scope.is_some() && self.head.is_some() && self.uid.is_some()
+    }
     fn document(&self, s: &Session) -> Result<()> {
         if s.documents().len() != 1 || s.active().map(|d| d.uid) != self.uid || self.uid.is_none() {
             return Err(failure("document_changed"));
@@ -86,6 +89,12 @@ impl HostBridge {
             return Err(failure("invalid_scope"));
         }
         request.head.number()?;
+        if !self.is_open() && !s.documents().is_empty() {
+            return Err(failure("unbound_session"));
+        }
+        if !matches!(s.mode, gridcraft_engine::Mode::Ready) {
+            return Err(failure("human_interaction"));
+        }
         if let Some(scope) = &self.scope {
             self.scope(&request.scope)?;
             self.document(s)?;
