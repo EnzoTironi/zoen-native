@@ -23,6 +23,8 @@ impl Fixture {
         let entered = Arc::new(Notify::new());
         let release = Arc::new(Semaphore::new(0));
         let cancelled = Arc::new(Notify::new());
+        let background = Arc::new(Notify::new());
+        let background_sent = background.clone();
         let peer = event_log::Signer::from_secret(&[89; 32]).id();
         let (enter, go, cancel, other) = (
             entered.clone(),
@@ -81,6 +83,7 @@ impl Fixture {
             .await
             .unwrap();
             let mut digest = Vec::new();
+            let mut initial_background = true;
             while let Some(Ok(message)) = ws.next().await {
                 if !message.is_binary() {
                     continue;
@@ -114,40 +117,76 @@ impl Fixture {
                                 },
                             ];
                             records.sort_by(|a, b| a.device.cmp(&b.device));
-                            let index = request.ordinal as usize;
-                            assert!(index < 2);
-                            if index == 1 {
-                                enter.notify_one();
-                                go.acquire().await.unwrap().forget();
-                                if cut == 3 {
-                                    std::future::pending::<()>().await;
-                                }
+                            if request.ordinal == 0 {
+                                digest.clear();
                             }
-                            let result = if index == 1 && cut == 1 {
-                                Err("synthetic lost terminal".into())
-                            } else {
+                            if std::mem::take(&mut initial_background) {
+                                // SyncDone schedules the actual normal background
+                                // directory read. Complete it unchanged before the
+                                // explicit API read owns the deliberate page cut.
+                                assert_eq!(request.ordinal, 0);
                                 let mut page = Page {
                                     kind: Kind::Devices as i32,
-                                    snapshot: "e".repeat(64),
-                                    ordinal: request.ordinal,
-                                    identity: if index == 1 && cut == 2 {
-                                        "f".repeat(64)
-                                    } else {
-                                        identity.clone()
-                                    },
+                                    snapshot: "b".repeat(64),
+                                    ordinal: 0,
+                                    identity: identity.clone(),
                                     device: device.clone(),
                                     header: None,
-                                    devices: vec![records[index].clone()],
+                                    devices: records
+                                        .iter()
+                                        .cloned()
+                                        .map(|mut r| {
+                                            r.revoked = false;
+                                            r
+                                        })
+                                        .collect(),
                                     cursors: Vec::new(),
-                                    complete: index == 1,
-                                    count: request.ordinal + 1,
+                                    complete: true,
+                                    count: 2,
                                     digest: Vec::new(),
                                 };
-                                page.digest = page.rolling_digest(&digest);
-                                digest = page.digest.clone();
-                                Ok(Reply::CompletePage(page))
-                            };
-                            ServerFrame::Res { id, result }
+                                page.digest = page.rolling_digest(&[]);
+                                background_sent.notify_one();
+                                ServerFrame::Res {
+                                    id,
+                                    result: Ok(Reply::CompletePage(page)),
+                                }
+                            } else {
+                                let index = request.ordinal as usize;
+                                assert!(index < 2);
+                                if index == 1 {
+                                    enter.notify_one();
+                                    go.acquire().await.unwrap().forget();
+                                    if cut == 3 {
+                                        std::future::pending::<()>().await;
+                                    }
+                                }
+                                let result = if index == 1 && cut == 1 {
+                                    Err("synthetic lost terminal".into())
+                                } else {
+                                    let mut page = Page {
+                                        kind: Kind::Devices as i32,
+                                        snapshot: "e".repeat(64),
+                                        ordinal: request.ordinal,
+                                        identity: if index == 1 && cut == 2 {
+                                            "f".repeat(64)
+                                        } else {
+                                            identity.clone()
+                                        },
+                                        device: device.clone(),
+                                        header: None,
+                                        devices: vec![records[index].clone()],
+                                        cursors: Vec::new(),
+                                        complete: index == 1,
+                                        count: request.ordinal + 1,
+                                        digest: Vec::new(),
+                                    };
+                                    page.digest = page.rolling_digest(&digest);
+                                    digest = page.digest.clone();
+                                    Ok(Reply::CompletePage(page))
+                                };
+                                ServerFrame::Res { id, result }
+                            }
                         }
                     }
                     ClientFrame::Req { id, .. } => ServerFrame::Res {
@@ -171,9 +210,6 @@ impl Fixture {
             e.create_account("Paged owner", "paged_owner", &url)
                 .unwrap();
             e.set_registered(true).unwrap();
-            // This fixture owns the explicit read; background discovery has its
-            // own production path and must not consume this deliberate barrier.
-            e.net.link.ask_devices = false;
             let mine = e.account().unwrap().device.clone();
             e.devices_arrived(vec![
                 protocol::DeviceRecord {
@@ -195,6 +231,9 @@ impl Fixture {
         })
         .await
         .unwrap();
+        tokio::time::timeout(Duration::from_secs(5), background.notified())
+            .await
+            .unwrap();
         Self {
             client,
             task,
