@@ -6,7 +6,7 @@ use ed25519_dalek::VerifyingKey;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{io::Read, sync::Arc};
-use zoen_agentd::{deckcraft::DeckcraftWorker, SignedManifest, ToolDef};
+use zoen_agentd::{deckcraft::DeckcraftWorker, wasm::CompilationCache, SignedManifest, ToolDef};
 
 #[cfg(test)]
 use zoen_agentd::deckcraft::ENGINE_REVISION;
@@ -28,6 +28,12 @@ fn bounded_file(path: &str, max: usize) -> Result<Vec<u8>, String> {
 }
 /// Fixed host deployment configuration. No automatic server import or model path.
 pub fn configured() -> Result<Option<Arc<DeckcraftWorker>>, String> {
+    // Host configuration only; neither a tool argument nor document metadata can
+    // provide a cache path. Absence retains the original uncached behavior.
+    let cache = std::env::var_os("ZOEN_APP_WORKER_CACHE_DIRECTORY")
+        .map(|path| CompilationCache::private_directory(std::path::Path::new(&path)))
+        .transpose()
+        .map_err(|error| error.to_string())?;
     let deck = configured_for(
         "deckcraft",
         [
@@ -35,6 +41,7 @@ pub fn configured() -> Result<Option<Arc<DeckcraftWorker>>, String> {
             "ZOEN_DECKCRAFT_WORKER_MANIFEST",
             "ZOEN_DECKCRAFT_WORKER_PUBLISHER",
         ],
+        cache.as_ref(),
     )?;
     let grid = configured_for(
         "gridcraft",
@@ -43,6 +50,7 @@ pub fn configured() -> Result<Option<Arc<DeckcraftWorker>>, String> {
             "ZOEN_GRIDCRAFT_WORKER_MANIFEST",
             "ZOEN_GRIDCRAFT_WORKER_PUBLISHER",
         ],
+        cache.as_ref(),
     )?;
     let word = configured_for(
         "wordcraft",
@@ -51,6 +59,7 @@ pub fn configured() -> Result<Option<Arc<DeckcraftWorker>>, String> {
             "ZOEN_WORDCRAFT_WORKER_MANIFEST",
             "ZOEN_WORDCRAFT_WORKER_PUBLISHER",
         ],
+        cache.as_ref(),
     )?;
     let photo = configured_for(
         "photocraft",
@@ -69,7 +78,11 @@ pub fn configured() -> Result<Option<Arc<DeckcraftWorker>>, String> {
     }
     Ok(configured.map(Arc::new))
 }
-fn configured_for(app: &str, names: [&str; 3]) -> Result<Option<DeckcraftWorker>, String> {
+fn configured_for(
+    app: &str,
+    names: [&str; 3],
+    cache: Option<&CompilationCache>,
+) -> Result<Option<DeckcraftWorker>, String> {
     let component = std::env::var(names[0]).ok();
     let manifest = std::env::var(names[1]).ok();
     let publisher = std::env::var(names[2]).ok();
@@ -91,12 +104,14 @@ fn configured_for(app: &str, names: [&str; 3]) -> Result<Option<DeckcraftWorker>
     let trusted = VerifyingKey::from_bytes(&bytes).map_err(|_| "Invalid worker publisher")?;
     let manifest: SignedManifest = serde_json::from_slice(&bounded_file(&manifest, 64 * 1024)?)
         .map_err(|_| "Invalid signed worker manifest")?;
-    Ok(Some(DeckcraftWorker::load_for(
-        app,
-        vec![trusted],
-        &manifest,
-        &bounded_file(&component, 64 * 1024 * 1024)?,
-    )?))
+    let component = bounded_file(&component, 64 * 1024 * 1024)?;
+    let worker = match cache {
+        Some(cache) => {
+            DeckcraftWorker::load_for_cached(app, vec![trusted], &manifest, &component, cache)
+        }
+        None => DeckcraftWorker::load_for(app, vec![trusted], &manifest, &component),
+    }?;
+    Ok(Some(worker))
 }
 pub fn tools() -> Vec<ToolDef> {
     tools_for_format("deckcraft")

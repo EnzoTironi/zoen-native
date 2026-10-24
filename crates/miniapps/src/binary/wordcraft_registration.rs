@@ -20,11 +20,11 @@ pub const MANIFEST: &str = match option_env!("ZOEN_WORDCRAFT_RESOURCE_MANIFEST_J
 };
 const PINS: RuntimePins = RuntimePins {
     module_file: "wordcraft.js",
-    module_bytes: 80_346,
-    module_sha: "ceb462889b8be05859df91f829d0976896b2512dc10f3c4d689eb55eac1914d0",
+    module_bytes: 80_480,
+    module_sha: "da14faca74ed3ffae283ffdac1c40674ac049ccae80e631ed9be60502d360016",
     wasm_file: "wordcraft_bg.wasm",
-    wasm_bytes: 46_342_731,
-    wasm_sha: "93fe072224eb097f204baf7778d11883362c3235b05021c42338575321e42a41",
+    wasm_bytes: 46_355_404,
+    wasm_sha: "4aefe20f62636e7f725f6877feaf71cf7901e077fa53c9ccd04ffd16623d6e5f",
 };
 pub fn valid_resource(html: &str, manifest: &str) -> bool {
     resource::valid_resource(Format::Wordcraft, &PINS, html, manifest)

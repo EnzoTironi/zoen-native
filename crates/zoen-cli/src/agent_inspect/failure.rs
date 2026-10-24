@@ -12,8 +12,16 @@ struct Fact {
     reported_tag: Option<&'static str>,
     budget_ms: u64,
     elapsed_ms: String,
+    before_state_ms: String,
+    state_elapsed_ms: String,
 }
-fn fact(error: Option<&CoreError>, budget_ms: u64, elapsed: Duration) -> Fact {
+fn fact(
+    error: Option<&CoreError>,
+    budget_ms: u64,
+    elapsed: Duration,
+    before_state: Duration,
+    state_elapsed: Duration,
+) -> Fact {
     let (kind, reason) = match error {
         None => ("deadline", None),
         Some(CoreError::Invalid { reason }) => ("core_invalid", Some(reason.as_str())),
@@ -42,18 +50,46 @@ fn fact(error: Option<&CoreError>, budget_ms: u64, elapsed: Duration) -> Fact {
         reported_tag,
         budget_ms,
         elapsed_ms: elapsed.as_millis().to_string(),
+        before_state_ms: before_state.as_millis().to_string(),
+        state_elapsed_ms: state_elapsed.as_millis().to_string(),
     }
 }
-fn write(error: Option<&CoreError>, budget_ms: u64, elapsed: Duration, sink: &mut impl Write) {
-    if let Ok(bytes) = serde_json::to_vec(&fact(error, budget_ms, elapsed)) {
+fn write(
+    error: Option<&CoreError>,
+    budget_ms: u64,
+    elapsed: Duration,
+    before_state: Duration,
+    state_elapsed: Duration,
+    sink: &mut impl Write,
+) {
+    if let Ok(bytes) = serde_json::to_vec(&fact(
+        error,
+        budget_ms,
+        elapsed,
+        before_state,
+        state_elapsed,
+    )) {
         if bytes.len() <= 512 && sink.write_all(&bytes).is_ok() {
             let _ = sink.write_all(b"\n");
         }
     }
 }
-pub(super) fn trace(error: Option<&CoreError>, budget_ms: u64, elapsed: Duration) {
+pub(super) fn trace(
+    error: Option<&CoreError>,
+    budget_ms: u64,
+    elapsed: Duration,
+    before_state: Duration,
+    state_elapsed: Duration,
+) {
     if std::env::var_os("ZOEN_SYNC_WAIT_DIAGNOSTICS").is_some() {
-        write(error, budget_ms, elapsed, &mut std::io::stderr().lock());
+        write(
+            error,
+            budget_ms,
+            elapsed,
+            before_state,
+            state_elapsed,
+            &mut std::io::stderr().lock(),
+        );
     }
 }
 
@@ -61,13 +97,43 @@ pub(super) fn trace(error: Option<&CoreError>, budget_ms: u64, elapsed: Duration
 mod tests {
     use super::*;
     #[test]
+    fn the_same_total_deadline_distinguishes_late_settlement_from_a_slow_state_read() {
+        for before in [12_000, 4_000] {
+            let mut bytes = Vec::new();
+            write(
+                None,
+                8000,
+                Duration::from_millis(12_839),
+                Duration::from_millis(before),
+                Duration::from_millis(12_839 - before),
+                &mut bytes,
+            );
+            assert!(bytes.len() < 512);
+            let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(value["elapsed_ms"], "12839");
+            assert_eq!(value["before_state_ms"], before.to_string());
+            assert_eq!(value["state_elapsed_ms"], (12_839 - before).to_string());
+            assert_eq!(value["kind"], "deadline");
+        }
+    }
+
+    #[test]
     fn deadline_and_core_refusal_are_distinct_without_copying_any_private_reason() {
         let mut bytes = Vec::new();
-        write(None, 8000, Duration::from_millis(8001), &mut bytes);
+        write(
+            None,
+            8000,
+            Duration::from_millis(8001),
+            Duration::from_millis(7000),
+            Duration::from_millis(1001),
+            &mut bytes,
+        );
         let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(value["kind"], "deadline");
         assert_eq!(value["elapsed_ms"], "8001");
         assert_eq!(value["budget_ms"], 8000);
+        assert_eq!(value["before_state_ms"], "7000");
+        assert_eq!(value["state_elapsed_ms"], "1001");
         assert!(value["reported_tag"].is_null());
         let canary = "PRIVATE_REASON_WITH_ID_KEY_CONTENT_AND_URL";
         for error in [
@@ -91,7 +157,14 @@ mod tests {
             },
         ] {
             bytes.clear();
-            write(Some(&error), 8000, Duration::from_millis(2), &mut bytes);
+            write(
+                Some(&error),
+                8000,
+                Duration::from_millis(2),
+                Duration::ZERO,
+                Duration::from_millis(2),
+                &mut bytes,
+            );
             assert!(bytes.len() < 512);
             assert!(!String::from_utf8_lossy(&bytes).contains(canary));
             let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
@@ -111,7 +184,14 @@ mod tests {
         ] {
             let error = CoreError::Invalid { reason: tag.into() };
             assert_eq!(
-                fact(Some(&error), 8, Duration::ZERO).reported_tag,
+                fact(
+                    Some(&error),
+                    8,
+                    Duration::ZERO,
+                    Duration::ZERO,
+                    Duration::ZERO
+                )
+                .reported_tag,
                 Some(tag)
             );
         }
@@ -123,7 +203,15 @@ mod tests {
             let error = CoreError::Invalid {
                 reason: reason.into(),
             };
-            assert!(fact(Some(&error), 8, Duration::ZERO).reported_tag.is_none());
+            assert!(fact(
+                Some(&error),
+                8,
+                Duration::ZERO,
+                Duration::ZERO,
+                Duration::ZERO
+            )
+            .reported_tag
+            .is_none());
         }
         struct Unavailable;
         impl Write for Unavailable {
@@ -134,6 +222,13 @@ mod tests {
                 Ok(())
             }
         }
-        write(None, 8, Duration::ZERO, &mut Unavailable);
+        write(
+            None,
+            8,
+            Duration::ZERO,
+            Duration::ZERO,
+            Duration::ZERO,
+            &mut Unavailable,
+        );
     }
 }

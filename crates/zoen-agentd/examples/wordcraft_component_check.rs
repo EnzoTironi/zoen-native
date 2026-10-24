@@ -22,6 +22,10 @@ use zoen_agentd::{Needs, ToolManifest};
 type Result<T> = std::result::Result<T, String>;
 const REVISION: &str = "d1b0bfc3f9dd83126b162a42b667facecb003b7f";
 const DOCUMENT: usize = 512 * 1024;
+// The unchanged tier stdout bound includes PDF frames and their metadata.
+const OUTPUT: usize = 1024 * 1024;
+#[path = "wordcraft_component_check/pdf.rs"]
+mod pdf;
 fn sha(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
@@ -69,7 +73,7 @@ fn frame(metadata: &Value, bytes: &[u8]) -> Result<Bytes> {
     Ok(Bytes::from(result))
 }
 fn decode(bytes: &[u8]) -> Result<(Value, Vec<u8>)> {
-    require(bytes.len() <= 4 + 64 * 1024 + DOCUMENT, "response bound")?;
+    require(bytes.len() <= OUTPUT, "response bound")?;
     let prefix = bytes.get(..4).ok_or("missing frame")?;
     let length = usize::try_from(u32::from_le_bytes(
         prefix.try_into().map_err(|_| "invalid prefix")?,
@@ -336,16 +340,17 @@ async fn check(paths: &[PathBuf]) -> Result<()> {
     require(!paths[3].exists(), "output already exists")?;
     let loaded = load(&component, &probe)?;
     let (clock, clock_fuel) = run_clock(&loaded.tier, &loaded.clock).await?;
-    let (cases, bytes) = edits(&loaded.tier, &loaded.worker, &seed).await?;
+    let (mut cases, bytes) = edits(&loaded.tier, &loaded.worker, &seed).await?;
     std::fs::create_dir(&paths[3]).map_err(|_| "output directory unavailable")?;
     std::fs::write(paths[3].join("proposal.docx"), &bytes).map_err(|_| "output unavailable")?;
+    pdf::check(&loaded.tier, &loaded.worker, &bytes, &mut cases, &paths[3]).await?;
     let result = json!({"status":"PASS","scope":"Actual pinned WordCraft components in the existing signed WasmTier, supplied synthetic Scope. No canonical authorization/persistence or browser/iPhone claim.","componentSha256":sha(&component),"probeSha256":sha(&probe),"seedSha256":sha(&seed),"proposalSha256":sha(&bytes),"workerCompileMs":loaded.compile_ms,"clock":clock,"clockFuel":clock_fuel,"cases":cases,"publisherAndHashNegatives":true,"limits":{"fuel":2_000_000_000u64,"wallMs":5000,"memoryBytes":256*1024*1024}});
     std::fs::write(
         paths[3].join("result.json"),
         serde_json::to_vec_pretty(&result).map_err(|_| "receipt invalid")?,
     )
     .map_err(|_| "receipt unavailable")?;
-    println!("WordCraft actual WASI component + three real clocks + 8 framed calls PASS");
+    println!("WordCraft actual WASI component + clocks + closed DOCX/PDF frames PASS");
     Ok(())
 }
 

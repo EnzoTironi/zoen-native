@@ -88,7 +88,7 @@ async fn immutable_fixture_executes_with_open_case_data_and_keeps_concurrent_cas
         .unwrap();
     let (version_a, version_b) = tokio::join!(fixture_version(&a), fixture_version(&b));
     assert_eq!(version_a, "codex-cli 0.162.0\n");
-    assert_eq!(version_b, "codex-cli 0.163.0\n");
+    assert_eq!(version_b, "codex-cli 0.164.0\n");
     assert_eq!(std::fs::read(FIXTURE).unwrap(), original);
     for marker in [marker_a, marker_b] {
         assert!(!marker.exists());

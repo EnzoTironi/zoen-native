@@ -8,7 +8,7 @@ publish = false
 [features]
 browser = []
 ui-tests = ["browser", "dep:wordcraft-ui-egui", "dep:egui", "dep:egui_kittest"]
-qualification = ["dep:wordcraft-formats", "dep:wordcraft-layout"]
+qualification = ["dep:wordcraft-formats"]
 
 [[bin]]
 name = "wordcraft-clock-probe"
@@ -22,8 +22,9 @@ egui_kittest = { version = "0.36", default-features = false, optional = true }
 wordcraft-doc = { path = "../doc" }
 wordcraft-docx = { path = "../docx" }
 wordcraft-engine = { path = "../engine" }
+wordcraft-pdf = { path = "../pdf" }
 wordcraft-formats = { path = "../formats", optional = true }
-wordcraft-layout = { path = "../layout", optional = true }
+wordcraft-layout = { path = "../layout" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
@@ -40,3 +41,9 @@ expect_used = "deny"
 panic = "deny"
 unimplemented = "deny"
 todo = "deny"
+
+[dev-dependencies]
+hayro-syntax = "0.7.2"
+hayro-interpret = { version = "0.7.0", default-features = false, features = ["embed-fonts"] }
+hayro-cmap = "0.1"
+kurbo = { workspace = true }

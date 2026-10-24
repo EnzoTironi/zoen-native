@@ -20,7 +20,7 @@ const formats = Object.freeze({
     resourceUri: 'ui://zoen/wordcraft/index.html',
     engineRevision: WORDCRAFT_ENGINE_REVISION,
     maxDocumentBytes: 512 * 1024,
-    exports: Object.freeze(['docx'] as const),
+    exports: Object.freeze(['docx', 'pdf'] as const),
   }),
   gridcraft: Object.freeze({
     id: 'gridcraft' as const,

@@ -3,7 +3,7 @@
 //! already-authorized snapshot and must CAS-save the exact returned proposal.
 use crate::{
     manifest::SignedManifest,
-    wasm::{WasmLimits, WasmTier, WasmTool},
+    wasm::{CompilationCache, WasmLimits, WasmTier, WasmTool},
 };
 use bytes::Bytes;
 use ed25519_dalek::VerifyingKey;
@@ -46,6 +46,26 @@ impl DeckcraftWorker {
         manifest: &SignedManifest,
         component: &[u8],
     ) -> Result<Self, String> {
+        Self::load_for_configured(app, trusted, manifest, component, None)
+    }
+    /// Optional operator-owned compilation cache; actor/CAS/manifest checks and
+    /// the original per-run limits are identical to the uncached constructor.
+    pub fn load_for_cached(
+        app: &str,
+        trusted: Vec<VerifyingKey>,
+        manifest: &SignedManifest,
+        component: &[u8],
+        cache: &CompilationCache,
+    ) -> Result<Self, String> {
+        Self::load_for_configured(app, trusted, manifest, component, Some(cache))
+    }
+    fn load_for_configured(
+        app: &str,
+        trusted: Vec<VerifyingKey>,
+        manifest: &SignedManifest,
+        component: &[u8],
+        cache: Option<&CompilationCache>,
+    ) -> Result<Self, String> {
         let (app, id, revision) = match app {
             "deckcraft" => ("deckcraft", WORKER_ID, ENGINE_REVISION),
             "gridcraft" => (
@@ -73,7 +93,11 @@ impl DeckcraftWorker {
         {
             return Err("Invalid DeckCraft worker manifest".into());
         }
-        let tier = WasmTier::new(trusted, 1, 256 * 1024 * 1024).map_err(|e| e.to_string())?;
+        let tier = match cache {
+            Some(cache) => WasmTier::with_compilation_cache(trusted, 1, 256 * 1024 * 1024, cache),
+            None => WasmTier::new(trusted, 1, 256 * 1024 * 1024),
+        }
+        .map_err(|e| e.to_string())?;
         let tool = tier.load(manifest, component).map_err(|e| e.to_string())?;
         let binding_sha256 = hex::encode(Sha256::digest(
             serde_json::to_vec(manifest).map_err(|_| "Invalid worker binding")?,

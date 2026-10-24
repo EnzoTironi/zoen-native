@@ -80,11 +80,12 @@ The final correction changes only those two tests, so Miniapps/CLI production
 is byte-identical to its earlier Clippy qualification. No broad Core/workspace
 or native result is claimed.
 
-PDF remains an explicit next operation: pinned upstream `crates/pdf/src/lib.rs`
-provides `wordcraft_pdf::export(&Document, &PdfOptions)`, but the currently sealed
-worker/browser does not expose or qualify that export. It must use the selected
-canonical DOCX bytes, actual layout/fonts and accepted head before becoming an
-available export. Rich DOCX imports/formatting are still outside plain-text-v1.
+The accepted current/historical PDF operation now uses the real pinned layout
+and writer; its missing-font RED, closed refusal, actual WASI calls, normal web
+package and independent output inspection are recorded in
+[PDF-EVIDENCE.md](PDF-EVIDENCE.md). Those results do not retag this earlier
+package03/agent qualification or establish native export acceptance.
+Rich DOCX imports/formatting are still outside plain-text-v1.
 Deployment, actual browser-to-canonical-host integration, iPhone keyboard,
 accessibility/orientation and native export/recovery acceptance remain open.
 #502/#180 are not closed by these fixtures or this source publication.
