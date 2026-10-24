@@ -70,11 +70,10 @@ fn actual_keyboard_enter_checkpoint_and_pending_receipt_freeze_at_phone_geometry
         h.state().editor.is_none(),
         "pending input must not create a later draft"
     );
-    assert!(
-        h.state_mut()
-            .run("cell.set", json!({"cell":"A2","input":"9"}))
-            .is_err()
-    );
+    assert!(h
+        .state_mut()
+        .run("cell.set", json!({"cell":"A2","input":"9"}))
+        .is_err());
     super::tests::accept(
         &mut h.state_mut().session,
         &mut b,
@@ -98,8 +97,8 @@ fn invalid_external_formula_stays_a_human_draft_and_never_becomes_saved() {
         h.state().editor.is_some(),
         "invalid draft must remain recoverable"
     );
-    assert!(
-        b.snapshot(
+    assert!(b
+        .snapshot(
             &mut h.state_mut().session,
             Mutation {
                 scope,
@@ -107,8 +106,7 @@ fn invalid_external_formula_stays_a_human_draft_and_never_becomes_saved() {
                 mutation_id: "invalid".into()
             }
         )
-        .is_err()
-    );
+        .is_err());
 }
 
 #[test]
@@ -137,4 +135,92 @@ fn native_share_is_accessible_host_intent_without_saving_or_exporting_its_draft(
     h.state_mut().services.host_export_intent = Some(Box::new(|_| false));
     assert!(h.state_mut().run("file.save", json!({})).is_err());
     assert!(b.dirty(&h.state().session));
+}
+
+#[test]
+fn actual_refused_column_drag_preserves_two_accepted_cell_undo_steps() {
+    let (mut h, mut b, scope, mut head) = harness();
+    for (input, version) in [("7", "2"), ("9", "3")] {
+        text(&mut h, input);
+        key(&mut h, Key::Enter);
+        let mutation_id = format!("edit-{version}");
+        let proposal = b
+            .snapshot(
+                &mut h.state_mut().session,
+                Mutation {
+                    scope: scope.clone(),
+                    base: head,
+                    mutation_id: mutation_id.clone(),
+                },
+            )
+            .expect("actual UI proposal");
+        head = super::tests::accept(
+            &mut h.state_mut().session,
+            &mut b,
+            &scope,
+            &mutation_id,
+            version,
+            &proposal,
+        );
+    }
+    assert_eq!(value(&h, "A1"), gridcraft_engine::core::Value::Number(7.0));
+    assert_eq!(value(&h, "A2"), gridcraft_engine::core::Value::Number(9.0));
+    let before = h.state().session.doc().expect("document").undo.len();
+    assert_eq!(
+        before, 2,
+        "two distinct real edits retain separate undo entries"
+    );
+    let geometry = h.state().grid.geo.clone().expect("rendered geometry");
+    let workbook = h.state().session.doc().expect("document").wb.clone();
+    let sheet = workbook.active().expect("actual sheet");
+    let original_width = sheet.col_width(0);
+    let rect = geometry.screen_cell_rect(sheet, gridcraft_engine::core::CellRef::new(0, 0));
+    let start = egui::pos2(rect.right(), geometry.cells.top() - geometry.header_h * 0.5);
+    h.input_mut().events.extend([
+        Event::PointerMoved(start),
+        Event::PointerButton {
+            pos: start,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: Modifiers::NONE,
+        },
+    ]);
+    h.run_steps(1);
+    assert!(
+        matches!(
+            h.state().grid.drag,
+            gridcraft_ui_egui::grid::Drag::ResizeCol { col: 0, .. }
+        ),
+        "actual header pointer selected the column resize path"
+    );
+    let end = start + egui::vec2(24.0, 0.0);
+    h.input_mut().events.push(Event::PointerMoved(end));
+    h.run_steps(1);
+    h.input_mut().events.push(Event::PointerButton {
+        pos: end,
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers: Modifiers::NONE,
+    });
+    h.run_steps(2);
+    let document = h.state().session.doc().expect("document");
+    assert_eq!(
+        document.wb.active().expect("sheet").col_width(0),
+        original_width,
+        "profile still refuses the unsupported column mutation"
+    );
+    assert_eq!(
+        document.undo.len(),
+        before,
+        "a refused drag must not coalesce already accepted cell history"
+    );
+    h.state_mut()
+        .run("edit.undo", json!({}))
+        .expect("normal supported undo");
+    assert_eq!(value(&h, "A1"), gridcraft_engine::core::Value::Number(7.0));
+    assert_eq!(value(&h, "A2"), gridcraft_engine::core::Value::Empty);
+    assert_eq!(
+        head.version, "3",
+        "local undo does not invent an accepted version"
+    );
 }
