@@ -163,3 +163,5 @@ missing-glyph RED and independently inspected current/historical outputs are
 recorded in [PDF-EVIDENCE.md](PDF-EVIDENCE.md). The configured package exposes
 both formats; the default manifest remains unavailable. Unsupported font glyphs
 refuse PDF without changing the DOCX or pending draft.
+
+Managed safe-area and first-touch qualification: [VIEWPORT-EVIDENCE.md](VIEWPORT-EVIDENCE.md).
