@@ -7,4 +7,5 @@ mod shell;
 #[cfg(target_arch = "wasm32")]
 pub use api::{on_change, on_export, request, retire, start};
 
+#[cfg(any(target_arch = "wasm32", test))]
 mod viewport;
