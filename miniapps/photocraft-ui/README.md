@@ -16,8 +16,10 @@ This foundation does not establish WASIp2 compatibility.
 
 `host-bridge` uses the actual `photocraft-engine::Session::execute`, native format
 reader/writer and PNG exporter. No UI, GPU or automation-server dependency is
-added to the adapter's direct roots. The resolved transitive graph still needs
-Cargo qualification; do not infer its properties from the package names alone.
+added to the adapter's direct roots. Genuine Cargo metadata resolved 459 packages
+across platforms with no eframe/egui/wgpu/UI/automation package reachable from
+this bridge; native arm64 execution was qualified separately below. This is not
+a sandbox or a complete audit of transitive code capabilities.
 
 The upstream desktop association names `.pcraft` as `application/x-photocraft`;
 PNG export is `image/png`. No Core Format/catalog is registered by this patch.
@@ -66,7 +68,22 @@ normal resource limits before claiming the adapter executes. The Rust tests call
 the real writer, Session operations, saved-byte reopen and codec pixel reader;
 they do not substitute a fake engine.
 
-Next: genuine native/WASM qualification, PNG import as an explicitly reviewed
-copy, shared MCP browser Session, approved agent edit on the same canonical item,
+Native arm64 qualification on the pinned source passed eight actual in-memory
+adapter regressions and all-target Clippy with pedantic/performance and
+`-D warnings`. Six Python preparation/refusal tests passed separately. The native
+cases cover renderer PNG pixels, sparse tiles, original source immutability,
+reopening saved bytes, repeated rotation, fractional metadata, closed commands
+and bounded/unknown/duplicate archive refusal. This proves neither a process
+restart nor canonical persistence/permission enforcement. No browser or WASI
+execution was performed.
+
+A real regression found that converting the typed manifest directly to a JSON
+Value widened f32 metadata and refused the native writer's fractional DPI. The
+schema gate now reserializes through the same JSON path as that writer, while
+retaining whole-model equality and the unknown-field refusals. Earlier compiler,
+Clippy and fixture failures remain in the external qualification receipts.
+
+Next: genuine WASM qualification, PNG import as an explicitly reviewed copy,
+shared MCP browser Session, approved agent edit on the same canonical item,
 manual save/ACK recovery, selected-version preview/export and native acceptance.
 The full checklist remains in #556; source preparation is not its completion.
