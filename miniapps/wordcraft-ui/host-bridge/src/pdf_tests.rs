@@ -134,7 +134,9 @@ fn pdf_rejects_foreign_scope_head_and_unknown_format_without_changing_document()
 
 #[test]
 fn pdf_refuses_missing_font_glyphs_without_losing_unicode_docx_or_pending_input() -> Result<()> {
-    let bytes = profile::encode("Original Olá 日本語 👩🏽‍💻")?;
+    // The qualified native FontDb has Apple Color Emoji; U+10FFFF has no face.
+    // WASI separately exercises the original emoji against its sealed static fonts.
+    let bytes = profile::encode("Original Olá 日本語 👩🏽‍💻 \u{10ffff}")?;
     let original = head("1", &bytes);
     let mut bridge = HostBridge::open(
         Open {
@@ -174,7 +176,7 @@ fn pdf_refuses_missing_font_glyphs_without_losing_unicode_docx_or_pending_input(
         cold.export(&pdf_request(&original)?).err().as_deref(),
         Some("pdf_missing_glyph")
     );
-    assert_eq!(cold.inspect()["text"], "Original Olá 日本語 👩🏽‍💻");
+    assert_eq!(cold.inspect()["text"], "Original Olá 日本語 👩🏽‍💻 \u{10ffff}");
     Ok(())
 }
 
