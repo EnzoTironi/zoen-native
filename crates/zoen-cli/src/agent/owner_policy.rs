@@ -148,6 +148,7 @@ async fn reconcile(e: &Client, agent: &str, space: &str, summary: &mut Summary) 
                     Ok(PolicyProgress::Unavailable {
                         operation: PolicyOperation::Import,
                         code,
+                        context_stage: None,
                     }) => {
                         counts.runtime_error = Some(code);
                         None
