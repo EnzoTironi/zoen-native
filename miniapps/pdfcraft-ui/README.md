@@ -39,7 +39,12 @@ pointer/text events, a newer paragraph draft during ACK, native Undo/Redo,
 orientation/short viewport and 70 retained-session checkpoints with compaction.
 The latest small lint refactor has not repeated that native run. Browser release/
 execution, the updated WASIp2 worker, canonical end-to-end integration and native
-iPhone acceptance remain pending. GitHub #581 is the status authority.
+iPhone acceptance remain pending. The first browser all-targets Clippy run stopped
+in upstream `pdfcraft-render`: four WASM-only dead-code diagnostics became errors
+under `-D warnings` (`byte_capacity`, `record_request`, `Shared.stuck` and unused
+RenderPool fields). This is a lint-gate failure, not browser execution or proof
+that the renderer is incompatible. No lint flag was relaxed and no browser
+release/assets were produced. GitHub #581 is the status authority.
 
 The initial structural limits are 8 MiB, 32 declared pages, 8,192 current objects,
 64 internal PDF revisions and image dimensions ≤2,048 / 2,000,000 pixels. The
