@@ -69,7 +69,11 @@ async fn pruned_seqs(w: &World, space: &str) -> Vec<u64> {
         .collect()
 }
 
+#[path = "journey_m2/linked_history.rs"]
 mod linked_history;
+#[path = "journey_m2/membership.rs"]
 mod membership;
+#[path = "journey_m2/privacy.rs"]
 mod privacy;
+#[path = "journey_m2/recovery.rs"]
 mod recovery;
