@@ -32,6 +32,7 @@ pub enum Theme {
     Light,
 }
 impl Layout {
+    #[must_use]
     pub fn valid(&self) -> bool {
         let i = self.insets;
         if ![self.width, self.height]
@@ -55,6 +56,7 @@ impl Layout {
                 && r.y + r.height + 4.0 < self.height - i.bottom
         })
     }
+    #[must_use]
     pub fn safe_insets(&self) -> egui::SafeAreaInsets {
         // The host owns the floating close button; keep the editor's top controls
         // out of its measured rectangle, including after rotation/keyboard resize.

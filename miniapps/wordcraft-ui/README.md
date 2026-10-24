@@ -37,6 +37,15 @@ After the actual Session edit, plain text is encoded into the same declared
 plain profile; Session editing metadata is not part of this format. Export of an
 accepted head returns its exact original DOCX bytes, including before ACK.
 
+The manual checkpoint captures an immutable proposal while the actual canvas
+may continue editing. Only its exact receipt advances the accepted baseline;
+newer local input and Undo remain in the same Session for the next checkpoint.
+Retries preserve the first proposal's bytes, mutation and base, not the newer
+draft. Agent proposals, historical viewing and explicit host pauses still block
+manual input. Ordinary close must flush through the existing host before it
+destroys the renderer. Keystrokes held only in the WebView are not durable, and
+reopening an accepted DOCX does not recover unsaved memory after process death.
+
 ## Reproduction and evidence boundaries
 
 Use a separate clean checkout at the existing pin:

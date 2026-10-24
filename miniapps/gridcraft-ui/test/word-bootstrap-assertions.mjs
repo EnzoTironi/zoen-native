@@ -71,11 +71,25 @@ export async function exerciseWord(page, inspector, output) {
     })),
   );
   assert.equal(after.filter((input) => input.focused).length, 1);
-  await page.keyboard.type("Word browser");
+  await page.evaluate(() => window.probe.holdNextWrite());
+  await page.keyboard.type("Word ");
+  await page.waitForFunction(() => window.probe.writeHeld, undefined, { timeout: 8000 });
+  // These are real browser keys while the original canonical save is waiting.
+  await page.keyboard.type("browser");
   await page.keyboard.press("Enter");
   await page.keyboard.type("Second line");
+  assert.equal(await page.evaluate(() => window.probe.writeHeld), true);
+  await page.evaluate(() => window.probe.releaseWrite());
   await page.evaluate(() => window.probe.flush());
-  await page.waitForFunction(() => window.probe.writes === 1, undefined, { timeout: 8000 });
+  const saved = await page.evaluate(() => ({
+    writes: window.probe.writes,
+    version: window.probe.version,
+  }));
+  assert.ok(
+    saved.writes >= 2,
+    "newer input must be a later save, not overwrite the in-flight proposal",
+  );
+  assert.equal(saved.version, saved.writes + 1);
   await page.evaluate(() => window.probe.share("docx"));
   await writeFile(
     resolve(output, "actual-touch-observations.json"),
@@ -94,10 +108,39 @@ export async function exerciseWord(page, inspector, output) {
   return {
     before,
     after,
+    delayedAckWrites: saved.writes,
     inspector: {
       sha256: createHash("sha256")
         .update(await readFile(inspector))
         .digest("hex"),
     },
+  };
+}
+
+// Reload a fresh renderer from the synthetic port's exact accepted bytes/head.
+// This proves the shared close/open consumer, not Rust or physical persistence.
+export async function reopenWord(page, replaceConfig, inspector, output) {
+  await page.evaluate(() => window.probe.close());
+  const retained = await page.evaluate(() => ({
+    version: window.probe.version,
+    data: window.probe.accepted,
+  }));
+  replaceConfig(retained);
+  await page.reload({ waitUntil: "load" });
+  await page.waitForFunction(() => window.probe?.opened, undefined, { timeout: 25000 });
+  assert.equal(await page.evaluate(() => window.probe.version), retained.version);
+  assert.equal(await page.evaluate(() => window.probe.writes), 0);
+  await page.evaluate(() => window.probe.share("docx"));
+  const file = await page.evaluate(() => window.probe.exports[0]);
+  assert.equal(file.data, retained.data);
+  const bytes = Buffer.from(file.data, "base64");
+  assert.equal(createHash("sha256").update(bytes).digest("hex"), file.sha256);
+  await writeFile(resolve(output, "reopened.docx"), bytes);
+  assert.equal(inspectWord(bytes, inspector), "Word browser\nSecond line");
+  return {
+    version: retained.version,
+    sha256: file.sha256,
+    bytes: bytes.length,
+    writesAfterReopen: 0,
   };
 }

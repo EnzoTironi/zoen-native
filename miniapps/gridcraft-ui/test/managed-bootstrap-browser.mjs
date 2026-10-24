@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { exerciseWord, inspectWord } from "./word-bootstrap-assertions.mjs";
+import { exerciseWord, inspectWord, reopenWord } from "./word-bootstrap-assertions.mjs";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
@@ -151,8 +151,13 @@ try {
     version: window.probe.version,
   }));
   assert.equal(result.exports.length, formats.length + (editor !== "deckcraft" ? 1 : 0));
-  assert.equal(result.writes, editor !== "deckcraft" ? 1 : 0);
-  assert.equal(result.version, editor !== "deckcraft" ? 2 : 1);
+  if (editor === "wordcraft") {
+    assert.ok(result.writes >= 2);
+    assert.equal(result.version, result.writes + 1);
+  } else {
+    assert.equal(result.writes, editor !== "deckcraft" ? 1 : 0);
+    assert.equal(result.version, editor !== "deckcraft" ? 2 : 1);
+  }
   if (editor === "deckcraft") assert.equal(result.accepted, seed.toString("base64"));
   else assert.notEqual(result.accepted, seed.toString("base64"));
   for (const [index, file] of result.exports.entries()) {
@@ -165,14 +170,26 @@ try {
     );
     if (editor !== "deckcraft")
       assert.equal(file.data, index === 0 ? seed.toString("base64") : result.accepted);
+    await writeFile(resolve(output, `accepted-${index + 1}.${file.format}`), b);
     if (editor === "wordcraft") {
       assert.equal(file.format, "docx");
       assert.equal(inspectWord(b, wordInspector), index === 0 ? "" : "Word browser\nSecond line");
     }
-    await writeFile(resolve(output, `accepted-${index + 1}.${file.format}`), b);
     delete file.data;
     file.bytes = b.length;
   }
+  if (word)
+    word.reopen = await reopenWord(
+      page,
+      ({ version, data }) => {
+        files.set("/config.json", [
+          Buffer.from(JSON.stringify({ ...config, version, seed: data })),
+          "application/json",
+        ]);
+      },
+      wordInspector,
+      output,
+    );
   await assert.rejects(
     page.evaluate((f) => window.probe.share(f), editor === "deckcraft" ? "xlsx" : "pdf"),
   );

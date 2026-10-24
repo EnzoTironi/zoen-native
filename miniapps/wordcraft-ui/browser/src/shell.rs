@@ -82,7 +82,7 @@ impl eframe::App for Shell {
         }
         self.app.ui(ui);
         if self.app.session.managed_frozen {
-            // A historical frame or unresolved CAS is never a native keyboard target.
+            // History, explicit host pause and a pending agent proposal cannot accept typing.
             ui.ctx().output_mut(|o| {
                 o.ime = None;
                 o.mutable_text_under_cursor = false;
