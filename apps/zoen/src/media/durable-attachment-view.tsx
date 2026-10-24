@@ -5,6 +5,7 @@ import { AttachmentApproval, supportsMediaApproval } from './attachment-approval
 import type { AttachmentComposerField } from './attachment-composer';
 import { MAX_ATTACHMENT_ITEMS, type AttachmentDraftState } from './attachment-draft';
 import { AttachmentDraftStrip } from './attachment-draft-strip';
+import { isLocationFileMime } from './location-file';
 import { mediaPlayback } from './playback-owner';
 
 import type { useDurableAttachmentController } from './use-durable-attachment-controller';
@@ -184,7 +185,11 @@ export function renderDurableAttachment(
                   canReview
                     ? (id) => {
                         const item = items.find((item) => item.mutationId === id);
-                        if (supportsMediaApproval && item && /^(image|video)\//.test(item.mime))
+                        if (
+                          supportsMediaApproval &&
+                          item &&
+                          (/^(image|video)\//.test(item.mime) || isLocationFileMime(item.mime))
+                        )
                           openApproval(id);
                         else void review.open(id);
                       }

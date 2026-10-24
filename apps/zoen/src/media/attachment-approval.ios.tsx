@@ -75,6 +75,8 @@ export function AttachmentApproval(props: AttachmentApprovalProps) {
       uri: item.uri,
       name: item.name,
       mime: item.mime,
+      sha256: item.sha256,
+      locationErrorLabel: t('attachmentTabs.locationOpenFailed'),
     })),
     selected: state.items.map((item) => item.mutationId),
     recipient,
