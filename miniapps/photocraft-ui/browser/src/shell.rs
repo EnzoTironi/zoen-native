@@ -22,7 +22,10 @@ pub async fn start() -> Result<(), JsValue> {
                 if api::retired() {
                     return Err("host_retired".into());
                 }
-                PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
+                PhotocraftApp::setup_context(
+                    &cc.egui_ctx,
+                    photocraft_ui_egui::theme::ThemeKind::default(),
+                );
                 let mut app = PhotocraftApp::new(Session::new(), Services::default());
                 app.background_jobs = false;
                 api::install(cc.egui_ctx.clone());

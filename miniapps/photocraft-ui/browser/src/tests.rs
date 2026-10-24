@@ -1,8 +1,10 @@
-//! Actual upstream PhotoApp, pointer events, history and saved-byte renderer.
+//! Actual upstream `PhotocraftApp`, pointer events, history and saved-byte renderer.
 use egui::{Event, Modifiers, PointerButton};
 use egui_kittest::Harness;
 use photocraft_doc::{ColorMode, Document, Layer, Rect, SampleType, Size};
 use photocraft_engine::Session;
+use photocraft_format::SaveOptions;
+use photocraft_ui_egui::theme::ThemeKind;
 use photocraft_ui_egui::{PhotocraftApp, Services, canvas::ViewXform, state::Tool};
 use photocraft_zoen_host::{Operation, browser::BrowserBridge, managed::*};
 use serde_json::json;
@@ -41,7 +43,7 @@ fn harness() -> Result<(PhotoHarness, BrowserBridge, Vec<u8>)> {
         .ok_or("missing_surface")?
         .fill_rect(Rect::new(0, 0, 320, 240), &[1.0, 1.0, 1.0, 1.0]);
     doc.layers.push(layer);
-    let bytes = photocraft_format::save_to_bytes(&doc, &Default::default())
+    let bytes = photocraft_format::save_to_bytes(&doc, &SaveOptions::default())
         .map_err(|_| failure("seed_encoding"))?;
     let mut bridge = BrowserBridge::default();
     let mut session = Session::new();
@@ -56,7 +58,7 @@ fn harness() -> Result<(PhotoHarness, BrowserBridge, Vec<u8>)> {
     let mut h = Harness::builder()
         .with_size(egui::vec2(1100.0, 800.0))
         .build_eframe(move |cc| {
-            PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
+            PhotocraftApp::setup_context(&cc.egui_ctx, ThemeKind::default());
             let mut app = PhotocraftApp::new(session, Services::default());
             app.ui.tool = Tool::Pencil;
             app.background_jobs = false;
@@ -91,7 +93,7 @@ fn stroke(h: &mut PhotoHarness, x: f32, y: f32) -> Result<()> {
 fn actual_bytes(h: &PhotoHarness) -> Result<Vec<u8>> {
     photocraft_format::save_to_bytes(
         &h.state().session.active().ok_or("missing_document")?.doc,
-        &Default::default(),
+        &SaveOptions::default(),
     )
     .map_err(|_| failure("native_encoding"))
 }
