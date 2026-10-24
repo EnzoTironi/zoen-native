@@ -7,7 +7,7 @@ use crate::owner_policy::{
 
 fn options_fixture(
     query: &crate::owner_policy::OwnerPolicyInquiryControl,
-) -> Result<types::owner_policy_context::OwnerPolicyOptions, Box<dyn std::error::Error>> {
+) -> StdResult<types::owner_policy_context::OwnerPolicyOptions, Box<dyn std::error::Error>> {
     use chrono::Datelike;
     let now = crate::engine::now_ms();
     let date = chrono::DateTime::from_timestamp_millis(now).ok_or("fixture UTC clock")?;
