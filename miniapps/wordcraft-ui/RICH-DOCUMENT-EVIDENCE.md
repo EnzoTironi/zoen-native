@@ -48,3 +48,23 @@ build. The final affected SDK/history/lifecycle batch passed 28 tests. The confi
 new browser resource passed the native miniapps Word batch. CI's stale reviewed
 producer/Cargo pins were refreshed without changing job-selection rules; the full
 Rust lane and source/embedded-resource negatives remain in force.
+
+## Native keyboard follow-up (#557), v596
+
+The v594 iPhone build reached caret/DOM focus on its first real paper tap, but
+showed no software keyboard; another field in the same cohort did show it.
+A real WebKit fault regression then refused canvas focus without focusing the
+input: the old package lost textual admission; the successor calls the real
+text agent within the trusted release, with zero writes and the same head/hash.
+The existing primary-contact owner now preserves logical focus through its
+press/repaints/release. Cancel, block, secondary contacts and untrusted starts
+cannot retain that ownership. Current owner/IME checks still control activation.
+There is no WebView keyboard-policy override, injected input focus or load/reopen
+keyboard request. This fault model does not establish the native WK policy.
+
+The browser successor is 46,546,380 bytes, SHA-256
+`68cc2b6c54417654190f7dfbd13ae0c40dc7d7e46828a0e4ebabf1e89be79e5b`;
+JavaScript and HTML are byte-identical to v581. WASI's 30 source inputs and worker
+are unchanged. Native first-touch software keyboard acceptance remains pending.
+Exact private receipts: `zoen-word-native-gesture-v596` (preserved baseline RED,
+first candidate RED, final actual WebKit/Chromium and native UI results).
