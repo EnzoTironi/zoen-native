@@ -6,7 +6,7 @@ use std::{
     collections::BTreeMap,
     io::{Cursor, Read},
 };
-mod archive;
+pub(crate) mod archive;
 mod plain;
 #[cfg(test)]
 mod tests;
