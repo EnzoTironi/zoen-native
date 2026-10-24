@@ -50,17 +50,18 @@ fn storage_fault(fault: Fault) -> R<()> {
         Fault::Read => ("ALTER TABLE profile_keys RENAME TO unavailable_profile_keys", "ALTER TABLE unavailable_profile_keys RENAME TO profile_keys"),
         Fault::Fields => ("CREATE TEMP TRIGGER fail_foreign_fields BEFORE UPDATE OF fields ON profile_keys BEGIN SELECT RAISE(ABORT, 'foreign fields fault'); END", "DROP TRIGGER fail_foreign_fields"),
         Fault::Projection => ("CREATE TEMP TRIGGER fail_foreign_projection BEFORE INSERT ON identities BEGIN SELECT RAISE(ABORT, 'foreign projection fault'); END", "DROP TRIGGER fail_foreign_projection"),
-        Fault::Release => (release::INJECT, "DROP TRIGGER fail_profile_release"),
+        Fault::Release => ("", "DROP TRIGGER fail_profile_release"),
     };
-    engine.store.raw_execute(inject)?;
+    if matches!(fault, Fault::Release) {
+        release::inject(&engine)?;
+    } else {
+        engine.store.raw_execute(inject)?;
+    }
     assert!(engine
         .sealed_profiles_arrived(vec![incoming.clone()], &asked)
         .is_empty());
     if matches!(fault, Fault::Release) {
-        assert!(
-            engine.store.raw_execute("BEGIN; ROLLBACK").is_ok(),
-            "failed RELEASE must leave no open transaction"
-        );
+        release::assert_no_transaction(&engine)?;
     }
     // Restore only the injected read/write fault, before reading the actual tables.
     engine.store.raw_execute(repair)?;
