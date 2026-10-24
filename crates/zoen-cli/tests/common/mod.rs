@@ -4,6 +4,7 @@
 //! FoundationDB (`eval "$(scripts/fdb.sh env)"`).
 
 mod diagnostics;
+pub mod watch;
 mod world_commands;
 mod world_service;
 
