@@ -165,9 +165,9 @@ impl Engine {
         if let Some(format) = apps::binary::Format::for_id(app_id) {
             return match format {
                 apps::binary::Format::Deckcraft => self.install_deckcraft(space, args_json),
-                apps::binary::Format::Gridcraft | apps::binary::Format::Wordcraft => {
-                    self.install_binary(space, format, args_json)
-                }
+                apps::binary::Format::Gridcraft
+                | apps::binary::Format::Wordcraft
+                | apps::binary::Format::Photocraft => self.install_binary(space, format, args_json),
             };
         }
         self.atomic_agent_action(|e| e.install_app_inner(space, app_id, args_json))
@@ -205,10 +205,14 @@ impl Engine {
                 apps::binary::Format::Deckcraft => t("Apresentação", "Presentation"),
                 apps::binary::Format::Gridcraft => t("Planilha", "Spreadsheet"),
                 apps::binary::Format::Wordcraft => t("Documento", "Document"),
+                apps::binary::Format::Photocraft => t("Imagem", "Image"),
             },
             _ => return Err(invalid()),
         };
         let (title, _) = match format {
+            apps::binary::Format::Photocraft => {
+                apps::binary::photocraft_registration::create(&json!({"title":title}))
+            }
             apps::binary::Format::Wordcraft => {
                 apps::binary::wordcraft_registration::create(&json!({"title":title}))
             }

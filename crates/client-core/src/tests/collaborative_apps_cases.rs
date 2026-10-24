@@ -10,6 +10,7 @@ pub(super) fn mcp_specs_follow_the_apps_extension() {
         9 + usize::from(miniapps::deckcraft::registration::available())
             + usize::from(miniapps::binary::gridcraft_registration::available())
             + usize::from(miniapps::binary::wordcraft_registration::available())
+            + usize::from(miniapps::binary::photocraft_registration::available())
     );
     for s in &specs {
         assert!(s.resource_uri.starts_with("ui://"));
@@ -37,7 +38,7 @@ pub(super) fn mcp_specs_follow_the_apps_extension() {
             .collect::<Vec<_>>();
         let mut expected_tools = match s.id.as_str() {
             "excalidraw" => vec!["app_document_read", "app_document_save"],
-            "deckcraft" | "gridcraft" | "wordcraft" => vec![
+            "deckcraft" | "gridcraft" | "wordcraft" | "photocraft" => vec![
                 "app_binary_read",
                 "app_binary_read_chunk",
                 "app_binary_begin",

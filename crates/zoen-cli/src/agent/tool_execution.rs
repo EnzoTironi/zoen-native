@@ -27,7 +27,11 @@ impl ApprovedToolAdmission for CanonicalToolAdmission<'_, '_> {
         }
         let result = if matches!(
             tool,
-            "read_deckcraft" | "read_gridcraft" | "read_wordcraft" | "read_page"
+            "read_deckcraft"
+                | "read_gridcraft"
+                | "read_wordcraft"
+                | "read_photocraft"
+                | "read_page"
         ) {
             self.tools
                 .done()
