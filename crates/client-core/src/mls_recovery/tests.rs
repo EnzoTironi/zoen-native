@@ -244,6 +244,7 @@ fn live_direct_recipient_keeps_initial_welcome_after_cold_reopen() {
 
 mod context_creation;
 mod context_persistence;
+mod download_candidates;
 mod held_recovery;
 mod initial_welcome;
 mod processing_failures;
