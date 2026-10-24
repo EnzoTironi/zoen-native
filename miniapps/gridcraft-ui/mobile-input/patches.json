@@ -9,13 +9,13 @@
   "patches": [
     {
       "path": "patches/eframe-current-owner.patch",
-      "bytes": 15742,
-      "sha256": "2054c21aa282bf24e51b3d93c94371aa3ef5c4e986364fb0c2c1b1625c1ccc38"
+      "bytes": 17072,
+      "sha256": "bbd41a7a691732a138c22c4abf07bfd5bc3e04757fe58d4b5bf838e7caad9d89"
     },
     {
       "path": "patches/eframe-primary-contact.patch",
-      "bytes": 13947,
-      "sha256": "4891c9c4f35d11b1d754d1d60b0744faa8f02cd71cb8ec97b20d958a8b09f20e"
+      "bytes": 13991,
+      "sha256": "7b8a2bfcce4df8d458b4419fc980095c2e16f35f1a44fb1437b30002b49d69fb"
     },
     {
       "path": "patches/eframe-text-agent.patch",
@@ -49,5 +49,5 @@
     "sha256": "632cacd0cea5b264a82dd0594870dd7d3ab7e0391585cdc16a71c54abb9ee424",
     "bytes": 9118
   },
-  "revisionNote": "Current trusted eligible textual release admits its egui focus pass even if native DOM canvas focus is asynchronous; native input focus remains inside the genuine callback and requires current enabled owner/IME. No load/reopen/native keyboard policy override. Per-consumer and native qualification remain required."
+  "revisionNote": "A live admitted trusted primary contact owns logical canvas focus across press/repaints/release even when DOM focus is delayed. Only its current enabled textual owner/IME may activate on the genuine release; cancel/secondary/block and load/reopen never grant activation. Per-consumer and native qualification remain required."
 }

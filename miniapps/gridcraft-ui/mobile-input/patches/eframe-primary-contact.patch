@@ -55,7 +55,7 @@
 +                    || runner.input.primary_contact.start(
 +                        Family::Pointer,
 +                        event.pointer_id(),
-+                        event.is_primary(),
++                        event.is_primary() && event.is_trusted(),
 +                    );
 +                if admit {
 +                    if event.pointer_type() == "touch" && button == egui::PointerButton::Primary {
@@ -159,7 +159,7 @@
 +                admitted = runner.input.primary_contact.start(
 +                    Family::Touch,
 +                    touch.identifier(),
-+                    event.touches().length() == 1,
++                    event.touches().length() == 1 && event.is_trusted(),
 +                );
 +                if admitted {
 +                    focus_canvas_for_primary_touch(runner, event.is_trusted());
