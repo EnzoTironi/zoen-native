@@ -14,7 +14,7 @@ fn seed() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut layer = Layer::raster("Pixels", doc.pixel_format());
     let surface = layer.surface_mut().ok_or("missing real raster surface")?;
     surface.fill_rect(Rect::new(0, 0, 1, 1), &[1.0, 0.0, 0.0, 1.0]);
-    surface.fill_rect(Rect::new(1, 0, 1, 1), &[0.0, 0.0, 1.0, 1.0]);
+    surface.fill_rect(Rect::new(1, 0, 2, 1), &[0.0, 0.0, 1.0, 1.0]);
     doc.layers.push(layer);
     Ok(photocraft_format::save_to_bytes(
         &doc,
@@ -195,6 +195,23 @@ fn sparse_raster_crosses_real_tile_boundaries_without_losing_original_pixels() -
     assert!(pixels[..511 * 4].iter().all(|b| *b == 0));
     assert_eq!(&pixels[511 * 4..], [0, 0, 255, 255, 255, 0, 0, 255]);
     let restored = transform(&flipped, &sha(&flipped), Operation::FlipHorizontal)?;
+    assert_eq!(
+        archive::check(&source)?.document,
+        archive::check(&restored)?.document
+    );
+    Ok(())
+}
+
+#[test]
+fn fractional_native_metadata_survives_actual_writer_and_cold_transform() -> TestResult {
+    let mut doc = photocraft_format::load_from_bytes(&seed()?)?;
+    doc.resolution_dpi = 96.3;
+    let source = photocraft_format::save_to_bytes(&doc, &SaveOptions::default())?;
+    inspect(&source, &sha(&source))?;
+    let changed = transform(&source, &sha(&source), Operation::Rotate180)?;
+    let cold = photocraft_format::load_from_bytes(&changed)?;
+    assert_eq!(cold.resolution_dpi.to_bits(), doc.resolution_dpi.to_bits());
+    let restored = transform(&changed, &sha(&changed), Operation::Rotate180)?;
     assert_eq!(
         archive::check(&source)?.document,
         archive::check(&restored)?.document
