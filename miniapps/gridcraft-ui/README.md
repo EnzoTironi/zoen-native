@@ -32,6 +32,12 @@ install, enable an App or claim a pass. Example preparation:
 
 ```sh
 python3 miniapps/gridcraft-ui/prepare-engine.py --upstream /absolute/owned/gridcraft
+
+# Browser preparation also applies pinned same-version egui/eframe input patches.
+# Use Python 3.12+ and genuine registry archives (the recipe verifies their hashes).
+python3.12 miniapps/gridcraft-ui/prepare-engine.py --upstream /absolute/owned/gridcraft-web \
+  --browser --eframe-crate /absolute/cache/eframe-0.36.2.crate \
+  --egui-crate /absolute/cache/egui-0.36.2.crate
 ```
 
 After a coordinated compiler lease, generate the lockfile genuinely in that tree,
@@ -88,6 +94,11 @@ notices. It deliberately writes an endpoint-neutral default manifest. Deployment
 must supply `ZOEN_GRIDCRAFT_RESOURCE_MANIFEST_JSON` with the exact qualified HTML,
 module, WASM hashes/byte lengths and HTTPS locations. A changed manifest is a
 native compilation input; it must not reuse another deployment's native artifact.
+`build-resource-manifest.mjs VERIFIED_RUNTIME_JSON SEALED_ASSET_DIRECTORY OUTPUT_JSON`
+uses the shared runtime descriptor parser, verifies the actual sealed JS/WASM byte
+lengths and digests, then binds them to this checkout's exact generated Grid HTML.
+It refuses a missing, symlinked, wrong-sized or changed asset before writing output;
+it does not read Rust pins, publish assets, rebuild WASM or enable the default profile.
 Package the compiled graph's notices as described in `NOTICE.md`, including the
 actual embedded font alternatives. Do not infer a license review from compilation.
 
@@ -127,8 +138,21 @@ successful commands; the same actual egui keyboard/pointer regression and all
 16 host/UI cases pass, with affected all-target Clippy. This does not enable
 resizing or object mutation in the restricted profile.
 
-The first pinned browser assets still have a separately reproduced mobile-touch
-focus defect: focus is deferred to RAF and may use the preceding editor geometry.
-The editor remains unavailable by default while a current-owner/fresh-geometry
-successor is qualified. Keyboard/canvas results do not substitute for trusted
-touch or iPhone acceptance.
+The first browser package had a reproduced mobile-touch defect: focus was deferred
+to RAF and could use the preceding editor geometry. The pinned successor applies
+`mobile-input/` after the existing host sources and before the refused-drag undo
+patch. Its current primary contact must still own the document, sheet, canonical
+cell and field; focus reads actual rendered TextEdit geometry once. Canceled,
+retired, frozen, wrong-owner or stale contacts cannot acquire focus. The same-version
+eframe/egui source overrides use verified registry archives; no registry cache is
+modified, no global focus bypass is enabled, and Cargo generates its lockfile normally.
+
+The successor source `6d05c845` passed host/WASM Clippy, 13 real UI regressions,
+release WASM and two actual trusted-touch browser runs. Both browser runs proved
+one synchronous focus with current geometry, four refused focus inputs and exact
+accepted XLSX values A1=11/B2=22. The public preparation recipe reconstructs all
+163 qualified input files exactly. The retired first JS/WASM package no longer
+satisfies the resource pins; it remains immutable at its old URL. These proofs
+cover the source and Chromium touch contract, not the iPhone software keyboard.
+The endpoint-neutral default still does not enable Grid; actual native resource
+delivery, iPhone/agent/CAS interaction and complete issue445 acceptance stay open.

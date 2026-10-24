@@ -23,3 +23,8 @@ for unrelated brand assets.
 
 Zoen's authored host/shell is AGPL-3.0-only. Compilation and browser/iPhone
 qualification are separate evidence; this inventory does not enable the App.
+
+The managed browser input recipe patches same-version egui and eframe 0.36.2
+from exact checksum-verified registry archives. Their MIT OR Apache-2.0 notices
+remain in the vendored crate roots and must accompany a deployed package. The
+recipe adds no font, model, account, remote collaboration or runtime capability.
