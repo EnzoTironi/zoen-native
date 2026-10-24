@@ -174,42 +174,43 @@ impl Engine {
 
     /// Downloads are bounded and requested one at a time, only for missing groups.
     pub(crate) fn wanted_recovery_contexts(&self) -> Vec<ContextRef> {
-        if self.net.profiles.agreement.is_none() {
-            return Vec::new();
+        self.net
+            .mls
+            .recovery_downloads
+            .values()
+            .filter(|r| self.net.synced.contains(&r.space))
+            .filter(|r| self.wants_recovery_context(r))
+            .cloned()
+            .collect()
+    }
+
+    pub(crate) fn wants_recovery_context(&self, reference: &ContextRef) -> bool {
+        if self.net.profiles.agreement.is_none()
+            || !self.can_recover(&reference.space)
+            || self.recovery_context(&reference.space).as_ref() != Some(reference)
+            || !matches!(
+                self.store.recovery_blob(&reference.space, &reference.blob),
+                Ok(None)
+            )
+        {
+            return false;
         }
         let Ok(device) = self.device() else {
-            return Vec::new();
+            return false;
         };
-        self.net
-            .synced
-            .iter()
-            .filter(|s| self.can_recover(s))
-            .filter_map(|s| self.recovery_context(s).map(|r| (s, r)))
-            .filter(|(_, r)| {
-                self.store
-                    .recovery_blob(&r.space, &r.blob)
-                    .ok()
-                    .flatten()
-                    .is_none()
-            })
-            .filter(|(space, _)| {
-                #[cfg(test)]
-                recovery_probe::before_download_read();
-                !device.has_group(space)
-            })
-            .map(|(_, reference)| reference)
-            .collect()
+        #[cfg(test)]
+        recovery_probe::before_download_read();
+        matches!(
+            device.group_state(&reference.space),
+            Ok(GroupState::Missing)
+        )
     }
 
     pub(crate) fn recovery_context_arrived(&self, reference: &ContextRef, bytes: &[u8]) -> bool {
         if bytes.len() > recovery::MAX_RECOVERY_BLOB_BYTES
             || hex::encode(Sha256::digest(bytes)) != reference.blob
+            || !self.wants_recovery_context(reference)
         {
-            return false;
-        }
-        if !self.recovery_context(&reference.space).is_some_and(|r| {
-            r.blob == reference.blob && r.epoch == reference.epoch && r.device == reference.device
-        }) {
             return false;
         }
         let ok = self
@@ -238,6 +239,7 @@ impl Engine {
         let mut spaces = self.net.mls.take_recovery_work().into_iter();
         let mut error = None;
         while let Some(space) = spaces.next() {
+            self.net.mls.recovery_downloads.remove(&space);
             if !self.can_recover(&space) {
                 continue;
             }
@@ -295,6 +297,11 @@ impl Engine {
             return Ok(false);
         };
         let Some(blob) = self.store.recovery_blob(space, &reference.blob)? else {
+            self.net
+                .mls
+                .recovery_downloads
+                .insert(space.into(), reference);
+            self.net.wake();
             return Ok(false);
         };
         let agreement = self
