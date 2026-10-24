@@ -173,7 +173,7 @@ pub(super) fn media_contract_failed_local_metadata_remains_visible_after_revocat
                         &f.scope.space_id,
                         &f.scope.expected_identity_id,
                         types::EventBody::MessagePosted {
-                            message: types::new_id("msg"),
+                            message: types::new_id("msg")?,
                             text: "new claim on failed local bytes".into(),
                             attaches: Some(item),
                             media: Some(types::MessageMedia {

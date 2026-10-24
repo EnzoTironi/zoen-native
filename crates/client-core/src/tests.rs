@@ -348,11 +348,12 @@ fn account_and_chats_survive_a_relaunch_after_search() {
 #[test]
 fn unconfirmed_genesis_holds_its_descendants_across_retry_and_relaunch() {
     transport_recovery_cases::unconfirmed_genesis_holds_its_descendants_across_retry_and_relaunch()
+        .unwrap()
 }
 
 #[test]
 fn permanently_rejected_genesis_fails_descendants_atomically_across_relaunch() {
-    transport_recovery_cases::permanently_rejected_genesis_fails_descendants_atomically_across_relaunch()
+    transport_recovery_cases::permanently_rejected_genesis_fails_descendants_atomically_across_relaunch().unwrap()
 }
 
 /// A relay that hides one message and rehashes the chain around the gap shows this device
@@ -413,7 +414,7 @@ fn ticks_follow_the_lowest_read_up_to_watermark() {
 
 #[test]
 fn edits_deletes_and_reactions_fold_over_the_original() {
-    conversation_edits_cases::edits_deletes_and_reactions_fold_over_the_original()
+    conversation_edits_cases::edits_deletes_and_reactions_fold_over_the_original().unwrap()
 }
 
 #[test]
@@ -425,7 +426,7 @@ fn ana_replaces_and_removes_only_her_reaction_while_bias_survives_replay() {
 
 #[test]
 fn chat_prefs_live_in_my_personal_space_and_last_one_wins() {
-    conversation_edits_cases::chat_prefs_live_in_my_personal_space_and_last_one_wins()
+    conversation_edits_cases::chat_prefs_live_in_my_personal_space_and_last_one_wins().unwrap()
 }
 
 mod deckcraft_registration;

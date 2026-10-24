@@ -118,7 +118,7 @@ impl Fixture {
         let revision = doc.revision().unwrap();
         doc.apply_from(&revision, &order_doc(&doc), &[edit])
             .unwrap();
-        Ok(self.ordered(self.version(ItemContent::Page(self.page(&doc)?)))?)
+        Ok(self.ordered(self.version(ItemContent::Page(self.page(&doc))))?)
     }
     pub(super) fn pending(&self, reference: &CommitRef) -> Event {
         let client_id = match reference {

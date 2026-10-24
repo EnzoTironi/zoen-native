@@ -68,7 +68,9 @@ fn path() -> std::result::Result<std::path::PathBuf, Box<dyn std::error::Error>>
         types::new_id("test")?
     )))
 }
-fn encrypted_record(core: &Client) -> types::Event {
+fn encrypted_record(
+    core: &Client,
+) -> std::result::Result<types::Event, Box<dyn std::error::Error>> {
     use event_log::content::{Sealed, SealedKind};
     let identity = Signer::from_secret(&[21; 32]);
     let author = Author::device(&identity, Signer::from_secret(&[26; 32]));
@@ -82,7 +84,7 @@ fn encrypted_record(core: &Client) -> types::Event {
                 kind: SpaceKind::Group,
                 privacy: Privacy::EndToEnd,
             },
-        )
+        )?
         .clone();
     let mut opened = author.sign_event(
         log.space(),
@@ -120,7 +122,7 @@ fn encrypted_record(core: &Client) -> types::Event {
     let mut e = core.lock();
     e.store.append_events(&[genesis, local]).unwrap();
     e.reload().unwrap();
-    opened
+    Ok(opened)
 }
 
 fn owned_personal_spaces(core: &Client) -> Vec<String> {
@@ -176,7 +178,7 @@ async fn assert_linked_preferences_survive_history_and_reopen(
     } else {
         assert_eq!(owned_personal_spaces(&core).len(), 1);
     }
-    let opened = encrypted_record(&core);
+    let opened = encrypted_record(&core)?;
     let receive = core.history_receive.begin(5_000).unwrap();
     assert_eq!(
         core.commit_initial_history(vec![opened], 1, 0, &receive)
@@ -281,7 +283,9 @@ fn linked_chat_preferences_bootstrap_storage_failure_rolls_back_before_vault_and
 
 #[tokio::test]
 async fn linked_chat_preferences_never_reuse_another_identity_personal_space() {
-    preferences::linked_chat_preferences_never_reuse_another_identity_personal_space().await
+    preferences::linked_chat_preferences_never_reuse_another_identity_personal_space()
+        .await
+        .unwrap()
 }
 
 #[test]
@@ -298,7 +302,9 @@ async fn link_then_cold_reopen_before_history_retains_pending_and_same_keys() {
 
 #[tokio::test]
 async fn missing_or_forged_history_cannot_clear_pending_or_partially_import() {
-    recovery::missing_or_forged_history_cannot_clear_pending_or_partially_import().await
+    recovery::missing_or_forged_history_cannot_clear_pending_or_partially_import()
+        .await
+        .unwrap()
 }
 
 #[tokio::test]

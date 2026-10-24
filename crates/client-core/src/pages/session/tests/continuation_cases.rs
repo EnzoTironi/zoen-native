@@ -120,7 +120,7 @@ pub(super) fn continuation_does_not_replace_unseen_remote_fields_or_blocks(
         remote
             .apply_from(&rev, &order, &[cost, summary, prose])
             .unwrap();
-        let event = f.signed_as(&f.owner, f.version(ItemContent::Page(f.page(&remote)?)))?;
+        let event = f.signed_as(&f.owner, f.version(ItemContent::Page(f.page(&remote))))?;
         if remote_first {
             deliver(&mut f.engine, &event, Ingest::Applied);
         }

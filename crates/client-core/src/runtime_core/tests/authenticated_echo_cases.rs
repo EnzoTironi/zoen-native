@@ -144,7 +144,7 @@ pub(super) fn own_echo_requires_valid_original_inner_and_historical_sealing_copy
                     envelope.at_ms(),
                     envelope.seen(),
                     EventBody::MessagePosted {
-                        message: prepared.message()?.into(),
+                        message: prepared.message().into(),
                         text: "Another genuinely signed native inner".into(),
                         attaches: None,
                         reply: None,

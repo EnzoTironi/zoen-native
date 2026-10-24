@@ -195,7 +195,7 @@ pub(super) fn receipt_prefix_validates_original_pending_before_reading_unrelated
                     500,
                     prepared.envelope().seen(),
                     EventBody::MessagePosted {
-                        message: prepared.message()?.into(),
+                        message: prepared.message().into(),
                         text: "Different certified output".into(),
                         attaches: None,
                         reply: None,

@@ -42,7 +42,7 @@ pub(super) fn prepared_reply_preserves_exact_native_outbox_through_cold_restore_
     assert!(matches!(
         &pending[0].event.body,
         EventBody::MessagePosted { message, text, attaches: None, reply: None, media: None, forwarded: false, }
-            if message == prepared.message()? && text == "Retained model result\n"
+            if message == prepared.message() && text == "Retained model result\n"
     ));
     assert_eq!(cold.engine.outbox_envelopes(), vec![envelope.clone()]);
     assert_eq!(
@@ -58,7 +58,7 @@ pub(super) fn prepared_reply_preserves_exact_native_outbox_through_cold_restore_
     assert!(matches!(
         &received.body,
         EventBody::MessagePosted { message, text, attaches: None, reply: None, media: None, forwarded: false, }
-            if message == prepared.message()? && text == "Retained model result\n"
+            if message == prepared.message() && text == "Retained model result\n"
     ));
     cold.ingest(vec![frame.clone()]).unwrap();
     assert_eq!(cold.engine.store.outbox_len().unwrap(), 0);

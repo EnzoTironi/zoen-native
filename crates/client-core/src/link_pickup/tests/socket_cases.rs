@@ -373,7 +373,7 @@ pub(super) fn spawning_on_an_actual_closed_runtime_cannot_deadlock_completion_un
         .spawn()
         .unwrap();
     let bound = std::time::Instant::now() + Duration::from_secs(5);
-    Ok(loop {
+    loop {
         if child.try_wait().unwrap().is_some() {
             let output = child.wait_with_output().unwrap();
             assert!(
@@ -396,7 +396,7 @@ pub(super) fn spawning_on_an_actual_closed_runtime_cannot_deadlock_completion_un
             );
         }
         std::thread::sleep(Duration::from_millis(10));
-    })
+    }
 }
 
 pub(super) async fn agent_purpose_uses_distinct_mailbox_and_same_revocable_install_lease(

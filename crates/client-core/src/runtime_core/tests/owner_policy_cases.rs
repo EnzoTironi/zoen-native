@@ -12,10 +12,7 @@ mod inquiry_observation;
 mod inquiry_recovery;
 mod publication_cases;
 
-fn setup() -> std::result::Result<
-    StdResult<(Fixture, OwnerPolicyScope, String), Box<dyn std::error::Error>>,
-    Box<dyn std::error::Error>,
-> {
+fn setup() -> StdResult<(Fixture, OwnerPolicyScope, String), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new()?;
     fixture.owner.set_registered(true)?;
     fixture.core.engine.set_registered(true)?;
@@ -42,7 +39,7 @@ fn setup() -> std::result::Result<
         enabled: true,
         allowed_profiles: vec!["11".repeat(32)],
     };
-    Ok(Ok((fixture, scope, serde_json::to_string(&policy)?)))
+    Ok((fixture, scope, serde_json::to_string(&policy)?))
 }
 fn submit(
     f: &mut Fixture,

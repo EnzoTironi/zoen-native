@@ -119,7 +119,7 @@ pub(super) fn native_receipt_survives_revocation_expiry_and_cold_replay_without_
         .receive_reply(&original, &client_id, vec![accepted.clone()])
         .unwrap();
     assert_eq!(receipt.original(), &original);
-    assert_eq!(receipt.message()?, prepared.message()?);
+    assert_eq!(receipt.message(), prepared.message());
     assert_eq!(receipt.event_digest(), prepared.event_digest());
     assert_eq!(receipt.accepted(), first.accepted());
     assert_eq!(receipt.image().as_bytes(), before.as_bytes());
@@ -206,7 +206,7 @@ pub(super) fn receipt_refuses_different_duplicate_opening_and_missing_original_r
             "changed-message" | "changed-digest" | "future-reference" => {
                 let json = fixture.core.engine.store.meta(&key).unwrap().unwrap();
                 let changed = match case {
-                    "changed-message" => json.replace(prepared.message()?, "different-message"),
+                    "changed-message" => json.replace(prepared.message(), "different-message"),
                     "changed-digest" => json.replace(prepared.event_digest(), &"00".repeat(32)),
                     "future-reference" => json.replace("\"version\":1", "\"version\":2"),
                     _ => unreachable!(),

@@ -129,7 +129,7 @@ fn caption(e: &Client, f: &Fixture) -> String {
 #[test]
 fn checked_file_edit_preserves_original_metadata_caption_history_and_ignores_identical_saves() {
     let e = seeded();
-    let f = fixture(&e).unwrap();
+    let f = fixture(&e);
     let original = e.item(f.item.clone()).unwrap();
     let original_info = original.file.clone().unwrap();
     let (version, hash) = base(&e, &f.item);
@@ -179,7 +179,7 @@ fn checked_file_edit_preserves_original_metadata_caption_history_and_ignores_ide
 fn stale_version_expected_hash_and_actual_current_hash_refuse_without_any_writes() {
     for drift in ["version", "expected_hash", "current_hash"] {
         let e = seeded();
-        let f = fixture(&e).unwrap();
+        let f = fixture(&e);
         let (original_version, original_hash) = base(&e, &f.item);
         if drift != "expected_hash" {
             e.file_new_version(
@@ -220,7 +220,7 @@ fn stale_version_expected_hash_and_actual_current_hash_refuse_without_any_writes
 #[test]
 fn checked_file_edit_keeps_existing_errors_without_writes_and_uses_the_session_language() {
     let e = seeded();
-    let f = fixture(&e).unwrap();
+    let f = fixture(&e);
     let plan = paraty_plan(&e).id;
     let before = snapshot(&e, &f);
     for item in ["missing-file", plan.as_str()] {
@@ -242,7 +242,7 @@ fn checked_file_edit_keeps_existing_errors_without_writes_and_uses_the_session_l
 fn reader_and_removed_member_cannot_edit_even_with_the_exact_base() {
     for removed in [false, true] {
         let e = seeded();
-        let f = fixture(&e).unwrap();
+        let f = fixture(&e);
         let (version, hash) = base(&e, &f.item);
         let me = e.me().unwrap().id;
         let body = if removed {
@@ -331,7 +331,7 @@ fn identical_checked_file_and_thumbnail_do_not_create_a_duplicate_version_or_upl
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     Ok(for synced in [false, true] {
         let e = seeded();
-        let f = fixture(&e)?;
+        let f = fixture(&e);
         if synced {
             let mut engine = e.lock();
             engine.store.set_synced(&f.space).unwrap();
@@ -358,7 +358,7 @@ fn identical_checked_file_and_thumbnail_do_not_create_a_duplicate_version_or_upl
 fn rejected_item_version_append_restores_every_sql_row_projection_and_upload_then_retries() {
     for synced in [false, true] {
         let e = seeded();
-        let f = fixture(&e).unwrap();
+        let f = fixture(&e);
         {
             let mut engine = e.lock();
             if synced {
@@ -414,7 +414,7 @@ fn checked_file_edit_and_original_history_survive_a_cold_database_reopen() {
     let (f, saved) = {
         let e = Client::open(path.clone(), "pt-BR".into()).unwrap();
         e.seed_demo_if_empty().unwrap();
-        let f = fixture(&e).unwrap();
+        let f = fixture(&e);
         let (version, hash) = base(&e, &f.item);
         let saved = checked(&e, &f.item, version, &hash).unwrap();
         (f, saved)
@@ -462,7 +462,7 @@ fn checked_file_errors_use_session_language_and_restore_the_ambient_thread_langu
         ] {
             let e = Client::open(":memory:".into(), tag.into()).unwrap();
             e.seed_demo_if_empty().unwrap();
-            let f = fixture(&e)?;
+            let f = fixture(&e);
             let (version, hash) = base(&e, &f.item);
             {
                 let _ambient = crate::i18n::enter(ambient);

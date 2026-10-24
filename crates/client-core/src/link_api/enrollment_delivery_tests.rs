@@ -81,8 +81,8 @@ async fn altered_or_legacy_retained_delivery_never_reseals_or_sends() {
                 let first = if original.starts_with('A') { 'B' } else { 'A' };
                 row["enrollment"]["sealed"] = json!(format!("{first}{}", &original[1..]));
             }
-            3 => row["enrollment"]["identity"] = json!(Signer::generate().id()),
-            4 => row["enrollment"]["primary"] = json!(Signer::generate().id()),
+            3 => row["enrollment"]["identity"] = json!(Signer::generate().unwrap().id()),
+            4 => row["enrollment"]["primary"] = json!(Signer::generate().unwrap().id()),
             5 => row["enrollment"]["primary_certificate"] = json!("invalid"),
             6 => row["enrollment"]["primary_hpke"] = json!(hex::encode([9; 32])),
             7 => row["enrollment"]["relay"] = json!("http://127.0.0.1:2"),

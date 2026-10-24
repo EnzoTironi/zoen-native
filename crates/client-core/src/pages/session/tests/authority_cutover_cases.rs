@@ -18,7 +18,7 @@ pub(super) fn plan_refresh_reuses_verified_payload_and_rechecks_after_reload(
         .unwrap();
     let bytes = document.full_update().to_json().unwrap();
     let blob = f.engine.page_blob(&f.space, &bytes).unwrap();
-    let mut page = f.page(&document)?;
+    let mut page = f.page(&document);
     page.blob = Some(blob.clone());
     page.loro.clear();
     let event = f.ordered(f.version(ItemContent::Page(page)))?;

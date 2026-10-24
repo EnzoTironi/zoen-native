@@ -145,8 +145,9 @@ pub(super) fn inline_replies_quote_and_thread_replies_gather_under_the_root() {
     );
 }
 
-pub(super) fn edits_deletes_and_reactions_fold_over_the_original() {
-    let dir = std::env::temp_dir().join(format!("client-test-{}", types::new_id("t")));
+pub(super) fn edits_deletes_and_reactions_fold_over_the_original(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = std::env::temp_dir().join(format!("client-test-{}", types::new_id("t")?));
     std::fs::create_dir_all(&dir).unwrap();
     let e = Client::open(
         dir.join("a.sqlite").to_string_lossy().into(),
@@ -216,6 +217,8 @@ pub(super) fn edits_deletes_and_reactions_fold_over_the_original() {
         .forward_message(s.id.clone(), theirs.id.clone(), other.id.clone())
         .unwrap();
     assert!(f.forwarded);
+
+    Ok(())
 }
 
 pub(super) fn ana_replaces_and_removes_only_her_reaction_while_bias_survives_replay(
@@ -306,8 +309,9 @@ pub(super) fn ana_replaces_and_removes_only_her_reaction_while_bias_survives_rep
     Ok(())
 }
 
-pub(super) fn chat_prefs_live_in_my_personal_space_and_last_one_wins() {
-    let dir = std::env::temp_dir().join(format!("client-test-{}", types::new_id("t")));
+pub(super) fn chat_prefs_live_in_my_personal_space_and_last_one_wins(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = std::env::temp_dir().join(format!("client-test-{}", types::new_id("t")?));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("p.sqlite").to_string_lossy().to_string();
     let id = {
@@ -331,4 +335,6 @@ pub(super) fn chat_prefs_live_in_my_personal_space_and_last_one_wins() {
         !s.pinned && !s.archived && !s.muted,
         "a mute in the past is no mute"
     );
+
+    Ok(())
 }

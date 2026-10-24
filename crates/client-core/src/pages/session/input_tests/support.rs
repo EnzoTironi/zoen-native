@@ -15,7 +15,7 @@ pub(super) fn input_scope(f: &Fixture) -> FileEditDraftScope {
 pub(super) fn cold_input_fixture(
     kind: ItemKind,
 ) -> std::result::Result<(Database, Fixture), Box<dyn std::error::Error>> {
-    let (f, _, _, _) = private_document_backup_source(kind);
+    let (f, _, _, _) = private_document_backup_source(kind)?;
     let db = Database::new()?;
     // Materialize every actual account/key/journal row, including private rows
     // deliberately excluded by backup_snapshot, before destroying the Engine.

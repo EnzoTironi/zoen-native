@@ -234,7 +234,7 @@ pub(super) fn semantically_refused_source_preserves_draft_and_visible_history(
         &[text_edit(&read, "retained after semantic refusal")],
     )
     .unwrap();
-    let mut malformed = f.page(plan_doc(&s.live).unwrap())?;
+    let mut malformed = f.page(plan_doc(&s.live).unwrap());
     malformed.loro = encode_bytes(b"{\"unrecognized\":\"not a Plan packet\"}");
     let event = f.queue(f.version(ItemContent::Page(malformed)));
     expect_source(&f, &mut s, &event);

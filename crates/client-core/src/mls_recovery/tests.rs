@@ -242,12 +242,12 @@ fn context_and_commit_roll_back_together_and_wait_for_upload_after_restart() {
 
 #[test]
 fn live_direct_recipient_keeps_initial_welcome_before_recovery_context() {
-    initial_welcome::live_direct_recipient_keeps_initial_welcome_before_recovery_context();
+    initial_welcome::live_direct_recipient_keeps_initial_welcome_before_recovery_context().unwrap();
 }
 
 #[test]
 fn live_direct_recipient_keeps_initial_welcome_after_cold_reopen() {
-    initial_welcome::live_direct_recipient_keeps_initial_welcome_after_cold_reopen();
+    initial_welcome::live_direct_recipient_keeps_initial_welcome_after_cold_reopen().unwrap();
 }
 
 mod context_creation;

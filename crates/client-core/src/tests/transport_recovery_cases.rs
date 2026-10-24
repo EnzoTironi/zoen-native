@@ -2,12 +2,13 @@
 
 use super::*;
 
-pub(super) fn unconfirmed_genesis_holds_its_descendants_across_retry_and_relaunch() {
+pub(super) fn unconfirmed_genesis_holds_its_descendants_across_retry_and_relaunch(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use event_log::chain_hash;
     use protocol::Sequenced;
     use types::GENESIS_PREV;
 
-    let dir = std::env::temp_dir().join(format!("zoen-genesis-{}", types::new_id("t")));
+    let dir = std::env::temp_dir().join(format!("zoen-genesis-{}", types::new_id("t")?));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("core.sqlite").to_string_lossy().to_string();
     let vault: Arc<dyn SecretVault> = Arc::new(MemVault::default());
@@ -92,10 +93,13 @@ pub(super) fn unconfirmed_genesis_holds_its_descendants_across_retry_and_relaunc
     );
     drop(e);
     std::fs::remove_dir_all(dir).unwrap();
+
+    Ok(())
 }
 
-pub(super) fn permanently_rejected_genesis_fails_descendants_atomically_across_relaunch() {
-    let dir = std::env::temp_dir().join(format!("zoen-genesis-refusal-{}", types::new_id("t")));
+pub(super) fn permanently_rejected_genesis_fails_descendants_atomically_across_relaunch(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = std::env::temp_dir().join(format!("zoen-genesis-refusal-{}", types::new_id("t")?));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("core.sqlite").to_string_lossy().to_string();
     let vault: Arc<dyn SecretVault> = Arc::new(MemVault::default());
@@ -215,6 +219,8 @@ pub(super) fn permanently_rejected_genesis_fails_descendants_atomically_across_r
     drop(engine);
     drop(e);
     std::fs::remove_dir_all(dir).unwrap();
+
+    Ok(())
 }
 
 pub(super) fn a_device_refuses_a_relay_that_hides_a_message_and_rehashes(
