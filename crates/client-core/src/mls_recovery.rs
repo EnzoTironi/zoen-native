@@ -13,6 +13,9 @@ use types::{Event, Role};
 use crate::engine::{now_ms, Engine, R};
 use crate::CoreError;
 
+#[cfg(test)]
+pub(crate) mod recovery_probe;
+
 fn invalid(reason: impl std::fmt::Display) -> CoreError {
     CoreError::Invalid {
         reason: reason.to_string(),
@@ -189,7 +192,11 @@ impl Engine {
                     .flatten()
                     .is_none()
             })
-            .filter(|(space, _)| !device.has_group(space))
+            .filter(|(space, _)| {
+                #[cfg(test)]
+                recovery_probe::before_download_read();
+                !device.has_group(space)
+            })
             .map(|(_, reference)| reference)
             .collect()
     }
@@ -267,6 +274,8 @@ impl Engine {
 
     fn try_mls_recovery(&mut self, space: &str) -> R<bool> {
         let device = self.device()?;
+        #[cfg(test)]
+        recovery_probe::before_recovery_read();
         let state = device.group_state(space).map_err(invalid)?;
         if state == GroupState::Pending {
             return Ok(false);
