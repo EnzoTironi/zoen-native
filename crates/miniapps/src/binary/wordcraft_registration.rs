@@ -21,10 +21,10 @@ pub const MANIFEST: &str = match option_env!("ZOEN_WORDCRAFT_RESOURCE_MANIFEST_J
 const PINS: RuntimePins = RuntimePins {
     module_file: "wordcraft.js",
     module_bytes: 80_480,
-    module_sha: "da14faca74ed3ffae283ffdac1c40674ac049ccae80e631ed9be60502d360016",
+    module_sha: "b0e619d1409863f096e2ce816963b0075f4a6b73dbe0a671b0b06532d2bfc7b2",
     wasm_file: "wordcraft_bg.wasm",
-    wasm_bytes: 46_351_299,
-    wasm_sha: "e3144f368ba317d2e565a8cd258f11ad0f4d92995c7b3911b219604a7e8edb8b",
+    wasm_bytes: 46_546_380,
+    wasm_sha: "68cc2b6c54417654190f7dfbd13ae0c40dc7d7e46828a0e4ebabf1e89be79e5b",
 };
 pub fn valid_resource(html: &str, manifest: &str) -> bool {
     resource::valid_resource(Format::Wordcraft, &PINS, html, manifest)
@@ -55,7 +55,7 @@ pub fn create(args: &Value) -> Result<(String, Value), String> {
     }
     let doc = Document::parse(EMPTY).map_err(str::to_owned)?;
     let metadata = serde_json::from_str(&doc.metadata(title))
-        .map_err(|_| "Invalid initial plain-text document metadata")?;
+        .map_err(|_| "Invalid initial document metadata")?;
     Ok((title.into(), metadata))
 }
 pub fn spec() -> Option<AppSpec> {
@@ -64,10 +64,10 @@ pub fn spec() -> Option<AppSpec> {
     }
     let mut tools = vec![tool(
         "create_wordcraft",
-        ts("Criar documento", "Create plain-text document"),
+        ts("Criar documento", "Create document"),
         ts(
             "Cria um documento editável nesta conversa.",
-            "Creates an editable plain-text document in this conversation.",
+            "Creates an editable document in this conversation.",
         ),
         json!({"type":"object","properties":{"title":{"type":"string","maxLength":160}},"additionalProperties":false}),
         &["model"],
@@ -101,7 +101,7 @@ pub fn spec() -> Option<AppSpec> {
         name: "WordCraft",
         description: ts(
             "Documentos compartilhados e criptografados.",
-            "Shared encrypted plain-text documents.",
+            "Shared encrypted documents.",
         ),
         resource_uri: RESOURCE,
         html: Some(HTML),

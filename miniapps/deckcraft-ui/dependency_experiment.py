@@ -20,10 +20,13 @@ EXPERIMENT_FILES = {
     ],
 }
 EXPERIMENT_NAMES = tuple(EXPERIMENT_FILES)
+# One exact sibling input is shared with Grid/Word/Photo/PDF. This is not a
+# general external-patch path: every recipe still has a closed ordered chain.
+SHARED_PRIMARY_CONTACT = '../gridcraft-ui/mobile-input/patches/eframe-primary-contact.patch'
 IOS_INPUT_PATCHES = (
     'patches/0017a-eframe-vendor-binding.patch',
     'patches/0017b-eframe-text-activation.patch',
-    'patches/0017c-eframe-primary-contact.patch',
+    SHARED_PRIMARY_CONTACT,
     'patches/0017d-deckcraft-text-admission.patch',
     'patches/0017e-deckcraft-input-contracts.patch',
 )
@@ -92,6 +95,8 @@ def experiment_patches(data):
 
 def valid_patch(patch):
     patch_path = patch.get('path') if isinstance(patch, dict) else None
+    if patch_path == SHARED_PRIMARY_CONTACT:
+        return is_sha(patch.get('sha256'))
     return (isinstance(patch_path, str) and '\\' not in patch_path
             and PurePosixPath(patch_path).parts[:1] == ('patches',)
             and len(PurePosixPath(patch_path).parts) == 2

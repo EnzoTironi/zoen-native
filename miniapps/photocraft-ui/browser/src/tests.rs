@@ -247,3 +247,5 @@ fn actual_app_frozen_external_command_and_replaced_binding_cannot_mutate() -> Re
 
 #[path = "input_tests.rs"]
 mod input_tests;
+#[path = "menu_tests.rs"]
+mod menu_tests;

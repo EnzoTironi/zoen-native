@@ -73,6 +73,9 @@ class InputPatchChainTest(unittest.TestCase):
             lambda d: d.update(patches=None),
             lambda d: d['patches'].__setitem__(0, None),
             lambda d: d['patches'][0].update(path='patches/../outside.patch'),
+            lambda d: d['patches'][2].update(path='../gridcraft-ui/mobile-input/patches/other.patch'),
+            lambda d: d['patches'][2].update(path='../gridcraft-ui/mobile-input/patches/../patches/eframe-primary-contact.patch'),
+            lambda d: d['patches'][2].update(path='/tmp/eframe-primary-contact.patch'),
             lambda d: d['patches'][1].update(sha256='short'),
         ]
         for index, change in enumerate(changes):
