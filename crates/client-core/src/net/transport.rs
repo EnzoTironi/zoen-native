@@ -152,6 +152,7 @@ pub(super) async fn flush(
             });
             entry.insert(epoch);
             send(sink, &ClientFrame::Publish { env }).await?;
+            tracing_like(&format!("publication submitted in_flight={}", sent.len()));
         }
     }
     Ok(())
