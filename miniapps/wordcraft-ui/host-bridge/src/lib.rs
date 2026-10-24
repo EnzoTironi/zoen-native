@@ -2,6 +2,7 @@
 //! Proposals are inert bytes. Only the canonical host can authorize and persist a new head.
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+#[cfg(test)]
 use wordcraft_doc::StoryRef;
 use wordcraft_engine::Session;
 #[cfg(feature = "browser")]
@@ -12,6 +13,7 @@ mod wire;
 pub use wire::*;
 mod edit;
 mod export;
+mod inspect;
 pub mod profile;
 #[cfg(test)]
 mod tests;
@@ -80,18 +82,11 @@ impl HostBridge {
             "profile":"rich-document-v1"})
     }
 
-    #[must_use]
-    pub fn inspect(&self) -> Value {
-        let mut value = self.status();
-        // Inspect the accepted document, even while a proposal is awaiting canonical ACK.
-        value["text"] = json!(self.session.doc.plain_text(StoryRef::Body));
-        value["paragraphs"] =
-            json!(self.session.doc.body.iter().enumerate().filter_map(|(index,block)| {
-            let wordcraft_doc::Block::Para(p)=block.as_ref() else { return None; };
-            Some(json!({"paragraph":index,"text":p.text,"runs":p.runs,"properties":p.props}))
-        }).collect::<Vec<_>>());
-        value["styles"] = json!(self.session.doc.styles);
-        value
+    /// Read the accepted model without duplicating text or exceeding the worker frame.
+    /// # Errors
+    /// Refuses text whose escaped JSON cannot fit the unchanged 64 KiB envelope.
+    pub fn inspect(&self) -> Result<Value> {
+        inspect::document(self.status(), &self.session.doc)
     }
 
     fn scope(&self, scope: &Scope) -> Result<()> {
@@ -165,12 +160,11 @@ impl HostBridge {
             return Ok(proposal);
         }
         let bytes = profile::encode_document(document)?;
-        let proposal = Proposal {
-            metadata: json!({"scope":mutation.scope,"base":mutation.base,"mutationId":mutation.mutation_id,
+        let mut metadata = json!({"scope":mutation.scope,"base":mutation.base,"mutationId":mutation.mutation_id,
                 "sha256":hash(&bytes),"byteLength":bytes.len(),"engineRevision":profile::ENGINE_REVISION,
-                "operation":operation,"acceptedHead":null}),
-            bytes,
-        };
+                "acceptedHead":null});
+        metadata["operation"] = operation;
+        let proposal = Proposal { metadata, bytes };
         self.pending = Some(Pending {
             fingerprint,
             mutation,

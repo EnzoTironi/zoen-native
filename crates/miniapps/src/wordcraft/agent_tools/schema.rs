@@ -30,7 +30,7 @@ fn write(name: &str, description: &str, extra: Value) -> Definition {
 pub(super) fn tools() -> Vec<Definition> {
     let text = json!({"type":"string","maxLength":16384});
     vec![
-        Definition{name:"read_wordcraft".into(),description:"Read the exact accepted DOCX head/hash, text, zero-based body paragraphs, runs and styles. Rich models are preserved; unsupported/lossy documents are refused.".into(),parameters:json!({"type":"object","properties":{"artifactId":{"type":"string","minLength":1,"maxLength":128}},"required":["artifactId"],"additionalProperties":false})},
+        Definition{name:"read_wordcraft".into(),description:"Read the exact accepted DOCX head/hash and text. Rich paragraph/run/style details share text ranges and include explicit omission/counts when they exceed the bounded reply. Unreported formatting remains preserved.".into(),parameters:json!({"type":"object","properties":{"artifactId":{"type":"string","minLength":1,"maxLength":128}},"required":["artifactId"],"additionalProperties":false})},
         write("wordcraft_text_replace","Replace all body text intentionally. Prefer wordcraft_edit_range for local edits that preserve surrounding content/styles. Requires exact head and owner review.",json!({"text":text})),
         write("wordcraft_edit_range","Replace or insert text at an exact body range, preserving the rest of the rich document. LF creates paragraphs. Requires exact head and owner review.",json!({"range":range(),"text":text})),
         write("wordcraft_format_range","Apply explicit character/paragraph formatting to a nonempty exact body range. Unspecified properties remain unchanged. One atomic Undo, exact head and owner review.",json!({"range":range(),"format":format()})),

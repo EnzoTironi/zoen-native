@@ -31,19 +31,19 @@ fn select(s: &mut Session, range: &Range) -> Result<()> {
             return Err(failure("unsupported_range"));
         }
     }
-    run(s, "select.range", json!({"anchor":a,"focus":b}))
+    run(s, "select.range", &json!({"anchor":a,"focus":b}))
 }
-fn run(s: &mut Session, id: &str, params: Value) -> Result<()> {
-    s.run(id, &params)
+fn run(s: &mut Session, id: &str, params: &Value) -> Result<()> {
+    s.run(id, params)
         .map(|_| ())
         .map_err(|_| failure("engine_edit"))
 }
 fn text(s: &mut Session, text: &str) -> Result<()> {
     // LF denotes paragraphs; upstream raw typing LF denotes a soft break.
     if text.contains('\n') {
-        run(s, "edit.pasteText", json!({"text":text}))
+        run(s, "edit.pasteText", &json!({"text":text}))
     } else {
-        run(s, "text.insert", json!({"text":text,"raw":true}))
+        run(s, "text.insert", &json!({"text":text,"raw":true}))
     }
 }
 fn format(s: &mut Session, f: &Format) -> Result<()> {
@@ -91,7 +91,7 @@ fn format(s: &mut Session, f: &Format) -> Result<()> {
         if index > 0 {
             s.join_next_undo();
         }
-        run(s, id, params)?;
+        run(s, id, &params)?;
     }
     Ok(())
 }
@@ -106,7 +106,7 @@ pub(crate) fn apply(s: &mut Session, action: &Action) -> Result<()> {
     s.also_selected.clear();
     let result = match action {
         Action::TextReplace(v) => {
-            run(s, "select.all", json!({"whole":true}))?;
+            run(s, "select.all", &json!({"whole":true}))?;
             text(s, &v.text)
         }
         Action::TextEdit(v) => {

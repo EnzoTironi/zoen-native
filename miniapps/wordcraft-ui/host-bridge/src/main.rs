@@ -40,7 +40,7 @@ fn run() -> Result<Proposal, String> {
         (Some(command), None) => bridge.execute(command),
         (None, Some(export)) => bridge.export(&export),
         (None, None) => Ok(Proposal {
-            metadata: bridge.inspect(),
+            metadata: bridge.inspect()?,
             bytes: Vec::new(),
         }),
     }

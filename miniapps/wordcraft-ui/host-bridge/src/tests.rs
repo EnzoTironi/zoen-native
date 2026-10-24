@@ -85,7 +85,7 @@ fn actual_engine_proposal_ack_and_cold_docx_preserve_unicode_and_selected_versio
         "Novo\n日本語\t👨‍👩‍👧‍👦\n"
     );
     assert_eq!(exported(&bridge, base.clone())?.bytes, original);
-    assert_eq!(bridge.inspect()["text"], "Original\nOlá 👩🏽‍💻");
+    assert_eq!(bridge.inspect()?["text"], "Original\nOlá 👩🏽‍💻");
     assert_eq!(bridge.execute(request.clone())?.bytes, proposal.bytes);
     let accepted = head("2", &proposal.bytes);
     bridge.accept(&Accept {
@@ -301,8 +301,11 @@ fn actual_writer_xml_boundary_scalars_and_whitespace_survive_proposal_and_cold_r
             },
             &proposal.bytes,
         )?;
-        assert_eq!(cold.inspect()["text"], text);
+        assert_eq!(cold.inspect()?["text"], text);
         assert_eq!(exported(&bridge, head("1", &original))?.bytes, original);
     }
     Ok(())
 }
+
+#[path = "inspect_tests.rs"]
+mod inspect;

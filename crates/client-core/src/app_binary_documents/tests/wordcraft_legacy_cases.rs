@@ -3,6 +3,7 @@ use super::*;
 use std::sync::Arc;
 use types::{EventBody, Grant, GrantScope};
 use zoen_word_profile::model::{props::Align, Block, Document as Model};
+const OLD_ENGINE: &str = "d1b0bfc3f9dd83126b162a42b667facecb003b7f";
 const OLD_SHA: &str = "0a4363cf44e798c967e35b2ec7addce8697f4ab694844fba12c561fc0789310b";
 fn legacy_word(f: &Fixture) -> R<AppBinaryDocumentDto> {
     let mut e = f.client.lock();
@@ -14,7 +15,7 @@ fn legacy_word(f: &Fixture) -> R<AppBinaryDocumentDto> {
         let key=e.file_key(None)?;
         let file=e.file_doc(&f.space,&key,"document.docx","",wordcraft::MIME,DOCX,None,&HashMap::new())?;
         e.store.set_meta(&format!("file_key:{item}"),&hex::encode(key))?;
-        e.append(&f.space,&me,EventBody::ItemCreated{item:item.clone(),kind:ItemKind::App,content:ItemContent::App(AppDoc{app:wordcraft::APP.into(),resource_uri:wordcraft::RESOURCE.into(),title:"Legacy Word".into(),state_json:json!({"title":"Legacy Word","paragraphs":1,"words":0,"engineRevision":wordcraft::ENGINE_REVISION,"profile":"plain-text-v1"}).to_string(),document:Some(file)}),origin:"Created document".into()})?;
+        e.append(&f.space,&me,EventBody::ItemCreated{item:item.clone(),kind:ItemKind::App,content:ItemContent::App(AppDoc{app:wordcraft::APP.into(),resource_uri:wordcraft::RESOURCE.into(),title:"Legacy Word".into(),state_json:json!({"title":"Legacy Word","paragraphs":1,"words":0,"engineRevision":OLD_ENGINE,"profile":"plain-text-v1"}).to_string(),document:Some(file)}),origin:"Created document".into()})?;
         e.append(&f.space,&me,EventBody::GrantIssued{grant:Grant{id:types::new_id("gr"),grantor:me.clone(),grantee:Some(format!("app:{item}")),scope:GrantScope::Item(item.clone()),capability:Capability::Trust(TrustLevel::Act),expires_at_ms:None}})?;
         Ok(())
     })?;
