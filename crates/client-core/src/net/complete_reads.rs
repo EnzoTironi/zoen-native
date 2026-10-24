@@ -1,4 +1,7 @@
 //! Transport-local complete-read staging; no partial page reaches Engine/host.
+#[cfg(test)]
+use super::{Arc, Message, ServerFrame};
+
 use super::{
     remember_waiting, send, ClientFrame, Duration, Exit, HashMap, Op, Reply, Sink, Waiting,
 };

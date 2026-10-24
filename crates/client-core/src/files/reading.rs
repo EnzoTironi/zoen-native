@@ -1,5 +1,8 @@
 //! Reading operations on the original Engine state.
 
+#[cfg(test)]
+use super::FILE_VERSION_HISTORY_PROBES;
+
 use super::{
     invalid, invalid_file, validate_chunk, validate_file, ChunkRef, CoreError, Digest, Engine,
     FileDoc, FileDto, ItemContent, Sha256, MAX_CHUNK, MAX_FILE_BYTES, MAX_THUMBNAIL_BYTES, R,

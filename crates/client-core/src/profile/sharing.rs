@@ -1,5 +1,8 @@
 //! Confirmed membership and encrypted profile-key shares.
 
+#[cfg(test)]
+use super::{AgreementKey, Identity, Privacy, ProfileSettlement, Role, SpaceKind};
+
 use super::{
     now_ms, open_share, seal_share, share_context, Engine, Event, EventBody, HashSet, IdentityId,
     IdentityKind, ProfileKeyShare, SealedShare, SpaceId, R, SHARES_PER_EVENT,

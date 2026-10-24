@@ -4,6 +4,13 @@
 //! Logs own the ordered facts; the outbox owns unconfirmed intent. This adapter builds
 //! a disposable typed projection and never writes either one or a second Plan store.
 
+#[cfg(test)]
+use types::{
+    new_id, ActionClass, AgentRequest, Capability, ChunkRef, Grant, GrantScope, Identity,
+    IdentityKind, ItemProposal, PlanLine, PlanSection, Privacy, RequestResolution, Role, SpaceKind,
+    TrustLevel, GENESIS_PREV,
+};
+
 use base64::Engine as _;
 use documents::plan::{
     CanonicalPlanSeed, LegacyVersion, PlanDocument, PlanVersion, TotalCents, MAX_PLAN_PACKET_BYTES,

@@ -1,4 +1,7 @@
 //! Pending-prefix admission, durable fork marking and settlement.
+#[cfg(test)]
+use super::crash_after_fork_meta;
+
 use super::{
     digest_meta, fold_roster, fork_meta, fork_reason, pending_prefix_meta, pending_refusal_meta,
     seen_against, signing_device, storage, tracing_like, BTreeMap, Engine, Event, Ingest,

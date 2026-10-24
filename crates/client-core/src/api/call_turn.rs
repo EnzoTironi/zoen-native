@@ -1,4 +1,7 @@
 //! Native RTC borrows the same authenticated Client; no extra account/session.
+#[cfg(test)]
+use super::{Arc, EventBody, Identity};
+
 use super::{invalid, Client, CoreError, Duration, Op, Privacy, Reply, Role, SpaceKind};
 
 #[derive(Clone, PartialEq, uniffi::Record)]

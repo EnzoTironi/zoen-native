@@ -21,6 +21,9 @@
 //! - **Reopen:** confirmed events are re-verified from disk, then the outbox is replayed
 //!   on top. Kill the app mid-send and nothing is lost or duplicated.
 
+#[cfg(test)]
+use types::TrustLevel;
+
 use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},

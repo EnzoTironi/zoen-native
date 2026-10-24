@@ -2,6 +2,13 @@
 //! cloud permission: the runtime must authenticate custody, enrollment, source
 //! head, leases, financial policy and continuity before using this facade.
 
+#[cfg(test)]
+use types::{
+    new_id, AgentRequest, BackgroundSpec, ChunkRef, Grant, PageContent, PageManifest, PlanDoc,
+    PlanLine, PlanManifestV1, PlanSection, RequestResolution, Role, ToolDecision, TrustLevel,
+    GENESIS_PREV,
+};
+
 use std::fmt;
 
 use ::mls::Leaf;

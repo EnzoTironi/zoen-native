@@ -1,4 +1,7 @@
 //! Original ordered profile completion predicate, retaining only its first blocker.
+#[cfg(test)]
+use super::{META_AGREEMENT, META_OWN_SYNC};
+
 use super::Engine;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]

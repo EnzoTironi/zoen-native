@@ -1,5 +1,8 @@
 //! Authenticated profile/agreement arrivals and own lookup settlement.
 
+#[cfg(test)]
+use super::{seal_profile, sign_upload, IdentityKind, PhotoChange, META_OWN_SYNC};
+
 use super::{
     invalid, open_profile, verify_agreement, verify_upload, AgreementKeyRecord, Engine, HashSet,
     Identity, IdentityId, Observe, ProfileFields, ProfileKey, SealedProfile, BATCH, MAX_CIPHERTEXT,

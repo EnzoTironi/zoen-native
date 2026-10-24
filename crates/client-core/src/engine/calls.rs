@@ -1,4 +1,7 @@
 //! Call authority is a fold of the existing authenticated log, never an SDK store.
+#[cfg(test)]
+use super::{new_ulid, Author, Signer, SpaceLog, Store};
+
 use super::{
     new_secret_id, not_found, now_ms, CoreError, Engine, Event, EventBody, HashMap, Identity,
     IdentityId, IdentityKind, Privacy, Role, SpaceKind, State, R,

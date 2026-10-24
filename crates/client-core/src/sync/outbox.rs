@@ -1,5 +1,10 @@
 //! Ordered envelope offers and per-Space publication fences.
 
+#[cfg(test)]
+use super::{
+    chain_hash, Author, CoreError, Ingest, Privacy, Sequenced, Signer, SpaceKind, GENESIS_PREV,
+};
+
 use super::{
     ConfirmedMediaDependencies, Cursor, Engine, Envelope, Event, EventBody, FileDoc, HashMap,
     HashSet, ItemContent, SealedKind,

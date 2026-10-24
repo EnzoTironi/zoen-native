@@ -6,6 +6,12 @@
 //! in the log, and `live`, the shadow plus this person's edits not yet saved. Saving
 //! exports `live` minus `shadow` as the next version.
 
+#[cfg(test)]
+use types::{
+    ActionClass, AgentRequest, ChunkRef, Identity, IdentityKind, PageManifest, PlanLine,
+    PlanSection, Privacy, RequestResolution, Seen, SpaceKind, GENESIS_PREV,
+};
+
 use std::collections::HashMap;
 
 use base64::Engine as _;
