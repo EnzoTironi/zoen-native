@@ -402,3 +402,5 @@ fn ensure(
 mod lifecycle;
 #[path = "file_demand_tests/selection.rs"]
 mod selection;
+#[path = "file_demand_tests/revocation.rs"]
+mod revocation;
