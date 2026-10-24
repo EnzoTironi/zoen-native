@@ -19,7 +19,13 @@ fn history(owner: &Engine) -> StdResult<Vec<Sequenced>, Box<dyn std::error::Erro
         .collect())
 }
 
-fn deliver_handshakes(owner: &mut Engine, worker: &mut DeviceCore) -> TestResult {
+fn ingest_at(core: &mut DeviceCore, entries: Vec<Sequenced>, phase: &str) -> TestResult {
+    core.ingest(entries)
+        .map(|_| ())
+        .map_err(|error| format!("{phase}: {error:?}").into())
+}
+
+fn deliver_handshakes(owner: &mut Engine, worker: &mut DeviceCore, phase: &str) -> TestResult {
     for (sha, _) in owner.pending_uploads(100) {
         owner.upload_done(&sha);
     }
@@ -30,7 +36,7 @@ fn deliver_handshakes(owner: &mut Engine, worker: &mut DeviceCore) -> TestResult
         for envelope in entries {
             let entry = ordered(owner, envelope);
             assert_eq!(owner.ingest(entry.clone()), Ingest::Confirmed);
-            worker.ingest(vec![entry])?;
+            ingest_at(worker, vec![entry], phase)?;
             delivered += 1;
             assert!(delivered < 12, "normal handshake did not settle");
         }
@@ -64,8 +70,8 @@ fn cold_capsule_with_pruned_welcome_needs_its_own_fresh_welcome_not_worker_readi
         .commit_now(SPACE, &packages.packages()[..1], &BTreeSet::new())?;
     // Feed the exact canonical prefix before its add; no imported group state.
     let initial = history(&f.owner)?;
-    worker.ingest(initial)?;
-    deliver_handshakes(&mut f.owner, &mut worker)?;
+    ingest_at(&mut worker, initial, "worker original prefix")?;
+    deliver_handshakes(&mut f.owner, &mut worker, "worker own Welcome")?;
     assert!(worker.engine.ready_epoch(SPACE).is_some());
     assert!(worker
         .engine
@@ -81,12 +87,12 @@ fn cold_capsule_with_pruned_welcome_needs_its_own_fresh_welcome_not_worker_readi
         entry.env.body(), Some(EventBody::DeviceJoining { device }) if device == f.agent_device.id()
     )));
     assert!(f.owner.mls_checkpoints()?);
-    deliver_handshakes(&mut f.owner, &mut worker)?;
+    deliver_handshakes(&mut f.owner, &mut worker, "owner checkpoint")?;
     assert!(worker.engine.mls_checkpoints()?);
     for envelope in worker.engine.outbox_envelopes() {
         let entry = ordered(&f.owner, envelope);
         assert_eq!(f.owner.ingest(entry.clone()), Ingest::Applied);
-        worker.ingest(vec![entry])?;
+        ingest_at(&mut worker, vec![entry], "worker checkpoint echo")?;
     }
     let checkpoint_floor = history(&f.owner)?
         .iter()
@@ -105,7 +111,7 @@ fn cold_capsule_with_pruned_welcome_needs_its_own_fresh_welcome_not_worker_readi
     };
     let pending = f.owner.request_account_policy_options(&scope)?;
     f.owner.mls_seal_outbox()?;
-    deliver_handshakes(&mut f.owner, &mut worker)?;
+    deliver_handshakes(&mut f.owner, &mut worker, "typed original inquiry")?;
     let query = worker.engine.owner_policy_inquiry(SPACE, &pending.source)?;
     let complete = history(&f.owner)?;
 
@@ -113,7 +119,7 @@ fn cold_capsule_with_pruned_welcome_needs_its_own_fresh_welcome_not_worker_readi
     // ciphertext retention cut. Full history proves this capsule could join.
     let mut full = DeviceCore::restore(early, f.credential())?;
     let before = full.image()?;
-    full.ingest(complete.clone())?;
+    ingest_at(&mut full, complete.clone(), "full native control prefix")?;
     full.owner_policy_account_context(query.signed(), crate::engine::now_ms())?;
     let mut cold = DeviceCore::restore(before, f.credential())?;
     let mut pruned_welcomes = 0;
@@ -134,7 +140,7 @@ fn cold_capsule_with_pruned_welcome_needs_its_own_fresh_welcome_not_worker_readi
         })
         .collect();
     assert!(pruned_welcomes > 0);
-    cold.ingest(pruned)?;
+    ingest_at(&mut cold, pruned, "pruned native source prefix")?;
     assert_eq!(cold.retained_head(SPACE)?, full.retained_head(SPACE)?);
     assert!(worker.engine.ready_epoch(SPACE).is_some());
     assert_eq!(
@@ -159,8 +165,8 @@ fn cold_capsule_with_pruned_welcome_needs_its_own_fresh_welcome_not_worker_readi
     for envelope in worker.engine.outbox_envelopes() {
         let entry = ordered(&f.owner, envelope);
         assert_eq!(f.owner.ingest(entry.clone()), Ingest::Applied);
-        worker.ingest(vec![entry.clone()])?;
-        cold.ingest(vec![entry])?;
+        ingest_at(&mut worker, vec![entry.clone()], "worker rejoin echo")?;
+        ingest_at(&mut cold, vec![entry], "cold native rejoin event")?;
     }
     let (fresh, _) = cold.prepare_initial_key_packages()?;
     let clock = KeyPackageClaimClock::from_server_ms(crate::engine::now_ms())
@@ -180,12 +186,18 @@ fn cold_capsule_with_pruned_welcome_needs_its_own_fresh_welcome_not_worker_readi
         }]),
     );
     let after = cold.retained_head(SPACE)?.ok_or("retained source")?.seq;
-    deliver_handshakes(&mut f.owner, &mut worker)?;
-    cold.ingest(
+    deliver_handshakes(
+        &mut f.owner,
+        &mut worker,
+        "fresh rejoin handshake on worker",
+    )?;
+    ingest_at(
+        &mut cold,
         history(&f.owner)?
             .into_iter()
             .filter(|entry| entry.seq > after)
             .collect(),
+        "fresh rejoin handshake on native",
     )?;
     cold.owner_policy_account_context(query.signed(), crate::engine::now_ms())?;
     cold = DeviceCore::restore(cold.image()?, f.credential())?;
