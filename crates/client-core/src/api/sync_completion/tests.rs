@@ -166,3 +166,57 @@ fn actual_zero_deadline_does_not_schedule_an_extra_wait_or_make_offline_ready() 
         .expect("no second wait")
         .is_err());
 }
+
+#[test]
+fn profile_deadline_retains_actual_first_blocker_without_changing_v1_or_rechecking_after_wait() {
+    let client = Client::open(":memory:".into(), "en".into()).unwrap();
+    {
+        let mut engine = client.lock();
+        engine.net.profiles.supported = true;
+        engine
+            .net
+            .profiles
+            .need_profiles
+            .insert("private-id-canary".into());
+    }
+    let observed = client.sync_completion_observation(&connection());
+    assert_eq!(observed.profiles_ready, Some(false));
+    assert!(observed.mls_ready.is_none());
+    assert_eq!(
+        observed.profile_settlement,
+        Some(crate::profile::ProfileSettlement::SealedProfiles)
+    );
+    client.lock().net.profiles.need_profiles.clear();
+    let mut main = Vec::new();
+    observed.write_deadline(8000, Duration::from_millis(8755), &mut main);
+    let old: serde_json::Value = serde_json::from_slice(&main).unwrap();
+    assert_eq!(old.as_object().unwrap().len(), 11);
+    assert_eq!(old["profiles_ready"], false);
+    let mut bytes = Vec::new();
+    observed.write_profile_deadline(8000, Duration::from_millis(8755), &mut bytes);
+    let report: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(report.as_object().unwrap().len(), 5);
+    assert_eq!(report["event"], "zoen_profile_wait_deadline");
+    assert_eq!(report["blocked_by"], "sealed_profiles");
+    assert_eq!(report["timeout_ms"], 8000);
+    assert_eq!(report["elapsed_ms"], 8755);
+    assert!(bytes.len() < 512);
+    assert!(!String::from_utf8(bytes).unwrap().contains("canary"));
+}
+
+#[test]
+fn no_profile_diagnostic_when_that_gate_was_not_reached_or_was_satisfied() {
+    let client = Client::open(":memory:".into(), "en".into()).unwrap();
+    for connection in [
+        connection(),
+        ConnectionDto {
+            pending: 1,
+            ..connection()
+        },
+    ] {
+        let observed = client.sync_completion_observation(&connection);
+        let mut bytes = Vec::new();
+        observed.write_profile_deadline(8000, Duration::from_millis(8000), &mut bytes);
+        assert!(bytes.is_empty());
+    }
+}
