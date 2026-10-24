@@ -3,6 +3,9 @@
 #![forbid(unsafe_code)]
 
 mod archive;
+#[cfg(feature = "browser")]
+pub mod browser;
+pub mod managed;
 
 use photocraft_doc::{ColorMode, Document, LayerContent, SampleType};
 use photocraft_engine::{EngineError, Session};
@@ -201,3 +204,6 @@ pub fn export_png(bytes: &[u8], expected: &[u8; 32]) -> Result<Vec<u8>, Error> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod managed_tests;

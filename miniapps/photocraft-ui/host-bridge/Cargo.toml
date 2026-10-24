@@ -5,11 +5,20 @@ edition = "2024"
 license = "AGPL-3.0-only"
 publish = false
 
+[features]
+browser = ["dep:photocraft-ui-egui", "dep:egui"]
+
+[[bin]]
+name = "photocraft-zoen-host"
+path = "src/main.rs"
+
 [dependencies]
 photocraft-doc = { workspace = true }
 photocraft-engine = { workspace = true }
 photocraft-format = { workspace = true }
 photocraft-io = { workspace = true }
+photocraft-ui-egui = { workspace = true, optional = true }
+egui = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { version = "0.10", default-features = false }

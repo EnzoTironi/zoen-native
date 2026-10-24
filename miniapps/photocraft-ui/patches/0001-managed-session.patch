@@ -1,0 +1,89 @@
+diff --git a/crates/engine/src/jobs.rs b/crates/engine/src/jobs.rs
+index 0ee0573..ba1bec4 100644
+--- a/crates/engine/src/jobs.rs
++++ b/crates/engine/src/jobs.rs
+@@ -714,6 +714,7 @@ impl Session {
+ 
+     /// Run the command `id`: inline, or (with `background`) as a job when it is one.
+     pub(crate) fn dispatch(&mut self, id: &str, params: Value, background: bool) -> Result<Started> {
++        if let Some(policy) = self.managed_policy { policy(self, id, &params)?; }
+         let spec = crate::commands::find(id).ok_or_else(|| EngineError::UnknownCommand(id.to_string()))?;
+         // Params are named fields: anything but an object (or null, meaning none) is a caller
+         // mistake, not "use every default".
+diff --git a/crates/engine/src/lib.rs b/crates/engine/src/lib.rs
+index ba75569..c7821f6 100644
+--- a/crates/engine/src/lib.rs
++++ b/crates/engine/src/lib.rs
+@@ -438,6 +438,10 @@ pub const PRECHECKED: &[&str] = &["layer.new.layer", "layer.new.group", "layer.n
+ 
+ #[derive(Default)]
+ pub struct Session {
++    /// Ephemeral embedding policy/binding, not a document or authorization record.
++    pub managed_policy: Option<fn(&Session, &str, &Value) -> Result<()>>,
++    pub managed_binding: Option<u64>,
++    pub managed_frozen: bool,
+     docs: Vec<DocState>,
+     active: Option<usize>,
+     pub tools: ToolState,
+@@ -743,6 +747,9 @@ impl Session {
+ 
+     /// [`Self::disabled_reason`] for a call with `params`.
+     pub fn disabled_reason_with(&self, id: &str, params: &Value) -> Option<String> {
++        if let Some(policy) = self.managed_policy && policy(self, id, params).is_err() {
++            return Some("This action is unavailable in this document.".into());
++        }
+         let Some(s) = commands::find(id) else { return Some(format!("unknown command `{id}`")) };
+         self.precondition(s, &channel_cmds::inject_target(self, id, params.clone())).err().or_else(|| self.job_conflict(id, s.journal))
+     }
+@@ -788,6 +795,7 @@ impl Session {
+ 
+     /// Apply an undoable edit to the active document.
+     pub fn edit<R>(&mut self, label: &str, f: impl FnOnce(&mut Document, &mut Option<LayerId>) -> Result<R>) -> Result<R> {
++        if self.managed_frozen { return Err(EngineError::Other("managed canvas is paused".into())); }
+         // Every mutation path (linked-file refresh, transform, place) re-renders smart objects
+         // through this entry; the requesting session's authority must reach those renders.
+         let _authorization = crate::jobs::render_authorization_scope(self.authorize);
+@@ -920,6 +928,7 @@ impl Session {
+     }
+ 
+     pub fn undo(&mut self) -> bool {
++        if self.managed_frozen { return false; }
+         // A background job is computing from the current state: it must not move under it.
+         if self.active_job().is_some() {
+             return false;
+@@ -946,6 +955,7 @@ impl Session {
+     }
+ 
+     pub fn redo(&mut self) -> bool {
++        if self.managed_frozen { return false; }
+         if self.active_job().is_some() {
+             return false;
+         }
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index 89f293a..3c4f72f 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -864,6 +864,13 @@ pub struct PhotocraftApp {
+ }
+ 
+ impl PhotocraftApp {
++    /// Do not checkpoint or replace a live upstream gesture, dialog or composition.
++    pub fn host_interaction(&self) -> bool {
++        self.drag.is_some() || self.live_stroke.is_some() || !self.ui.dialogs.is_empty()
++            || self.ui.text_edit.is_some() || self.ui.transform.is_some()
++            || self.ui.cam_transform.is_some() || self.ui.pen.is_some()
++            || self.live_adjust.is_some() || self.session.active_job().is_some()
++    }
+     pub fn new(session: Session, services: Services) -> Self {
+         let mut app = Self {
+             session,
+@@ -1068,6 +1075,9 @@ impl PhotocraftApp {
+ 
+     /// Run an engine command, reporting errors in the status bar.
+     pub fn run(&mut self, id: &str, params: Value) -> Result<Value, String> {
++        if let Some(policy) = self.session.managed_policy {
++            policy(&self.session, id, &params).map_err(|_|"This action is unavailable in this document.".to_owned())?;
++        }
+         if let Some(result) = delete_layer_prompt::intercept(self, id, &params) {
+             return result;
+         }
