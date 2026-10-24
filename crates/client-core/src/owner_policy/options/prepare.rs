@@ -34,7 +34,11 @@ impl Engine {
         let current = options.current_policy.as_ref().map(|signed| &signed.policy);
         let mut allowed_profiles =
             current.map_or_else(Vec::new, |policy| policy.allowed_profiles.clone());
-        allowed_profiles.push(options.image_profile_digest.clone());
+        // Disabling retires existing authority; it cannot approve a newly
+        // configured service or require an unused seventeenth profile slot.
+        if enabled {
+            allowed_profiles.push(options.image_profile_digest.clone());
+        }
         allowed_profiles.sort();
         allowed_profiles.dedup();
         let (year, month) = if options.month == 12 {

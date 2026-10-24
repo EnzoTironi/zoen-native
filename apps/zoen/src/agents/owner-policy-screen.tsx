@@ -129,9 +129,13 @@ export function OwnerPolicyControllerScreen({ target }: { target: PolicyTarget }
           {t('ownerPolicy.uncertain')}
         </Text>
       ) : null}
-      {!review && ['refused', 'delivery_failed'].includes(state.optionsState ?? '') ? (
+      {!review && ['refused', 'delivery_failed', 'expired'].includes(state.optionsState ?? '') ? (
         <Text accessibilityRole="alert" selectable style={{ color: colors.danger }}>
-          {t('ownerPolicy.quoteUnavailable')}
+          {t(
+            state.optionsState === 'expired'
+              ? 'ownerPolicy.quoteExpired'
+              : 'ownerPolicy.quoteUnavailable',
+          )}
         </Text>
       ) : null}
       {state.phase === 'pending' && !review ? (
