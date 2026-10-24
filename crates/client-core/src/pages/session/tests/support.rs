@@ -236,17 +236,17 @@ pub(super) fn encrypted_exact_source_and_peer_readability(
         title: "Encrypted Plan".into(),
         kind: SpaceKind::Group,
         privacy: Privacy::EndToEnd,
-    });
+    })?;
     f.ordered(EventBody::MemberAdded {
         identity: peer.me.clone().unwrap(),
         role: Role::Member,
-    });
+    })?;
     f.ordered(EventBody::ItemCreated {
         item: f.item.clone(),
         kind: ItemKind::Plan,
         content: ItemContent::Plan(original()),
         origin: "authenticated legacy".into(),
-    });
+    })?;
     for event in f.engine.logs[&f.space].events() {
         assert_eq!(
             peer.ingest(Sequenced {
@@ -389,7 +389,7 @@ pub(super) fn private_document_backup_source(
         title: "Document backup".into(),
         kind: SpaceKind::Group,
         privacy: Privacy::Public,
-    });
+    })?;
     let content = match kind {
         ItemKind::Page => {
             let page = Page::from_markdown("# Published page\n\nPublished paragraph\n").unwrap();
@@ -409,7 +409,7 @@ pub(super) fn private_document_backup_source(
         kind,
         content,
         origin: "Synthetic canonical backup fixture".into(),
-    });
+    })?;
     f.engine.store.set_synced(&f.space).unwrap();
     f.engine.net.synced.insert(f.space.clone());
     let mut session = f.session();

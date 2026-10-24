@@ -84,7 +84,9 @@ pub(super) fn total_overflow_is_unavailable_and_minimum_legacy_cents_stay_readab
     let mut original = original();
     original.sections[0].lines[0].cost_cents = i64::MAX;
     original.sections[0].lines[1].cost_cents = 1;
-    fixture.ordered(fixture.version(ItemContent::Plan(original.clone())));
+    fixture
+        .ordered(fixture.version(ItemContent::Plan(original.clone())))
+        .unwrap();
     let before = storage(&fixture);
     let card = fixture.engine.card(&fixture.item).unwrap();
     assert_eq!(card.total_cents, None);
@@ -92,7 +94,7 @@ pub(super) fn total_overflow_is_unavailable_and_minimum_legacy_cents_stay_readab
     assert!(fixture.engine.item(&fixture.item).is_err());
     assert_eq!(storage(&fixture), before);
     let document = fixture.fold().document.unwrap();
-    promote(&mut fixture, &document);
+    promote(&mut fixture, &document).unwrap();
     assert_eq!(
         fixture.engine.card(&fixture.item).unwrap().total_cents,
         None
@@ -101,7 +103,9 @@ pub(super) fn total_overflow_is_unavailable_and_minimum_legacy_cents_stay_readab
     let mut legacy = Fixture::new().unwrap();
     original.sections[0].lines[0].cost_cents = i64::MIN;
     original.sections[0].lines[1].cost_cents = 0;
-    legacy.ordered(legacy.version(ItemContent::Plan(original)));
+    legacy
+        .ordered(legacy.version(ItemContent::Plan(original)))
+        .unwrap();
     assert_eq!(
         legacy
             .engine
@@ -144,7 +148,9 @@ pub(super) fn credits_cancel_intermediate_overflow_independently_of_row_order() 
                 ..template.clone()
             })
             .collect();
-        fixture.ordered(fixture.version(ItemContent::Plan(legacy)));
+        fixture
+            .ordered(fixture.version(ItemContent::Plan(legacy)))
+            .unwrap();
         let document = fixture.fold().document.unwrap();
         assert_eq!(
             document.view().unwrap().total,
@@ -165,7 +171,7 @@ pub(super) fn credits_cancel_intermediate_overflow_independently_of_row_order() 
             costs
         );
         assert_eq!(storage(&fixture), before);
-        promote(&mut fixture, &document);
+        promote(&mut fixture, &document).unwrap();
         assert_eq!(
             fixture.engine.card(&fixture.item).unwrap().total_cents,
             Some(total)

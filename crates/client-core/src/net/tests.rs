@@ -177,25 +177,33 @@ fn sequence(env: Envelope, head: &mut Option<Seen>) -> Sequenced {
 
 #[tokio::test(flavor = "current_thread")]
 async fn queued_messages_wait_for_catch_up_and_use_the_current_epoch() {
-    queued_messages_round_trip(CatchUp::Initial).await;
+    queued_messages_round_trip(CatchUp::Initial).await.unwrap();
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn late_stale_rejections_preserve_resealed_messages_at_the_current_epoch() {
-    queued_messages_round_trip(CatchUp::Incremental).await;
+    queued_messages_round_trip(CatchUp::Incremental)
+        .await
+        .unwrap();
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn handled_commit_collision_reconciles_without_listener_error() {
-    queued_messages_round_trip(CatchUp::HandshakeCollision).await;
+    queued_messages_round_trip(CatchUp::HandshakeCollision)
+        .await
+        .unwrap();
 }
 #[tokio::test(flavor = "current_thread")]
 async fn terminal_application_refusal_keeps_failed_delivery_and_listener_notice() {
-    queued_messages_round_trip(CatchUp::PermissionRefusal).await;
+    queued_messages_round_trip(CatchUp::PermissionRefusal)
+        .await
+        .unwrap();
 }
 #[tokio::test(flavor = "current_thread")]
 async fn handshake_storage_failure_notifies_and_retains_retry_before_reconciliation() {
-    queued_messages_round_trip(CatchUp::StorageRefusal).await;
+    queued_messages_round_trip(CatchUp::StorageRefusal)
+        .await
+        .unwrap();
 }
 #[derive(Default)]
 struct RejectionListener {

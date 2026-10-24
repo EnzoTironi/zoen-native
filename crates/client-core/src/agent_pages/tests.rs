@@ -17,7 +17,7 @@ struct PageFixture {
     page: String,
 }
 fn fixture() -> std::result::Result<PageFixture, Box<dyn std::error::Error>> {
-    let actor = agent_fixture();
+    let actor = agent_fixture()?;
     let page = actor
         .agent
         .page_import_markdown(

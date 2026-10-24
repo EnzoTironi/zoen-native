@@ -115,6 +115,6 @@ mod tests {
         changed = signed;
         changed.cert = "00".repeat(64);
         assert!(!verify(&changed));
-        assert!(sign(&Author::root(Signer::generate()), policy).is_none());
+        assert!(sign(&Author::root(Signer::generate().unwrap()), policy).is_none());
     }
 }

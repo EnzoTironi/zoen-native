@@ -95,11 +95,11 @@ impl Fixture {
             title: "Owner and Agent".into(),
             kind: SpaceKind::Direct,
             privacy: Privacy::EndToEnd,
-        });
+        })?;
         fixture.clear(EventBody::MemberAdded {
             identity: fixture.agent_profile.id.clone(),
             role: Role::Member,
-        });
+        })?;
         fixture.core.engine.net.profiles.supported = true;
         let (public, signed) = fixture.core.engine.agreement_to_publish().unwrap();
         fixture.owner.agreement_keys_arrived(

@@ -232,22 +232,28 @@ pub(super) fn legacy_admission_and_actual_writes_preserve_missing_key_and_relay_
         item: new_id("authenticated-plan").unwrap(),
         owner: account,
     };
-    relay.ordered(EventBody::SpaceCreated {
-        title: "Authenticated Plan conversation".into(),
-        kind: SpaceKind::Group,
-        privacy: Privacy::Public,
-    });
-    relay.ordered(EventBody::ItemCreated {
-        item: relay.item.clone(),
-        kind: ItemKind::Plan,
-        content: ItemContent::Plan(original()),
-        origin: "account user".into(),
-    });
+    relay
+        .ordered(EventBody::SpaceCreated {
+            title: "Authenticated Plan conversation".into(),
+            kind: SpaceKind::Group,
+            privacy: Privacy::Public,
+        })
+        .unwrap();
+    relay
+        .ordered(EventBody::ItemCreated {
+            item: relay.item.clone(),
+            kind: ItemKind::Plan,
+            content: ItemContent::Plan(original()),
+            origin: "account user".into(),
+        })
+        .unwrap();
     let other_writer = add_identity(&mut relay.engine, "Other writer");
-    relay.ordered(EventBody::MemberAdded {
-        identity: other_writer.clone(),
-        role: Role::Member,
-    });
+    relay
+        .ordered(EventBody::MemberAdded {
+            identity: other_writer.clone(),
+            role: Role::Member,
+        })
+        .unwrap();
     let before = storage(&relay);
     assert!(
         relay
@@ -286,10 +292,12 @@ pub(super) fn legacy_admission_and_actual_writes_preserve_missing_key_and_relay_
 pub(super) fn a_typed_local_pending_creation_never_admits_reader_or_removed_member_writes() {
     let mut fixture = Fixture::new().unwrap();
     let reader = add_identity(&mut fixture.engine, "Offline reader");
-    fixture.ordered(EventBody::MemberAdded {
-        identity: reader.clone(),
-        role: Role::Reader,
-    });
+    fixture
+        .ordered(EventBody::MemberAdded {
+            identity: reader.clone(),
+            role: Role::Reader,
+        })
+        .unwrap();
     let item = new_id("native-offline-reader-plan").unwrap();
     fixture.queue(EventBody::ItemCreated {
         item: item.clone(),
@@ -311,7 +319,9 @@ pub(super) fn a_typed_local_pending_creation_never_admits_reader_or_removed_memb
     }
     .is_err());
     assert_eq!(storage(&fixture), before);
-    fixture.ordered(EventBody::MemberRemoved { identity: reader });
+    fixture
+        .ordered(EventBody::MemberRemoved { identity: reader })
+        .unwrap();
     let before = storage(&fixture);
     assert!(
         !fixture

@@ -6,9 +6,9 @@ use test_transport::{next_call, Fixture};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cold_retry_after_profile_edit_replays_original_signed_ciphertext() {
-    let mut f = Fixture::new().await;
+    let mut f = Fixture::new().await.unwrap();
     f.online().await;
-    let (code, recipient) = code();
+    let (code, recipient) = code().unwrap();
     let first = enroll(&f, &code);
     let accepted = next_call(&mut f.relay.calls).await;
     let original = opened(&accepted, &code, &recipient);
@@ -59,9 +59,9 @@ async fn cold_retry_after_profile_edit_replays_original_signed_ciphertext() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn altered_or_legacy_retained_delivery_never_reseals_or_sends() {
-    let f = Fixture::new().await;
+    let f = Fixture::new().await.unwrap();
     f.online().await;
-    let (code, _) = code();
+    let (code, _) = code().unwrap();
     let owner = owner::LinkOwner::capture(f.client()).unwrap();
     let vault: Arc<dyn SecretVault> = f.vault.clone();
     enroll_prepare::prepare(f.client(), &owner, &code, &vault).unwrap();
@@ -113,9 +113,9 @@ async fn altered_or_legacy_retained_delivery_never_reseals_or_sends() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn retained_original_does_not_bypass_invalid_current_profile() {
-    let f = Fixture::new().await;
+    let f = Fixture::new().await.unwrap();
     f.online().await;
-    let (code, _) = code();
+    let (code, _) = code().unwrap();
     let owner = owner::LinkOwner::capture(f.client()).unwrap();
     let vault: Arc<dyn SecretVault> = f.vault.clone();
     enroll_prepare::prepare(f.client(), &owner, &code, &vault).unwrap();

@@ -6,7 +6,7 @@ pub(super) fn failed_opening_record_rolls_back_log_and_ratchet_and_discards_work
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new()?;
     fixture.grant("retained-trust", None);
-    let trigger = fixture.message("Known original request");
+    let trigger = fixture.message("Known original request")?;
     let original = fixture
         .core
         .reply(SPACE, &trigger, 400)
@@ -66,7 +66,7 @@ pub(super) fn conflicting_actual_member_checkpoint_parks_live_and_cold_core(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new()?;
     fixture.grant("explicit-trust", None);
-    let trigger = fixture.message("Original request");
+    let trigger = fixture.message("Original request")?;
     let original = fixture
         .core
         .reply(SPACE, &trigger, 400)
@@ -77,7 +77,7 @@ pub(super) fn conflicting_actual_member_checkpoint_parks_live_and_cold_core(
         upto: fixture.owner.logs[SPACE].head().unwrap(),
         epoch: fixture.core.engine.device().unwrap().epoch(SPACE).unwrap(),
         digest: "00".repeat(32),
-    });
+    })?;
     assert!(matches!(
         fixture.core.refresh(&original, 500),
         Err(NativeError::NotReady)
@@ -95,7 +95,7 @@ pub(super) fn diverged_member_checkpoint_parks_live_and_cold_core(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new()?;
     fixture.grant("explicit-trust", None);
-    let trigger = fixture.message("Original request");
+    let trigger = fixture.message("Original request")?;
     let original = fixture
         .core
         .reply(SPACE, &trigger, 400)
@@ -201,7 +201,7 @@ pub(super) fn sealed_member_seen_ahead_marks_the_fork_and_parks_send(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new()?;
     fixture.grant("sealed-fork-trust", None);
-    let trigger = fixture.message("Original request");
+    let trigger = fixture.message("Original request")?;
     let original = fixture
         .core
         .reply(SPACE, &trigger, 400)

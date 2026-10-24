@@ -172,7 +172,9 @@ pub(super) fn an_honest_conversation_with_many_members_ends_with_no_pending_pref
     let (mut engine, author, _) = member(":memory:");
     let space = "prefix-honest";
     start_space(&mut engine, &author, space);
-    let peers: Vec<Author> = (0..12).map(|_| Author::root(Signer::generate()?)).collect();
+    let peers: Vec<Author> = (0..12)
+        .map(|_| Signer::generate().map(Author::root))
+        .collect::<std::result::Result<_, _>>()?;
     for peer in &peers {
         add_member(&mut engine, &author, space, peer);
     }

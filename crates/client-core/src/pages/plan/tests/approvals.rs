@@ -3,7 +3,7 @@ use crate::engine::ReqStatus;
 use crate::pages::{Currentness, PlanOrigin, PlanReplay, Projection};
 use event_log::content_hash;
 
-fn agent(fixture: &mut Fixture) -> String {
+fn agent(fixture: &mut Fixture) -> std::result::Result<String, Box<dyn std::error::Error>> {
     let agent = fixture
         .engine
         .create_identity(
@@ -24,8 +24,8 @@ fn agent(fixture: &mut Fixture) -> String {
     fixture.ordered(EventBody::MemberAdded {
         identity: agent.clone(),
         role: Role::Member,
-    });
-    agent
+    })?;
+    Ok(agent)
 }
 
 fn linked(
@@ -62,7 +62,7 @@ fn open(
         EventBody::RequestOpened {
             request: request.clone(),
         },
-    );
+    )?;
     assert_eq!(
         fixture.engine.state.requests[&request.id].status,
         ReqStatus::Pending
@@ -85,12 +85,16 @@ fn decision(request: &AgentRequest, approved: bool) -> EventBody {
     }
 }
 
-fn canonical(fixture: &mut Fixture, patch: LinePatch) -> PlanDoc {
+fn canonical(
+    fixture: &mut Fixture,
+    patch: LinePatch,
+) -> std::result::Result<PlanDoc, Box<dyn std::error::Error>> {
     let fold = fixture.fold();
     let document = edited(fold.document.as_ref().unwrap(), patch);
     let result = document.view().unwrap().to_plan_doc();
-    fixture.ordered(fixture.version(ItemContent::Page(page(fold.manifest().unwrap(), &document))));
-    result
+    fixture
+        .ordered(fixture.version(ItemContent::Page(page(fold.manifest().unwrap(), &document))))?;
+    Ok(result)
 }
 
 fn missing_blob(
@@ -135,7 +139,7 @@ fn missing_blob(
 #[test]
 fn proposal_created_legacy_plans_remain_valid_without_minting_duplicate_origins() {
     let mut fixture = Fixture::new().unwrap();
-    let agent = agent(&mut fixture);
+    let agent = agent(&mut fixture).unwrap();
     let mut proposal = AgentRequest {
         tool_proposal: None,
         id: new_id("proposal").unwrap(),
@@ -157,35 +161,45 @@ fn proposal_created_legacy_plans_remain_valid_without_minting_duplicate_origins(
         })),
     };
     proposal.content_hash = proposal.proposal_hash(&fixture.space).unwrap();
-    fixture.ordered(EventBody::MemberAdded {
-        identity: agent.clone(),
-        role: Role::Reader,
-    });
-    fixture.ordered_as(
-        &agent,
-        EventBody::ItemCreated {
-            item: proposal.proposal.as_ref().unwrap().item.clone(),
-            kind: ItemKind::Plan,
-            content: ItemContent::Plan(original()),
-            origin: "refused reader creation".into(),
-        },
-    );
-    fixture.ordered(EventBody::MemberAdded {
-        identity: agent.clone(),
-        role: Role::Member,
-    });
+    fixture
+        .ordered(EventBody::MemberAdded {
+            identity: agent.clone(),
+            role: Role::Reader,
+        })
+        .unwrap();
+    fixture
+        .ordered_as(
+            &agent,
+            EventBody::ItemCreated {
+                item: proposal.proposal.as_ref().unwrap().item.clone(),
+                kind: ItemKind::Plan,
+                content: ItemContent::Plan(original()),
+                origin: "refused reader creation".into(),
+            },
+        )
+        .unwrap();
+    fixture
+        .ordered(EventBody::MemberAdded {
+            identity: agent.clone(),
+            role: Role::Member,
+        })
+        .unwrap();
     // Identical payload in an owner-signed opening is refused. Its bytes must
     // never stand in for the real certified Agent opening in a shorter prefix.
-    fixture.ordered(EventBody::RequestOpened {
-        request: proposal.clone(),
-    });
-    let refused_opening_end = fixture.engine.logs[&fixture.space].len();
-    fixture.ordered_as(
-        &agent,
-        EventBody::RequestOpened {
+    fixture
+        .ordered(EventBody::RequestOpened {
             request: proposal.clone(),
-        },
-    );
+        })
+        .unwrap();
+    let refused_opening_end = fixture.engine.logs[&fixture.space].len();
+    fixture
+        .ordered_as(
+            &agent,
+            EventBody::RequestOpened {
+                request: proposal.clone(),
+            },
+        )
+        .unwrap();
     let item = proposal.proposal.as_ref().unwrap().item.clone();
     let before_resolution = fixture.engine.logs[&fixture.space].len();
     let pending_approval = fixture.queue(EventBody::RequestResolved {
@@ -246,17 +260,19 @@ fn proposal_created_legacy_plans_remain_valid_without_minting_duplicate_origins(
     let explicit_item = fixture.item.clone();
     fixture.item = item.clone();
     let request = open(&mut fixture, &agent, &original()).unwrap();
-    fixture.ordered(decision(&request, true));
+    fixture.ordered(decision(&request, true)).unwrap();
     assert_eq!(
         fixture.engine.state.requests[&request.id].status,
         ReqStatus::Approved
     );
-    fixture.ordered(EventBody::ItemCreated {
-        item: item.clone(),
-        kind: ItemKind::Plan,
-        content: ItemContent::Plan(original()),
-        origin: "duplicate cannot mint ancestry".into(),
-    });
+    fixture
+        .ordered(EventBody::ItemCreated {
+            item: item.clone(),
+            kind: ItemKind::Plan,
+            content: ItemContent::Plan(original()),
+            origin: "duplicate cannot mint ancestry".into(),
+        })
+        .unwrap();
     assert_eq!(
         fixture.engine.state.plan_origins[&item],
         PlanOrigin::Proposal
@@ -282,17 +298,19 @@ fn proposal_created_legacy_plans_remain_valid_without_minting_duplicate_origins(
             ..Default::default()
         },
     );
-    fixture.ordered(fixture.version(ItemContent::Page(page(
-        baseline.manifest().unwrap(),
-        &counterfeit,
-    ))));
+    fixture
+        .ordered(fixture.version(ItemContent::Page(page(
+            baseline.manifest().unwrap(),
+            &counterfeit,
+        ))))
+        .unwrap();
     let invalid = open(
         &mut fixture,
         &agent,
         &counterfeit.view().unwrap().to_plan_doc(),
     )
     .unwrap();
-    fixture.ordered(decision(&invalid, true));
+    fixture.ordered(decision(&invalid, true)).unwrap();
     assert_eq!(
         fixture.engine.state.requests[&invalid.id].status,
         ReqStatus::Pending
@@ -314,7 +332,8 @@ fn proposal_created_legacy_plans_remain_valid_without_minting_duplicate_origins(
             text: Some("Owner-approved canonical plan".into()),
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
     fixture.engine.reload().unwrap();
     let read = fixture.engine.plan_page(&item).unwrap();
     assert!(read.ready);
@@ -336,7 +355,7 @@ fn proposal_created_legacy_plans_remain_valid_without_minting_duplicate_origins(
 #[test]
 fn own_confirmation_rechecks_semantics_and_preserves_profiles_sessions_and_identity() {
     let mut fixture = Fixture::new().unwrap();
-    let agent = agent(&mut fixture);
+    let agent = agent(&mut fixture).unwrap();
     let request = open(&mut fixture, &agent, &original()).unwrap();
     let pending = fixture.queue(decision(&request, true));
     assert_eq!(
@@ -352,7 +371,8 @@ fn own_confirmation_rechecks_semantics_and_preserves_profiles_sessions_and_ident
             text: Some("Changed before own confirmation".into()),
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
     assert_eq!(
         fixture.engine.state.requests[&request.id].status,
         ReqStatus::Pending

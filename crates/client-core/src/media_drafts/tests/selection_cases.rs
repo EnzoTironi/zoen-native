@@ -2,8 +2,9 @@
 
 use super::*;
 
-pub(super) fn private_selection_reopens_encrypted_without_a_message_file_or_upload() {
-    let dir = temp();
+pub(super) fn private_selection_reopens_encrypted_without_a_message_file_or_upload(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = temp()?;
     let path = dir.join("device.sqlite");
     let f = fixture(path.to_str().unwrap());
     let before = counts(&f.engine);
@@ -67,6 +68,8 @@ pub(super) fn private_selection_reopens_encrypted_without_a_message_file_or_uplo
         );
     }
     std::fs::remove_dir_all(dir).unwrap();
+
+    Ok(())
 }
 
 pub(super) fn compare_and_swap_preserves_immutable_assets_and_prunes_only_removed_references() {

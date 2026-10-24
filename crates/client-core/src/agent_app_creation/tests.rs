@@ -6,7 +6,7 @@ use crate::{
 use types::{Capability, EventBody, Grant, GrantScope, TrustLevel};
 
 fn setup() -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
-    let f = fixture();
+    let f = fixture()?;
     let mut e = f.agent.lock();
     let actor = e.me_id().unwrap();
     e.append(
@@ -284,7 +284,7 @@ fn renewed_creation_keeps_the_future_item_but_requires_its_own_signed_decision()
     };
     let f = setup().unwrap();
     let live = stage(&f);
-    let old = expired_approved(&f, live);
+    let old = expired_approved(&f, live).unwrap();
     let old_permit = f.agent.approved_app_creation(&old.id).unwrap();
     assert!(f.agent.execute_app_creation(&old_permit).is_err());
     decide(

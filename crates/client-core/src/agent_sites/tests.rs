@@ -6,7 +6,7 @@ use crate::{
 use types::{Capability, EventBody, Grant, GrantScope, TrustLevel};
 
 fn setup() -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
-    let f = fixture_with_privacy(Privacy::EndToEnd);
+    let f = fixture_with_privacy(Privacy::EndToEnd)?;
     let mut e = f.agent.lock();
     let actor = e.me_id().unwrap();
     e.append(

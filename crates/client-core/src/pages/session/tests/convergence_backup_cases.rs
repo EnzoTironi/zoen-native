@@ -2,9 +2,10 @@
 
 use super::*;
 
-pub(super) fn blob_publication_and_two_first_writers_converge_without_cas() {
-    for shorter_first in [false, true] {
-        let mut receiver = Fixture::new();
+pub(super) fn blob_publication_and_two_first_writers_converge_without_cas(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Ok(for shorter_first in [false, true] {
+        let mut receiver = Fixture::new()?;
         let mut shorter = receiver.peer();
         let mut short_session = shorter.session();
         let short_read = short_session.read(&shorter.engine).unwrap();
@@ -37,7 +38,7 @@ pub(super) fn blob_publication_and_two_first_writers_converge_without_cas() {
         legacy.sections[0].lines[0].cost_cents = 777;
         legacy.sections[0].lines[0].done = true;
         legacy.budget_cents = Some(9_999);
-        let legacy_event = receiver.ordered(receiver.version(ItemContent::Plan(legacy)));
+        let legacy_event = receiver.ordered(receiver.version(ItemContent::Plan(legacy)))?;
         let mut longer = receiver.peer();
         let mut long_session = longer.session();
         let long_read = long_session.read(&longer.engine).unwrap();
@@ -125,13 +126,13 @@ pub(super) fn blob_publication_and_two_first_writers_converge_without_cas() {
         assert!(blocks(&short_accept.current)
             .iter()
             .any(|b| b.plain_text().len() == 55_000));
-    }
+    })
 }
 
 pub(super) fn backup_export_excludes_actual_page_and_plan_private_journals_without_mutating_source(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     Ok(for kind in [ItemKind::Page, ItemKind::Plan] {
-        let (f, _, _, private) = private_document_backup_source(kind);
+        let (f, _, _, private) = private_document_backup_source(kind)?;
         let ciphertext = f.cipher().unwrap();
         let head = f.engine.logs[&f.space]
             .head()
@@ -171,7 +172,7 @@ pub(super) fn backup_export_excludes_actual_page_and_plan_private_journals_witho
 pub(super) fn backup_restore_strips_authentic_old_device_page_and_plan_journals_before_edit_admission(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     Ok(for kind in [ItemKind::Page, ItemKind::Plan] {
-        let (f, header, canonical, private) = private_document_backup_source(kind);
+        let (f, header, canonical, private) = private_document_backup_source(kind)?;
         let ciphertext = f.cipher().unwrap();
         let row = row_id(&f.engine, f.engine.item_state(&f.item).unwrap()).unwrap();
         let original_device = f.engine.account().unwrap().device.clone();

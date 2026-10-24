@@ -117,7 +117,7 @@ pub(super) async fn finished_worker_keeps_admission_occupied_until_consumer_reti
         .begin_with_factory(
             || {
                 writes.fetch_add(1, Ordering::SeqCst);
-                Ok(pending("http://127.0.0.1:1".into()))
+                Ok(pending("http://127.0.0.1:1".into())?)
             },
             budget(),
             |_, _, _, _| Box::new(|| Box::pin(std::future::pending())),

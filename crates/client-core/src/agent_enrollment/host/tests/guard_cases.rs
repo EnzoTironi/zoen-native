@@ -72,7 +72,7 @@ pub(super) async fn owner_unknown_is_retained_before_dispatch_and_never_resent_i
         first
     );
     assert!(owner
-        .agent_enrollment_status(&account.identity_id, &Signer::generate().id())
+        .agent_enrollment_status(&account.identity_id, &Signer::generate().unwrap().id())
         .is_err());
     assert!(owner
         .agent_enrollment_dismiss(

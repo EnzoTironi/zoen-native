@@ -60,12 +60,17 @@ fn storage(fixture: &Fixture) -> Vec<(String, Vec<String>)> {
         .collect()
 }
 
-fn promote(fixture: &mut Fixture, document: &PlanDocument) {
+fn promote(
+    fixture: &mut Fixture,
+    document: &PlanDocument,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let content = page(fixture.fold().manifest().unwrap(), document);
-    fixture.ordered(fixture.version(ItemContent::Page(content)));
+    fixture.ordered(fixture.version(ItemContent::Page(content)))?;
+
+    Ok(())
 }
 
-fn canonical(fixture: &mut Fixture) -> PlanDoc {
+fn canonical(fixture: &mut Fixture) -> std::result::Result<PlanDoc, Box<dyn std::error::Error>> {
     let mut document = edited(
         fixture.fold().document.as_ref().unwrap(),
         LinePatch {
@@ -81,8 +86,8 @@ fn canonical(fixture: &mut Fixture) -> PlanDoc {
         .apply(PlanCommand::SetSummary("The current shared summary".into()))
         .unwrap();
     let expected = document.view().unwrap().to_plan_doc();
-    promote(fixture, &document);
-    expected
+    promote(fixture, &document)?;
+    Ok(expected)
 }
 
 #[test]
@@ -90,7 +95,7 @@ fn generic_item_history_preserves_the_canonical_plan_cutover_gate() {
     let mut fixture = Fixture::new().unwrap();
     let legacy = fixture.engine.item_at(&fixture.item, 1).unwrap();
     assert_eq!(legacy.plan.unwrap().total_cents, 193);
-    canonical(&mut fixture);
+    canonical(&mut fixture).unwrap();
     let before = storage(&fixture);
     for version in [1, 2] {
         assert!(matches!(
@@ -118,7 +123,7 @@ fn owned_agent(fixture: &mut Fixture) -> std::result::Result<String, Box<dyn std
     fixture.ordered(EventBody::MemberAdded {
         identity: agent.clone(),
         role: Role::Member,
-    });
+    })?;
     fixture.ordered(EventBody::GrantIssued {
         grant: Grant {
             id: new_id("trust")?,
@@ -128,27 +133,31 @@ fn owned_agent(fixture: &mut Fixture) -> std::result::Result<String, Box<dyn std
             capability: Capability::Trust(TrustLevel::Act),
             expires_at_ms: None,
         },
-    });
+    })?;
     Ok(agent)
 }
 
 #[test]
 fn current_readers_use_the_shared_plan_and_retain_refused_legacy_history() {
     let mut fixture = Fixture::new().unwrap();
-    let expected = canonical(&mut fixture);
+    let expected = canonical(&mut fixture).unwrap();
     let writer = add_identity(&mut fixture.engine, "Later writer");
-    fixture.ordered(EventBody::MemberAdded {
-        identity: writer.clone(),
-        role: Role::Member,
-    });
-    let late = fixture.ordered_as(
-        &writer,
-        fixture.version(ItemContent::Plan(PlanDoc {
-            title: "Refused old title".into(),
-            summary: "Refused old summary".into(),
-            ..original()
-        })),
-    );
+    fixture
+        .ordered(EventBody::MemberAdded {
+            identity: writer.clone(),
+            role: Role::Member,
+        })
+        .unwrap();
+    let late = fixture
+        .ordered_as(
+            &writer,
+            fixture.version(ItemContent::Plan(PlanDoc {
+                title: "Refused old title".into(),
+                summary: "Refused old summary".into(),
+                ..original()
+            })),
+        )
+        .unwrap();
     assert_eq!(
         fixture.fold().slots.last().unwrap().content,
         Some(ItemContent::Plan(PlanDoc {
@@ -229,8 +238,12 @@ fn legacy_writers_refuse_before_mutating_after_cutover_or_while_it_is_pending() 
         if pending {
             fixture.queue(fixture.version(ItemContent::Page(content)));
         } else {
-            fixture.ordered(fixture.version(ItemContent::Page(content)));
-            fixture.ordered(fixture.version(ItemContent::Plan(original())));
+            fixture
+                .ordered(fixture.version(ItemContent::Page(content)))
+                .unwrap();
+            fixture
+                .ordered(fixture.version(ItemContent::Plan(original())))
+                .unwrap();
         }
         let before = storage(&fixture);
         let line = original().sections[0].lines[0].id.clone();
@@ -337,7 +350,7 @@ fn existing_offline_legacy_previews_keep_their_exact_bytes() {
 #[test]
 fn private_plan_drafts_never_enter_cards_search_or_approval_reads() {
     let mut fixture = Fixture::new().unwrap();
-    canonical(&mut fixture);
+    canonical(&mut fixture).unwrap();
     let mut session = PageSession::open(&fixture.engine, &fixture.item).unwrap();
     let read = session.read(&fixture.engine).unwrap();
     let DocumentView::Plan { blocks } = &read.view else {
@@ -434,7 +447,7 @@ fn approval_reads_keep_first_duplicate_id_and_exact_text_cents_semantics() {
             ..Default::default()
         },
     );
-    promote(&mut fixture, &document);
+    promote(&mut fixture, &document).unwrap();
     assert_eq!(
         fixture
             .engine
@@ -468,7 +481,7 @@ fn approval_reads_keep_first_duplicate_id_and_exact_text_cents_semantics() {
             ..Default::default()
         },
     );
-    promote(&mut fixture, &document);
+    promote(&mut fixture, &document).unwrap();
     assert_eq!(
         fixture
             .engine
@@ -517,7 +530,7 @@ fn poll_plan_effect_refuses_before_closing_or_posting_into_a_canonical_plan() {
         .engine
         .app_call_tool(&poll.id, "poll_vote", r#"{"option":"o1"}"#, false)
         .unwrap();
-    canonical(&mut fixture);
+    canonical(&mut fixture).unwrap();
     let before = storage(&fixture);
     assert!(fixture
         .engine

@@ -16,13 +16,15 @@ pub(super) fn transport_confirmation_cannot_ack_a_semantically_refused_page_or_l
         },
     );
     let valid = page(baseline.manifest().unwrap(), &document);
-    let refused = fixture.signed_as(
-        &fixture.owner,
-        fixture.version(ItemContent::Page(PageContent {
-            manifest: None,
-            ..valid.clone()
-        })),
-    );
+    let refused = fixture
+        .signed_as(
+            &fixture.owner,
+            fixture.version(ItemContent::Page(PageContent {
+                manifest: None,
+                ..valid.clone()
+            })),
+        )
+        .unwrap();
     assert!(event_log::verify_author(&refused).is_ok());
     let raw = fixture.engine.store.events(&fixture.space).unwrap();
     // A pre-upgrade signed outbox fact must survive recovery without being admitted
@@ -87,8 +89,10 @@ pub(super) fn transport_confirmation_cannot_ack_a_semantically_refused_page_or_l
     assert!(!fold.acknowledges(&valid.client_id, &refused_source.event_id));
     assert!(!fold.acknowledges(&refused.client_id, &valid_source.event_id));
     let frozen = fold.frozen_at;
-    let undo = fixture.ordered(fixture.undo(1));
-    let old_write = fixture.ordered(fixture.version(ItemContent::Plan(original())));
+    let undo = fixture.ordered(fixture.undo(1)).unwrap();
+    let old_write = fixture
+        .ordered(fixture.version(ItemContent::Plan(original())))
+        .unwrap();
     let fold = fixture.fold();
     assert_eq!(fold.frozen_at, frozen);
     assert_eq!(fold.accepted_current, Some(3));
@@ -128,10 +132,12 @@ pub(super) fn transport_confirmation_cannot_ack_a_semantically_refused_page_or_l
 pub(super) fn reader_and_removed_member_frames_never_authorize_canonical_plan_mutations() {
     let mut fixture = Fixture::new().unwrap();
     let member = add_identity(&mut fixture.engine, "Member");
-    fixture.ordered(EventBody::MemberAdded {
-        identity: member.clone(),
-        role: Role::Reader,
-    });
+    fixture
+        .ordered(EventBody::MemberAdded {
+            identity: member.clone(),
+            role: Role::Reader,
+        })
+        .unwrap();
     let baseline = fixture.fold();
     let document = edited(
         baseline.document.as_ref().unwrap(),
@@ -141,26 +147,35 @@ pub(super) fn reader_and_removed_member_frames_never_authorize_canonical_plan_mu
         },
     );
     let content = page(baseline.manifest().unwrap(), &document);
-    let reader = fixture.ordered_as(&member, fixture.version(ItemContent::Page(content.clone())));
+    let reader = fixture
+        .ordered_as(&member, fixture.version(ItemContent::Page(content.clone())))
+        .unwrap();
     assert!(matches!(
         fixture.fold().slots.last().unwrap().acceptance,
         Acceptance::Refused(_)
     ));
     assert!(fixture.fold().frozen_at.is_none());
-    fixture.ordered(EventBody::MemberAdded {
-        identity: member.clone(),
-        role: Role::Member,
-    });
-    let authorized =
-        fixture.ordered_as(&member, fixture.version(ItemContent::Page(content.clone())));
+    fixture
+        .ordered(EventBody::MemberAdded {
+            identity: member.clone(),
+            role: Role::Member,
+        })
+        .unwrap();
+    let authorized = fixture
+        .ordered_as(&member, fixture.version(ItemContent::Page(content.clone())))
+        .unwrap();
     assert_eq!(
         view(&fixture.fold()),
         document.view().unwrap().to_plan_doc()
     );
-    fixture.ordered(EventBody::MemberRemoved {
-        identity: member.clone(),
-    });
-    let removed = fixture.ordered_as(&member, fixture.version(ItemContent::Page(content.clone())));
+    fixture
+        .ordered(EventBody::MemberRemoved {
+            identity: member.clone(),
+        })
+        .unwrap();
+    let removed = fixture
+        .ordered_as(&member, fixture.version(ItemContent::Page(content.clone())))
+        .unwrap();
     let fold = fixture.fold();
     assert_eq!(
         fold.frozen_at,
@@ -176,7 +191,9 @@ pub(super) fn reader_and_removed_member_frames_never_authorize_canonical_plan_mu
         fold.slots.last().unwrap().acceptance,
         Acceptance::Refused(_)
     ));
-    fixture.ordered(fixture.version(ItemContent::Page(content)));
+    fixture
+        .ordered(fixture.version(ItemContent::Page(content)))
+        .unwrap();
     assert!(matches!(
         fixture.fold().slots.last().unwrap().acceptance,
         Acceptance::Canonical(_)
@@ -191,10 +208,12 @@ pub(super) fn invalid_signatures_and_oversized_payloads_cannot_establish_cutover
         baseline.manifest().unwrap(),
         baseline.document.as_ref().unwrap(),
     );
-    let event = fixture.signed_as(
-        &fixture.owner,
-        fixture.version(ItemContent::Page(content.clone())),
-    );
+    let event = fixture
+        .signed_as(
+            &fixture.owner,
+            fixture.version(ItemContent::Page(content.clone())),
+        )
+        .unwrap();
     let mut forged = frame(&fixture.engine, &event);
     forged.env.sig = "00".repeat(64);
     assert!(matches!(fixture.engine.ingest(forged), Ingest::Invalid(_)));
@@ -204,7 +223,9 @@ pub(super) fn invalid_signatures_and_oversized_payloads_cannot_establish_cutover
         loro: "a".repeat(MAX_PLAN_PACKET_BYTES.div_ceil(3) * 4 + 1),
         ..content.clone()
     };
-    fixture.ordered(fixture.version(ItemContent::Page(huge)));
+    fixture
+        .ordered(fixture.version(ItemContent::Page(huge)))
+        .unwrap();
     let declared = PageContent {
         loro: String::new(),
         blob: Some(ChunkRef {
@@ -215,7 +236,9 @@ pub(super) fn invalid_signatures_and_oversized_payloads_cannot_establish_cutover
         }),
         ..content
     };
-    fixture.ordered(fixture.version(ItemContent::Page(declared)));
+    fixture
+        .ordered(fixture.version(ItemContent::Page(declared)))
+        .unwrap();
     let fold = fixture.fold();
     assert!(fold.slots[1..]
         .iter()
@@ -230,17 +253,23 @@ pub(super) fn tagged_plan_versions_preserve_author_space_and_creation_checks() {
     let mut fixture = Fixture::new().unwrap();
     let reader = add_identity(&mut fixture.engine, "Reader");
     let removed = add_identity(&mut fixture.engine, "Removed");
-    fixture.ordered(EventBody::MemberAdded {
-        identity: reader.clone(),
-        role: Role::Reader,
-    });
-    fixture.ordered(EventBody::MemberAdded {
-        identity: removed.clone(),
-        role: Role::Member,
-    });
-    fixture.ordered(EventBody::MemberRemoved {
-        identity: removed.clone(),
-    });
+    fixture
+        .ordered(EventBody::MemberAdded {
+            identity: reader.clone(),
+            role: Role::Reader,
+        })
+        .unwrap();
+    fixture
+        .ordered(EventBody::MemberAdded {
+            identity: removed.clone(),
+            role: Role::Member,
+        })
+        .unwrap();
+    fixture
+        .ordered(EventBody::MemberRemoved {
+            identity: removed.clone(),
+        })
+        .unwrap();
     let other_space = new_id("other-plan-space").unwrap();
     fixture
         .engine

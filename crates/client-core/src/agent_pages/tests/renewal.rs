@@ -7,7 +7,7 @@ fn page_renewal_preserves_exact_block_intent_and_requires_a_new_approval() {
     let f = fixture().unwrap();
     let t = turn(&f);
     let command = command(&t);
-    let old = expired_approved(&f.actor, stage(&f, &t, &command));
+    let old = expired_approved(&f.actor, stage(&f, &t, &command)).unwrap();
     // The Page wrapper also supports historical receipt recovery. Constructing
     // it is not fresh IO authority: the actual expired write must still refuse.
     let expired_permit = f.actor.agent.approved_page_tool_turn(&old.id).unwrap();
@@ -75,7 +75,7 @@ fn accepted_page_after_owner_intent_reconciles_without_a_fresh_pending_request()
     let t = turn(&f);
     let c = command(&t);
     let live = stage(&f, &t, &c);
-    let old = expired_approved(&f.actor, live.clone());
+    let old = expired_approved(&f.actor, live.clone()).unwrap();
     decide(&f, &live, ToolRequestDecision::ApproveOnce).unwrap();
     let permit = f.actor.agent.approved_page_tool_turn(&live.id).unwrap();
     decide(&f, &old, ToolRequestDecision::RequestReview).unwrap();
@@ -114,7 +114,7 @@ fn renewed_page_pending_or_approved_write_cannot_execute_after_a_later_step() {
         let f = fixture().unwrap();
         let t = turn(&f);
         let command = command(&t);
-        let old = expired_approved(&f.actor, stage(&f, &t, &command));
+        let old = expired_approved(&f.actor, stage(&f, &t, &command)).unwrap();
         decide(&f, &old, ToolRequestDecision::RequestReview).unwrap();
         let intent = f.actor.agent.tool_review_pending_intent(&old.id).unwrap();
         let next = f
@@ -152,7 +152,7 @@ fn accepted_renewed_page_receipt_survives_a_later_canonical_step() {
     let f = fixture().unwrap();
     let t = turn(&f);
     let command = command(&t);
-    let old = expired_approved(&f.actor, stage(&f, &t, &command));
+    let old = expired_approved(&f.actor, stage(&f, &t, &command)).unwrap();
     decide(&f, &old, ToolRequestDecision::RequestReview).unwrap();
     let intent = f.actor.agent.tool_review_pending_intent(&old.id).unwrap();
     let next = f

@@ -340,7 +340,7 @@ mod own_sync_tests {
         let path = std::env::temp_dir().join(format!(
             "zoen-profile-sync-{}-{}.sqlite",
             std::process::id(),
-            types::new_ulid(now_ms())
+            types::new_ulid(now_ms()).unwrap()
         ));
         let path = path.to_str().unwrap();
         let (mut engine, identity) = fixture_at(path);

@@ -101,10 +101,12 @@ fn typed_client_read_keeps_all_prose_metadata_and_utf16_marks_after_cutover() {
     document
         .apply_from(&document.revision().unwrap(), &order, &edits)
         .unwrap();
-    fixture.ordered(fixture.version(ItemContent::Page(page(
-        fixture.fold().manifest().unwrap(),
-        &document,
-    ))));
+    fixture
+        .ordered(fixture.version(ItemContent::Page(page(
+            fixture.fold().manifest().unwrap(),
+            &document,
+        ))))
+        .unwrap();
     let read = fixture.engine.plan_page(&fixture.item).unwrap();
     assert_eq!(read.version, 2);
     assert!(read.ready);
@@ -237,7 +239,9 @@ fn typed_client_read_returns_exact_extreme_cents_even_when_total_is_unrepresenta
     plan.budget_cents = Some(i64::MIN);
     plan.sections[0].lines[0].cost_cents = i64::MAX;
     plan.sections[0].lines[1].cost_cents = i64::MAX;
-    fixture.ordered(fixture.version(ItemContent::Plan(plan)));
+    fixture
+        .ordered(fixture.version(ItemContent::Plan(plan)))
+        .unwrap();
     let read = fixture.engine.plan_page(&fixture.item).unwrap();
     assert_eq!(read.version, 2);
     assert_eq!(read.total_cents, None);
@@ -270,13 +274,17 @@ fn typed_client_read_returns_exact_extreme_cents_even_when_total_is_unrepresenta
         cost_cents: -1,
         done: false,
     });
-    fixture.ordered(fixture.version(ItemContent::Plan(credit.clone())));
+    fixture
+        .ordered(fixture.version(ItemContent::Plan(credit.clone())))
+        .unwrap();
     assert_eq!(
         fixture.engine.plan_page(&fixture.item).unwrap().total_cents,
         Some(i64::MAX)
     );
     credit.sections[0].lines.reverse();
-    fixture.ordered(fixture.version(ItemContent::Plan(credit)));
+    fixture
+        .ordered(fixture.version(ItemContent::Plan(credit)))
+        .unwrap();
     assert_eq!(
         fixture.engine.plan_page(&fixture.item).unwrap().total_cents,
         Some(i64::MAX)

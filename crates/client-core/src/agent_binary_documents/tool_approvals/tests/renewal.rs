@@ -5,9 +5,12 @@ use crate::agent_binary_documents::tests::renewal_history::{
     confirm_pending, expired_approved as expire, signed,
 };
 
-fn expired_approved(f: &Fixture, tool: &str) -> (AgentRequestDto, AgentRequestDto) {
+fn expired_approved(
+    f: &Fixture,
+    tool: &str,
+) -> std::result::Result<(AgentRequestDto, AgentRequestDto), Box<dyn std::error::Error>> {
     let live = stage(f, tool);
-    (expire(f, live.clone()), live)
+    Ok((expire(f, live.clone())?, live))
 }
 
 fn request_again(f: &Fixture, old: &AgentRequestDto) -> String {
@@ -23,8 +26,8 @@ fn request_again(f: &Fixture, old: &AgentRequestDto) -> String {
 
 #[test]
 fn expired_approval_requests_only_preparation_and_successor_requires_independent_approval() {
-    let f = fixture();
-    let (old, _) = expired_approved(&f, "read_deckcraft");
+    let f = fixture().unwrap();
+    let (old, _) = expired_approved(&f, "read_deckcraft").unwrap();
     let original = f.agent.lock().state.requests[&old.id].clone();
     assert!(owner_decide(
         &f,
@@ -116,8 +119,8 @@ fn expired_approval_requests_only_preparation_and_successor_requires_independent
 
 #[test]
 fn first_valid_signed_successor_wins_and_forged_or_legacy_roots_cannot_reset_lineage() {
-    let f = fixture();
-    let (old, _) = expired_approved(&f, "read_deckcraft");
+    let f = fixture().unwrap();
+    let (old, _) = expired_approved(&f, "read_deckcraft").unwrap();
     let intent = request_again(&f, &old);
     // Build candidates from the exact frozen predecessor before either is sequenced.
     let original = f.agent.lock().state.requests[&old.id].req.clone();
@@ -172,9 +175,9 @@ fn first_valid_signed_successor_wins_and_forged_or_legacy_roots_cannot_reset_lin
 
 #[test]
 fn receipt_arriving_after_owner_intent_reconciles_without_staging_or_repeating_the_effect() {
-    let f = fixture();
+    let f = fixture().unwrap();
     signed_trust(&f, TrustLevel::Suggest).unwrap();
-    let (old, live) = expired_approved(&f, "deckcraft_slide_notes");
+    let (old, live) = expired_approved(&f, "deckcraft_slide_notes").unwrap();
     owner_decide(
         &f,
         &live.id,
@@ -210,9 +213,9 @@ fn receipt_arriving_after_owner_intent_reconciles_without_staging_or_repeating_t
 #[test]
 fn renewal_refuses_changed_head_and_signed_block_without_creating_an_intent() {
     for block in [false, true] {
-        let f = fixture();
+        let f = fixture().unwrap();
         signed_trust(&f, TrustLevel::Suggest).unwrap();
-        let (old, live) = expired_approved(&f, "deckcraft_slide_notes");
+        let (old, live) = expired_approved(&f, "deckcraft_slide_notes").unwrap();
         if block {
             signed(
                 &f,
@@ -228,7 +231,8 @@ fn renewal_refuses_changed_head_and_signed_block_without_creating_an_intent() {
                     },
                 },
                 crate::engine::now_ms(),
-            );
+            )
+            .unwrap();
         } else {
             owner_decide(
                 &f,
@@ -259,9 +263,9 @@ fn renewal_refuses_changed_head_and_signed_block_without_creating_an_intent() {
 #[test]
 fn signed_non_owner_or_wrong_hash_intents_are_inert_and_later_revocation_prevents_staging() {
     for failure in ["device", "app-grant", "served-writer", "block"] {
-        let f = fixture();
+        let f = fixture().unwrap();
         signed_trust(&f, TrustLevel::Suggest).unwrap();
-        let (old, _) = expired_approved(&f, "deckcraft_slide_notes");
+        let (old, _) = expired_approved(&f, "deckcraft_slide_notes").unwrap();
         let agent = f.agent.account().unwrap().identity_id;
         for (author, hash) in [
             (&agent, observed(&old).to_string()),
@@ -275,7 +279,8 @@ fn signed_non_owner_or_wrong_hash_intents_are_inert_and_later_revocation_prevent
                     content_hash: hash,
                 },
                 crate::engine::now_ms(),
-            );
+            )
+            .unwrap();
             assert!(f.agent.tool_review_pending_intent(&old.id).is_none());
         }
         let intent = request_again(&f, &old);
@@ -310,7 +315,8 @@ fn signed_non_owner_or_wrong_hash_intents_are_inert_and_later_revocation_prevent
                         grant: grant.id.clone(),
                     },
                     crate::engine::now_ms(),
-                );
+                )
+                .unwrap();
             }
             "served-writer" => signed(
                 &f,
@@ -320,7 +326,8 @@ fn signed_non_owner_or_wrong_hash_intents_are_inert_and_later_revocation_prevent
                     role: Role::Reader,
                 },
                 crate::engine::now_ms(),
-            ),
+            )
+            .unwrap(),
             "block" => signed(
                 &f,
                 &f.owner,
@@ -335,7 +342,8 @@ fn signed_non_owner_or_wrong_hash_intents_are_inert_and_later_revocation_prevent
                     },
                 },
                 crate::engine::now_ms(),
-            ),
+            )
+            .unwrap(),
             _ => unreachable!(),
         }
         let before = counts(&f);

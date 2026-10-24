@@ -50,7 +50,7 @@ impl Fixture {
                 kind: SpaceKind::Direct,
                 privacy: Privacy::EndToEnd,
             },
-        );
+        )?;
         f.push(
             f.caller.clone(),
             1,
@@ -58,7 +58,7 @@ impl Fixture {
                 identity: b.id(),
                 role: Role::Member,
             },
-        );
+        )?;
         Ok(f)
     }
     fn event(
@@ -87,7 +87,7 @@ impl Fixture {
         self.engine.reload().unwrap();
         Ok(event)
     }
-    fn invite(&mut self) -> CallRecord {
+    fn invite(&mut self) -> std::result::Result<CallRecord, Box<dyn std::error::Error>> {
         self.push(
             self.caller.clone(),
             100,
@@ -99,8 +99,8 @@ impl Fixture {
                     expires_at_ms: 1100,
                 },
             },
-        );
-        self.record()
+        )?;
+        Ok(self.record())
     }
     fn record(&self) -> CallRecord {
         self.engine.state.spaces["sp_calls"]
@@ -132,13 +132,15 @@ impl Fixture {
 #[test]
 fn sqlite_cold_replay_keeps_signed_invitation_acceptance_and_terminal_history() {
     let mut f = Fixture::new().unwrap();
-    let call = f.invite();
+    let call = f.invite().unwrap();
     assert!(call.invitation_confirmed && call.ringing_at(100));
     let accept = f.accept(&call);
-    f.push(f.callee.clone(), 200, EventBody::CallV1 { signal: accept });
+    f.push(f.callee.clone(), 200, EventBody::CallV1 { signal: accept })
+        .unwrap();
     assert_eq!(f.record().accepted_device, f.callee.device);
     let end = f.end(&call, CallEndReason::HungUp);
-    f.push(f.caller.clone(), 300, EventBody::CallV1 { signal: end });
+    f.push(f.caller.clone(), 300, EventBody::CallV1 { signal: end })
+        .unwrap();
     let before = f.record();
     assert!(before.terminal() && before.acceptance_confirmed);
     let bytes = f.engine.store.memory_image().unwrap();
@@ -150,47 +152,59 @@ fn sqlite_cold_replay_keeps_signed_invitation_acceptance_and_terminal_history() 
 #[test]
 fn two_devices_accepting_choose_first_canonical_device_and_reject_late_callbacks() {
     let mut f = Fixture::new().unwrap();
-    let call = f.invite();
+    let call = f.invite().unwrap();
     let accept = f.accept(&call);
-    let second = f.event(&f.other_device, 201, accept.clone());
-    f.push(f.callee.clone(), 200, EventBody::CallV1 { signal: accept });
+    let second = f.event(&f.other_device, 201, accept.clone()).unwrap();
+    f.push(f.callee.clone(), 200, EventBody::CallV1 { signal: accept })
+        .unwrap();
     assert!(!f.valid(&second));
-    assert!(!f.valid(&f.event(&f.other_device, 300, f.end(&call, CallEndReason::HungUp))));
-    assert!(f.valid(&f.event(&f.callee, 202, f.accept(&call))));
+    assert!(!f.valid(
+        &f.event(&f.other_device, 300, f.end(&call, CallEndReason::HungUp))
+            .unwrap()
+    ));
+    assert!(f.valid(&f.event(&f.callee, 202, f.accept(&call)).unwrap()));
     assert_eq!(f.record().accepted_device, f.callee.device);
 }
 
 #[test]
 fn cancellation_before_accept_is_terminal_and_accept_before_cancel_requires_hangup() {
     let mut f = Fixture::new().unwrap();
-    let call = f.invite();
+    let call = f.invite().unwrap();
     let end = f.end(&call, CallEndReason::Cancelled);
-    f.push(f.caller.clone(), 200, EventBody::CallV1 { signal: end });
-    assert!(!f.valid(&f.event(&f.callee, 201, f.accept(&call))));
+    f.push(f.caller.clone(), 200, EventBody::CallV1 { signal: end })
+        .unwrap();
+    assert!(!f.valid(&f.event(&f.callee, 201, f.accept(&call)).unwrap()));
     let mut f = Fixture::new().unwrap();
-    let call = f.invite();
+    let call = f.invite().unwrap();
     let accept = f.accept(&call);
-    f.push(f.callee.clone(), 200, EventBody::CallV1 { signal: accept });
-    assert!(!f.valid(&f.event(&f.caller, 201, f.end(&call, CallEndReason::Cancelled))));
-    assert!(f.valid(&f.event(&f.caller, 201, f.end(&call, CallEndReason::HungUp))));
+    f.push(f.callee.clone(), 200, EventBody::CallV1 { signal: accept })
+        .unwrap();
+    assert!(!f.valid(
+        &f.event(&f.caller, 201, f.end(&call, CallEndReason::Cancelled))
+            .unwrap()
+    ));
+    assert!(f.valid(
+        &f.event(&f.caller, 201, f.end(&call, CallEndReason::HungUp))
+            .unwrap()
+    ));
 }
 
 #[test]
 fn wrong_invitation_author_device_and_expired_acceptance_have_no_projection_effect() {
     let mut f = Fixture::new().unwrap();
-    let call = f.invite();
+    let call = f.invite().unwrap();
     let before = f.record();
-    assert!(!f.valid(&f.event(&f.caller, 200, f.accept(&call))));
-    assert!(!f.valid(&f.event(&f.callee, 99, f.accept(&call))));
-    assert!(!f.valid(&f.event(&f.callee, 1100, f.accept(&call))));
-    let mut bad = f.event(&f.callee, 200, f.accept(&call));
+    assert!(!f.valid(&f.event(&f.caller, 200, f.accept(&call)).unwrap()));
+    assert!(!f.valid(&f.event(&f.callee, 99, f.accept(&call)).unwrap()));
+    assert!(!f.valid(&f.event(&f.callee, 1100, f.accept(&call)).unwrap()));
+    let mut bad = f.event(&f.callee, 200, f.accept(&call)).unwrap();
     bad.device = None;
     assert!(!f.valid(&bad));
     let bad = CallSignal::Accept {
         call_id: call.call_id.clone(),
         invitation: "other authenticated invite".into(),
     };
-    assert!(!f.valid(&f.event(&f.callee, 200, bad)));
+    assert!(!f.valid(&f.event(&f.callee, 200, bad).unwrap()));
     assert_eq!(before, f.record());
     assert!(!call.ringing_at(1100));
 }
@@ -198,18 +212,20 @@ fn wrong_invitation_author_device_and_expired_acceptance_have_no_projection_effe
 #[test]
 fn membership_change_invalidates_existing_call_in_cold_replay() {
     let mut f = Fixture::new().unwrap();
-    let call = f.invite();
+    let call = f.invite().unwrap();
     let accept = f.accept(&call);
-    f.push(f.callee.clone(), 200, EventBody::CallV1 { signal: accept });
+    f.push(f.callee.clone(), 200, EventBody::CallV1 { signal: accept })
+        .unwrap();
     f.push(
         f.caller.clone(),
         300,
         EventBody::MemberRemoved {
             identity: f.callee.identity.clone(),
         },
-    );
+    )
+    .unwrap();
     assert!(f.record().invalidated && f.record().terminal());
-    assert!(!f.valid(&f.event(&f.callee, 400, f.accept(&call))));
+    assert!(!f.valid(&f.event(&f.callee, 400, f.accept(&call)).unwrap()));
 }
 
 #[test]
@@ -229,21 +245,21 @@ fn call_signal_encoding_is_closed_and_legacy_messages_unchanged() {
 #[test]
 fn signed_glare_reprojects_to_first_canonical_invitation_and_rejects_duplicate_ids() {
     let mut f = Fixture::new().unwrap();
-    let call = f.invite();
+    let call = f.invite().unwrap();
     let second = CallSignal::Invite {
         call_id: format!("call_{}", "b".repeat(32)),
         callee: f.caller.identity.clone(),
         media: CallMedia::Video,
         expires_at_ms: 1200,
     };
-    assert!(!f.valid(&f.event(&f.callee, 200, second)));
+    assert!(!f.valid(&f.event(&f.callee, 200, second).unwrap()));
     let duplicate = CallSignal::Invite {
         call_id: call.call_id,
         callee: f.callee.identity.clone(),
         media: CallMedia::Video,
         expires_at_ms: 1300,
     };
-    assert!(!f.valid(&f.event(&f.caller, 300, duplicate)));
+    assert!(!f.valid(&f.event(&f.caller, 300, duplicate).unwrap()));
     assert_eq!(f.engine.state.spaces["sp_calls"].calls.len(), 1);
 }
 
@@ -256,7 +272,7 @@ fn no_call_authority_in_group_clear_space_agent_dm_or_root_signed_event() {
         media: CallMedia::Video,
         expires_at_ms: 1200,
     };
-    let event = f.event(&f.caller, 200, signal);
+    let event = f.event(&f.caller, 200, signal).unwrap();
     assert!(f.valid(&event));
     f.engine.state.spaces.get_mut("sp_calls").unwrap().kind = SpaceKind::Group;
     assert!(!f.valid(&event));
@@ -290,7 +306,7 @@ fn excessive_lifetime_and_stale_account_command_are_refused_before_writes() {
             media: CallMedia::Audio,
             expires_at_ms: expiry,
         };
-        assert!(!f.valid(&f.event(&f.caller, 200, signal)));
+        assert!(!f.valid(&f.event(&f.caller, 200, signal).unwrap()));
     }
     let before = f.engine.store.event_count().unwrap();
     assert!(f
@@ -309,7 +325,7 @@ fn excessive_lifetime_and_stale_account_command_are_refused_before_writes() {
 #[test]
 fn terminal_call_never_rings_on_cold_replay_or_duplicate_end() {
     let mut f = Fixture::new().unwrap();
-    let call = f.invite();
+    let call = f.invite().unwrap();
     let end = f.end(&call, CallEndReason::Declined);
     f.push(
         f.callee.clone(),
@@ -317,10 +333,12 @@ fn terminal_call_never_rings_on_cold_replay_or_duplicate_end() {
         EventBody::CallV1 {
             signal: end.clone(),
         },
-    );
+    )
+    .unwrap();
     let before = f.record();
     assert!(!before.ringing_at(201));
-    f.push(f.callee.clone(), 250, EventBody::CallV1 { signal: end });
+    f.push(f.callee.clone(), 250, EventBody::CallV1 { signal: end })
+        .unwrap();
     assert_eq!(before, f.record());
     assert_eq!(f.engine.state.spaces["sp_calls"].calls.len(), 1);
 }
@@ -338,17 +356,22 @@ fn future_dated_invite_can_be_declined_or_superseded_without_poisoning_the_dm() 
         f.caller.clone(),
         i64::MAX - 1000,
         EventBody::CallV1 { signal: future },
-    );
+    )
+    .unwrap();
     let call = f.record();
-    assert!(f.valid(&f.event(&f.callee, 200, f.end(&call, CallEndReason::Declined))));
+    assert!(f.valid(
+        &f.event(&f.callee, 200, f.end(&call, CallEndReason::Declined))
+            .unwrap()
+    ));
     let next = CallSignal::Invite {
         call_id: format!("call_{}", "d".repeat(32)),
         callee: f.caller.identity.clone(),
         media: CallMedia::Audio,
         expires_at_ms: 1300,
     };
-    assert!(f.valid(&f.event(&f.callee, 300, next.clone())));
-    f.push(f.callee.clone(), 300, EventBody::CallV1 { signal: next });
+    assert!(f.valid(&f.event(&f.callee, 300, next.clone()).unwrap()));
+    f.push(f.callee.clone(), 300, EventBody::CallV1 { signal: next })
+        .unwrap();
     let calls = &f.engine.state.spaces["sp_calls"].calls;
     assert!(calls[0].invalidated);
     assert!(calls[1].ringing_at(301));

@@ -4,14 +4,15 @@ use super::*;
 #[test]
 pub(super) fn cross_space_ambiguity_closes_local_writes_but_preserves_scoped_confirmed_decisions() {
     let mut fixture = Fixture::new().unwrap();
-    let agent = agent(&mut fixture);
+    let agent = agent(&mut fixture).unwrap();
     let document = canonical(
         &mut fixture,
         LinePatch {
             done: Some(true),
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
     let request = open(&mut fixture, &agent, &document).unwrap();
     let other = new_id("other-space").unwrap();
     let author = fixture.engine.author_for(&fixture.owner).unwrap();
@@ -71,7 +72,7 @@ pub(super) fn cross_space_ambiguity_closes_local_writes_but_preserves_scoped_con
 
     // An ordered decision has only this Space's authenticated prefix. The wire
     // does not attest whether the unrelated Space was observed before or after it.
-    fixture.ordered(decision(&request, true));
+    fixture.ordered(decision(&request, true)).unwrap();
     assert_eq!(
         fixture.engine.state.requests[&request.id].status,
         ReqStatus::Approved
@@ -101,9 +102,9 @@ pub(super) fn cross_space_ambiguity_closes_local_writes_but_preserves_scoped_con
 #[test]
 pub(super) fn contexts_are_bound_to_the_exact_decision_and_do_not_read_later_payloads() {
     let mut fixture = Fixture::new().unwrap();
-    let agent = agent(&mut fixture);
+    let agent = agent(&mut fixture).unwrap();
     let request = open(&mut fixture, &agent, &original()).unwrap();
-    let event = fixture.ordered(decision(&request, true));
+    let event = fixture.ordered(decision(&request, true)).unwrap();
     let end = fixture.engine.logs[&fixture.space].len() - 1;
     let (page, _, _, _, _) = missing_blob(
         &fixture,
@@ -113,7 +114,9 @@ pub(super) fn contexts_are_bound_to_the_exact_decision_and_do_not_read_later_pay
         },
     )
     .unwrap();
-    fixture.ordered(fixture.version(ItemContent::Page(page)));
+    fixture
+        .ordered(fixture.version(ItemContent::Page(page)))
+        .unwrap();
     fixture
         .engine
         .store
@@ -194,7 +197,7 @@ pub(super) fn later_foreign_creations_do_not_rewrite_the_scoped_approved_decisio
             std::fs::create_dir_all(&directory).unwrap();
             let path = directory.join("plan.sqlite");
             let mut fixture = Fixture::at(path.to_str().unwrap()).unwrap();
-            let agent = agent(&mut fixture);
+            let agent = agent(&mut fixture).unwrap();
             let document = canonical(
                 &mut fixture,
                 LinePatch {
@@ -202,9 +205,10 @@ pub(super) fn later_foreign_creations_do_not_rewrite_the_scoped_approved_decisio
                     cost_cents: Some(317),
                     ..Default::default()
                 },
-            );
+            )
+            .unwrap();
             let request = open(&mut fixture, &agent, &document).unwrap();
-            let accepted = fixture.ordered(decision(&request, true));
+            let accepted = fixture.ordered(decision(&request, true)).unwrap();
             assert_eq!(
                 fixture.engine.state.requests[&request.id].status,
                 ReqStatus::Approved
@@ -326,14 +330,15 @@ pub(super) fn later_foreign_creations_do_not_rewrite_the_scoped_approved_decisio
 pub(super) fn duplicate_request_ids_keep_each_space_history_and_close_unscoped_writes() {
     for at_ms in [1, 1_900_000_000_000] {
         let mut fixture = Fixture::new().unwrap();
-        let agent = agent(&mut fixture);
+        let agent = agent(&mut fixture).unwrap();
         let document = canonical(
             &mut fixture,
             LinePatch {
                 text: Some("Own authenticated row".into()),
                 ..Default::default()
             },
-        );
+        )
+        .unwrap();
         let request = open(&mut fixture, &agent, &document).unwrap();
         let owner = fixture.engine.author_for(&fixture.owner).unwrap();
         let agent_author = fixture.engine.author_for(&agent).unwrap();
@@ -399,7 +404,7 @@ pub(super) fn duplicate_request_ids_keep_each_space_history_and_close_unscoped_w
         assert_eq!(fixture.engine.store.events(&fixture.space).unwrap(), raw);
         assert_eq!(fixture.engine.store.outbox().unwrap().len(), outbox);
 
-        fixture.ordered(decision(&request, true));
+        fixture.ordered(decision(&request, true)).unwrap();
         fixture.engine.reload().unwrap();
         assert!(!fixture.engine.state.requests.contains_key(&request.id));
         let own = &fixture.engine.space_projections[&fixture.space].requests[&request.id];

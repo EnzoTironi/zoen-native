@@ -109,13 +109,15 @@ pub(super) fn an_ordered_remote_cutover_preserves_but_never_imports_local_legacy
             ..Default::default()
         },
     );
-    let remote = fixture.signed_as(
-        &fixture.owner,
-        fixture.version(ItemContent::Page(page(
-            baseline.manifest().unwrap(),
-            &document,
-        ))),
-    );
+    let remote = fixture
+        .signed_as(
+            &fixture.owner,
+            fixture.version(ItemContent::Page(page(
+                baseline.manifest().unwrap(),
+                &document,
+            ))),
+        )
+        .unwrap();
     let intent = PlanDoc {
         summary: "Unconfirmed whole-document intent".into(),
         ..original()
@@ -175,7 +177,9 @@ pub(super) fn shorter_exact_ancestry_and_two_first_writers_merge_in_both_relay_o
     let mut legacy_v2 = original();
     legacy_v2.title = "Title from authenticated legacy v2".into();
     legacy_v2.sections[0].lines[0].cost_cents = 700;
-    fixture.ordered(fixture.version(ItemContent::Plan(legacy_v2.clone())));
+    fixture
+        .ordered(fixture.version(ItemContent::Plan(legacy_v2.clone())))
+        .unwrap();
     let second = fixture.fold();
     let second_editor = edited(
         second.document.as_ref().unwrap(),
@@ -185,10 +189,12 @@ pub(super) fn shorter_exact_ancestry_and_two_first_writers_merge_in_both_relay_o
         },
     );
     let second_page = page(second.manifest().unwrap(), &second_editor);
-    let second_event = fixture.signed_as(
-        &fixture.owner,
-        fixture.version(ItemContent::Page(second_page)),
-    );
+    let second_event = fixture
+        .signed_as(
+            &fixture.owner,
+            fixture.version(ItemContent::Page(second_page)),
+        )
+        .unwrap();
     let history = fixture.engine.store.events(&fixture.space).unwrap();
     let mut reverse = Engine::open(":memory:").unwrap();
     for event in &history {
@@ -276,7 +282,9 @@ pub(super) fn invalid_manifests_and_inline_payloads_do_not_freeze_the_first_vali
         ..valid.clone()
     });
     for variant in variants {
-        let event = fixture.ordered(fixture.version(ItemContent::Page(variant)));
+        let event = fixture
+            .ordered(fixture.version(ItemContent::Page(variant)))
+            .unwrap();
         let fold = fixture.fold();
         assert!(matches!(
             fold.slots.last().unwrap().acceptance,
@@ -294,7 +302,9 @@ pub(super) fn invalid_manifests_and_inline_payloads_do_not_freeze_the_first_vali
             &source(&fixture.space, &fixture.item, &event, true).event_id
         ));
     }
-    let accepted = fixture.ordered(fixture.version(ItemContent::Page(valid)));
+    let accepted = fixture
+        .ordered(fixture.version(ItemContent::Page(valid)))
+        .unwrap();
     let fold = fixture.fold();
     assert_eq!(
         fold.frozen_at,

@@ -123,7 +123,7 @@ pub(super) fn binary_replay_keeps_the_exact_pre_upgrade_payload() {
 
 pub(super) fn binary_refresh_reuses_verified_payload_and_rechecks_after_reload(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let mut f = Fixture::new();
+    let mut f = Fixture::new()?;
     let id = new_id("binary-cache-page")?;
     let page = Page::from_markdown("# Cached\n\nVerified raw 😀\r\ncontent\n").unwrap();
     let blob = f.engine.page_blob(&f.space, &page.snapshot()).unwrap();
@@ -138,7 +138,7 @@ pub(super) fn binary_refresh_reuses_verified_payload_and_rechecks_after_reload(
             manifest: None,
         }),
         origin: "imported binary Page".into(),
-    });
+    })?;
     let legacy = f.engine.page(&id).unwrap();
     let mut session = PageSession::open(&f.engine, &id).unwrap();
     let before = session.read(&f.engine).unwrap();

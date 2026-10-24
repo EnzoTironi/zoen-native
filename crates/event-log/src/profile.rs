@@ -414,7 +414,7 @@ mod tests {
         let key = ProfileKey::generate().unwrap();
         let sealed = seal_profile(&key, "ana", 3, &fields()).unwrap();
         assert_eq!(open_profile(&key, "ana", 3, &sealed), Some(fields()));
-        assert!(open_profile(&ProfileKey::generate(), "ana", 3, &sealed).is_none());
+        assert!(open_profile(&ProfileKey::generate().unwrap(), "ana", 3, &sealed).is_none());
         assert!(
             open_profile(&key, "bruno", 3, &sealed).is_none(),
             "swapped between people"
@@ -443,7 +443,7 @@ mod tests {
             "replayed in another Space"
         );
         assert!(
-            seal_share(&ProfileKey::generate(), 1, &"00".repeat(32), &ctx).is_none(),
+            seal_share(&ProfileKey::generate().unwrap(), 1, &"00".repeat(32), &ctx).is_none(),
             "low-order key"
         );
     }
@@ -474,7 +474,7 @@ mod tests {
         assert!(verify_agreement(&ana.identity, &ak.public_hex(), &s));
         assert!(!verify_agreement(
             &ana.identity,
-            &AgreementKey::generate().public_hex(),
+            &AgreementKey::generate().unwrap().public_hex(),
             &s
         ));
     }

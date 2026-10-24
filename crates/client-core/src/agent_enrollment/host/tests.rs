@@ -180,7 +180,11 @@ fn agent_code_roundtrip_pins_owner_relay_profile_definition_and_rejects_device_l
     assert!(Code::parse(&format!("{PREFIX}{}", "A".repeat(CODE_LIMIT)), now()).is_err());
     assert!(Code::parse("zoen-link:1:ordinary-device-code", now()).is_err());
     assert!(owner
-        .agent_enrollment_preview(&offer.code, &Signer::generate().id(), &account.device_id)
+        .agent_enrollment_preview(
+            &offer.code,
+            &Signer::generate().unwrap().id(),
+            &account.device_id
+        )
         .is_err());
     let other = make_owner();
     let other_account = other.account().unwrap();

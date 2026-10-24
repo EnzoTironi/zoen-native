@@ -211,7 +211,8 @@ pub(super) fn renaming_voice_audio_keeps_metadata_but_replacing_bytes_invalidate
     assert!(current.levels.is_empty() && current.transcript.is_empty());
 }
 
-pub(super) fn ordinary_files_stay_collaborative_but_only_the_author_can_make_them_voice() {
+pub(super) fn ordinary_files_stay_collaborative_but_only_the_author_can_make_them_voice(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let e = seeded();
     let space = find_space(&e, "Paraty com a Marina");
     let item = e
@@ -244,10 +245,12 @@ pub(super) fn ordinary_files_stay_collaborative_but_only_the_author_can_make_the
         note: "Impersonate voice".into(),
     };
     assert!(engine.append(&space.id, &other, body.clone()).is_err());
-    ingest_as(&mut engine, &space.id, &other, body);
+    ingest_as(&mut engine, &space.id, &other, body)?;
     engine.reload().unwrap();
     assert_eq!(engine.state.items[&item].versions.len(), 3);
     assert_eq!(engine.file_bytes(&item, None).unwrap(), Some(vec![1; 64]));
+
+    Ok(())
 }
 
 pub(super) fn rejected_voice_sends_keep_their_audio_reply_and_delivery_error_after_reopen(
@@ -276,7 +279,7 @@ pub(super) fn rejected_voice_sends_keep_their_audio_reply_and_delivery_error_aft
             EventBody::MemberRemoved {
                 identity: me.clone(),
             },
-        );
+        )?;
         let client_id = engine.store.outbox().unwrap()[0].event.client_id.clone();
         assert!(engine
             .reject(&client_id, "permission denied", true, None)

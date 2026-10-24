@@ -43,8 +43,10 @@ fn sealed(e: &Engine, space: &str, event: &Event) -> Envelope {
 #[test]
 fn encrypted_conflicts_and_membership_changes_reconcile_before_the_own_approval_echo() {
     for removal in [false, true] {
-        let path =
-            std::env::temp_dir().join(format!("{}.sqlite", new_id("zoen_encrypted_approval")));
+        let path = std::env::temp_dir().join(format!(
+            "{}.sqlite",
+            new_id("zoen_encrypted_approval").unwrap()
+        ));
         let path = path.to_str().unwrap();
         let mut a = Engine::open(path).unwrap();
         let (root, a_secret, _) = a

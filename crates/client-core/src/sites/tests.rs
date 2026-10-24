@@ -355,7 +355,10 @@ async fn offline_client_does_not_trust_cached_relay_name_or_emit_a_signed_prepar
         .site_review(scope.clone(), first.source.clone(), false)
         .await
         .is_err());
-    assert!(c.site_prepare(review(&scope, &first)).await.is_err());
+    assert!(c
+        .site_prepare(review(&scope, &first).unwrap())
+        .await
+        .is_err());
 }
 
 #[tokio::test]

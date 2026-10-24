@@ -121,7 +121,7 @@ pub(super) fn backup_restore_and_device_erase_never_carry_a_private_media_draft_
     }
     let private = rows(&f);
     let backup = f.engine.lock().backup_snapshot().unwrap();
-    let dir = temp();
+    let dir = temp()?;
     let path = dir.join("backup.sqlite");
     std::fs::write(&path, backup).unwrap();
     let conn = rusqlite::Connection::open(&path).unwrap();
@@ -349,8 +349,9 @@ pub(super) fn evicted_save_ack_is_stale_without_guessing_or_overwriting_current_
     assert_eq!(read(&f), current);
 }
 
-pub(super) fn legacy_receipt_without_output_revision_preserves_cold_draft_but_cannot_guess_ack() {
-    let dir = temp();
+pub(super) fn legacy_receipt_without_output_revision_preserves_cold_draft_but_cannot_guess_ack(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = temp()?;
     let path = dir.join("device.sqlite");
     let f = fixture(path.to_str().unwrap());
     let json = attachments(&["a"], None);
@@ -395,6 +396,8 @@ pub(super) fn legacy_receipt_without_output_revision_preserves_cold_draft_but_ca
     assert_eq!(asset(&f, &next.draft, "a"), input("a").bytes);
     drop(f);
     std::fs::remove_dir_all(dir).unwrap();
+
+    Ok(())
 }
 
 pub(super) fn media_contract_defaults_preserve_legacy_save_receipts_and_signed_bytes() {

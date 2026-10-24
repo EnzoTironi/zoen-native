@@ -2,8 +2,9 @@
 
 use super::*;
 
-pub(super) async fn link_then_cold_reopen_before_history_retains_pending_and_same_keys() {
-    let file = path();
+pub(super) async fn link_then_cold_reopen_before_history_retains_pending_and_same_keys(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let file = path()?;
     let core = Client::open(file.to_string_lossy().into(), "en-US".into()).unwrap();
     let vault = install_link(&core);
     let account = core.account().unwrap();
@@ -23,6 +24,8 @@ pub(super) async fn link_then_cold_reopen_before_history_retains_pending_and_sam
     assert_eq!(vault.load(VAULT_DEVICE.into()), device_key);
     drop(reopened);
     let _ = std::fs::remove_file(file);
+
+    Ok(())
 }
 
 pub(super) async fn missing_or_forged_history_cannot_clear_pending_or_partially_import() {
@@ -65,8 +68,9 @@ pub(super) async fn missing_or_forged_history_cannot_clear_pending_or_partially_
     ));
 }
 
-pub(super) async fn durable_import_and_receipt_survive_reopen_before_relay_cleanup_or_ui_ack() {
-    let file = path();
+pub(super) async fn durable_import_and_receipt_survive_reopen_before_relay_cleanup_or_ui_ack(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let file = path()?;
     let core = Client::open(file.to_string_lossy().into(), "en-US".into()).unwrap();
     let vault = install_link(&core);
     let opened = encrypted_record(&core);
@@ -105,4 +109,6 @@ pub(super) async fn durable_import_and_receipt_survive_reopen_before_relay_clean
     ));
     drop(reopened);
     let _ = std::fs::remove_file(file);
+
+    Ok(())
 }

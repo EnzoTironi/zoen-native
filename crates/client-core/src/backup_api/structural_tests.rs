@@ -423,7 +423,7 @@ fn structural_restore_direct_rejects_invalid_input_before_target_wipe() {
         let before = target.lock().store.memory_image().unwrap();
         assert!(target
             .lock()
-            .restore_snapshot(&header, &database, event_log::Signer::generate())
+            .restore_snapshot(&header, &database, event_log::Signer::generate().unwrap())
             .is_err());
         assert_eq!(target.lock().store.memory_image().unwrap(), before);
         assert!(target.account().is_none());
@@ -449,7 +449,7 @@ fn structural_restore_direct_requires_every_portable_table_before_wipe() {
         assert!(
             target
                 .lock()
-                .restore_snapshot(&header, &database, event_log::Signer::generate())
+                .restore_snapshot(&header, &database, event_log::Signer::generate().unwrap())
                 .is_err(),
             "missing portable table {table}"
         );

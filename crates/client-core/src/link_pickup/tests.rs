@@ -13,7 +13,7 @@ const REGISTERED_MODULE: &str = module_path!();
 
 const BOUND: Duration = Duration::from_secs(3);
 
-fn pending(relay: String) -> std::result::Result<Pending, Box<dyn std::error::Error>> {
+fn pending(relay: String) -> Result<Pending, CoreError> {
     let device = Signer::generate()?;
     let (secret, public) = crate::link::key_pair();
     Ok(Pending {

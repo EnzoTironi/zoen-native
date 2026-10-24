@@ -73,7 +73,7 @@ fn invalid_or_rebound_image_payload_has_no_renderable_review() {
 #[tokio::test]
 async fn application_command_stages_one_scoped_review_and_refuses_changed_actor_source_or_owner() {
     let (mut f, _, _) = approved().unwrap();
-    f.message("Create another image");
+    f.message("Create another image").unwrap();
     let source = f.core.engine.logs[SPACE]
         .events()
         .last()

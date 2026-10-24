@@ -2,8 +2,9 @@
 
 use super::*;
 
-pub(super) fn failed_media_recovery_default_ws_file_rejection_is_durable_and_explicit() {
-    let dir = temp();
+pub(super) fn failed_media_recovery_default_ws_file_rejection_is_durable_and_explicit(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = temp()?;
     let path = dir.join("default-ws-refusal.sqlite");
     let f = fixture(path.to_str().unwrap());
     media_contract_confirm_scope(&f);
@@ -101,6 +102,8 @@ pub(super) fn failed_media_recovery_default_ws_file_rejection_is_durable_and_exp
     );
     drop(reopened);
     std::fs::remove_dir_all(dir).unwrap();
+
+    Ok(())
 }
 
 pub(super) fn failed_media_recovery_default_ws_refusal_is_atomic_and_keeps_other_pending_files() {

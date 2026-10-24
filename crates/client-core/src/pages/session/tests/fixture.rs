@@ -11,9 +11,13 @@ impl Fixture {
             path,
             new_id("plan-space")?,
             new_id("plan-item")?,
-        ))
+        )?)
     }
-    pub(super) fn with_ids(path: &str, space: String, item: String) -> Self {
+    pub(super) fn with_ids(
+        path: &str,
+        space: String,
+        item: String,
+    ) -> std::result::Result<Self, Box<dyn std::error::Error>> {
         let mut engine = Engine::open(path).unwrap();
         let owner = identity(&mut engine, "Owner");
         engine.me = Some(owner.clone());
@@ -28,14 +32,14 @@ impl Fixture {
             title: "Conversation".into(),
             kind: SpaceKind::Group,
             privacy: Privacy::Public,
-        });
+        })?;
         fixture.ordered(EventBody::ItemCreated {
             item: fixture.item.clone(),
             kind: ItemKind::Plan,
             content: ItemContent::Plan(original()),
             origin: "legacy user".into(),
-        });
-        fixture
+        })?;
+        Ok(fixture)
     }
     pub(super) fn reopen(self) -> Self {
         let Self {
@@ -70,9 +74,12 @@ impl Fixture {
             body,
         ))
     }
-    pub(super) fn ordered(&mut self, body: EventBody) -> Event {
-        let event = self.signed_as(&self.owner, body);
-        deliver(&mut self.engine, &event, Ingest::Applied)
+    pub(super) fn ordered(
+        &mut self,
+        body: EventBody,
+    ) -> std::result::Result<Event, Box<dyn std::error::Error>> {
+        let event = self.signed_as(&self.owner, body)?;
+        Ok(deliver(&mut self.engine, &event, Ingest::Applied))
     }
     pub(super) fn queue(&mut self, body: EventBody) -> Event {
         let author = self.engine.author_for(&self.owner).unwrap();
@@ -102,13 +109,16 @@ impl Fixture {
             )),
         }
     }
-    pub(super) fn remote(&mut self, edit: PlanBlockEdit) -> Event {
+    pub(super) fn remote(
+        &mut self,
+        edit: PlanBlockEdit,
+    ) -> std::result::Result<Event, Box<dyn std::error::Error>> {
         let fold = self.engine.plan_timeline(&self.item).unwrap();
         let mut doc = fold.document.as_ref().unwrap().fork().unwrap();
         let revision = doc.revision().unwrap();
         doc.apply_from(&revision, &order_doc(&doc), &[edit])
             .unwrap();
-        self.ordered(self.version(ItemContent::Page(self.page(&doc))))
+        Ok(self.ordered(self.version(ItemContent::Page(self.page(&doc)?)))?)
     }
     pub(super) fn pending(&self, reference: &CommitRef) -> Event {
         let client_id = match reference {

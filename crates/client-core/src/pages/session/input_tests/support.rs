@@ -12,9 +12,11 @@ pub(super) fn input_scope(f: &Fixture) -> FileEditDraftScope {
     }
 }
 
-pub(super) fn cold_input_fixture(kind: ItemKind) -> (Database, Fixture) {
+pub(super) fn cold_input_fixture(
+    kind: ItemKind,
+) -> std::result::Result<(Database, Fixture), Box<dyn std::error::Error>> {
     let (f, _, _, _) = private_document_backup_source(kind);
-    let db = Database::new();
+    let db = Database::new()?;
     // Materialize every actual account/key/journal row, including private rows
     // deliberately excluded by backup_snapshot, before destroying the Engine.
     f.engine
@@ -34,7 +36,7 @@ pub(super) fn cold_input_fixture(kind: ItemKind) -> (Database, Fixture) {
     assert!(!engine.is_unlocked());
     assert!(engine.unlock(Some(key.to_vec())).unwrap());
     assert_eq!(engine.author_for(&owner).unwrap().key.secret(), key);
-    (
+    Ok((
         db,
         Fixture {
             engine,
@@ -42,7 +44,7 @@ pub(super) fn cold_input_fixture(kind: ItemKind) -> (Database, Fixture) {
             item,
             owner,
         },
-    )
+    ))
 }
 
 pub(super) fn reopen_input_fixture(f: Fixture) -> Fixture {
@@ -73,8 +75,11 @@ pub(super) fn rich_payload(sequence: u64, text: &str) -> Vec<u8> {
     .unwrap()
 }
 
-pub(super) fn lossless_fixture() -> (Database, Fixture, PageInputDto, crate::pages::PageBlockDto) {
-    let (db, f) = cold_input_fixture(ItemKind::Page);
+pub(super) fn lossless_fixture() -> std::result::Result<
+    (Database, Fixture, PageInputDto, crate::pages::PageBlockDto),
+    Box<dyn std::error::Error>,
+> {
+    let (db, f) = cold_input_fixture(ItemKind::Page)?;
     let page = f.engine.page(&f.item).unwrap();
     let mut block = page.blocks.last().unwrap().clone();
     block.kind = "quote".into();
@@ -117,7 +122,7 @@ pub(super) fn lossless_fixture() -> (Database, Fixture, PageInputDto, crate::pag
             &seeded.page.edit_context,
         )
         .unwrap();
-    (db, f, opened, block)
+    Ok((db, f, opened, block))
 }
 
 pub(super) fn lossless_payload(sequence: u64, block: &crate::pages::PageBlockDto) -> Vec<u8> {

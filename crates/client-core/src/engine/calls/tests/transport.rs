@@ -30,9 +30,9 @@ fn event(
 }
 fn accepted() -> std::result::Result<(Fixture, CallRecord), Box<dyn std::error::Error>> {
     let mut f = Fixture::new()?;
-    let call = f.invite();
+    let call = f.invite()?;
     let accept = f.accept(&call);
-    f.push(f.callee.clone(), 200, EventBody::CallV1 { signal: accept });
+    f.push(f.callee.clone(), 200, EventBody::CallV1 { signal: accept })?;
     Ok((f, call))
 }
 
@@ -74,23 +74,23 @@ fn selected_devices_only_negotiate_and_wrong_invitation_or_recipient_is_refused(
     assert!(!f
         .engine
         .state
-        .call_transport_valid(&event(&f, &f.other_device, base.clone())));
+        .call_transport_valid(&event(&f, &f.other_device, base.clone()).unwrap()));
     let mut wrong = base.clone();
     wrong.recipient_device = f.other_device.device.clone().unwrap();
     assert!(!f
         .engine
         .state
-        .call_transport_valid(&event(&f, &f.caller, wrong)));
+        .call_transport_valid(&event(&f, &f.caller, wrong).unwrap()));
     let mut wrong = base.clone();
     wrong.invitation = "another valid invitation".into();
     assert!(!f
         .engine
         .state
-        .call_transport_valid(&event(&f, &f.caller, wrong)));
+        .call_transport_valid(&event(&f, &f.caller, wrong).unwrap()));
     assert!(!f
         .engine
         .state
-        .call_transport_valid(&event(&f, &f.callee, base)));
+        .call_transport_valid(&event(&f, &f.callee, base).unwrap()));
 }
 
 #[test]
@@ -110,14 +110,16 @@ fn accepted_device_transport_replays_once_and_terminal_calls_refuse_old_signals(
         EventBody::CallTransportV1 {
             signal: offer.clone(),
         },
-    );
+    )
+    .unwrap();
     f.push(
         f.caller.clone(),
         301,
         EventBody::CallTransportV1 {
             signal: offer.clone(),
         },
-    );
+    )
+    .unwrap();
     assert_eq!(f.engine.state.spaces["sp_calls"].call_transport.len(), 1);
     let image = f.engine.store.memory_image().unwrap();
     let reopened =
@@ -127,7 +129,8 @@ fn accepted_device_transport_replays_once_and_terminal_calls_refuse_old_signals(
         offer
     );
     let end = f.end(&call, CallEndReason::HungUp);
-    f.push(f.callee.clone(), 350, EventBody::CallV1 { signal: end });
+    f.push(f.callee.clone(), 350, EventBody::CallV1 { signal: end })
+        .unwrap();
     assert!(f.engine.state.spaces["sp_calls"].call_transport.is_empty());
     let image = f.engine.store.memory_image().unwrap();
     let reopened =
@@ -136,7 +139,7 @@ fn accepted_device_transport_replays_once_and_terminal_calls_refuse_old_signals(
     assert!(!f
         .engine
         .state
-        .call_transport_valid(&event(&f, &f.caller, offer)));
+        .call_transport_valid(&event(&f, &f.caller, offer).unwrap()));
 }
 
 #[test]
@@ -154,7 +157,8 @@ fn one_offer_one_answer_per_generation_and_bounds_prevent_unlimited_log_growth()
         f.caller.clone(),
         300,
         EventBody::CallTransportV1 { signal: offer },
-    );
+    )
+    .unwrap();
     let second = signal(
         &f,
         &call,
@@ -166,7 +170,7 @@ fn one_offer_one_answer_per_generation_and_bounds_prevent_unlimited_log_growth()
     assert!(!f
         .engine
         .state
-        .call_transport_valid(&event(&f, &f.caller, second)));
+        .call_transport_valid(&event(&f, &f.caller, second).unwrap()));
     let mut answer = signal(
         &f,
         &call,
@@ -179,12 +183,13 @@ fn one_offer_one_answer_per_generation_and_bounds_prevent_unlimited_log_growth()
     assert!(f
         .engine
         .state
-        .call_transport_valid(&event(&f, &f.callee, answer.clone())));
+        .call_transport_valid(&event(&f, &f.callee, answer.clone()).unwrap()));
     f.push(
         f.callee.clone(),
         301,
         EventBody::CallTransportV1 { signal: answer },
-    );
+    )
+    .unwrap();
     let mut restart = signal(
         &f,
         &call,
@@ -197,12 +202,12 @@ fn one_offer_one_answer_per_generation_and_bounds_prevent_unlimited_log_growth()
     assert!(f
         .engine
         .state
-        .call_transport_valid(&event(&f, &f.caller, restart.clone())));
+        .call_transport_valid(&event(&f, &f.caller, restart.clone()).unwrap()));
     restart.generation = 8;
     assert!(!f
         .engine
         .state
-        .call_transport_valid(&event(&f, &f.caller, restart)));
+        .call_transport_valid(&event(&f, &f.caller, restart).unwrap()));
     let huge = signal(
         &f,
         &call,
@@ -214,7 +219,7 @@ fn one_offer_one_answer_per_generation_and_bounds_prevent_unlimited_log_growth()
     assert!(!f
         .engine
         .state
-        .call_transport_valid(&event(&f, &f.caller, huge)));
+        .call_transport_valid(&event(&f, &f.caller, huge).unwrap()));
 }
 
 #[test]
@@ -224,14 +229,15 @@ fn cold_orphan_is_retired_by_normal_signed_hangup_before_a_new_invite() {
     f.engine = Engine::from_store(Store::from_memory_image(&image).unwrap(), ":memory:").unwrap();
     assert!(f.record().accepted_device.is_some() && !f.record().terminal());
     let end = f.end(&call, CallEndReason::HungUp);
-    f.push(f.caller.clone(), 500, EventBody::CallV1 { signal: end });
+    f.push(f.caller.clone(), 500, EventBody::CallV1 { signal: end })
+        .unwrap();
     let next = CallSignal::Invite {
         call_id: new_secret_id("call").unwrap(),
         callee: f.callee.identity.clone(),
         media: CallMedia::Video,
         expires_at_ms: 1500,
     };
-    assert!(f.valid(&f.event(&f.caller, 600, next)));
+    assert!(f.valid(&f.event(&f.caller, 600, next).unwrap()));
     assert!(f.record().terminal());
 }
 
@@ -252,7 +258,8 @@ fn role_revocation_retires_media_and_refuses_future_call_admission() {
         EventBody::CallTransportV1 {
             signal: offer.clone(),
         },
-    );
+    )
+    .unwrap();
     f.push(
         f.caller.clone(),
         350,
@@ -260,20 +267,21 @@ fn role_revocation_retires_media_and_refuses_future_call_admission() {
             identity: f.callee.identity.clone(),
             role: Role::Reader,
         },
-    );
+    )
+    .unwrap();
     assert!(f.record().terminal());
     assert!(f.engine.state.spaces["sp_calls"].call_transport.is_empty());
     assert!(!f
         .engine
         .state
-        .call_transport_valid(&event(&f, &f.caller, offer)));
+        .call_transport_valid(&event(&f, &f.caller, offer).unwrap()));
     let next = CallSignal::Invite {
         call_id: new_secret_id("call").unwrap(),
         callee: f.callee.identity.clone(),
         media: CallMedia::Audio,
         expires_at_ms: 1500,
     };
-    assert!(!f.valid(&f.event(&f.caller, 400, next)));
+    assert!(!f.valid(&f.event(&f.caller, 400, next).unwrap()));
 }
 
 mod confirmation;

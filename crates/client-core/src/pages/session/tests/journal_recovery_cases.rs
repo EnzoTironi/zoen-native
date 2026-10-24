@@ -5,7 +5,7 @@ use super::*;
 pub(super) fn receipt_eviction_fences_forgotten_retry_across_reopen(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let db = Database::new()?;
-    let mut f = Fixture::at(&db.path());
+    let mut f = Fixture::at(&db.path())?;
     let mut s = f.session();
     let read = s.read(&f.engine).unwrap();
     let mut retained = None;
@@ -47,8 +47,9 @@ pub(super) fn receipt_eviction_fences_forgotten_retry_across_reopen(
     Ok(())
 }
 
-pub(super) fn journal_insert_or_update_failure_keeps_previous_draft() {
-    let f = Fixture::new();
+pub(super) fn journal_insert_or_update_failure_keeps_previous_draft(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = Fixture::new()?;
     let mut s = f.session();
     let read = s.read(&f.engine).unwrap();
     let edit = text_edit(&read, "first durable");
@@ -82,10 +83,13 @@ pub(super) fn journal_insert_or_update_failure_keeps_previous_draft() {
             .unwrap()
             .replayed
     );
+
+    Ok(())
 }
 
-pub(super) fn oversized_context_or_journal_fails_before_memory_replacement() {
-    let f = Fixture::new();
+pub(super) fn oversized_context_or_journal_fails_before_memory_replacement(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = Fixture::new()?;
     let mut s = f.session();
     let read = s.read(&f.engine).unwrap();
     apply(&f, &mut s, &read, "saved", &[text_edit(&read, "existing")]).unwrap();
@@ -129,7 +133,7 @@ pub(super) fn oversized_context_or_journal_fails_before_memory_replacement() {
         ":memory:",
         format!("space-{}", "s".repeat(4_096)),
         format!("item-{}", "i".repeat(4_096)),
-    );
+    )?;
     let mut session = large.session();
     let mut hit_cap = false;
     for n in 0..512 {
@@ -149,12 +153,14 @@ pub(super) fn oversized_context_or_journal_fails_before_memory_replacement() {
         hit_cap,
         "aggregate journal limit must be observable rather than clipped"
     );
+
+    Ok(())
 }
 
 pub(super) fn lost_response_after_durable_accept_recovers_the_same_receipt(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let db = Database::new()?;
-    let mut f = Fixture::at(&db.path());
+    let mut f = Fixture::at(&db.path())?;
     let mut s = f.session();
     let read = s.read(&f.engine).unwrap();
     let edit = text_edit(&read, "persisted before lost response");

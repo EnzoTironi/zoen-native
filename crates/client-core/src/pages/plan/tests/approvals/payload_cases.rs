@@ -4,7 +4,7 @@ use super::*;
 #[test]
 pub(super) fn missing_and_damaged_blobs_wait_without_stale_status_until_verified_repair() {
     let mut fixture = Fixture::new().unwrap();
-    let agent = agent(&mut fixture);
+    let agent = agent(&mut fixture).unwrap();
     let (page, bytes, wanted, sealed, document) = missing_blob(
         &fixture,
         LinePatch {
@@ -13,9 +13,11 @@ pub(super) fn missing_and_damaged_blobs_wait_without_stale_status_until_verified
         },
     )
     .unwrap();
-    fixture.ordered(fixture.version(ItemContent::Page(page)));
+    fixture
+        .ordered(fixture.version(ItemContent::Page(page)))
+        .unwrap();
     let request = open(&mut fixture, &agent, &document).unwrap();
-    fixture.ordered(decision(&request, true));
+    fixture.ordered(decision(&request, true)).unwrap();
     assert!(fixture.engine.state.waiting_spaces.contains(&fixture.space));
     assert_eq!(
         fixture.engine.request_currentness(&request).unwrap(),
@@ -68,7 +70,7 @@ pub(super) fn missing_and_damaged_blobs_wait_without_stale_status_until_verified
 #[test]
 pub(super) fn waiting_approval_holds_later_denial_grants_messages_and_usage_in_order() {
     let mut fixture = Fixture::new().unwrap();
-    let agent = agent(&mut fixture);
+    let agent = agent(&mut fixture).unwrap();
     let (page, bytes, wanted, _, document) = missing_blob(
         &fixture,
         LinePatch {
@@ -77,37 +79,45 @@ pub(super) fn waiting_approval_holds_later_denial_grants_messages_and_usage_in_o
         },
     )
     .unwrap();
-    fixture.ordered(fixture.version(ItemContent::Page(page)));
+    fixture
+        .ordered(fixture.version(ItemContent::Page(page)))
+        .unwrap();
     let request = open(&mut fixture, &agent, &document).unwrap();
-    let first = fixture.ordered(decision(&request, true));
-    let denial = fixture.ordered(decision(&request, false));
+    let first = fixture.ordered(decision(&request, true)).unwrap();
+    let denial = fixture.ordered(decision(&request, false)).unwrap();
     let owner = fixture.owner.clone();
-    fixture.ordered(EventBody::GrantIssued {
-        grant: Grant {
-            id: "held-grant".into(),
-            grantor: owner,
-            grantee: Some(agent.clone()),
-            scope: GrantScope::Space(fixture.space.clone()),
-            capability: Capability::Trust(TrustLevel::Listen),
-            expires_at_ms: None,
-        },
-    });
-    fixture.ordered_as(
-        &agent,
-        EventBody::UsageRecorded {
-            agent: agent.clone(),
-            cents: 3,
-            what: "held".into(),
-        },
-    );
-    fixture.ordered(EventBody::MessagePosted {
-        message: "held-message".into(),
-        text: "Held suffix".into(),
-        attaches: None,
-        reply: None,
-        media: None,
-        forwarded: false,
-    });
+    fixture
+        .ordered(EventBody::GrantIssued {
+            grant: Grant {
+                id: "held-grant".into(),
+                grantor: owner,
+                grantee: Some(agent.clone()),
+                scope: GrantScope::Space(fixture.space.clone()),
+                capability: Capability::Trust(TrustLevel::Listen),
+                expires_at_ms: None,
+            },
+        })
+        .unwrap();
+    fixture
+        .ordered_as(
+            &agent,
+            EventBody::UsageRecorded {
+                agent: agent.clone(),
+                cents: 3,
+                what: "held".into(),
+            },
+        )
+        .unwrap();
+    fixture
+        .ordered(EventBody::MessagePosted {
+            message: "held-message".into(),
+            text: "Held suffix".into(),
+            attaches: None,
+            reply: None,
+            media: None,
+            forwarded: false,
+        })
+        .unwrap();
     assert!(fixture.engine.state.grants.is_empty());
     assert!(fixture.engine.state.usage.is_empty());
     assert!(fixture.engine.state.resolved_order.is_empty());
@@ -140,7 +150,7 @@ pub(super) fn waiting_approval_holds_later_denial_grants_messages_and_usage_in_o
 #[test]
 pub(super) fn a_standalone_denial_before_waiting_does_not_read_the_plan_payload() {
     let mut fixture = Fixture::new().unwrap();
-    let agent = agent(&mut fixture);
+    let agent = agent(&mut fixture).unwrap();
     let (page, _, _, _, document) = missing_blob(
         &fixture,
         LinePatch {
@@ -149,7 +159,9 @@ pub(super) fn a_standalone_denial_before_waiting_does_not_read_the_plan_payload(
         },
     )
     .unwrap();
-    fixture.ordered(fixture.version(ItemContent::Page(page)));
+    fixture
+        .ordered(fixture.version(ItemContent::Page(page)))
+        .unwrap();
     let request = open(&mut fixture, &agent, &document).unwrap();
     fixture
         .engine
@@ -157,7 +169,7 @@ pub(super) fn a_standalone_denial_before_waiting_does_not_read_the_plan_payload(
         .conn()
         .execute_batch("ALTER TABLE media RENAME TO temporarily_unavailable_media")
         .unwrap();
-    fixture.ordered(decision(&request, false));
+    fixture.ordered(decision(&request, false)).unwrap();
     assert_eq!(
         fixture.engine.state.requests[&request.id].status,
         ReqStatus::Denied
@@ -179,7 +191,7 @@ pub(super) fn a_standalone_denial_before_waiting_does_not_read_the_plan_payload(
 #[test]
 pub(super) fn malformed_page_descriptors_are_refused_without_waiting_or_approval_effects() {
     let mut fixture = Fixture::new().unwrap();
-    let agent = agent(&mut fixture);
+    let agent = agent(&mut fixture).unwrap();
     let (mut page, _, _, _, document) = missing_blob(
         &fixture,
         LinePatch {
@@ -189,15 +201,17 @@ pub(super) fn malformed_page_descriptors_are_refused_without_waiting_or_approval
     )
     .unwrap();
     page.blob.as_mut().unwrap().bytes = u64::MAX;
-    fixture.ordered(fixture.version(ItemContent::Page(page)));
+    fixture
+        .ordered(fixture.version(ItemContent::Page(page)))
+        .unwrap();
     let request = open(&mut fixture, &agent, &document).unwrap();
-    fixture.ordered(decision(&request, true));
+    fixture.ordered(decision(&request, true)).unwrap();
     assert_eq!(
         fixture.engine.state.requests[&request.id].status,
         ReqStatus::Pending
     );
     assert!(fixture.engine.state.waiting_spaces.is_empty());
-    fixture.ordered(decision(&request, false));
+    fixture.ordered(decision(&request, false)).unwrap();
     assert_eq!(
         fixture.engine.state.requests[&request.id].status,
         ReqStatus::Denied
@@ -207,12 +221,14 @@ pub(super) fn malformed_page_descriptors_are_refused_without_waiting_or_approval
 #[test]
 pub(super) fn unauthorized_owner_hash_and_receipt_checks_precede_missing_payload_reads() {
     let mut fixture = Fixture::new().unwrap();
-    let agent = agent(&mut fixture);
+    let agent = agent(&mut fixture).unwrap();
     let intruder = add_identity(&mut fixture.engine, "Other writer");
-    fixture.ordered(EventBody::MemberAdded {
-        identity: intruder.clone(),
-        role: Role::Member,
-    });
+    fixture
+        .ordered(EventBody::MemberAdded {
+            identity: intruder.clone(),
+            role: Role::Member,
+        })
+        .unwrap();
     let (page, _, _, _, document) = missing_blob(
         &fixture,
         LinePatch {
@@ -221,7 +237,9 @@ pub(super) fn unauthorized_owner_hash_and_receipt_checks_precede_missing_payload
         },
     )
     .unwrap();
-    fixture.ordered(fixture.version(ItemContent::Page(page)));
+    fixture
+        .ordered(fixture.version(ItemContent::Page(page)))
+        .unwrap();
     let request = open(&mut fixture, &agent, &document).unwrap();
     fixture
         .engine
@@ -229,12 +247,14 @@ pub(super) fn unauthorized_owner_hash_and_receipt_checks_precede_missing_payload
         .conn()
         .execute_batch("ALTER TABLE media RENAME TO temporarily_unavailable_media")
         .unwrap();
-    fixture.ordered_as(&intruder, decision(&request, true));
+    fixture
+        .ordered_as(&intruder, decision(&request, true))
+        .unwrap();
     let mut bad_hash = decision(&request, true);
     if let EventBody::RequestResolved { content_hash, .. } = &mut bad_hash {
         *content_hash = "wrong hash".into();
     }
-    fixture.ordered(bad_hash);
+    fixture.ordered(bad_hash).unwrap();
     let mut bad_receipt = decision(&request, true);
     if let EventBody::RequestResolved {
         resolution: Some(receipt),
@@ -243,11 +263,13 @@ pub(super) fn unauthorized_owner_hash_and_receipt_checks_precede_missing_payload
     {
         receipt.ai_cost_cents = 1;
     }
-    fixture.ordered(bad_receipt);
-    fixture.ordered(EventBody::MemberRemoved {
-        identity: agent.clone(),
-    });
-    fixture.ordered(decision(&request, true));
+    fixture.ordered(bad_receipt).unwrap();
+    fixture
+        .ordered(EventBody::MemberRemoved {
+            identity: agent.clone(),
+        })
+        .unwrap();
+    fixture.ordered(decision(&request, true)).unwrap();
     assert_eq!(
         fixture.engine.state.requests[&request.id].status,
         ReqStatus::Pending
@@ -265,7 +287,7 @@ pub(super) fn unauthorized_owner_hash_and_receipt_checks_precede_missing_payload
 #[test]
 pub(super) fn storage_errors_preserve_the_stable_projection_and_raw_decision_for_retry() {
     let mut fixture = Fixture::new().unwrap();
-    let agent = agent(&mut fixture);
+    let agent = agent(&mut fixture).unwrap();
     let (page, bytes, wanted, _, document) = missing_blob(
         &fixture,
         LinePatch {
@@ -274,14 +296,18 @@ pub(super) fn storage_errors_preserve_the_stable_projection_and_raw_decision_for
         },
     )
     .unwrap();
-    fixture.ordered(fixture.version(ItemContent::Page(page)));
+    fixture
+        .ordered(fixture.version(ItemContent::Page(page)))
+        .unwrap();
     let request = open(&mut fixture, &agent, &document).unwrap();
     let before: Vec<_> = fixture.engine.state.spaces[&fixture.space]
         .entries
         .iter()
         .map(|entry| entry.client_id.clone())
         .collect();
-    let signed = fixture.signed_as(&fixture.owner, decision(&request, true));
+    let signed = fixture
+        .signed_as(&fixture.owner, decision(&request, true))
+        .unwrap();
     fixture
         .engine
         .store

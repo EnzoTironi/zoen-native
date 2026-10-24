@@ -42,10 +42,11 @@ pub(super) async fn pickup_reconnects_after_transport_failure_and_is_cancelable(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
+    let signer = Signer::generate()?;
     let task = tokio::spawn(async move {
         fetch_link_box(
             &format!("http://{address}"),
-            &Signer::generate()?,
+            &signer,
             "fixture",
             tokio::time::Instant::now() + Duration::from_secs(5),
         )

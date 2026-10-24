@@ -3,8 +3,8 @@ use super::*;
 
 #[test]
 fn actual_owner_optimistic_renewed_decision_cannot_execute_before_canonical_echo() {
-    let f = fixture();
-    let (old, _) = expired_approved(&f, "read_deckcraft");
+    let f = fixture().unwrap();
+    let (old, _) = expired_approved(&f, "read_deckcraft").unwrap();
     let intent = request_again(&f, &old);
     let next = f
         .agent

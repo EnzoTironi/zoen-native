@@ -79,7 +79,7 @@ pub(super) fn media_contract_failed_local_metadata_remains_visible_after_revocat
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     Ok(
         for (kind, ids) in [("separate", vec!["a"]), ("grouped", vec!["a", "b"])] {
-            let dir = temp();
+            let dir = temp()?;
             let path = dir.join("refused.sqlite");
             let f = fixture(path.to_str().unwrap());
             media_contract_confirm_scope(&f);
@@ -100,7 +100,7 @@ pub(super) fn media_contract_failed_local_metadata_remains_visible_after_revocat
                     identity: f.scope.expected_identity_id.clone(),
                 },
                 false,
-            );
+            )?;
             let pending = f.engine.lock().store.outbox().unwrap();
             for row in pending {
                 assert!(f
@@ -154,7 +154,7 @@ pub(super) fn media_contract_failed_local_metadata_remains_visible_after_revocat
                     forwarded: false,
                 },
                 true,
-            );
+            )?;
             assert!(!f.engine.timeline(recovered_scope.space_id.clone()).unwrap().iter().any(|entry|matches!(&entry.kind,crate::EntryKind::Message{text,..}if text=="unauthorized remote metadata")));
             // Even a later writer must not publish a new claim against a file that
             // exists only in the failed local recovery overlay.

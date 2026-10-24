@@ -151,7 +151,7 @@ pub(super) fn media_contract_grouped_preexisting_confirmed_files_need_no_new_cre
             origin: String::new(),
         },
         false,
-    );
+    )?;
     assert_eq!(
         f.engine.file_info_at(items[0].clone(), None).unwrap(),
         original_file,
@@ -165,33 +165,34 @@ pub(super) fn media_contract_grouped_preexisting_confirmed_files_need_no_new_cre
         .iter()
         .enumerate()
         .map(|(index, item)| {
-            f.engine
-                .lock()
-                .append(
-                    &f.scope.space_id,
-                    &f.scope.expected_identity_id,
-                    types::EventBody::MessagePosted {
-                        message: types::new_id("msg")?,
-                        text: format!("Existing {index}"),
-                        attaches: Some(item.clone()),
-                        media: options
-                            .metadata(
-                                &f.scope.expected_identity_id,
-                                &f.scope.space_id,
-                                None,
-                                false,
-                                &["existing-one", "existing-two"],
-                                index,
-                            )
-                            .unwrap(),
-                        reply: None,
-                        forwarded: false,
-                    },
-                )
-                .unwrap()
-                .client_id
+            Ok::<_, crate::CoreError>(
+                f.engine
+                    .lock()
+                    .append(
+                        &f.scope.space_id,
+                        &f.scope.expected_identity_id,
+                        types::EventBody::MessagePosted {
+                            message: types::new_id("msg")?,
+                            text: format!("Existing {index}"),
+                            attaches: Some(item.clone()),
+                            media: options
+                                .metadata(
+                                    &f.scope.expected_identity_id,
+                                    &f.scope.space_id,
+                                    None,
+                                    false,
+                                    &["existing-one", "existing-two"],
+                                    index,
+                                )
+                                .unwrap(),
+                            reply: None,
+                            forwarded: false,
+                        },
+                    )?
+                    .client_id,
+            )
         })
-        .collect();
+        .collect::<std::result::Result<_, _>>()?;
     let offered = f.engine.lock().outbox_envelopes();
     assert_eq!(
         offered
@@ -334,7 +335,7 @@ pub(super) fn media_contract_rejects_invalid_group_index_and_duplicate_membershi
 }
 
 pub(super) fn media_contract_forwarded_group_is_rejected_and_single_forward_preserves_file_presentation(
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let f = fixture(":memory:");
     let draft = save(
         &f,
@@ -390,7 +391,7 @@ pub(super) fn media_contract_forwarded_group_is_rejected_and_single_forward_pres
             &f.scope.space_id,
             &f.scope.expected_identity_id,
             types::EventBody::MessagePosted {
-                message: types::new_id("msg"),
+                message: types::new_id("msg")?,
                 text: String::new(),
                 attaches: Some(item),
                 media: metadata,
@@ -400,4 +401,6 @@ pub(super) fn media_contract_forwarded_group_is_rejected_and_single_forward_pres
         )
         .is_err());
     assert_eq!(counts(&f.engine), before);
+
+    Ok(())
 }

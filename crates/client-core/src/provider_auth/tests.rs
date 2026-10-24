@@ -57,17 +57,17 @@ impl SecretVault for InterruptedVault {
     }
 }
 
-fn path() -> std::path::PathBuf {
-    std::env::temp_dir().join(format!(
+fn path() -> std::result::Result<std::path::PathBuf, Box<dyn std::error::Error>> {
+    Ok(std::env::temp_dir().join(format!(
         "zoen-provider-staging-{}.sqlite",
-        types::new_id("test")
-    ))
+        types::new_id("test")?
+    )))
 }
 
 #[test]
 fn staging_reopens_after_each_atomic_key_write_and_after_database_commit() {
     for boundary in 0..=4 {
-        let path = path();
+        let path = path().unwrap();
         let core = Client::open(path.to_string_lossy().into(), "en".into()).unwrap();
         let setup = ProviderSetup::new("Private initial name", "https://relay.example").unwrap();
         let identity = Signer::from_secret(&setup.root).id();
@@ -122,7 +122,7 @@ fn staging_rolls_back_failed_canonical_install_then_retries_same_keys() {
         ("profile_keys", "1"),
         ("events", "1"),
     ] {
-        let path = path();
+        let path = path().unwrap();
         let core = Client::open(path.to_string_lossy().into(), "en".into()).unwrap();
         let setup = ProviderSetup::new("Private name", "https://relay.example").unwrap();
         let vault: Arc<dyn SecretVault> = Arc::new(Vault::default());
@@ -335,7 +335,10 @@ fn provider_proofs_are_never_sent_to_cleartext_or_ambiguous_endpoints() {
 #[tokio::test]
 async fn interrupted_signup_preserves_keys_across_reopen_until_signed_binding_confirms() {
     let (relay, server) = binding_server();
-    let path = std::env::temp_dir().join(format!("zoen-provider-{}.sqlite", types::new_id("test")));
+    let path = std::env::temp_dir().join(format!(
+        "zoen-provider-{}.sqlite",
+        types::new_id("test").unwrap()
+    ));
     let vault = Arc::new(Vault::default());
     let first = Client::open(path.to_string_lossy().into(), "pt-BR".into()).unwrap();
     let failure = first

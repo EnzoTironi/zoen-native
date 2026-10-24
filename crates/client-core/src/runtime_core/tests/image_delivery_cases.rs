@@ -3,7 +3,7 @@ use super::*;
 
 #[test]
 fn an_already_projected_image_requires_its_original_review_and_upload_ack() {
-    let (mut f, request, approval) = approved();
+    let (mut f, request, approval) = approved().unwrap();
     let prepared = f
         .core
         .prepare_image_task_referenced(
@@ -49,7 +49,7 @@ fn an_already_projected_image_requires_its_original_review_and_upload_ack() {
 
 #[test]
 fn revoked_trust_refuses_a_prepared_image_without_changing_its_upload_barrier() {
-    let (mut f, request, approval) = approved();
+    let (mut f, request, approval) = approved().unwrap();
     let prepared = f
         .core
         .prepare_image_task_referenced(

@@ -27,7 +27,7 @@ fn revoke_latest(fixture: &Fixture) {
 }
 #[test]
 fn revoked_newest_trust_cannot_be_overridden_by_pending_approve_once() {
-    let fixture = fixture();
+    let fixture = fixture().unwrap();
     signed_trust(&fixture, TrustLevel::Suggest).unwrap();
     let request = stage(&fixture, "deckcraft_slide_notes");
     revoke_latest(&fixture);
@@ -55,7 +55,7 @@ fn revoked_newest_trust_cannot_be_overridden_by_pending_approve_once() {
 }
 #[test]
 fn held_approved_tool_cannot_execute_after_the_newest_trust_is_revoked() {
-    let fixture = fixture();
+    let fixture = fixture().unwrap();
     signed_trust(&fixture, TrustLevel::Suggest).unwrap();
     let request = stage(&fixture, "deckcraft_slide_notes");
     owner_decide(
@@ -91,7 +91,7 @@ fn held_approved_tool_cannot_execute_after_the_newest_trust_is_revoked() {
 
 #[test]
 fn revoked_newest_item_grant_cannot_revive_an_old_app_act_for_a_held_tool() {
-    let fixture = fixture();
+    let fixture = fixture().unwrap();
     signed_trust(&fixture, TrustLevel::Suggest).unwrap();
     let request = stage(&fixture, "deckcraft_slide_notes");
     owner_decide(

@@ -97,13 +97,13 @@ impl Fixture {
             title: "Plan conversation".into(),
             kind: SpaceKind::Group,
             privacy: Privacy::Public,
-        });
+        })?;
         fixture.ordered(EventBody::ItemCreated {
             item: fixture.item.clone(),
             kind: ItemKind::Plan,
             content: ItemContent::Plan(original()),
             origin: "legacy user".into(),
-        });
+        })?;
         Ok(fixture)
     }
 
@@ -125,13 +125,20 @@ impl Fixture {
         ))
     }
 
-    fn ordered_as(&mut self, actor: &str, body: EventBody) -> Event {
-        let event = self.signed_as(actor, body);
-        deliver(&mut self.engine, &event, Ingest::Applied)
+    fn ordered_as(
+        &mut self,
+        actor: &str,
+        body: EventBody,
+    ) -> std::result::Result<Event, Box<dyn std::error::Error>> {
+        let event = self.signed_as(actor, body)?;
+        Ok(deliver(&mut self.engine, &event, Ingest::Applied))
     }
 
-    fn ordered(&mut self, body: EventBody) -> Event {
-        self.ordered_as(&self.owner.clone(), body)
+    fn ordered(
+        &mut self,
+        body: EventBody,
+    ) -> std::result::Result<Event, Box<dyn std::error::Error>> {
+        Ok(self.ordered_as(&self.owner.clone(), body)?)
     }
 
     fn version(&self, content: ItemContent) -> EventBody {
@@ -303,11 +310,15 @@ fn a_missing_blob_blocks_later_legacy_history_until_its_exact_bytes_arrive() {
         }),
         ..page(baseline.manifest().unwrap(), &document)
     };
-    let waiting = fixture.ordered(fixture.version(ItemContent::Page(content)));
-    let late = fixture.ordered(fixture.version(ItemContent::Plan(PlanDoc {
-        summary: "Late old client write".into(),
-        ..original()
-    })));
+    let waiting = fixture
+        .ordered(fixture.version(ItemContent::Page(content)))
+        .unwrap();
+    let late = fixture
+        .ordered(fixture.version(ItemContent::Plan(PlanDoc {
+            summary: "Late old client write".into(),
+            ..original()
+        })))
+        .unwrap();
     let before = fixture.fold();
     assert!(before.waiting);
     assert!(!before.writable());
@@ -366,7 +377,9 @@ fn damaged_cached_media_waits_and_storage_failure_is_not_an_author_refusal() {
         }),
         ..page(baseline.manifest().unwrap(), document)
     };
-    fixture.ordered(fixture.version(ItemContent::Page(content)));
+    fixture
+        .ordered(fixture.version(ItemContent::Page(content)))
+        .unwrap();
     fixture
         .engine
         .store
@@ -400,14 +413,16 @@ fn damaged_cached_media_waits_and_storage_failure_is_not_an_author_refusal() {
 #[test]
 fn invalid_undo_sources_do_not_shift_legacy_version_addresses() {
     let mut fixture = Fixture::new().unwrap();
-    fixture.ordered(fixture.undo(99));
+    fixture.ordered(fixture.undo(99)).unwrap();
     let second = PlanDoc {
         summary: "Legacy second version".into(),
         ..original()
     };
-    fixture.ordered(fixture.version(ItemContent::Plan(second.clone())));
-    let undo_second = fixture.ordered(fixture.undo(2));
-    let undo_first = fixture.ordered(fixture.undo(1));
+    fixture
+        .ordered(fixture.version(ItemContent::Plan(second.clone())))
+        .unwrap();
+    let undo_second = fixture.ordered(fixture.undo(2)).unwrap();
+    let undo_first = fixture.ordered(fixture.undo(1)).unwrap();
     let fold = fixture.fold();
     assert_eq!(
         fold.slots
@@ -450,11 +465,13 @@ fn reopening_the_real_database_reverifies_identical_sources_history_and_cutover(
             ..Default::default()
         },
     );
-    fixture.ordered(fixture.version(ItemContent::Page(page(
-        baseline.manifest().unwrap(),
-        &document,
-    ))));
-    fixture.ordered(fixture.undo(1));
+    fixture
+        .ordered(fixture.version(ItemContent::Page(page(
+            baseline.manifest().unwrap(),
+            &document,
+        ))))
+        .unwrap();
+    fixture.ordered(fixture.undo(1)).unwrap();
     let pending = fixture.queue(fixture.version(ItemContent::Plan(PlanDoc {
         summary: "Retained failed legacy intent".into(),
         ..original()

@@ -7,7 +7,7 @@ pub(super) fn generic_ingest_refuses_colliding_ciphertext_plaintext_pruning_and_
     for case in ["ciphertext", "plaintext", "pruned", "timestamp"] {
         let mut fixture = Fixture::new()?;
         fixture.grant("echo-original-trust", None);
-        let trigger = fixture.message("Original source request");
+        let trigger = fixture.message("Original source request")?;
         let original = fixture
             .core
             .reply(SPACE, &trigger, 400)
@@ -22,7 +22,7 @@ pub(super) fn generic_ingest_refuses_colliding_ciphertext_plaintext_pruning_and_
         let expected = prepared.envelope().clone();
         let author = fixture.core.engine.net.author.as_ref().unwrap();
         let envelope = match case {
-            "ciphertext" => colliding_native_reply(&fixture, &prepared),
+            "ciphertext" => colliding_native_reply(&fixture, &prepared)?,
             "plaintext" => Envelope::plain(
                 &fixture
                     .core
@@ -96,7 +96,7 @@ pub(super) fn own_echo_requires_valid_original_inner_and_historical_sealing_copy
     ] {
         let mut fixture = Fixture::new()?;
         fixture.grant("copy-original-trust", None);
-        let trigger = fixture.message("Retained source request");
+        let trigger = fixture.message("Retained source request")?;
         let original = fixture
             .core
             .reply(SPACE, &trigger, 400)
@@ -144,7 +144,7 @@ pub(super) fn own_echo_requires_valid_original_inner_and_historical_sealing_copy
                     envelope.at_ms(),
                     envelope.seen(),
                     EventBody::MessagePosted {
-                        message: prepared.message().into(),
+                        message: prepared.message()?.into(),
                         text: "Another genuinely signed native inner".into(),
                         attaches: None,
                         reply: None,
@@ -215,7 +215,7 @@ pub(super) fn exact_old_epoch_echo_survives_real_commit_cold_restore_and_replay(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new()?;
     fixture.grant("historical-trust", None);
-    let trigger = fixture.message("Original history");
+    let trigger = fixture.message("Original history")?;
     let original = fixture
         .core
         .reply(SPACE, &trigger, 400)
@@ -317,7 +317,7 @@ pub(super) fn later_colliding_echo_invalidates_an_entire_partially_ingested_batc
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new()?;
     fixture.grant("batch-original-trust", None);
-    let trigger = fixture.message("Original batch source");
+    let trigger = fixture.message("Original batch source")?;
     let original = fixture
         .core
         .reply(SPACE, &trigger, 400)
@@ -329,7 +329,7 @@ pub(super) fn later_colliding_echo_invalidates_an_entire_partially_ingested_batc
         .prepare_reply(&original, "Exact batch output", 500)
         .unwrap();
     let committed = prepared.image().as_bytes().to_vec();
-    let different = colliding_native_reply(&fixture, &prepared);
+    let different = colliding_native_reply(&fixture, &prepared)?;
     let author = fixture.owner.net.author.clone().unwrap();
     let (epoch, digest) = fixture.owner.device().unwrap().checkpoint(SPACE).unwrap();
     let preceding = author.sign_event(
@@ -374,7 +374,7 @@ pub(super) fn own_echo_is_context_only_and_mismatching_mls_sender_cannot_refresh
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new()?;
     fixture.grant("explicit-trust", None);
-    let trigger = fixture.message("Owner's original request");
+    let trigger = fixture.message("Owner's original request")?;
     let original = fixture
         .core
         .reply(SPACE, &trigger, 400)
@@ -397,7 +397,7 @@ pub(super) fn own_echo_is_context_only_and_mismatching_mls_sender_cannot_refresh
         fixture.core.refresh(&original, 500).unwrap().text(),
         "Owner's original request\n"
     );
-    let next = fixture.message("Owner's next request");
+    let next = fixture.message("Owner's next request")?;
     assert!(fixture
         .core
         .reply(SPACE, &next, 500)

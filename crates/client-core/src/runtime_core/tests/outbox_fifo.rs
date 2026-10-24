@@ -23,25 +23,21 @@ pub(super) fn native_image_upgrades_only_exact_previous_outbox_schema_without_ch
     let queued = [("first", 300), ("second", 100), ("third", 100)]
         .into_iter()
         .map(|(text, at)| {
-            fixture
-                .core
-                .engine
-                .append_synced(
-                    SPACE,
-                    &author,
-                    at,
-                    EventBody::MessagePosted {
-                        message: new_id("fifo")?,
-                        text: text.into(),
-                        attaches: None,
-                        reply: None,
-                        media: None,
-                        forwarded: false,
-                    },
-                )
-                .unwrap()
+            Ok::<_, crate::CoreError>(fixture.core.engine.append_synced(
+                SPACE,
+                &author,
+                at,
+                EventBody::MessagePosted {
+                    message: new_id("fifo")?,
+                    text: text.into(),
+                    attaches: None,
+                    reply: None,
+                    media: None,
+                    forwarded: false,
+                },
+            )?)
         })
-        .collect::<Vec<_>>();
+        .collect::<std::result::Result<Vec<_>, _>>()?;
     fixture.core.engine.mls_seal_outbox().unwrap();
     fixture
         .core

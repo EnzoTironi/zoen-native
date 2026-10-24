@@ -51,11 +51,11 @@ impl Fixture {
             title: "Remote pages".into(),
             kind: SpaceKind::Group,
             privacy: Privacy::Closed,
-        });
+        })?;
         f.append(EventBody::MemberAdded {
             identity: f.engine.me_id().unwrap(),
             role: Role::Member,
-        });
+        })?;
         Ok(f)
     }
 
@@ -81,16 +81,20 @@ impl Fixture {
         Ok(())
     }
 
-    fn append(&mut self, body: EventBody) {
-        self.append_as(&self.owner.clone(), body);
+    fn append(&mut self, body: EventBody) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        self.append_as(&self.owner.clone(), body)?;
+
+        Ok(())
     }
 
-    fn page(&mut self) {
+    fn page(&mut self) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let body = page_body(0);
-        self.append(body);
+        self.append(body)?;
+
+        Ok(())
     }
 
-    fn legacy_plan(&mut self) {
+    fn legacy_plan(&mut self) -> std::result::Result<(), Box<dyn std::error::Error>> {
         self.append(EventBody::ItemCreated {
             item: "legacy-plan".into(),
             kind: ItemKind::Plan,
@@ -109,7 +113,9 @@ impl Fixture {
                 }],
             }),
             origin: "User".into(),
-        });
+        })?;
+
+        Ok(())
     }
 
     fn assert_cold(self) {
@@ -157,7 +163,7 @@ fn ordinary_remote_pages_retain_pending_and_failed_outbox_projection_after_cold_
         }
         assert_eq!(f.engine.store.outbox().unwrap().len(), 1);
         crate::sync::replay_probe::reset();
-        f.page();
+        f.page().unwrap();
         assert!(
             crate::sync::replay_probe::steps() > 0,
             "all outbox rows, including failed recovery, retain the original full replay"
@@ -175,13 +181,15 @@ fn ordinary_remote_page_after_author_removal_still_uses_checked_projection() {
     f.append(EventBody::MemberAdded {
         identity: removed.identity.clone(),
         role: Role::Member,
-    });
+    })
+    .unwrap();
     f.append(EventBody::MemberRemoved {
         identity: removed.identity.clone(),
-    });
+    })
+    .unwrap();
     f.owner = removed;
     crate::sync::replay_probe::reset();
-    f.page();
+    f.page().unwrap();
     assert_eq!(crate::sync::replay_probe::steps(), 0);
     assert!(
         f.engine.state.items.is_empty(),
@@ -193,9 +201,9 @@ fn ordinary_remote_page_after_author_removal_still_uses_checked_projection() {
 #[test]
 fn ordinary_remote_page_beside_a_confirmed_legacy_plan_matches_cold_projection() {
     let mut f = Fixture::new().unwrap();
-    f.legacy_plan();
+    f.legacy_plan().unwrap();
     crate::sync::replay_probe::reset();
-    f.page();
+    f.page().unwrap();
     assert_eq!(crate::sync::replay_probe::steps(), 0);
     assert_eq!(f.engine.state.items.len(), 2);
     f.assert_cold();
@@ -204,7 +212,7 @@ fn ordinary_remote_page_beside_a_confirmed_legacy_plan_matches_cold_projection()
 #[test]
 fn ordinary_remote_page_preserves_a_real_optimistic_plan_approval_until_its_echo() {
     let mut f = Fixture::new().unwrap();
-    f.legacy_plan();
+    f.legacy_plan().unwrap();
     let local = f.engine.net.author.clone().unwrap();
     let agent = Author::device(&Signer::generate().unwrap(), Signer::generate().unwrap());
     f.engine
@@ -225,7 +233,8 @@ fn ordinary_remote_page_preserves_a_real_optimistic_plan_approval_until_its_echo
     f.append(EventBody::MemberAdded {
         identity: agent.identity.clone(),
         role: Role::Member,
-    });
+    })
+    .unwrap();
     let fold = f.engine.plan_timeline("legacy-plan").unwrap();
     let plan = fold
         .document
@@ -255,7 +264,8 @@ fn ordinary_remote_page_preserves_a_real_optimistic_plan_approval_until_its_echo
         EventBody::RequestOpened {
             request: request.clone(),
         },
-    );
+    )
+    .unwrap();
     f.engine
         .decide_request(&request.id, crate::dto::RequestDecision::Approve)
         .unwrap();
@@ -263,7 +273,7 @@ fn ordinary_remote_page_preserves_a_real_optimistic_plan_approval_until_its_echo
     assert_eq!(f.engine.store.outbox_len().unwrap(), 1);
     let pending = f.engine.store.outbox().unwrap()[0].event.clone();
     crate::sync::replay_probe::reset();
-    f.page();
+    f.page().unwrap();
     assert!(crate::sync::replay_probe::steps() > 0);
     assert_eq!(
         f.engine.state.requests[&request.id].status,
@@ -277,7 +287,7 @@ fn ordinary_remote_page_preserves_a_real_optimistic_plan_approval_until_its_echo
 #[test]
 fn ordinary_remote_page_does_not_release_a_real_waiting_plan_approval() {
     let mut f = Fixture::new().unwrap();
-    f.legacy_plan();
+    f.legacy_plan().unwrap();
     let agent = Author::device(&Signer::generate().unwrap(), Signer::generate().unwrap());
     f.engine
         .put_profiles(vec![Identity {
@@ -297,7 +307,8 @@ fn ordinary_remote_page_does_not_release_a_real_waiting_plan_approval() {
     f.append(EventBody::MemberAdded {
         identity: agent.identity.clone(),
         role: Role::Member,
-    });
+    })
+    .unwrap();
     let fold = f.engine.plan_timeline("legacy-plan").unwrap();
     let document = fold.document.as_ref().unwrap();
     let plan = document.view().unwrap().to_plan_doc();
@@ -319,7 +330,8 @@ fn ordinary_remote_page_does_not_release_a_real_waiting_plan_approval() {
         item: "legacy-plan".into(),
         content: ItemContent::Page(content),
         note: "Missing authenticated payload".into(),
-    });
+    })
+    .unwrap();
     let line = &plan.sections[0].lines[0];
     let request = AgentRequest {
         id: "waiting-request".into(),
@@ -341,7 +353,8 @@ fn ordinary_remote_page_does_not_release_a_real_waiting_plan_approval() {
         EventBody::RequestOpened {
             request: request.clone(),
         },
-    );
+    )
+    .unwrap();
     f.append(EventBody::RequestResolved {
         request: request.id.clone(),
         approved: true,
@@ -353,7 +366,8 @@ fn ordinary_remote_page_does_not_release_a_real_waiting_plan_approval() {
             standing_grant: None,
             tool_decision: None,
         }),
-    });
+    })
+    .unwrap();
     assert!(
         f.engine.state.waiting_spaces.contains(SPACE),
         "the authenticated missing payload actually holds the decision"
@@ -363,7 +377,7 @@ fn ordinary_remote_page_does_not_release_a_real_waiting_plan_approval() {
         crate::engine::ReqStatus::Pending
     );
     crate::sync::replay_probe::reset();
-    f.page();
+    f.page().unwrap();
     assert!(crate::sync::replay_probe::steps() > 0);
     assert!(f.engine.state.waiting_spaces.contains(SPACE));
     assert!(!f.engine.state.items.contains_key("remote-item-0"));

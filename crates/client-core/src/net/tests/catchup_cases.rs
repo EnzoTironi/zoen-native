@@ -48,7 +48,7 @@ pub(super) async fn live_event_overtaking_final_replay_page_reconciles_once_with
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("ws://{}", listener.local_addr().unwrap());
     let directory = Directory(
-        std::env::temp_dir().join(format!("zoen-replay-handoff-{}", Signer::generate().id())),
+        std::env::temp_dir().join(format!("zoen-replay-handoff-{}", Signer::generate()?.id())),
     );
     std::fs::create_dir(&directory.0).unwrap();
     let reader_path = directory.0.join("reader.sqlite");

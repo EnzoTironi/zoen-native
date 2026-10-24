@@ -2,8 +2,9 @@
 
 use super::*;
 
-pub(super) fn media_contract_file_album_preserves_real_mime_order_signature_and_retry() {
-    let dir = temp();
+pub(super) fn media_contract_file_album_preserves_real_mime_order_signature_and_retry(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = temp()?;
     let path = dir.join("album.sqlite");
     let f = fixture(path.to_str().unwrap());
     let mut image = input("a");
@@ -82,11 +83,13 @@ pub(super) fn media_contract_file_album_preserves_real_mime_order_signature_and_
     assert_eq!(counts(&restored), before);
     drop(restored);
     std::fs::remove_dir_all(dir).unwrap();
+
+    Ok(())
 }
 
 pub(super) fn media_contract_transient_first_album_refusal_preserves_all_confirmed_members_after_reopen(
-) {
-    let dir = temp();
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = temp()?;
     let sender_path = dir.join("album-sender.sqlite");
     let receiver_path = dir.join("album-receiver.sqlite");
     let mut f = fixture(sender_path.to_str().unwrap());
@@ -209,10 +212,13 @@ pub(super) fn media_contract_transient_first_album_refusal_preserves_all_confirm
     drop(receiver);
     drop(f);
     std::fs::remove_dir_all(dir).unwrap();
+
+    Ok(())
 }
 
-pub(super) fn media_contract_single_media_transient_file_refusal_survives_cold_receiver() {
-    let dir = temp();
+pub(super) fn media_contract_single_media_transient_file_refusal_survives_cold_receiver(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = temp()?;
     let path = dir.join("single-receiver.sqlite");
     let f = fixture(":memory:");
     media_contract_confirm_scope(&f);
@@ -312,4 +318,6 @@ pub(super) fn media_contract_single_media_transient_file_refusal_survives_cold_r
     );
     drop(receiver);
     std::fs::remove_dir_all(dir).unwrap();
+
+    Ok(())
 }

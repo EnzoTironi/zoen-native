@@ -7,7 +7,7 @@ pub(super) fn bounded_discovery_cursor_survives_complete_image(
     let mut fixture = Fixture::new()?;
     fixture.grant("discovery-owner-trust", Some(1000));
     for index in 0..17 {
-        fixture.message(&format!("Retained request {index}"));
+        fixture.message(&format!("Retained request {index}"))?;
     }
     let first = fixture.core.discover_replies(SPACE, 400).unwrap();
     assert_eq!(first.replies.len(), 16);
@@ -34,7 +34,7 @@ pub(super) fn discovery_refuses_cursor_outside_verified_history(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new()?;
     fixture.grant("discovery-owner-trust", Some(1000));
-    fixture.message("Actual verified owner request");
+    fixture.message("Actual verified owner request")?;
     fixture
         .core
         .engine
@@ -60,7 +60,7 @@ pub(super) fn actual_owner_opening_survives_complete_image_and_pins_original_inp
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new()?;
     fixture.grant("explicit-owner-trust", Some(1000));
-    let trigger = fixture.message("Private retained owner request");
+    let trigger = fixture.message("Private retained owner request")?;
     let peer_event = fixture.core.engine.logs[SPACE].events().last().unwrap();
     assert_eq!(
         crate::mls_opening::opened_leaf(&fixture.core.engine.store, peer_event)
@@ -85,7 +85,7 @@ pub(super) fn actual_owner_opening_survives_complete_image_and_pins_original_inp
     let restored = cold.refresh(&original, 400).unwrap();
     assert_eq!(restored.frontier(), live.frontier());
     assert_eq!(restored.text(), live.text());
-    fixture.message("A later request cannot rewrite a held attempt");
+    fixture.message("A later request cannot rewrite a held attempt")?;
     let refreshed = fixture.core.refresh(&original, 500).unwrap();
     assert_ne!(refreshed.frontier().hash(), live.frontier().hash());
     assert_eq!(refreshed.intent(), &original);

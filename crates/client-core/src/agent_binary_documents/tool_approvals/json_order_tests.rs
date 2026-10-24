@@ -23,7 +23,7 @@ fn sorted_arguments(fixture: &Fixture) -> String {
 
 #[test]
 fn producer_freezes_the_same_exact_sorted_arguments_in_both_map_feature_modes() {
-    let fixture = fixture();
+    let fixture = fixture().unwrap();
     let request = fixture
         .agent
         .stage_tool_approval(&turn(&fixture), reverse_ordered_input(&fixture))
@@ -37,7 +37,7 @@ fn producer_freezes_the_same_exact_sorted_arguments_in_both_map_feature_modes() 
 
 #[test]
 fn canonical_wire_request_projects_and_approves_after_reload_in_both_map_feature_modes() {
-    let fixture = fixture();
+    let fixture = fixture().unwrap();
     let staged = fixture
         .agent
         .stage_tool_approval(&turn(&fixture), reverse_ordered_input(&fixture))
@@ -49,7 +49,7 @@ fn canonical_wire_request_projects_and_approves_after_reload_in_both_map_feature
     let id = request.id.clone();
     let hash = request.content_hash.clone();
     let frozen = request.tool_proposal.clone();
-    append_at(&fixture, request.clone(), crate::engine::now_ms());
+    append_at(&fixture, request.clone(), crate::engine::now_ms()).unwrap();
     fixture.agent.lock().reload().unwrap();
     let retained = fixture.agent.lock().state.requests[&id].req.clone();
     assert_eq!(retained, request);
@@ -74,7 +74,7 @@ fn canonical_wire_request_projects_and_approves_after_reload_in_both_map_feature
 
 #[test]
 fn noncanonical_or_altered_signed_arguments_do_not_gain_approval() {
-    let fixture = fixture();
+    let fixture = fixture().unwrap();
     let request = stage(&fixture, "deckcraft_slide_notes");
     let original = fixture.agent.lock().state.requests[&request.id].req.clone();
     for args in [
@@ -107,7 +107,7 @@ fn noncanonical_or_altered_signed_arguments_do_not_gain_approval() {
 
 #[test]
 fn command_intent_matches_a_fixed_cross_feature_vector() {
-    let fixture = fixture();
+    let fixture = fixture().unwrap();
     let request = stage(&fixture, "deckcraft_slide_notes");
     let mut p = proposal(&fixture, &request.id);
     p.artifact = "it_deck_cross_feature".into();
@@ -163,7 +163,7 @@ fn recursive_canonical_json_preserves_nested_arrays_numbers_unicode_and_input() 
 
 #[test]
 fn signed_noncanonical_wire_is_retained_without_projection_or_approval() {
-    let fixture = fixture();
+    let fixture = fixture().unwrap();
     let staged = stage(&fixture, "deckcraft_slide_notes");
     let mut request = fixture.agent.lock().state.requests[&staged.id].req.clone();
     request.id = types::new_id("synthetic_noncanonical_wire").unwrap();
@@ -176,7 +176,7 @@ fn signed_noncanonical_wire_is_retained_without_projection_or_approval() {
     request.content_hash = request.tool_proposal_hash(&fixture.space).unwrap();
     let id = request.id.clone();
     let hash = request.content_hash.clone();
-    append_at(&fixture, request.clone(), crate::engine::now_ms());
+    append_at(&fixture, request.clone(), crate::engine::now_ms()).unwrap();
     for reload in [false, true] {
         if reload {
             fixture.agent.lock().reload().unwrap();
@@ -206,7 +206,7 @@ fn signed_noncanonical_wire_is_retained_without_projection_or_approval() {
 
 #[test]
 fn precise_geometry_wire_keeps_exact_arguments_action_and_intent_after_native_parse() {
-    let fixture = fixture();
+    let fixture = fixture().unwrap();
     let turn = turn(&fixture);
     let mut input = input(&fixture, &turn, "deckcraft_shape_insert");
     // Real f64 values whose JSON is parsed differently without float_roundtrip.

@@ -46,7 +46,7 @@ pub(super) fn approved(
         },
         200,
     );
-    f.message("Please create a sky image.");
+    f.message("Please create a sky image.")?;
     let source = f.core.engine.logs[SPACE]
         .events()
         .last()
@@ -173,7 +173,7 @@ fn image_task_permission_tracks_owner_review_expiry_device_scope_and_revocation(
 fn reply_only_trust_never_opens_an_image_review() {
     let mut f = Fixture::new().unwrap();
     f.grant("reply-only", None);
-    f.message("Create an image");
+    f.message("Create an image").unwrap();
     let source = f.core.engine.logs[SPACE]
         .events()
         .last()
@@ -392,7 +392,8 @@ fn identical_png_in_distinct_approved_tasks_keeps_independent_blob_keys_after_co
     f.core.ingest(vec![frame]).unwrap();
     let image = f.core.image().unwrap();
     f.core = DeviceCore::restore(image, f.credential()).unwrap();
-    f.message("Create the same image as a separate artifact.");
+    f.message("Create the same image as a separate artifact.")
+        .unwrap();
     let source = f.core.engine.logs[SPACE]
         .events()
         .last()

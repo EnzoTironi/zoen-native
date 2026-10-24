@@ -42,10 +42,12 @@ fn legacy_edit_flag_admits_the_owner_and_active_member_without_writing_on_read()
     assert_eq!(storage(&fixture), before);
 
     let member = add_identity(&mut fixture.engine, "Active member");
-    fixture.ordered(EventBody::MemberAdded {
-        identity: member.clone(),
-        role: Role::Member,
-    });
+    fixture
+        .ordered(EventBody::MemberAdded {
+            identity: member.clone(),
+            role: Role::Member,
+        })
+        .unwrap();
     fixture.engine.me = Some(member);
     let before = storage(&fixture);
     assert!(
@@ -81,10 +83,12 @@ fn legacy_edit_flag_admits_the_owner_and_active_member_without_writing_on_read()
 fn legacy_edit_flag_and_actual_mutations_refuse_reader_removed_and_unsigned_actors() {
     let mut fixture = Fixture::new().unwrap();
     let member = add_identity(&mut fixture.engine, "Reader");
-    fixture.ordered(EventBody::MemberAdded {
-        identity: member.clone(),
-        role: Role::Reader,
-    });
+    fixture
+        .ordered(EventBody::MemberAdded {
+            identity: member.clone(),
+            role: Role::Reader,
+        })
+        .unwrap();
     fixture.engine.me = Some(member.clone());
     let before = storage(&fixture);
     let read = fixture.engine.plan_page(&fixture.item).unwrap();
@@ -104,10 +108,12 @@ fn legacy_edit_flag_and_actual_mutations_refuse_reader_removed_and_unsigned_acto
     .is_err());
     assert_eq!(storage(&fixture), before);
 
-    fixture.ordered(EventBody::MemberAdded {
-        identity: member.clone(),
-        role: Role::Member,
-    });
+    fixture
+        .ordered(EventBody::MemberAdded {
+            identity: member.clone(),
+            role: Role::Member,
+        })
+        .unwrap();
     assert!(
         fixture
             .engine
@@ -115,9 +121,11 @@ fn legacy_edit_flag_and_actual_mutations_refuse_reader_removed_and_unsigned_acto
             .unwrap()
             .legacy_edit_admitted
     );
-    fixture.ordered(EventBody::MemberRemoved {
-        identity: member.clone(),
-    });
+    fixture
+        .ordered(EventBody::MemberRemoved {
+            identity: member.clone(),
+        })
+        .unwrap();
     let before = storage(&fixture);
     assert!(
         !fixture
@@ -308,16 +316,18 @@ fn missing_or_damaged_payload_never_admits_legacy_editing_before_or_after_recove
     );
     let bytes = canonical.full_update().to_json().unwrap();
     let hash = hex::encode(Sha256::digest(&bytes));
-    fixture.ordered(fixture.version(ItemContent::Page(PageContent {
-        loro: String::new(),
-        blob: Some(ChunkRef {
-            sha256: hash.clone(),
-            bytes: bytes.len() as u64,
-            blob: "ab".repeat(32),
-            key: "cd".repeat(32),
-        }),
-        ..page(baseline.manifest().unwrap(), &canonical)
-    })));
+    fixture
+        .ordered(fixture.version(ItemContent::Page(PageContent {
+            loro: String::new(),
+            blob: Some(ChunkRef {
+                sha256: hash.clone(),
+                bytes: bytes.len() as u64,
+                blob: "ab".repeat(32),
+                key: "cd".repeat(32),
+            }),
+            ..page(baseline.manifest().unwrap(), &canonical)
+        })))
+        .unwrap();
     let before = storage(&fixture);
     let missing = fixture.engine.plan_page(&fixture.item).unwrap();
     assert!(!missing.ready);
@@ -394,7 +404,9 @@ fn legacy_edit_flag_refuses_unrepresentable_total_and_nonlegacy_current_content(
     let mut plan = original();
     plan.sections[0].lines[0].cost_cents = i64::MAX;
     plan.sections[0].lines[1].cost_cents = i64::MAX;
-    overflow.ordered(overflow.version(ItemContent::Plan(plan)));
+    overflow
+        .ordered(overflow.version(ItemContent::Plan(plan)))
+        .unwrap();
     let before = storage(&overflow);
     let read = overflow.engine.plan_page(&overflow.item).unwrap();
     assert!(read.ready);
@@ -415,13 +427,15 @@ fn legacy_edit_flag_refuses_unrepresentable_total_and_nonlegacy_current_content(
 
     let mut malformed = Fixture::new().unwrap();
     let baseline = malformed.fold();
-    malformed.ordered(malformed.version(ItemContent::Page(PageContent {
-        loro: "not base64!!!".into(),
-        ..page(
-            baseline.manifest().unwrap(),
-            baseline.document.as_ref().unwrap(),
-        )
-    })));
+    malformed
+        .ordered(malformed.version(ItemContent::Page(PageContent {
+            loro: "not base64!!!".into(),
+            ..page(
+                baseline.manifest().unwrap(),
+                baseline.document.as_ref().unwrap(),
+            )
+        })))
+        .unwrap();
     let before = storage(&malformed);
     let read = malformed.engine.plan_page(&malformed.item).unwrap();
     assert!(read.ready);

@@ -2,112 +2,116 @@
 
 use super::*;
 
-pub(super) fn media_contract_permanent_file_refusal_fails_dependents_and_releases_later_heads() {
-    for (grouping, ids) in [("separate", vec!["a"]), ("grouped", vec!["a", "b"])] {
-        let dir = temp();
-        let path = dir.join("terminal-file.sqlite");
-        let f = fixture(path.to_str().unwrap());
-        media_contract_confirm_scope(&f);
-        let draft = save(
-            &f,
-            "0",
-            &media_options(&ids, "file", grouping),
-            ids.iter().map(|id| input(id)).collect(),
-        );
-        let sent = f
-            .engine
-            .send_media_draft(f.scope.clone(), draft.revision)
-            .unwrap();
-        media_contract_upload_all(&f);
-        let later = f
-            .engine
-            .send_message(f.scope.space_id.clone(), "Later ordinary message".into())
-            .unwrap();
-        let refused = f
-            .engine
-            .lock()
-            .store
-            .outbox()
-            .unwrap()
-            .into_iter()
-            .find(|row| {
-                matches!(
-                    &row.event.body,
-                    types::EventBody::ItemCreated {
-                        kind: types::ItemKind::File,
-                        ..
-                    }
-                )
-            })
-            .unwrap()
-            .event
-            .client_id;
-        assert!(f
-            .engine
-            .lock()
-            .reject(&refused, "permanent File refusal", true, None)
-            .user_failed());
-        let check = |client: &Client| {
-            let timeline = client.timeline(f.scope.space_id.clone()).unwrap();
-            for original in &sent.entries {
-                let recovered = timeline
-                    .iter()
-                    .find(|entry| entry.id == original.id)
-                    .unwrap();
-                assert_eq!(
-                    recovered.delivery,
-                    crate::Delivery::Failed,
-                    "terminal File refusal must fail every dependent member"
+pub(super) fn media_contract_permanent_file_refusal_fails_dependents_and_releases_later_heads(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Ok(
+        for (grouping, ids) in [("separate", vec!["a"]), ("grouped", vec!["a", "b"])] {
+            let dir = temp()?;
+            let path = dir.join("terminal-file.sqlite");
+            let f = fixture(path.to_str().unwrap());
+            media_contract_confirm_scope(&f);
+            let draft = save(
+                &f,
+                "0",
+                &media_options(&ids, "file", grouping),
+                ids.iter().map(|id| input(id)).collect(),
+            );
+            let sent = f
+                .engine
+                .send_media_draft(f.scope.clone(), draft.revision)
+                .unwrap();
+            media_contract_upload_all(&f);
+            let later = f
+                .engine
+                .send_message(f.scope.space_id.clone(), "Later ordinary message".into())
+                .unwrap();
+            let refused = f
+                .engine
+                .lock()
+                .store
+                .outbox()
+                .unwrap()
+                .into_iter()
+                .find(|row| {
+                    matches!(
+                        &row.event.body,
+                        types::EventBody::ItemCreated {
+                            kind: types::ItemKind::File,
+                            ..
+                        }
+                    )
+                })
+                .unwrap()
+                .event
+                .client_id;
+            assert!(f
+                .engine
+                .lock()
+                .reject(&refused, "permanent File refusal", true, None)
+                .user_failed());
+            let check = |client: &Client| {
+                let timeline = client.timeline(f.scope.space_id.clone()).unwrap();
+                for original in &sent.entries {
+                    let recovered = timeline
+                        .iter()
+                        .find(|entry| entry.id == original.id)
+                        .unwrap();
+                    assert_eq!(
+                        recovered.delivery,
+                        crate::Delivery::Failed,
+                        "terminal File refusal must fail every dependent member"
+                    );
+                    assert_eq!(recovered.media, original.media);
+                    assert_eq!(recovered.kind, original.kind);
+                    let crate::EntryKind::Message {
+                        card: Some(card), ..
+                    } = &recovered.kind
+                    else {
+                        panic!("missing recovery card")
+                    };
+                    assert!(client
+                        .file_bytes(card.item_id.clone(), None)
+                        .unwrap()
+                        .is_some());
+                }
+                assert!(
+                    client
+                        .lock()
+                        .outbox_envelopes()
+                        .iter()
+                        .any(|env| env.client_id() == later.id),
+                    "a terminal media group must not strand later ordinary heads"
                 );
-                assert_eq!(recovered.media, original.media);
-                assert_eq!(recovered.kind, original.kind);
-                let crate::EntryKind::Message {
-                    card: Some(card), ..
-                } = &recovered.kind
-                else {
-                    panic!("missing recovery card")
-                };
-                assert!(client
-                    .file_bytes(card.item_id.clone(), None)
-                    .unwrap()
-                    .is_some());
+            };
+            check(&f.engine);
+            let scope = f.scope.clone();
+            let vault = f.vault.clone();
+            // Release the actual SQLite owner, then inspect independent cold replay.
+            drop(f);
+            let reopened = Client::open(path.to_string_lossy().into(), "en".into()).unwrap();
+            assert!(reopened.unlock(vault).unwrap());
+            let timeline = reopened.timeline(scope.space_id).unwrap();
+            for original in &sent.entries {
+                assert_eq!(
+                    timeline
+                        .iter()
+                        .find(|entry| entry.id == original.id)
+                        .unwrap()
+                        .delivery,
+                    crate::Delivery::Failed
+                );
             }
-            assert!(
-                client
-                    .lock()
-                    .outbox_envelopes()
-                    .iter()
-                    .any(|env| env.client_id() == later.id),
-                "a terminal media group must not strand later ordinary heads"
-            );
-        };
-        check(&f.engine);
-        let scope = f.scope.clone();
-        let vault = f.vault.clone();
-        // Release the actual SQLite owner, then inspect independent cold replay.
-        drop(f);
-        let reopened = Client::open(path.to_string_lossy().into(), "en".into()).unwrap();
-        assert!(reopened.unlock(vault).unwrap());
-        let timeline = reopened.timeline(scope.space_id).unwrap();
-        for original in &sent.entries {
-            assert_eq!(
-                timeline
-                    .iter()
-                    .find(|entry| entry.id == original.id)
-                    .unwrap()
-                    .delivery,
-                crate::Delivery::Failed
-            );
-        }
-        drop(reopened);
-        std::fs::remove_dir_all(dir).unwrap();
-    }
+            drop(reopened);
+            std::fs::remove_dir_all(dir).unwrap();
+        },
+    )
 }
 
-pub(super) fn media_contract_refused_duplicate_creation_cannot_poison_confirmed_file_reference() {
-    for presentation in ["media", "file"] {
-        media_contract_refused_duplicate_creation(presentation);
-    }
+pub(super) fn media_contract_refused_duplicate_creation_cannot_poison_confirmed_file_reference(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Ok(for presentation in ["media", "file"] {
+        media_contract_refused_duplicate_creation(presentation)?;
+    })
 }
 
 pub(super) fn media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped(

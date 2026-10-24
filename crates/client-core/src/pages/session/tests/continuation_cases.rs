@@ -5,7 +5,7 @@ use super::*;
 pub(super) fn lost_reply_empty_diff_undo_and_redo_continue_own_branch(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let db = Database::new()?;
-    let mut f = Fixture::at(&db.path());
+    let mut f = Fixture::at(&db.path())?;
     let mut s = f.session();
     let read = s.read(&f.engine).unwrap();
     let edit = text_edit(&read, "abcdef repeated 😀");
@@ -76,9 +76,10 @@ pub(super) fn lost_reply_empty_diff_undo_and_redo_continue_own_branch(
     Ok(())
 }
 
-pub(super) fn continuation_does_not_replace_unseen_remote_fields_or_blocks() {
-    for remote_first in [false, true] {
-        let mut f = Fixture::new();
+pub(super) fn continuation_does_not_replace_unseen_remote_fields_or_blocks(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Ok(for remote_first in [false, true] {
+        let mut f = Fixture::new()?;
         let mut s = f.session();
         let read = s.read(&f.engine).unwrap();
         let line = line(&read);
@@ -119,7 +120,7 @@ pub(super) fn continuation_does_not_replace_unseen_remote_fields_or_blocks() {
         remote
             .apply_from(&rev, &order, &[cost, summary, prose])
             .unwrap();
-        let event = f.signed_as(&f.owner, f.version(ItemContent::Page(f.page(&remote))));
+        let event = f.signed_as(&f.owner, f.version(ItemContent::Page(f.page(&remote)?)))?;
         if remote_first {
             deliver(&mut f.engine, &event, Ingest::Applied);
         }
@@ -153,11 +154,12 @@ pub(super) fn continuation_does_not_replace_unseen_remote_fields_or_blocks() {
                 ..
             }
         ));
-    }
+    })
 }
 
-pub(super) fn continuation_removes_own_new_block_without_reusing_history() {
-    let f = Fixture::new();
+pub(super) fn continuation_removes_own_new_block_without_reusing_history(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = Fixture::new()?;
     let mut s = f.session();
     let read = s.read(&f.engine).unwrap();
     let mut order = order_read(&read);
@@ -230,4 +232,6 @@ pub(super) fn continuation_removes_own_new_block_without_reusing_history() {
         .unwrap();
     assert!(error.to_string().contains("new cost cannot be negative"));
     no_change(&f, &s, &before);
+
+    Ok(())
 }

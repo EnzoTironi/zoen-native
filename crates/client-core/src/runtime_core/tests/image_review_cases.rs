@@ -16,7 +16,7 @@ pub(super) fn pending(
         },
         200,
     );
-    fixture.message("Create an image after I review it.");
+    fixture.message("Create an image after I review it.")?;
     let source = fixture.core.engine.logs[SPACE]
         .events()
         .last()

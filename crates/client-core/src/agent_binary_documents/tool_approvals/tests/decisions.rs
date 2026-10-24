@@ -3,42 +3,45 @@
 use super::*;
 
 pub(super) fn denial_and_cancellation_are_terminal_idempotent_without_tools_files_or_standing_grants(
-) {
-    for (decision, status) in [
-        (ToolRequestDecision::Deny, RequestStatus::Denied),
-        (ToolRequestDecision::Cancel, RequestStatus::Cancelled),
-    ] {
-        let fixture = fixture();
-        let request = stage(&fixture, "read_deckcraft");
-        let before = counts(&fixture);
-        let outcome = owner_decide(&fixture, &request.id, observed(&request), decision).unwrap();
-        assert_eq!(outcome.request.status, status);
-        assert!(outcome.standing_grant_id.is_none());
-        let after = counts(&fixture);
-        assert_eq!(after[1..4], before[1..4]);
-        assert_eq!(
-            owner_decide(&fixture, &request.id, observed(&request), decision).unwrap(),
-            outcome
-        );
-        assert!(owner_decide(
-            &fixture,
-            &request.id,
-            observed(&request),
-            ToolRequestDecision::ApproveOnce
-        )
-        .is_err());
-        assert!(fixture
-            .agent
-            .approved_tool_turn(&request.id, WORKER)
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Ok(
+        for (decision, status) in [
+            (ToolRequestDecision::Deny, RequestStatus::Denied),
+            (ToolRequestDecision::Cancel, RequestStatus::Cancelled),
+        ] {
+            let fixture = fixture()?;
+            let request = stage(&fixture, "read_deckcraft");
+            let before = counts(&fixture);
+            let outcome =
+                owner_decide(&fixture, &request.id, observed(&request), decision).unwrap();
+            assert_eq!(outcome.request.status, status);
+            assert!(outcome.standing_grant_id.is_none());
+            let after = counts(&fixture);
+            assert_eq!(after[1..4], before[1..4]);
+            assert_eq!(
+                owner_decide(&fixture, &request.id, observed(&request), decision).unwrap(),
+                outcome
+            );
+            assert!(owner_decide(
+                &fixture,
+                &request.id,
+                observed(&request),
+                ToolRequestDecision::ApproveOnce
+            )
             .is_err());
-        assert_eq!(counts(&fixture), after);
-        assert_v1(&fixture);
-    }
+            assert!(fixture
+                .agent
+                .approved_tool_turn(&request.id, WORKER)
+                .is_err());
+            assert_eq!(counts(&fixture), after);
+            assert_v1(&fixture);
+        },
+    )
 }
 
 pub(super) fn expired_signed_request_never_approves_and_can_be_cancelled_without_a_clock_sleep(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let fixture = fixture();
+    let fixture = fixture()?;
     let original = stage(&fixture, "read_deckcraft");
     let mut expired = fixture.agent.lock().state.requests[&original.id]
         .req
@@ -69,7 +72,7 @@ pub(super) fn expired_signed_request_never_approves_and_can_be_cancelled_without
 
 pub(super) fn signed_grant_block_cannot_be_overridden_by_an_owner_approval_request(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let fixture = fixture();
+    let fixture = fixture()?;
     signed_trust(&fixture, TrustLevel::Listen)?;
     let turn = turn(&fixture);
     let before = counts(&fixture);
@@ -83,8 +86,9 @@ pub(super) fn signed_grant_block_cannot_be_overridden_by_an_owner_approval_reque
     Ok(())
 }
 
-pub(super) fn generic_standing_decision_never_resolves_or_labels_a_pending_tool_request() {
-    let fixture = fixture();
+pub(super) fn generic_standing_decision_never_resolves_or_labels_a_pending_tool_request(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
     let tool = stage(&fixture, "read_deckcraft");
     let mut engine = fixture.agent.lock();
     let agent = engine.me_id().unwrap();
@@ -113,4 +117,6 @@ pub(super) fn generic_standing_decision_never_resolves_or_labels_a_pending_tool_
     assert_eq!(request.status, RequestStatus::Pending);
     assert!(!request.by_standing);
     assert!(!request.can_always_approve);
+
+    Ok(())
 }

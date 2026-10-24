@@ -54,8 +54,9 @@ pub(super) fn receipt_replay_survives_offline_reads_and_restarts(
     Ok(())
 }
 
-pub(super) fn ticks_follow_the_lowest_read_up_to_watermark() {
-    let dir = std::env::temp_dir().join(format!("client-test-{}", types::new_id("t")));
+pub(super) fn ticks_follow_the_lowest_read_up_to_watermark(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = std::env::temp_dir().join(format!("client-test-{}", types::new_id("t")?));
     std::fs::create_dir_all(&dir).unwrap();
     let e = Client::open(
         dir.join("r.sqlite").to_string_lossy().into(),
@@ -130,4 +131,6 @@ pub(super) fn ticks_follow_the_lowest_read_up_to_watermark() {
         .unwrap());
     assert!(!e.lock().receipt(&other_space.id, &me, 0, 1).unwrap());
     assert_eq!(e.lock().space_summary(&other_space.id).unwrap().unread, 0);
+
+    Ok(())
 }

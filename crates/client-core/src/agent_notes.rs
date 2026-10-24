@@ -217,7 +217,9 @@ mod tests {
             assert_eq!(note["booking"]["client"], "Carla");
             let s = format!("```json\n{note}\n```");
             let bruno = Signer::generate().unwrap();
-            assert!(owner_agent_note(&bruno.id(), Some(&owned_agent(&bruno)), &s).is_some());
+            assert!(
+                owner_agent_note(&bruno.id(), Some(&owned_agent(&bruno).unwrap()), &s).is_some()
+            );
 
             let withdrawn = sched(b("cancelled"), req("withdrawn"));
             assert_eq!(

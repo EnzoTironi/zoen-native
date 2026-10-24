@@ -20,7 +20,7 @@ pub(super) fn a_removal_during_held_recovery_survives_restart_and_repairs_before
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let path = std::env::temp_dir().join(format!(
         "zoen-removal-recovery-{}.db",
-        types::new_ulid(now_ms())
+        types::new_ulid(now_ms())?
     ));
     let space = "removed-during-upload";
     let fixture = staged_recovery(path.to_str().unwrap(), space)?;
@@ -109,7 +109,7 @@ pub(super) fn erase_device_clears_held_markers_atomically_and_fresh_restore_can_
     use crate::SecretVault;
     let path = std::env::temp_dir().join(format!(
         "zoen-erased-recovery-{}.db",
-        types::new_ulid(now_ms())
+        types::new_ulid(now_ms())?
     ));
     let space = "recover-after-erasure";
     let fixture = staged_recovery(path.to_str().unwrap(), space)?;

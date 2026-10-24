@@ -3,6 +3,7 @@ use super::*;
 #[test]
 fn failed_media_recovery_default_ws_file_rejection_is_durable_and_explicit() {
     default_refusal_cases::failed_media_recovery_default_ws_file_rejection_is_durable_and_explicit()
+        .unwrap()
 }
 
 #[test]
@@ -47,7 +48,7 @@ fn failed_media_recovery_preserves_the_signed_inline_or_thread_destination() {
 
 #[test]
 fn failed_media_recovery_reopens_the_same_encrypted_copy_and_original_failed_history() {
-    copy_recovery_cases::failed_media_recovery_reopens_the_same_encrypted_copy_and_original_failed_history()
+    copy_recovery_cases::failed_media_recovery_reopens_the_same_encrypted_copy_and_original_failed_history().unwrap()
 }
 
 #[tokio::test]

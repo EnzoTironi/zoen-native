@@ -7,11 +7,8 @@ fn queue_at(
     f: &mut Fixture,
     scope: &OwnerPolicyScope,
     at_ms: i64,
-) -> std::result::Result<
-    StdResult<crate::owner_policy::OwnerPolicyOptionsStatus, CoreError>,
-    Box<dyn std::error::Error>,
-> {
-    Ok(f.owner.queue_owner_policy_inquiry(
+) -> StdResult<crate::owner_policy::OwnerPolicyOptionsStatus, CoreError> {
+    f.owner.queue_owner_policy_inquiry(
         scope,
         OwnerPolicyInquiry {
             id: types::new_id("account_inquiry")?,
@@ -24,7 +21,7 @@ fn queue_at(
             purpose: Some(OwnerPolicyInquiryPurpose::AccountBudget),
             at_ms,
         },
-    ))
+    )
 }
 fn cold_owner(f: &mut Fixture) -> TestResult {
     let actor = f.owner.net.author.clone().ok_or("missing owner")?;
@@ -273,7 +270,7 @@ fn inquiry_counter_overflow_fails_atomically_without_another_original() -> TestR
 
 #[test]
 fn image_inquiry_ack_recovery_also_retains_latest_producer_after_clock_rollback() -> TestResult {
-    let (mut f, request, hash, envelope) = super::super::image_review_cases::pending();
+    let (mut f, request, hash, envelope) = super::super::image_review_cases::pending().unwrap();
     let frame = ordered(&f.owner, envelope);
     assert_eq!(f.owner.ingest(frame.clone()), Ingest::Applied);
     f.core.ingest(vec![frame])?;

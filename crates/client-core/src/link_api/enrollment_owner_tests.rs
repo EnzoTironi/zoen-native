@@ -55,7 +55,7 @@ pub(super) fn enroll(
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn retired_preparation_cannot_read_or_write_vault_or_add_peer_to_new_session() {
-    let f = Fixture::new().await;
+    let f = Fixture::new().await.unwrap();
     f.online().await;
     let owner = owner::LinkOwner::capture(f.client()).unwrap();
     f.client().stop_sync();
@@ -65,7 +65,7 @@ async fn retired_preparation_cannot_read_or_write_vault_or_add_peer_to_new_sessi
     let before = f.vault.values.lock().unwrap().clone();
     let vault: Arc<dyn SecretVault> = f.vault.clone();
     assert!(matches!(
-        enroll_prepare::prepare(f.client(), &owner, &code().0, &vault),
+        enroll_prepare::prepare(f.client(), &owner, &code().unwrap().0, &vault),
         Err(CoreError::Stale { .. })
     ));
     assert_eq!(f.vault.reads.load(Ordering::SeqCst), reads);
@@ -76,7 +76,7 @@ async fn retired_preparation_cannot_read_or_write_vault_or_add_peer_to_new_sessi
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn ambiguous_delivery_reuses_same_peer_key_across_cold_reopen_and_explicit_retry() {
-    let mut f = Fixture::new().await;
+    let mut f = Fixture::new().await.unwrap();
     f.online().await;
     let account = f.client().account().unwrap();
     let (code, recipient) = code().unwrap();
@@ -137,7 +137,7 @@ async fn ambiguous_delivery_reuses_same_peer_key_across_cold_reopen_and_explicit
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn ambiguous_vault_save_does_not_deliver_or_claim_success_and_retains_retry_material() {
-    let mut f = Fixture::new().await;
+    let mut f = Fixture::new().await.unwrap();
     f.online().await;
     let (code, recipient) = code().unwrap();
     f.vault.ambiguous_peer_save.store(true, Ordering::SeqCst);
@@ -171,7 +171,7 @@ async fn ambiguous_vault_save_does_not_deliver_or_claim_success_and_retains_retr
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn corrupt_peer_vault_is_not_replaced_by_a_successful_empty_directory() {
-    let f = Fixture::new().await;
+    let f = Fixture::new().await.unwrap();
     f.online().await;
     f.vault
         .values
@@ -179,7 +179,7 @@ async fn corrupt_peer_vault_is_not_replaced_by_a_successful_empty_directory() {
         .unwrap()
         .insert(VAULT_PEERS.into(), b"not-json".to_vec());
     let before = f.vault.values.lock().unwrap().clone();
-    assert!(enroll(&f, &code().0).await.unwrap().is_err());
+    assert!(enroll(&f, &code().unwrap().0).await.unwrap().is_err());
     assert_eq!(*f.vault.values.lock().unwrap(), before);
     assert!(f.client().lock().net.link.peers.is_empty());
 }
@@ -193,7 +193,7 @@ async fn missing_corrupt_or_foreign_agreement_cannot_persist_peer_or_deliver_enr
         Some(vec![1; 33]),
         Some(vec![79; 32]),
     ] {
-        let mut f = Fixture::new().await;
+        let mut f = Fixture::new().await.unwrap();
         f.online().await;
         match agreement {
             None => {
@@ -209,7 +209,7 @@ async fn missing_corrupt_or_foreign_agreement_cannot_persist_peer_or_deliver_enr
         }
         let before = f.vault.values.lock().unwrap().clone();
         let writes = f.vault.writes.load(Ordering::SeqCst);
-        assert!(enroll(&f, &code().0).await.unwrap().is_err());
+        assert!(enroll(&f, &code().unwrap().0).await.unwrap().is_err());
         assert!(
             f.relay.calls.try_recv().is_err(),
             "no DeliverLink for an unusable account key"
@@ -222,7 +222,7 @@ async fn missing_corrupt_or_foreign_agreement_cannot_persist_peer_or_deliver_enr
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn corrupt_profile_key_cannot_be_sealed_as_successful_enrollment() {
-    let mut f = Fixture::new().await;
+    let mut f = Fixture::new().await.unwrap();
     f.online().await;
     let me = f.client().account().unwrap().identity_id;
     f.client()
@@ -232,7 +232,7 @@ async fn corrupt_profile_key_cannot_be_sealed_as_successful_enrollment() {
         .unwrap();
     let before = f.vault.values.lock().unwrap().clone();
     let writes = f.vault.writes.load(Ordering::SeqCst);
-    assert!(enroll(&f, &code().0).await.unwrap().is_err());
+    assert!(enroll(&f, &code().unwrap().0).await.unwrap().is_err());
     assert!(f.relay.calls.try_recv().is_err());
     assert_eq!(f.vault.writes.load(Ordering::SeqCst), writes);
     assert_eq!(*f.vault.values.lock().unwrap(), before);

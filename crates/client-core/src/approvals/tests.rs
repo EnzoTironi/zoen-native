@@ -12,7 +12,7 @@ struct Chat {
 impl Chat {
     fn create() -> std::result::Result<(Self, Engine), Box<dyn std::error::Error>> {
         let path = std::env::temp_dir()
-            .join(format!("{}.sqlite", new_id("zoen_approval")))
+            .join(format!("{}.sqlite", new_id("zoen_approval")?))
             .to_string_lossy()
             .into_owned();
         let mut e = Engine::open(&path).unwrap();

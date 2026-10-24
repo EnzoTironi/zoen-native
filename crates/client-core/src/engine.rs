@@ -422,7 +422,8 @@ mod tests {
             protocol::Sequenced::decode(&hex::decode(fixture[name].as_str().unwrap()).unwrap())
                 .unwrap()
         };
-        let path = std::env::temp_dir().join(format!("zoen-v3-upgrade-{}.db", new_id("test")));
+        let path =
+            std::env::temp_dir().join(format!("zoen-v3-upgrade-{}.db", new_id("test").unwrap()));
         let pending;
         {
             let e = Engine::open(path.to_str().unwrap()).unwrap();

@@ -63,20 +63,20 @@ fn own_invite_and_accept_ack_reproject_confirmation_before_media_without_reload(
     assert!(!f
         .engine
         .state
-        .call_transport_valid(&event(&f, &f.caller, offer.clone())));
+        .call_transport_valid(&event(&f, &f.caller, offer.clone()).unwrap()));
     deliver(&mut f, accept, Ingest::Confirmed);
     assert!(f.record().invitation_confirmed && f.record().acceptance_confirmed);
     assert!(f
         .engine
         .state
-        .call_transport_valid(&event(&f, &f.caller, offer)));
+        .call_transport_valid(&event(&f, &f.caller, offer).unwrap()));
     assert!(f.engine.store.outbox().unwrap().is_empty());
 }
 
 #[test]
 fn canonical_other_device_accept_overrides_local_accept_before_any_media() {
     let mut f = Fixture::new().unwrap();
-    let call = f.invite();
+    let call = f.invite().unwrap();
     let acceptance = f.accept(&call);
     let pending = f
         .engine
@@ -89,7 +89,7 @@ fn canonical_other_device_accept_overrides_local_accept_before_any_media() {
         .unwrap();
     assert_eq!(f.record().accepted_device, f.other_device.device);
     assert!(!f.record().acceptance_confirmed);
-    let first = f.event(&f.callee, 200, f.accept(&call));
+    let first = f.event(&f.callee, 200, f.accept(&call)).unwrap();
     deliver(&mut f, first, Ingest::Applied);
     assert_eq!(f.record().accepted_device, f.callee.device);
     assert!(f.record().acceptance_confirmed);
@@ -105,20 +105,20 @@ fn canonical_other_device_accept_overrides_local_accept_before_any_media() {
     assert!(!f
         .engine
         .state
-        .call_transport_valid(&event(&f, &f.other_device, answer.clone())));
+        .call_transport_valid(&event(&f, &f.other_device, answer.clone()).unwrap()));
     deliver(&mut f, pending, Ingest::Confirmed);
     assert_eq!(f.record().accepted_device, f.callee.device);
     assert!(!f
         .engine
         .state
-        .call_transport_valid(&event(&f, &f.other_device, answer)));
+        .call_transport_valid(&event(&f, &f.other_device, answer).unwrap()));
     assert!(f.engine.store.outbox().unwrap().is_empty());
 }
 
 #[test]
 fn accepted_before_queued_cancel_recovers_through_signed_hangup() {
     let mut f = Fixture::new().unwrap();
-    let call = f.invite();
+    let call = f.invite().unwrap();
     let cancel = f.end(&call, CallEndReason::Cancelled);
     let pending = f
         .engine
@@ -130,7 +130,7 @@ fn accepted_before_queued_cancel_recovers_through_signed_hangup() {
         )
         .unwrap();
     assert!(f.record().terminal());
-    let accepted = f.event(&f.callee, 200, f.accept(&call));
+    let accepted = f.event(&f.callee, 200, f.accept(&call)).unwrap();
     deliver(&mut f, accepted, Ingest::Applied);
     assert!(!f.record().terminal() && f.record().acceptance_confirmed);
     deliver(&mut f, pending, Ingest::Confirmed);

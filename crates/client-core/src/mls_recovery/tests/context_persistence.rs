@@ -3,7 +3,8 @@ use super::*;
 
 pub(super) fn context_and_commit_roll_back_together_and_wait_for_upload_after_restart(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let path = std::env::temp_dir().join(format!("zoen-recovery-{}.db", types::new_ulid(now_ms())));
+    let path =
+        std::env::temp_dir().join(format!("zoen-recovery-{}.db", types::new_ulid(now_ms())?));
     let space = "recovery-transaction";
     let (root_secret, secret, agreement, commit, reference, genesis, uploaded_blob);
     {

@@ -79,7 +79,7 @@ async fn changed_ciphertext_is_refused_before_any_network_attempt() {
             &http,
             "http://127.0.0.1:1",
             "test",
-            &Signer::generate(),
+            &Signer::generate().unwrap(),
             &"a".repeat(64),
             vec![1, 2, 3],
             1234

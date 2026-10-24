@@ -27,12 +27,14 @@ fn missing_canonical_bytes_block_both_native_authority_consumers_until_repaired(
             }],
         }],
     };
-    let creation_hash = fixture.clear(EventBody::ItemCreated {
-        item: item.into(),
-        kind: ItemKind::Plan,
-        content: ItemContent::Plan(document.clone()),
-        origin: "Explicit owner creation".into(),
-    });
+    let creation_hash = fixture
+        .clear(EventBody::ItemCreated {
+            item: item.into(),
+            kind: ItemKind::Plan,
+            content: ItemContent::Plan(document.clone()),
+            origin: "Explicit owner creation".into(),
+        })
+        .unwrap();
     let creation = fixture.core.engine.logs[SPACE]
         .events()
         .iter()
@@ -78,22 +80,24 @@ fn missing_canonical_bytes_block_both_native_authority_consumers_until_repaired(
         .engine
         .import_media(&sha, &bytes, "application/json")
         .unwrap());
-    fixture.clear(EventBody::ItemVersioned {
-        item: item.into(),
-        content: ItemContent::Page(PageContent {
-            title: document.title.clone(),
-            path: String::new(),
-            loro: String::new(),
-            manifest: Some(PageManifest::PlanV1(manifest)),
-            blob: Some(ChunkRef {
-                sha256: sha.clone(),
-                bytes: bytes.len() as u64,
-                blob: "11".repeat(32),
-                key: "22".repeat(32),
+    fixture
+        .clear(EventBody::ItemVersioned {
+            item: item.into(),
+            content: ItemContent::Page(PageContent {
+                title: document.title.clone(),
+                path: String::new(),
+                loro: String::new(),
+                manifest: Some(PageManifest::PlanV1(manifest)),
+                blob: Some(ChunkRef {
+                    sha256: sha.clone(),
+                    bytes: bytes.len() as u64,
+                    blob: "11".repeat(32),
+                    key: "22".repeat(32),
+                }),
             }),
-        }),
-        note: "Canonical confirmed version".into(),
-    });
+            note: "Canonical confirmed version".into(),
+        })
+        .unwrap();
     let line = &document.sections[0].lines[0];
     let request = AgentRequest {
         tool_proposal: None,
@@ -121,18 +125,22 @@ fn missing_canonical_bytes_block_both_native_authority_consumers_until_repaired(
     let frame = ordered(&fixture.owner, Envelope::plain(&event));
     assert_eq!(fixture.owner.ingest(frame.clone()), Ingest::Applied);
     fixture.core.ingest(vec![frame]).unwrap();
-    fixture.clear(EventBody::RequestResolved {
-        request: request.id.clone(),
-        approved: true,
-        content_hash: request.content_hash.clone(),
-        resolution: None,
-    });
+    fixture
+        .clear(EventBody::RequestResolved {
+            request: request.id.clone(),
+            approved: true,
+            content_hash: request.content_hash.clone(),
+            resolution: None,
+        })
+        .unwrap();
     assert_eq!(
         fixture.core.engine.state.requests[&request.id].status,
         crate::engine::ReqStatus::Approved
     );
     fixture.grant("native-after-approved-plan", Some(1000));
-    let trigger = fixture.message("Certified owner message after the decision");
+    let trigger = fixture
+        .message("Certified owner message after the decision")
+        .unwrap();
     let facts = fixture.core.reply(SPACE, &trigger, 400).unwrap();
     let original = facts.intent().clone();
     let prepared = fixture

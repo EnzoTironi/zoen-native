@@ -3,13 +3,17 @@
 use super::*;
 
 pub(super) async fn linked_chat_preferences_bootstrap_is_signed_idempotent_and_survives_history_reopen(
-) {
-    assert_linked_preferences_survive_history_and_reopen(false).await;
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    assert_linked_preferences_survive_history_and_reopen(false).await?;
+
+    Ok(())
 }
 
-pub(super) async fn linked_chat_preferences_repair_legacy_missing_personal_after_verified_history()
-{
-    assert_linked_preferences_survive_history_and_reopen(true).await;
+pub(super) async fn linked_chat_preferences_repair_legacy_missing_personal_after_verified_history(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    assert_linked_preferences_survive_history_and_reopen(true).await?;
+
+    Ok(())
 }
 
 pub(super) fn linked_chat_preferences_bootstrap_storage_failure_rolls_back_before_vault_and_can_retry(

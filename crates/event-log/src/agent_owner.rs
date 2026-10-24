@@ -174,8 +174,12 @@ mod tests {
         let agent = Signer::generate().unwrap().id();
         let proof = authorize(&owner, &agent).unwrap();
         assert!(verify(&root.id(), &agent, &proof));
-        assert!(!verify(&Signer::generate().id(), &agent, &proof));
-        assert!(!verify(&root.id(), &Signer::generate().id(), &proof));
+        assert!(!verify(&Signer::generate().unwrap().id(), &agent, &proof));
+        assert!(!verify(
+            &root.id(),
+            &Signer::generate().unwrap().id(),
+            &proof
+        ));
         let mut changed = proof.clone();
         changed.device = Signer::generate().unwrap().id();
         assert!(!verify(&root.id(), &agent, &changed));
@@ -336,7 +340,7 @@ mod tests {
         let digest = "ab".repeat(32);
         let (proof, signature) = authorize_enrollment(&owner, &agent, &digest).unwrap();
         assert!(!verify_enrollment(
-            &Signer::generate().id(),
+            &Signer::generate().unwrap().id(),
             &agent,
             &digest,
             &proof,
@@ -344,7 +348,7 @@ mod tests {
         ));
         assert!(!verify_enrollment(
             &root.id(),
-            &Signer::generate().id(),
+            &Signer::generate().unwrap().id(),
             &digest,
             &proof,
             &signature

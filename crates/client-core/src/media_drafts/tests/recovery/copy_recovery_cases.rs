@@ -191,8 +191,9 @@ pub(super) fn failed_media_recovery_preserves_the_signed_inline_or_thread_destin
     }
 }
 
-pub(super) fn failed_media_recovery_reopens_the_same_encrypted_copy_and_original_failed_history() {
-    let dir = temp();
+pub(super) fn failed_media_recovery_reopens_the_same_encrypted_copy_and_original_failed_history(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = temp()?;
     let path = dir.join("recovery.sqlite");
     let f = fixture(path.to_str().unwrap());
     let sent = refused(&f, &["a", "b"], "grouped");
@@ -225,6 +226,8 @@ pub(super) fn failed_media_recovery_reopens_the_same_encrypted_copy_and_original
     }
     drop(reopened);
     std::fs::remove_dir_all(dir).unwrap();
+
+    Ok(())
 }
 
 pub(super) async fn failed_media_recovery_json_api_keeps_integer_wire_contract_and_rejects_extra_fields(

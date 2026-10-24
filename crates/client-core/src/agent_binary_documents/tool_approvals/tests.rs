@@ -140,7 +140,7 @@ fn canonical_request_is_deduplicated_and_generic_or_wrong_owner_decisions_never_
 
 #[test]
 fn denial_and_cancellation_are_terminal_idempotent_without_tools_files_or_standing_grants() {
-    decisions::denial_and_cancellation_are_terminal_idempotent_without_tools_files_or_standing_grants()
+    decisions::denial_and_cancellation_are_terminal_idempotent_without_tools_files_or_standing_grants().unwrap()
 }
 
 #[test]
@@ -209,6 +209,7 @@ fn canonical_approval_and_accepted_document_survive_a_cold_unlocked_reopen() {
 fn read_only_approval_cannot_authorize_a_result_probe_or_save_even_with_its_exact_intent() {
     recovery::read_only_approval_cannot_authorize_a_result_probe_or_save_even_with_its_exact_intent(
     )
+    .unwrap()
 }
 
 #[test]
@@ -220,12 +221,12 @@ fn raw_worker_turn_cannot_bypass_a_later_signed_core_block_at_result_or_save_bou
 #[test]
 fn completed_read_then_accepted_write_recovers_context_without_relaxing_read_cas_or_authorizing_new_effects(
 ) {
-    recovery::completed_read_then_accepted_write_recovers_context_without_relaxing_read_cas_or_authorizing_new_effects()
+    recovery::completed_read_then_accepted_write_recovers_context_without_relaxing_read_cas_or_authorizing_new_effects().unwrap()
 }
 
 #[test]
 fn generic_standing_decision_never_resolves_or_labels_a_pending_tool_request() {
-    decisions::generic_standing_decision_never_resolves_or_labels_a_pending_tool_request()
+    decisions::generic_standing_decision_never_resolves_or_labels_a_pending_tool_request().unwrap()
 }
 
 #[path = "json_order_tests.rs"]

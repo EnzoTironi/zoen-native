@@ -26,7 +26,7 @@ fn request_previews_use_the_action_title_and_preserve_message_bodies() {
 
 #[test]
 fn demo_receipts_reactions_and_threads_survive_reopen() {
-    seed_locale_cases::demo_receipts_reactions_and_threads_survive_reopen()
+    seed_locale_cases::demo_receipts_reactions_and_threads_survive_reopen().unwrap()
 }
 
 #[test]
@@ -61,7 +61,7 @@ fn budget_rejects_nonpositive_and_overflowing_increases_without_mutation() {
 
 #[test]
 fn everything_persists_and_reverifies_after_reopen() {
-    seed_locale_cases::everything_persists_and_reverifies_after_reopen()
+    seed_locale_cases::everything_persists_and_reverifies_after_reopen().unwrap()
 }
 
 #[test]
@@ -408,7 +408,7 @@ fn receipt_replay_survives_offline_reads_and_restarts() {
 
 #[test]
 fn ticks_follow_the_lowest_read_up_to_watermark() {
-    receipts_cases::ticks_follow_the_lowest_read_up_to_watermark()
+    receipts_cases::ticks_follow_the_lowest_read_up_to_watermark().unwrap()
 }
 
 #[test]

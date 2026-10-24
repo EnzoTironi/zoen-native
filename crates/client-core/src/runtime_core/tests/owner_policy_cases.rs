@@ -230,7 +230,7 @@ fn owner_policy_confirmation_binds_financial_fields_account_device_and_exact_dm(
 #[test]
 fn ordinary_prompt_json_is_not_a_control_and_explicit_refusal_is_not_installation() -> TestResult {
     let (mut f, scope, json) = setup()?;
-    let ordinary = f.message(&json);
+    let ordinary = f.message(&json).unwrap();
     assert!(f
         .core
         .engine
@@ -273,7 +273,7 @@ fn ordinary_prompt_json_is_not_a_control_and_explicit_refusal_is_not_installatio
 #[test]
 fn policy_quote_reads_only_confirmed_image_review_without_act_or_approval() -> TestResult {
     use types::owner_policy_context::OwnerPolicyInquiry;
-    let (mut f, request, hash, envelope) = super::image_review_cases::pending();
+    let (mut f, request, hash, envelope) = super::image_review_cases::pending().unwrap();
     let now = crate::engine::now_ms();
     let author = f.owner.net.author.clone().ok_or("missing owner author")?;
     let inquiry = OwnerPolicyInquiry {
@@ -347,7 +347,7 @@ fn authenticated_options_prepare_exact_money_and_successor_of_expired_disabled_p
 {
     use chrono::Datelike;
     use types::owner_policy_context::OwnerPolicyOptions;
-    let (mut f, request, hash, envelope) = super::image_review_cases::pending();
+    let (mut f, request, hash, envelope) = super::image_review_cases::pending().unwrap();
     let frame = ordered(&f.owner, envelope);
     assert_eq!(f.owner.ingest(frame.clone()), Ingest::Applied);
     f.core.ingest(vec![frame])?;

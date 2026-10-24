@@ -143,7 +143,7 @@ fn semantic_field_changes_move_the_binding() {
     ];
     let mut next = |fixture: &mut Fixture, doc: PlanDoc| {
         let body = fixture.version(ItemContent::Plan(doc));
-        fixture.ordered(body);
+        fixture.ordered(body).unwrap();
         let hash = fixture
             .engine
             .plan_page(&fixture.item)
@@ -323,10 +323,12 @@ fn undo_without_an_intermediate_edit_restores_the_previous_line() {
 fn remote_event_between_read_and_write_is_refused() {
     let mut fixture = Fixture::new().unwrap();
     let member = add_identity(&mut fixture.engine, "Remote member");
-    fixture.ordered(EventBody::MemberAdded {
-        identity: member.clone(),
-        role: Role::Member,
-    });
+    fixture
+        .ordered(EventBody::MemberAdded {
+            identity: member.clone(),
+            role: Role::Member,
+        })
+        .unwrap();
     let observed = fixture
         .engine
         .plan_page(&fixture.item)
@@ -334,7 +336,9 @@ fn remote_event_between_read_and_write_is_refused() {
         .content_hash;
     let mut remote = original();
     remote.summary = "Remote summary".into();
-    fixture.ordered_as(&member, fixture.version(ItemContent::Plan(remote)));
+    fixture
+        .ordered_as(&member, fixture.version(ItemContent::Plan(remote)))
+        .unwrap();
     let before = snapshot(&fixture);
     assert!(matches!(
         fixture.engine.edit_plan_line(

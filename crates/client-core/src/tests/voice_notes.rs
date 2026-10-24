@@ -98,11 +98,13 @@ fn renaming_voice_audio_keeps_metadata_but_replacing_bytes_invalidates_it() {
 #[test]
 fn voice_versions_and_reverts_are_author_only_locally_and_on_replay() {
     author_admission_cases::voice_versions_and_reverts_are_author_only_locally_and_on_replay()
+        .unwrap()
 }
 
 #[test]
 fn ordinary_files_stay_collaborative_but_only_the_author_can_make_them_voice() {
     presentation_cases::ordinary_files_stay_collaborative_but_only_the_author_can_make_them_voice()
+        .unwrap()
 }
 
 #[test]

@@ -189,6 +189,7 @@ fn binary_refresh_reuses_verified_payload_and_rechecks_after_reload() {
 #[test]
 fn plan_refresh_reuses_verified_payload_and_rechecks_after_reload() {
     authority_cutover_cases::plan_refresh_reuses_verified_payload_and_rechecks_after_reload()
+        .unwrap()
 }
 
 #[test]
@@ -209,11 +210,12 @@ fn contexts_bind_actor_space_item_kind_and_creation() {
 #[test]
 fn same_mutation_replays_exact_accepted_context_but_returns_current_view() {
     context_receipts_cases::same_mutation_replays_exact_accepted_context_but_returns_current_view()
+        .unwrap()
 }
 
 #[test]
 fn changed_request_with_same_mutation_refuses_atomically() {
-    context_receipts_cases::changed_request_with_same_mutation_refuses_atomically()
+    context_receipts_cases::changed_request_with_same_mutation_refuses_atomically().unwrap()
 }
 
 #[test]
@@ -223,17 +225,17 @@ fn lost_reply_empty_diff_undo_and_redo_continue_own_branch() {
 
 #[test]
 fn continuation_does_not_replace_unseen_remote_fields_or_blocks() {
-    continuation_cases::continuation_does_not_replace_unseen_remote_fields_or_blocks()
+    continuation_cases::continuation_does_not_replace_unseen_remote_fields_or_blocks().unwrap()
 }
 
 #[test]
 fn continuation_removes_own_new_block_without_reusing_history() {
-    continuation_cases::continuation_removes_own_new_block_without_reusing_history()
+    continuation_cases::continuation_removes_own_new_block_without_reusing_history().unwrap()
 }
 
 #[test]
 fn generation_fence_allows_exact_receipt_replay_but_refuses_new_continuation() {
-    let f = Fixture::new();
+    let f = Fixture::new().unwrap();
     let mut s = f.session();
     let read = s.read(&f.engine).unwrap();
     let edit = text_edit(&read, "accepted before fence");
@@ -272,12 +274,12 @@ fn receipt_eviction_fences_forgotten_retry_across_reopen() {
 
 #[test]
 fn journal_insert_or_update_failure_keeps_previous_draft() {
-    journal_recovery_cases::journal_insert_or_update_failure_keeps_previous_draft()
+    journal_recovery_cases::journal_insert_or_update_failure_keeps_previous_draft().unwrap()
 }
 
 #[test]
 fn oversized_context_or_journal_fails_before_memory_replacement() {
-    journal_recovery_cases::oversized_context_or_journal_fails_before_memory_replacement()
+    journal_recovery_cases::oversized_context_or_journal_fails_before_memory_replacement().unwrap()
 }
 
 #[test]
@@ -287,12 +289,13 @@ fn lost_response_after_durable_accept_recovers_the_same_receipt() {
 
 #[test]
 fn outbox_insert_failure_keeps_draft_and_receipts() {
-    publication_cases::outbox_insert_failure_keeps_draft_and_receipts()
+    publication_cases::outbox_insert_failure_keeps_draft_and_receipts().unwrap()
 }
 
 #[test]
 fn journal_failure_after_outbox_insert_rolls_back_event_and_projection() {
     publication_cases::journal_failure_after_outbox_insert_rolls_back_event_and_projection()
+        .unwrap()
 }
 
 #[test]
@@ -302,7 +305,7 @@ fn lost_commit_response_reopens_one_exact_pending_source() {
 
 #[test]
 fn only_complete_canonical_exact_source_acks() {
-    publication_cases::only_complete_canonical_exact_source_acks()
+    publication_cases::only_complete_canonical_exact_source_acks().unwrap()
 }
 
 fn expect_source(f: &Fixture, s: &mut PageSession, event: &Event) {
@@ -327,27 +330,28 @@ fn expect_source(f: &Fixture, s: &mut PageSession, event: &Event) {
 
 #[test]
 fn semantically_refused_source_preserves_draft_and_visible_history() {
-    publication_cases::semantically_refused_source_preserves_draft_and_visible_history()
+    publication_cases::semantically_refused_source_preserves_draft_and_visible_history().unwrap()
 }
 
 #[test]
 fn waiting_blob_blocks_edit_ack_and_later_versions_until_ready() {
-    publication_cases::waiting_blob_blocks_edit_ack_and_later_versions_until_ready()
+    publication_cases::waiting_blob_blocks_edit_ack_and_later_versions_until_ready().unwrap()
 }
 
 #[test]
 fn pending_legacy_and_remote_cutover_never_expand_seed() {
-    authority_cutover_cases::pending_legacy_and_remote_cutover_never_expand_seed()
+    authority_cutover_cases::pending_legacy_and_remote_cutover_never_expand_seed().unwrap()
 }
 
 #[test]
 fn late_legacy_versions_never_ack_or_change_canonical_shadow() {
-    authority_cutover_cases::late_legacy_versions_never_ack_or_change_canonical_shadow()
+    authority_cutover_cases::late_legacy_versions_never_ack_or_change_canonical_shadow().unwrap()
 }
 
 #[test]
 fn reader_removed_actor_and_key_loss_refuse_mutation_but_keep_saved_read() {
     authority_cutover_cases::reader_removed_actor_and_key_loss_refuse_mutation_but_keep_saved_read()
+        .unwrap()
 }
 
 #[test]
@@ -357,7 +361,7 @@ fn newer_draft_survives_older_ack_and_permanent_transport_refusal() {
 
 #[test]
 fn blob_publication_and_two_first_writers_converge_without_cas() {
-    convergence_backup_cases::blob_publication_and_two_first_writers_converge_without_cas()
+    convergence_backup_cases::blob_publication_and_two_first_writers_converge_without_cas().unwrap()
 }
 
 // Both document tags use the existing device-key-sealed page.draft namespace.

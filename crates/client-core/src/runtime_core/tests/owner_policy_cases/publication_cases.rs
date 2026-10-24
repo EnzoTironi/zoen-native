@@ -193,7 +193,7 @@ fn failed_control_reference_write_rolls_back_outbox_ratchet_and_remains_retryabl
 
 #[test]
 fn explicit_options_refusal_is_a_retained_non_model_control_after_cold_restore() -> TestResult {
-    let (mut f, request, hash, envelope) = super::super::image_review_cases::pending();
+    let (mut f, request, hash, envelope) = super::super::image_review_cases::pending().unwrap();
     let frame = ordered(&f.owner, envelope);
     assert_eq!(f.owner.ingest(frame.clone()), Ingest::Applied);
     f.core.ingest(vec![frame])?;
