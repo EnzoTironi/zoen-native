@@ -173,6 +173,10 @@ export class ConversationReveal {
     this.trace('viewport');
     this.schedule();
   };
+  onItemLayout = () => {
+    this.trace('item-layout');
+    this.schedule();
+  };
   onData = (data: readonly unknown[]) => {
     if (this.data !== data) {
       this.data = data;
