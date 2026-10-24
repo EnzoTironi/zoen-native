@@ -133,3 +133,22 @@ test('the explicit Share action uses exactly the authorized vCard copy and never
   await tick();
   assert.equal(f.released.length, 1);
 });
+
+test('native parsing rejection is a localized contact error, never raw native paths or payload', async () => {
+  const f = fixture();
+  const failure = Promise.reject(new Error('NSError private/path.vcf private payload'));
+  // The port is only awaited after explicit open; attach the native rejection then.
+  failure.catch(() => {});
+  f.parse(failure);
+  f.card(f.render()).props.onPress();
+  await tick();
+  const tree = f.render();
+  assert.ok(f.text(tree).includes('media.contactCouldNotBeOpened'));
+  assert.equal(
+    f.text(tree).some((text) => String(text).includes('private')),
+    false,
+  );
+  assert.equal(f.released.length, 1);
+  assert.deepEqual(f.copies, []);
+  assert.deepEqual(f.shares, []);
+});

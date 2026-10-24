@@ -98,7 +98,7 @@ function ContactAttachmentView(props: Parameters<typeof ContactAttachment>[0]) {
           ) : null}
           {state.phase === 'error' ? (
             <Text accessibilityRole="alert" style={{ color: colors.danger }}>
-              {t('media.thisFileCouldNotBeOpened')}
+              {t(contact ? 'media.contactActionFailed' : 'media.contactCouldNotBeOpened')}
             </Text>
           ) : null}
           {contact && state.phase === 'ready' ? (

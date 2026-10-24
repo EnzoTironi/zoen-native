@@ -197,4 +197,6 @@ export const mediaPtBR = {
   closeContact: 'Fechar',
   copyContactPhone: 'Copiar %{phone}',
   shareContact: 'Compartilhar contato',
+  contactCouldNotBeOpened: 'Não foi possível abrir este contato.',
+  contactActionFailed: 'Não foi possível concluir esta ação.',
 } as const;

@@ -191,4 +191,6 @@ export const mediaEn = {
   closeContact: 'Close',
   copyContactPhone: 'Copy %{phone}',
   shareContact: 'Share contact',
+  contactCouldNotBeOpened: 'This contact could not be opened.',
+  contactActionFailed: 'This action could not be completed.',
 } as const;
