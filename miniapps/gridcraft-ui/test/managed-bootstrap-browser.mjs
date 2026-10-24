@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { exerciseGrid, assertGridExport, reopenGrid } from "./grid-bootstrap-assertions.mjs";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
@@ -124,15 +125,7 @@ try {
   assert.equal(await page.evaluate(() => window.probe.writes), 0);
   const formats = editor === "deckcraft" ? ["pptx", "pdf"] : ["xlsx"];
   for (const format of formats) await page.evaluate((f) => window.probe.share(f), format);
-  if (editor === "gridcraft") {
-    const frame = page.frames().find((f) => f !== page.mainFrame());
-    assert.ok(frame);
-    await frame.locator("#gridcraft_canvas").focus();
-    await page.keyboard.type("7");
-    await page.keyboard.press("Enter");
-    await page.waitForFunction(() => window.probe.writes === 1, undefined, { timeout: 8000 });
-    await page.evaluate(() => window.probe.share("xlsx"));
-  }
+  const input = editor === "gridcraft" ? await exerciseGrid(page) : undefined;
   const result = await page.evaluate(() => ({
     states: window.probe.states,
     exports: window.probe.exports,
@@ -141,8 +134,8 @@ try {
     version: window.probe.version,
   }));
   assert.equal(result.exports.length, formats.length + (editor === "gridcraft" ? 1 : 0));
-  assert.equal(result.writes, editor === "gridcraft" ? 1 : 0);
-  assert.equal(result.version, editor === "gridcraft" ? 2 : 1);
+  assert.equal(result.writes, editor === "gridcraft" ? 2 : 0);
+  assert.equal(result.version, editor === "gridcraft" ? 3 : 1);
   if (editor === "deckcraft") assert.equal(result.accepted, seed.toString("base64"));
   else assert.notEqual(result.accepted, seed.toString("base64"));
   for (const [index, file] of result.exports.entries()) {
@@ -156,12 +149,29 @@ try {
     if (editor === "gridcraft")
       assert.equal(file.data, index === 0 ? seed.toString("base64") : result.accepted);
     await writeFile(resolve(output, `accepted-${index + 1}.${file.format}`), b);
+    if (editor === "gridcraft" && index > 0)
+      assertGridExport(resolve(output, `accepted-${index + 1}.${file.format}`));
     delete file.data;
     file.bytes = b.length;
   }
   await assert.rejects(
     page.evaluate((f) => window.probe.share(f), editor === "deckcraft" ? "xlsx" : "pdf"),
   );
+  const reopened =
+    editor === "gridcraft"
+      ? await reopenGrid(
+          page,
+          (retained) => {
+            files.set("/config.json", [
+              Buffer.from(
+                JSON.stringify({ ...config, seed: retained.data, version: retained.version }),
+              ),
+              "application/json",
+            ]);
+          },
+          output,
+        )
+      : undefined;
   await page.screenshot({ path: resolve(output, "opened.png") });
   await page.evaluate(() => window.probe.retire());
   await assert.rejects(page.evaluate((f) => window.probe.share(f), formats[0]));
@@ -178,6 +188,8 @@ try {
     seed: { bytes: seed.length, sha256: sha(seed) },
     fixtureBundleSha256: sha(bundled.outputFiles[0].contents),
     ...result,
+    input,
+    reopened,
     requests,
     errors,
     consoleErrors,

@@ -58,9 +58,11 @@ Qualified on the pinned native engine: 7 profile cases, 14 Core binary cases
 (including 10 existing Deck cases), 10 native engine/profile cases, 2 actual
 egui Text+Enter input cases, all-target Clippy for the affected default/UI and
 Core client-types graphs, and a genuinely compiled 126-file type exporter.
-The UI test first failed with a hidden pre-ACK draft (9 became 99 after ACK);
-`begin_edit` now refuses while the proposal is frozen, and the same test passes
-with an additional no-editor assertion. These are native synthetic inputs, not
+Earlier UI tests found a hidden pre-ACK draft (9 became 99 after ACK), and
+`begin_edit` refuses while explicitly frozen. Issue #546 separately found that
+ordinary manual autosave must not freeze at all: its real keyboard regression
+first lost A2=9 and now passes with an immutable original proposal, retained
+newer draft, exact ACK/Undo and later cold export. These are native synthetic inputs, not
 WebView/iPhone keyboard or certified-agent admission evidence.
 
 The native tests exercise real engine calculation, human-scoped command and
@@ -79,8 +81,9 @@ managed profile, not a general Excel importer or a claim of upstream parity.
 
 The upstream `?host=parent` bridge is replaced with a managed eframe/Glow shell
 and the same official MCP App bootstrap/session/export code used by Deck. The
-actual canvas is inert until Core opens a canonical snapshot; a pause, unresolved
-proposal or retired owner blocks mutations. Share emits a host export intent;
+actual canvas is inert until Core opens a canonical snapshot; an explicit pause,
+unresolved agent proposal or retired owner blocks mutations. A pending manual
+checkpoint retains live editing while its own bytes stay immutable. Share emits a host export intent;
 it does not falsely mark an unacknowledged draft saved. No App storage is the
 sole accepted copy. The host owns document versions and selected-version export.
 
@@ -177,3 +180,17 @@ regressions are in `host-bridge/src/compact_ui_tests.rs`. Real pinned egui tests
 fresh normal preparation recorded in [issue445](https://github.com/EnzoTironi/zoen-native/issues/445).
 This is not iPhone landscape editing acceptance, nor proof of why the retained499
 native host-height samples differ.
+
+### Manual autosave receipt regression (#546)
+
+The current producer separates manual checkpoints from agent proposals without a
+new persisted state. The real compact SheetApp suite passes 34 engine/input tests;
+WASM all-target Clippy and Release compilation are independently recorded. The
+real opaque browser ABI checks original A1=7 versus later A2=9, an incorrect and a
+late ACK, explicit pause, formula export and cold reopen. The official generated
+MCP bootstrap holds the first ordinary save while typing A2=9, then saves the
+later draft at head 3 and reloads those exact XLSX bytes with zero new writes.
+Both consumers use the existing bounded XLSX reader. Their receipts/CAS are
+synthetic; neither proves physical storage or native keyboard behavior. Previously
+sealed packages stay immutable and retain the defect until a new qualified
+package is selected by a native build. The default manifest remains unavailable.
