@@ -94,11 +94,17 @@ fn actual_engine_manual_agent_calculation_undo_cas_and_exact_cold_xlsx_export() 
         mutation_id: "human-1".into(),
     };
     let p = b.snapshot(&mut s, manual).unwrap();
+    assert!(b.freeze(&mut s, true).is_ok());
     assert!(
         s.execute("cell.set", json!({"cell":"A1","input":"8"}))
             .is_err()
     );
     let head = accept(&mut s, &mut b, &scope, "human-1", "2", &p);
+    assert!(
+        s.managed_frozen,
+        "manual ACK cannot remove an explicit host pause"
+    );
+    assert!(b.freeze(&mut s, false).is_ok());
     let c = command(&scope, &head, "agent-1", "A1", "9");
     let p = b.execute(&mut s, c.clone()).unwrap();
     assert_eq!(
