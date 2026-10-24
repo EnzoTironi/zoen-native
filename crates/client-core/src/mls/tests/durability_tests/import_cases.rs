@@ -34,7 +34,7 @@ fn hundred_page_import_cold_reopen_and_lost_confirmation_keep_exact_originals() 
     assert!(owner.ready_epoch(space).is_some());
     assert!(owner.mls_seal_outbox()?);
     let first = owner.outbox_envelopes();
-    assert_eq!(first.len(), Engine::APPLICATION_IN_FLIGHT);
+    assert_eq!(first.len(), 5);
     let mut accepted = Vec::new();
     // The actual recipient sees the ordered ciphertext, while the owner loses its echo.
     for env in &first {
@@ -76,7 +76,7 @@ fn hundred_page_import_cold_reopen_and_lost_confirmation_keep_exact_originals() 
             !offered.is_empty(),
             "ready retained Page queue stalled before offer"
         );
-        assert!(offered.len() <= Engine::APPLICATION_IN_FLIGHT);
+        assert!(offered.len() <= 5);
         for env in offered {
             let frame = ordered(&owner, env);
             assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
