@@ -175,3 +175,63 @@ test('duplicate intent detaches observed text/order/custom marks before allocati
     assert.throws(() => duplicateBlockChange(['original'], unsupported));
   }
 });
+
+test('heading and image exact metadata crosses the real route, lost-ACK retry and Undo unchanged', async () => {
+  for (const metadata of [
+    { kind: 'heading', level: 1, setext: true },
+    { kind: 'heading', level: 6, setext: false },
+    { kind: 'image', title: 'Keep image title', url: 'zoen:item/private', alt: 'ALT' },
+    { kind: 'image', title: '', url: 'zoen:item/private', alt: 'ALT' },
+  ]) {
+    const f = fixture();
+    Object.assign(f.read().blocks[1]!, metadata);
+    const original = structuredClone(f.read().blocks);
+    let tree = f.render();
+    f.lostAck();
+    f.blocks(tree).props.onDuplicate(f.read().blocks[1]);
+    await tick();
+    tree = f.render();
+    const command = f.commands[0]!;
+    assert.equal(command.op, 'page_apply');
+    if (command.op !== 'page_apply') throw Error('wrong contract');
+    assert.deepEqual(command.changed, [{ ...original[1], id: command.mutation_id }]);
+    f.button(tree, 'documents.retryTheSameChange').props.onPress();
+    await tick();
+    tree = f.render();
+    assert.deepEqual(f.commands[1], command);
+    assert.equal(f.counts().ids, 1);
+    assert.equal(f.counts().effects, 1);
+    f.button(tree, 'documents.undoLastChange').props.onPress();
+    await tick();
+    assert.deepEqual(f.read().blocks, original);
+  }
+});
+
+test('complete metadata is captured before ID allocation; malformed/legacy/future projections stay closed', () => {
+  const full = [
+    { ...originalBlock(), kind: 'heading', level: 2, setext: true },
+    { ...originalBlock(), kind: 'heading', level: 6, setext: false },
+    { ...originalBlock(), kind: 'image', title: 'Keep' },
+    { ...originalBlock(), kind: 'image', title: '' },
+  ];
+  for (const source of full) {
+    assert.ok(canDuplicateBlock(source));
+    const original = structuredClone(source);
+    const build = duplicateBlockChange([source.id], source);
+    Object.assign(source, { title: 'changed while allocating', setext: false });
+    assert.deepEqual(build('copy').changed, [{ ...original, id: 'copy' }]);
+  }
+  for (const metadata of [
+    { kind: 'heading', level: 1 },
+    { kind: 'image' },
+    { kind: 'future' },
+    { kind: 'heading', level: 3, setext: true },
+    { kind: 'heading', level: 0, setext: false },
+    { kind: 'heading', level: 7, setext: false },
+    { kind: 'heading', level: 1.5, setext: false },
+  ]) {
+    const bad = { ...originalBlock(), ...metadata };
+    assert.equal(canDuplicateBlock(bad), false);
+    assert.throws(() => duplicateBlockChange([bad.id], bad));
+  }
+});

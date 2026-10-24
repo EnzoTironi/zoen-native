@@ -188,6 +188,8 @@ pub(super) async fn run(cmd: String, cli: &mut Cli, context: Context) {
                             lang: String::new(),
                             url: String::new(),
                             alt: String::new(),
+                            setext: None,
+                            title: None,
                             text,
                             spans: vec![],
                         });
