@@ -25,6 +25,8 @@ export type Result = {
   pick(kind: string): Promise<void>;
   field?: {
     value: string;
+    position: number;
+    total: number;
     editable: boolean;
     onChange(text: string): void;
     onSend(finalCaption?: string): void;
@@ -200,6 +202,7 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
   };
   const coordinator = new PlaybackCoordinator();
   const channel = new MediaDraftChannel(owner, port, () => active);
+  let observedChannel = channel;
   const store = {
     driver: {
       media: {
@@ -221,7 +224,7 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
       sessionCleanups.add(cleanup);
       return () => sessionCleanups.delete(cleanup);
     },
-    mediaDrafts: { isCurrent: (candidate: unknown) => active && candidate === channel },
+    mediaDrafts: { isCurrent: (candidate: unknown) => active && candidate === observedChannel },
     refresh: async () => {},
   };
   const same = (left?: readonly unknown[], right?: readonly unknown[]) =>
@@ -380,11 +383,12 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
     disabled: false,
     suspended: false,
   };
-  const render = (patch: Partial<AttachmentComposerOptions> = {}) => {
+  const render = (patch: Partial<AttachmentComposerOptions> = {}, target = channel) => {
+    observedChannel = target;
     options = { ...options, ...patch };
     cursor = 0;
     effects = [];
-    const result = module.exports.useDurableAttachmentComposer(options, channel);
+    const result = module.exports.useDurableAttachmentComposer(options, target);
     for (const commit of effects) commit();
     return result;
   };

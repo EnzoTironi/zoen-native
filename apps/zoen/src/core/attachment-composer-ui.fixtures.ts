@@ -9,6 +9,8 @@ import { telegramPresentation } from '../theme/telegram.ts';
 import { composerVerticalInsets } from './telegram-audio-presentation.ts';
 import * as composerMotion from './telegram-composer-motion.ts';
 import * as composerPresentation from './telegram-composer-presentation.ts';
+import type { AttachmentKeyboardSession } from '../media/attachment-keyboard-session.ts';
+import { keyboardFieldHook } from './attachment-keyboard-field.fixtures.ts';
 
 export type Element = { type: unknown; props: Record<string, unknown> };
 export type Handler = (...args: unknown[]) => unknown;
@@ -89,7 +91,12 @@ export const fieldOutputs = new Map(
     ),
   ),
 );
-export function fixture(platform: Platform = 'ios', fontScale = 1, liquidGlass = false) {
+export function fixture(
+  platform: Platform = 'ios',
+  fontScale = 1,
+  liquidGlass = false,
+  keyboardSession?: AttachmentKeyboardSession,
+) {
   type Slot = {
     value?: unknown;
     deps?: readonly unknown[];
@@ -150,6 +157,7 @@ export function fixture(platform: Platform = 'ios', fontScale = 1, liquidGlass =
       current.cleanup = read() ?? undefined;
     });
   };
+  const bindKeyboardField = keyboardSession ? keyboardFieldHook(keyboardSession, effect) : null;
   const fieldModule = {
     exports: {} as { ComposerTextField: (props: Record<string, unknown>) => Element },
   };
@@ -287,7 +295,10 @@ export function fixture(platform: Platform = 'ios', fontScale = 1, liquidGlass =
     '../media/attachment-keyboard-context': {
       AttachmentKeyboardProvider: 'AttachmentKeyboardProvider',
       useAttachmentKeyboard: () => keyboard,
-      useAttachmentKeyboardField: (...args: unknown[]) => keyboardFields.push(args),
+      useAttachmentKeyboardField: (...args: Parameters<NonNullable<typeof bindKeyboardField>>) => {
+        keyboardFields.push(args);
+        bindKeyboardField?.(...args);
+      },
     },
     './composer-control-surface': { ComposerGlyph: 'ComposerGlyph' },
     '../core/telegram-composer-presentation': composerPresentation,
