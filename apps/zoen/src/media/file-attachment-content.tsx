@@ -1,3 +1,5 @@
+import { ContactAttachment } from './contact-attachment';
+import { isContactFileMime } from './contact-file';
 import { InlineFileImage } from './inline-file-image';
 import { materializeObservedFile } from './observed-file';
 import * as Sharing from 'expo-sharing';
@@ -258,6 +260,18 @@ function FileAttachmentContent({
   const video = !renderAsFile && local?.info.mime.startsWith('video/');
   const imageFrame = inlineImageFrame(availableWidth, ratio);
   const outline = scheme === 'dark' ? '#FFFFFF1A' : '#0000001A';
+  if (info && isContactFileMime(info.mime) && driver?.readContact && !voice)
+    return (
+      <ContactAttachment
+        media={driver}
+        source={{ itemId, version, expectedHash: expectedHash ?? info.sha256 }}
+        spaceId={messageSource?.spaceId}
+        readiness={readiness}
+        message={message}
+        onActions={onActions}
+        isCurrent={current}
+      />
+    );
   return (
     <View
       onLayout={(event) => {

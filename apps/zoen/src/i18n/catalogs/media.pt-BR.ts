@@ -192,4 +192,9 @@ export const mediaPtBR = {
     other: '%{received}/%{total} partes',
   },
   shareFileLabel: 'Compartilhar %{name}',
+  contact: 'Contato',
+  openContactLabel: 'Abrir contato %{name}',
+  closeContact: 'Fechar',
+  copyContactPhone: 'Copiar %{phone}',
+  shareContact: 'Compartilhar contato',
 } as const;
