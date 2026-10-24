@@ -125,23 +125,26 @@ Its six dependency paths and four source paths have separate closed allowlists
 and complete before/after hashes. The original Shift experiment and default
 dependency remain available as controls. No shared Cargo source is modified.
 
-The input recipe applies five ordered, separately hashed patches. Each contains
-complete file diffs from the original `0017-eframe-ios-input.patch`; no upstream
-code or final source hashes change:
+The input recipe applies five ordered, separately hashed patches. Primary-contact
+routing reuses the exact shared Craft mobile-input patch consumed by the other
+editors. Its admitted trusted press/release focus leaves a focused text agent
+and composition intact; drag, cancellation and secondary-contact gates remain.
 
-| Part    | Responsibility                                        |
-| ------- | ----------------------------------------------------- |
-| `0017a` | Local eframe dependency and lock binding              |
-| `0017b` | Activation state, DOM text agent and runner handshake |
-| `0017c` | Primary pointer/touch contact routing                 |
-| `0017d` | DeckCraft canvas text admission                       |
-| `0017e` | Existing input contract tests                         |
+| Part    | Responsibility                                          |
+| ------- | ------------------------------------------------------- |
+| `0017a` | Local eframe dependency and lock binding                |
+| `0017b` | Activation state, DOM text agent and runner handshake   |
+| shared  | Primary pointer/touch routing and admitted canvas focus |
+| `0017d` | DeckCraft canvas text admission                         |
+| `0017e` | Existing input contract tests                           |
 
-The builder refuses missing, repeated or reordered parts, checks every patch
-hash before applying the first, then verifies the same complete dependency tree
-and managed source hashes. Other experiments keep their single-patch receipt
-shape. Historical receipts retain the original patch identity in Git history;
-this source-only decomposition does not rebuild or qualify new runtime assets.
+The builder permits only that exact sibling patch path; other external paths,
+missing, repeated or reordered parts are refused. It checks every patch hash
+before applying the first, then verifies the complete dependency tree and managed
+source hashes. Other experiments keep their single-patch receipt shape. Historical
+receipts retain the previous local patch identity in Git history. Updated recipes
+require their own compilation, browser and iPhone qualification; they do not
+change installed runtime asset pins.
 
 The normal managed engine patch handles surrounding IME deletion through the
 existing Session, composition snapshot and undo/journal. It preserves selected
