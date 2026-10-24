@@ -152,3 +152,53 @@ test('native parsing rejection is a localized contact error, never raw native pa
   assert.deepEqual(f.copies, []);
   assert.deepEqual(f.shares, []);
 });
+
+test('same file reused in another chat or canonical message retires the previous sheet and actions', async () => {
+  for (const next of [
+    ['other-space', 'forwarded-contact'],
+    ['space', 'other-message'],
+  ] as const) {
+    const f = fixture();
+    f.card(f.render()).props.onPress();
+    await tick();
+    const oldCopy = f.button(f.render(), 'media.copyContactPhone').props.onPress;
+    f.context(next[0], next[1]);
+    const tree = f.render();
+    assert.equal(f.sheet(tree).props.visible, false, 'a viewer cannot migrate to another message');
+    oldCopy();
+    await tick();
+    assert.deepEqual(f.copies, []);
+    assert.equal(f.released.length, 1);
+    f.card(f.render()).props.onPress();
+    await tick();
+    assert.equal(f.materialized.length, 2, 'new message requires its own explicit opening');
+  }
+});
+
+test('a revoked original-file native gate blocks Copy and Share even while the visible chat stays authorized', async () => {
+  for (const action of ['copy', 'share'] as const) {
+    const f = fixture();
+    f.card(f.render()).props.onPress();
+    await tick();
+    const before = f.render();
+    const ready = deferred<boolean>();
+    if (action === 'share') f.share(ready.promise);
+    if (action === 'copy') f.refuse();
+    f.button(
+      before,
+      action === 'copy' ? 'media.copyContactPhone' : 'media.shareContact',
+    ).props.onPress();
+    if (action === 'share') {
+      await tick();
+      f.refuse();
+      ready.resolve(true);
+    }
+    await tick();
+    assert.deepEqual(f.shares, []);
+    assert.deepEqual(f.copies, []);
+    assert.ok(f.text(f.render()).includes('media.contactActionFailed'));
+    f.sheet(f.render()).props.onDismiss();
+    await tick();
+    assert.equal(f.released.length, 1);
+  }
+});

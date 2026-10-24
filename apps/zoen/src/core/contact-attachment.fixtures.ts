@@ -99,9 +99,15 @@ export function fixture() {
     snapshot: {
       account: { identity_id: 'owner', device_id: 'phone', unlocked: true, setup_pending: false },
       me: { id: 'owner' },
-      conversations: [{ id: 'space', members: [{ id: 'owner' }] }],
+      conversations: [
+        { id: 'space', members: [{ id: 'owner' }] },
+        { id: 'other-space', members: [{ id: 'owner' }] },
+      ],
     },
   } as unknown as ClientState;
+  let nativeRefused = false;
+  let spaceId = 'space',
+    messageId = 'original-contact-message';
   let scopeCurrent = true,
     parseGate: Promise<ContactPreview> | null = null,
     shareGate: Promise<boolean> | null = null;
@@ -124,6 +130,7 @@ export function fixture() {
     },
     readContact: async (value) => {
       reads.push(value);
+      if (nativeRefused) throw Error('native-file-authorization-refused');
       return parseGate ?? structuredClone(parsed);
     },
     releaseLocalFile: async (uri) => {
@@ -226,7 +233,8 @@ export function fixture() {
     const child = module.exports.ContactAttachment({
       media,
       source: { itemId: 'contact', version: 2, expectedHash: file.info.sha256 },
-      spaceId: 'space',
+      spaceId,
+      messageId,
       readiness: '80 B',
       message: true,
       isCurrent: () => scopeCurrent,
@@ -245,6 +253,13 @@ export function fixture() {
   }
   return {
     state,
+    refuse: () => {
+      nativeRefused = true;
+    },
+    context: (space: string, message: string) => {
+      spaceId = space;
+      messageId = message;
+    },
     store,
     reads,
     materialized,

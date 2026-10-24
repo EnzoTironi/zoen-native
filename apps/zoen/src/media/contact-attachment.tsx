@@ -15,6 +15,7 @@ export function ContactAttachment(props: {
   media: MediaDriver;
   source: { itemId: string; version?: number; expectedHash: string };
   spaceId?: string;
+  messageId?: string;
   readiness: string;
   message: boolean;
   onActions?: () => void;
@@ -22,7 +23,12 @@ export function ContactAttachment(props: {
 }) {
   const { store } = useClient();
   const scope = documentScope(store.getSnapshot(), store.sessionEpoch);
-  return <ContactAttachmentView key={JSON.stringify([scope, props.source])} {...props} />;
+  return (
+    <ContactAttachmentView
+      key={JSON.stringify([scope, props.spaceId, props.messageId, props.source])}
+      {...props}
+    />
+  );
 }
 function ContactAttachmentView(props: Parameters<typeof ContactAttachment>[0]) {
   const { colors } = useTheme();
@@ -142,15 +148,17 @@ function ContactAttachmentView(props: Parameters<typeof ContactAttachment>[0]) {
                 onPress={() => {
                   if (current())
                     void session
-                      .perform(contact, async (file, valid) => {
-                        const available = await Sharing.isAvailableAsync();
-                        if (!valid()) return;
-                        if (!available) throw Error('sharing-unavailable');
-                        await Sharing.shareAsync(file.uri, {
-                          mimeType: file.info.mime,
-                          dialogTitle: name,
-                        });
-                      })
+                      .perform(
+                        contact,
+                        async (file, valid) => {
+                          if (valid())
+                            await Sharing.shareAsync(file.uri, {
+                              mimeType: file.info.mime,
+                              dialogTitle: name,
+                            });
+                        },
+                        () => Sharing.isAvailableAsync(),
+                      )
                       .catch(() => {});
                 }}
               />

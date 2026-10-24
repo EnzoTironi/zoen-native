@@ -175,10 +175,16 @@ test('retirement during OS readiness blocks dispatch and holds the file until th
   const gate = deferred<void>();
   let actions = 0,
     closed = false;
-  const action = f.session.perform(f.session.getSnapshot().contact!, async (_file, current) => {
-    await gate.promise;
-    if (current()) actions++;
-  });
+  const action = f.session.perform(
+    f.session.getSnapshot().contact!,
+    async (_file, current) => {
+      if (current()) actions++;
+    },
+    async () => {
+      await gate.promise;
+      return true;
+    },
+  );
   const closing = f.retire().then(() => {
     closed = true;
   });
@@ -204,6 +210,7 @@ test('explicit actions coalesce and cannot run after closing', async () => {
   await f.session.perform(expected, async () => {
     actions++;
   });
+  await tick();
   assert.equal(actions, 1);
   gate.resolve();
   await first;

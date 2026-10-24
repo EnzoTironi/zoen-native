@@ -115,10 +115,11 @@ export class ContactPreviewSession {
       if (copy) await this.release(copy);
     }
   }
-  /** The callback may present an OS action only after its own awaited readiness recheck. */
+  /** Readiness precedes fresh native authorization; work dispatches its explicit OS action. */
   async perform(
     expected: ContactPreview,
     work: (file: LocalMediaFile, current: () => boolean) => Promise<void>,
+    ready?: () => Promise<boolean>,
   ): Promise<void> {
     const copy = this.owned;
     if (
@@ -136,14 +137,26 @@ export class ContactPreviewSession {
     copy.users++;
     this.publish({ ...this.state, busy: true });
     try {
-      if (current()) await work(copy.file, current);
+      const available = ready ? await ready() : true;
+      if (!current()) return;
+      if (!available) throw Error('contact-action-unavailable');
+      const parsed = await this.ports.media.readContact?.(copy.file);
+      if (!current()) return;
+      // Sharing/copying an old preview never bypasses the current native file gate,
+      // including a forwarded file whose original Space was revoked meanwhile.
+      if (!parsed || JSON.stringify(parsed) !== JSON.stringify(expected))
+        throw Error('contact-changed');
+      await work(copy.file, current);
     } catch {
       if (current()) this.publish({ ...this.state, phase: 'error' });
     } finally {
       copy.users--;
-      await this.release(copy);
-      this.working = false;
-      if (current()) this.publish({ ...this.state, busy: false });
+      try {
+        await this.release(copy);
+      } finally {
+        this.working = false;
+        if (current()) this.publish({ ...this.state, busy: false });
+      }
     }
   }
   dismiss(ticket: number): Promise<void> {

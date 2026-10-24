@@ -266,6 +266,7 @@ function FileAttachmentContent({
         media={driver}
         source={{ itemId, version, expectedHash: expectedHash ?? info.sha256 }}
         spaceId={messageSource?.spaceId}
+        messageId={messageSource?.entry.id}
         readiness={readiness}
         message={message}
         onActions={onActions}
