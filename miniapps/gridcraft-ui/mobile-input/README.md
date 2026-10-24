@@ -19,6 +19,16 @@ The helper is ephemeral input ownership. A real primary contact must still own t
 
 The scratch replay receipt proves exact reconstructed bytes, not compilation or browser acceptance. Browser proof does not prove the iPhone software keyboard.
 
+An admitted trusted tap retries canvas focus on release before computing current
+IME output. Press-time refusal must not leave the first text tap inactive.
+The existing owner gate excludes drags, cancellation and secondary contacts;
+an already focused text agent retains its composition and buffer.
+For the real Word bootstrap regression, set `ZOEN_TEST_PRESS_FOCUS_REFUSAL=1`.
+This test-only policy refuses press-time canvas focus without focusing any element
+or changing events. The existing first-touch/input/content checks must still pass.
+It is a fault model, not evidence of the iPhone's exact focus policy; current
+patches still require normal per-consumer compilation and native qualification.
+
 When the rendered platform output has no current IME/editor, the DOM text agent
 must leave hit-testing so its old caret cannot obstruct adjacent cells. The same
 agent becomes interactive again when the current editor supplies IME output,

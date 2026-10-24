@@ -14,8 +14,8 @@
     },
     {
       "path": "patches/eframe-primary-contact.patch",
-      "bytes": 13436,
-      "sha256": "9e8ed49034a9bcd67fab0767ded2a813d8ee6706f7b25a9e9e44cb8e660cdde9"
+      "bytes": 13903,
+      "sha256": "6bbab724a3c080b046b2eb711f9e2a9e3cd0a1c6b7bd89de68b6e674c108251d"
     },
     {
       "path": "patches/eframe-text-agent.patch",
@@ -49,5 +49,5 @@
     "sha256": "632cacd0cea5b264a82dd0594870dd7d3ab7e0391585cdc16a71c54abb9ee424",
     "bytes": 9118
   },
-  "revisionNote": "Primary canvas focus on admitted trusted touch; release/owner/IME/cancel gates preserved. Top-level source/status retain the previous baseline qualification; current patches require per-consumer qualification."
+  "revisionNote": "Canvas focus retries on admitted trusted tap release before IME output; active text-agent/composition, drag, cancel, secondary-contact and owner gates preserved. Top-level source/status retain historical qualification; current patches require per-consumer compilation/browser/native qualification."
 }
