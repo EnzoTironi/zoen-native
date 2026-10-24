@@ -10,14 +10,14 @@ mod sealing_tests;
 /// These are local read outcomes, never a terminal refusal or permission to
 /// reconstruct, discard, re-sign or retry an unreadable signed intent.
 #[derive(Debug, PartialEq, Eq)]
-enum OutboxHeadFailure {
+pub(crate) enum OutboxHeadFailure {
     Missing,
     Corrupt,
     Read,
 }
 
 impl OutboxHeadFailure {
-    fn trace(&self) {
+    pub(crate) fn trace(&self) {
         crate::net::tracing_like(match self {
             Self::Missing => "outbox: retained head is missing; publication paused",
             Self::Corrupt => "outbox: retained head is invalid; publication paused",
@@ -148,8 +148,8 @@ impl Engine {
                     // This existing index was populated from the original
                     // signed append/reload. SQL metadata alone cannot guess a
                     // lane after a missing/corrupt body, or reroute an intent.
-                    if !p.space.is_empty() && self.net.pending.get(&p.client_id) == Some(&p.space) {
-                        blocked.insert(p.space);
+                    if let Some(space) = self.unreadable_outbox_space(&p) {
+                        blocked.insert(space.to_string());
                         continue;
                     }
                     // Nothing has been sent yet: discard the assembled offer
@@ -233,7 +233,23 @@ impl Engine {
         out
     }
 
-    fn read_outbox_head(&self, head: &store::OutboxHead) -> Result<Event, OutboxHeadFailure> {
+    /// Only the original append/reload index can identify a lane whose body is
+    /// unavailable. Matching SQL metadata alone cannot establish that association.
+    pub(crate) fn unreadable_outbox_space<'a>(
+        &'a self,
+        head: &store::OutboxHead,
+    ) -> Option<&'a str> {
+        self.net
+            .pending
+            .get(&head.client_id)
+            .filter(|space| !space.is_empty() && *space == &head.space)
+            .map(String::as_str)
+    }
+
+    pub(crate) fn read_outbox_head(
+        &self,
+        head: &store::OutboxHead,
+    ) -> Result<Event, OutboxHeadFailure> {
         match self.store.outbox_get(&head.client_id) {
             Ok(Some(event))
                 if event.client_id == head.client_id

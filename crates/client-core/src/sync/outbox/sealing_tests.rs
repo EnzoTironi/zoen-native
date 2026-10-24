@@ -130,3 +130,74 @@ fn invalid_signed_head_cannot_consume_ratchet_or_ciphertext_before_dispatch_vali
         exercise_fault(fault);
     }
 }
+
+#[test]
+fn corrupt_cached_head_still_fences_unsealed_successor_without_reencrypting_it() {
+    let mut f = Fixture::with_privacies(":memory:", Privacy::EndToEnd, Privacy::EndToEnd);
+    f.engine.create_mls_group("sp_fault_a").unwrap();
+    let first = f.message("sp_fault_a", 0);
+    assert!(f.engine.mls_seal_outbox().unwrap());
+    let before = provider_rows(&f.engine);
+    let retained = f
+        .engine
+        .store
+        .meta(&format!("mls.sealed:{}", first.client_id))
+        .unwrap();
+    let next = f.message("sp_fault_a", 1);
+    let original = original_json(&f.engine, &first);
+    set_json(&f.engine, &first, Value::Text("{broken".into()));
+    assert!(!f.engine.mls_seal_outbox().unwrap());
+    assert!(provider_rows(&f.engine) == before);
+    assert!(f
+        .engine
+        .store
+        .meta(&format!("mls.sealed:{}", next.client_id))
+        .unwrap()
+        .is_none());
+    assert_eq!(
+        f.engine
+            .store
+            .meta(&format!("mls.sealed:{}", first.client_id))
+            .unwrap(),
+        retained
+    );
+    set_json(&f.engine, &first, Value::Text(original));
+    assert!(f.engine.mls_seal_outbox().unwrap());
+    assert_eq!(
+        f.engine
+            .store
+            .meta(&format!("mls.sealed:{}", first.client_id))
+            .unwrap(),
+        retained
+    );
+}
+
+#[test]
+fn unknown_original_lane_stops_before_crypto_and_exact_association_repair_recovers() {
+    let mut f = Fixture::with_privacies(":memory:", Privacy::EndToEnd, Privacy::EndToEnd);
+    f.engine.create_mls_group("sp_fault_a").unwrap();
+    f.engine.create_mls_group("sp_fault_b").unwrap();
+    let first = f.message("sp_fault_a", 0);
+    let independent = f.message("sp_fault_b", 1);
+    let original = original_json(&f.engine, &first);
+    let scope = f.engine.net.pending.remove(&first.client_id).unwrap();
+    set_json(&f.engine, &first, Value::Text("{broken".into()));
+    let queue = raw_queue(&f.engine);
+    let before = provider_rows(&f.engine);
+    assert!(matches!(
+        f.engine.mls_seal_outbox(),
+        Err(CoreError::Storage { .. })
+    ));
+    assert!(provider_rows(&f.engine) == before);
+    assert_eq!(raw_queue(&f.engine), queue);
+    assert!(f
+        .engine
+        .store
+        .meta(&format!("mls.sealed:{}", independent.client_id))
+        .unwrap()
+        .is_none());
+    set_json(&f.engine, &first, Value::Text(original));
+    f.engine.net.pending.insert(first.client_id, scope);
+    assert!(f.engine.mls_seal_outbox().unwrap());
+    assert_eq!(f.engine.outbox_envelopes().len(), 2);
+}
