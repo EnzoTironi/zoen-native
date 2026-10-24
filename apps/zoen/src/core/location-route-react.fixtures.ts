@@ -50,6 +50,8 @@ export function locationReactFixture() {
       conversations: [{ id: 'space', members: [{ id: 'owner' }] }],
     },
   } as unknown as ClientState;
+  let stages = 0,
+    gps = 0;
   let foreground = 'active',
     focused = true,
     uuid = 0,
@@ -146,12 +148,16 @@ export function locationReactFixture() {
   const buttons = new Map<string, Button>(),
     fields = new Map<string, FieldProps>();
   let map: MapProps | undefined;
-  const useCapture = <T>(read: () => T, publish: (props: T) => void, release: (props: T) => void) => {
+  const useCapture = <T>(
+    read: () => T,
+    publish: (props: T) => void,
+    release: (props: T) => void,
+  ) => {
     const props = read();
     React.useLayoutEffect(() => {
       publish(props);
       return () => release(props);
-    }, [props]);
+    }, [props, publish, release]);
     return null;
   };
   const children = ({ children }: { children?: React.ReactNode }) =>
@@ -227,10 +233,16 @@ export function locationReactFixture() {
     './location-selection': { LocationSelection },
     './attachment-route-actions': actions,
     './attachment-content': content,
-    './attachment-route-platform': { chooseStaticPoint: async () => null },
+    './attachment-route-platform': {
+      chooseStaticPoint: async () => {
+        gps++;
+        return null;
+      },
+    },
     './cache-work': {
       sensitiveCacheWork: {
         run: () => {
+          stages++;
           throw Error('No attachment Add authorized in this lifecycle test');
         },
       },
@@ -281,6 +293,8 @@ export function locationReactFixture() {
       return value;
     },
     counts: () => ({ backs, sends }),
+    effectCounts: () => ({ stages, gps }),
+    hasButton: (label: string) => buttons.has(label),
     searchGate: (value: Promise<readonly StaticLocation[]>) => {
       searchGate = value;
     },

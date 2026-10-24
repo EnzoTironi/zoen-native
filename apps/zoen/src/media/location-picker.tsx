@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { AppState, Text, View } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { Text, View } from 'react-native';
 import { randomUUID } from 'expo-crypto';
 import { Field, NativeButton } from '../components/primitives';
 import { t } from '../i18n';
@@ -39,31 +38,16 @@ export function LocationPicker({
   const [failed, setFailed] = useState(false);
   const working = useRef(false);
   const attempted = useRef(false);
-  const focused = useRef(false);
-  useFocusEffect(
-    useCallback(() => {
-      focused.current = true;
-      if (AppState.currentState === 'active') session.activate(randomUUID());
-      return () => {
-        focused.current = false;
-        session.retire();
-      };
-    }, [session]),
-  );
   useEffect(() => {
-    const listener = AppState.addEventListener('change', (next) => {
-      session.retire();
-      if (next === 'active' && focused.current) session.activate(randomUUID());
-    });
-    return () => {
-      listener.remove();
-      session.retire();
-    };
+    // The parent admits this keyed lifetime after its own focus/foreground
+    // transition. A child focus effect can otherwise run before that admission.
+    session.activate(randomUUID());
+    return () => session.retire();
   }, [session]);
   const binding = state.binding;
   const valid = () => session.current(binding) && current();
   const selectable = () => valid() && !attempted.current && !working.current;
-  const locked = !binding || !current() || held || busy;
+  const locked = !valid() || held || busy;
   if (!media.searchLocations || !media.readLocation)
     return <Text style={{ color: colors.secondary }}>{t('attachmentTabs.mapUnavailable')}</Text>;
   return (
