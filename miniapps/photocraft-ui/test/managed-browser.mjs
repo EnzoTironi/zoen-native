@@ -7,6 +7,7 @@ import { resolve, isAbsolute } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { build } from "../../../apps/zoen/node_modules/esbuild/lib/main.js";
 import { findBrowserExecutable } from "../../../tools/miniapp-build/browser-executable.ts";
+import { pauseOnCompletedTouch } from "./input-flush-assertions.mjs";
 const editor = "photocraft";
 const [modulePath, wasmPath, htmlPath, seedPath, output, playwrightPath] = process.argv.slice(2);
 if (
@@ -75,7 +76,7 @@ const files = new Map([
     "/",
     [
       Buffer.from(
-        '<!doctype html><style>html,body{margin:0}iframe{width:100vw;height:100vh;border:0}</style><iframe sandbox="allow-scripts"></iframe><script type="module">import {startProbe} from "/probe.js";await startProbe(await(await fetch("/config.json")).json());</script>',
+        '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0}iframe{width:100vw;height:100vh;border:0}</style><iframe sandbox="allow-scripts"></iframe><script type="module">import {startProbe} from "/probe.js";await startProbe(await(await fetch("/config.json")).json());</script>',
       ),
       "text/html",
     ],
@@ -107,20 +108,30 @@ try {
     server.once("error", fail);
     server.listen(0, "127.0.0.1", done);
   });
-  const { chromium } = await import(pathToFileURL(playwrightPath).href);
-  browser = await chromium.launch({
-    executablePath: await findBrowserExecutable(),
-    headless: true,
-    timeout: 30000,
-    args: [
-      "--enable-unsafe-swiftshader",
-      "--use-angle=swiftshader",
-      "--disable-background-networking",
-      "--disable-component-update",
-    ],
-  });
+  const { chromium, webkit, devices } = await import(pathToFileURL(playwrightPath).href);
+  const isWebkit = process.env.ZOEN_PROBE_WEBKIT === "1";
+  browser = await (isWebkit ? webkit : chromium).launch(
+    isWebkit
+      ? { headless: true, timeout: 30000 }
+      : {
+          executablePath: await findBrowserExecutable(),
+          headless: true,
+          timeout: 30000,
+          args: [
+            "--enable-unsafe-swiftshader",
+            "--use-angle=swiftshader",
+            "--disable-background-networking",
+            "--disable-component-update",
+          ],
+        },
+  );
   const page = await browser.newPage({
-    viewport: { width: 390, height: 844 },
+    ...(isWebkit ? devices["iPhone 13"] : {}),
+    viewport:
+      process.env.PHOTO_BASELINE_DESKTOP === "1"
+        ? { width: 1100, height: 800 }
+        : { width: 390, height: 844 },
+    deviceScaleFactor: 1,
     hasTouch: true,
   });
   page.on("pageerror", (e) => errors.push(String(e)));
@@ -163,8 +174,7 @@ try {
     green: [0, 255, 0, 255],
   });
   await page.evaluate(() => window.probe.holdNextWrite());
-  // Trusted primary touch on the real canvas, without focusing it from JS.
-  await page.touchscreen.tap(180, 340);
+  const touchPause = await pauseOnCompletedTouch(page, 180, 340);
   await page.waitForFunction(() => window.probe.writeHeld, undefined, { timeout: 10000 });
   await page.touchscreen.tap(250, 440);
   const frame = page.frames().find((f) => f !== page.mainFrame());
@@ -242,6 +252,7 @@ try {
     fixtureBundleSha256: sha(bundled.outputFiles[0].contents),
     ...result,
     originalPixels,
+    touchPause,
     editedPixels,
     edited,
     coldReopen: { version: 3, writes: 0, sha256: sha(Buffer.from(edited.accepted, "base64")) },
