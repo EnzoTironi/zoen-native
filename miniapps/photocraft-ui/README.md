@@ -103,6 +103,15 @@ configuration is refused. Test qualification URLs are not a live deployment.
 
 ## Evidence and remaining acceptance
 
+The command-envelope browser package is recorded in
+[browser-qualification.json](browser-qualification.json), including exact
+JS/WASM/HTML pins and separate Chromium/WebKit receipts. `test/browser-command.mjs`
+exercises the actual rendered Session ABI with synthetic scope/ACK: exact command
+and checkpoint envelopes, retries, rejected ACK/scope/base/action, native-byte
+rotation equality, independent full-pixel rotation, accepted export and a fresh
+renderer reopen. It fails against the prior raw-action package and passes against
+the normal rebuilt package. The MCP/manual consumer remains a separate test.
+
 Actual native qualification passed 12 bridge/engine cases and six PhotoApp/input
 cases, with all-target pedantic/performance Clippy. Core qualification passed
 1,028 client-core and 53 miniapps tests without skips, including configured real
