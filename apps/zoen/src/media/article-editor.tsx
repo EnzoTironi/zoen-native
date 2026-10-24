@@ -1,9 +1,7 @@
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { ScrollView, Text, TextInput, View } from 'react-native';
-import {
-  EnrichedMarkdownTextInput,
-  type EnrichedMarkdownTextInputInstance,
-} from 'react-native-enriched-markdown';
+import type { EnrichedMarkdownTextInputInstance } from 'react-native-enriched-markdown';
+import { ArticleNativeInput } from './article-native-input';
 import { Field, IconButton, NativeButton } from '../components/primitives';
 import { t } from '../i18n';
 import { useTheme } from '../theme';
@@ -289,7 +287,7 @@ export function ArticleEditor({
           {linkError}
         </Text>
       ) : null}
-      <EnrichedMarkdownTextInput
+      <ArticleNativeInput
         ref={input}
         defaultValue={initial}
         editable={!disabled && link === null && !linkBusy}

@@ -162,8 +162,7 @@ test('actual native Article editor formatting handlers use installed native meth
       if (name === 'react/jsx-runtime') return jsx;
       if (name === 'react-native')
         return { View: 'View', ScrollView: 'ScrollView', TextInput: 'TextInput' };
-      if (name === 'react-native-enriched-markdown')
-        return { EnrichedMarkdownTextInput: 'NativeMarkdown' };
+      if (name === './article-native-input') return { ArticleNativeInput: 'NativeMarkdown' };
       if (name === '../components/primitives')
         return { IconButton: 'IconButton', NativeButton: 'NativeButton', Field: 'Field' };
       if (name === '../i18n') return { t: (key: string) => key };
