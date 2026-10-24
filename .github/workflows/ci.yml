@@ -28,6 +28,8 @@ jobs:
     timeout-minutes: 3
     outputs:
       documentation_only: ${{ steps.scope.outputs.documentation_only }}
+      frontend_only: ${{ steps.scope.outputs.frontend_only }}
+      run_rust: ${{ steps.scope.outputs.run_rust }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -92,31 +94,17 @@ jobs:
       - name: Exported Grid workbook reader contracts
         run: python3 -m unittest discover -s miniapps/gridcraft-ui/test -p test_xlsx_export.py -v
 
-      - name: Documentation CI scope regression tests
-        run: python3 -m unittest discover -s scripts/tests -p 'test_ci_documentation_scope.py' -v
+      - name: Documentation/frontend CI scope regression tests
+        run: python3 -m unittest discover -s scripts/tests -p 'test_ci*scope.py' -v
 
       - name: Canonical acceptance composition and source writes
         run: python3 scripts/test-acceptance.py
 
-  rust:
-    needs: change-scope
-    # A skipped job means no compiler/integration test execution; prose has its own check.
-    if: ${{ !cancelled() && (needs.change-scope.result != 'success' || needs.change-scope.outputs.documentation_only != 'true') }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Toolchain
+      # These remain mandatory even when the verified frontend lane skips Rust.
+      - name: Toolchain for bounded source/entrypoint guard fixtures
         run: |
-          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy,rustfmt
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
           rustup default "$RUST_TOOLCHAIN"
-          # The WASM tier's journey builds its tools as WASI p2 components (ADR 0028 T0).
-          rustup target add wasm32-wasip2
-
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Shared Cargo source qualification guard
         run: python3 -m unittest discover -s scripts/tests -p 'test_cargo*.py' -v
@@ -134,6 +122,27 @@ jobs:
           # metadata and compile only their own tiny, dependency-free workspaces.
           cargo metadata --locked --no-deps --format-version 1 > "$RUNNER_TEMP/expo-core-metadata.json"
           node --test --test-concurrency=1 scripts/tests/build-expo-core.test.mjs scripts/tests/expo-ios-orchestration.test.mjs scripts/tests/expo-android-proxy.test.mjs scripts/tests/expo-android-orchestration.test.mjs
+
+
+  rust:
+    needs: change-scope
+    # Only an explicit verified skip can omit Rust; missing/failed scope stays full.
+    if: ${{ !cancelled() && (needs.change-scope.result != 'success' || needs.change-scope.outputs.run_rust != 'false') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Toolchain
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy,rustfmt
+          rustup default "$RUST_TOOLCHAIN"
+          # The WASM tier's journey builds its tools as WASI p2 components (ADR 0028 T0).
+          rustup target add wasm32-wasip2
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Format
         run: cargo fmt --all --check
