@@ -32,38 +32,6 @@ index d3ae79e..7331bb3 100644
  pub mod caret_glide;
  pub mod chrome;
  pub mod colors;
-diff --git a/vendor/eframe-0.36.2/src/web/text_input_activation.rs b/vendor/eframe-0.36.2/src/web/text_input_activation.rs
-index 5dcdfdd..76a5a6d 100644
---- a/vendor/eframe-0.36.2/src/web/text_input_activation.rs
-+++ b/vendor/eframe-0.36.2/src/web/text_input_activation.rs
-@@ -124,6 +124,17 @@ pub(crate) fn accepted_current_text(ctx: &egui::Context, ime: bool) -> bool {
-             return true;
-         }
-     }
-+    // Word's canvas is the actual keyboard owner, not a fabricated TextEdit.
-+    // Require its current pulse AND the same primary-clicked, enabled widget;
-+    // ordinary focused IME frames and another document's contact cannot qualify.
-+    if let Some(id) = ctx.memory(|memory| memory.focused())
-+        && ctx.last_pass_widget_enabled(id)
-+        && custom.is_some_and(|(frame, owner)| owner == id && frame.checked_add(1) == Some(ctx.cumulative_frame_nr()))
-+        && ctx.interaction_snapshot(|interaction| interaction.clicked == Some(id))
-+        && ctx.input(|input| input.pointer.button_clicked(egui::PointerButton::Primary))
-+    {
-+        return true;
-+    }
-     // A custom canvas owns IME only while no ordinary egui widget has focus.
-     ctx.memory(|memory| memory.focused().is_none()) && custom.is_some_and(|(frame, _owner)| frame.checked_add(1) == Some(ctx.cumulative_frame_nr()))
- }
-diff --git a/vendor/egui-0.36.2/src/containers/scene.rs b/vendor/egui-0.36.2/src/containers/scene.rs
-index 0934522..54e38d8 100644
---- a/vendor/egui-0.36.2/src/containers/scene.rs
-+++ b/vendor/egui-0.36.2/src/containers/scene.rs
-@@ -1,5 +1,3 @@
--use core::f32;
--
- use emath::{GuiRounding as _, Pos2};
- 
- use crate::{
 diff --git a/crates/ui-egui/src/text_activation.rs b/crates/ui-egui/src/text_activation.rs
 new file mode 100644
 index 0000000..1c167fb
@@ -199,3 +167,78 @@ index 0000000..1c167fb
 +        )
 +    });
 +}
+diff --git a/vendor/eframe-0.36.2/src/web/text_input_activation.rs b/vendor/eframe-0.36.2/src/web/text_input_activation.rs
+index 5dcdfdd..94fede2 100644
+--- a/vendor/eframe-0.36.2/src/web/text_input_activation.rs
++++ b/vendor/eframe-0.36.2/src/web/text_input_activation.rs
+@@ -46,7 +46,7 @@ impl PrimaryContact {
+     }
+
+     /// Returns once for the owning release, carrying eligibility for activation.
+-    /// IDs of PointerEvent and Touch are deliberately never compared with each other.
++    /// IDs of `PointerEvent` and Touch are deliberately never compared with each other.
+     pub fn end(&mut self, family: Family, id: i32) -> Option<bool> {
+         let slot = match family {
+             Family::Pointer => self.pointer,
+@@ -72,7 +72,7 @@ impl PrimaryContact {
+ }
+
+ /// Cancellation must drop button/click state, not synthesize a clickable Up.
+-/// PointerGone alone only hides hover and deliberately leaves buttons down.
++/// `PointerGone` alone only hides hover and deliberately leaves buttons down.
+ pub(crate) fn cancel_primary(ctx: &egui::Context, contact: &mut PrimaryContact, events: &mut Vec<egui::Event>) -> bool {
+     if !contact.cancel() {
+         return false;
+@@ -91,13 +91,13 @@ pub(crate) fn cancel_primary(ctx: &egui::Context, contact: &mut PrimaryContact,
+ const ACTIVATION: &str = "eframe.text_input_activation";
+
+ /// A custom editor may publish a content-free (egui-frame, current-owner-ID)
+-/// pulse after admitting a textual click. The standard TextEdit needs no adapter.
++/// pulse after admitting a textual click. The standard `TextEdit` needs no adapter.
+ /// The runner clears before logic and consumes after that same synchronous run.
+ pub(crate) fn clear_custom(ctx: &egui::Context) {
+     ctx.data_mut(|data| data.remove::<Option<(u64, egui::Id)>>(egui::Id::new(ACTIVATION)));
+ }
+
+-/// The output-level predicate used by AppRunner, also exercised by the native UI harness.
++/// The output-level predicate used by `AppRunner`, also exercised by the native UI harness.
+ pub(crate) fn accepted_output_text(ctx: &egui::Context, ime: Option<&egui::output::IMEOutput>) -> bool {
+     // A focus handoff interrupts the previous composition, but still advertises
+     // the newly admitted editor. AppRunner must clear that composition before
+@@ -111,7 +111,7 @@ pub(crate) fn accepted_current_text(ctx: &egui::Context, ime: bool) -> bool {
+         return false;
+     }
+     if ctx.text_edit_focused()
+-        && let Some(id) = ctx.memory(|memory| memory.focused())
++        && let Some(id) = ctx.memory(egui::Memory::focused)
+         && ctx.last_pass_widget_enabled(id)
+     {
+         // Reading a Response replays egui's click-elsewhere focus policy. A
+@@ -124,6 +124,17 @@ pub(crate) fn accepted_current_text(ctx: &egui::Context, ime: bool) -> bool {
+             return true;
+         }
+     }
++    // Word's canvas is the actual keyboard owner, not a fabricated TextEdit.
++    // Require its current pulse AND the same primary-clicked, enabled widget;
++    // ordinary focused IME frames and another document's contact cannot qualify.
++    if let Some(id) = ctx.memory(egui::Memory::focused)
++        && ctx.last_pass_widget_enabled(id)
++        && custom.is_some_and(|(frame, owner)| owner == id && frame.checked_add(1) == Some(ctx.cumulative_frame_nr()))
++        && ctx.interaction_snapshot(|interaction| interaction.clicked == Some(id))
++        && ctx.input(|input| input.pointer.button_clicked(egui::PointerButton::Primary))
++    {
++        return true;
++    }
+     // A custom canvas owns IME only while no ordinary egui widget has focus.
+     ctx.memory(|memory| memory.focused().is_none()) && custom.is_some_and(|(frame, _owner)| frame.checked_add(1) == Some(ctx.cumulative_frame_nr()))
+ }
+diff --git a/vendor/egui-0.36.2/src/containers/scene.rs b/vendor/egui-0.36.2/src/containers/scene.rs
+index 0934522..54e38d8 100644
+--- a/vendor/egui-0.36.2/src/containers/scene.rs
++++ b/vendor/egui-0.36.2/src/containers/scene.rs
+@@ -1,5 +1,3 @@
+-use core::f32;
+-
+ use emath::{GuiRounding as _, Pos2};
+
+ use crate::{

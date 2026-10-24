@@ -1,4 +1,4 @@
-//! Actual Word canvas and the exact predicate consumed by AppRunner's user callback.
+//! Actual Word canvas and the exact predicate consumed by `AppRunner`'s user callback.
 use super::*;
 #[path = "../../../vendor/eframe-0.36.2/src/web/text_input_activation.rs"]
 mod web_activation;
@@ -150,7 +150,7 @@ fn current_owner_requires_actual_ime_and_never_admits_stale_or_foreign_pulses() 
     h.run_steps(2);
     let owner = h
         .ctx
-        .memory(|m| m.focused())
+        .memory(egui::Memory::focused)
         .ok_or_else(|| failure("fixture_owner"))?;
     let frame = h
         .ctx
