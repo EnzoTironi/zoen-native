@@ -407,9 +407,9 @@ fn ensure(
 
 #[path = "file_demand_tests/lifecycle.rs"]
 mod lifecycle;
-#[path = "file_demand_tests/selection.rs"]
-mod selection;
 #[path = "file_demand_tests/revocation.rs"]
 mod revocation;
+#[path = "file_demand_tests/selection.rs"]
+mod selection;
 #[path = "file_demand_tests/session_retirement.rs"]
 mod session_retirement;
