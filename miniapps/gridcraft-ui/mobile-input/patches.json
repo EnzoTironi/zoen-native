@@ -14,8 +14,8 @@
     },
     {
       "path": "patches/eframe-primary-contact.patch",
-      "bytes": 12328,
-      "sha256": "52ef89a672af8316450cee77fd09ec123b836f6372ad8637a32361762e01d0bb"
+      "bytes": 13436,
+      "sha256": "9e8ed49034a9bcd67fab0767ded2a813d8ee6706f7b25a9e9e44cb8e660cdde9"
     },
     {
       "path": "patches/eframe-text-agent.patch",
@@ -48,5 +48,6 @@
     "path": "tests/touch_ui_tests.rs",
     "sha256": "632cacd0cea5b264a82dd0594870dd7d3ab7e0391585cdc16a71c54abb9ee424",
     "bytes": 9118
-  }
+  },
+  "revisionNote": "Primary canvas focus on admitted trusted touch; release/owner/IME/cancel gates preserved. Top-level source/status retain the previous baseline qualification; current patches require per-consumer qualification."
 }

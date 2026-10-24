@@ -91,3 +91,12 @@ index 89f293a..3c4f72f 100644
          if let Some(result) = delete_layer_prompt::intercept(self, id, &params) {
              return result;
          }
+@@ -1884,7 +1884,7 @@
+ }
+ 
+ impl eframe::App for PhotocraftApp {
+-    fn on_exit(&mut self) {
++    fn on_exit(&mut self, #[cfg(target_arch = "wasm32")] _gl: Option<&eframe::glow::Context>) {
+         if let Err(err) = tool_memory::save_on_exit(self) {
+             log::warn!("Preferences: could not save the final tool selection: {err}");
+         }
