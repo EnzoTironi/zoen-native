@@ -1,6 +1,6 @@
 //! Actual closed PDF frames in the signed WASI tier; supplied Scope is synthetic.
-use super::{Result, WasmTier, WasmTool, call, require, sha};
-use serde_json::{Value, json};
+use super::{call, require, sha, Result, WasmTier, WasmTool};
+use serde_json::{json, Value};
 use std::path::Path;
 pub(super) async fn check(
     tier: &WasmTier,
