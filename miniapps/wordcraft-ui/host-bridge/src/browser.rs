@@ -99,7 +99,7 @@ impl BrowserBridge {
         let host = HostBridge::open(request.clone(), bytes)?;
         let doc = profile::parse(bytes)?;
         let binding = NEXT_BINDING
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
             .map_err(|_| failure("document_generation_exhausted"))?;
         let mut next = Session::new(doc.clone());
         next.managed_policy = Some(command_policy);
