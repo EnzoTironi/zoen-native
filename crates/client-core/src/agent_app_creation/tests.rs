@@ -240,7 +240,8 @@ fn lost_journal_result_recovers_only_an_existing_native_receipt() {
 }
 
 #[test]
-fn revoked_writer_and_expired_signed_request_cannot_create_or_reauthorize() {
+fn revoked_writer_and_expired_signed_request_cannot_create_or_reauthorize(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let f = setup().unwrap();
     let request = stage(&f);
     approve(&f, &request);
@@ -271,10 +272,11 @@ fn revoked_writer_and_expired_signed_request_cannot_create_or_reauthorize() {
     let observed = expired.content_hash.clone();
     let opened = expired.tool_proposal.as_ref().unwrap().expires_at_ms - 1000;
     drop(e);
-    shared::tests::append_at(&f, expired, opened);
+    shared::tests::append_at(&f, expired, opened)?;
     assert!(decide(&f, &id, &observed, ToolRequestDecision::ApproveOnce).is_err());
     assert!(f.agent.approved_app_creation(&id).is_err());
     assert_eq!(f.agent.items().len(), before);
+    Ok(())
 }
 
 #[test]
