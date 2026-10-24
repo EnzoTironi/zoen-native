@@ -19,7 +19,7 @@ Local proof directory: `/Users/enzotironi/.codex/builds/zoen-word-rich-document-
 
 ## Remaining acceptance and limits
 
-This source delivery does not qualify a new browser/worker package or the iPhone journey. Existing pinned assets remain unchanged until normal cross-compilation, package qualification and review. Native keyboard #557 remains a separate failing acceptance; desktop WebKit or native egui tests do not prove software keyboard presentation on iOS.
+The rich browser package is now built normally, inside the existing asset caps, and its exact bytes are pinned. Actual WebKit (normal and press-focus-refusal) and Chromium exercised trusted touch, held-ACK typing, manual italic formatting, a real headless agent formatting proposal, official same-Session refresh, keyboard Undo as a new human version, DOCX/PDF export and cold reopen with zero writes. Their canonical port is synthetic; native Core review/history is a separate proof. Native keyboard #557 remains a separate pending acceptance for this package; desktop WebKit or native egui tests do not prove iOS software keyboard presentation. The normal WASI release is built; the current final signed-tier runtime result is tracked in #583 and PR #589.
 
 The managed profile remains bounded: 512 KiB package, 32 parts, 1 MiB per inflated part, 4 MiB total, 32 KiB body text. Imports must survive the pinned codec exactly; opaque parts/external relationships are refused. Range tools address ordered UTF-8 codepoint boundaries in regular body paragraphs, and refuse ranges crossing tables or other blocks. This is not a claim of all-format Word compatibility, unrestricted editing commands or complete WordCraft feature parity.
 
@@ -31,12 +31,20 @@ The official SDK consumer now queues Word head notifications through `refresh_do
 It drains admitted input before checking draft/pending state, verifies canonical chunks
 and authority, then calls the same browser binding. Dirty/pending refresh refuses
 without saving or replacing the draft; retirement prevents late reopen/publication.
-Four SDK orchestration tests passed with a behavioral engine port. Actual new WASM
-consumer execution remains a separate required proof.
+Five SDK orchestration tests passed with a behavioral engine port. Actual new WASM consumer execution passed separately in WebKit and Chromium. A causal SDK regression also proves that an own/stale head notification must not block newer human input; the observed immutable version is checked before requesting pause.
 
 The normal rich browser release passed in 450.9 s with all Rust producer inputs
 unchanged. wasm-bindgen 0.2.129 produced 46,546,230-byte WASM (SHA-256
 `e6771bc5d939fff1057d58b78d786611a5975c7e1b6f7d7b8983ceaf6d2dea1f`),
-inside the existing 48 MiB cap. Runtime, WASI and native acceptance are still pending.
+inside the existing 48 MiB cap. WASI release also passed in 478.5 s with unchanged producer inputs; its worker is 35,971,597 bytes, SHA-256 `3e41a135c1faeb042071cbeddd23f76652836f4c032252b104787a9c73a62370`. Native acceptance is still pending.
 Existing upstream formatting controls are now exposed (`focus_mode=false`); the
 short empty Web page and touch/accessibility usability still require iPhone review.
+
+The final broader app check passed types, lint and format; 2,361 of 2,362 tests
+passed initially. The sole failure was an absent ignored generated Swift file,
+before the test could run. That exact test then passed with a read-only existing
+artifact whose exercised CoreError enum is byte-identical to the verified v586
+build. The final affected SDK/history/lifecycle batch passed 28 tests. The configured
+new browser resource passed the native miniapps Word batch. CI's stale reviewed
+producer/Cargo pins were refreshed without changing job-selection rules; the full
+Rust lane and source/embedded-resource negatives remain in force.
