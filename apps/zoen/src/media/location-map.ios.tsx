@@ -22,7 +22,13 @@ export function LocationMap({ binding, editable, point, label, onPointChange }: 
     <NativeMap
       style={{ height: 260, width: '100%' }}
       accessibilityLabel={label}
-      configuration={JSON.stringify({ binding, editable, point, accessibilityLabel: label })}
+      configuration={JSON.stringify({
+        binding,
+        editable,
+        point,
+        accessibilityLabel: label,
+        selectPointLabel: t('attachmentTabs.selectMapCenter'),
+      })}
       onPointChange={(event) => {
         if (!editable || event.nativeEvent.binding !== binding) return;
         try {
