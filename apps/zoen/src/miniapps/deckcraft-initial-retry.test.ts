@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { homeSpacesFor } from '../home/access.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -37,7 +38,7 @@ function findType(tree: any, type: string): Element | undefined {
   if (!tree?.props) return;
   return tree.type === type ? tree : findType(tree.props.children, type);
 }
-function fixture() {
+function fixture(historical = false) {
   const slots: any[] = [];
   let cursor = 0;
   let effects: (() => void)[] = [];
@@ -45,6 +46,7 @@ function fixture() {
   let owner: any;
   let controller: any;
   let flushes = 0;
+  const shares: string[] = [];
   const same = (a: any[], b: any[]) =>
     a && b && a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
   const slot = () => slots[cursor++] ?? (slots[cursor - 1] = {});
@@ -110,6 +112,7 @@ function fixture() {
     'expo-crypto': { randomUUID: () => 'owned' },
     'react-native-safe-area-context': { useSafeAreaInsets: () => insets },
     '../i18n/index.ts': { t: (key: string) => key, locale: 'en' },
+    '../home/access.ts': { homeSpacesFor },
     '../core/provider': { useClient: () => ({ store }) },
     '../components/primitives': {
       Loading: 'Loading',
@@ -127,6 +130,9 @@ function fixture() {
     './deckcraft-session': {
       createDeckcraftSession: (options: any) => {
         const current = {
+          share: async (format: string) => {
+            shares.push(format);
+          },
           opened: false,
           retired: false,
           controller: {
@@ -148,6 +154,7 @@ function fixture() {
     },
   };
   const props = {
+    selectedHead: historical ? { version: '1', sha256: 'a'.repeat(64) } : undefined,
     item: { id: 'owned', title: 'Owned' },
     fill: true,
     verified: { resource: { text: '<p>Owned</p>' }, manifest: {} },
@@ -180,6 +187,10 @@ function fixture() {
   render();
   return {
     render,
+    shares,
+    select: () => {
+      props.selectedHead = { version: '2', sha256: 'b'.repeat(64) };
+    },
     owner: () => owner,
     feedback: (state: unknown) => owner.state(state),
     flushes: () => flushes,
@@ -300,4 +311,28 @@ test('actual compiled native-frame failure remains covered after late guest save
   } finally {
     f.close();
   }
+});
+
+test('compiled historical controls export from the displayed owner and stale buttons cannot target a replacement version or closed frame', () => {
+  const f = fixture(true);
+  f.opened();
+  const pdf = find(f.render(), 'deckcraft-history-export-pdf')!;
+  const pptx = find(f.render(), 'deckcraft-history-export-pptx')!;
+  assert.ok(pdf);
+  assert.ok(pptx);
+  pdf.props.onPress();
+  pptx.props.onPress();
+  assert.deepEqual(f.shares, ['pdf', 'pptx']);
+  f.select();
+  f.render();
+  pdf.props.onPress();
+  pptx.props.onPress();
+  assert.deepEqual(f.shares, ['pdf', 'pptx']);
+  f.opened();
+  const replacement = find(f.render(), 'deckcraft-history-export-pdf')!;
+  replacement.props.onPress();
+  assert.deepEqual(f.shares, ['pdf', 'pptx', 'pdf']);
+  f.close();
+  replacement.props.onPress();
+  assert.deepEqual(f.shares, ['pdf', 'pptx', 'pdf']);
 });

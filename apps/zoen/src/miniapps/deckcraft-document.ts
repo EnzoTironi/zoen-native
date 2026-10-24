@@ -73,6 +73,7 @@ export class DeckcraftDocument {
   private live = true;
   private paused = false;
   private opened = false;
+  private readOnly = false;
   private binding: Scope | null = null;
   private pending: { metadata: Record<string, unknown>; bytes: Uint8Array } | null = null;
   private tail: Promise<unknown> = Promise.resolve();
@@ -177,9 +178,15 @@ export class DeckcraftDocument {
           { scope: this.binding, head: { version: String(read.version), sha256: read.sha256 } },
           bytes,
         );
+        this.readOnly = read.readOnly === true;
+        if (this.readOnly) {
+          if (!(await this.engine('freeze', { frozen: true })).metadata.frozen)
+            throw new Error('The historical document did not acknowledge read-only mode.');
+          this.paused = true;
+        }
         this.opened = true;
         this.options.engine.zoenHostOnChange((encoded) => {
-          if (!this.live || this.paused) return;
+          if (!this.live || this.paused || this.readOnly) return;
           try {
             if (record(JSON.parse(encoded)).dirty) this.schedule();
           } catch (error) {
@@ -263,6 +270,7 @@ export class DeckcraftDocument {
   }
   private async saveCurrent() {
     if (!this.opened || !this.binding) throw new Error('The document is not open.');
+    if (this.readOnly) throw new Error('This historical document is read-only.');
     // A failed/lost response retries the exact old bytes and mutation before taking a new snapshot.
     await this.persist();
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -292,6 +300,7 @@ export class DeckcraftDocument {
    * original draft, and a background flush can explicitly resume the same document. */
   flush(): Promise<void> {
     return this.serial(async () => {
+      if (this.readOnly) return;
       this.paused = true;
       if (this.timer) {
         clearTimeout(this.timer);
@@ -320,6 +329,7 @@ export class DeckcraftDocument {
   }
   resume(): Promise<void> {
     return this.serial(async () => {
+      if (this.readOnly) return;
       await this.engine('freeze', { frozen: false });
       this.paused = false;
       if ((await this.engine('status')).metadata.dirty) this.schedule();

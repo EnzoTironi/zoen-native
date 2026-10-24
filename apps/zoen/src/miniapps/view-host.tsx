@@ -1,3 +1,4 @@
+import type { DeckcraftExportHead } from './deckcraft-export';
 import type { AppSpecDto } from '../core/generated/AppSpecDto';
 import type { ItemDetail } from '../core/types';
 import { AppKeyboardViewport } from './app-keyboard-viewport';
@@ -7,11 +8,13 @@ import type { MiniappDocumentController } from './document-controller';
 import { BuiltinMiniappView } from './view-host-builtin';
 
 export function MiniappView({
+  selectedHead,
   onDocumentController,
   onDocumentCopied,
   onDocumentDiscard,
   ...props
 }: {
+  selectedHead?: DeckcraftExportHead;
   item: ItemDetail;
   spec: AppSpecDto;
   fill?: boolean;
@@ -23,6 +26,7 @@ export function MiniappView({
     props.spec.id === 'deckcraft' ? (
       <DeckcraftView
         {...props}
+        selectedHead={selectedHead}
         onDocumentController={onDocumentController}
         onDocumentDiscard={onDocumentDiscard}
       />
