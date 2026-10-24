@@ -1,4 +1,4 @@
-# Managed WordCraft: first headless slice
+# Managed WordCraft: bounded DOCX worker
 
 Tracks [#502](https://github.com/EnzoTironi/zoen-native/issues/502), under ArtCraft
 [#180](https://github.com/EnzoTironi/zoen-native/issues/180). This does not register
@@ -57,8 +57,69 @@ Actual WASM: 43,967,642 bytes, SHA-256
 `fe8e18258a33eebd4b32d311e1651ebd817bae18469599a6f16feb3403389ad5`.
 This proves availability, not execution or a managed package. That release is
 not copied into Zoen resources. Its size and full fonts/assets need a managed
-package audit. The engine's wasm32 clock uses js-sys; browser WASM is not evidence
-of WASIp2 support. No WASI or native keyboard claim follows from host tests.
+package audit. Browser WASM is not evidence of WASIp2 support or native keyboard
+behavior. The WASIp2 qualification below uses separately built components.
+
+## Genuine WASIp2 components
+
+For a separate clean pinned upstream checkout, add `--wasi` to the preparation
+command. The two recorded patches select the existing native clock bodies on
+`target_os="wasi"` in engine, formats, layout and PDF. Browser clock/dependency
+branches keep their `js-sys` implementation. No clock value is fabricated and no
+rendering, thread, file or import permission is enabled. Native-only unused
+helpers are cfg-gated rather than suppressed; existing helper tests remain.
+
+Generate the real lockfile in the prepared tree, then qualify
+`wordcraft-zoen-host` with native all-target Clippy/lib tests and WASIp2 bin
+Clippy. Build both `wordcraft-zoen-host` and `wordcraft-clock-probe` with
+`--target wasm32-wasip2 --release --features qualification`. The optional probe
+runs the actual engine clock, layout monotonic clock and ODT writer's revision
+clock branch. It is a separate qualification binary, not a product export or
+worker command. The linked WASIp2 graph has no `js-sys`, `wasm-bindgen`, egui,
+eframe, wgpu, glow, winit or rfd. CPU layout/font/PDF dependencies remain.
+
+The real Zoen consumer is `crates/zoen-agentd/examples/wordcraft_component_check.rs`:
+
+```sh
+cargo clippy -p zoen-agentd --example wordcraft_component_check -- -D warnings
+cargo build -p zoen-agentd --example wordcraft_component_check
+ABS_CHECKER ABS_WORKER_COMPONENT ABS_CLOCK_COMPONENT ABS_WRITER_SEED ABS_NEW_OUTPUT
+```
+
+All four paths are absolute. The seed must come from the upstream writer's real
+`--seed` execution. The consumer checks signed publisher/hash refusal, uses the
+existing `WasmTier`, and supplies no filesystem, environment or network to the
+components. It compares wall timestamps against actual host UTC, requires the
+monotonic clock to progress, then exercises inspect, edit, exact retry, cold
+reopen and unknown-command/foreign-scope/stale-head/bad-hash refusals. Each run
+retains the existing 5-second, 2-billion-fuel, 256-MiB limits. Its signing key and
+Scope are explicitly synthetic; they do not establish canonical authorization.
+The new output directory contains the actual proposal DOCX and receipt.
+
+Executed evidence (external artifacts, not repository binaries):
+
+| Qualification | Exact source / result |
+| --- | --- |
+| WASIp2 producer | Zoen `f1c9c8d13a08ce05591882813927a7a2e3f18f02`, prepared `5b374c574ef8a57b136de55c30a6c1f6f502f00b`; native and target Clippy, 6 real engine regressions, release components all PASS |
+| Real WasmTier consumer | Zoen `917e5ee057e2c1caf5f25bc17cc1b41f58dc95fe`; all 11 producer inputs unchanged; Clippy/build and 3 clocks + 8 framed calls PASS |
+| Worker component | 30,959,770 bytes; SHA-256 `72b2235b7d794fea72b3eb4589e18b67e19a6cdd271d2bcf2eeef8b658ec85d5` |
+| Probe component | 30,331,861 bytes; SHA-256 `3737f8d10921f580834260a5fda5c5c66368ff65d205d2b43bdcfb02cc8ba14e` |
+| Runtime receipt | SHA-256 `763f6f46b3b9c266d3565d5dd20b4fdbb2a9921a3c2a5b39960173f46c8e6bbe` |
+
+The first WASI Clippy attempt failed on four upstream target-specific unused/
+return diagnostics; the second patch addresses them without `allow`. That RED
+and the native first-slice diagnostics remain retained. Qualification did not
+execute PDF export or prove every upstream command compatible.
+
+Cold JIT is a material limitation: the normal development-built WasmTier consumer
+with one compiler thread took **196.400 seconds** to load the worker; both loads
+and all execution took 392.284 seconds. Per-call receipts report 0–6 ms and at
+most 112,733,774 fuel, excluding component compilation. This is not a startup
+latency guarantee. Retain and prewarm a verified `WasmTool` in the existing tier
+for a deployment, reusing it for fresh per-request stores; do not compile for each
+request. No cache/prewarm implementation or unverified AOT deserialization is
+introduced here. App availability still requires a canonical host/resource and
+browser integration with deployment readiness, permissions and recovery proof.
 
 Remaining vertical acceptance: real managed browser/manual editing, canonical
 binary host registration and permission/CAS recovery, agent action approval,
