@@ -32,6 +32,11 @@ export const managedAppResourceInputs = [
     environment: 'ZOEN_PHOTOCRAFT_RESOURCE_MANIFEST_JSON',
     html: 'crates/miniapps/resources/generated/photocraft.html',
   },
+  {
+    id: 'pdfcraft',
+    environment: 'ZOEN_PDFCRAFT_RESOURCE_MANIFEST_JSON',
+    html: 'crates/miniapps/resources/generated/pdfcraft.html',
+  },
 ];
 
 const defaultInputEnvironment = [

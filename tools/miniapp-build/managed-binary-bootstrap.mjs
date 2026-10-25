@@ -87,6 +87,17 @@ export async function buildManagedBinaryBootstrap(editor, outputDir, check = fal
       : {
           [`${editor}.html`]: html,
           [`${editor}-bootstrap.manifest.json`]: `${JSON.stringify(manifest, null, 2)}\n`,
+          // Endpoint-neutral defaults stay unavailable until an operator binds
+          // the actual sealed runtime with buildBinaryResourceManifest.
+          [`${editor}.manifest.json`]: `${JSON.stringify({
+            id: editor, name: {
+              gridcraft: "GridCraft", wordcraft: "WordCraft", photocraft: "PhotoCraft", pdfcraft: "PdfCraft",
+            }[editor], resourceUri: manifest.resourceUri,
+            mimeType: "text/html;profile=mcp-app", capabilities: [], allowedDomains: [],
+            linkDomains: [], networkPurpose: "", permissions: {},
+            csp: { connectDomains: [], resourceDomains: [], frameDomains: [], baseUriDomains: [] },
+            sha256: manifest.sha256, bytes: manifest.bytes,
+          }, null, 2)}\n`,
           "BOOTSTRAP-LICENSES.txt": notices,
         };
   if (editor === "deckcraft") {

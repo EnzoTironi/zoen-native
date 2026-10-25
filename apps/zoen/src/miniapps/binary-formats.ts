@@ -9,7 +9,7 @@ export const PDFCRAFT_ENGINE_REVISION = 'd445410807e7eefbe5b96f9662ab963ae8dd2a3
 const formats = Object.freeze({
   pdfcraft: Object.freeze({
     id: 'pdfcraft' as const,
-    liveReview: false,
+    liveReview: true,
     messages: 'wordDocuments' as const,
     resourceUri: 'ui://zoen/pdfcraft/index.html',
     engineRevision: PDFCRAFT_ENGINE_REVISION,

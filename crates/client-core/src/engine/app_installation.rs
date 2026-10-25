@@ -167,6 +167,7 @@ impl Engine {
                 apps::binary::Format::Deckcraft => self.install_deckcraft(space, args_json),
                 apps::binary::Format::Gridcraft
                 | apps::binary::Format::Wordcraft
+                | apps::binary::Format::Pdfcraft
                 | apps::binary::Format::Photocraft => self.install_binary(space, format, args_json),
             };
         }
@@ -206,10 +207,14 @@ impl Engine {
                 apps::binary::Format::Gridcraft => t("Planilha", "Spreadsheet"),
                 apps::binary::Format::Wordcraft => t("Documento", "Document"),
                 apps::binary::Format::Photocraft => t("Imagem", "Image"),
+                apps::binary::Format::Pdfcraft => "PDF".into(),
             },
             _ => return Err(invalid()),
         };
         let (title, _) = match format {
+            apps::binary::Format::Pdfcraft => {
+                apps::binary::pdfcraft_registration::create(&json!({"title":title}))
+            }
             apps::binary::Format::Photocraft => {
                 apps::binary::photocraft_registration::create(&json!({"title":title}))
             }

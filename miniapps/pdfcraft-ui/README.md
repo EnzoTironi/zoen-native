@@ -1,8 +1,9 @@
 # PdfCraft managed integration
 
-Integration candidate for #581; resumed from the preserved native/worker baseline.
-Not registered or enabled in Zoen. No PdfCraft PR or production availability is
-claimed. Browser and worker qualification precede canonical integration.
+Integration candidate for #581, resumed from the preserved native/worker baseline.
+The shared catalog/Core/CLI registration is implemented behind explicit resource
+availability; endpoint-neutral defaults never enable the editor. No PdfCraft PR,
+production availability or iPhone acceptance is claimed.
 
 Tracks #581 under #180/#170. Upstream is fixed to PdfCraft 0.13.0,
 `d445410807e7eefbe5b96f9662ab963ae8dd2a3a`; source/dependency hashes are in
@@ -69,10 +70,32 @@ COS/keys Undo stack. Undo of the peer update saves as a new version, and Undo of
 the earlier human change remains available. Pending receipts, active paragraph
 drafts, dirty native edits, invalid/foreign sources and pause state are preserved;
 a newer identical payload does not erase Redo. The original binding-replacement
-failure is retained as a causal RED. A genuine successor browser release is built;
-current-SDK WebKit live review, canonical CLI/Core integration and iPhone
-acceptance remain pending. No fifth App resource or worker is enabled on main.
-GitHub #581 is the status authority.
+failure is retained as a causal RED. The current-SDK WebKit successor now passes
+trusted human editing, a real worker rotation from that exact accepted PDF,
+external-head review without another save, native Undo of both the external
+update and earlier human edit, and exact cold chosen-version export. Independent
+pypdf verifies text, geometry, rotation and opaque data across all exported heads.
+This remains a synthetic-CAS browser proof, separate from Core authorization.
+The genuine one-page native blank seed also passes the retained More tools → Add
+text → touch paragraph → text-box checkmark → save, native Undo/Redo and exact cold
+export flow. Independent pypdf confirms the exact added text and restored blank
+content. Both journeys use the same sealed current browser package.
+
+The candidate now uses the shared format/catalog/card/creation/CAS contracts;
+the PDF resource is unavailable by default and requires an explicitly configured
+manifest bound to the actual sealed package. Twelve focused Rust tests pass:
+seven Core cases and five format/resource cases, including exact encrypted bytes,
+source origin, human ownership, lost ACK, cold history, new-save Undo,
+format/scope refusal and exact owner-reviewed agent creation. The genuine signed
+WASIp2 worker also passes the existing CLI/Gate/owner-review path: pending bytes
+stay unchanged, exact owner approval runs the worker, Core accepts one new head,
+and a restart between the effect and journal resumes the original receipt without
+a duplicate version. Scoped page reads, chosen old bytes, foreign source/item and
+invalid page refusals pass. Independent pypdf confirms the exact accepted receipt
+SHA, text/opaque data and requested page rotation. Actor, owner, Gate/brain and
+publisher in this offline test are explicit synthetic fixtures; no model or
+provider is invoked. Final all-targets Clippy for miniapps/Core/CLI/agent runtime passes with warnings denied; the new PDF modules also enable pedantic/perf. iPhone acceptance remains pending; no fifth App resource or
+worker is enabled on main. GitHub #581 is the status authority.
 
 The initial structural limits are 8 MiB, 32 declared pages, 8,192 current objects,
 64 internal PDF revisions and image dimensions ≤2,048 / 2,000,000 pixels. The

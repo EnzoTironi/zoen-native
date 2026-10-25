@@ -65,6 +65,7 @@ impl<'a> SpaceTools<'a> {
                     client_core::agent_app_creation::GRID_TOOL,
                     client_core::agent_app_creation::WORD_TOOL,
                     client_core::agent_app_creation::PHOTO_TOOL,
+                    client_core::agent_app_creation::PDF_TOOL,
                 ] {
                     let Some(format) = client_core::agent_app_creation::creation_format(tool)
                     else {
@@ -96,7 +97,7 @@ impl<'a> SpaceTools<'a> {
                     && item.app.as_ref().is_some_and(|app| {
                         matches!(
                             app.app_id.as_str(),
-                            "deckcraft" | "gridcraft" | "wordcraft" | "photocraft"
+                            "deckcraft" | "gridcraft" | "wordcraft" | "photocraft" | "pdfcraft"
                         )
                     })
             })

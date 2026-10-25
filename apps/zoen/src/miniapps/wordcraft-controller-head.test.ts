@@ -123,7 +123,13 @@ test('queued and in-flight head reads cannot return after their owner retires', 
 });
 
 test('observed head is absent outside capable editable formats and unopened editors never calls the guest', async () => {
-  for (const editor of ['deckcraft', 'gridcraft', 'photocraft', 'wordcraft'] as BinaryEditorId[]) {
+  for (const editor of [
+    'deckcraft',
+    'gridcraft',
+    'photocraft',
+    'wordcraft',
+    'pdfcraft',
+  ] as BinaryEditorId[]) {
     for (const historical of [false, true]) {
       let calls = 0;
       const format = binaryEditorFormat(editor);
