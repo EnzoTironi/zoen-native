@@ -44,3 +44,14 @@ pub struct AppCurrentShare {
     /// Snapshot rejection rejects this grant too; no separate orphan event.
     pub grant: Grant,
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn regular_legacy_file_bytes_omit_optional_app_origin_exactly() {
+        let wire = r#"{"name":"old.bin","mime":"application/octet-stream","bytes":0,"sha256":"0000000000000000000000000000000000000000000000000000000000000000","chunks":[]}"#;
+        let file: crate::FileDoc = serde_json::from_str(wire).unwrap();
+        assert!(file.app_origin.is_none());
+        assert_eq!(serde_json::to_string(&file).unwrap(), wire);
+    }
+}
