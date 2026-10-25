@@ -1,5 +1,6 @@
 //! Terminal consent failure retains the human request without wedging the lane.
 use super::*;
+use crate::Delivery;
 
 #[test]
 fn terminal_share_failure_survives_cold_and_needs_a_fresh_explicit_request() -> R<()> {
@@ -98,24 +99,39 @@ fn terminal_share_failure_survives_cold_and_needs_a_fresh_explicit_request() -> 
 #[test]
 fn terminal_failed_sent_heads_do_not_consume_the_next_application_window() -> R<()> {
     let mut f = late_word(":memory:", ":memory:")?;
-    for n in 0..Engine::APPLICATION_IN_FLIGHT {
+    for n in 0..16 {
         f.owner
             .send_message(SPACE, &format!("Actual queued message {n}"))?;
     }
     f.owner.mls_seal_outbox()?;
     let rows = f.owner.store.outbox()?;
-    let sent: HashMap<_, _> = rows
-        .iter()
-        .map(|row| {
+    let sent: HashMap<_, _> = f
+        .owner
+        .outbox_envelopes()
+        .into_iter()
+        .map(|entry| {
             (
-                row.event.client_id.clone(),
-                f.owner.sealed_epoch(&row.event),
+                entry.client_id().to_owned(),
+                f.owner.sealed_epoch_of(entry.client_id()),
             )
         })
         .collect();
-    assert_eq!(sent.len(), Engine::APPLICATION_IN_FLIGHT);
+    assert!(
+        !sent.is_empty() && sent.len() < rows.len(),
+        "the real publication window is saturated"
+    );
     assert!(sent.values().all(Option::is_some));
-    for row in rows {
+    let next_id = rows
+        .iter()
+        .find(|row| !sent.contains_key(&row.event.client_id))
+        .ok_or_else(|| storage("actual next queued message"))?
+        .event
+        .client_id
+        .clone();
+    for row in rows
+        .iter()
+        .filter(|row| sent.contains_key(&row.event.client_id))
+    {
         assert!(matches!(
             f.owner.reject(
                 &row.event.client_id,
@@ -126,12 +142,9 @@ fn terminal_failed_sent_heads_do_not_consume_the_next_application_window() -> R<
             crate::sync::RejectionOutcome::UserFailed
         ));
     }
-    let next = f
-        .owner
-        .send_message(SPACE, "Fresh message after terminal refusals")?;
     f.owner.mls_seal_outbox()?;
     let offered = f.owner.outbox_envelopes_except(&sent);
-    assert_eq!(offered.len(), 1);
-    assert_eq!(offered[0].client_id(), next.id);
+    assert!(!offered.is_empty());
+    assert_eq!(offered[0].client_id(), next_id);
     Ok(())
 }

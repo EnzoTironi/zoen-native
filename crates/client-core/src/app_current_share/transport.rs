@@ -25,8 +25,12 @@ impl Engine {
     pub(crate) fn refuse_stale_app_share(&mut self, event: &Event) -> R<()> {
         match self.reject(&event.client_id, &refused().to_string(), true, None) {
             crate::sync::RejectionOutcome::UserFailed => Ok(()),
-            crate::sync::RejectionOutcome::StorageFailure(error) => Err(storage(error)),
-            _ => Err(storage("pending App share refusal was not retained")),
+            crate::sync::RejectionOutcome::StorageFailure(message) => {
+                Err(CoreError::Storage { message })
+            }
+            _ => Err(CoreError::Storage {
+                message: "pending App share refusal was not retained".into(),
+            }),
         }
     }
 
@@ -34,7 +38,9 @@ impl Engine {
     /// exact composed request too, never every request or message in the Space.
     pub(crate) fn refuse_app_share_dependents(&self, event: &Event, reason: &str) -> R<()> {
         let EventBody::AppCurrentShared { share } = &event.body else {
-            return Err(storage("expected App share"));
+            return Err(CoreError::Storage {
+                message: "expected App share".into(),
+            });
         };
         let rows = self.store.outbox()?;
         let tx = self
@@ -43,7 +49,7 @@ impl Engine {
             .is_autocommit()
             .then(|| self.store.conn().unchecked_transaction())
             .transpose()
-            .map_err(storage)?;
+            .map_err(store::StoreError::from)?;
         for row in rows.iter().filter(|row| !row.failed) {
             let candidate = &row.event;
             let dependent = candidate.space == event.space
@@ -60,7 +66,7 @@ impl Engine {
             }
         }
         if let Some(tx) = tx {
-            tx.commit().map_err(storage)?;
+            tx.commit().map_err(store::StoreError::from)?;
         }
         Ok(())
     }
