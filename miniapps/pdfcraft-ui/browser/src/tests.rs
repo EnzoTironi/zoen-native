@@ -1,5 +1,6 @@
 //! Native retained-App checks. Browser touch and iPhone keyboard are separate qualifications.
 mod fixture;
+mod touch;
 use egui_kittest::Harness;
 use fixture::{Editor, Result, accepted, head, mutation, source};
 use pdfcraft_engine::Edit;
@@ -86,27 +87,31 @@ fn actual_canvas_consumes_safe_area_once_across_orientation_and_keyboard_height(
     Ok(())
 }
 
+fn first_manual_checkpoint(
+    editor: &mut Editor,
+    bytes: &[u8],
+) -> Result<pdfcraft_zoen_host::Proposal> {
+    let id = editor.id()?;
+    editor.app.session.apply(
+        id,
+        Edit::EditTextBlock {
+            page: 0,
+            block: 0,
+            text: "First manual paragraph.".into(),
+            style: pdfcraft_engine::BlockStyle::default(),
+        },
+    )?;
+    Ok(editor.bridge.snapshot(
+        &mut editor.app.session,
+        mutation(&head("1", bytes), "human-1"),
+    )?)
+}
+
 #[test]
 fn older_ack_preserves_new_live_paragraph_draft_and_actual_native_undo() -> Result<()> {
     let bytes = source()?;
     let mut harness = ready(Editor::open(&bytes)?)?;
-    let first = {
-        let editor = harness.state_mut();
-        let id = editor.id()?;
-        editor.app.session.apply(
-            id,
-            Edit::EditTextBlock {
-                page: 0,
-                block: 0,
-                text: "First manual paragraph.".into(),
-                style: Default::default(),
-            },
-        )?;
-        editor.bridge.snapshot(
-            &mut editor.app.session,
-            mutation(&head("1", &bytes), "human-1"),
-        )?
-    };
+    let first = first_manual_checkpoint(harness.state_mut(), &bytes)?;
     settle(&mut harness)?;
     assert!(harness.state_mut().app.execute("edit.edit_text"));
     harness.run_steps(2);

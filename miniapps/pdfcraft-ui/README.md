@@ -37,14 +37,33 @@ Clippy all-targets run passed with pedantic/perf and warnings denied. The native
 host/App batch subsequently passed 11 cases, including real
 pointer/text events, a newer paragraph draft during ACK, native Undo/Redo,
 orientation/short viewport and 70 retained-session checkpoints with compaction.
-The latest small lint refactor has not repeated that native run. Browser all-targets
-Clippy now passes with pedantic/perf and warnings denied. The original four
-renderer diagnostics, the consequent watchdog-key diagnostic, desktop-only UI
-paths and adapter/test style failures remain preserved in the external v581/v612
-receipts. Platform cfg matches the existing worker, installed-font, save-dialog
-and update-thread paths; no lint was suppressed. Browser release/execution,
-updated WASIp2, canonical integration and iPhone acceptance remain pending.
-GitHub #581 is the status authority.
+The successor qualifies twelve host tests: five bridge checks and seven actual
+retained-App checks, including TouchEnd/PointerGone opening the paragraph and
+consuming text without prematurely writing the COS document. Native and WASM
+all-targets Clippy pass with pedantic/perf and warnings denied. Every earlier
+failed receipt is preserved. Platform cfg matches the original worker,
+installed-font, save-dialog and update-thread paths; no lint was suppressed.
+
+The actual release WebKit package now passes trusted touch → text edit → save v2
+→ native Undo/save v3 → Redo/save v4 → fresh-renderer cold recovery and exact
+selected-version export. Independent pypdf confirms text, opaque publisher data,
+two pages and unchanged geometry. The initial package is a retained causal RED:
+upstream paragraph input required hover after touch release had cleared it. The
+patch uses only that response's admitted click position inside the same page.
+These are browser/component proofs with a synthetic Core CAS port, not Rust
+persistence, agent authorization or iPhone acceptance.
+
+The corrected WASIp2 worker also executes in the real signed WasmTier: seven
+cases pass, including the exact approved-command operation envelope, immediate
+fresh-store retry, cold reopen, hash/scope/unknown-operation refusal. Read uses
+16.39M fuel and rotation 29.39M under unchanged 256MiB/2Bfuel/5s run limits.
+The one-thread cold compilation took 225.97s, separate from execution (16ms read,
+2ms rotation); deployment should reuse the existing operator-owned compilation
+cache. Its publisher and scope are synthetic test fixtures. Independent pypdf
+confirms exact text/opaque data and the requested rotation. Canonical CLI/Core
+integration, live agent refresh preserving Undo, and iPhone acceptance remain
+pending. No fifth App resource or worker is enabled on main. GitHub #581 is the
+status authority.
 
 The initial structural limits are 8 MiB, 32 declared pages, 8,192 current objects,
 64 internal PDF revisions and image dimensions ≤2,048 / 2,000,000 pixels. The
