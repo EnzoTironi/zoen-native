@@ -350,12 +350,19 @@ impl<'a> PlanReplay<'a> {
                     .map_or(&[], |log| &log.events()[..end]),
                 event,
             ),
-            app_share_refs_valid: crate::app_current_share::references_valid(
-                self.logs
-                    .get(&event.space)
-                    .map_or(&[], |log| &log.events()[..end]),
-                event,
-            ),
+            app_share_refs_valid: (!matches!(mode, Mode::Confirmed)
+                || match &event.body {
+                    EventBody::AppCurrentShared { share } => share.epoch.is_none_or(|epoch| {
+                        crate::mls_opening::application_epoch(self.store, event) == Some(epoch)
+                    }),
+                    _ => true,
+                })
+                && crate::app_current_share::references_valid(
+                    self.logs
+                        .get(&event.space)
+                        .map_or(&[], |log| &log.events()[..end]),
+                    event,
+                ),
             event: binding(event),
             ordered_address: matches!(mode, Mode::Confirmed)
                 .then(|| (event.seq, event.prev.clone(), event.hash.clone())),

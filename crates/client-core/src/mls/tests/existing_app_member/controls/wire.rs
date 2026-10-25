@@ -220,3 +220,21 @@ fn canonical_share_then_save_with_reordered_delivery_converges_without_lost_succ
     assert_eq!(counts(&f.agent), before);
     Ok(())
 }
+
+#[test]
+fn a_new_delivery_of_old_snapshot_after_revocation_cannot_revive_the_known_app() -> R<()> {
+    let mut f = late_word(":memory:", ":memory:")?;
+    let mut share = template(&mut f)?;
+    publish(&mut f.owner, &mut f.agent, &mut f.blobs);
+    receive_wanted(&mut f.agent, &f.blobs)?;
+    revoke(&mut f)?;
+    publish(&mut f.owner, &mut f.agent, &mut f.blobs);
+    share.cut = seen(&f.agent, SPACE).ok_or_else(|| storage("revoked cut"))?;
+    let before = counts(&f.agent);
+    let frame = sealed(&f, share, "not_a_revocation_bypass")?;
+    assert_eq!(f.agent.ingest(frame), Ingest::Applied);
+    assert_eq!(f.agent.state.grants.len(), before.3);
+    assert!(!f.agent.app_trust_available(&f.original.item_id));
+    assert_eq!(f.agent.item(&f.original.item_id)?.version, 2);
+    Ok(())
+}

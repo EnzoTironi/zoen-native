@@ -295,3 +295,111 @@ fn retained_successor_before_share_bootstraps_real_floor_then_cold_read_export_h
     std::fs::remove_dir_all(dir).map_err(|e| storage(&e.to_string()))?;
     Ok(())
 }
+
+#[test]
+fn canonical_removal_and_writer_downgrade_refuse_new_sharing_but_target_removal_keeps_receipt(
+) -> R<()> {
+    for case in ["target", "writer"] {
+        let mut f = late_word(":memory:", ":memory:")?;
+        let (c, first) = receipt(&mut f, "before_membership_change")?;
+        publish(&mut f.owner, &mut f.agent, &mut f.blobs);
+        let author = f
+            .owner
+            .net
+            .author
+            .clone()
+            .ok_or_else(|| storage("owner signer"))?;
+        let body = if case == "target" {
+            EventBody::MemberRemoved {
+                identity: f.agent.me_id()?,
+            }
+        } else {
+            EventBody::MemberAdded {
+                identity: author.identity.clone(),
+                role: types::Role::Reader,
+            }
+        };
+        ingest_signed(&mut f.owner, &author, SPACE, body);
+        let before = counts(&f.owner);
+        assert!(context(&f).is_err());
+        if case == "target" {
+            assert_eq!(
+                f.owner
+                    .share_app_current(c, "before_membership_change")?
+                    .entry
+                    .id,
+                first.entry.id
+            );
+        } else {
+            assert!(f.owner.share_app_current(c, "new_attempt").is_err());
+        }
+        assert_eq!(counts(&f.owner), before);
+    }
+    Ok(())
+}
+
+#[test]
+fn shared_anchor_supports_the_same_scoped_agent_read_and_mutation_authority() -> R<()> {
+    let mut f = late_word(":memory:", ":memory:")?;
+    receipt(&mut f, "explicit_share_for_request")?;
+    publish(&mut f.owner, &mut f.agent, &mut f.blobs);
+    receive_wanted(&mut f.agent, &f.blobs)?;
+    let me = f.owner.me_id()?;
+    let text = "Review only this shared Word";
+    let binding = types::ArtifactRequest {
+        item_id: f.original.item_id.clone(),
+        version: 2,
+        sha256: f.original.sha256.clone(),
+        request_id: "share_scoped_request".into(),
+        text_sha256: event_log::sha256_hex(text.as_bytes()),
+    };
+    let request = f.owner.append(
+        SPACE,
+        &me,
+        EventBody::AppEditRequested {
+            message: types::new_id("m"),
+            text: text.into(),
+            reply: types::ReplyRef {
+                to: f.original_root.id.clone(),
+                thread: true,
+                artifact: Some(binding.clone()),
+            },
+        },
+    )?;
+    publish(&mut f.owner, &mut f.agent, &mut f.blobs);
+    let source = f.agent.logs[SPACE]
+        .events()
+        .iter()
+        .find(|e| e.client_id == request.client_id)
+        .ok_or_else(|| storage("canonical App request"))?
+        .client_id
+        .clone();
+    assert_eq!(f.agent.artifact_request(SPACE, &source)?, Some(binding));
+    assert!(f
+        .agent
+        .agent_binary_authority(&f.original.item_id, &source, &me, false)
+        .is_ok());
+    assert!(f
+        .agent
+        .agent_binary_authority(&f.original.item_id, &source, &me, true)
+        .is_ok());
+    assert!(
+        f.agent
+            .agent_source_authority(SPACE, &source, &me, false)
+            .is_err(),
+        "shared request cannot create another artifact"
+    );
+    let control = f
+        .agent
+        .state
+        .items
+        .keys()
+        .find(|id| *id != &f.original.item_id)
+        .cloned()
+        .ok_or_else(|| storage("post-join control"))?;
+    assert!(f
+        .agent
+        .agent_binary_authority(&control, &source, &me, false)
+        .is_err());
+    Ok(())
+}

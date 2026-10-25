@@ -180,17 +180,6 @@ pub(crate) fn references_valid(prefix: &[Event], event: &Event) -> bool {
         if kind == event_log::content::SealedKind::Application.name())
     };
     event.seen.as_ref() == Some(&share.cut)
-        && share.epoch.is_none_or(|epoch| {
-            prefix.iter().rev().find_map(|e| {
-                if e.author != event.author || e.device != event.device {
-                    return None;
-                }
-                match &e.body {
-                    EventBody::Checkpoint { epoch, .. } => Some(*epoch),
-                    _ => None,
-                }
-            }) == Some(epoch)
-        })
         && current_prefix(prefix, share)
         && prefix
             .last()
