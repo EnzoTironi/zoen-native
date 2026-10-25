@@ -345,3 +345,26 @@ test('unsupported non-iOS flow has no native enrollment RPC or scanner action', 
   assert.equal(f.counts().launches, 0);
   f.close();
 });
+
+test('embedded focus guard prevents scanner launch after permission resolves for a hidden pane', async () => {
+  const f = fixture();
+  try {
+    f.render();
+    await settle();
+    const flow = f.render();
+    const access = deferred<{ granted: boolean }>();
+    let visible = true;
+    f.permission(() => access.promise);
+    const scanning = flow.scan(() => visible);
+    visible = false;
+    access.resolve({ granted: true });
+    await scanning;
+    assert.equal(f.counts().launches, 0);
+    assert.equal(
+      f.calls.some((c) => c.op === 'agent_enrollment_approve'),
+      false,
+    );
+  } finally {
+    f.close();
+  }
+});

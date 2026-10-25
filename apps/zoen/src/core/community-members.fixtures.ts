@@ -23,6 +23,7 @@ export function context(member = peer): SpaceMemberContext {
     can_manage_members: true,
     can_add: false,
     delivery_ready: true,
+    owned_agent: false,
     candidate: null,
     addition_failed: false,
     removal_failed: false,

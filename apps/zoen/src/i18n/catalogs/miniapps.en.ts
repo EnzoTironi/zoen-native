@@ -1,4 +1,8 @@
 export const miniappsEn = {
+  shareCurrentDisclosure: 'The current version will be shared in this conversation.',
+  addOwnAgent: 'Add your agent',
+  agentUnavailable: 'You cannot add an agent to this conversation.',
+  sendEditRequest: 'Send',
   askAgent: 'Ask AI',
   editRequestPlaceholder: 'What would you like to change?',
   editRequestSent: 'Request sent',

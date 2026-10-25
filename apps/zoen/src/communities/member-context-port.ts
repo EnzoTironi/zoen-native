@@ -42,7 +42,11 @@ export interface MemberAdditionPort extends Pick<MemberActionsPort, 'scope' | 'r
   find(query: string, owner: AccountScope): Promise<SpaceMemberContext[]>;
   add(context: SpaceMemberContext, owner: AccountScope): Promise<SpaceMemberContext>;
 }
-export function createMemberAdditionPort(store: ClientStore, space: string): MemberAdditionPort {
+export function createMemberAdditionPort(
+  store: ClientStore,
+  space: string,
+  ownedAgentsOnly = false,
+): MemberAdditionPort {
   const shared = createMemberActionsPort(store, space);
   const check = (owner: AccountScope) => {
     if (accountScopeKey(owner) !== accountScopeKey(shared.scope()))
@@ -55,6 +59,7 @@ export function createMemberAdditionPort(store: ClientStore, space: string): Mem
       check(owner);
       return store.driver.request({
         op: 'find_member_candidates',
+        ...(ownedAgentsOnly ? { owned_agents_only: true } : {}),
         space_id: space,
         query,
         expected_identity_id: owner.identity,

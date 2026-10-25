@@ -2,8 +2,10 @@ import type { AgentRequestDto } from '../core/generated/AgentRequestDto';
 import type { DecideOutcome } from '../core/generated/DecideOutcome';
 import type { TimelineEntry } from '../core/generated/TimelineEntry';
 import type { Command } from '../core/generated/Command';
+import type { AppEditConflictKind } from '../core/generated/AppEditConflictKind';
 import { requestDecisionCommand, toolApprovalValid } from '../core/tool-request-decision.ts';
 
+export type EditorAgentTicket = Readonly<{ owner: string; generation: number }>;
 export type EditorAgentHead = Readonly<{ version: number; sha256: string }>;
 export type EditorAgentDecision = Extract<Command, { op: 'decide_tool_request' }>;
 export type EditorAgentPort = Readonly<{
@@ -19,6 +21,7 @@ export type EditorAgentPort = Readonly<{
   ) => Promise<{
     entry: TimelineEntry | null;
     conflict: string | null;
+    conflict_kind?: AppEditConflictKind;
   }>;
   decide: (command: EditorAgentDecision) => Promise<DecideOutcome>;
   id: () => string;
@@ -30,6 +33,7 @@ export type EditorAgentState = Readonly<{
   loading: boolean;
   uncertain: boolean;
   error: string | null;
+  conflictKind: AppEditConflictKind | null;
   sent: TimelineEntry | null;
   requests: readonly AgentRequestDto[];
   replies: readonly TimelineEntry[];
@@ -44,6 +48,7 @@ export class EditorAgentSession {
     loading: false,
     uncertain: false,
     error: null,
+    conflictKind: null,
     sent: null,
     requests: [],
     replies: [],
@@ -73,6 +78,30 @@ export class EditorAgentSession {
     this.state = { ...this.state, ...patch };
     for (const listener of this.listeners) listener();
   }
+  ticket(observed = this.state): EditorAgentTicket | null {
+    return observed === this.state &&
+      this.state.visible &&
+      !this.retired &&
+      this.owner &&
+      this.port.scope() === this.owner
+      ? { owner: this.owner, generation: this.generation }
+      : null;
+  }
+  accepts(ticket: EditorAgentTicket | null): boolean {
+    return Boolean(
+      ticket &&
+      !this.retired &&
+      this.state.visible &&
+      ticket.owner === this.owner &&
+      this.port.scope() === this.owner &&
+      ticket.generation === this.generation,
+    );
+  }
+  renewTicket = () => {
+    if (!this.accepts(this.ticket())) return;
+    this.generation++;
+    this.update({});
+  };
   private check(ticket = this.generation) {
     if (
       this.retired ||
@@ -110,10 +139,12 @@ export class EditorAgentSession {
       requests: [],
       replies: [],
       error: null,
+      conflictKind: null,
     });
   };
-  setDraft = (draft: string) => {
-    if (!this.retired && !this.state.busy && !this.attempt) this.update({ draft });
+  setDraft = (draft: string, ticket: EditorAgentTicket | null = this.ticket()) => {
+    if (this.accepts(ticket) && !this.retired && !this.state.busy && !this.attempt)
+      this.update({ draft });
   };
   refresh = (): Promise<void> => {
     if (!this.state.visible || this.retired) return Promise.resolve();
@@ -175,8 +206,8 @@ export class EditorAgentSession {
     });
     return work;
   };
-  send = async (): Promise<void> => {
-    if (this.state.busy || !this.state.draft.trim()) return;
+  send = async (observed: EditorAgentTicket | null = this.ticket()): Promise<void> => {
+    if (!this.accepts(observed) || this.state.busy || !this.state.draft.trim()) return;
     if (
       this.state.draft.includes('\0') ||
       new TextEncoder().encode(this.state.draft.trim()).length > 16 * 1024
@@ -186,7 +217,7 @@ export class EditorAgentSession {
     }
     const ticket = this.generation,
       text = this.state.draft.trim();
-    this.update({ busy: true, error: null });
+    this.update({ busy: true, error: null, conflictKind: null });
     let submitted = false;
     try {
       this.check(ticket);
@@ -203,7 +234,11 @@ export class EditorAgentSession {
       if (this.retired || this.port.scope() !== this.owner) return;
       if (!result.entry && result.conflict) {
         this.attempt = null;
-        this.update({ uncertain: false, error: result.conflict });
+        this.update({
+          uncertain: false,
+          error: result.conflict,
+          conflictKind: result.conflict_kind ?? 'Changed',
+        });
         return;
       }
       if (!result.entry || result.conflict !== null) throw Error('editor_agent_invalid_result');
