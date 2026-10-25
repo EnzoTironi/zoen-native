@@ -78,6 +78,34 @@ Logs, receipts, original compilation failures and cleanup results are indexed at
 `/Users/enzotironi/.codex/builds/zoen-image-runtime-host-v451/evidence-index.json`.
 The final owned PG/FDB services were removed/stopped with no cleanup errors.
 
+## Owner controls without content workers
+
+`zoen --home <existing-agent-home> agent-controls [--for SECS]` runs only the
+existing authenticated owner-control reconciler. It uses the same home lock,
+account, certified device, relay, private control conversations, native Runtime
+and financial authority. It supports active and paused agents without changing
+their status. Startup reads the current cursors without seeding or advancing them.
+
+This service does not construct a model, gate, editor worker or image-content
+worker, discover approved tool continuations, answer messages or emit read
+watermarks. The ordinary `agent-host` command retains its existing behavior.
+`agent-controls` rejects `--source`, `--offline`, unknown/duplicate flags and
+invalid durations before opening the existing home. It cannot run alongside
+another host on the same home.
+
+The control reconciler retains both signed inquiries and already authorized
+policy submissions. It is not a read-only permission bypass: installing or
+disabling a policy still needs the exact owner's signed confirmation and all
+existing freshness, directory, MLS, version and Runtime checks. Reading options
+does not create that authority. A missing Runtime Welcome follows the existing
+scoped recovery; neither another worker's group nor its readiness is imported.
+
+The fresh readiness marker describes this connected service's startup only.
+The existing closed worker observation separately reports whether its configured
+Runtime transport is available; neither marker nor observation proves an inquiry
+was admitted or a policy installed. On exit the service cancels and awaits only
+its own control worker before the caller stops sync and releases the home lock.
+
 ## Remaining acceptance
 
 Issue #366 remains open. The normal CLI/ToolHost owns a separately enrolled

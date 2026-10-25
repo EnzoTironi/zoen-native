@@ -12,8 +12,8 @@ impl Drop for Worker {
         self.0.abort();
     }
 }
-pub(super) fn start(e: &Arc<Client>, cx: &Ctx) -> Worker {
-    let (e, agent, device) = (e.clone(), cx.me.clone(), cx.device.clone());
+pub(super) fn start(e: &Arc<Client>, agent: &str, device: &str) -> Worker {
+    let (e, agent, device) = (e.clone(), agent.to_owned(), device.to_owned());
     Worker(tokio::spawn(async move {
         let mut observer = Observer::default();
         observer.write(
@@ -48,6 +48,16 @@ pub(super) fn start(e: &Arc<Client>, cx: &Ctx) -> Worker {
             tokio::time::sleep(Duration::from_secs(5)).await;
         }
     }))
+}
+impl Worker {
+    pub(super) async fn stop(&mut self) -> Result<(), String> {
+        self.0.abort();
+        match (&mut self.0).await {
+            Ok(()) => Ok(()),
+            Err(error) if error.is_cancelled() => Ok(()),
+            Err(_) => Err("agent_controls_worker_failed".into()),
+        }
+    }
 }
 fn scan_error(counts: &mut Counts, error: &client_core::CoreError) {
     // Non-private/non-owned spaces legitimately fail discovery. Distinguish that

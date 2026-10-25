@@ -2,6 +2,7 @@ use super::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use zoen_agentd::citizen::{testing::ControlledToolBrain, BrainOut};
 mod fixture;
+mod owner_controls;
 mod relay;
 mod turn_budget;
 use fixture::{message, Fixture};

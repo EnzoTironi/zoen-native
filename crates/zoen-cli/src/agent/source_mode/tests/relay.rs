@@ -2,9 +2,11 @@
 use client_core::{Client, SecretVault};
 use futures_util::{SinkExt, StreamExt};
 use protocol::{AgentRequest, AgentStateRecord, ClientFrame, Op, Reply, Sequenced, ServerFrame};
-use std::collections::{BTreeMap, HashMap};
+use sha2::{Digest, Sha256};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Notify;
 use tokio_tungstenite::tungstenite::Message;
 
@@ -26,6 +28,8 @@ impl SecretVault for Vault {
 #[derive(Clone, Copy)]
 pub(super) enum Mode {
     Normal,
+    Paused,
+    Revoked,
     CursorAck,
     Unsynced,
     InvalidStatus,
@@ -42,6 +46,7 @@ pub(super) struct Relay {
     pub release: Arc<Notify>,
     pub packages: Arc<Mutex<BTreeMap<String, Vec<protocol::KeyPackageRecord>>>>,
     pub histories: Arc<Mutex<BTreeMap<String, Vec<Sequenced>>>>,
+    pub uploads: Arc<Mutex<BTreeMap<String, Vec<u8>>>>,
     task: tokio::task::JoinHandle<()>,
 }
 impl Drop for Relay {
@@ -67,12 +72,15 @@ pub(super) async fn relay(mode: Mode) -> Relay {
     >::new()));
     let (published_packages, claim_receipts) = (packages.clone(), claims.clone());
     let histories = Arc::new(Mutex::new(BTreeMap::<String, Vec<Sequenced>>::new()));
+    let uploads = Arc::new(Mutex::new(BTreeMap::<String, Vec<u8>>::new()));
+    let devices = Arc::new(Mutex::new(BTreeSet::<String>::new()));
+    let uploaded = uploads.clone();
     let (release_state, release_signal, history) =
         (released.clone(), release.clone(), histories.clone());
     let (seen, positions, receipts) = (calls.clone(), cursors.clone(), delivered.clone());
     let task = tokio::spawn(async move {
         loop {
-            let (socket, _) = listener.accept().await.unwrap();
+            let (mut socket, _) = listener.accept().await.unwrap();
             let (seen, positions, receipts) = (seen.clone(), positions.clone(), receipts.clone());
             let (release_state, release_signal, history) = (
                 release_state.clone(),
@@ -81,7 +89,17 @@ pub(super) async fn relay(mode: Mode) -> Relay {
             );
             let (published_packages, claim_receipts) =
                 (published_packages.clone(), claim_receipts.clone());
+            let (uploaded, devices) = (uploaded.clone(), devices.clone());
             tokio::spawn(async move {
+                let mut first = [0];
+                if socket.peek(&mut first).await.unwrap() == 0 {
+                    return Ok(());
+                }
+                if first[0] == b'P' {
+                    blob_put(&mut socket, &devices, &uploaded).await;
+                    seen.lock().unwrap().push("blob_upload");
+                    return Ok(());
+                }
                 let mut ws = tokio_tungstenite::accept_async(socket).await.unwrap();
                 let Some(Ok(Message::Binary(bytes))) = ws.next().await else {
                     return Ok(());
@@ -124,6 +142,7 @@ pub(super) async fn relay(mode: Mode) -> Relay {
                     &protocol::auth_message("source-fixture", "source-fixture"),
                     &sig
                 ));
+                devices.lock().unwrap().insert(device.clone());
                 ws.send(Message::Binary(
                     ServerFrame::Ready {
                         identity: identity.clone(),
@@ -225,7 +244,7 @@ pub(super) async fn relay(mode: Mode) -> Relay {
                         } => {
                             seen.lock().unwrap().push("agent_state");
                             let result = Ok(Reply::AgentState(AgentStateRecord {
-                                status: if matches!(mode, Mode::InvalidStatus) { "future-status" } else { "active" }.into(),
+                                status: match mode { Mode::InvalidStatus => "future-status", Mode::Paused => "paused", Mode::Revoked => "revoked", _ => "active" }.into(),
                                 kind: if matches!(mode, Mode::InvalidKind) { "future-kind" } else if matches!(mode, Mode::DefinitionKindMismatch) { "Creator" } else { "User" }.into(),
                                 definition_version: if matches!(mode, Mode::DefinitionVersionMismatch) { 3 } else { 2 },
                                 definition: br#"{"version":2,"kind":"user","persona":"Synthetic source fixture","rules":[],"state":{},"model_tier":"cheap"}"#.to_vec(),
@@ -339,8 +358,60 @@ pub(super) async fn relay(mode: Mode) -> Relay {
         released,
         release,
         histories,
+        uploads,
         task,
     }
+}
+
+// A static App fixture queues encrypted bytes before the host starts. Let the
+// normal sync worker drain its exact signed PUT; this is transport, not a turn.
+async fn blob_put(
+    socket: &mut tokio::net::TcpStream,
+    devices: &Mutex<BTreeSet<String>>,
+    uploaded: &Mutex<BTreeMap<String, Vec<u8>>>,
+) {
+    let mut header = Vec::new();
+    while !header.ends_with(b"\r\n\r\n") {
+        let mut one = [0];
+        socket.read_exact(&mut one).await.unwrap();
+        header.push(one[0]);
+        assert!(header.len() <= 16 * 1024);
+    }
+    let header = String::from_utf8(header).unwrap();
+    let request = header.lines().next().unwrap();
+    let sha = request
+        .strip_prefix("PUT /v1/blobs/")
+        .and_then(|value| value.strip_suffix(" HTTP/1.1"))
+        .expect("only the normal queued blob PUT is supported");
+    let field = |name: &str| {
+        header
+            .lines()
+            .find_map(|line| {
+                let (key, value) = line.split_once(':')?;
+                key.eq_ignore_ascii_case(name).then(|| value.trim())
+            })
+            .unwrap()
+    };
+    let device = field("x-zoen-device");
+    assert!(devices.lock().unwrap().contains(device));
+    let timestamp = field("x-zoen-ts").parse::<i64>().unwrap();
+    assert!(timestamp >= 0);
+    assert!(event_log::verify_sig(
+        device,
+        &protocol::blob_put_message(sha, timestamp, "source-fixture"),
+        field("x-zoen-sig"),
+    ));
+    let length = field("content-length").parse::<usize>().unwrap();
+    assert!((1..=25 * 1024 * 1024).contains(&length));
+    let mut body = vec![0; length];
+    socket.read_exact(&mut body).await.unwrap();
+    assert_eq!(hex::encode(Sha256::digest(&body)), sha);
+    let previous = uploaded.lock().unwrap().insert(sha.into(), body.clone());
+    assert!(previous.is_none_or(|previous| previous == body));
+    socket
+        .write_all(b"HTTP/1.1 201 Created\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+        .await
+        .unwrap();
 }
 
 pub(super) async fn online(client: &Client, settle: bool) {
