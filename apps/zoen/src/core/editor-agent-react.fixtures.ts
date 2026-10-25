@@ -303,6 +303,7 @@ export async function editorAgentReactFixture() {
       useAppSheetCloseButton: () => ({ top: 48, right: 12, width: 44, height: 44 }),
     },
     './document-controller': {},
+    './package-release-sheet': { AppPackageReleaseSheet: () => null },
     './editor-agent-port': port,
     './editor-agent-session': { EditorAgentSession },
     './binary-formats': formats,
