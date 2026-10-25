@@ -11,22 +11,29 @@ impl Client {
         vault: Option<Arc<dyn SecretVault>>,
     ) -> Result<String, CoreError> {
         use Command::{
-            AddAdmin, AddMember, AgentDefinitionDismiss, AgentDefinitionPreview,
+            AddAdmin, AddMember, AddMemberReviewed, AgentDefinitionDismiss, AgentDefinitionPreview,
             AgentDefinitionRead, AgentDefinitionReconcile, AgentDefinitionUpdate,
             AgentEnrollmentApprove, AgentEnrollmentDismiss, AgentEnrollmentPreview,
-            AgentEnrollmentStatus, AgentStatus, CallHistory, ControlAgent, CreateAgentInvite,
-            CreateCommunity, CreateGroup, CreateInvite, DeleteMessage, EditMessage, EncryptChat,
-            FindAccountPolicyOptions, FindOwnerPolicyOptions, FindOwnerPolicySubmission,
-            FindPeople, ForwardMessage, InviteCall, JoinInvite, LeaveSpace, MarkRead, Message,
-            MessageDraft, NewMutationId, OpenAgentLink, OwnerPolicyOptions, OwnerPolicyStatus,
-            PageBlockMarkdown, PageParseMarkdown, PrepareOwnerPolicy, PreviewInvite,
-            ProviderSignIn, React, RecoverFailedMediaDraft, RemoveMember, RemoveMemberReviewed,
+            AgentEnrollmentStatus, AgentStatus, AppCurrentShareContext, CallHistory, ControlAgent,
+            CreateAgentInvite, CreateCommunity, CreateGroup, CreateInvite, DeleteMessage,
+            EditMessage, EncryptChat, FindAccountPolicyOptions, FindMemberCandidates,
+            FindOwnerPolicyOptions, FindOwnerPolicySubmission, FindPeople, ForwardMessage,
+            InviteCall, JoinInvite, LeaveSpace, MarkRead, Message, MessageDraft, NewMutationId,
+            OpenAgentLink, OwnerPolicyOptions, OwnerPolicyStatus, PageBlockMarkdown,
+            PageParseMarkdown, PrepareOwnerPolicy, PreviewInvite, ProviderSignIn, React,
+            RecoverFailedMediaDraft, RemoveMember, RemoveMemberReviewed,
             RequestAccountPolicyOptions, RequestAppEdit, RequestOwnerPolicyOptions, RespondCall,
             ReviewOwnerPolicy, RevokeAgentInvite, SaveMessageDraft, SendMessage, SendMessageDraft,
-            SetChatMuted, SetChatPrefs, SetTyping, Snapshot, SpaceMemberContext, StartDirect,
-            StartOwnerPolicyDirect, SubmitOwnerPolicy, Thread, Timeline, UniversalSearch,
+            SetChatMuted, SetChatPrefs, SetTyping, ShareAppCurrent, Snapshot, SpaceMemberContext,
+            StartDirect, StartOwnerPolicyDirect, SubmitOwnerPolicy, Thread, Timeline,
+            UniversalSearch,
         };
         match command {
+            AppCurrentShareContext { scope } => encode(&self.app_current_share_context(scope)?),
+            ShareAppCurrent {
+                context,
+                mutation_id,
+            } => self.share_app_current_bridge(context, &mutation_id),
             StartOwnerPolicyDirect {
                 expected_identity_id,
                 expected_device_id,
@@ -211,33 +218,18 @@ impl Client {
                 expected_sha256,
                 text,
                 mutation_id,
-            } => {
-                let result =
-                    self.lock()
-                        .request_app_edit(crate::app_edit_requests::AppEditRequestInput {
-                            expected_identity_id,
-                            expected_device_id,
-                            space_id,
-                            item_id,
-                            expected_version,
-                            expected_sha256,
-                            text,
-                            mutation_id,
-                        });
-                match result {
-                    Ok(entry) => encode(&crate::app_edit_requests::AppEditRequestResult {
-                        entry: Some(entry),
-                        conflict: None,
-                    }),
-                    Err(CoreError::Stale { reason }) => {
-                        encode(&crate::app_edit_requests::AppEditRequestResult {
-                            entry: None,
-                            conflict: Some(reason),
-                        })
-                    }
-                    Err(error) => Err(error),
-                }
-            }
+                share_current,
+            } => self.request_app_edit_bridge(crate::app_edit_requests::AppEditRequestInput {
+                expected_identity_id,
+                expected_device_id,
+                space_id,
+                item_id,
+                expected_version,
+                expected_sha256,
+                text,
+                mutation_id,
+                share_current: share_current.unwrap_or(false),
+            }),
             SendMessage {
                 space_id,
                 text,
@@ -328,6 +320,36 @@ impl Client {
                 space_id,
                 identity_id,
             } => encode(&self.add_member(space_id, identity_id)?),
+            FindMemberCandidates {
+                space_id,
+                query,
+                expected_identity_id,
+                expected_device_id,
+                owned_agents_only,
+            } => encode(
+                &self
+                    .find_member_candidates(
+                        &space_id,
+                        &query,
+                        &expected_identity_id,
+                        &expected_device_id,
+                        owned_agents_only.unwrap_or(false),
+                    )
+                    .await?,
+            ),
+            AddMemberReviewed {
+                space_id,
+                identity_id,
+                expected_identity_id,
+                expected_device_id,
+                observed_revision,
+            } => encode(&self.lock().add_member_reviewed(
+                &space_id,
+                &identity_id,
+                &expected_identity_id,
+                &expected_device_id,
+                &observed_revision,
+            )?),
             AddAdmin {
                 space_id,
                 identity_id,

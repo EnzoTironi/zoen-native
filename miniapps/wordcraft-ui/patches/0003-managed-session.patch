@@ -64,10 +64,18 @@ index fabe1d4..3d052d3 100644
      pub fn drag_selecting(&self) -> bool {
          self.dragging
 diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
-index c7f687a..d3ae79e 100644
+index c7f687a..73bb9c0 100644
 --- a/crates/ui-egui/src/lib.rs
 +++ b/crates/ui-egui/src/lib.rs
-@@ -844,6 +844,9 @@ impl WordApp {
+@@ -81,6 +81,7 @@ pub mod table_resize;
+ pub mod table_ruler;
+ pub mod theme;
+ pub mod widgets;
++mod managed_history;
+ pub mod window_close;
+ pub mod window_geometry;
+ pub mod wordart_menus;
+@@ -844,6 +845,9 @@ impl WordApp {
      /// Close, Envelopes, Labels and Finish & Merge on a document with unsaved changes first ask
      /// Save / Don't Save / Cancel, and the command runs once that is answered (`ui.saveChanges`).
      pub fn run(&mut self, id: &str, params: Value) -> Result<Value, String> {
@@ -77,7 +85,7 @@ index c7f687a..d3ae79e 100644
          // Comment text still being typed is written first, so a save or export has it and a
          // close, New or Open counts it as a change (#1348). A draft the document refuses is not
          // part of it: saving and exporting go on without it (the refusal stays on the status
-@@ -915,6 +918,9 @@ impl WordApp {
+@@ -915,6 +919,9 @@ impl WordApp {
      /// Run a command for a script or an agent (control channel, MCP bridge): never asks first.
      /// UI-level commands (`ui.*`) are handled here, the rest by the engine.
      pub fn execute(&mut self, id: &str, params: Value) -> Result<Value, String> {
@@ -87,7 +95,7 @@ index c7f687a..d3ae79e 100644
          // A pending Change Picture only survives until the next action (#147).
          if !matches!(id, "ui.changePicture" | "picture.change" | "insert.picture") {
              self.change_picture_target = None;
-@@ -1944,7 +1950,7 @@ impl WordApp {
+@@ -1944,7 +1951,7 @@ impl WordApp {
          i18n::set_current(lang);
          // New documents are written in the interface's language when WordCraft can proof it
          // (a Polish interface: Polish spelling, grammar and hyphenation from the first word).
@@ -96,21 +104,55 @@ index c7f687a..d3ae79e 100644
              self.session.set_editing_language(lang.editing_lang());
              self.applied_editing = Some(lang);
          }
-@@ -2216,12 +2222,12 @@ impl WordApp {
+@@ -2216,12 +2223,12 @@ impl WordApp {
              backstage::show(self, ui);
          } else if !self.has_document() {
              // No document open (#1129): the ribbon greyed out but for Help, and no page.
 -            chrome::title_bar(self, ui);
-+            if self.session.managed_policy.is_none() { chrome::title_bar(self, ui); }
++            if self.session.managed_policy.is_none() { chrome::title_bar(self, ui); } else { managed_history::show(self, ui); }
              ribbon::show(self, ui);
              chrome::status_bar(self, ui);
              egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.canvas)).show(ui, |_| {});
          } else {
 -            chrome::title_bar(self, ui);
-+            if self.session.managed_policy.is_none() { chrome::title_bar(self, ui); }
++            if self.session.managed_policy.is_none() { chrome::title_bar(self, ui); } else { managed_history::show(self, ui); }
              if !self.session.view.focus_mode {
                  ribbon::show(self, ui);
                  chrome::status_bar(self, ui);
+diff --git a/crates/ui-egui/src/managed_history.rs b/crates/ui-egui/src/managed_history.rs
+new file mode 100644
+index 0000000..7629da4
+--- /dev/null
++++ b/crates/ui-egui/src/managed_history.rs
+@@ -0,0 +1,28 @@
++//! Minimal touch history controls for an embedded document; Session owns all history.
++use crate::{WordApp, icons, theme::Tokens, widgets};
++use egui::{Frame, Margin, Panel, Rect, Sense, WidgetInfo, WidgetType, vec2};
++use serde_json::json;
++
++pub(crate) fn show(app: &mut WordApp, ui: &mut egui::Ui) {
++    let t = Tokens::get(ui.ctx());
++    Panel::top("zoen_managed_history").exact_size(52.0).frame(Frame::NONE.fill(t.ribbon).inner_margin(Margin::symmetric(6, 4))).show(ui, |ui| {
++        ui.horizontal(|ui| {
++            for (id, label, available) in [("edit.undo", tl!("Undo"), app.session.can_undo()), ("edit.redo", tl!("Redo"), app.session.can_redo())] {
++                let enabled = app.has_document() && available && widgets::enabled(app, id);
++                ui.add_enabled_ui(enabled, |ui| {
++                    let (rect, response) = ui.allocate_exact_size(vec2(44.0, 44.0), Sense::click());
++                    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, label.to_string()));
++                    widgets::bg(ui, rect, &response, false, &t);
++                    let color = if enabled { t.icon } else { t.text_disabled };
++                    icons::paint(ui.painter(), Rect::from_center_size(rect.center(), vec2(22.0, 22.0)), widgets::command_icon(id), color, color);
++                    if response.on_hover_text(label).clicked() && enabled {
++                        match app.run(id, json!({})) {
++                            Ok(_) => app.canvas.want_focus = true,
++                            Err(reason) => app.status(reason),
++                        }
++                    }
++                });
++            }
++        });
++    });
++}
 diff --git a/crates/ui-egui/src/widgets.rs b/crates/ui-egui/src/widgets.rs
 index f27f5c0..fb164a8 100644
 --- a/crates/ui-egui/src/widgets.rs

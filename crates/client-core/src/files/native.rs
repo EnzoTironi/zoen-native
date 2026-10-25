@@ -58,6 +58,7 @@ impl Engine {
         }
         Ok((
             FileDoc {
+                app_origin: None,
                 name: name.into(),
                 path: name.into(),
                 mime: "image/png".into(),

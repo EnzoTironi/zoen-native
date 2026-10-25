@@ -72,7 +72,8 @@ impl Engine {
                     })
                     .count() as u32;
                 root
-            });
+            })
+            .or_else(|| self.shared_app_root(space, item));
         Ok(ItemDiscussionDto {
             item_id: item.to_owned(),
             space_id: space.to_owned(),
@@ -187,6 +188,13 @@ impl Engine {
     pub(crate) fn reply_ref(&self, space: &str, to: &str, thread: bool) -> R<ReplyRef> {
         let s = self.space_state(space)?;
         let Some(target) = s.entries.iter().find(|e| e.id() == to) else {
+            if self.shared_app_root_by_anchor(space, to).is_some() {
+                return Ok(if thread {
+                    ReplyRef::thread(to)
+                } else {
+                    ReplyRef::inline(to)
+                });
+            }
             return Err(CoreError::NotFound {
                 what: t("mensagem", "message"),
             });
@@ -218,12 +226,16 @@ impl Engine {
     /// The thread under `root`: the root message, then its replies oldest first.
     pub fn thread(&self, space: &str, root: &str) -> R<Vec<TimelineEntry>> {
         let s = self.space_state(space)?;
-        let Some(r) = s.entries.iter().find(|e| e.id() == root) else {
-            return Err(CoreError::NotFound {
+        let r = s
+            .entries
+            .iter()
+            .find(|e| e.id() == root)
+            .map(|r| self.entry_dto(r))
+            .or_else(|| self.shared_app_root_by_anchor(space, root))
+            .ok_or_else(|| CoreError::NotFound {
                 what: t("mensagem", "message"),
-            });
-        };
-        let mut out = vec![self.entry_dto(r)];
+            })?;
+        let mut out = vec![r];
         out.extend(
             s.entries
                 .iter()

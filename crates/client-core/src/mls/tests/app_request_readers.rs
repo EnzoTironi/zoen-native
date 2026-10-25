@@ -79,6 +79,15 @@ fn post(
     app: &AppBinaryDocumentDto,
     id: &str,
 ) -> R<crate::TimelineEntry> {
+    post_mode(owner, space, app, id, false)
+}
+fn post_mode(
+    owner: &mut Engine,
+    space: &str,
+    app: &AppBinaryDocumentDto,
+    id: &str,
+    share_current: bool,
+) -> R<crate::TimelineEntry> {
     let account = owner.account().ok_or_else(|| storage("fixture account"))?;
     let input = AppEditRequestInput {
         expected_identity_id: account.identity.clone(),
@@ -89,6 +98,7 @@ fn post(
         expected_sha256: app.sha256.clone(),
         text: "Format this current Word document".into(),
         mutation_id: id.into(),
+        share_current,
     };
     owner.request_app_edit(input)
 }
@@ -228,5 +238,34 @@ fn one_real_owned_mls_reader_allows_request_while_another_owned_agent_waits() ->
     assert!(f.owner.state.writer(SPACE, &ready_id));
     assert!(f.owner.state.writer(SPACE, &f.agent_id));
     post(&mut f.owner, SPACE, &f.app, "one_owned_reader_is_enough")?;
+    Ok(())
+}
+
+#[test]
+fn disclosed_send_with_missing_keypackage_never_shares_or_appends_request() -> R<()> {
+    let mut f = missing_package(false)?;
+    let before = (
+        f.owner.store.event_count()?,
+        f.owner.outbox_len(),
+        f.owner.state.grants.len(),
+    );
+    let result = post_mode(&mut f.owner, SPACE, &f.app, "disclosed_waiting", true);
+    assert!(matches!(result, Err(crate::CoreError::Stale { .. })));
+    assert_eq!(
+        (
+            f.owner.store.event_count()?,
+            f.owner.outbox_len(),
+            f.owner.state.grants.len()
+        ),
+        before
+    );
+    let a = f.owner.account().ok_or_else(|| storage("account"))?;
+    let contexts = f
+        .owner
+        .member_candidates_mode(SPACE, "", &a.identity, &a.device, true)?;
+    assert!(contexts
+        .iter()
+        .any(|c| c.member_id == f.agent_id && c.owned_agent && !c.delivery_ready));
+    assert!(!contexts.iter().any(|c| c.delivery_ready));
     Ok(())
 }

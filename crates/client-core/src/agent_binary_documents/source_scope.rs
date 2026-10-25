@@ -26,19 +26,7 @@ pub(crate) fn request_valid(
     else {
         return false;
     };
-    let Some(entries) = state.spaces.get(space).map(|s| &s.entries) else {
-        return false;
-    };
-    let root = entries.iter().find(|e| {
-        matches!(&e.body,
-        EntryBody::Message { attaches: Some(id), reply: None, marks, .. }
-            if id == &request.item_id && !marks.forwarded)
-    });
-    if root.is_none_or(|root| {
-        root.id() != reference.to
-            || !matches!(&root.body,
-        EntryBody::Message { marks, .. } if !marks.deleted)
-    }) {
+    if state.app_discussion_anchor(space, &request.item_id) != Some(reference.to.as_str()) {
         return false;
     }
     item.versions
@@ -121,9 +109,8 @@ impl Engine {
             .root
             .as_ref()
             .is_none_or(|root| root.id != reference.to)
-            || entries.iter().find(|e| e.id() == reference.to).is_none_or(
-                |root| !matches!(&root.body, EntryBody::Message { marks, .. } if !marks.deleted),
-            )
+            || self.state.app_discussion_anchor(space, &request.item_id)
+                != Some(reference.to.as_str())
         {
             return Err(denied());
         }

@@ -8,6 +8,7 @@ import { ClientStore } from './store.ts';
 import { Driver, draftSession } from './store.fixtures.ts';
 import { context, peer } from './community-members.fixtures.ts';
 import * as flow from '../communities/member-actions.ts';
+import * as addition from '../communities/member-addition.ts';
 import * as port from '../communities/member-context-port.ts';
 import * as ownership from './account-scope.ts';
 import type { SpaceMemberContext } from './generated/SpaceMemberContext';
@@ -25,6 +26,8 @@ const compiled = transformSync(readFileSync(file, 'utf8'), {
 }).code as string;
 type Controller = {
   session: flow.MemberActionsSession;
+  addition: addition.MemberAdditionSession;
+  additionState: addition.MemberAdditionState;
   available: boolean;
   state: flow.MemberActionsState;
 };
@@ -40,6 +43,7 @@ export async function memberHookReactFixture() {
   room.members.push(context().member!);
   const calls: any[] = [];
   let nextRead: Promise<SpaceMemberContext> | null = null;
+  let candidateState: SpaceMemberContext | null = null;
   const value = () => ({
     ...context(),
     space_id: room.id,
@@ -51,9 +55,33 @@ export async function memberHookReactFixture() {
     calls.push(structuredClone(command));
     if (command.op === 'snapshot') return structuredClone(snapshot);
     if (command.op === 'space_member_context') {
+      if (command.identity_id === snapshot.account!.identity_id)
+        return {
+          ...value(),
+          member_id: command.identity_id,
+          member: { ...value().member!, id: command.identity_id },
+        };
       const pending = nextRead;
       nextRead = null;
-      return pending ?? value();
+      return pending ?? candidateState ?? value();
+    }
+    if (command.op === 'find_member_candidates')
+      return candidateState
+        ? [candidateState]
+        : [
+            {
+              ...value(),
+              state: 'Removed',
+              can_add: true,
+              delivery_ready: false,
+              member: null,
+              role: null,
+              candidate: value().member,
+            },
+          ];
+    if (command.op === 'add_member_reviewed') {
+      candidateState = { ...value(), can_add: false, delivery_ready: false, state: 'Updating' };
+      return candidateState;
     }
     if (command.op === 'remove_member_reviewed')
       return { ...value(), state: 'Removing', can_remove: false };
@@ -126,6 +154,7 @@ export async function memberHookReactFixture() {
     },
     '../core/account-scope': ownership,
     './member-actions': flow,
+    './member-addition': addition,
     './member-context-port': port,
   };
   const module = { exports: {} as { useMemberActions(space: string): Controller } };
@@ -163,6 +192,12 @@ export async function memberHookReactFixture() {
         controller?.session.open(peer);
       }),
     value,
+    memberState(next: Partial<SpaceMemberContext>) {
+      candidateState = { ...value(), ...next };
+    },
+    canonicalChange() {
+      driver.changed?.({ kind: 'change', spaceIds: [room.id] });
+    },
     read(pending: Promise<SpaceMemberContext>) {
       nextRead = pending;
     },

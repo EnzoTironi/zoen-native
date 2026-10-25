@@ -60,8 +60,11 @@ Bounds are 8 MiB source/output, 256 KiB manifest, 128 archive entries, 16 MiB
 engine-decoded payload, 1,024 pixels per side and 1,048,576 canvas pixels. Tile
 coordinates are restricted to -8…8. These are candidate bounds, not measured
 peak iPhone memory. The existing isolated agent executor retains its smaller
-512 KiB document capacity, 256 MiB memory, five-second execution window and
-bounded fuel. Neither browser nor worker widens those existing host budgets.
+512 KiB serialized `.pcraft` container capacity, 256 MiB memory, five-second
+execution window and bounded fuel. The container stores compressed tiles;
+`width × height × channels` is not its byte length. Agent tools inspect the
+accepted document rather than rejecting it from that decoded-size estimate.
+Neither browser nor worker widens those existing host budgets.
 
 The Core validator is deliberately structural and has no engine/UI/decoder
 dependency. It reuses the bounded ZIP32 preflight, accepts only STORE entries,

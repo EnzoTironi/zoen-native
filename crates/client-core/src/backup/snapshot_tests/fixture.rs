@@ -104,6 +104,7 @@ pub(super) fn file(bytes: &[u8], version: u8) -> (FileDoc, Vec<u8>) {
     let sha256 = hex::encode(Sha256::digest(bytes));
     (
         FileDoc {
+            app_origin: None,
             name: "route.pdf".into(),
             path: "Trips/route.pdf".into(),
             mime: "application/pdf".into(),

@@ -8,6 +8,13 @@ use super::{
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub(super) enum Command {
+    AppCurrentShareContext {
+        scope: crate::app_current_share::AppShareScope,
+    },
+    ShareAppCurrent {
+        context: crate::app_current_share::AppShareContext,
+        mutation_id: String,
+    },
     StartOwnerPolicyDirect {
         expected_identity_id: String,
         expected_device_id: String,
@@ -176,6 +183,9 @@ pub(super) enum Command {
         expected_sha256: String,
         text: String,
         mutation_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "client-types", ts(optional))]
+        share_current: Option<bool>,
     },
     SendMessage {
         space_id: String,
@@ -273,6 +283,22 @@ pub(super) enum Command {
     AddMember {
         space_id: String,
         identity_id: String,
+    },
+    FindMemberCandidates {
+        space_id: String,
+        query: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "client-types", ts(optional))]
+        owned_agents_only: Option<bool>,
+    },
+    AddMemberReviewed {
+        space_id: String,
+        identity_id: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+        observed_revision: String,
     },
     AddAdmin {
         space_id: String,

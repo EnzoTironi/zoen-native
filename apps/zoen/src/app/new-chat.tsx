@@ -1,8 +1,8 @@
 import { t, formatLocale } from '../i18n/index.ts';
 import { ProfileAvatar } from '../profile/profile-avatar';
-import { useEffect, useMemo, useState } from 'react';
-import { router } from 'expo-router';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { router, Stack } from 'expo-router';
+import { Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { useClient } from '../core/provider';
 import type { Persona } from '../core/generated/Persona';
 import { useTheme } from '../theme';
@@ -16,6 +16,7 @@ export default function NewChat() {
   const [title, setTitle] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const creating = useRef(false);
   const [kind, setKind] = useState<'direct' | 'group' | 'community'>('direct');
   const [error, setError] = useState<string | null>(null);
   const [lookupError, setLookupError] = useState<string | null>(null);
@@ -77,135 +78,146 @@ export default function NewChat() {
     router.dismiss();
     router.push({ pathname: '/chat/[id]', params: { id } });
   }
+  const createLabel = busy
+    ? t('chat.creating')
+    : kind === 'group'
+      ? t('chat.createGroup')
+      : t('chat.createCommunity');
+  function create() {
+    if (kind === 'direct' || !title.trim() || creating.current) return;
+    creating.current = true;
+    setBusy(true);
+    setError(null);
+    void store
+      .request(
+        kind === 'group'
+          ? { op: 'create_group', title: title.trim(), member_ids: selected }
+          : { op: 'create_community', title: title.trim() },
+      )
+      .then(opened)
+      .catch((failure: unknown) =>
+        setError(failure instanceof Error ? failure.message : t('chat.theChatCouldNotBeCreated')),
+      )
+      .finally(() => {
+        creating.current = false;
+        setBusy(false);
+      });
+  }
   return (
-    <ScrollView
-      contentInsetAdjustmentBehavior="automatic"
-      keyboardShouldPersistTaps="handled"
-      contentContainerStyle={{ padding: 24, gap: 22, backgroundColor: 'transparent' }}
-    >
-      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-        {(
-          [
-            { value: 'direct', title: t('chat.person') },
-            { value: 'group', title: t('chat.group') },
-            { value: 'community', title: t('chat.community') },
-          ] as const
-        ).map((choice) => (
-          <NativeButton
-            key={choice.value}
-            label={choice.title}
-            secondary={kind !== choice.value}
-            disabled={busy}
-            onPress={() => setKind(choice.value)}
-          />
-        ))}
-      </View>
-      {kind !== 'direct' ? (
-        <Field
-          label={kind === 'group' ? t('chat.groupName') : t('chat.communityName')}
-          value={title}
-          onChangeText={setTitle}
-        />
-      ) : null}
-      {kind !== 'community' ? (
-        <Field
-          label={kind === 'group' ? t('chat.addPeople') : t('chat.searchPeople')}
-          placeholder={t('chat.nameOr')}
-          value={query}
-          onChangeText={setQuery}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-      ) : null}
-      {lookupError && kind !== 'community' ? (
-        <Text accessibilityRole="alert" style={{ color: colors.danger }}>
-          {lookupError}
-        </Text>
-      ) : null}
-      {kind !== 'community'
-        ? matches.map((person) => (
-            <Pressable
+    <>
+      <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode="interactive"
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ padding: 24, gap: 22, backgroundColor: 'transparent' }}
+      >
+        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+          {(
+            [
+              { value: 'direct', title: t('chat.person') },
+              { value: 'group', title: t('chat.group') },
+              { value: 'community', title: t('chat.community') },
+            ] as const
+          ).map((choice) => (
+            <NativeButton
+              key={choice.value}
+              label={choice.title}
+              secondary={kind !== choice.value}
               disabled={busy}
-              key={person.id}
-              onPress={() => {
-                if (kind === 'group')
-                  setSelected((ids) =>
-                    ids.includes(person.id)
-                      ? ids.filter((id) => id !== person.id)
-                      : [...ids, person.id],
-                  );
-                else {
-                  setBusy(true);
-                  setError(null);
-                  void store
-                    .request({ op: 'start_direct', identity_id: person.id })
-                    .then(opened)
-                    .catch((failure: unknown) =>
-                      setError(
-                        failure instanceof Error
-                          ? failure.message
-                          : t('chat.theChatCouldNotBeStarted'),
-                      ),
-                    )
-                    .finally(() => setBusy(false));
-                }
-              }}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 8 }}
-              accessibilityRole={kind === 'group' ? 'checkbox' : 'button'}
-              aria-checked={kind === 'group' ? selected.includes(person.id) : undefined}
-            >
-              <ProfileAvatar person={person} name={person.name} color={person.tint_hex} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 17, fontWeight: '600', color: colors.text }}>
-                  {person.name}
-                </Text>
-                <Text style={{ color: colors.secondary, marginTop: 4 }}>@{person.handle}</Text>
-              </View>
-              {kind === 'group' && selected.includes(person.id) ? (
-                <Text style={{ color: colors.accent }}>✓</Text>
-              ) : null}
-            </Pressable>
-          ))
-        : null}
-      {kind === 'group' ? (
-        <Text style={{ color: colors.secondary, fontSize: 13 }}>
-          {t('chat.selectedPeople', { count: selected.length })}
-        </Text>
+              onPress={() => setKind(choice.value)}
+            />
+          ))}
+        </View>
+        {kind !== 'direct' ? (
+          <Field
+            label={kind === 'group' ? t('chat.groupName') : t('chat.communityName')}
+            value={title}
+            onChangeText={setTitle}
+            editable={!busy}
+          />
+        ) : null}
+        {kind !== 'community' ? (
+          <Field
+            label={kind === 'group' ? t('chat.addPeople') : t('chat.searchPeople')}
+            placeholder={t('chat.nameOr')}
+            value={query}
+            onChangeText={setQuery}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+        ) : null}
+        {lookupError && kind !== 'community' ? (
+          <Text accessibilityRole="alert" style={{ color: colors.danger }}>
+            {lookupError}
+          </Text>
+        ) : null}
+        {kind !== 'community'
+          ? matches.map((person) => (
+              <Pressable
+                disabled={busy}
+                key={person.id}
+                onPress={() => {
+                  if (kind === 'group')
+                    setSelected((ids) =>
+                      ids.includes(person.id)
+                        ? ids.filter((id) => id !== person.id)
+                        : [...ids, person.id],
+                    );
+                  else {
+                    setBusy(true);
+                    setError(null);
+                    void store
+                      .request({ op: 'start_direct', identity_id: person.id })
+                      .then(opened)
+                      .catch((failure: unknown) =>
+                        setError(
+                          failure instanceof Error
+                            ? failure.message
+                            : t('chat.theChatCouldNotBeStarted'),
+                        ),
+                      )
+                      .finally(() => setBusy(false));
+                  }
+                }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 8 }}
+                accessibilityRole={kind === 'group' ? 'checkbox' : 'button'}
+                aria-checked={kind === 'group' ? selected.includes(person.id) : undefined}
+              >
+                <ProfileAvatar person={person} name={person.name} color={person.tint_hex} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 17, fontWeight: '600', color: colors.text }}>
+                    {person.name}
+                  </Text>
+                  <Text style={{ color: colors.secondary, marginTop: 4 }}>@{person.handle}</Text>
+                </View>
+                {kind === 'group' && selected.includes(person.id) ? (
+                  <Text style={{ color: colors.accent }}>✓</Text>
+                ) : null}
+              </Pressable>
+            ))
+          : null}
+        {kind === 'group' ? (
+          <Text style={{ color: colors.secondary, fontSize: 13 }}>
+            {t('chat.selectedPeople', { count: selected.length })}
+          </Text>
+        ) : null}
+        {error ? (
+          <Text accessibilityRole="alert" selectable style={{ color: colors.danger }}>
+            {error}
+          </Text>
+        ) : null}
+        {kind !== 'direct' && Platform.OS !== 'ios' ? (
+          <NativeButton label={createLabel} disabled={!title.trim() || busy} onPress={create} />
+        ) : null}
+      </ScrollView>
+      {Platform.OS === 'ios' && kind !== 'direct' ? (
+        <Stack.Toolbar placement="right">
+          <Stack.Toolbar.Button variant="done" disabled={!title.trim() || busy} onPress={create}>
+            {createLabel}
+          </Stack.Toolbar.Button>
+        </Stack.Toolbar>
       ) : null}
-      {error ? (
-        <Text accessibilityRole="alert" selectable style={{ color: colors.danger }}>
-          {error}
-        </Text>
-      ) : null}
-      {kind !== 'direct' ? (
-        <NativeButton
-          label={
-            busy
-              ? t('chat.creating')
-              : kind === 'group'
-                ? t('chat.createGroup')
-                : t('chat.createCommunity')
-          }
-          disabled={!title.trim() || busy}
-          onPress={() => {
-            setBusy(true);
-            setError(null);
-            void store
-              .request(
-                kind === 'group'
-                  ? { op: 'create_group', title: title.trim(), member_ids: selected }
-                  : { op: 'create_community', title: title.trim() },
-              )
-              .then(opened)
-              .catch((failure: unknown) =>
-                setError(
-                  failure instanceof Error ? failure.message : t('chat.theChatCouldNotBeCreated'),
-                ),
-              )
-              .finally(() => setBusy(false));
-          }}
-        />
-      ) : null}
-    </ScrollView>
+    </>
   );
 }

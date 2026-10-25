@@ -32,6 +32,7 @@ impl State {
                     note: t("Criado", "Created"),
                     is_undo: false,
                 }),
+                shared: None,
             },
         );
         // A Page's original signed creation is its card and discussion root.

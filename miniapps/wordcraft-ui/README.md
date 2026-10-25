@@ -168,3 +168,5 @@ refuse PDF without changing the DOCX or pending draft.
 Managed safe-area and first-touch qualification: [VIEWPORT-EVIDENCE.md](VIEWPORT-EVIDENCE.md).
 
 Input-at-close regression and fix: [INPUT-FLUSH-EVIDENCE.md](INPUT-FLUSH-EVIDENCE.md).
+
+Managed touch Undo/Redo and its evidence boundary: [MANAGED-HISTORY-EVIDENCE.md](MANAGED-HISTORY-EVIDENCE.md).

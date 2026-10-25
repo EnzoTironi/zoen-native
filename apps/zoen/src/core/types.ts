@@ -22,6 +22,8 @@ import type { AgentRequestDto } from './generated/AgentRequestDto';
 import type { AppSpecDto } from './generated/AppSpecDto';
 import type { AppCallOutcome } from './generated/AppCallOutcome';
 import type { AppBinaryDocumentDto } from './generated/AppBinaryDocumentDto';
+import type { AppShareContext } from './generated/AppShareContext';
+import type { AppShareResult } from './generated/AppShareResult';
 import type { AppEditRequestResult } from './generated/AppEditRequestResult';
 import type { AppDocumentDto } from './generated/AppDocumentDto';
 import type { DeviceDto } from './generated/DeviceDto';
@@ -86,6 +88,8 @@ export type CoreEvent =
 type Results = {
   space_member_context: SpaceMemberContext;
   remove_member_reviewed: SpaceMemberContext;
+  add_member_reviewed: SpaceMemberContext;
+  find_member_candidates: SpaceMemberContext[];
   start_owner_policy_direct: string;
   request_account_policy_options: OwnerPolicyOptionsStatus;
   find_account_policy_options: OwnerPolicyOptionsStatus | null;
@@ -109,6 +113,8 @@ type Results = {
   timeline: TimelinePage;
   send_message: TimelineEntry;
   request_app_edit: AppEditRequestResult;
+  app_current_share_context: AppShareContext;
+  share_app_current: AppShareResult;
   message_draft: MessageDraftDto;
   save_message_draft: MessageDraftDto;
   send_message_draft: MessageDraftSendResult;

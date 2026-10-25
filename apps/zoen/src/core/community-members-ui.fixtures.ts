@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import * as flow from '../communities/member-actions.ts';
+import * as addition from '../communities/member-addition.ts';
 import * as port from '../communities/member-context-port.ts';
 import * as ownership from './account-scope.ts';
 import { ClientStore } from './store.ts';
@@ -85,7 +86,12 @@ export async function communityUi(
   driver.operation = async (command) => {
     calls.push(structuredClone(command));
     if (command.op === 'snapshot') return structuredClone(snapshot);
-    if (command.op === 'space_member_context') return structuredClone(current);
+    if (command.op === 'space_member_context')
+      return structuredClone(
+        command.identity_id === snapshot.account!.identity_id
+          ? { ...current, member_id: command.identity_id }
+          : current,
+      );
     if (command.op === 'remove_member_reviewed') {
       current = { ...current, state: 'Removing', can_remove: false };
       room.members = room.members.filter((member) => member.id !== peer);
@@ -196,8 +202,11 @@ export async function communityUi(
       return { useClient: () => ({ ...store.getSnapshot(), store }) };
     if (name.endsWith('/account-scope')) return ownership;
     if (name === './member-actions') return flow;
+    if (name === './member-addition') return addition;
     if (name === './member-context-port') return port;
     if (name.endsWith('/use-member-actions')) return load('hook');
+    if (name.endsWith('/member-addition-sheet'))
+      return { MemberAdditionSheet: 'MemberAdditionSheet' };
     if (name.endsWith('/member-actions-sheet')) return load('sheet');
     if (name.endsWith('/i18n') || name.endsWith('/i18n/index.ts')) return localization;
     if (name.endsWith('/theme'))

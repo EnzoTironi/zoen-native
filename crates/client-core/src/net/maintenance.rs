@@ -190,7 +190,7 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
         Err(e) => tracing_like(&format!("checkpoints: {e}")),
     }
     let sealing_started = std::time::Instant::now();
-    let sealed = engine!(super::super::engine::Engine::mls_seal_outbox);
+    let sealed = engine!(super::super::engine::Engine::mls_seal_outbox_changes);
     if sealing_started.elapsed() >= Duration::from_millis(100) {
         tracing_like(&format!(
             "outbox sealing elapsed_ms={}",
@@ -198,12 +198,18 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
         ));
     }
     match sealed {
-        Ok(true) => {
-            if let Err(e) = flush(ctx, sink, sent).await {
-                return Err(Exit::Retry(e));
+        Ok((sealed, refused)) => {
+            let changed = !refused.is_empty();
+            if changed {
+                dirty.extend(refused);
+                report_rejection(ctx, &RejectionOutcome::UserFailed);
+            }
+            if sealed || changed {
+                if let Err(e) = flush(ctx, sink, sent).await {
+                    return Err(Exit::Retry(e));
+                }
             }
         }
-        Ok(false) => {}
         Err(e) => tracing_like(&format!("sealing: {e}")),
     }
     let mut failed = None;

@@ -121,6 +121,16 @@ pub(crate) fn exact_own_echo(
         && envelope.as_ref() == Some(expected)
 }
 
+/// Epoch of the exact authenticated application envelope already retained by
+/// normal ingestion. Never substitute the device's later current epoch on replay.
+pub(crate) fn application_epoch(store: &Store, event: &Event) -> Option<u64> {
+    let retained = retained_application(store, event)?;
+    let content = STANDARD.decode(retained.content).ok()?;
+    let envelope = Envelope::new(content, retained.sig, retained.cert, None)?;
+    let (_, data) = envelope.sealed_data()?;
+    ::mls::application_epoch(data)
+}
+
 fn retained_application(store: &Store, event: &Event) -> Option<StoredOpening> {
     let json = store.meta(&key(&event.hash)).ok()??;
     if json.len() > 131_072 {

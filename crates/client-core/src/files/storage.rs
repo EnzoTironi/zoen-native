@@ -120,6 +120,7 @@ impl Engine {
             _ => None,
         };
         Ok(FileDoc {
+            app_origin: None,
             name: name.to_string(),
             path: path.to_string(),
             mime: mime.to_string(),

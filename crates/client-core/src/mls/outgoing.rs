@@ -38,8 +38,14 @@ impl Engine {
     /// Seals every queued message whose group is ready and that has no copy for the
     /// group's current epoch. `true` when something new can go out.
     pub fn mls_seal_outbox(&mut self) -> R<bool> {
+        self.mls_seal_outbox_changes().map(|(sealed, _)| sealed)
+    }
+
+    /// Failed consent uses the normal outbox receipt and change notification.
+    pub(crate) fn mls_seal_outbox_changes(&mut self) -> R<(bool, HashSet<SpaceId>)> {
+        let mut refused = HashSet::new();
         if self.net.pending.is_empty() {
-            return Ok(false);
+            return Ok((false, refused));
         }
         // Validate retained originals before any cryptographic effect, including
         // successors of a damaged head that already has a cached ciphertext.
@@ -48,7 +54,7 @@ impl Engine {
         let mut sealed = false;
         let mut blocked = HashSet::new();
         for h in heads {
-            if h.failed {
+            if h.failed || self.net.failed.contains_key(&h.client_id) {
                 continue;
             }
             let e = match self.read_outbox_head(&h) {
@@ -66,13 +72,26 @@ impl Engine {
             };
             // SQL Space metadata is not a selection authority. Resolve the
             // signed original before deciding the lane, readiness or cache hit.
-            if blocked.contains(&e.space) || !self.is_e2e(&e.space) {
+            if blocked.contains(&e.space) {
+                continue;
+            }
+            if !self.app_share_consent_current(&e) {
+                self.refuse_stale_app_share(&e)?;
+                refused.insert(e.space);
+                continue;
+            }
+            if !self.is_e2e(&e.space) {
                 continue;
             }
             let epoch = *ready
                 .entry(e.space.clone())
                 .or_insert_with(|| self.ready_epoch(&e.space));
             let Some(epoch) = epoch else { continue };
+            if !Self::app_share_epoch_matches(&e, epoch) {
+                self.refuse_stale_app_share(&e)?;
+                refused.insert(e.space);
+                continue;
+            }
             if self.sealed_epoch_of(&h.client_id) == Some(epoch) {
                 continue;
             }
@@ -82,7 +101,7 @@ impl Engine {
             self.seal_outgoing(&e, epoch)?;
             sealed = true;
         }
-        Ok(sealed)
+        Ok((sealed, refused))
     }
 
     pub(super) fn seal_outgoing(&mut self, e: &Event, epoch: u64) -> R<()> {
@@ -101,6 +120,9 @@ impl Engine {
                 reason: "Sealing requires a retained transaction.".into(),
             });
         }
+        if !self.app_share_consent_current(e) || !Self::app_share_epoch_matches(e, epoch) {
+            return Err(crate::app_current_share::refused());
+        }
         let author = self
             .net
             .author
@@ -112,10 +134,13 @@ impl Engine {
             content: e.content.clone(),
             sig: e.sig.clone(),
         };
-        let data = self
-            .device_on(self.store.conn())?
-            .seal(&e.space, &inner.encode())
-            .map_err(mls_err)?;
+        let device = self.device_on(self.store.conn())?;
+        if matches!(e.body, EventBody::AppCurrentShared { .. })
+            && device.epoch(&e.space).map_err(mls_err)? != epoch
+        {
+            return Err(crate::app_current_share::refused());
+        }
+        let data = device.seal(&e.space, &inner.encode()).map_err(mls_err)?;
         let outer = Envelope::sealed(
             &author,
             &e.space,
@@ -139,6 +164,10 @@ impl Engine {
         e: &Event,
         ready: &mut HashMap<SpaceId, Option<u64>>,
     ) -> Option<Envelope> {
+        // Also fence retained cached ciphertext when no sealing pass has run.
+        if !self.app_share_consent_current(e) {
+            return None;
+        }
         if matches!(e.body, EventBody::Sealed { .. }) {
             return Envelope::new(e.content.clone(), e.sig.clone(), e.cert.clone(), None);
         }
@@ -159,7 +188,10 @@ impl Engine {
             }
         });
         // Cheap check first: only decode the sealed copy when it is for this epoch.
-        if epoch.is_none() || self.sealed_epoch(e) != epoch {
+        if epoch.is_none()
+            || epoch.is_some_and(|epoch| !Self::app_share_epoch_matches(e, epoch))
+            || self.sealed_epoch(e) != epoch
+        {
             return None;
         }
         let (at, env) = self.sealed_copy(e)?;

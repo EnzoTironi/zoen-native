@@ -139,6 +139,10 @@ pub struct ChunkRef {
 /// chunks that didn't change), plus an optional preview made on the device.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct FileDoc {
+    /// Origin of the App referenced by this owned manifest, not decoding, bytes,
+    /// historical access or a grant. Absent on regular/legacy files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app_origin: Option<crate::AppItemOrigin>,
     pub name: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub path: String,

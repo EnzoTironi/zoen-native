@@ -182,8 +182,10 @@ pub(crate) fn tint_for(id: &str) -> String {
 }
 
 fn is_message_send(body: &EventBody) -> bool {
-    matches!(body, EventBody::MessagePosted { .. })
-        || matches!(body, EventBody::ItemCreated {
+    matches!(
+        body,
+        EventBody::MessagePosted { .. } | EventBody::AppEditRequested { .. }
+    ) || matches!(body, EventBody::ItemCreated {
             kind: ItemKind::File, content: ItemContent::File(doc), ..
         } if doc.is_voice())
 }
@@ -246,6 +248,7 @@ mod account_preparation;
 mod ingestion;
 mod member_controls;
 mod outbox;
+mod owned_member_candidates;
 mod prepared_account;
 mod profiles;
 mod receipts;

@@ -26,6 +26,8 @@ pub mod owner_policy_context;
 pub use annotation::Annotation;
 pub mod reply;
 pub use reply::{ArtifactRequest, ReplyRef};
+mod app_share;
+pub use app_share::{AppCurrentShare, AppItemOrigin, AppShareRef};
 
 mod ids;
 pub use ids::{
