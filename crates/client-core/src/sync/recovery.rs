@@ -95,6 +95,7 @@ impl Engine {
                     | EventBody::MemberAdded { .. }
                     | EventBody::MemberRemoved { .. }
                     | EventBody::GrantIssued { .. }
+                    | EventBody::AppCurrentShared { .. }
                     | EventBody::GrantRevoked { .. }
                     | EventBody::ItemCreated { .. }
                     | EventBody::ItemVersioned { .. }

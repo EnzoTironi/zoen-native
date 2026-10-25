@@ -96,9 +96,36 @@ pub(crate) fn readable_head(prefix: &[Event], event: &Event) -> Option<SharedVer
     })
 }
 
+/// Chat-only progress may follow the signed observation. Unknown or policy
+/// effects require a fresh review; none can silently widen the disclosure.
+fn same_share_context(body: &EventBody, share: &AppCurrentShare) -> bool {
+    match body {
+        EventBody::MessagePosted { attaches, .. } => {
+            attaches.as_deref() != Some(share.item.as_str())
+        }
+        EventBody::MessageAnnotated { target, .. } => target != &share.anchor.event,
+        EventBody::Checkpoint { epoch, .. } => Some(*epoch) == share.epoch,
+        EventBody::ProfileKeyShared { .. }
+        | EventBody::ChatPrefsSet { .. }
+        | EventBody::CallV1 { .. }
+        | EventBody::CallTransportV1 { .. }
+        | EventBody::AppEditRequested { .. } => true,
+        EventBody::ItemCreated { item, .. }
+        | EventBody::ItemVersioned { item, .. }
+        | EventBody::ItemReverted { item, .. } => item != &share.item,
+        EventBody::AppCurrentShared { share: other } => other.item != share.item,
+        EventBody::GrantIssued { grant } => matches!(&grant.scope,
+            types::GrantScope::Item(item) if item != &share.item),
+        _ => false,
+    }
+}
+
 fn current_prefix(prefix: &[Event], share: &AppCurrentShare) -> bool {
     let mut roles = std::collections::HashMap::new();
     for event in prefix {
+        if event.seq > share.cut.seq && !same_share_context(&event.body, share) {
+            return false;
+        }
         let writer = roles
             .get(&event.author)
             .is_some_and(|r| *r != types::Role::Reader);
@@ -187,13 +214,15 @@ pub(crate) fn references_valid(prefix: &[Event], event: &Event) -> bool {
     event.seen.as_ref() == Some(&share.cut)
         && origin::valid(&share.content, &share.creation, &event.space, &share.item)
         && current_prefix(prefix, share)
-        && prefix
-            .last()
+        && usize::try_from(share.cut.seq)
+            .ok()
+            .and_then(|seq| prefix.get(seq))
             .is_some_and(|e| e.seq == share.cut.seq && e.hash == share.cut.hash)
         && [&share.creation, &share.head, &share.anchor]
             .into_iter()
             .all(matches)
         && share.creation.seq <= share.head.seq
+        && share.head.seq <= share.cut.seq
         && share.creation.seq <= share.anchor.seq
         && share.anchor.seq <= share.cut.seq
         && at(&share.creation).is_some_and(|e| {
