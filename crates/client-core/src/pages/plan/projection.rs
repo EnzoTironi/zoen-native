@@ -148,7 +148,12 @@ impl<'a> PlanReplay<'a> {
         let mut positions: HashMap<(SpaceId, ItemId), Vec<usize>> = HashMap::new();
         for (space, log) in self.logs {
             for (index, event) in log.events().iter().enumerate() {
-                if let EventBody::ItemCreated { item, .. } = &event.body {
+                let origin = match &event.body {
+                    EventBody::ItemCreated { item, .. } => Some(item),
+                    EventBody::AppCurrentShared { share } => Some(&share.item),
+                    _ => None,
+                };
+                if let Some(item) = origin {
                     origins
                         .entry(item.clone())
                         .or_default()
@@ -312,7 +317,11 @@ impl<'a> PlanReplay<'a> {
         end: usize,
         mode: Mode,
     ) -> R<BeforeEvent> {
-        let scope_valid = matches!(mode, Mode::Confirmed) || self.current_scope_valid(state, event);
+        // Sharing bootstraps an Item absent from this scoped fold. Its embedded
+        // grant must not escape an already known foreign Item origin on replay.
+        let scope_valid = (matches!(mode, Mode::Confirmed)
+            && !matches!(event.body, EventBody::AppCurrentShared { .. }))
+            || self.current_scope_valid(state, event);
         let plan = if !scope_valid
             || state.waiting_spaces.contains(&event.space)
             || !state.approval_event_guards(event, identities)
