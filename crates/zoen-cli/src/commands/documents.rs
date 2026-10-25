@@ -222,31 +222,21 @@ pub(super) async fn run(cmd: String, cli: &mut Cli, context: Context) {
                 usage();
             }
             let sub = cli.args.remove(0);
+            if sub == "add" {
+                let input =
+                    crate::file_import::Input::parse(&cli.args).unwrap_or_else(|error| die(error));
+                let space = chat(&e, &input.chat);
+                let thumb = input.thumbnail.as_deref().map(read_file);
+                let d = input
+                    .add(&e, space, read_file(&input.file), thumb)
+                    .unwrap_or_else(|error| die(error));
+                e.wait_until_idle(timeout).await;
+                let fi = d.file.unwrap_or_else(|| die("not a file"));
+                println!("{}\t{} bytes\t{} pieces", d.id, fi.bytes, fi.chunks);
+                return;
+            }
             let thumb = cli.flag("--thumb").map(|p| read_file(&p));
             match sub.as_str() {
-                "add" => {
-                    let dir = cli.flag("--path").unwrap_or_default();
-                    if cli.args.len() < 2 {
-                        usage();
-                    }
-                    let space = chat(&e, &cli.args[0]);
-                    let f = &cli.args[1];
-                    let name = Path::new(f)
-                        .file_name()
-                        .map(|n| n.to_string_lossy().into_owned())
-                        .unwrap_or_else(|| f.clone());
-                    let path = if dir.is_empty() {
-                        name.clone()
-                    } else {
-                        format!("{}/{name}", dir.trim_end_matches('/'))
-                    };
-                    let d = e
-                        .file_add(space, path, name, mime_of(f).into(), read_file(f), thumb)
-                        .unwrap_or_else(|err| die(err));
-                    e.wait_until_idle(timeout).await;
-                    let fi = d.file.unwrap_or_else(|| die("not a file"));
-                    println!("{}\t{} bytes\t{} pieces", d.id, fi.bytes, fi.chunks);
-                }
                 "version" => {
                     if cli.args.len() < 2 {
                         usage();
