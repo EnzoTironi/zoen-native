@@ -1,8 +1,9 @@
 import { memo, useMemo } from 'react';
-import { Linking, Text } from 'react-native';
+import { Text } from 'react-native';
 import { EnrichedMarkdownText, type MarkdownStyle } from 'react-native-enriched-markdown';
 import { messageMarkdownLink, messageMarkdownMayLoadMedia } from '../core/message-markdown';
 import { useTheme } from '../theme';
+import { useLinkLaunch } from './use-link-launch';
 
 export type MessageMarkdownProps = {
   text: string;
@@ -23,6 +24,7 @@ export const MessageMarkdown = memo(function MessageMarkdown({
   selectable = false,
 }: MessageMarkdownProps) {
   const { colors } = useTheme();
+  const launchLink = useLinkLaunch(text);
   const markdownStyle = useMemo<MarkdownStyle>(() => {
     const body = { color, fontSize, lineHeight: Math.ceil(fontSize * 1.3) };
     const heading = (extra: number) => ({
@@ -118,7 +120,7 @@ export const MessageMarkdown = memo(function MessageMarkdown({
       streamingAnimation={false}
       onLinkPress={({ url }) => {
         const target = messageMarkdownLink(url);
-        if (target) void Linking.openURL(target).catch(() => {});
+        if (target) void launchLink(target);
       }}
     />
   );
