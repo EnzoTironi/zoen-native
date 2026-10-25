@@ -202,7 +202,9 @@ fn exercise(change: Change) -> R<()> {
             // signed agreement records; no private key or group state is copied.
             let mut records = Vec::new();
             for peer in [&mut owner, &mut agent] {
-                let (public, signed) = peer.agreement_to_publish()?;
+                let (public, signed) = peer
+                    .agreement_to_publish()
+                    .ok_or_else(|| storage("genuine public agreement record"))?;
                 records.push(protocol::AgreementKeyRecord {
                     identity: peer.me_id()?,
                     public,
