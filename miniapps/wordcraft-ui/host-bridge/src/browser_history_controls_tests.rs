@@ -1,4 +1,4 @@
-//! Actual managed WordApp history controls, real touch input and anchored host checkpoints.
+//! Actual managed `WordApp` history controls, real touch input and anchored host checkpoints.
 use super::*;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 
