@@ -33,6 +33,7 @@ export async function startProbe(config: {
   let holdNext = false;
   let releaseWrite: (() => void) | undefined;
   let accepted = decode64(config.seed);
+  let author = "fixture-human";
   const states: unknown[] = [];
   const exports: { format: string; data: string; sha256: string }[] = [];
   const check = () => {
@@ -49,7 +50,7 @@ export async function startProbe(config: {
     engine_revision: format.engineRevision,
     actor_id: "fixture-human",
     actor_kind: "human",
-    author_id: "fixture-human",
+    author_id: author,
   });
   const session = createDeckcraftSession({
     editor: format.id,
@@ -83,6 +84,7 @@ export async function startProbe(config: {
         check();
       }
       accepted = decode64(command.data_base64);
+      author = "fixture-human";
       version++;
       writes++;
       return read();
@@ -172,6 +174,7 @@ export async function startProbe(config: {
       if (!next.length || next.length > format.maxDocumentBytes)
         throw Error("Invalid synthetic document size");
       accepted = next;
+      author = "fixture-agent";
       version = nextVersion;
       await session.refresh(nextVersion);
     },

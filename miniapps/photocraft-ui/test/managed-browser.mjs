@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createServer } from "node:http";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { resolve, isAbsolute } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
@@ -88,28 +87,9 @@ const requests = [],
   errors = [],
   consoleErrors = [],
   cleanupErrors = [];
-const server = createServer((req, res) => {
-  requests.push({ method: req.method, path: req.url });
-  const f = files.get(req.url);
-  if (req.method !== "GET" || !f) {
-    res.writeHead(404);
-    res.end();
-    return;
-  }
-  res.writeHead(200, {
-    "Content-Type": f[1],
-    "Content-Length": f[0].length,
-    "Cache-Control": "no-store",
-  });
-  res.end(f[0]);
-});
 let browser,
   receipt = { status: "FAIL" };
 try {
-  await new Promise((done, fail) => {
-    server.once("error", fail);
-    server.listen(0, "127.0.0.1", done);
-  });
   const { chromium, webkit, devices } = await import(pathToFileURL(playwrightPath).href);
   const isWebkit = process.env.ZOEN_PROBE_WEBKIT === "1";
   browser = await (isWebkit ? webkit : chromium).launch(
@@ -140,7 +120,19 @@ try {
   page.on("console", (e) => {
     if (e.type() === "error") consoleErrors.push(e.text());
   });
-  await page.goto(`http://127.0.0.1:${server.address().port}/`, { waitUntil: "load" });
+  // Fulfill the public fixture origin in memory: no local server or network service.
+  await page.route("**/*", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    requests.push({ method: request.method(), path: url.pathname, origin: url.origin });
+    const file = url.origin === "https://photocraft-fixture.invalid" && files.get(url.pathname);
+    if (request.method() !== "GET" || !file) {
+      await route.fulfill({ status: 404, body: "Unknown fixture input" });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: file[1], body: file[0], headers: { "Cache-Control": "no-store" } });
+  });
+  await page.goto("https://photocraft-fixture.invalid/", { waitUntil: "load" });
   await page.waitForFunction(() => window.probe?.opened, undefined, { timeout: 25000 });
   assert.equal(await page.evaluate(() => window.probe.writes), 0);
   const formats = ["pcraft", "png"];
@@ -293,8 +285,6 @@ try {
   } catch (e) {
     cleanupErrors.push(String(e));
   }
-  server.closeAllConnections();
-  if (server.listening) await new Promise((done) => server.close(done));
   await writeFile(
     resolve(output, "result.json"),
     JSON.stringify({ ...receipt, cleanupErrors }, null, 2) + "\n",
