@@ -127,12 +127,9 @@ fn late_word_mode(owner_path: &str, agent_path: &str, legacy: bool) -> R<LateWor
             .conn()
             .execute(
                 "UPDATE outbox SET json=?1 WHERE client_id=?2",
-                rusqlite::params![
-                    serde_json::to_string(&old).map_err(|e| storage(&e.to_string()))?,
-                    old.client_id
-                ],
+                rusqlite::params![serde_json::to_string(&old).map_err(storage)?, old.client_id],
             )
-            .map_err(|e| storage(&e.to_string()))?;
+            .map_err(storage)?;
         owner.reproject_approval_overlay()?;
     }
     let original_root = owner

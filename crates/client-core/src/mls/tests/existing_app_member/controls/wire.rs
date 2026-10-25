@@ -49,7 +49,7 @@ fn sealed_intent(f: &LateWord, mut share: AppCurrentShare, id: &str) -> R<(Seque
             }
             .encode(),
         )
-        .map_err(|e| storage(&e.to_string()))?;
+        .map_err(storage)?;
     let frame = ordered(
         &f.agent,
         Envelope::sealed(
@@ -187,7 +187,7 @@ fn retained_readable_successor_refuses_stale_floor_and_its_grant_atomically() ->
             }
             .encode(),
         )
-        .map_err(|e| storage(&e.to_string()))?;
+        .map_err(storage)?;
     let frame = ordered(
         &f.agent,
         Envelope::sealed(
