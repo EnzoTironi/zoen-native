@@ -9,6 +9,25 @@ impl Client {
     ) -> Result<String, CoreError> {
         use Command::*;
         match command {
+            AppCurrentShareContext { scope } => encode(&self.app_current_share_context(scope)?),
+            ShareAppCurrent {
+                context,
+                mutation_id,
+            } => {
+                use crate::app_current_share::AppShareResult;
+                let result = match self.share_app_current(context, &mutation_id) {
+                    Ok(receipt) => AppShareResult {
+                        receipt: Some(receipt),
+                        conflict: None,
+                    },
+                    Err(CoreError::Stale { reason }) => AppShareResult {
+                        receipt: None,
+                        conflict: Some(reason),
+                    },
+                    Err(error) => return Err(error),
+                };
+                encode(&result)
+            }
             StartOwnerPolicyDirect {
                 expected_identity_id,
                 expected_device_id,

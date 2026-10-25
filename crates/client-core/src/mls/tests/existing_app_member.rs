@@ -56,6 +56,15 @@ fn late_certified_agent_existing_word_requires_current_state_bootstrap() -> R<()
     owner.store.put_identity(&profile, None)?;
     owner.identities.insert(agent_id.clone(), profile);
     owner.identity_order.push(agent_id.clone());
+    // Public directory metadata only; no owner key/history is imported.
+    let profile = owner
+        .identities
+        .get(&author.identity)
+        .cloned()
+        .ok_or_else(|| storage("fixture owner profile"))?;
+    agent.store.put_identity(&profile, None)?;
+    agent.identities.insert(profile.id.clone(), profile.clone());
+    agent.identity_order.push(profile.id);
     for frame in claim_group(&mut owner, SPACE, &mut []) {
         assert_eq!(agent.ingest(frame), Ingest::Applied);
     }
@@ -136,8 +145,39 @@ fn late_certified_agent_existing_word_requires_current_state_bootstrap() -> R<()
         .root
         .is_some());
 
-    // The future sharing repair must add its explicit canonical operation here;
-    // it cannot turn the ordinary save below into a silent history transfer.
+    let account = owner.account().ok_or_else(|| storage("owner account"))?;
+    let context = owner.app_current_share_context(crate::app_current_share::AppShareScope {
+        expected_identity_id: account.identity.clone(),
+        expected_device_id: account.device.clone(),
+        space_id: SPACE.into(),
+        item_id: original.item_id.clone(),
+        target_id: agent_id,
+    })?;
+    let receipt = owner.share_app_current(context, "explicit_current_share")?;
+    assert!(receipt.applied);
+    publish(&mut owner, &mut agent, &mut blobs);
+    receive_wanted(&mut agent, &blobs)?;
+    let shared_v2 = agent.app_binary_read(&original.item_id, Some(2), Some(&original.sha256))?;
+    assert_eq!(shared_v2.data_base64, original.data_base64);
+    assert!(agent
+        .app_binary_read(&original.item_id, Some(1), None)
+        .is_err());
+    assert_eq!(
+        agent
+            .item_state(&original.item_id)?
+            .versions
+            .iter()
+            .map(|v| v.number)
+            .collect::<Vec<_>>(),
+        vec![2]
+    );
+    assert!(agent.item_state(&original.item_id)?.shared.is_some());
+    assert_eq!(
+        agent.trust(&agent.me_id()?, SPACE),
+        types::TrustLevel::Suggest
+    );
+    // Only the human-explicit sharing operation opens the old Item. The normal
+    // next save then extends the same actual v2 to v3, without a fabricated v1.
     let updated = owner.app_binary_save(
         &original.item_id,
         original.version,

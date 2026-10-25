@@ -5,6 +5,13 @@ use super::*;
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub(super) enum Command {
+    AppCurrentShareContext {
+        scope: crate::app_current_share::AppShareScope,
+    },
+    ShareAppCurrent {
+        context: crate::app_current_share::AppShareContext,
+        mutation_id: String,
+    },
     StartOwnerPolicyDirect {
         expected_identity_id: String,
         expected_device_id: String,

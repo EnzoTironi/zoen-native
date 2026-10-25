@@ -50,6 +50,7 @@ pub(crate) struct BeforeEvent {
     event: String,
     ordered_address: Option<(u64, String, String)>,
     scope_valid: bool,
+    app_share_refs_valid: bool,
     mode: Mode,
     plan: PlanRead,
 }
@@ -70,6 +71,9 @@ fn binding(event: &Event) -> String {
 }
 
 impl BeforeEvent {
+    pub(crate) fn app_share_refs_valid(&self) -> bool {
+        self.app_share_refs_valid
+    }
     pub(crate) fn scope_valid(&self) -> bool {
         self.scope_valid
     }
@@ -184,6 +188,7 @@ impl<'a> PlanReplay<'a> {
             EventBody::ItemCreated { item, .. }
             | EventBody::ItemVersioned { item, .. }
             | EventBody::ItemReverted { item, .. } => Some(item.as_str()),
+            EventBody::AppCurrentShared { share } => Some(share.item.as_str()),
             EventBody::MessagePosted { attaches, .. } => attaches.as_deref(),
             EventBody::GrantIssued { grant } => match &grant.scope {
                 GrantScope::Item(item) => Some(item.as_str()),
@@ -335,6 +340,12 @@ impl<'a> PlanReplay<'a> {
             PlanRead::Changed
         };
         Ok(BeforeEvent {
+            app_share_refs_valid: crate::app_current_share::references_valid(
+                self.logs
+                    .get(&event.space)
+                    .map_or(&[], |log| &log.events()[..end]),
+                event,
+            ),
             event: binding(event),
             ordered_address: matches!(mode, Mode::Confirmed)
                 .then(|| (event.seq, event.prev.clone(), event.hash.clone())),
