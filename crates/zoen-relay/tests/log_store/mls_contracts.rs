@@ -20,7 +20,7 @@ pub(super) async fn end_to_end_spaces_hold_ciphertext_on_every_relay(
         seq: ev.seq,
         hash: ev.hash,
     };
-    let seal = |seen: &Seen| -> Result<Envelope, types::IdError> {
+    let seal = |seen: &Seen| -> Result<Envelope, Box<dyn std::error::Error>> {
         let data = protocol::Sealed::new(protocol::SealedKind::Application, 3, vec![9; 48]);
         Ok(Envelope::sealed(
             &ana,
@@ -128,19 +128,22 @@ pub(super) async fn one_commit_per_epoch_and_each_welcome_follows_its_commit(
     };
     let (d_ana, d_bruno, d_carla) = (device(0), device(1), device(2));
     let space = types::new_id("sp")?;
-    let handshake =
-        |a: &Author, kind, data: Vec<u8>, seen: &Seen| -> Result<Envelope, types::IdError> {
-            let data = Sealed::new(kind, mls::SUITE_ID, data);
-            let cid = types::new_ulid(now_ms())?;
-            Ok(Envelope::sealed(
-                a,
-                &space,
-                &cid,
-                now_ms(),
-                Some(seen),
-                data,
-            )?)
-        };
+    let handshake = |a: &Author,
+                     kind,
+                     data: Vec<u8>,
+                     seen: &Seen|
+     -> Result<Envelope, Box<dyn std::error::Error>> {
+        let data = Sealed::new(kind, mls::SUITE_ID, data);
+        let cid = types::new_ulid(now_ms())?;
+        Ok(Envelope::sealed(
+            a,
+            &space,
+            &cid,
+            now_ms(),
+            Some(seen),
+            data,
+        )?)
+    };
     let at = |ev: &Sequenced| Seen {
         seq: ev.seq,
         hash: ev.hash.clone(),
@@ -175,7 +178,7 @@ pub(super) async fn one_commit_per_epoch_and_each_welcome_follows_its_commit(
         .commit(&space, &d_bruno.key_packages(1, false).unwrap(), &none)
         .unwrap();
     let with_context =
-        |kind, data, epoch, head: &types::Seen| -> Result<Envelope, types::IdError> {
+        |kind, data, epoch, head: &types::Seen| -> Result<Envelope, Box<dyn std::error::Error>> {
             let mut sealed = protocol::Sealed::new(kind, mls::SUITE_ID, data);
             sealed.recovery = event_log::recovery::RecoveryRef {
                 version: 1,

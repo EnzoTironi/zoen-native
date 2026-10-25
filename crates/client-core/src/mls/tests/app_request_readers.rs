@@ -54,11 +54,12 @@ fn actors(ready_owned: bool) -> R<(Engine, [Engine; 2], String)> {
     Ok((owner, [reader, agent], id))
 }
 
-fn publish(owner: &mut Engine, peers: &mut [Engine; 2]) {
-    let frames = relay_ready_to_peer(owner, &mut peers[0]);
+fn publish(owner: &mut Engine, peers: &mut [Engine; 2]) -> R<()> {
+    let frames = relay_ready_to_peer(owner, &mut peers[0])?;
     for frame in frames {
         assert_eq!(peers[1].ingest(frame), Ingest::Applied);
     }
+    Ok(())
 }
 
 fn create(owner: &mut Engine, space: &str, mutation: &str) -> R<AppBinaryDocumentDto> {
@@ -93,7 +94,7 @@ fn post(
 
 fn missing_package(ready_owned: bool) -> R<Fixture> {
     let (mut owner, mut peers, agent_id) = actors(ready_owned)?;
-    let frames = claim_group(&mut owner, SPACE, &mut peers);
+    let frames = claim_group(&mut owner, SPACE, &mut peers)?;
     for frame in frames {
         for peer in &mut peers {
             assert_eq!(peer.ingest(frame.clone()), Ingest::Applied);
@@ -110,7 +111,7 @@ fn missing_package(ready_owned: bool) -> R<Fixture> {
     assert_eq!(records.len(), 1);
     owner.mls_claimed(SPACE, &operation, Ok(records));
     assert!(owner.net.mls.stuck.contains(SPACE));
-    publish(&mut owner, &mut peers);
+    publish(&mut owner, &mut peers)?;
     assert!(owner.ready_epoch(SPACE).is_some());
     assert!(peers[0].device()?.has_group(SPACE));
     assert!(!peers[1].device()?.has_group(SPACE));
@@ -120,7 +121,7 @@ fn missing_package(ready_owned: bool) -> R<Fixture> {
         .ok_or_else(|| storage("old readers retain their real MLS group"))?;
     assert!(!readers.contains(&agent_id));
     let app = create(&mut owner, SPACE, "before_agent_welcome")?;
-    publish(&mut owner, &mut peers);
+    publish(&mut owner, &mut peers)?;
     assert!(peers[0].item_state(&app.item_id).is_ok());
     assert!(peers[1].item_state(&app.item_id).is_err());
     Ok(Fixture {
@@ -172,7 +173,7 @@ fn app_request_accepts_after_real_agent_welcome_and_retry_survives_removal() -> 
     let records = claimed_records(&mut f.peers[1..], &targets);
     assert_eq!(records.len(), 1);
     f.owner.mls_claimed(SPACE, &operation, Ok(records));
-    publish(&mut f.owner, &mut f.peers);
+    publish(&mut f.owner, &mut f.peers)?;
     assert!(f.peers[1].device()?.has_group(SPACE));
     let (_, _, readers) = f
         .owner
@@ -180,10 +181,10 @@ fn app_request_accepts_after_real_agent_welcome_and_retry_survives_removal() -> 
         .ok_or_else(|| storage("MLS group"))?;
     assert!(readers.contains(&f.agent_id));
     let app = create(&mut f.owner, SPACE, "after_agent_welcome")?;
-    publish(&mut f.owner, &mut f.peers);
+    publish(&mut f.owner, &mut f.peers)?;
     assert!(f.peers[1].item_state(&app.item_id).is_ok());
     let posted = post(&mut f.owner, SPACE, &app, "joined_request")?;
-    publish(&mut f.owner, &mut f.peers);
+    publish(&mut f.owner, &mut f.peers)?;
     assert!(f.peers[1]
         .timeline(SPACE)?
         .iter()
