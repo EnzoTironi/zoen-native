@@ -114,7 +114,7 @@ impl State {
                         space: event.space.clone(),
                         kind: ItemKind::App,
                         origin: t("Versão atual compartilhada", "Current version shared"),
-                        versions: vec![version],
+                        versions: crate::engine::ItemVersions::new(version),
                         shared: Some(origin),
                         has_voice_history: false,
                     },

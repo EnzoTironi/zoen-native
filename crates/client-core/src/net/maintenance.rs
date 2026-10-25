@@ -1,9 +1,12 @@
 //! A completed catch-up permits one existing ordered maintenance pass.
 
 use super::{
-    complete_reads, flush, free, send, tracing_like, ClaimClockSample, ClientFrame, Ctx, Duration,
-    EphemeralKind, Exit, HashMap, HashSet, Op, ProfileTraffic, Sink, Waiting, PROFILE_TIMEOUT,
+    complete_reads, flush, free, report_rejection, send, tracing_like, ClaimClockSample,
+    ClientFrame, Ctx, Duration, EphemeralKind, Exit, HashMap, HashSet, Op, ProfileTraffic, Sink,
+    Waiting, PROFILE_TIMEOUT,
 };
+
+use crate::sync::RejectionOutcome;
 
 /// Borrows the active session; the caller still owns scheduling and watchdogs.
 pub(super) struct MaintenanceContext<'a> {
