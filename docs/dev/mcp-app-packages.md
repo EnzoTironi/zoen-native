@@ -35,11 +35,17 @@ fonts and network dependencies therefore cannot be assumed to work. A file with
 the MIME is an explicit installation candidate, not evidence that its renderer
 has passed the protocol, usability or document-format tests.
 
-`file add` in the current CLI infers MIME from the filename and does not expose
-this profile. Do not claim that importing an ordinary `.html` file through that
-command publishes an App. Use the explicit public File API, or add a separately
-qualified producer using that API. A model-produced URL or filename does not
-admit a release.
+The CLI exposes the same ordinary publication path:
+
+```sh
+zoen file add CHAT editor.html --mime 'text/html;profile=mcp-app'
+```
+
+It passes the exact MIME to `Client.file_add`; omitted `--mime` keeps the existing
+extension inference, including ordinary `.html` as `application/octet-stream`.
+Empty, control-containing or duplicate MIME arguments refuse before opening a
+home. This command creates a normal File; it does not install an App, issue a
+grant or run its HTML. A model-produced URL or filename does not admit a release.
 
 ## Admit and open one canonical Item
 
