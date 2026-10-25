@@ -294,10 +294,12 @@ pub(crate) fn editor_blocks_markdown(blocks: &[PageBlockDto]) -> R<String> {
     Ok(page.canonical_markdown())
 }
 
-fn rand_u64() -> u64 {
+fn rand_u64() -> R<u64> {
     let mut b = [0u8; 8];
-    getrandom::getrandom(&mut b).expect("system randomness");
-    u64::from_le_bytes(b)
+    getrandom::getrandom(&mut b).map_err(|error| CoreError::Storage {
+        message: error.to_string(),
+    })?;
+    Ok(u64::from_le_bytes(b))
 }
 
 mod authoring;

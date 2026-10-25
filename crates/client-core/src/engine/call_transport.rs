@@ -109,24 +109,28 @@ impl State {
         }
     }
 
-    pub(crate) fn apply_call_transport(&mut self, event: &Event) {
+    #[must_use]
+    pub(crate) fn apply_call_transport(&mut self, event: &Event) -> bool {
         let EventBody::CallTransportV1 { signal } = &event.body else {
-            return;
+            return false;
         };
-        let space = self
-            .spaces
-            .get_mut(&event.space)
-            .expect("validated call transport Space");
+        let Some(device) = event.device.as_ref() else {
+            return false;
+        };
+        let Some(space) = self.spaces.get_mut(&event.space) else {
+            return false;
+        };
         if !space
             .call_transport
             .iter()
             .any(|record| record.signal.signal_id == signal.signal_id)
         {
             space.call_transport.push(CallTransportRecord {
-                sender_device: event.device.clone().expect("validated device"),
+                sender_device: device.clone(),
                 signal: signal.clone(),
             });
         }
+        true
     }
 }
 

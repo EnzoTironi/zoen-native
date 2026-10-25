@@ -307,7 +307,7 @@ impl Engine {
                 return self.forward_file_message(from_space, item, to_space, &text, None, media);
             }
         }
-        self.append(
+        let appended = self.append(
             to_space,
             &me,
             EventBody::MessagePosted {
@@ -320,7 +320,14 @@ impl Engine {
             },
         )?;
         let s = self.space_state(to_space)?;
-        Ok(self.entry_dto(s.entries.last().expect("acabou de entrar")))
+        let entry = s
+            .entries
+            .iter()
+            .find(|entry| entry.id() == appended.client_id)
+            .ok_or_else(|| CoreError::Storage {
+                message: "The appended entry is missing from its projection.".into(),
+            })?;
+        Ok(self.entry_dto(entry))
     }
 
     /// The Engine lock covers owner validation, current preference merge and the
@@ -390,7 +397,7 @@ impl Engine {
                 reason: t("mensagem vazia", "empty message"),
             });
         }
-        self.append(
+        let appended = self.append(
             space,
             author,
             EventBody::MessagePosted {
@@ -403,7 +410,14 @@ impl Engine {
             },
         )?;
         let s = self.space_state(space)?;
-        Ok(self.entry_dto(s.entries.last().expect("acabou de entrar")))
+        let entry = s
+            .entries
+            .iter()
+            .find(|entry| entry.id() == appended.client_id)
+            .ok_or_else(|| CoreError::Storage {
+                message: "The appended entry is missing from its projection.".into(),
+            })?;
+        Ok(self.entry_dto(entry))
     }
 
     /// O agente responde com texto (ação `Reply`, avaliada contra Concessões e orçamento).

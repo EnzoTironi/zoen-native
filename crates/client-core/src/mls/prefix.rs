@@ -19,7 +19,9 @@ impl Engine {
         event: &Event,
     ) -> Ingest {
         let (seen, empty) = {
-            let log = self.logs.get(space).expect("accept ran on this log");
+            let Some(log) = self.logs.get(space) else {
+                return Ingest::Invalid(format!("Local admission log is missing: {err}"));
+            };
             (seen_against(log, event), log.is_empty())
         };
         if empty {

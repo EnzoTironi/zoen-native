@@ -54,7 +54,12 @@ impl Engine {
                     line: None,
                     proposal: Some(Box::new(proposal)),
                 };
-                request.content_hash = request.proposal_hash(space).expect("proposal present");
+                request.content_hash =
+                    request
+                        .proposal_hash(space)
+                        .ok_or_else(|| CoreError::Invalid {
+                            reason: "The proposed item could not be bound to its review.".into(),
+                        })?;
                 self.append(space, agent, EventBody::RequestOpened { request })?;
                 Ok(PlanOutcome {
                     kind: DecisionKind::Request,
