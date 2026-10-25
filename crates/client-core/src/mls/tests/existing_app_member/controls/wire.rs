@@ -246,3 +246,36 @@ fn a_new_delivery_of_old_snapshot_after_revocation_cannot_revive_the_known_app()
     assert_eq!(f.agent.item(&f.original.item_id)?.version, 2);
     Ok(())
 }
+
+#[test]
+fn a_real_known_item_from_another_conversation_cannot_be_rebound_or_granted() -> R<()> {
+    let mut f = late_word(":memory:", ":memory:")?;
+    let other = f.owner.create_synced_space(
+        "Other actual conversation",
+        SpaceKind::Group,
+        Privacy::Closed,
+        &[f.agent.me_id()?],
+    )?;
+    let foreign = f.owner.app_binary_create_format(
+        Format::Wordcraft,
+        &other,
+        "Foreign Word",
+        &base64::engine::general_purpose::STANDARD.encode(wordcraft::EMPTY),
+        "foreign_word",
+    )?;
+    publish(&mut f.owner, &mut f.agent, &mut f.blobs);
+    receive_wanted(&mut f.agent, &f.blobs)?;
+    assert_eq!(f.agent.item(&foreign.item_id)?.space_id, other);
+    let mut share = template(&mut f)?;
+    share.item = foreign.item_id.clone();
+    share.grant.scope = types::GrantScope::Item(foreign.item_id.clone());
+    share.grant.grantee = Some(format!("app:{}", foreign.item_id));
+    let before = counts(&f.agent);
+    let frame = sealed(&f, share, "cross_space_item")?;
+    assert_eq!(f.agent.ingest(frame), Ingest::Applied);
+    assert_eq!(f.agent.state.grants.len(), before.3);
+    assert_eq!(f.agent.item(&foreign.item_id)?.space_id, other);
+    assert_eq!(f.agent.item(&foreign.item_id)?.version, 1);
+    assert!(f.agent.item_state(&f.original.item_id).is_err());
+    Ok(())
+}

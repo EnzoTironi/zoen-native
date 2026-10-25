@@ -105,6 +105,13 @@ impl Engine {
         };
         let person =
             (target_role.is_some() || projected(member).is_some()).then(|| self.persona(member));
+        // Preserve AAC633: confirmed roles plus the real roster, for humans
+        // and Readers too. Owner proof and write authority are separate facts.
+        let delivery_ready = target_role.is_some()
+            && (!self.is_e2e(space)
+                || self
+                    .mls_status(space)
+                    .is_some_and(|(_, _, members)| members.iter().any(|id| id == member)));
         let can_manage_members = matches!(actor_role, Role::Owner | Role::Admin)
             && matches!(projected(identity), Some(Role::Owner | Role::Admin));
         let candidate = (target_role.is_none() && self.identities.contains_key(member))
@@ -158,6 +165,7 @@ impl Engine {
         } else {
             None
         };
+        let owned_agent = self.verified_owned_agent(member, identity);
         let review = serde_json::to_vec(&(
             space,
             &room.title,
@@ -170,6 +178,8 @@ impl Engine {
             member_cut.map(|event| &event.hash),
             failure,
             addition_failure,
+            delivery_ready,
+            owned_agent,
             candidate
                 .as_ref()
                 .map(|p| (&p.name, &p.handle, &p.kind, &p.owner_id)),
@@ -194,8 +204,9 @@ impl Engine {
             can_remove,
             can_manage_members,
             can_add,
-            owned_agent: self.verified_owned_agent(member, identity),
-            delivery_ready: self.owned_agent_delivery_ready(space, member, identity),
+            owned_agent,
+            delivery_ready,
+            owned_agent,
             candidate,
             addition_failed: addition_failure.is_some(),
             removal_failed: failure.is_some(),

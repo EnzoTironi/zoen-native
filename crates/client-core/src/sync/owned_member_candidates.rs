@@ -10,9 +10,9 @@ impl Engine {
                 && event_log::agent_owner::profile_authorized(profile)
         })
     }
-    pub(crate) fn owned_agent_delivery_ready(&self, space: &str, id: &str, owner: &str) -> bool {
-        self.verified_owned_agent(id, owner)
-            && self.state.writer(space, id)
+    pub(crate) fn member_delivery_ready(&self, space: &str, id: &str) -> bool {
+        self.receipt_members(space)
+            .is_ok_and(|members| members.iter().any(|(who, _)| who == id))
             && (!self.is_e2e(space)
                 || self
                     .mls_status(space)
@@ -66,8 +66,8 @@ impl Engine {
                 if matches!(room.kind, SpaceKind::Group | SpaceKind::Community) {
                     return self.space_member_context(space, id, identity, device);
                 }
-                let role = room
-                    .members
+                let members = self.receipt_members(space)?;
+                let role = members
                     .iter()
                     .find(|(who, _)| who == id)
                     .map(|(_, role)| *role);
@@ -97,7 +97,7 @@ impl Engine {
                     can_manage_members: false,
                     can_add: false,
                     owned_agent: true,
-                    delivery_ready: self.owned_agent_delivery_ready(space, id, identity),
+                    delivery_ready: self.member_delivery_ready(space, id),
                     candidate: role.is_none().then_some(person),
                     addition_failed: false,
                     removal_failed: false,

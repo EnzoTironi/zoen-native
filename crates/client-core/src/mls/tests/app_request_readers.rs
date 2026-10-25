@@ -260,7 +260,9 @@ fn disclosed_send_with_missing_keypackage_never_shares_or_appends_request() -> R
     let contexts = f
         .owner
         .member_candidates_mode(SPACE, "", &a.identity, &a.device, true)?;
-    assert_eq!(contexts.len(), 1);
-    assert!(contexts[0].owned_agent && !contexts[0].delivery_ready);
+    assert!(contexts
+        .iter()
+        .any(|c| c.member_id == f.agent_id && c.owned_agent && !c.delivery_ready));
+    assert!(!contexts.iter().any(|c| c.delivery_ready));
     Ok(())
 }

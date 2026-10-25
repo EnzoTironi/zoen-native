@@ -28,7 +28,7 @@ pub struct SpaceMemberContext {
     #[uniffi(default = false)]
     #[serde(default)]
     pub owned_agent: bool,
-    /// Current writer and actual MLS reader when encrypted; never online status.
+    /// Current member and actual MLS reader when encrypted; never online status.
     #[uniffi(default = false)]
     #[serde(default)]
     pub delivery_ready: bool,

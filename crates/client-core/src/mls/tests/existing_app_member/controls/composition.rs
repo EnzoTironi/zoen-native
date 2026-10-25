@@ -169,7 +169,11 @@ fn scoped_owned_picker_is_read_only_for_member_and_direct_without_making_direct_
     let found = f
         .owner
         .member_candidates_mode(SPACE, "", &identity, &device, true)?;
-    assert_eq!(found.len(), 1);
+    assert_eq!(
+        found[0].member_id, id,
+        "actual ready reader comes before the genuine personal Agent candidate"
+    );
+    assert!(found.iter().all(|c| c.owned_agent));
     assert!(found[0].owned_agent && found[0].delivery_ready);
     assert!(!found[0].can_add);
     assert_eq!(counts(&f.owner), before);
@@ -207,6 +211,7 @@ fn scoped_owned_picker_is_read_only_for_member_and_direct_without_making_direct_
         Privacy::Closed,
         std::slice::from_ref(&id),
     )?;
+    publish(&mut f.owner, &mut f.agent, &mut f.blobs);
     let before = (f.owner.store.event_count()?, f.owner.outbox_len());
     let found = f
         .owner
@@ -247,6 +252,88 @@ fn missing_owned_agent_disclosed_send_has_closed_conflict_without_share_or_reque
         f.owner.request_app_edit(command),
         Err(crate::CoreError::Stale { .. })
     ));
+    assert_eq!(counts(&f.owner), before);
+    Ok(())
+}
+
+#[test]
+fn verified_owned_picker_prioritizes_any_ready_before_the_hundred_candidate_bound() -> R<()> {
+    let mut f = late_word(":memory:", ":memory:")?;
+    let a = f.owner.account().ok_or_else(|| storage("account"))?;
+    let (owner, device) = (a.identity.clone(), a.device.clone());
+    let ready = f.agent.me_id()?;
+    for n in 0..101 {
+        let id = f.owner.create_identity(
+            types::Identity {
+                id: String::new(),
+                owner_proof: None,
+                kind: types::IdentityKind::Agent,
+                name: format!("Owned candidate {n}"),
+                handle: format!("owned_candidate_{n}"),
+                tint_hex: "#7C5CFF".into(),
+                glyph: None,
+                owner: Some(owner.clone()),
+                bio: String::new(),
+            },
+            true,
+        )?;
+        assert!(f.owner.verified_owned_agent(&id, &owner));
+    }
+    // Directory arrival/display order is controlled; profiles, membership and
+    // MLS are genuine. The only ready Agent starts beyond the UI display cap.
+    f.owner.identity_order.retain(|id| id != &ready);
+    f.owner.identity_order.push(ready.clone());
+    let before = counts(&f.owner);
+    let result = f
+        .owner
+        .member_candidates_mode(SPACE, "", &owner, &device, true)?;
+    assert_eq!(result.len(), 100);
+    assert_eq!(result[0].member_id, ready);
+    assert!(result[0].owned_agent && result[0].delivery_ready);
+    assert!(result
+        .iter()
+        .skip(1)
+        .all(|c| c.owned_agent && !c.delivery_ready && c.can_add));
+    assert_eq!(counts(&f.owner), before);
+    Ok(())
+}
+
+#[test]
+fn losing_public_owner_proof_invalidates_the_existing_add_member_review() -> R<()> {
+    let mut f = late_word(":memory:", ":memory:")?;
+    let a = f.owner.account().ok_or_else(|| storage("account"))?;
+    let (owner, device) = (a.identity.clone(), a.device.clone());
+    let candidates = f
+        .owner
+        .member_candidates_mode(SPACE, "", &owner, &device, true)?;
+    let candidate = candidates
+        .iter()
+        .find(|c| c.can_add && c.owned_agent)
+        .ok_or_else(|| storage("genuine owned personal Agent candidate"))?;
+    let before = counts(&f.owner);
+    // Controlled public profile invalidation, not fake membership/MLS. Persona
+    // owner/name/kind remain the same, so only the proof fact changes the review.
+    f.owner
+        .identities
+        .get_mut(&candidate.member_id)
+        .ok_or_else(|| storage("profile"))?
+        .owner_proof = None;
+    assert!(!f.owner.verified_owned_agent(&candidate.member_id, &owner));
+    let changed = f
+        .owner
+        .space_member_context(SPACE, &candidate.member_id, &owner, &device)?;
+    assert!(!changed.owned_agent);
+    assert_ne!(changed.revision, candidate.revision);
+    assert!(f
+        .owner
+        .add_member_reviewed(
+            SPACE,
+            &candidate.member_id,
+            &owner,
+            &device,
+            &candidate.revision
+        )
+        .is_err());
     assert_eq!(counts(&f.owner), before);
     Ok(())
 }
