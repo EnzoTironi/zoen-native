@@ -5,6 +5,6 @@
  */
 export type AgentActivityDto = { label: string, detail: string, space_id: string, space_title: string, at_ms: string, 
 /**
- * Custo de IA registrado logo depois desta ação (UsageRecorded), se houver.
+ * Custo de IA registrado logo depois desta ação (`UsageRecorded`), se houver.
  */
 cost_cents: string | null, };

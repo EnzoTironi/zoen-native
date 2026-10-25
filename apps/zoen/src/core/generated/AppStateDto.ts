@@ -12,6 +12,6 @@ view_json: string, headline: string, metrics: Array<AppMetricDto>, last_action: 
  */
 trust: TrustLevelDto, 
 /**
- * Widget snapshot JSON (native template for the Home strip and WidgetKit); empty = none.
+ * Widget snapshot JSON (native template for the Home strip and `WidgetKit`); empty = none.
  */
 snapshot_json: string, };
