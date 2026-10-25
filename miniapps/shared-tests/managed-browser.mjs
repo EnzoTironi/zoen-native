@@ -35,6 +35,7 @@ export async function openManagedBrowser(options) {
     editor,
     html,
     seed: seed.toString("base64"),
+    host: options.host,
     runtime: {
       schema: 1,
       engine: editor,
@@ -104,6 +105,8 @@ export async function openManagedBrowser(options) {
     wasm: { bytes: wasm.length, sha256: sha(wasm) },
     source: { bytes: seed.length, sha256: sha(seed) },
     fixtureBundleSha256: sha(bundled.outputFiles[0].contents),
+    host: options.host ?? null,
+    deviceScaleFactor: options.deviceScaleFactor ?? 1,
   };
   async function close() {
     try {
@@ -139,7 +142,7 @@ export async function openManagedBrowser(options) {
     const page = await browser.newPage({
       ...(isWebkit ? devices["iPhone 13"] : {}),
       viewport: { width: 402, height: 874 },
-      deviceScaleFactor: 1,
+      deviceScaleFactor: options.deviceScaleFactor ?? 1,
       hasTouch: true,
     });
     page.on("pageerror", (error) => errors.push(String(error)));
