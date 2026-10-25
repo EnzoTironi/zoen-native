@@ -112,19 +112,26 @@ impl EngineLease {
     }
 
     fn with<T>(&self, work: impl FnOnce(&mut Engine) -> T) -> Option<T> {
-        let holder = self.0.lock().unwrap_or_else(|p| p.into_inner());
+        let holder = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         holder.as_ref().map(|engine| work(&mut lock(engine)))
     }
 
     fn revoke(&self) {
-        let engine = self.0.lock().unwrap_or_else(|p| p.into_inner()).take();
+        let engine = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
         // Finish releasing ownership here; task cancellation is asynchronous.
         drop(engine);
     }
 }
 
 fn lock(e: &Shared) -> std::sync::MutexGuard<'_, Engine> {
-    e.lock().unwrap_or_else(|p| p.into_inner())
+    e.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 /// The relay's HTTP base (blobs): `wss://x` → `https://x`, no trailing slash.
@@ -437,7 +444,7 @@ impl RecoveryRetries {
         });
         wanted
             .into_iter()
-            .find(|r| !self.by_space.get(&r.space).is_some_and(|(_, at)| *at > now))
+            .find(|r| self.by_space.get(&r.space).is_none_or(|(_, at)| *at <= now))
     }
 
     fn defer(&mut self, reference: crate::mls_recovery::ContextRef, now: tokio::time::Instant) {
@@ -472,7 +479,7 @@ impl MediaDownloadRetries {
     }
 
     fn failed(&mut self, blob: &str, now: tokio::time::Instant) {
-        let tries = self.0.get(blob).map(|(_, n)| n + 1).unwrap_or(1);
+        let tries = self.0.get(blob).map_or(1, |(_, n)| n.saturating_add(1));
         let wait =
             Duration::from_secs(2u64.saturating_pow(tries.min(8))).min(Duration::from_secs(300));
         self.0.insert(blob.into(), (now + wait, tries));
