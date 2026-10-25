@@ -117,6 +117,13 @@ distintas. O levantamento inicial é parcial e deve continuar por lotes.
 
 ## Área de criação compartilhada
 
+A direção de 25/10/2026 separa os editores ArtCraft como dependência externa MCP
+App, derivada de upstream e com release próprio. Seu desenvolvimento e QA internos
+estão parados. O Zoen continua responsável pelo host, identidade, permissões,
+persistência criptografada, versões e compartilhamento; as capacidades de criação
+continuam no produto, fornecidas pela integração com Apps externos. A migração
+não está concluída. Ver a [fronteira e o histórico](artcraft-editor-integration.md).
+
 Em 20 de outubro de 2026, o usuário definiu Notion e as Páginas do ChatGPT Space
 como referências para as Páginas vivas e ampliou essa direção para toda a área de
 criação: Páginas, Slides, Sites, Imagens e Arquivos. A experiência deve usar os
