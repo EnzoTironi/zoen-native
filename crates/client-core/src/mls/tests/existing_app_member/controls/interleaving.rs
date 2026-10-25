@@ -110,6 +110,13 @@ fn exercise(change: Change) -> R<()> {
         mutation_id: "active_group_request".into(),
         share_current: true,
     };
+    let original_permission = owner
+        .state
+        .app_trust_baseline(&app.item_id)
+        .ok_or_else(|| storage("original App permission"))?
+        .grant
+        .id
+        .clone();
     let request = owner.request_app_edit(input.clone())?;
     let share = owner
         .store
@@ -165,8 +172,8 @@ fn exercise(change: Change) -> R<()> {
             fanout(&mut human, &mut owner, &mut agent, &mut blobs);
         }
         Change::Revocation => {
-            owner.revoke_app_device(&share.1.grant.id)?;
-            let id = owner.store.outbox()?.into_iter().find(|r| matches!(&r.event.body, EventBody::GrantRevoked { grant } if grant == &share.1.grant.id)).ok_or_else(|| storage("normal revocation intent"))?.event.client_id;
+            owner.revoke_app_device(&original_permission)?;
+            let id = owner.store.outbox()?.into_iter().find(|r| matches!(&r.event.body, EventBody::GrantRevoked { grant } if grant == &original_permission)).ok_or_else(|| storage("normal revocation intent"))?.event.client_id;
             owner.mls_seal_outbox()?;
             let env = owner
                 .outbox_envelopes()
@@ -191,6 +198,22 @@ fn exercise(change: Change) -> R<()> {
                 .mls_status(ROOM)
                 .ok_or_else(|| storage("old epoch"))?
                 .0;
+            // Normal recovery commit creation needs the other members' public,
+            // signed agreement records; no private key or group state is copied.
+            let mut records = Vec::new();
+            for peer in [&mut owner, &mut agent] {
+                let (public, signed) = peer.agreement_to_publish()?;
+                records.push(protocol::AgreementKeyRecord {
+                    identity: peer.me_id()?,
+                    public,
+                    signed,
+                });
+            }
+            let asked: Vec<_> = records
+                .iter()
+                .map(|record| record.identity.clone())
+                .collect();
+            human.agreement_keys_arrived(records, &asked);
             human.commit_now(ROOM, &[], &Default::default())?;
             fanout(&mut human, &mut owner, &mut agent, &mut blobs);
             assert!(
