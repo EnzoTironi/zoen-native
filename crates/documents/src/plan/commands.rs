@@ -1,5 +1,5 @@
 use super::{
-    budget, edit, error, initialize_block, line, line_hash, string, BlockKind, Container,
+    budget, edit, error, find, initialize_block, line, line_hash, string, BlockKind, Container,
     ExpectedLine, LoroMap, LoroText, LoroValue, Node, Page, PlanCommand, PlanError, PlanLine,
     Result, ValueOrContainer,
 };
@@ -62,13 +62,6 @@ pub(super) fn set_text(text: &LoroText, target: &str) -> Result<()> {
         text.insert(prefix, &add).map_err(error)?;
     }
     Ok(())
-}
-
-pub(super) fn find<'a>(nodes: &'a [Node], block: &str) -> Result<&'a Node> {
-    nodes
-        .iter()
-        .find(|n| n.id == block)
-        .ok_or_else(|| error("plan block not found"))
 }
 
 pub(super) fn check_line(node: &Node, expected: &ExpectedLine) -> Result<PlanLine> {

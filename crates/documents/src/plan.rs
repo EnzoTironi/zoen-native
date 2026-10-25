@@ -479,6 +479,13 @@ struct Node {
     text: LoroText,
 }
 
+fn find<'a>(nodes: &'a [Node], block: &str) -> Result<&'a Node> {
+    nodes
+        .iter()
+        .find(|n| n.id == block)
+        .ok_or_else(|| error("plan block not found"))
+}
+
 mod projection;
 use projection::{
     budget, integer, line, line_hash, parse_role, project, read_node, read_nodes, role_key, string,
