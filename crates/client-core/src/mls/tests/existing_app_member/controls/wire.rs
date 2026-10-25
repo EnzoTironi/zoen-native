@@ -3,7 +3,7 @@
 use super::*;
 use types::AppCurrentShare;
 
-fn template(f: &mut LateWord) -> R<AppCurrentShare> {
+pub(super) fn template(f: &mut LateWord) -> R<AppCurrentShare> {
     receipt(f, "template")?;
     f.owner
         .store
@@ -83,6 +83,14 @@ fn malformed_or_overprivileged_snapshot_rejects_item_and_grant_together() -> R<(
         }
         let before = counts(&f.agent);
         let frame = sealed(&f, share, case)?;
+        if case == "cut" {
+            assert!(
+                matches!(f.agent.ingest(frame), Ingest::Invalid(_)),
+                "bad causal address must be refused before retention"
+            );
+            assert_eq!(counts(&f.agent), before);
+            continue;
+        }
         assert_eq!(
             f.agent.ingest(frame),
             Ingest::Applied,

@@ -190,11 +190,19 @@ pub struct ChatPrefs {
 }
 
 #[test]
-fn older_closed_decoder_retains_share_whole_as_unsupported_without_separate_grant() {
-    // Run the real pre-share variant set and the existing decode fallback rule.
-    let bytes = br#"{"AppCurrentShared":{"share":{"schema":1,"grant":{}}}}"#;
-    assert!(serde_json::from_slice::<LegacyEventBody>(bytes).is_err());
-    let value: serde_json::Value = serde_json::from_slice(bytes).unwrap();
+fn older_closed_decoder_retains_share_whole_as_unsupported_without_separate_grant() -> super::R<()>
+{
+    // The complete genuine payload, with its real normal Grant. Exercise the
+    // exact pre-share enum above and the existing closed decode fallback rule.
+    let mut f = super::late_word(":memory:", ":memory:")?;
+    let share = super::wire::template(&mut f)?;
+    let current = EventBody::AppCurrentShared {
+        share: Box::new(share),
+    };
+    let bytes = serde_json::to_vec(&current).unwrap();
+    assert_eq!(event_log::content::decode_body(&bytes), current);
+    assert!(serde_json::from_slice::<LegacyEventBody>(&bytes).is_err());
+    let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     let kind = value.as_object().unwrap().keys().next().unwrap().clone();
     assert_eq!(kind, "AppCurrentShared");
     let body = EventBody::Unsupported { kind };
@@ -203,4 +211,10 @@ fn older_closed_decoder_retains_share_whole_as_unsupported_without_separate_gran
         body,
         EventBody::GrantIssued { .. } | EventBody::MessagePosted { .. }
     ));
+    let ordinary = serde_json::to_vec(&super::post("legacy remains readable")).unwrap();
+    assert!(matches!(
+        serde_json::from_slice::<LegacyEventBody>(&ordinary).unwrap(),
+        LegacyEventBody::MessagePosted { .. }
+    ));
+    Ok(())
 }
