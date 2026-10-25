@@ -100,13 +100,16 @@ Compiled-screen tests exercise real React, Expo focus, Store, MCP SDK and AppBri
 with controlled HTTP/native-frame ports; they do not certify native pixels or
 provider durability.
 
-Canonical admission needs a core contract change: `AppSpecDto` currently exposes
-only a static App id/resource/tool list, and `read_app_resource` resolves bundled
-resources. `app_document_scope` admits the Excalidraw format specifically. An
-external canonical launch must resolve an admitted immutable release and its
-artifact-scoped authority from core, then use the existing authorized document
-read/save/version commands. A frontend launch configuration cannot substitute for
-that admission, grant access to a chat, or create a second document store.
+The first [owned-package admission](mcp-app-packages.md) adds a canonical path
+alongside this host-code connection: an authenticated File Item supplies an exact
+HTML release, and the App retains its own encrypted UI FileDoc next to its
+Excalidraw document. Resource reads, document reads/saves/copies and release updates
+bind to that Item and captured URI under Core authority. The static bundled
+catalog and the remote-viewer connection remain separate. This first format does
+not admit arbitrary document engines, remote credentials or suggested-edit
+approval. A frontend launch configuration cannot substitute for canonical
+admission, grant access to a chat or create a second document store. The new
+admission journey needs its own native proof; earlier evidence is not promoted.
 
 ## Native viewport and embedded renderer contract
 
