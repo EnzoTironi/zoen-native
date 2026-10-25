@@ -50,7 +50,10 @@ fn validated_model_mapping_keeps_order_payload_and_typed_names() {
         json!({"type":"object"}),
     )])
     .max_tokens(20);
-    assert_eq!(actual, expected);
+    assert_eq!(
+        serde_json::to_vec(&actual).unwrap(),
+        serde_json::to_vec(&expected).unwrap()
+    );
     request.messages.clear();
     assert!(matches!(
         prepare(&request, 20, 100_000),
