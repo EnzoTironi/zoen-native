@@ -1,9 +1,9 @@
 //! Original whole test bodies, called by their unchanged registered facade.
 use super::*;
 
-pub(super) fn attachment_intent_persists_both_signed_events_and_real_ciphertext_before_any_publish()
-{
-    let (mut client, author, mut log) = document_fixture();
+pub(super) fn attachment_intent_persists_both_signed_events_and_real_ciphertext_before_any_publish(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, author, mut log) = document_fixture()?;
     let root = clear(
         &mut log,
         &author,
@@ -16,7 +16,7 @@ pub(super) fn attachment_intent_persists_both_signed_events_and_real_ciphertext_
             forwarded: false,
         },
         9,
-    );
+    )?;
     client.receive(&root, 9).unwrap();
     let reference = log.events().last().unwrap().hash.clone();
     let sealed = crate::media::seal_file(
@@ -87,7 +87,7 @@ pub(super) fn attachment_intent_persists_both_signed_events_and_real_ciphertext_
             .count(),
         2
     );
-    confirm_documents(&mut restored, &mut log, ready, 13);
+    confirm_documents(&mut restored, &mut log, ready, 13)?;
     assert!(restored.saved.outbox.is_empty());
     let conversations = restored.conversations();
     let posted = conversations[0]
@@ -107,11 +107,12 @@ pub(super) fn attachment_intent_persists_both_signed_events_and_real_ciphertext_
         .unwrap(),
         b"private attachment bytes"
     );
+    Ok(())
 }
 
-pub(super) fn attachment_intent_lost_response_reencrypt_retry_and_ui_ack_have_one_canonical_effect()
-{
-    let (mut client, _, log) = document_fixture();
+pub(super) fn attachment_intent_lost_response_reencrypt_retry_and_ui_ack_have_one_canonical_effect(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, _, log) = document_fixture()?;
     let first =
         crate::media::seal_file("report.txt", "text/plain", b"one selection", None).unwrap();
     let request = issued_attachment(&mut client, log.space());
@@ -147,11 +148,12 @@ pub(super) fn attachment_intent_lost_response_reencrypt_retry_and_ui_ack_have_on
         "ACK retires this sequence instead of reinterpreting it as a fresh Send"
     );
     assert_eq!(serde_json::to_string(&client.saved).unwrap(), accepted);
+    Ok(())
 }
 
 pub(super) fn attachment_intent_gaps_drop_unissued_and_retired_leases_fail_closed_without_lifetime_cap(
-) {
-    let (mut client, _, log) = document_fixture();
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, _, log) = document_fixture()?;
     let first = issued_attachment(&mut client, log.space());
     let second = issued_attachment(&mut client, log.space());
     let frame = attachment_frame(
@@ -207,11 +209,12 @@ pub(super) fn attachment_intent_gaps_drop_unissued_and_retired_leases_fail_close
     assert!(client
         .queue_attachment(&forged.to_string(), &frame, 13)
         .is_err());
+    Ok(())
 }
 
-pub(super) fn attachment_intent_faults_preserve_existing_outbox_and_do_not_consume_issued_sequence()
-{
-    let (mut client, _, log) = document_fixture();
+pub(super) fn attachment_intent_faults_preserve_existing_outbox_and_do_not_consume_issued_sequence(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, _, log) = document_fixture()?;
     let request = issued_attachment(&mut client, log.space());
     let frame = attachment_frame(
         &crate::media::seal_file("report.txt", "text/plain", b"exact", None).unwrap(),
@@ -257,11 +260,12 @@ pub(super) fn attachment_intent_faults_preserve_existing_outbox_and_do_not_consu
     client
         .queue_attachment(&request.to_string(), &frame, 13)
         .unwrap();
+    Ok(())
 }
 
-pub(super) fn attachment_intent_authentic_chunk_length_lies_preserve_snapshot_and_issued_sequence()
-{
-    let (mut client, _, log) = document_fixture();
+pub(super) fn attachment_intent_authentic_chunk_length_lies_preserve_snapshot_and_issued_sequence(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, _, log) = document_fixture()?;
     let request = issued_attachment(&mut client, log.space());
     let baseline = client.update(Vec::new()).unwrap().snapshot;
     let mut sealed = crate::media::seal_file("report.txt", "text/plain", b"abc", None).unwrap();
@@ -299,11 +303,12 @@ pub(super) fn attachment_intent_authentic_chunk_length_lies_preserve_snapshot_an
     client
         .queue_attachment(&request.to_string(), &attachment_frame(&sealed), 11)
         .unwrap();
+    Ok(())
 }
 
 pub(super) fn attachment_intent_authentic_thumbnail_length_lies_preserve_snapshot_and_issued_sequence(
-) {
-    let (mut client, _, log) = document_fixture();
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, _, log) = document_fixture()?;
     let request = issued_attachment(&mut client, log.space());
     let baseline = client.update(Vec::new()).unwrap().snapshot;
     let mut sealed =
@@ -345,4 +350,5 @@ pub(super) fn attachment_intent_authentic_thumbnail_length_lies_preserve_snapsho
     client
         .queue_attachment(&request.to_string(), &attachment_frame(&sealed), 11)
         .unwrap();
+    Ok(())
 }

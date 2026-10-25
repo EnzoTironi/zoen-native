@@ -20,7 +20,7 @@ fn file_fixture(thumbnail: Option<Vec<u8>>) -> (Arc<Client>, String, String) {
 
 fn document(e: &Client, item: &str) -> FileDoc {
     let engine = e.lock();
-    match &engine.state.items[item].versions.last().unwrap().content {
+    match &engine.state.items[item].versions.current().content {
         ItemContent::File(file) => file.clone(),
         _ => panic!("file fixture"),
     }

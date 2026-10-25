@@ -139,7 +139,7 @@ fn changed_head_owner_space_or_reused_identifier_refuses_without_appending() -> 
 }
 #[test]
 fn retry_keeps_original_receipt_after_a_later_document_head_and_after_cold_unlock() -> TestResult {
-    let dir = std::env::temp_dir().join(new_id("app-edit-request"));
+    let dir = std::env::temp_dir().join(new_id("app-edit-request")?);
     std::fs::create_dir(&dir)?;
     let path = dir.join("device.sqlite");
     let path = path.to_str().ok_or("non UTF-8 fixture path")?;

@@ -165,7 +165,7 @@ impl Brain for ModelBrain {
                 text: st.result.clone(),
             });
         }
-        let attempt = types::new_id("att");
+        let attempt = types::new_id("att").map_err(|error| error.to_string())?;
         let request = ModelRequest {
             context: AttemptContext {
                 attempt_id: attempt.clone(),

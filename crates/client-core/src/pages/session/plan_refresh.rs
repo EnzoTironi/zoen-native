@@ -1,6 +1,10 @@
-//! Plan refresh operations on the original PageSession state.
+//! Plan refresh operations on the original `PageSession` state.
 
-use super::*;
+use super::{
+    decode_bytes, invalid, origin, plan_doc, plan_error, Arc, Engine, ItemKind, PageSession,
+    PlanHistory, PlanInputs, PlanOrigin, PlanRevision, PlanUpdate, SessionBlock, SessionDocument,
+    SessionJournal, R,
+};
 
 impl PageSession {
     pub(super) fn refresh_plan(&mut self, engine: &Engine, tag: &PlanOrigin) -> R<()> {

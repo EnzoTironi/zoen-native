@@ -12,7 +12,7 @@ struct Fixture {
     log: SpaceLog,
 }
 impl Fixture {
-    fn new() -> Self {
+    fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
         let identity = NativeSigner::from_secret(&[111; 32]);
         let native_key = NativeSigner::from_secret(&[112; 32]);
         let host = HostSigner(NativeSigner::from_secret(&[113; 32]));
@@ -50,7 +50,7 @@ impl Fixture {
                 privacy: Privacy::EndToEnd,
             },
             1,
-        );
+        )?;
         client.receive(&created, 2).unwrap();
         native.create_group(SPACE).unwrap();
         let roster = BTreeSet::from([identity.id()]);
@@ -60,7 +60,7 @@ impl Fixture {
             .unwrap();
         client
             .receive(
-                &sealed(&mut log, &author, SealedKind::Commit, joined.commit, 4),
+                &sealed(&mut log, &author, SealedKind::Commit, joined.commit, 4)?,
                 5,
             )
             .unwrap();
@@ -72,7 +72,7 @@ impl Fixture {
                     SealedKind::Welcome,
                     joined.welcome.unwrap(),
                     6,
-                ),
+                )?,
                 7,
             )
             .unwrap();
@@ -80,16 +80,16 @@ impl Fixture {
         assert!(client.conversations()[0].can_send);
         assert!(client.conversations()[0].messages.is_empty());
         drop(native);
-        Self {
+        Ok(Self {
             sqlite,
             native_key,
             author,
             client,
             log,
-        }
+        })
     }
 
-    fn retained_tail(&mut self) -> Vec<u8> {
+    fn retained_tail(&mut self) -> std::result::Result<Vec<u8>, Box<dyn std::error::Error>> {
         let inner = self.author.sign_event(
             SPACE,
             "final-retained-message",
@@ -103,7 +103,7 @@ impl Fixture {
                 media: None,
                 forwarded: false,
             },
-        );
+        )?;
         let plaintext = InnerEvent {
             content: inner.content,
             sig: inner.sig,
@@ -125,10 +125,10 @@ impl Fixture {
             inner.seen.as_ref(),
             Sealed::new(SealedKind::Application, SUITE_ID, ciphertext),
         );
-        sequence(
+        Ok(sequence(
             &mut self.log,
             Envelope::new(content, sig, self.author.cert.clone(), None).unwrap(),
-        )
+        )?)
     }
 
     fn assert_tail(&self) {
@@ -145,9 +145,10 @@ impl Fixture {
 }
 
 #[test]
-fn retained_native_mls_tail_fixture_is_verified_exactly_once_and_survives_cold_restore() {
-    let mut f = Fixture::new();
-    let tail = f.retained_tail();
+fn retained_native_mls_tail_fixture_is_verified_exactly_once_and_survives_cold_restore(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
+    let tail = f.retained_tail()?;
     f.client.receive(&tail, 10).unwrap();
     f.assert_tail();
     let update = f.client.receive(&tail, 11).unwrap();
@@ -156,12 +157,14 @@ fn retained_native_mls_tail_fixture_is_verified_exactly_once_and_survives_cold_r
     let signer = f.client.signer.clone();
     f.client = Client::new(account, signer, &update.snapshot).unwrap();
     f.assert_tail();
+    Ok(())
 }
 
 #[test]
-fn forged_retained_tail_never_advances_the_browser_cursor() {
-    let mut f = Fixture::new();
-    let tail = f.retained_tail();
+fn forged_retained_tail_never_advances_the_browser_cursor(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
+    let tail = f.retained_tail()?;
     let ServerFrame::Event { mut ev } = ServerFrame::decode(&tail).unwrap() else {
         panic!("fixture must retain an actual event")
     };
@@ -173,12 +176,14 @@ fn forged_retained_tail_never_advances_the_browser_cursor() {
         .is_err());
     assert_eq!(f.client.logs[SPACE].next_seq(), next);
     assert!(f.client.conversations()[0].messages.is_empty());
+    Ok(())
 }
 
 #[test]
-fn healthy_browser_requests_the_unannounced_retained_final_event() {
-    let mut f = Fixture::new();
-    let tail = f.retained_tail();
+fn healthy_browser_requests_the_unannounced_retained_final_event(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
+    let tail = f.retained_tail()?;
     let next = f.client.logs[SPACE].next_seq();
     assert_eq!(next, 3);
     // No new Event, Joined, control notice, Pong or reconnect reaches this client.
@@ -253,11 +258,13 @@ fn healthy_browser_requests_the_unannounced_retained_final_event() {
         )
         .unwrap();
     f.assert_tail();
+    Ok(())
 }
 
 #[test]
-fn ordered_browser_partials_and_pong_cannot_finish_or_postpone_a_full_repair() {
-    let mut f = Fixture::new();
+fn ordered_browser_partials_and_pong_cannot_finish_or_postpone_a_full_repair(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
     let clock = |ms| Duration::from_millis(ms);
     f.client
         .receive_at(
@@ -325,13 +332,15 @@ fn ordered_browser_partials_and_pong_cannot_finish_or_postpone_a_full_repair() {
         unsolicited.cursor_repair.unwrap().admission_ms,
         Some(120_012)
     );
+    Ok(())
 }
 
 #[test]
-fn initial_verified_cursor_progress_renews_only_before_expiry_and_pong_cannot_do_so() {
-    let mut f = Fixture::new();
+fn initial_verified_cursor_progress_renews_only_before_expiry_and_pong_cannot_do_so(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
     f.client.bootstrap_at(Duration::ZERO).unwrap();
-    let tail = f.retained_tail();
+    let tail = f.retained_tail()?;
     let progressed = f
         .client
         .receive_at(&tail, 10, Duration::from_millis(59_000))
@@ -369,11 +378,13 @@ fn initial_verified_cursor_progress_renews_only_before_expiry_and_pong_cannot_do
         crate::CursorRepairTick::Expired
     ));
     f.assert_tail();
+    Ok(())
 }
 
 #[test]
-fn elapsed_or_backwards_clock_cannot_emit_late_sync_or_revive_a_prior_socket() {
-    let mut f = Fixture::new();
+fn elapsed_or_backwards_clock_cannot_emit_late_sync_or_revive_a_prior_socket(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
     assert!(matches!(
         f.client.reconcile(Duration::from_millis(90_000)).unwrap(),
         crate::CursorRepairTick::Expired
@@ -402,11 +413,13 @@ fn elapsed_or_backwards_clock_cannot_emit_late_sync_or_revive_a_prior_socket() {
             next_seq: 3
         }]
     );
+    Ok(())
 }
 
 #[test]
-fn invalid_browser_clock_cannot_reset_the_existing_repair_owner_or_snapshot() {
-    let mut f = Fixture::new();
+fn invalid_browser_clock_cannot_reset_the_existing_repair_owner_or_snapshot(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
     let before = f.client.update(Vec::new()).unwrap();
     assert!(f.client.bootstrap_at(Duration::MAX).is_err());
     assert!(f.client.bootstrap_at(Duration::from_nanos(1)).is_err());
@@ -423,19 +436,21 @@ fn invalid_browser_clock_cannot_reset_the_existing_repair_owner_or_snapshot() {
         ),
         (60_000, 30_000, 60_000)
     );
+    Ok(())
 }
 
 /// Export only this independently keyed, synthetic SQLite/MLS fixture for the
 /// opt-in headless browser contract. The output is never a user/account vault.
 #[test]
 #[ignore = "requires an explicitly chosen new synthetic fixture output file"]
-fn export_synthetic_cursor_fixture_for_real_browser_worker() {
+fn export_synthetic_cursor_fixture_for_real_browser_worker(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use std::io::Write;
     let path = std::env::var_os("ZOEN_BROWSER_CURSOR_FIXTURE_OUTPUT")
         .expect("an owned synthetic output path must be explicit");
-    let mut f = Fixture::new();
+    let mut f = Fixture::new()?;
     let snapshot = f.client.update(Vec::new()).unwrap().snapshot;
-    let tail = f.retained_tail();
+    let tail = f.retained_tail()?;
     let nonce = "synthetic-browser-cursor-challenge";
     let relay = "synthetic-browser-cursor-relay";
     let body = serde_json::json!({
@@ -462,4 +477,5 @@ fn export_synthetic_cursor_fixture_for_real_browser_worker() {
     let mut file = options.open(path).unwrap();
     file.write_all(&serde_json::to_vec(&body).unwrap()).unwrap();
     file.sync_all().unwrap();
+    Ok(())
 }

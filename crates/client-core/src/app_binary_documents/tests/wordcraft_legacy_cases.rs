@@ -8,7 +8,7 @@ const OLD_SHA: &str = "0a4363cf44e798c967e35b2ec7addce8697f4ab694844fba12c561fc0
 fn legacy_word(f: &Fixture) -> R<AppBinaryDocumentDto> {
     let mut e = f.client.lock();
     let me = e.me_id()?;
-    let item = types::new_id("it_word_legacy");
+    let item = types::new_id("it_word_legacy")?;
     // Fixture setup uses the original signed ItemCreated + encrypted FileDoc contract,
     // not a mutation of projected state or a current factory with rich metadata.
     e.atomic_agent_action(|e| {
@@ -16,7 +16,7 @@ fn legacy_word(f: &Fixture) -> R<AppBinaryDocumentDto> {
         let file=e.file_doc(&f.space,&key,"document.docx","",wordcraft::MIME,DOCX,None,&HashMap::new())?;
         e.store.set_meta(&format!("file_key:{item}"),&hex::encode(key))?;
         e.append(&f.space,&me,EventBody::ItemCreated{item:item.clone(),kind:ItemKind::App,content:ItemContent::App(AppDoc{app:wordcraft::APP.into(),resource_uri:wordcraft::RESOURCE.into(),title:"Legacy Word".into(),state_json:json!({"title":"Legacy Word","paragraphs":1,"words":0,"engineRevision":OLD_ENGINE,"profile":"plain-text-v1"}).to_string(),document:Some(file)}),origin:"Created document".into()})?;
-        e.append(&f.space,&me,EventBody::GrantIssued{grant:Grant{id:types::new_id("gr"),grantor:me.clone(),grantee:Some(format!("app:{item}")),scope:GrantScope::Item(item.clone()),capability:Capability::Trust(TrustLevel::Act),expires_at_ms:None}})?;
+        e.append(&f.space,&me,EventBody::GrantIssued{grant:Grant{id:types::new_id("gr")?,grantor:me.clone(),grantee:Some(format!("app:{item}")),scope:GrantScope::Item(item.clone()),capability:Capability::Trust(TrustLevel::Act),expires_at_ms:None}})?;
         Ok(())
     })?;
     e.app_binary_read(&item, Some(1), Some(OLD_SHA))
@@ -39,7 +39,7 @@ fn legacy_word_head_crosses_current_core_dto_and_rich_cas_without_replacing_its_
 ) -> Result<(), Box<dyn std::error::Error>> {
     let path = std::env::temp_dir().join(format!(
         "zoen-word-legacy-{}.sqlite",
-        types::new_id("fixture")
+        types::new_id("fixture")?
     ));
     let f = fixture(&path.to_string_lossy());
     let base = legacy_word(&f)?;

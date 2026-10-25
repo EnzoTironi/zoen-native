@@ -1,6 +1,10 @@
-//! Authority operations on the original PageSession state.
+//! Authority operations on the original `PageSession` state.
 
-use super::*;
+use super::{
+    invalid, origin, plan, plan_doc, plan_error, CoreError, DocumentTag, Engine, EventBody,
+    ItemContent, ItemKind, Page, PageSession, PlanJournalV1, Role, SessionDocument, SessionJournal,
+    R,
+};
 
 impl PageSession {
     pub(super) fn write_author(&self, engine: &Engine) -> R<String> {
@@ -11,12 +15,12 @@ impl PageSession {
             for event in engine
                 .logs
                 .get(&it.space)
-                .map(|log| log.events())
+                .map(event_log::SpaceLog::events)
                 .unwrap_or(&[])
             {
                 match &event.body {
                     EventBody::SpaceCreated { .. } if event.author == author => {
-                        role = Some(Role::Owner)
+                        role = Some(Role::Owner);
                     }
                     EventBody::MemberAdded {
                         identity,

@@ -333,7 +333,10 @@ fn command(binary: &PathBuf) -> Command {
 struct Work(PathBuf);
 impl Work {
     fn new() -> Result<Self, String> {
-        let path = std::env::temp_dir().join(types::new_id("zoen-codex-brain"));
+        let directory = types::new_id("zoen-codex-brain").map_err(|error| {
+            format!("Codex private working directory identifier unavailable: {error}")
+        })?;
+        let path = std::env::temp_dir().join(directory);
         let mut builder = std::fs::DirBuilder::new();
         #[cfg(unix)]
         {

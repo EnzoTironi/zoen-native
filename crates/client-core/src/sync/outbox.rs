@@ -1,6 +1,14 @@
 //! Ordered envelope offers and per-Space publication fences.
 
-use super::*;
+#[cfg(test)]
+use super::{
+    chain_hash, Author, CoreError, Ingest, Privacy, Sequenced, Signer, SpaceKind, GENESIS_PREV,
+};
+
+use super::{
+    ConfirmedMediaDependencies, Cursor, Engine, Envelope, Event, EventBody, FileDoc, HashMap,
+    HashSet, ItemContent, SealedKind,
+};
 
 #[cfg(test)]
 mod fault_tests;
@@ -53,13 +61,15 @@ impl Engine {
             .iter()
             .map(|s| Cursor {
                 space: s.clone(),
-                next_seq: self.logs.get(s).map(|l| l.next_seq()).unwrap_or(0),
+                next_seq: self.logs.get(s).map_or(0, event_log::SpaceLog::next_seq),
             })
             .collect()
     }
 
     pub fn next_seq(&self, space: &str) -> u64 {
-        self.logs.get(space).map(|l| l.next_seq()).unwrap_or(0)
+        self.logs
+            .get(space)
+            .map_or(0, event_log::SpaceLog::next_seq)
     }
 
     /// Envelopes still waiting for the relay, oldest first.
@@ -75,7 +85,7 @@ impl Engine {
     /// At most [`APPLICATION_IN_FLIGHT`] application messages per Space are unpublished
     /// or still awaiting accept. Once a Space is at that cap, every later head of that
     /// same Space stays queued, in order, until a confirmation frees a slot. Heads of
-    /// other Spaces keep publishing, each under the same cap. OpenMLS drops a generation
+    /// other Spaces keep publishing, each under the same cap. `OpenMLS` drops a generation
     /// more than that far behind the one it has already opened (`TooDistantInThePast`),
     /// and a rate-limit reject retries the older ciphertext after a later one has been
     /// sequenced.
@@ -116,7 +126,7 @@ impl Engine {
         for head in &heads {
             if sent
                 .get(&head.client_id)
-                .is_some_and(|epoch| epoch.is_some())
+                .is_some_and(std::option::Option::is_some)
             {
                 *in_flight.entry(head.space.clone()).or_default() += 1;
             }

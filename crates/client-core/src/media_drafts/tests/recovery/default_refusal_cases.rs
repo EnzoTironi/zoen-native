@@ -2,11 +2,12 @@
 
 use super::*;
 
-pub(super) fn failed_media_recovery_default_ws_file_rejection_is_durable_and_explicit() {
-    let dir = temp();
+pub(super) fn failed_media_recovery_default_ws_file_rejection_is_durable_and_explicit(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = temp()?;
     let path = dir.join("default-ws-refusal.sqlite");
     let f = fixture(path.to_str().unwrap());
-    media_contract_confirm_scope(&f);
+    media_contract_confirm_scope(&f)?;
     let draft = save(&f, "0", &attachments(&["a"], None), vec![input("a")]);
     let sent = f
         .engine
@@ -101,11 +102,14 @@ pub(super) fn failed_media_recovery_default_ws_file_rejection_is_durable_and_exp
     );
     drop(reopened);
     std::fs::remove_dir_all(dir).unwrap();
+
+    Ok(())
 }
 
-pub(super) fn failed_media_recovery_default_ws_refusal_is_atomic_and_keeps_other_pending_files() {
+pub(super) fn failed_media_recovery_default_ws_refusal_is_atomic_and_keeps_other_pending_files(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let f = fixture(":memory:");
-    media_contract_confirm_scope(&f);
+    media_contract_confirm_scope(&f)?;
     let draft = save(
         &f,
         "0",
@@ -174,4 +178,5 @@ pub(super) fn failed_media_recovery_default_ws_refusal_is_atomic_and_keeps_other
             .any(|env| env.client_id() != file.client_id),
         "an independent default attachment still has a publishable File head"
     );
+    Ok(())
 }

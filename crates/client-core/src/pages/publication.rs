@@ -1,6 +1,9 @@
 //! Publication on the original Engine and canonical document state.
 
-use super::*;
+use super::{
+    invalid, t, CommitStatus, DocumentEdit, Engine, ItemKind, PageBlockDto, PageEditResult,
+    PageSession, R,
+};
 
 impl Engine {
     /// Applies an editor's state to this device's copy (not saved as a version yet).
@@ -45,7 +48,7 @@ impl Engine {
             .pages
             .sessions
             .lock()
-            .unwrap_or_else(|p| p.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .remove(item);
         let mut session = match cached {
             Some(session) => session,
@@ -60,7 +63,7 @@ impl Engine {
         self.pages
             .sessions
             .lock()
-            .unwrap_or_else(|p| p.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .insert(item.into(), session);
         let queued = matches!(result?, CommitStatus::Queued(_));
         if queued {

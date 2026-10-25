@@ -1,5 +1,9 @@
 //! Stable domain labels and plan DTO conversion.
-use super::*;
+use super::{
+    money, new_id, t, tr, ts, ActionClass, Capability, EventBody, ItemKind, PlanDoc, PlanDto,
+    PlanLine, PlanLineDto, PlanSection, PlanSectionDto, Policy, Reason, TrustLevel, TrustLevelDto,
+    R,
+};
 
 pub(super) trait LowerFirst {
     fn to_lowercase_first(&self) -> String;
@@ -270,31 +274,38 @@ pub(super) fn consent_mode_label(m: types::ConsentMode) -> String {
     }
 }
 
-pub(crate) fn plan_from_dto(p: PlanDto) -> PlanDoc {
-    PlanDoc {
+pub(crate) fn plan_from_dto(p: PlanDto) -> R<PlanDoc> {
+    let mut sections = Vec::new();
+    for section in p.sections {
+        let mut lines = Vec::new();
+        for line in section.lines {
+            if line.text.trim().is_empty() {
+                continue;
+            }
+            lines.push(PlanLine {
+                id: if line.id.is_empty() {
+                    new_id("ln")?
+                } else {
+                    line.id
+                },
+                text: line.text.trim().to_string(),
+                cost_cents: line.cost_cents.max(0),
+                done: line.done,
+            });
+        }
+        if !lines.is_empty() {
+            sections.push(PlanSection {
+                title: section.title,
+                lines,
+            });
+        }
+    }
+    Ok(PlanDoc {
         title: p.title.trim().to_string(),
         summary: p.summary.trim().to_string(),
-        budget_cents: p.budget_cents.filter(|b| *b > 0),
-        sections: p
-            .sections
-            .into_iter()
-            .map(|s| PlanSection {
-                title: s.title,
-                lines: s
-                    .lines
-                    .into_iter()
-                    .filter(|l| !l.text.trim().is_empty())
-                    .map(|l| PlanLine {
-                        id: if l.id.is_empty() { new_id("ln") } else { l.id },
-                        text: l.text.trim().to_string(),
-                        cost_cents: l.cost_cents.max(0),
-                        done: l.done,
-                    })
-                    .collect(),
-            })
-            .filter(|s| !s.lines.is_empty())
-            .collect(),
-    }
+        budget_cents: p.budget_cents.filter(|budget| *budget > 0),
+        sections,
+    })
 }
 
 pub(crate) fn plan_to_dto(p: &PlanDoc, total_cents: i64) -> PlanDto {

@@ -4,22 +4,22 @@ use super::*;
 mod retry;
 mod transport;
 
-fn sealed_identity(pending: &Pending) -> Vec<u8> {
+fn sealed_identity(pending: &Pending) -> std::result::Result<Vec<u8>, Box<dyn std::error::Error>> {
     let seed: [u8; 32] = hex::decode(&pending.device_secret)
         .unwrap()
         .try_into()
         .unwrap();
     let device = Signer::from_secret(&seed);
-    let identity = Signer::generate();
-    let (_, primary_hpke) = crate::link::key_pair();
+    let identity = Signer::generate()?;
+    let (_, primary_hpke) = crate::link::key_pair()?;
     let boxed = crate::link::IdentityBox {
         identity_secret: hex::encode(identity.secret()),
-        agreement_secret: hex::encode(crate::link::random::<32>()),
+        agreement_secret: hex::encode(crate::link::random::<32>()?),
         cert: identity.sign(&event_log::device_cert_message(&device.id())),
         name: "Owned pickup regression".into(),
         handle: "pickup_regression".into(),
         relay: pending.relay.clone(),
-        primary: Signer::generate().id(),
+        primary: Signer::generate()?.id(),
         primary_hpke: hex::encode(primary_hpke),
         profile_key: hex::encode([27; 32]),
         profile_key_version: 1,
@@ -33,13 +33,13 @@ fn sealed_identity(pending: &Pending) -> Vec<u8> {
         ),
     };
     let secret: [u8; 32] = hex::decode(&pending.secret).unwrap().try_into().unwrap();
-    crate::link::seal(
+    Ok(crate::link::seal(
         &hex::decode(&pending.hpke_public).unwrap(),
         &secret,
         "identity",
         &serde_json::to_vec(&boxed).unwrap(),
     )
-    .unwrap()
+    .unwrap())
 }
 
 async fn pickup_peer(
@@ -82,10 +82,11 @@ async fn pickup_peer(
     );
 }
 
-pub(super) async fn cancellation_while_real_websocket_holds_box_has_no_late_install_or_retry() {
+pub(super) async fn cancellation_while_real_websocket_holds_box_has_no_late_install_or_retry(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let material = pending(format!("http://{}", listener.local_addr().unwrap()));
-    let sealed = sealed_identity(&material);
+    let material = pending(format!("http://{}", listener.local_addr().unwrap()))?;
+    let sealed = sealed_identity(&material)?;
     let secret: [u8; 32] = hex::decode(&material.secret).unwrap().try_into().unwrap();
     let (fetched_send, fetched) = oneshot::channel();
     let (response_send, response) = oneshot::channel();
@@ -113,12 +114,15 @@ pub(super) async fn cancellation_while_real_websocket_holds_box_has_no_late_inst
     tokio::time::timeout(BOUND, peer).await.unwrap().unwrap();
     assert!(!installed.load(Ordering::SeqCst));
     assert!(control.with_request(|| Ok(())).is_err());
+
+    Ok(())
 }
 
-pub(super) async fn real_hpke_box_arrival_does_not_override_later_install_revocation() {
+pub(super) async fn real_hpke_box_arrival_does_not_override_later_install_revocation(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let material = pending(format!("http://{}", listener.local_addr().unwrap()));
-    let sealed = sealed_identity(&material);
+    let material = pending(format!("http://{}", listener.local_addr().unwrap()))?;
+    let sealed = sealed_identity(&material)?;
     let secret: [u8; 32] = hex::decode(&material.secret).unwrap().try_into().unwrap();
     let (fetched_send, fetched) = oneshot::channel();
     let (response_send, response) = oneshot::channel();
@@ -173,6 +177,8 @@ pub(super) async fn real_hpke_box_arrival_does_not_override_later_install_revoca
     drop(waiter);
     tokio::time::timeout(BOUND, control.drain()).await.unwrap();
     tokio::time::timeout(BOUND, peer).await.unwrap().unwrap();
+
+    Ok(())
 }
 
 #[derive(Default)]
@@ -198,7 +204,7 @@ impl crate::SecretVault for RecordingVault {
 }
 
 pub(super) async fn client_stop_sync_cancels_real_pickup_preserving_pending_until_retry_after_drain(
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use crate::SecretVault;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let relay = format!("http://{}", listener.local_addr().unwrap());
@@ -208,7 +214,7 @@ pub(super) async fn client_stop_sync_cancels_real_pickup_preserving_pending_unti
     let original_pending = vault.load(crate::link::VAULT_PENDING.into()).unwrap();
     let material: Pending = serde_json::from_slice(&original_pending).unwrap();
     let secret: [u8; 32] = hex::decode(&material.secret).unwrap().try_into().unwrap();
-    let sealed = sealed_identity(&material);
+    let sealed = sealed_identity(&material)?;
     let (fetched_send, mut fetched) = oneshot::channel();
     let (response_send, response) = oneshot::channel();
     let peer = tokio::spawn(pickup_peer(
@@ -251,10 +257,12 @@ pub(super) async fn client_stop_sync_cancels_real_pickup_preserving_pending_unti
     );
     assert_eq!(vault.saves.lock().unwrap().len(), 2);
     assert!(vault.deletes.lock().unwrap().is_empty());
+
+    Ok(())
 }
 
 pub(super) async fn client_erase_retires_held_pickup_deletes_pending_and_refuses_fresh_link_requests(
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use crate::SecretVault;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let relay = format!("http://{}", listener.local_addr().unwrap());
@@ -264,7 +272,7 @@ pub(super) async fn client_erase_retires_held_pickup_deletes_pending_and_refuses
     let material: Pending =
         serde_json::from_slice(&vault.load(crate::link::VAULT_PENDING.into()).unwrap()).unwrap();
     let secret: [u8; 32] = hex::decode(&material.secret).unwrap().try_into().unwrap();
-    let sealed = sealed_identity(&material);
+    let sealed = sealed_identity(&material)?;
     let (fetched_send, mut fetched) = oneshot::channel();
     let (response_send, response) = oneshot::channel();
     let peer = tokio::spawn(pickup_peer(
@@ -304,9 +312,12 @@ pub(super) async fn client_erase_retires_held_pickup_deletes_pending_and_refuses
     );
     assert!(core.link_request(relay, vault.clone()).is_err());
     assert!(core.link_wait(vault, 1_000).await.is_err());
+
+    Ok(())
 }
 
-pub(super) fn spawning_on_an_actual_closed_runtime_cannot_deadlock_completion_under_the_gate() {
+pub(super) fn spawning_on_an_actual_closed_runtime_cannot_deadlock_completion_under_the_gate(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     const CHILD: &str = "CLIENT_PICKUP_CLOSED_RUNTIME_REGRESSION_CHILD";
     const MARKER: &str = "actual_closed_runtime_child_completed";
     if std::env::var(CHILD).as_deref() == Ok("1") {
@@ -325,7 +336,7 @@ pub(super) fn spawning_on_an_actual_closed_runtime_cannot_deadlock_completion_un
         // pickup gate. A parent process deadline contains the old deadlock.
         let mut waiter = control
             .begin_with_factory(
-                || Ok(pending("http://127.0.0.1:1".into())),
+                || Ok(pending("http://127.0.0.1:1".into())?),
                 budget(),
                 move |_, _, _, _| {
                     Box::new(move || {
@@ -347,7 +358,7 @@ pub(super) fn spawning_on_an_actual_closed_runtime_cannot_deadlock_completion_un
         });
         assert_eq!(constructed.load(Ordering::SeqCst), 0);
         println!("{MARKER}");
-        return;
+        return Ok(());
     }
     let test = format!(
         "{}::spawning_on_an_actual_closed_runtime_cannot_deadlock_completion_under_the_gate",
@@ -374,7 +385,7 @@ pub(super) fn spawning_on_an_actual_closed_runtime_cannot_deadlock_completion_un
                 String::from_utf8_lossy(&output.stdout).contains(MARKER),
                 "exact child test did not execute"
             );
-            return;
+            return Ok(());
         }
         if std::time::Instant::now() >= bound {
             let _ = child.kill();
@@ -388,9 +399,10 @@ pub(super) fn spawning_on_an_actual_closed_runtime_cannot_deadlock_completion_un
     }
 }
 
-pub(super) async fn agent_purpose_uses_distinct_mailbox_and_same_revocable_install_lease() {
+pub(super) async fn agent_purpose_uses_distinct_mailbox_and_same_revocable_install_lease(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let control = PickupControl::default();
-    let material = pending("https://relay.example".into());
+    let material = pending("https://relay.example".into())?;
     let secret: [u8; 32] = hex::decode(&material.secret).unwrap().try_into().unwrap();
     let digest = "a".repeat(64);
     let context = format!("agent-enrollment-owner-v1:{digest}");
@@ -420,8 +432,13 @@ pub(super) async fn agent_purpose_uses_distinct_mailbox_and_same_revocable_insta
     assert_typed_cancel(waiter.wait().await);
     drop(waiter);
     tokio::time::timeout(BOUND, control.drain()).await.unwrap();
+
+    Ok(())
 }
 
-pub(super) async fn lost_transport_response_retries_the_original_pending_and_installs_only_once() {
-    retry::lost_transport_response_retries_the_original_pending_and_installs_only_once().await;
+pub(super) async fn lost_transport_response_retries_the_original_pending_and_installs_only_once(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    retry::lost_transport_response_retries_the_original_pending_and_installs_only_once().await?;
+
+    Ok(())
 }

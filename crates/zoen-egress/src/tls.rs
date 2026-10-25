@@ -46,6 +46,8 @@ impl std::fmt::Debug for SandboxRoot {
 }
 
 impl SandboxRoot {
+    /// # Errors
+    /// Reports invalid TLS material, unavailable key generation or TLS configuration.
     pub fn new() -> Result<Self, String> {
         let key = KeyPair::generate().map_err(|e| e.to_string())?;
         let mut params = CertificateParams::new(Vec::<String>::new()).map_err(|e| e.to_string())?;
@@ -67,6 +69,7 @@ impl SandboxRoot {
     }
 
     /// The certificate browser templates trust. Never the key.
+    #[must_use]
     pub fn cert_pem(&self) -> &str {
         &self.cert_pem
     }
@@ -95,6 +98,8 @@ fn subtree(host: &str) -> String {
 impl LeaseCa {
     /// A CA for `lease` that can only vouch for `hosts` (and their subdomains): self-signed,
     /// or issued under `root` for browser leases.
+    /// # Errors
+    /// Reports invalid TLS material, unavailable key generation or TLS configuration.
     pub fn new(lease: &str, hosts: &[String], root: Option<&SandboxRoot>) -> Result<Self, String> {
         let key = KeyPair::generate().map_err(|e| e.to_string())?;
         let mut params = CertificateParams::new(Vec::<String>::new()).map_err(|e| e.to_string())?;
@@ -141,6 +146,7 @@ impl LeaseCa {
     }
 
     /// The certificate the sandbox trusts. Never the key.
+    #[must_use]
     pub fn cert_pem(&self) -> &str {
         &self.cert_pem
     }
@@ -177,9 +183,16 @@ impl LeaseCa {
     }
 
     /// The TLS server side for `host`, presented to the sandbox.
+    /// # Errors
+    /// Reports invalid TLS material, unavailable key generation or TLS configuration.
     pub fn acceptor(&self, host: &str) -> Result<TlsAcceptor, String> {
         let host = host.to_ascii_lowercase();
-        if let Some(c) = self.leaves.lock().unwrap().get(&host) {
+        if let Some(c) = self
+            .leaves
+            .lock()
+            .map_err(|_| "TLS leaf cache is poisoned".to_owned())?
+            .get(&host)
+        {
             return Ok(TlsAcceptor::from(c.clone()));
         }
         let (chain, key) = self.issue(&host)?;
@@ -192,7 +205,10 @@ impl LeaseCa {
         // We read and rewrite HTTP/1.1 only.
         cfg.alpn_protocols = vec![b"http/1.1".to_vec()];
         let cfg = Arc::new(cfg);
-        self.leaves.lock().unwrap().insert(host, cfg.clone());
+        self.leaves
+            .lock()
+            .map_err(|_| "TLS leaf cache is poisoned".to_owned())?
+            .insert(host, cfg.clone());
         Ok(TlsAcceptor::from(cfg))
     }
 }
@@ -211,11 +227,17 @@ impl std::fmt::Debug for Upstream {
 
 impl Upstream {
     /// Mozilla's roots plus `extra_roots_pem` (tests only).
+    /// # Errors
+    /// Reports invalid TLS material, unavailable key generation or TLS configuration.
     pub fn new(extra_roots_pem: &[String]) -> Result<Self, String> {
         let mut roots = rustls::RootCertStore::empty();
         roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
         for pem in extra_roots_pem {
-            for der in pem_certs(pem)? {
+            let certificates = pem_certs(pem)?;
+            if certificates.is_empty() {
+                return Err("Configured upstream root contains no certificate".to_owned());
+            }
+            for der in certificates {
                 roots.add(der).map_err(|e| e.to_string())?;
             }
         }
@@ -230,6 +252,8 @@ impl Upstream {
         })
     }
 
+    /// # Errors
+    /// Reports invalid TLS material, unavailable key generation or TLS configuration.
     pub async fn connect(
         &self,
         host: &str,
@@ -242,6 +266,8 @@ impl Upstream {
 }
 
 /// DER certificates in a PEM string.
+/// # Errors
+/// Reports invalid TLS material, unavailable key generation or TLS configuration.
 pub fn pem_certs(pem: &str) -> Result<Vec<CertificateDer<'static>>, String> {
     use rustls::pki_types::pem::PemObject;
     CertificateDer::pem_slice_iter(pem.as_bytes())

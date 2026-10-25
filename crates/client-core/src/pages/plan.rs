@@ -4,13 +4,22 @@
 //! Logs own the ordered facts; the outbox owns unconfirmed intent. This adapter builds
 //! a disposable typed projection and never writes either one or a second Plan store.
 
+#[cfg(test)]
+use types::{
+    new_id, ActionClass, AgentRequest, Capability, ChunkRef, Grant, GrantScope, Identity,
+    IdentityKind, ItemProposal, PlanLine, PlanSection, Privacy, RequestResolution, Role, SpaceKind,
+    TrustLevel, GENESIS_PREV,
+};
+
 use base64::Engine as _;
 use documents::plan::{
     CanonicalPlanSeed, LegacyVersion, PlanDocument, PlanVersion, TotalCents, MAX_PLAN_PACKET_BYTES,
 };
 use rusqlite::OptionalExtension;
 use sha2::{Digest, Sha256};
-use types::*;
+use types::{
+    Event, EventBody, ItemContent, ItemKind, PageContent, PageManifest, PlanDoc, PlanManifestV1,
+};
 
 use crate::engine::{Engine, R};
 use crate::CoreError;
@@ -73,7 +82,7 @@ impl PlanSnapshot {
             .blocks()
             .map_err(|error| invalid(&error.to_string()))?
             .iter()
-            .map(|block| block.plain_text())
+            .map(documents::plan::PlanBlock::plain_text)
             .collect::<Vec<_>>()
             .join("\n");
         Ok(Self {
@@ -289,10 +298,19 @@ impl Tape {
     }
 
     fn push(&mut self, event: &Event, source: &Source, document: &PlanDoc) -> R<()> {
-        if self.origin.is_none() {
+        let count = self
+            .history
+            .len()
+            .checked_add(1)
+            .and_then(|count| u32::try_from(count).ok())
+            .ok_or_else(|| invalid("Plan history is too large; nothing was discarded"))?;
+        let creation_event = if let Some(origin) = self.origin.as_ref() {
+            origin.event_id.clone()
+        } else {
             digest_field(&mut self.digest, source.event_id.as_bytes());
             self.origin = Some(source.clone());
-        }
+            source.event_id.clone()
+        };
         // Raw authenticated source bytes bind the resolved undo as well as ordinary
         // whole-document writes. Neither their spelling nor IDs are reconstructed.
         digest_field(&mut self.digest, &event.content);
@@ -300,13 +318,11 @@ impl Tape {
             event_id: source.event_id.clone(),
             document: document.clone(),
         });
-        let count = u32::try_from(self.history.len())
-            .map_err(|_| invalid("Plan history is too large; nothing was discarded"))?;
         self.prefixes.push(PlanManifestV1 {
             schema: MANIFEST_SCHEMA.into(),
             space: self.space.clone(),
             item: self.item.clone(),
-            creation_event: self.origin.as_ref().expect("set above").event_id.clone(),
+            creation_event,
             legacy_versions: count,
             legacy_head: source.event_id.clone(),
             prefix_sha256: hex::encode(self.digest.clone().finalize()),
@@ -399,9 +415,10 @@ impl Engine {
             _ => return Err(invalid("the scoped Plan has no confirmed origin")),
         };
         let log = self.logs.get(space);
-        let (fold, _) = confirmed::Prefix::from_log(space, log, log.map_or(0, |log| log.len()))?
-            .with_requests(&scoped.requests)
-            .fold(item, |page| self.plan_payload(page))?;
+        let (fold, _) =
+            confirmed::Prefix::from_log(space, log, log.map_or(0, event_log::SpaceLog::len))?
+                .with_requests(&scoped.requests)
+                .fold(item, |page| self.plan_payload(page))?;
         if fold.waiting
             || fold
                 .origin_tag()
@@ -461,7 +478,7 @@ impl Engine {
             return Err(invalid("the authenticated Item origin is ambiguous"));
         }
         let log = self.logs.get(&it.space);
-        let end = log.map_or(0, |log| log.len());
+        let end = log.map_or(0, event_log::SpaceLog::len);
         let pending = self.store.outbox()?;
         let prefix = confirmed::Prefix::from_log(&it.space, log, end)?;
         let scoped = self.space_projections.get(&it.space).unwrap_or(&self.state);

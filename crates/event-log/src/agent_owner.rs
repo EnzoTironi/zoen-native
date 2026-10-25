@@ -32,10 +32,12 @@ fn verified(key: &VerifyingKey, message: &[u8], signature: &str) -> bool {
 }
 
 /// All three ids are canonical 64-character hex public keys, separated by a NUL.
+#[must_use]
 pub fn message(owner: &str, agent: &str, device: &str) -> Vec<u8> {
     format!("zoen-agent-owner-v1\0{owner}\0{agent}\0{device}").into_bytes()
 }
 
+#[must_use]
 pub fn verify(owner: &str, agent: &str, proof: &AgentOwnerProof) -> bool {
     if owner == agent || key(agent).is_none() {
         return false;
@@ -53,6 +55,7 @@ pub fn verify(owner: &str, agent: &str, proof: &AgentOwnerProof) -> bool {
 
 /// Signing requires a certified device. Relay admission also checks its current
 /// enrollment and revocation state; possession of this proof cannot revive a device.
+#[must_use]
 pub fn authorize(owner: &Author, agent: &str) -> Option<AgentOwnerProof> {
     let device = owner.device.as_ref()?;
     if device != &owner.key.id() {
@@ -67,6 +70,7 @@ pub fn authorize(owner: &Author, agent: &str) -> Option<AgentOwnerProof> {
 }
 
 /// The Agent signs the digest of a canonical enrollment offer in its own domain.
+#[must_use]
 pub fn enrollment_offer_message(agent: &str, offer_sha256: &str) -> Option<Vec<u8>> {
     key(agent)?;
     if offer_sha256.len() != 64
@@ -79,6 +83,7 @@ pub fn enrollment_offer_message(agent: &str, offer_sha256: &str) -> Option<Vec<u
     Some(format!("zoen-agent-enrollment-offer-v1\0{agent}\0{offer_sha256}").into_bytes())
 }
 
+#[must_use]
 pub fn verify_enrollment_offer(agent: &str, offer_sha256: &str, signature: &str) -> bool {
     let (Some(agent_key), Some(message)) =
         (key(agent), enrollment_offer_message(agent, offer_sha256))
@@ -114,6 +119,7 @@ fn enrollment_owner_message(
 }
 
 /// Bind this offer to an ordinary ownership proof using the same certified device.
+#[must_use]
 pub fn authorize_enrollment(
     owner: &Author,
     agent: &str,
@@ -125,6 +131,7 @@ pub fn authorize_enrollment(
     Some((proof, signature))
 }
 
+#[must_use]
 pub fn verify_enrollment(
     owner: &str,
     agent: &str,
@@ -144,6 +151,7 @@ pub fn verify_enrollment(
     verified(&device_key, &message, signature)
 }
 
+#[must_use]
 pub fn profile_authorized(profile: &Identity) -> bool {
     match profile.kind {
         IdentityKind::Person => profile.owner.is_none() && profile.owner_proof.is_none(),
@@ -161,18 +169,24 @@ mod tests {
 
     #[test]
     fn ownership_is_bound_to_owner_agent_and_device() {
-        let root = Signer::generate();
-        let owner = Author::device(&root, Signer::generate());
-        let agent = Signer::generate().id();
+        let root = Signer::generate().unwrap();
+        let owner = Author::device(&root, Signer::generate().unwrap());
+        let agent = Signer::generate().unwrap().id();
         let proof = authorize(&owner, &agent).unwrap();
         assert!(verify(&root.id(), &agent, &proof));
-        assert!(!verify(&Signer::generate().id(), &agent, &proof));
-        assert!(!verify(&root.id(), &Signer::generate().id(), &proof));
+        assert!(!verify(&Signer::generate().unwrap().id(), &agent, &proof));
+        assert!(!verify(
+            &root.id(),
+            &Signer::generate().unwrap().id(),
+            &proof
+        ));
         let mut changed = proof.clone();
-        changed.device = Signer::generate().id();
+        changed.device = Signer::generate().unwrap().id();
         assert!(!verify(&root.id(), &agent, &changed));
         changed = proof.clone();
-        changed.cert = Signer::generate().sign(&device_cert_message(&proof.device));
+        changed.cert = Signer::generate()
+            .unwrap()
+            .sign(&device_cert_message(&proof.device));
         assert!(!verify(&root.id(), &agent, &changed));
         changed = proof;
         changed.signature = owner.key.sign(&device_cert_message(&agent));
@@ -181,12 +195,12 @@ mod tests {
 
     #[test]
     fn root_only_and_falsely_certified_authors_cannot_issue_proofs() {
-        let root = Signer::generate();
-        let agent = Signer::generate().id();
+        let root = Signer::generate().unwrap();
+        let agent = Signer::generate().unwrap().id();
         assert!(authorize(&Author::root(root.clone()), &agent).is_none());
-        let fake = Author::certified(root.id(), Signer::generate(), "00".repeat(64));
+        let fake = Author::certified(root.id(), Signer::generate().unwrap(), "00".repeat(64));
         assert!(authorize(&fake, &agent).is_none());
-        let owner = Author::device(&root, Signer::generate());
+        let owner = Author::device(&root, Signer::generate().unwrap());
         assert!(authorize(&owner, &root.id()).is_none());
         assert!(authorize(&owner, "not-a-key").is_none());
         assert!(authorize(&owner, &"00".repeat(32)).is_none());
@@ -194,9 +208,9 @@ mod tests {
 
     #[test]
     fn enrollment_signatures_follow_the_explicit_wire_domains() {
-        let root = Signer::generate();
-        let owner = Author::device(&root, Signer::generate());
-        let agent = Signer::generate();
+        let root = Signer::generate().unwrap();
+        let owner = Author::device(&root, Signer::generate().unwrap());
+        let agent = Signer::generate().unwrap();
         let offer_sha256 = "ab".repeat(32);
         let agent_id = agent.id();
         let offer_message = enrollment_offer_message(&agent_id, &offer_sha256).unwrap();
@@ -236,9 +250,9 @@ mod tests {
 
     #[test]
     fn enrollment_rejects_noncanonical_digests_and_agent_keys() {
-        let root = Signer::generate();
-        let owner = Author::device(&root, Signer::generate());
-        let agent = Signer::generate();
+        let root = Signer::generate().unwrap();
+        let owner = Author::device(&root, Signer::generate().unwrap());
+        let agent = Signer::generate().unwrap();
         let agent_id = agent.id();
         let digest = "ab".repeat(32);
         let offer_signature = agent.sign(&enrollment_offer_message(&agent_id, &digest).unwrap());
@@ -295,8 +309,8 @@ mod tests {
 
     #[test]
     fn enrollment_offer_signature_is_bound_to_agent_and_digest() {
-        let agent = Signer::generate();
-        let other = Signer::generate();
+        let agent = Signer::generate().unwrap();
+        let other = Signer::generate().unwrap();
         let digest = "ab".repeat(32);
         let message = enrollment_offer_message(&agent.id(), &digest).unwrap();
         let signature = agent.sign(&message);
@@ -320,13 +334,13 @@ mod tests {
 
     #[test]
     fn enrollment_owner_signature_is_bound_to_every_proof_field() {
-        let root = Signer::generate();
-        let owner = Author::device(&root, Signer::generate());
-        let agent = Signer::generate().id();
+        let root = Signer::generate().unwrap();
+        let owner = Author::device(&root, Signer::generate().unwrap());
+        let agent = Signer::generate().unwrap().id();
         let digest = "ab".repeat(32);
         let (proof, signature) = authorize_enrollment(&owner, &agent, &digest).unwrap();
         assert!(!verify_enrollment(
-            &Signer::generate().id(),
+            &Signer::generate().unwrap().id(),
             &agent,
             &digest,
             &proof,
@@ -334,7 +348,7 @@ mod tests {
         ));
         assert!(!verify_enrollment(
             &root.id(),
-            &Signer::generate().id(),
+            &Signer::generate().unwrap().id(),
             &digest,
             &proof,
             &signature
@@ -347,7 +361,7 @@ mod tests {
             &signature
         ));
         let mut changed = proof.clone();
-        changed.device = Signer::generate().id();
+        changed.device = Signer::generate().unwrap().id();
         assert!(!verify_enrollment(
             &root.id(),
             &agent,
@@ -356,7 +370,9 @@ mod tests {
             &signature
         ));
         changed = proof.clone();
-        changed.cert = Signer::generate().sign(&device_cert_message(&proof.device));
+        changed.cert = Signer::generate()
+            .unwrap()
+            .sign(&device_cert_message(&proof.device));
         assert!(!verify_enrollment(
             &root.id(),
             &agent,
@@ -395,10 +411,10 @@ mod tests {
 
     #[test]
     fn enrollment_requires_the_same_certified_device_for_both_signatures() {
-        let root = Signer::generate();
-        let owner = Author::device(&root, Signer::generate());
-        let other_device = Author::device(&root, Signer::generate());
-        let agent = Signer::generate().id();
+        let root = Signer::generate().unwrap();
+        let owner = Author::device(&root, Signer::generate().unwrap());
+        let other_device = Author::device(&root, Signer::generate().unwrap());
+        let agent = Signer::generate().unwrap().id();
         let digest = "ab".repeat(32);
         let (proof, signature) = authorize_enrollment(&owner, &agent, &digest).unwrap();
         let message = enrollment_owner_message(&root.id(), &agent, &digest, &proof).unwrap();
@@ -437,9 +453,9 @@ mod tests {
 
     #[test]
     fn generic_ownership_and_offer_signatures_cannot_authorize_enrollment() {
-        let root = Signer::generate();
-        let owner = Author::device(&root, Signer::generate());
-        let agent = Signer::generate();
+        let root = Signer::generate().unwrap();
+        let owner = Author::device(&root, Signer::generate().unwrap());
+        let agent = Signer::generate().unwrap();
         let digest = "ab".repeat(32);
         let (proof, signature) = authorize_enrollment(&owner, &agent.id(), &digest).unwrap();
         let offer_message = enrollment_offer_message(&agent.id(), &digest).unwrap();
@@ -467,15 +483,15 @@ mod tests {
 
     #[test]
     fn enrollment_rejects_uncertified_authors_and_weak_owner_or_device_keys() {
-        let root = Signer::generate();
-        let owner = Author::device(&root, Signer::generate());
-        let agent = Signer::generate().id();
+        let root = Signer::generate().unwrap();
+        let owner = Author::device(&root, Signer::generate().unwrap());
+        let agent = Signer::generate().unwrap().id();
         let digest = "ab".repeat(32);
         assert!(authorize_enrollment(&Author::root(root.clone()), &agent, &digest).is_none());
-        let fake = Author::certified(root.id(), Signer::generate(), "00".repeat(64));
+        let fake = Author::certified(root.id(), Signer::generate().unwrap(), "00".repeat(64));
         assert!(authorize_enrollment(&fake, &agent, &digest).is_none());
         let mut mismatched = owner.clone();
-        mismatched.device = Some(Signer::generate().id());
+        mismatched.device = Some(Signer::generate().unwrap().id());
         assert!(authorize_enrollment(&mismatched, &agent, &digest).is_none());
         let mut uncertified = owner.clone();
         uncertified.cert = None;
@@ -505,9 +521,9 @@ mod tests {
 
     #[test]
     fn enrollment_rejects_malformed_and_invalid_signatures() {
-        let root = Signer::generate();
-        let owner = Author::device(&root, Signer::generate());
-        let agent = Signer::generate();
+        let root = Signer::generate().unwrap();
+        let owner = Author::device(&root, Signer::generate().unwrap());
+        let agent = Signer::generate().unwrap();
         let digest = "ab".repeat(32);
         let (proof, _) = authorize_enrollment(&owner, &agent.id(), &digest).unwrap();
         for invalid in [

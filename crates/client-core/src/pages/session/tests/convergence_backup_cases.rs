@@ -2,10 +2,11 @@
 
 use super::*;
 
-pub(super) fn blob_publication_and_two_first_writers_converge_without_cas() {
-    for shorter_first in [false, true] {
-        let mut receiver = Fixture::new();
-        let mut shorter = receiver.peer();
+pub(super) fn blob_publication_and_two_first_writers_converge_without_cas(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Ok(for shorter_first in [false, true] {
+        let mut receiver = Fixture::new()?;
+        let mut shorter = receiver.peer()?;
         let mut short_session = shorter.session();
         let short_read = short_session.read(&shorter.engine).unwrap();
         let mut short_edit = text_edit(&short_read, "");
@@ -37,8 +38,8 @@ pub(super) fn blob_publication_and_two_first_writers_converge_without_cas() {
         legacy.sections[0].lines[0].cost_cents = 777;
         legacy.sections[0].lines[0].done = true;
         legacy.budget_cents = Some(9_999);
-        let legacy_event = receiver.ordered(receiver.version(ItemContent::Plan(legacy)));
-        let mut longer = receiver.peer();
+        let legacy_event = receiver.ordered(receiver.version(ItemContent::Plan(legacy)))?;
+        let mut longer = receiver.peer()?;
         let mut long_session = longer.session();
         let long_read = long_session.read(&longer.engine).unwrap();
         let mut title = changed(&blocks(&long_read)[0]);
@@ -74,25 +75,25 @@ pub(super) fn blob_publication_and_two_first_writers_converge_without_cas() {
                 1_800_000_000_000,
             )
             .unwrap();
-        deliver(&mut shorter.engine, &legacy_event, Ingest::Applied);
+        deliver(&mut shorter.engine, &legacy_event, Ingest::Applied)?;
         for event in if shorter_first {
             [&short_event, &long_event]
         } else {
             [&long_event, &short_event]
         } {
-            deliver(&mut receiver.engine, event, Ingest::Applied);
+            deliver(&mut receiver.engine, event, Ingest::Applied)?;
             let short_expected = if event.client_id == short_event.client_id {
                 Ingest::Confirmed
             } else {
                 Ingest::Applied
             };
-            deliver(&mut shorter.engine, event, short_expected);
+            deliver(&mut shorter.engine, event, short_expected)?;
             let long_expected = if event.client_id == long_event.client_id {
                 Ingest::Confirmed
             } else {
                 Ingest::Applied
             };
-            deliver(&mut longer.engine, event, long_expected);
+            deliver(&mut longer.engine, event, long_expected)?;
         }
         assert_eq!(short_event.seen, short_seen);
         assert_eq!(long_event.seen, long_seen);
@@ -125,20 +126,20 @@ pub(super) fn blob_publication_and_two_first_writers_converge_without_cas() {
         assert!(blocks(&short_accept.current)
             .iter()
             .any(|b| b.plain_text().len() == 55_000));
-    }
+    })
 }
 
-pub(super) fn backup_export_excludes_actual_page_and_plan_private_journals_without_mutating_source()
-{
-    for kind in [ItemKind::Page, ItemKind::Plan] {
-        let (f, _, _, private) = private_document_backup_source(kind);
+pub(super) fn backup_export_excludes_actual_page_and_plan_private_journals_without_mutating_source(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Ok(for kind in [ItemKind::Page, ItemKind::Plan] {
+        let (f, _, _, private) = private_document_backup_source(kind)?;
         let ciphertext = f.cipher().unwrap();
         let head = f.engine.logs[&f.space]
             .head()
             .map(|head| (head.seq, head.hash));
         let events = f.engine.store.event_count().unwrap();
         let outbox = f.engine.store.outbox_len().unwrap();
-        let db = Database::new();
+        let db = Database::new()?;
         std::fs::write(db.path(), f.engine.backup_snapshot().unwrap()).unwrap();
         let connection = rusqlite::Connection::open(db.path()).unwrap();
         let rows: i64 = connection
@@ -165,20 +166,20 @@ pub(super) fn backup_export_excludes_actual_page_and_plan_private_journals_witho
                 .map(|head| (head.seq, head.hash)),
             head
         );
-    }
+    })
 }
 
 pub(super) fn backup_restore_strips_authentic_old_device_page_and_plan_journals_before_edit_admission(
-) {
-    for kind in [ItemKind::Page, ItemKind::Plan] {
-        let (f, header, canonical, private) = private_document_backup_source(kind);
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Ok(for kind in [ItemKind::Page, ItemKind::Plan] {
+        let (f, header, canonical, private) = private_document_backup_source(kind)?;
         let ciphertext = f.cipher().unwrap();
         let row = row_id(&f.engine, f.engine.item_state(&f.item).unwrap()).unwrap();
         let original_device = f.engine.account().unwrap().device.clone();
         let head = f.engine.logs[&f.space]
             .head()
             .map(|head| (head.seq, head.hash));
-        let db = Database::new();
+        let db = Database::new()?;
         std::fs::write(db.path(), f.engine.backup_snapshot().unwrap()).unwrap();
         let connection = rusqlite::Connection::open(db.path()).unwrap();
         // Test restore independently of export using the real old device's sealed row.
@@ -194,7 +195,7 @@ pub(super) fn backup_restore_strips_authentic_old_device_page_and_plan_journals_
             .restore_snapshot(
                 &header,
                 &std::fs::read(db.path()).unwrap(),
-                event_log::Signer::generate(),
+                event_log::Signer::generate()?,
             )
             .unwrap();
         assert_eq!(restored.account().unwrap().identity, f.owner);
@@ -237,5 +238,5 @@ pub(super) fn backup_restore_strips_authentic_old_device_page_and_plan_journals_
         let mut original_session = f.session();
         assert_eq!(original_session.read(&f.engine).unwrap().view, private);
         assert_eq!(f.cipher().as_deref(), Some(ciphertext.as_str()));
-    }
+    })
 }

@@ -1,6 +1,10 @@
 //! Storage operations on the original Engine state.
 
-use super::*;
+use super::{
+    invalid, new_id, now_ms, random_key, seal_chunk, t, ChunkRef, CoreError, Digest, Engine,
+    EventBody, FileDoc, HashMap, ItemContent, ItemKind, Sha256, TimelineEntry, VoiceMeta,
+    AVG_CHUNK, MAX_CHUNK, MAX_FILE_BYTES, MAX_THUMBNAIL_BYTES, MIN_CHUNK, R,
+};
 pub(crate) struct FileAddInput<'a> {
     pub space: &'a str,
     pub path: &'a str,
@@ -19,8 +23,8 @@ impl Engine {
             .ok_or_else(|| CoreError::NotFound {
                 what: "Item".into(),
             })?;
-        match &it.versions.last().map(|v| &v.content) {
-            Some(ItemContent::File(f)) => Ok((it, f.clone())),
+        match &it.versions.current().content {
+            ItemContent::File(f) => Ok((it, f.clone())),
             _ => Err(invalid(
                 "este Item não é um arquivo",
                 "this Item is not a file",
@@ -147,7 +151,7 @@ impl Engine {
                 bytes,
                 thumbnail,
             },
-            &new_id("it"),
+            &new_id("it")?,
         )
     }
 
@@ -219,7 +223,7 @@ impl Engine {
         meta: VoiceMeta,
     ) -> R<TimelineEntry> {
         let me = self.me_id()?;
-        let item = new_id("it");
+        let item = new_id("it")?;
         let ext = match mime.split(';').next().unwrap_or_default() {
             "audio/webm" => "webm",
             "audio/ogg" => "ogg",

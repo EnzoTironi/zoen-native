@@ -8,9 +8,9 @@ type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 #[test]
 fn fresh_checkpoint_after_cold_open_does_not_reload_group_or_change_work() -> TestResult {
-    let database = Database::new();
+    let database = Database::new()?;
     let space = "fresh-checkpoint-cold-budget";
-    let (mut owner, secret, mut peer, _peer_secret) = encrypted_pair(&database, space);
+    let (mut owner, secret, mut peer, _peer_secret) = encrypted_pair(&database, space)?;
     let message = owner.send_message(space, "Retain the cold checkpoint ciphertext")?;
     assert!(owner.mls_seal_outbox()?);
     let before_intent = serde_json::to_value(owner.store.outbox_get(&message.id)?)?;
@@ -59,7 +59,7 @@ fn fresh_checkpoint_after_cold_open_does_not_reload_group_or_change_work() -> Te
     assert_eq!(owner.net.mls.retry_at, before_retry);
     assert_eq!(owner.net.mls.has_recovery_work(), before_recovery);
     drop(probe);
-    relay_ready_to_peer(&mut owner, &mut peer);
+    relay_ready_to_peer(&mut owner, &mut peer)?;
     assert_eq!(
         peer.timeline(space)?
             .iter()
@@ -73,9 +73,9 @@ fn fresh_checkpoint_after_cold_open_does_not_reload_group_or_change_work() -> Te
 
 #[test]
 fn due_and_unknown_checkpoints_still_require_the_actual_group() -> TestResult {
-    let database = Database::new();
+    let database = Database::new()?;
     let space = "checkpoint-needs-real-group";
-    let (mut owner, _secret, _peer, _peer_secret) = encrypted_pair(&database, space);
+    let (mut owner, _secret, _peer, _peer_secret) = encrypted_pair(&database, space)?;
     let key = checkpointed_ms_meta(space);
     let before_provider = provider_rows(&owner);
     let before_events = owner.store.event_count()?;

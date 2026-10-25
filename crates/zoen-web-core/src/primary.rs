@@ -42,8 +42,8 @@ impl Primary {
         } else {
             name
         };
-        let agreement = AgreementKey::generate();
-        let profile = ProfileKey::generate();
+        let agreement = AgreementKey::generate().map_err(|error| error.to_string())?;
+        let profile = ProfileKey::generate().map_err(|error| error.to_string())?;
         let (hpke_secret, hpke_public) = device_link::key_pair();
         let account = LinkedAccount {
             identity: identity.clone(),

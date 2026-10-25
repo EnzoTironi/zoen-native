@@ -1,5 +1,8 @@
 //! Accepted and recoverable item/media projection state.
-use super::*;
+use super::{
+    t, Entry, EntryBody, Event, EventBody, ItemContent, ItemKind, ItemState, MessageMarks, State,
+    Version,
+};
 
 impl State {
     pub(super) fn create_item(
@@ -21,14 +24,14 @@ impl State {
                 kind,
                 origin: origin.to_string(),
                 has_voice_history: matches!(content, ItemContent::File(file) if file.is_voice()),
-                versions: vec![Version {
+                versions: crate::engine::ItemVersions::new(Version {
                     number: 1,
                     content: content.clone(),
                     author: e.author.clone(),
                     at_ms: e.at_ms,
                     note: t("Criado", "Created"),
                     is_undo: false,
-                }],
+                }),
             },
         );
         // A Page's original signed creation is its card and discussion root.
@@ -90,7 +93,7 @@ impl State {
 
     /// Reserve a failed local identity before confirmed events are replayed. A
     /// legacy attachment claim must not acquire a card when recovery bytes are
-    /// inserted later. A validated ItemCreated clears this derived reservation.
+    /// inserted later. A validated `ItemCreated` clears this derived reservation.
     pub(crate) fn reserve_failed_attachment(&mut self, event: &Event, local: &str, source: &Event) {
         let EventBody::MessagePosted {
             attaches: Some(item),
@@ -181,11 +184,7 @@ impl State {
         if media.group.is_none() {
             return true;
         }
-        if file
-            .versions
-            .first()
-            .is_none_or(|version| version.author != author)
-        {
+        if file.versions.initial().author != author {
             return false;
         }
         true
@@ -247,10 +246,7 @@ impl State {
                 file.space == event.space
                     && matches!(&file.current().content, ItemContent::File(doc) if !doc.is_voice())
                     && (media.as_ref().is_none_or(|media| media.group.is_none())
-                        || file
-                            .versions
-                            .first()
-                            .is_some_and(|version| version.author == local))
+                        || file.versions.initial().author == local)
             })
             .is_none()
         {

@@ -255,7 +255,7 @@ pub(crate) async fn substitutions(
     runtime: &RuntimeAuthority,
     step: &VerifiedStep,
     fixture: &VerifiedStep,
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let VerifiedStep::Native(step) = step else {
         panic!("real native paid step required");
     };
@@ -281,7 +281,7 @@ pub(crate) async fn substitutions(
         match mutation {
             0 => capture.binding.frontier = hash(b"different binding"),
             1 => capture.result.request_digest = hash(b"different original request"),
-            2 => capture.result.context.attempt_id = types::new_id("different-attempt"),
+            2 => capture.result.context.attempt_id = types::new_id("different-attempt")?,
             _ => {
                 capture.result.output = Ok(vec![OutputBlock::Text {
                     text: "Different output with otherwise exact original context".into(),
@@ -351,6 +351,7 @@ pub(crate) async fn substitutions(
             .as_deref(),
         Some(retained.association.digest.as_str())
     );
+    Ok(())
 }
 
 pub(crate) async fn metadata_bounds(runtime: &RuntimeAuthority, run: &str) {

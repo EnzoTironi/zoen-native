@@ -1,4 +1,4 @@
-use super::*;
+use super::Message;
 
 #[derive(Clone, PartialEq, Message)]
 pub struct PbClientFrame {
@@ -7,7 +7,7 @@ pub struct PbClientFrame {
 }
 
 pub mod pb_client_frame {
-    use super::*;
+    use super::{PbEmpty, PbEnvelope, PbEphemeral, PbHello, PbReq, PbSync};
 
     #[derive(Clone, PartialEq, prost::Oneof)]
     pub enum F {
@@ -65,7 +65,11 @@ pub struct PbReq {
 }
 
 pub mod pb_req {
-    use super::*;
+    use super::{
+        PbAgentReq, PbAgreementKey, PbCallTurnRequest, PbClaimKeyPackages, PbCreateInvite,
+        PbDeviceMessage, PbEmpty, PbIds, PbLinkBox, PbLookup, PbProfile, PbPublishKeyPackages,
+        PbPushToken, PbRuntimeBindingRequest, PbSealedProfile,
+    };
 
     #[derive(Clone, PartialEq, prost::Oneof)]
     pub enum Op {
@@ -412,7 +416,7 @@ pub struct PbEphemeral {
 }
 
 pub mod pb_ephemeral {
-    use super::*;
+    use super::PbEmpty;
 
     #[derive(Clone, PartialEq, prost::Oneof)]
     pub enum Kind {
@@ -439,7 +443,10 @@ pub struct PbServerFrame {
 }
 
 pub mod pb_server_frame {
-    use super::*;
+    use super::{
+        PbAccepted, PbChallenge, PbClock, PbDeviceMessage, PbEmpty, PbEphemeral, PbError,
+        PbKeyPackagesLow, PbPresence, PbProfileChanged, PbReady, PbRejected, PbRes, PbSequenced,
+    };
 
     #[derive(Clone, PartialEq, prost::Oneof)]
     pub enum F {
@@ -516,7 +523,11 @@ pub struct PbRes {
 }
 
 pub mod pb_res {
-    use super::*;
+    use super::{
+        PbAgentState, PbAgreementKeys, PbCallTurnReply, PbDevices, PbEmpty, PbInviteCreated,
+        PbInvitePreview, PbKeyPackages, PbLinkBox, PbProfile, PbProfiles, PbRuntimeBindingProof,
+        PbSealedProfiles,
+    };
 
     #[derive(Clone, PartialEq, prost::Oneof)]
     pub enum R {

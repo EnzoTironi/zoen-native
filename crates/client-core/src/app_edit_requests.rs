@@ -158,7 +158,7 @@ impl Engine {
                 ),
             });
         }
-        let message = types::new_id("msg");
+        let message = types::new_id("msg")?;
         let appended = self.append(
             &input.space_id,
             &input.expected_identity_id,

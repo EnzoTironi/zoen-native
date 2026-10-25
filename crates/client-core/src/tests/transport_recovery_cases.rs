@@ -2,12 +2,13 @@
 
 use super::*;
 
-pub(super) fn unconfirmed_genesis_holds_its_descendants_across_retry_and_relaunch() {
+pub(super) fn unconfirmed_genesis_holds_its_descendants_across_retry_and_relaunch(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use event_log::chain_hash;
     use protocol::Sequenced;
     use types::GENESIS_PREV;
 
-    let dir = std::env::temp_dir().join(format!("zoen-genesis-{}", types::new_id("t")));
+    let dir = std::env::temp_dir().join(format!("zoen-genesis-{}", types::new_id("t")?));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("core.sqlite").to_string_lossy().to_string();
     let vault: Arc<dyn SecretVault> = Arc::new(MemVault::default());
@@ -38,7 +39,7 @@ pub(super) fn unconfirmed_genesis_holds_its_descendants_across_retry_and_relaunc
             .event
             .client_id
             .clone();
-        let genesis = protocol::Envelope::plain(&genesis.event);
+        let genesis = protocol::Envelope::plain(&genesis.event)?;
         let outgoing = engine.outbox_envelopes();
         assert!(outgoing
             .iter()
@@ -68,7 +69,7 @@ pub(super) fn unconfirmed_genesis_holds_its_descendants_across_retry_and_relaunc
     let ev = Sequenced {
         seq: 0,
         prev: GENESIS_PREV.into(),
-        hash: chain_hash(&space, 0, GENESIS_PREV, &genesis.wire_hash()),
+        hash: chain_hash(&space, 0, GENESIS_PREV, &genesis.wire_hash())?,
         env: genesis,
     };
     assert_eq!(e.lock().ingest(ev), crate::sync::Ingest::Confirmed);
@@ -92,10 +93,13 @@ pub(super) fn unconfirmed_genesis_holds_its_descendants_across_retry_and_relaunc
     );
     drop(e);
     std::fs::remove_dir_all(dir).unwrap();
+
+    Ok(())
 }
 
-pub(super) fn permanently_rejected_genesis_fails_descendants_atomically_across_relaunch() {
-    let dir = std::env::temp_dir().join(format!("zoen-genesis-refusal-{}", types::new_id("t")));
+pub(super) fn permanently_rejected_genesis_fails_descendants_atomically_across_relaunch(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = std::env::temp_dir().join(format!("zoen-genesis-refusal-{}", types::new_id("t")?));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("core.sqlite").to_string_lossy().to_string();
     let vault: Arc<dyn SecretVault> = Arc::new(MemVault::default());
@@ -215,16 +219,19 @@ pub(super) fn permanently_rejected_genesis_fails_descendants_atomically_across_r
     drop(engine);
     drop(e);
     std::fs::remove_dir_all(dir).unwrap();
+
+    Ok(())
 }
 
-pub(super) fn a_device_refuses_a_relay_that_hides_a_message_and_rehashes() {
+pub(super) fn a_device_refuses_a_relay_that_hides_a_message_and_rehashes(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use event_log::{chain_hash, content_hash_of, Author, Signer, SpaceLog};
     use protocol::{Envelope, Sequenced};
     use types::{EventBody, Privacy, SpaceKind};
 
     let e = Client::open(":memory:".into(), "pt-BR".into()).unwrap();
-    let ana = Author::root(Signer::generate());
-    let bia = Author::root(Signer::generate());
+    let ana = Author::root(Signer::generate()?);
+    let bia = Author::root(Signer::generate()?);
     let mut honest = SpaceLog::new("sp_fork");
     let genesis = honest
         .sequence(ana.sign_event(
@@ -237,7 +244,7 @@ pub(super) fn a_device_refuses_a_relay_that_hides_a_message_and_rehashes() {
                 kind: SpaceKind::Group,
                 privacy: Privacy::Closed,
             },
-        ))
+        )?)?
         .clone();
     let seen = honest.head();
     let hidden = honest
@@ -254,7 +261,7 @@ pub(super) fn a_device_refuses_a_relay_that_hides_a_message_and_rehashes() {
                 media: None,
                 forwarded: false,
             },
-        ))
+        )?)?
         .clone();
     let reply = bia.sign_event(
         "sp_fork",
@@ -269,23 +276,25 @@ pub(super) fn a_device_refuses_a_relay_that_hides_a_message_and_rehashes() {
             media: None,
             forwarded: false,
         },
-    );
+    )?;
     assert_eq!(
         reply.seen.as_ref().map(|s| s.hash.as_str()),
         Some(hidden.hash.as_str())
     );
 
-    let shown = |ev: &types::Event, seq: u64, prev: &str| Sequenced {
-        seq,
-        prev: prev.to_string(),
-        hash: chain_hash("sp_fork", seq, prev, &content_hash_of(ev)),
-        env: Envelope::plain(ev),
+    let shown = |ev: &types::Event, seq: u64, prev: &str| {
+        Ok::<_, Box<dyn std::error::Error>>(Sequenced {
+            seq,
+            prev: prev.to_string(),
+            hash: chain_hash("sp_fork", seq, prev, &content_hash_of(ev))?,
+            env: Envelope::plain(ev)?,
+        })
     };
     assert!(matches!(
-        e.lock().ingest(shown(&genesis, 0, &genesis.prev)),
+        e.lock().ingest(shown(&genesis, 0, &genesis.prev)?),
         crate::sync::Ingest::Applied
     ));
-    match e.lock().ingest(shown(&reply, 1, &genesis.hash)) {
+    match e.lock().ingest(shown(&reply, 1, &genesis.hash)?) {
         crate::sync::Ingest::Invalid(why) => assert!(why.contains("história"), "{why}"),
         _ => panic!("the forged history was accepted"),
     }
@@ -295,10 +304,13 @@ pub(super) fn a_device_refuses_a_relay_that_hides_a_message_and_rehashes() {
         .find(|s| s.title == "Viagem")
         .unwrap();
     assert!(!space.last_preview.contains("ok, entendi"));
+
+    Ok(())
 }
 
-pub(super) fn immediate_cold_reopen_after_sync_stop() {
-    let folder = std::env::temp_dir().join(types::new_id("net-cold-reopen"));
+pub(super) fn immediate_cold_reopen_after_sync_stop(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let folder = std::env::temp_dir().join(types::new_id("net-cold-reopen")?);
     std::fs::create_dir_all(&folder).unwrap();
     let mut failures = Vec::new();
     for sample in 0..32 {
@@ -353,11 +365,14 @@ pub(super) fn immediate_cold_reopen_after_sync_stop() {
         "{} immediate reopen failures: {failures:?}",
         failures.len()
     );
+
+    Ok(())
 }
 
-pub(super) fn immediate_cold_reopen_after_implicit_sync_drop() {
-    for sample in 0..32 {
-        let path = std::env::temp_dir().join(types::new_id("implicit-net-drop"));
+pub(super) fn immediate_cold_reopen_after_implicit_sync_drop(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Ok(for sample in 0..32 {
+        let path = std::env::temp_dir().join(types::new_id("implicit-net-drop")?);
         let path = path.to_string_lossy().to_string();
         let core = Client::open(path.clone(), "en".into()).unwrap();
         core.create_account(
@@ -386,15 +401,19 @@ pub(super) fn immediate_cold_reopen_after_implicit_sync_drop() {
         );
         drop(reopened);
         std::fs::remove_file(path).unwrap();
-    }
+    })
 }
 
-pub(super) async fn immediate_cold_reopen_inside_an_unrelated_runtime() {
-    immediate_cold_reopen_after_sync_stop();
-    immediate_cold_reopen_after_implicit_sync_drop();
+pub(super) async fn immediate_cold_reopen_inside_an_unrelated_runtime(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    immediate_cold_reopen_after_sync_stop()?;
+    immediate_cold_reopen_after_implicit_sync_drop()?;
+
+    Ok(())
 }
 
-pub(super) fn callback_can_stop_and_destroy_its_core_before_immediate_reopen() {
+pub(super) fn callback_can_stop_and_destroy_its_core_before_immediate_reopen(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use std::sync::mpsc;
     use std::time::Duration;
     struct Listener {
@@ -424,7 +443,7 @@ pub(super) fn callback_can_stop_and_destroy_its_core_before_immediate_reopen() {
         fn on_error(&self, _: String) {}
         fn on_profile_changed(&self, _: String) {}
     }
-    let path = std::env::temp_dir().join(types::new_id("reentrant-net-drop"));
+    let path = std::env::temp_dir().join(types::new_id("reentrant-net-drop")?);
     let path = path.to_string_lossy().to_string();
     let core = Client::open(path.clone(), "en".into()).unwrap();
     core.create_account(
@@ -453,4 +472,6 @@ pub(super) fn callback_can_stop_and_destroy_its_core_before_immediate_reopen() {
         .unwrap();
     drop(reopened);
     std::fs::remove_file(path).unwrap();
+
+    Ok(())
 }

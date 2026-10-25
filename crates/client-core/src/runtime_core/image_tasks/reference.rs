@@ -1,5 +1,8 @@
 //! This producer's immutable original association; never inferred from a sealed copy.
-use super::*;
+use super::{
+    image_tasks, DeviceCore, Event, EventBody, ItemContent, ItemKind, NativeError, Result,
+    MAX_EVENT_BYTES,
+};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use protocol::{ClientFrame, Envelope};
 use serde::{Deserialize, Serialize};

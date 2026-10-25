@@ -79,7 +79,8 @@ pub(super) fn response(
     Ok(Reply::CompletePage(p))
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn partial_or_foreign_state_never_seeds_any_omitted_space_or_publishes_readiness() {
+async fn partial_or_foreign_state_never_seeds_any_omitted_space_or_publishes_readiness(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for mode in [Mode::PageLost, Mode::PageForeign] {
         let mut relay = relay(mode).await;
         let citizen = citizen(&relay.url);
@@ -98,7 +99,7 @@ async fn partial_or_foreign_state_never_seeds_any_omitted_space_or_publishes_rea
             relay.cursors.lock().unwrap().insert(space, 0);
         }
         let before = relay.cursors.lock().unwrap().clone();
-        let home = Home::new();
+        let home = Home::new()?;
         let lock = HostLock::acquire(&home.0).unwrap();
         let readiness = Readiness::reset(&home.0, &lock).unwrap();
         online(&citizen.0).await;
@@ -113,9 +114,11 @@ async fn partial_or_foreign_state_never_seeds_any_omitted_space_or_publishes_rea
             );
         }
     }
+    Ok(())
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn complete_state_preserves_every_existing_cursor_before_host_readiness() {
+async fn complete_state_preserves_every_existing_cursor_before_host_readiness(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut relay = relay(Mode::Paged).await;
     let citizen = citizen(&relay.url);
     for n in 0..3 {
@@ -130,7 +133,7 @@ async fn complete_state_preserves_every_existing_cursor_before_host_readiness() 
         relay.cursors.lock().unwrap().insert(space, 0);
     }
     let before = relay.cursors.lock().unwrap().clone();
-    let home = Home::new();
+    let home = Home::new()?;
     let lock = HostLock::acquire(&home.0).unwrap();
     let readiness = Readiness::reset(&home.0, &lock).unwrap();
     online(&citizen.0).await;
@@ -145,4 +148,5 @@ async fn complete_state_preserves_every_existing_cursor_before_host_readiness() 
     while let Ok(call) = relay.calls.try_recv() {
         assert_eq!(call, AgentRequest::State);
     }
+    Ok(())
 }

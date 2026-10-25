@@ -37,19 +37,19 @@ fn now_ms() -> i64 {
 async fn main() -> anyhow::Result<()> {
     let (spaces, writers, total) = (arg(1, 256), arg(2, 64), arg(3, 20_000));
     let _network = unsafe { foundationdb::boot() };
-    let cell = types::new_id("bench");
+    let cell = types::new_id("bench")?;
     let log = Arc::new(FdbLog::open(
         std::env::var("FDB_CLUSTER_FILE").ok().as_deref(),
         &cell,
     )?);
-    let author = Author::root(Signer::generate());
+    let author = Author::root(Signer::generate()?);
 
     let mut genesis = Vec::new();
     for _ in 0..spaces {
-        let space = types::new_id("sp");
+        let space = types::new_id("sp")?;
         let created = author.sign_event(
             &space,
-            &types::new_ulid(now_ms()),
+            &types::new_ulid(now_ms())?,
             now_ms(),
             None,
             EventBody::SpaceCreated {
@@ -57,7 +57,7 @@ async fn main() -> anyhow::Result<()> {
                 kind: SpaceKind::Group,
                 privacy: Privacy::Closed,
             },
-        );
+        )?;
         let Ok(Sequencing::New { ev, .. }) = log.append(&Envelope::plain(&created), true).await
         else {
             anyhow::bail!("genesis refused");
@@ -76,7 +76,7 @@ async fn main() -> anyhow::Result<()> {
         let (space, seen) = &genesis[i % spaces];
         let e = author.sign_event(
             space,
-            &types::new_ulid(now_ms()),
+            &types::new_ulid(now_ms())?,
             now_ms(),
             Some(seen.clone()),
             EventBody::MessagePosted {
@@ -87,7 +87,7 @@ async fn main() -> anyhow::Result<()> {
                 media: None,
                 forwarded: false,
             },
-        );
+        )?;
         queues[i % writers].push(Envelope::plain(&e));
     }
 

@@ -38,7 +38,7 @@ impl Engine {
             .pages
             .sessions
             .lock()
-            .unwrap_or_else(|p| p.into_inner());
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let session = match sessions.entry(item.to_string()) {
             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
             std::collections::hash_map::Entry::Vacant(entry) => {
@@ -61,12 +61,12 @@ impl Engine {
                 "this Item is not a page",
             ));
         }
-        let title = match it.versions.last().map(|v| &v.content) {
-            Some(ItemContent::Page(content)) => content.title.clone(),
+        let title = match &it.versions.current().content {
+            ItemContent::Page(content) => content.title.clone(),
             _ => String::new(),
         };
-        let path = match it.versions.first().map(|v| &v.content) {
-            Some(ItemContent::Page(content)) => content.path.clone(),
+        let path = match &it.versions.initial().content {
+            ItemContent::Page(content) => content.path.clone(),
             _ => String::new(),
         };
         Ok(PageDto {

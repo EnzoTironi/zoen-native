@@ -24,8 +24,8 @@ pub async fn register(
     root: &Signer,
     kind: IdentityKind,
     owner: Option<&Author>,
-) -> Author {
-    let author = Author::device(root, Signer::generate());
+) -> std::result::Result<Author, Box<dyn std::error::Error>> {
+    let author = Author::device(root, Signer::generate()?);
     let identity = Identity {
         id: root.id(),
         kind,
@@ -50,7 +50,7 @@ pub async fn register(
     .await
     .unwrap();
     tx.commit().await.unwrap();
-    author
+    Ok(author)
 }
 
 pub fn request(
@@ -59,7 +59,7 @@ pub fn request(
     previous: Option<String>,
     bytes: &[u8],
     version: u32,
-) -> SignedMutation {
+) -> std::result::Result<SignedMutation, Box<dyn std::error::Error>> {
     let mut signed = SignedMutation {
         owner_id: author.identity.clone(),
         device_id: author.key.id(),
@@ -68,7 +68,7 @@ pub fn request(
             schema: SCHEMA,
             public_origin: PUBLIC_ORIGIN.into(),
             site_id: site.into(),
-            request_id: types::new_secret_id("pub"),
+            request_id: types::new_secret_id("pub")?,
             expected_head: previous,
             change: Change::Publish {
                 source: SourceVersion {
@@ -83,7 +83,7 @@ pub fn request(
         signature: String::new(),
     };
     sign(author, &mut signed);
-    signed
+    Ok(signed)
 }
 
 pub fn sign(author: &Author, signed: &mut SignedMutation) {
@@ -98,17 +98,20 @@ async fn head(pool: &PgPool, site: &str) -> (String, bool) {
         .unwrap()
 }
 
-pub async fn exercise(pool: &PgPool, directory: &Path) {
+pub async fn exercise(
+    pool: &PgPool,
+    directory: &Path,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let store: Arc<dyn ObjectStore> =
         Arc::new(object_store::local::LocalFileSystem::new_with_prefix(directory).unwrap());
     let config =
         zoen_relay::sites::configure("https://api.example.test", PUBLIC_ORIGIN, AUDIENCE).unwrap();
     let service = Service::new(pool.clone(), store.clone(), config.clone()).unwrap();
-    let owner = Signer::generate();
-    let author = register(pool, &owner, IdentityKind::Person, None).await;
-    let site = types::new_secret_id("site");
-    let first = request(&author, &site, None, FIRST, 1);
+    let owner = Signer::generate()?;
+    let author = register(pool, &owner, IdentityKind::Person, None).await?;
+    let site = types::new_secret_id("site")?;
+    let first = request(&author, &site, None, FIRST, 1)?;
     let public = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let public_url = format!("http://{}", public.local_addr().unwrap());
     let management = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -146,8 +149,8 @@ pub async fn exercise(pool: &PgPool, directory: &Path) {
             .await
             .unwrap();
     assert_eq!(count, 1);
-    let http_site = types::new_secret_id("site");
-    let mut http_request = request(&author, &http_site, None, SECOND, 2);
+    let http_site = types::new_secret_id("site")?;
+    let mut http_request = request(&author, &http_site, None, SECOND, 2)?;
     http_request.at_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -214,9 +217,9 @@ pub async fn exercise(pool: &PgPool, directory: &Path) {
         404
     );
 
-    let second = request(&author, &site, Some(receipt.head.clone()), SECOND, 2);
+    let second = request(&author, &site, Some(receipt.head.clone()), SECOND, 2)?;
     let next = service.apply(&second, Some(SECOND), NOW).await.unwrap();
-    let mut stale = request(&author, &site, Some(receipt.head.clone()), FIRST, 1);
+    let mut stale = request(&author, &site, Some(receipt.head.clone()), FIRST, 1)?;
     assert_eq!(
         service.apply(&stale, Some(FIRST), NOW).await,
         Err(Error::Conflict)
@@ -234,26 +237,26 @@ pub async fn exercise(pool: &PgPool, directory: &Path) {
         Err(Error::Conflict)
     );
 
-    let outsider = register(pool, &Signer::generate(), IdentityKind::Person, None).await;
-    let foreign = request(&outsider, &site, Some(next.head.clone()), FIRST, 1);
+    let outsider = register(pool, &Signer::generate()?, IdentityKind::Person, None).await?;
+    let foreign = request(&outsider, &site, Some(next.head.clone()), FIRST, 1)?;
     assert_eq!(
         service.apply(&foreign, Some(FIRST), NOW).await,
         Err(Error::Unauthorized)
     );
     let agent = register(
         pool,
-        &Signer::generate(),
+        &Signer::generate()?,
         IdentityKind::Agent,
         Some(&author),
     )
-    .await;
-    let delegated = request(&agent, &types::new_secret_id("site"), None, FIRST, 1);
+    .await?;
+    let delegated = request(&agent, &types::new_secret_id("site")?, None, FIRST, 1)?;
     assert_eq!(
         service.apply(&delegated, Some(FIRST), NOW).await,
         Err(Error::Unauthorized)
     );
     let mut removal = second.clone();
-    removal.mutation.request_id = types::new_secret_id("pub");
+    removal.mutation.request_id = types::new_secret_id("pub")?;
     removal.mutation.expected_head = Some(next.head.clone());
     removal.mutation.change = Change::Unpublish;
     sign(&author, &mut removal);
@@ -265,7 +268,7 @@ pub async fn exercise(pool: &PgPool, directory: &Path) {
         receipt
     );
     assert_eq!(client.get(&url).send().await.unwrap().status(), 404);
-    let rollback = request(&author, &site, Some(unpublished.head), FIRST, 1);
+    let rollback = request(&author, &site, Some(unpublished.head), FIRST, 1)?;
     let restored = service.apply(&rollback, Some(FIRST), NOW).await.unwrap();
     // Fresh service object, same directory and database: no in-memory head state.
     let reopened = Service::new(pool.clone(), store.clone(), config).unwrap();
@@ -287,13 +290,13 @@ pub async fn exercise(pool: &PgPool, directory: &Path) {
     );
 
     let invalid = sqlx::query("INSERT INTO site_publications(site_id,owner_id,head,active,object_key,byte_length,content_sha256) VALUES ($1,$2,$3,true,'object',NULL,$3)")
-        .bind(types::new_secret_id("site")).bind(owner.id()).bind("a".repeat(64)).execute(pool).await;
+        .bind(types::new_secret_id("site")?).bind(owner.id()).bind("a".repeat(64)).execute(pool).await;
     assert!(
         matches!(invalid.unwrap_err(), sqlx::Error::Database(error) if error.code().as_deref() == Some("23514"))
     );
     // Corrupted retained object cannot produce a new success receipt.
-    let corrupt_site = types::new_secret_id("site");
-    let corrupt = request(&author, &corrupt_site, None, FIRST, 1);
+    let corrupt_site = types::new_secret_id("site")?;
+    let corrupt = request(&author, &corrupt_site, None, FIRST, 1)?;
     let key = format!(
         "public-sites/v1/{corrupt_site}/{}",
         event_log::sha256_hex(FIRST)
@@ -316,8 +319,8 @@ pub async fn exercise(pool: &PgPool, directory: &Path) {
             .await
             .unwrap();
     assert!(!exists);
-    inspection::exercise(&service, &author, &outsider, &site, &restored).await;
-    fences::exercise(pool, &service, &author).await;
+    inspection::exercise(&service, &author, &outsider, &site, &restored).await?;
+    fences::exercise(pool, &service, &author).await?;
     assert_eq!(
         service.apply(&rollback, Some(FIRST), NOW).await,
         Err(Error::Unauthorized)
@@ -338,4 +341,5 @@ pub async fn exercise(pool: &PgPool, directory: &Path) {
     assert_eq!(response.status(), 403);
     public_task.abort();
     api_task.abort();
+    Ok(())
 }

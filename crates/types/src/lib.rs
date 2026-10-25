@@ -29,7 +29,8 @@ pub use reply::{ArtifactRequest, ReplyRef};
 
 mod ids;
 pub use ids::{
-    id_time_ms, new_id, new_secret_id, new_ulid, GrantId, IdentityId, ItemId, RequestId, SpaceId,
+    id_time_ms, new_id, new_secret_id, new_ulid, GrantId, IdError, IdentityId, ItemId, RequestId,
+    SpaceId,
 };
 mod identity;
 pub use identity::{AgentOwnerProof, Identity, IdentityKind, Privacy, Role, SpaceKind};

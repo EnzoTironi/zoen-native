@@ -16,22 +16,28 @@ pub(super) fn profile(root: &Signer, kind: IdentityKind) -> Identity {
     }
 }
 
-pub(super) fn ordered(engine: &Engine, envelope: Envelope) -> Sequenced {
+pub(super) fn ordered(
+    engine: &Engine,
+    envelope: Envelope,
+) -> std::result::Result<Sequenced, Box<dyn std::error::Error>> {
     let log = engine.logs.get(envelope.space());
     let seq = log.map(SpaceLog::next_seq).unwrap_or(0);
     let prev = log
         .and_then(|l| l.events().last())
         .map(|e| e.hash.clone())
         .unwrap_or_else(|| GENESIS_PREV.into());
-    Sequenced {
+    Ok(Sequenced {
         seq,
-        hash: chain_hash(envelope.space(), seq, &prev, &envelope.wire_hash()),
+        hash: chain_hash(envelope.space(), seq, &prev, &envelope.wire_hash())?,
         prev,
         env: envelope,
-    }
+    })
 }
 
-pub(super) fn colliding_native_reply(fixture: &Fixture, prepared: &PreparedReply) -> Envelope {
+pub(super) fn colliding_native_reply(
+    fixture: &Fixture,
+    prepared: &PreparedReply,
+) -> std::result::Result<Envelope, Box<dyn std::error::Error>> {
     let fork = DeviceCore::restore(
         NativeImage::decode_bounded(prepared.image().as_bytes().to_vec()).unwrap(),
         fixture.credential(),
@@ -45,14 +51,14 @@ pub(super) fn colliding_native_reply(fixture: &Fixture, prepared: &PreparedReply
         original.at_ms(),
         original.seen(),
         EventBody::MessagePosted {
-            message: new_id("different-message"),
+            message: new_id("different-message")?,
             text: "Different native result".into(),
             attaches: None,
             reply: None,
             media: None,
             forwarded: false,
         },
-    );
+    )?;
     let bytes = fork
         .engine
         .device()
@@ -66,17 +72,20 @@ pub(super) fn colliding_native_reply(fixture: &Fixture, prepared: &PreparedReply
             .encode(),
         )
         .unwrap();
-    Envelope::sealed(
+    Ok(Envelope::sealed(
         author,
         SPACE,
         original.client_id(),
         original.at_ms(),
         original.seen().as_ref(),
         Sealed::new(SealedKind::Application, ::mls::SUITE_ID, bytes),
-    )
+    )?)
 }
 
-pub(super) fn receipt_source_message(fixture: &mut Fixture, index: usize) -> Sequenced {
+pub(super) fn receipt_source_message(
+    fixture: &mut Fixture,
+    index: usize,
+) -> std::result::Result<Sequenced, Box<dyn std::error::Error>> {
     let author = fixture.owner.net.author.clone().unwrap();
     fixture
         .owner
@@ -85,7 +94,7 @@ pub(super) fn receipt_source_message(fixture: &mut Fixture, index: usize) -> Seq
             &author,
             600 + index as i64,
             EventBody::MessagePosted {
-                message: new_id("prefix"),
+                message: new_id("prefix")?,
                 text: format!("Historical position {index}"),
                 attaches: None,
                 reply: None,
@@ -95,18 +104,22 @@ pub(super) fn receipt_source_message(fixture: &mut Fixture, index: usize) -> Seq
         )
         .unwrap();
     fixture.owner.mls_seal_outbox().unwrap();
-    let frame = ordered(&fixture.owner, fixture.owner.outbox_envelopes().remove(0));
+    let frame = ordered(&fixture.owner, fixture.owner.outbox_envelopes().remove(0))?;
     assert_eq!(fixture.owner.ingest(frame.clone()), Ingest::Confirmed);
-    frame
+    Ok(frame)
 }
 
-pub(super) fn sealed_frame(author: &Author, client_id: &str, seen: Option<&Seen>) -> Envelope {
-    Envelope::sealed(
+pub(super) fn sealed_frame(
+    author: &Author,
+    client_id: &str,
+    seen: Option<&Seen>,
+) -> std::result::Result<Envelope, Box<dyn std::error::Error>> {
+    Ok(Envelope::sealed(
         author,
         SPACE,
         client_id,
         1_700_000_000_500,
         seen,
         Sealed::new(SealedKind::Application, ::mls::SUITE_ID, vec![9, 9, 9]),
-    )
+    )?)
 }

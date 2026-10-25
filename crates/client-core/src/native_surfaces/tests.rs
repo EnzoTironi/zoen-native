@@ -303,6 +303,7 @@ fn malformed_unknown_empty_or_oversized_snapshots_are_omitted_without_truncation
     let f = Fixture::new();
     let item = f.list("Bounded");
     let baseline = f.engine.lock().space_projections[&f.space].items[&item].clone();
+    assert!(baseline.versions.updates.is_empty());
     for state in [
         "{".into(),
         "null".into(),
@@ -311,7 +312,7 @@ fn malformed_unknown_empty_or_oversized_snapshots_are_omitted_without_truncation
         json!({"title":"x".repeat(MAX_SNAPSHOT_BYTES),"items":[]}).to_string(),
     ] {
         let mut changed = baseline.clone();
-        let ItemContent::App(doc) = &mut changed.versions.last_mut().unwrap().content else {
+        let ItemContent::App(doc) = &mut changed.versions.initial.content else {
             unreachable!()
         };
         doc.state_json = state;
@@ -325,7 +326,7 @@ fn malformed_unknown_empty_or_oversized_snapshots_are_omitted_without_truncation
         assert!(f.read(vec![item.clone()]).unwrap().is_empty());
     }
     let mut unknown = baseline.clone();
-    let ItemContent::App(doc) = &mut unknown.versions.last_mut().unwrap().content else {
+    let ItemContent::App(doc) = &mut unknown.versions.initial.content else {
         unreachable!()
     };
     doc.app = "not-a-supported-app".into();

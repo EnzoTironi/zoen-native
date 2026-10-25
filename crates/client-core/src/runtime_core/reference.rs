@@ -3,7 +3,7 @@ use event_log::{content::SealedKind, content_hash_of, verify_author};
 use protocol::{ClientFrame, Envelope};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use types::*;
+use types::{Event, EventBody};
 
 use super::publication::MAX_PUBLISH_BYTES;
 use super::{

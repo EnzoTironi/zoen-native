@@ -1,5 +1,5 @@
 //! WebRTC owns transport mechanics; the Core owns which two devices may negotiate.
-use super::*;
+use super::{not_found, CoreError, Engine, Event, EventBody, State, R};
 use types::call_transport::{
     CallTransportPayload as P, CallTransportRecord, CallTransportSignal, MAX_NEGOTIATION_BYTES,
     MAX_NEGOTIATION_SIGNALS,
@@ -37,15 +37,15 @@ impl State {
         {
             return false;
         }
-        let caller = event.author == call.caller
+        let from_initiator = event.author == call.caller
             && sender == call.caller_device
             && signal.recipient_device == callee_device;
-        let callee = event.author == call.callee
+        let from_recipient = event.author == call.callee
             && sender == callee_device
             && signal.recipient_device == call.caller_device;
-        if !(caller || callee)
-            || (matches!(signal.payload, P::Offer { .. }) && !caller)
-            || (matches!(signal.payload, P::Answer { .. }) && !callee)
+        if !(from_initiator || from_recipient)
+            || (matches!(signal.payload, P::Offer { .. }) && !from_initiator)
+            || (matches!(signal.payload, P::Answer { .. }) && !from_recipient)
         {
             return false;
         }
@@ -150,9 +150,10 @@ impl Engine {
         } else {
             &call.caller
         })?;
-        let caller = call.caller == identity && call.caller_device == device;
-        let callee = call.callee == identity && call.accepted_device.as_deref() == Some(device);
-        if call.terminal() || !(caller || callee) {
+        let from_initiator = call.caller == identity && call.caller_device == device;
+        let from_recipient =
+            call.callee == identity && call.accepted_device.as_deref() == Some(device);
+        if call.terminal() || !(from_initiator || from_recipient) {
             return Err(CoreError::Forbidden {
                 reason: "Call device is no longer authorized".into(),
             });

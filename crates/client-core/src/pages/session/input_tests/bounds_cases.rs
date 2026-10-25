@@ -2,9 +2,10 @@
 
 use super::*;
 
-pub(super) fn input_limits_foreign_scope_and_authenticated_journal_migration_fail_closed() {
-    for kind in [ItemKind::Page, ItemKind::Plan] {
-        let (_db, mut f) = cold_input_fixture(kind);
+pub(super) fn input_limits_foreign_scope_and_authenticated_journal_migration_fail_closed(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Ok(for kind in [ItemKind::Page, ItemKind::Plan] {
+        let (_db, mut f) = cold_input_fixture(kind)?;
         let mut session = f.session();
         queued(
             session
@@ -116,7 +117,7 @@ pub(super) fn input_limits_foreign_scope_and_authenticated_journal_migration_fai
         }
         assert_eq!(journal_without_input(&f), journal);
         // Backup still excludes the whole private row after it gains input bytes.
-        let backup = Database::new();
+        let backup = Database::new()?;
         std::fs::write(backup.path(), f.engine.backup_snapshot().unwrap()).unwrap();
         let conn = rusqlite::Connection::open(backup.path()).unwrap();
         let count: i64 = conn
@@ -159,7 +160,7 @@ pub(super) fn input_limits_foreign_scope_and_authenticated_journal_migration_fai
                 })
                 .collect();
             let blocks = huge.blocks();
-            let id = new_id("oversized-input-block");
+            let id = new_id("oversized-input-block")?;
             let mut order: Vec<_> = blocks.iter().map(|b| b.id.clone()).collect();
             order.push(id.clone());
             huge.apply(
@@ -237,12 +238,12 @@ pub(super) fn input_limits_foreign_scope_and_authenticated_journal_migration_fai
         f.ordered(EventBody::MemberAdded {
             identity: f.owner.clone(),
             role: Role::Reader,
-        });
+        })?;
         assert!(f.engine.page_input_load(&scope).is_err());
         assert!(f
             .engine
             .page_input_checkpoint(&scope, WRITER_A, accepted.current.revision, 8, &valid)
             .is_err());
         assert_eq!(f.cipher(), cipher);
-    }
+    })
 }

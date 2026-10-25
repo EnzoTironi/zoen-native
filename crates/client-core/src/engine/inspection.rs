@@ -1,5 +1,8 @@
 //! Integrity reports, search, mentions and aggregate statistics.
-use super::*;
+use super::{
+    apps, event_label, fold, money, not_found, now_ms, CoreStats, Engine, EntryBody, ItemContent,
+    ItemKind, LogError, LogEventDto, LogReport, Mention, SearchHit, SpaceKind, SpaceLog, Value, R,
+};
 
 impl Engine {
     // ── integridade, busca, menções ──
@@ -101,8 +104,10 @@ impl Engine {
                         .iter()
                         .flat_map(|section| &section.lines)
                         .find(|line| fold(&line.text).contains(&q))
-                        .map(|line| format!("{} · {}", line.text, money(line.cost_cents)))
-                        .unwrap_or_else(|| plan.text.clone())
+                        .map_or_else(
+                            || plan.text.clone(),
+                            |line| format!("{} · {}", line.text, money(line.cost_cents)),
+                        )
                 } else {
                     match &v.content {
                         ItemContent::Plan(p) => p

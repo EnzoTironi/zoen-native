@@ -1,12 +1,19 @@
 //! Atomic authenticated sealed/pruned event ingestion.
-use super::*;
+use super::{
+    checkpoint_every, digest_meta, event_from_content, inner_event, mls_err, must_seal,
+    sealed_meta, storage, tracing_like, welcome_meta, Engine, Event, EventBody, Ingest, Opened,
+    SealedKind, Sequenced, SpaceLog, R,
+};
 
 impl Engine {
     /// A sealed entry the relay sequenced: opened (or kept sealed) and logged in one
     /// transaction with the group state it changes.
     pub(crate) fn ingest_sealed(&mut self, ev: Sequenced) -> Ingest {
         let space = ev.env.space().to_string();
-        let next = self.logs.get(&space).map(|l| l.next_seq()).unwrap_or(0);
+        let next = self
+            .logs
+            .get(&space)
+            .map_or(0, event_log::SpaceLog::next_seq);
         if ev.seq < next {
             if self.approval_replay_needed {
                 if let Err(error) = self.reproject_approval_overlay() {
@@ -121,7 +128,7 @@ impl Engine {
                 device.open(&space, &data, &roster, &admitted_sender)
             } {
                 Ok(Opened::Commit { epoch } | Opened::Reconcile { epoch }) => {
-                    landed = Some((epoch, false))
+                    landed = Some((epoch, false));
                 }
                 Ok(_) => {}
                 Err(e)
@@ -140,7 +147,7 @@ impl Engine {
                             return Ingest::Invalid(e.to_string());
                         }
                         Err(e) => {
-                            tracing_like(&format!("can't load a joined group in {space}: {e}"))
+                            tracing_like(&format!("can't load a joined group in {space}: {e}"));
                         }
                     },
                     Ok(false) => {}
@@ -198,15 +205,15 @@ impl Engine {
         }
         let mut stored = self.store.append_event(&e).map_err(storage);
         stored = stored
-            .and_then(|_| crate::mls_opening::record(&self.store, &ev, opening).map_err(storage));
-        stored = stored.and_then(|_| self.remember_recovery_context(&ev.env));
+            .and_then(|()| crate::mls_opening::record(&self.store, &ev, opening).map_err(storage));
+        stored = stored.and_then(|()| self.remember_recovery_context(&ev.env));
         if own && kind == SealedKind::Commit {
             if let Some(reference) = ev
                 .env
                 .recovery()
                 .and_then(event_log::recovery::RecoveryRef::parse)
             {
-                stored = stored.and_then(|_| {
+                stored = stored.and_then(|()| {
                     self.store
                         .clear_recovery_upload(&reference.blob)
                         .map_err(storage)
@@ -214,14 +221,14 @@ impl Engine {
             }
         }
         if let Some((epoch, digest)) = &digest {
-            stored = stored.and_then(|_| {
+            stored = stored.and_then(|()| {
                 self.store
                     .set_meta(&digest_meta(&space, *epoch), digest)
                     .map_err(storage)
             });
         }
         if own {
-            stored = stored.and_then(|_| {
+            stored = stored.and_then(|()| {
                 self.store.outbox_remove(&client_id).map_err(storage)?;
                 self.store
                     .meta_delete(&sealed_meta(&client_id))
@@ -231,8 +238,8 @@ impl Engine {
                     .map_err(storage)
             });
         }
-        stored = stored.and_then(|_| self.store.set_synced(&space).map_err(storage));
-        if let Err(err) = stored.and_then(|_| tx.commit().map_err(storage)) {
+        stored = stored.and_then(|()| self.store.set_synced(&space).map_err(storage));
+        if let Err(err) = stored.and_then(|()| tx.commit().map_err(storage)) {
             let _ = self.reload();
             return Ingest::Invalid(err.to_string());
         }

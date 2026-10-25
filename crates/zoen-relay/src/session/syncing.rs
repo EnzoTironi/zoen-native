@@ -113,12 +113,19 @@ impl Session {
                 };
                 let Some(full) = full else { continue };
                 through = through.or(full.through);
-                let page = crate::log::sequencer::fork_histories::view(
+                let Ok(page) = crate::log::sequencer::fork_histories::view(
                     &space,
                     &self.identity,
                     next,
                     full.events,
-                );
+                ) else {
+                    self.send_sync(ServerFrame::error(
+                        ErrorCode::Unavailable,
+                        "log store unavailable",
+                    ))
+                    .await;
+                    return;
+                };
                 for ev in page {
                     if through.is_some_and(|last| ev.seq > last) {
                         break;

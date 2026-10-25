@@ -1,5 +1,5 @@
 //! Read-only integrity boundary. Verification always rereads canonical storage.
-use super::*;
+use super::{encode, invalid, Client, CoreError, LogEventsPage};
 
 impl Client {
     fn integrity_scope(engine: &crate::engine::Engine, space: &str) -> Result<(), CoreError> {
@@ -91,7 +91,8 @@ impl Client {
         let next = if entries.next().is_some() {
             events
                 .last()
-                .map(|e| serde_json::to_string(&(&space, e.seq, &e.hash)).expect("audit cursor"))
+                .map(|e| serde_json::to_string(&(&space, e.seq, &e.hash)))
+                .transpose()?
         } else {
             None
         };
@@ -109,7 +110,7 @@ mod tests {
 
     #[tokio::test]
     async fn cold_open_warns_about_unreadable_history_without_trusting_its_membership() {
-        let directory = std::env::temp_dir().join(types::new_id("integrity-cold-open"));
+        let directory = std::env::temp_dir().join(types::new_id("integrity-cold-open").unwrap());
         std::fs::create_dir_all(&directory).unwrap();
         let path = directory
             .join("account.sqlite")

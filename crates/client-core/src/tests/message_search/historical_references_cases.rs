@@ -2,8 +2,9 @@
 
 use super::*;
 
-pub(super) fn mutations_search_and_references_survive_reopen() {
-    let dir = std::env::temp_dir().join(types::new_id("search-reopen"));
+pub(super) fn mutations_search_and_references_survive_reopen(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = std::env::temp_dir().join(types::new_id("search-reopen")?);
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("search.sqlite").to_string_lossy().into_owned();
     let (space, message, quoted, threaded, me, other) = {
@@ -165,10 +166,13 @@ pub(super) fn mutations_search_and_references_survive_reopen() {
                 && entry.in_thread.as_deref() == Some(message.as_str())));
     }
     std::fs::remove_dir_all(dir).unwrap();
+
+    Ok(())
 }
 
-pub(super) fn historical_recipe_activity_is_searchable_by_its_exact_entry_after_reopen() {
-    let dir = std::env::temp_dir().join(types::new_id("activity-search"));
+pub(super) fn historical_recipe_activity_is_searchable_by_its_exact_entry_after_reopen(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = std::env::temp_dir().join(types::new_id("activity-search")?);
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("account.sqlite").to_string_lossy().into_owned();
     let (space, activity, vault) = {
@@ -253,6 +257,8 @@ pub(super) fn historical_recipe_activity_is_searchable_by_its_exact_entry_after_
         );
     }
     std::fs::remove_dir_all(dir).unwrap();
+
+    Ok(())
 }
 
 pub(super) fn activity_and_message_pages_preserve_threads_deletion_scope_and_unique_ids() {

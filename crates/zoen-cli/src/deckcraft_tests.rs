@@ -28,10 +28,10 @@ pub(crate) struct Fixture {
     pub(crate) source: String,
     pub(crate) base: AppBinaryDocumentDto,
 }
-pub(crate) fn fixture() -> Fixture {
-    let path = std::env::temp_dir().join(types::new_id("deckcraft-worker-test"));
+pub(crate) fn fixture() -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
+    let path = std::env::temp_dir().join(types::new_id("deckcraft-worker-test")?);
     std::fs::create_dir_all(&path).unwrap();
-    fixture_at(path, [72; 32])
+    Ok(fixture_at(path, [72; 32])?)
 }
 #[path = "deckcraft/fixture.rs"]
 mod fixture_construction;
@@ -153,8 +153,9 @@ fn model_schema_does_not_accept_actor_authority_paths_or_unobserved_versions() {
     );
 }
 #[test]
-fn native_public_reference_classification_requires_real_binding_head_and_closed_dto() {
-    let f = fixture();
+fn native_public_reference_classification_requires_real_binding_head_and_closed_dto(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = fixture()?;
     let args = json!({"artifactId":f.base.item_id,"version":f.base.version,"sha256":f.base.sha256,"slideId":257,"text":"Reviewed notes"});
     let classify = |item: &str, source: &str, args: &Value| {
         gate_public_references(
@@ -232,12 +233,14 @@ fn native_public_reference_classification_requires_real_binding_head_and_closed_
     );
     drop(f.client);
     std::fs::remove_dir_all(f.path).unwrap();
+    Ok(())
 }
 // Explicitly ignored in generic `cargo test`: this test requires an actual
 // separately pinned upstream build, not a substitute WAT component or mock.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires a pinned component via ZOEN_TEST_DECKCRAFT_COMPONENT or complete worker deployment configuration"]
-async fn actual_pinned_component_edits_as_certified_agent_and_cold_replay_does_not_duplicate() {
+async fn actual_pinned_component_edits_as_certified_agent_and_cold_replay_does_not_duplicate(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let translation_started = std::time::Instant::now();
     let worker = worker();
     eprintln!(
@@ -245,7 +248,7 @@ async fn actual_pinned_component_edits_as_certified_agent_and_cold_replay_does_n
         translation_started.elapsed().as_millis()
     );
     let execution_started = std::time::Instant::now();
-    let f = fixture();
+    let f = fixture()?;
     let initial = inspect(&f, &worker).await;
     assert_eq!(initial["scope"]["actorId"], f.base.actor_id);
     assert_eq!(initial["scope"]["actorKind"], "agent");
@@ -502,4 +505,5 @@ async fn actual_pinned_component_edits_as_certified_agent_and_cold_replay_does_n
         "actual signed Runtime/core/worker journey elapsed_ms={}",
         execution_started.elapsed().as_millis()
     );
+    Ok(())
 }

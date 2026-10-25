@@ -1,7 +1,8 @@
 //! Original whole test bodies, called by their unchanged registered facade.
 use super::*;
 
-pub(super) fn browser_new_document_notes_follow_language_without_rewriting_received_history() {
+pub(super) fn browser_new_document_notes_follow_language_without_rewriting_received_history(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for (language, created, imported, untitled, page_label, restore_note) in [
         (
             localization::Lang::En,
@@ -21,7 +22,7 @@ pub(super) fn browser_new_document_notes_follow_language_without_rewriting_recei
         ),
     ] {
         let _language = localization::enter(language);
-        let (mut client, author, mut log) = document_fixture();
+        let (mut client, author, mut log) = document_fixture()?;
         let made = doc(
             &mut client,
             serde_json::json!({"op":"page_create","space_id":log.space(),"title":""}),
@@ -31,7 +32,7 @@ pub(super) fn browser_new_document_notes_follow_language_without_rewriting_recei
         assert_eq!(made.result["title"], untitled);
         assert_eq!(made.result["kind_id"], "page");
         assert_eq!(made.result["kind_label"], page_label);
-        confirm_documents(&mut client, &mut log, made.update.unwrap(), 11);
+        confirm_documents(&mut client, &mut log, made.update.unwrap(), 11)?;
         let made = doc(
             &mut client,
             serde_json::json!({"op":"page_import_markdown","space_id":log.space(),"path":"notas/original.md","markdown":"# Título em português 🪴\n"}),
@@ -40,7 +41,7 @@ pub(super) fn browser_new_document_notes_follow_language_without_rewriting_recei
         assert_eq!(made.result["origin"], imported);
         assert_eq!(made.result["title"], "Título em português 🪴");
         assert_eq!(made.result["path"], "notas/original.md");
-        confirm_documents(&mut client, &mut log, made.update.unwrap(), 13);
+        confirm_documents(&mut client, &mut log, made.update.unwrap(), 13)?;
         let received = clear(
             &mut log,
             &author,
@@ -53,7 +54,7 @@ pub(super) fn browser_new_document_notes_follow_language_without_rewriting_recei
                 origin: "Criado no iOS — manter literal".into(),
             },
             14,
-        );
+        )?;
         client.receive(&received, 15).unwrap();
         let received = clear(
             &mut log,
@@ -66,7 +67,7 @@ pub(super) fn browser_new_document_notes_follow_language_without_rewriting_recei
                 note: "Editou no iOS — manter literal".into(),
             },
             16,
-        );
+        )?;
         client.receive(&received, 17).unwrap();
         let restored = doc(
             &mut client,
@@ -84,17 +85,19 @@ pub(super) fn browser_new_document_notes_follow_language_without_rewriting_recei
         );
         assert_eq!(restored.result["text"], "Texto original em português");
     }
+    Ok(())
 }
 
-pub(super) fn browser_pages_share_native_codec_persist_drafts_and_replay_receipts() {
-    let (mut client, _, mut log) = document_fixture();
+pub(super) fn browser_pages_share_native_codec_persist_drafts_and_replay_receipts(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, _, mut log) = document_fixture()?;
     let made = doc(
         &mut client,
         serde_json::json!({"op":"page_import_markdown","space_id":log.space(),"path":"notes/viagem.md","markdown":"# Viagem 🪴\n\nTexto **marcado**.\n"}),
         10,
     );
     let id = made.result["id"].as_str().unwrap().to_owned();
-    confirm_documents(&mut client, &mut log, made.update.unwrap(), 11);
+    confirm_documents(&mut client, &mut log, made.update.unwrap(), 11)?;
     let read = doc(
         &mut client,
         serde_json::json!({"op":"page","item_id":id}),
@@ -141,11 +144,13 @@ pub(super) fn browser_pages_share_native_codec_persist_drafts_and_replay_receipt
     .result;
     assert_eq!(queued_page["unsaved"], false);
     assert_eq!(queued_page["pending_sync"], true);
+    Ok(())
 }
 
-pub(super) fn browser_stale_page_editor_merges_unseen_blocks_and_restores_as_a_new_change() {
+pub(super) fn browser_stale_page_editor_merges_unseen_blocks_and_restores_as_a_new_change(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use base64::Engine as _;
-    let (mut client, author, mut log) = document_fixture();
+    let (mut client, author, mut log) = document_fixture()?;
     let page = ::documents::Page::from_markdown("# Original\n\nTexto antigo\n").unwrap();
     let content = types::PageContent {
         title: "Original".into(),
@@ -164,7 +169,7 @@ pub(super) fn browser_stale_page_editor_merges_unseen_blocks_and_restores_as_a_n
             origin: "Criado no nativo".into(),
         },
         10,
-    );
+    )?;
     client.receive(&create, 11).unwrap();
     let read = doc(
         &mut client,
@@ -204,7 +209,7 @@ pub(super) fn browser_stale_page_editor_merges_unseen_blocks_and_restores_as_a_n
             note: "Mudança concorrente".into(),
         },
         13,
-    );
+    )?;
     client.receive(&version, 14).unwrap();
     let mut heading = read["blocks"][0].clone();
     heading["text"] = "Editado no navegador".into();
@@ -221,7 +226,7 @@ pub(super) fn browser_stale_page_editor_merges_unseen_blocks_and_restores_as_a_n
         serde_json::json!({"op":"page_commit","item_id":"it_merge","note":"Mesclou"}),
         16,
     );
-    confirm_documents(&mut client, &mut log, committed.update.unwrap(), 17);
+    confirm_documents(&mut client, &mut log, committed.update.unwrap(), 17)?;
     let past = doc(
         &mut client,
         serde_json::json!({"op":"page_at","item_id":"it_merge","version":1}),
@@ -244,11 +249,13 @@ pub(super) fn browser_stale_page_editor_merges_unseen_blocks_and_restores_as_a_n
     .result;
     assert_eq!(current["blocks"].as_array().unwrap().len(), 2);
     assert_eq!(current["blocks"][0]["text"], "Original");
+    Ok(())
 }
 
-pub(super) fn browser_large_page_upload_barrier_survives_reload_and_missing_download_waits() {
+pub(super) fn browser_large_page_upload_barrier_survives_reload_and_missing_download_waits(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use base64::Engine as _;
-    let (mut client, author, mut log) = document_fixture();
+    let (mut client, author, mut log) = document_fixture()?;
     let original_snapshot = client.update(Vec::new()).unwrap().snapshot;
     let markdown = (0..8000)
         .map(|i| format!("Parágrafo {i}: conteúdo de uma página compartilhada 🪴.\n\n"))
@@ -314,7 +321,7 @@ pub(super) fn browser_large_page_upload_barrier_survives_reload_and_missing_down
             origin: "Outro cliente".into(),
         },
         20,
-    );
+    )?;
     let mut remote = Client::new(
         client.account.clone(),
         client.signer.clone(),
@@ -347,4 +354,5 @@ pub(super) fn browser_large_page_upload_barrier_survives_reload_and_missing_down
             .len()
             > 48 << 10
     );
+    Ok(())
 }

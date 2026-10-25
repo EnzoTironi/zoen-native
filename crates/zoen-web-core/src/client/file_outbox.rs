@@ -75,7 +75,7 @@ impl<S: Signer> Client<S> {
         let mut pending = self.clear_event(
             space,
             EventBody::ItemCreated {
-                item: types::new_secret_id("it"),
+                item: types::new_secret_id("it").map_err(|error| error.to_string())?,
                 kind: types::ItemKind::File,
                 content: types::ItemContent::File(doc),
                 origin: "Adicionado".into(),
@@ -122,7 +122,7 @@ impl<S: Signer> Client<S> {
                 .client_id
                 .clone();
         }
-        let item = types::new_secret_id("it");
+        let item = types::new_secret_id("it").map_err(|error| error.to_string())?;
         let voice = doc.is_voice();
         let mut bodies = vec![EventBody::ItemCreated {
             item: item.clone(),

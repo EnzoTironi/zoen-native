@@ -42,7 +42,7 @@ impl UserDefinition {
             || !definition
                 .state
                 .as_object()
-                .is_some_and(|state| state.is_empty())
+                .is_some_and(serde_json::Map::is_empty)
             || definition.persona.is_empty()
             || definition.persona.len() > 768
             || definition
@@ -317,7 +317,7 @@ impl Receipt {
             );
         let receipt = Self {
             schema: 1,
-            id: types::new_id("adu"),
+            id: types::new_id("adu")?,
             scope,
             before,
             after,
@@ -375,7 +375,10 @@ impl Client {
         // Match start_sync's net→engine lock order and select the authenticated
         // connection while the reviewed owner/device/relay are still current.
         let request = {
-            let net = self.net.lock().unwrap_or_else(|p| p.into_inner());
+            let net = self
+                .net
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             scope.check(&self.lock())?;
             let net = net.as_ref().ok_or_else(changed)?;
             if net

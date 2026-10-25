@@ -251,27 +251,29 @@ mod cases;
 use cases::produce;
 
 #[tokio::test]
-async fn native_media_http_contract() {
+async fn native_media_http_contract() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let store = Arc::new(ControlledStore::default());
-    let test = TestRelay::with_store(store.clone()).await;
+    let test = TestRelay::with_store(store.clone()).await?;
     // Cleanup the freshly-created database even when an assertion/request fails.
     let result = std::panic::AssertUnwindSafe(produce(&test, &store))
         .catch_unwind()
         .await;
     test.close().await;
-    let value = result.unwrap();
+    let value = result.unwrap()?;
     if let Ok(output) = std::env::var("ZOEN_MEDIA_FIXTURE_OUTPUT") {
         std::fs::write(output, serde_json::to_vec(&value).unwrap()).unwrap();
     }
+    Ok(())
 }
 
 #[tokio::test]
-async fn admitted_blob_put_can_finish_after_unlink_and_never_restores_device() {
+async fn admitted_blob_put_can_finish_after_unlink_and_never_restores_device(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let store = Arc::new(ControlledStore::default());
-    let test = TestRelay::with_store(store.clone()).await;
+    let test = TestRelay::with_store(store.clone()).await?;
     let result = std::panic::AssertUnwindSafe(async {
-        let a = test.register().await;
-        let (_,body) = event_log::media::seal(b"admitted before unlink");
+        let a = test.register().await?;
+        let (_,body) = event_log::media::seal(b"admitted before unlink")?;
         let sha = hex::encode(Sha256::digest(&body));
         store.hold_next.store(true,Ordering::SeqCst);
         let path = format!("/v1/blobs/{sha}");
@@ -294,20 +296,23 @@ async fn admitted_blob_put_can_finish_after_unlink_and_never_restores_device() {
         let get = test.client.get(format!("{}/v1/blobs/{sha}",test.url)).send().await.unwrap();
         assert_eq!(get.status(),StatusCode::OK);
         assert_eq!(get.bytes().await.unwrap().as_ref(),body);
-    }).catch_unwind().await;
+    Ok::<(), Box<dyn std::error::Error>>(())
+}).catch_unwind().await;
     test.close().await;
-    result.unwrap();
+    result.unwrap()?;
+    Ok(())
 }
 
 #[tokio::test]
-async fn malformed_digest_and_duplicate_uploads_both_spend_device_quota() {
+async fn malformed_digest_and_duplicate_uploads_both_spend_device_quota(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let test = TestRelay::configured(
         Arc::new(object_store::memory::InMemory::new()),
         "blob_kib_device=1/h:3",
     )
-    .await;
+    .await?;
     let result = std::panic::AssertUnwindSafe(async {
-        let a = test.register().await;
+        let a = test.register().await?;
         let body = b"ciphertext quota fixture";
         let sha = hex::encode(Sha256::digest(body));
         for (payload, status) in [
@@ -349,20 +354,23 @@ async fn malformed_digest_and_duplicate_uploads_both_spend_device_quota() {
             .unwrap();
         assert_eq!(retained.status(), StatusCode::OK);
         assert_eq!(retained.bytes().await.unwrap().as_ref(), body);
+        Ok::<(), Box<dyn std::error::Error>>(())
     })
     .catch_unwind()
     .await;
     test.close().await;
-    result.unwrap();
+    result.unwrap()?;
+    Ok(())
 }
 
 #[tokio::test]
-async fn create_only_concurrency_and_storage_failure_keep_media_contract() {
+async fn create_only_concurrency_and_storage_failure_keep_media_contract(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let store = Arc::new(ControlledStore::default());
-    let test = TestRelay::with_store(store.clone()).await;
+    let test = TestRelay::with_store(store.clone()).await?;
     let result = std::panic::AssertUnwindSafe(async {
-        let a = test.register().await;
-        let (_, body) = event_log::media::seal(b"create once");
+        let a = test.register().await?;
+        let (_, body) = event_log::media::seal(b"create once")?;
         let sha = hex::encode(Sha256::digest(&body));
         let path = format!("/v1/blobs/{sha}");
         let left = test.signed(&a, Method::PUT, &path, &body, |ts| {
@@ -400,9 +408,11 @@ async fn create_only_concurrency_and_storage_failure_keep_media_contract() {
             .await
             .unwrap();
         assert_eq!(retained.bytes().await.unwrap().as_ref(), body);
+        Ok::<(), Box<dyn std::error::Error>>(())
     })
     .catch_unwind()
     .await;
     test.close().await;
-    result.unwrap();
+    result.unwrap()?;
+    Ok(())
 }

@@ -1,5 +1,8 @@
 //! Bounded encrypted delivery effects. No HTML or second document is stored here.
-use super::*;
+use super::{
+    forbidden, invalid, stale, CoreError, Deserialize, Engine, Serialize, SignedMutation,
+    SiteReview, SiteScope, R,
+};
 use hkdf::Hkdf;
 use protocol::sites::Receipt;
 use rusqlite::OptionalExtension;
@@ -57,7 +60,7 @@ impl Engine {
         };
         let plain = Zeroizing::new(
             crate::local_sealed::open(&key, &aad, &encoded.ok_or_else(storage)?, MAX_PLAIN)
-                .map_err(|_| storage())?,
+                .map_err(|()| storage())?,
         );
         let record: Record = serde_json::from_slice(&plain).map_err(|_| storage())?;
         if record
@@ -79,7 +82,7 @@ impl Engine {
         if plain.len() > MAX_PLAIN {
             return Err(storage());
         }
-        let encoded = crate::local_sealed::seal(&key, &aad, &plain).map_err(|_| storage())?;
+        let encoded = crate::local_sealed::seal(&key, &aad, &plain).map_err(|()| storage())?;
         let (count, bytes, old): (usize, usize, usize) = self.store.conn().query_row(
             "SELECT COUNT(*),COALESCE(SUM(length(CAST(value AS BLOB))),0),COALESCE(MAX(CASE WHEN key=?1 THEN length(CAST(value AS BLOB)) END),0) FROM meta WHERE key LIKE 'site.publication.%'",
             [&id], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?))).map_err(|_| storage())?;
@@ -144,7 +147,7 @@ mod tests {
     fn encrypted_intent_survives_reload_and_never_replaces_an_ambiguous_request() {
         let (client, scope, source) = super::super::tests::fixture();
         let mut e = client.lock();
-        let r = super::super::tests::review(&scope, &source);
+        let r = super::super::tests::review(&scope, &source).unwrap();
         e.site_begin_publication(&r).unwrap();
         e.reload_sync().unwrap();
         assert_eq!(
@@ -152,7 +155,7 @@ mod tests {
             Some(r.clone())
         );
         let mut competing = r.clone();
-        competing.mutation.request_id = types::new_secret_id("pub");
+        competing.mutation.request_id = types::new_secret_id("pub").unwrap();
         assert!(e.site_begin_publication(&competing).is_err());
         let raw: String = e
             .store

@@ -64,7 +64,7 @@ fn real_pcraft_creation_reuses_receipts_but_keeps_format_mime_scope_and_encrypte
 #[test]
 fn pcraft_lost_ack_cas_cold_history_and_export_keep_exact_original_selected_file() -> R<()> {
     let path =
-        std::env::temp_dir().join(format!("zoen-photo-cas-{}.sqlite", types::new_id("test")));
+        std::env::temp_dir().join(format!("zoen-photo-cas-{}.sqlite", types::new_id("test")?));
     let f = fixture(path.to_str().expect("fixture path"));
     let base = photo(&f, "create")?;
     let accepted = save(&f, &base, EDITED, "lost-ack")?;

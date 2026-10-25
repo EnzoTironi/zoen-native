@@ -82,6 +82,7 @@ impl RelayOutputTransport {
         .map_err(|_| RelayOutputError::Unavailable)?
         .map_err(|_| RelayOutputError::Unavailable)?;
         let http = crate::https::client()
+            .map_err(|_| RelayOutputError::Unavailable)?
             .redirect(reqwest::redirect::Policy::none())
             .timeout(Duration::from_secs(30))
             .build()

@@ -1,4 +1,4 @@
-//! Publication operations on the original PageSession state.
+//! Publication operations on the original `PageSession` state.
 
 use super::*;
 
@@ -147,8 +147,8 @@ impl PageSession {
             .execute_batch("SAVEPOINT page_session_commit")
             .map_err(sql_error)?;
         let staged = (|| {
-            let path = match (&self.tag, it.versions.first().map(|v| &v.content)) {
-                (DocumentTag::BinaryPageV1, Some(ItemContent::Page(page))) => page.path.as_str(),
+            let path = match (&self.tag, &it.versions.initial().content) {
+                (DocumentTag::BinaryPageV1, ItemContent::Page(page)) => page.path.as_str(),
                 _ => "",
             };
             let mut content = engine.page_content(&it.space, title, path, bytes)?;

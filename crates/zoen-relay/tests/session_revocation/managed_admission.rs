@@ -9,8 +9,11 @@ impl Drop for Home {
     }
 }
 
-fn envelope(author: &Author, id: &str) -> Envelope {
-    Envelope::plain(&author.sign_event(
+fn envelope(
+    author: &Author,
+    id: &str,
+) -> std::result::Result<Envelope, Box<dyn std::error::Error>> {
+    Ok(Envelope::plain(&author.sign_event(
         "managed-omission-test",
         id,
         1,
@@ -23,16 +26,16 @@ fn envelope(author: &Author, id: &str) -> Envelope {
             media: None,
             forwarded: false,
         },
-    ))
+    )?))
 }
 
 #[tokio::test]
 async fn managed_socket_cannot_omit_binding_or_use_ordinary_publish_while_other_device_keeps_working(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let test = TestRelay::new().await;
-    let root = Signer::generate();
-    let primary = Author::device(&root, Signer::generate());
-    let ordinary = Author::device(&root, Signer::generate());
+    let test = TestRelay::new().await?;
+    let root = Signer::generate()?;
+    let primary = Author::device(&root, Signer::generate()?);
+    let ordinary = Author::device(&root, Signer::generate()?);
     let mut first = connect(&test.ws_url, &primary).await;
     request(
         &mut first,
@@ -42,9 +45,9 @@ async fn managed_socket_cannot_omit_binding_or_use_ordinary_publish_while_other_
         },
     )
     .await?;
-    request(&mut first, 2, link_op(&ordinary, &Signer::generate().id())).await?;
+    request(&mut first, 2, link_op(&ordinary, &Signer::generate()?.id())).await?;
     let mut other = connect(&test.ws_url, &ordinary).await;
-    let home = Home(std::env::temp_dir().join(types::new_id("managed-ws")));
+    let home = Home(std::env::temp_dir().join(types::new_id("managed-ws")?));
     let device = primary.device.as_deref().ok_or("missing device")?;
     let deployment = Deployment {
         namespace: "managed-ws".into(),
@@ -77,7 +80,7 @@ async fn managed_socket_cannot_omit_binding_or_use_ordinary_publish_while_other_
         send(
             &mut first,
             ClientFrame::Publish {
-                env: envelope(&primary, id),
+                env: envelope(&primary, id)?,
             },
         )
         .await;
@@ -107,7 +110,7 @@ async fn managed_socket_cannot_omit_binding_or_use_ordinary_publish_while_other_
     send(
         &mut other,
         ClientFrame::Publish {
-            env: envelope(&ordinary, "ordinary-control"),
+            env: envelope(&ordinary, "ordinary-control")?,
         },
     )
     .await;

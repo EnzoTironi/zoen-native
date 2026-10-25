@@ -30,6 +30,7 @@ pub enum Observe {
 impl OwnProfileSync {
     /// One-time conservative migration. Old journals cannot distinguish a linked
     /// seed from an unacknowledged edit; preserving it avoids discarding user intent.
+    #[must_use]
     pub fn migrate(seen: u64, uploaded: u64) -> Self {
         Self {
             published: uploaded,
@@ -38,6 +39,7 @@ impl OwnProfileSync {
         }
     }
 
+    #[must_use]
     pub fn clean(version: u64) -> Self {
         Self {
             published: version,
@@ -54,6 +56,7 @@ impl OwnProfileSync {
         Some(next)
     }
 
+    #[must_use]
     pub fn key_unavailable(&self) -> bool {
         self.blocked_at_version.is_some()
     }

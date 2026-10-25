@@ -1,5 +1,11 @@
 //! Transport-local complete-read staging; no partial page reaches Engine/host.
-use super::*;
+#[cfg(test)]
+use super::{Arc, Message, ServerFrame};
+use crate::net::tracing_like;
+
+use super::{
+    remember_waiting, send, ClientFrame, Duration, Exit, HashMap, Op, Reply, Sink, Waiting,
+};
 use protocol::complete_reads::{Assembly, Kind, Request};
 
 pub(super) fn start(op: Op, done: Waiting, owner: Option<&(String, String)>) -> (Op, Waiting) {

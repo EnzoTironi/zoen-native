@@ -22,14 +22,14 @@ pub(super) async fn run(
         agent_id: config.agent.clone(),
     };
     let pending = owner.request_account_policy_options(scope.clone())?;
-    let mut host = Host::start(w, path).await;
+    let mut host = Host::start(w, path).await?;
     let first = account_controls::options(owner, &scope, &pending.source, &mut host).await;
     assert_eq!(first.image_profile_digest, config.image_price.digest()?);
     assert_eq!(first.current_policy_digest, None);
     assert_eq!(first.current_enabled, None);
     drop(host);
 
-    let mut cold = Host::start(w, path).await;
+    let mut cold = Host::start(w, path).await?;
     let next = owner.request_account_policy_options(scope.clone())?;
     assert_ne!(next.source, pending.source);
     let current = account_controls::options(owner, &scope, &next.source, &mut cold).await;

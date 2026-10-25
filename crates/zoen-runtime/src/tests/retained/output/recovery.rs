@@ -1,8 +1,9 @@
 //! Original capture association, lost acknowledgement and cold native replay.
 use super::*;
 
-pub(super) async fn accepted_across_prefix_revocation_and_cold_replay() {
-    let (mut fixture, run) = original().await;
+pub(super) async fn accepted_across_prefix_revocation_and_cold_replay(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut fixture, run) = original().await?;
     let runtime = &fixture.world.runtime;
     assert_eq!(
         runtime.prepare_reply_output(&run.run).await.unwrap_err(),
@@ -45,14 +46,14 @@ pub(super) async fn accepted_across_prefix_revocation_and_cold_replay() {
             .clear(EventBody::DeviceJoining {
                 device: fixture.world.owner.device.clone().unwrap(),
             })
-            .await;
+            .await?;
     }
     let accepted = fixture.append(env).await;
     fixture
         .encrypted(EventBody::GrantRevoked {
             grant: "output-owner-trust".into(),
         })
-        .await;
+        .await?;
     revoke_device(&fixture).await;
     // Observe the real FDB timeout without changing the execution deadline or
     // the paired receipt leases, then exercise native work beyond that deadline.
@@ -144,10 +145,12 @@ pub(super) async fn accepted_across_prefix_revocation_and_cold_replay() {
     );
     fixture.finish().await;
     println!("native output journey: actual paid capture, uncertain preparation ACK, original CID/Publish, cold64-position prefix, grant/device revocation, uncertain receipt ACK and inert cold replay; one provider request/bill, unchanged originals and retained wake/refs PASS");
+    Ok(())
 }
 
-pub(super) async fn association_failure_does_not_block_incurred_evidence() {
-    let (fixture, run) = original().await;
+pub(super) async fn association_failure_does_not_block_incurred_evidence(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (fixture, run) = original().await?;
     fixture.world.runtime.fault.store(40, Ordering::SeqCst);
     fixture.world.runtime.run_model(&run.run).await.unwrap();
     fixture.world.runtime.fault.store(0, Ordering::SeqCst);
@@ -182,4 +185,5 @@ pub(super) async fn association_failure_does_not_block_incurred_evidence() {
     assert_one_bill(&fixture).await;
     fixture.finish().await;
     println!("native output association cut: producer refusal occurs first, independent SQL and FDB incurred evidence remain; unindexed capture cannot be adopted or trigger a second provider request PASS");
+    Ok(())
 }

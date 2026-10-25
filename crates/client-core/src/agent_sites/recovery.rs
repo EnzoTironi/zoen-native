@@ -1,5 +1,8 @@
 //! Continuation recovery validates existing effects; it cannot execute a call.
-use super::*;
+use super::{
+    invalid, is_model_name, json, model_name, parse, review, shared, stale, Client, Command,
+    Engine, SiteSnapshot, Value, R, SCHEMA,
+};
 impl Client {
     pub fn recover_site_tool_results(&self, request: &str, steps_json: &str) -> R<String> {
         if steps_json.len() > shared::CONTINUATION_LIMIT {

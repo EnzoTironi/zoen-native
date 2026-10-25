@@ -14,6 +14,7 @@ fn message(inquiry: &OwnerPolicyInquiry) -> Option<Vec<u8>> {
     message.extend_from_slice(&bytes);
     Some(message)
 }
+#[must_use]
 pub fn sign(author: &Author, inquiry: OwnerPolicyInquiry) -> Option<SignedOwnerPolicyInquiry> {
     if inquiry.owner != author.identity || author.device.as_deref() != Some(&author.key.id()) {
         return None;
@@ -26,6 +27,7 @@ pub fn sign(author: &Author, inquiry: OwnerPolicyInquiry) -> Option<SignedOwnerP
     };
     verify(&signed).then_some(signed)
 }
+#[must_use]
 pub fn verify(signed: &SignedOwnerPolicyInquiry) -> bool {
     message(&signed.inquiry).is_some_and(|message| {
         strict(
@@ -35,6 +37,7 @@ pub fn verify(signed: &SignedOwnerPolicyInquiry) -> bool {
         ) && strict(&signed.device, &message, &signed.signature)
     })
 }
+#[must_use]
 pub fn digest(inquiry: &OwnerPolicyInquiry) -> Option<String> {
     Some(hex::encode(Sha256::digest(message(inquiry)?)))
 }
@@ -45,12 +48,12 @@ mod tests {
     #[test]
     fn inquiry_binds_review_target_profile_nonce_and_certified_human(
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let root = crate::Signer::generate();
-        let author = Author::device(&root, crate::Signer::generate());
+        let root = crate::Signer::generate().unwrap();
+        let author = Author::device(&root, crate::Signer::generate().unwrap());
         let inquiry = OwnerPolicyInquiry {
             id: "inquiry_nonce".into(),
             owner: root.id(),
-            agent: crate::Signer::generate().id(),
+            agent: crate::Signer::generate().unwrap().id(),
             space: "space_1".into(),
             request: "rq_image_1".into(),
             content_hash: "11".repeat(32),
@@ -91,12 +94,12 @@ mod tests {
     fn explicit_account_inquiry_rejects_mixed_targets_and_preserves_image_wire(
     ) -> Result<(), Box<dyn std::error::Error>> {
         use types::owner_policy_context::OwnerPolicyInquiryPurpose;
-        let root = crate::Signer::generate();
-        let author = Author::device(&root, crate::Signer::generate());
+        let root = crate::Signer::generate().unwrap();
+        let author = Author::device(&root, crate::Signer::generate().unwrap());
         let image = OwnerPolicyInquiry {
             id: "legacy_image_query".into(),
             owner: root.id(),
-            agent: crate::Signer::generate().id(),
+            agent: crate::Signer::generate().unwrap().id(),
             space: "private_dm".into(),
             request: "image_request".into(),
             content_hash: "11".repeat(32),
@@ -131,7 +134,7 @@ mod tests {
             assert!(!mixed.valid_shape());
             assert!(sign(&author, mixed).is_none());
         }
-        let mut forged = signed.clone();
+        let mut forged = signed;
         forged.inquiry.purpose = None;
         assert!(!verify(&forged));
         let mut unknown = serde_json::to_value(&account)?;

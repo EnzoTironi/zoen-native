@@ -29,27 +29,35 @@ impl fmt::Debug for AcceptedReply {
 }
 
 impl AcceptedReply {
+    #[must_use]
     pub fn original(&self) -> &ReplyIntent {
         &self.original
     }
+    #[must_use]
     pub fn client_id(&self) -> &str {
         &self.client_id
     }
+    #[must_use]
     pub fn message(&self) -> &str {
         &self.message
     }
+    #[must_use]
     pub fn event_digest(&self) -> &str {
         &self.inner_digest
     }
+    #[must_use]
     pub fn reference_digest(&self) -> &str {
         &self.reference_digest
     }
+    #[must_use]
     pub fn publish_digest(&self) -> &str {
         &self.publish_digest
     }
+    #[must_use]
     pub fn accepted(&self) -> &Seen {
         &self.accepted
     }
+    #[must_use]
     pub fn image(&self) -> &NativeImage {
         &self.image
     }
@@ -77,30 +85,39 @@ impl fmt::Debug for NativeReceiptPrefix {
 }
 
 impl NativeReceiptPrefix {
+    #[must_use]
     pub fn original(&self) -> &ReplyIntent {
         &self.original
     }
+    #[must_use]
     pub fn client_id(&self) -> &str {
         &self.client_id
     }
+    #[must_use]
     pub fn message(&self) -> &str {
         &self.message
     }
+    #[must_use]
     pub fn event_digest(&self) -> &str {
         &self.inner_digest
     }
+    #[must_use]
     pub fn reference_digest(&self) -> &str {
         &self.reference_digest
     }
+    #[must_use]
     pub fn publish_digest(&self) -> &str {
         &self.publish_digest
     }
+    #[must_use]
     pub fn before(&self) -> &Seen {
         &self.before
     }
+    #[must_use]
     pub fn frontier(&self) -> &Seen {
         &self.frontier
     }
+    #[must_use]
     pub fn image(&self) -> &NativeImage {
         &self.image
     }
@@ -231,7 +248,7 @@ impl DeviceCore {
         {
             return Err(NativeError::History);
         } else {
-            Envelope::plain(pending)
+            Envelope::plain(pending).map_err(|_| NativeError::History)?
         };
         Ok(expected)
     }

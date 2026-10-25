@@ -1,5 +1,10 @@
 //! Grant, trust and budget evaluation; no storage authority changes.
-use super::*;
+use super::{
+    evaluate, month_key, new_id, not_found, now_ms, reason_label, standing_allow_permitted,
+    standing_key, t, tr, ts, ActionClass, AgentProfile, Budget, Capability, CoreError, Decision,
+    DecisionKind, DecisionPreview, Engine, EventBody, Grant, GrantScope, GrantState, IdentityKind,
+    Persona, PersonaKind, Reason, State, TrustLevel, R,
+};
 
 impl Engine {
     // ── consultas internas ──
@@ -192,7 +197,7 @@ impl Engine {
             });
         }
         let grant = Grant {
-            id: new_id("gr"),
+            id: new_id("gr")?,
             grantor: me.clone(),
             grantee: Some(agent.into()),
             scope: GrantScope::Space(space.into()),
@@ -224,7 +229,7 @@ impl Engine {
             .personal_space()
             .ok_or_else(|| not_found(&t("Espaço pessoal", "Personal space")))?;
         let grant = Grant {
-            id: new_id("gr"),
+            id: new_id("gr")?,
             grantor: me.clone(),
             grantee: Some(agent.into()),
             scope: GrantScope::Everywhere,

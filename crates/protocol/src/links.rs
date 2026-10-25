@@ -8,14 +8,17 @@
 
 pub const BASE: &str = "https://tryzoen.com";
 
+#[must_use]
 pub fn friend(handle: &str) -> String {
     format!("{BASE}/@{}", handle.trim().trim_start_matches('@'))
 }
 
+#[must_use]
 pub fn space(code: &str) -> String {
     format!("{BASE}/j/{code}")
 }
 
+#[must_use]
 pub fn agent(handle_or_code: &str) -> String {
     format!("{BASE}/a/{handle_or_code}")
 }

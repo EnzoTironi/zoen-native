@@ -121,7 +121,9 @@ impl Drop for Journey {
 }
 impl Journey {
     fn new() -> R<Self> {
-        let run = types::new_id("local").to_ascii_lowercase();
+        let run = types::new_id("local")
+            .map_err(|error| error.to_string())?
+            .to_ascii_lowercase();
         let owner_home = Home::new(&run, "owner")?;
         let host_home = Home::new(&run, "agent")?;
         let owner = owner_home.open()?;

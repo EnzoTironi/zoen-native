@@ -51,7 +51,8 @@ fn configuration(w: &World, agent: &str) -> serde_json::Value {
     })
 }
 #[test]
-fn dedicated_runtime_and_citizen_open_the_same_source_from_their_own_welcome() {
+fn dedicated_runtime_and_citizen_open_the_same_source_from_their_own_welcome(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     // SAFETY: this test owns the sole FDB network in this test executable;
     // both the Runtime authority and Tokio executor end before this guard.
     let network = unsafe { foundationdb::boot() };
@@ -164,8 +165,10 @@ fn dedicated_runtime_and_citizen_open_the_same_source_from_their_own_welcome() {
         assert!(!original_config.home.join("zoen.sqlite").exists());
         assert!(!vault.dir.join("zoen.identity.v1").exists());
         assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 0);
-        host_journey::run(&w, &path, &config, runtime, &space, &provider).await;
-    });
+        host_journey::run(&w, &path, &config, runtime, &space, &provider).await?;
+        Ok::<(), Box<dyn std::error::Error>>(())
+    })?;
     drop(executor);
     drop(network);
+    Ok(())
 }

@@ -1,6 +1,9 @@
 //! Explicit profile edits, photo preparation and block rotation.
 
-use super::*;
+use super::{
+    invalid, now_ms, t, Digest, Engine, IdentityId, MediaRef, PhotoChange, ProfileKey,
+    ProfilePhoto, Sha256, MAX_BIO, MAX_NAME, MAX_PHOTO_BYTES, R,
+};
 
 impl Engine {
     // ── editing ──
@@ -31,7 +34,7 @@ impl Engine {
                 PhotoChange::Keep => {}
                 PhotoChange::Remove => fields.photo = None,
                 PhotoChange::Set { bytes, mime } => {
-                    fields.photo = Some(self.profile_photo(&bytes, &mime)?)
+                    fields.photo = Some(self.profile_photo(&bytes, &mime)?);
                 }
             }
             self.store
@@ -118,7 +121,7 @@ impl Engine {
         let (_, _, version, fields) = self.my_fields(&me)?;
         let next = self.next_profile_version(version)?;
         self.store
-            .put_profile_key(&me, &ProfileKey::generate().to_hex(), next)?;
+            .put_profile_key(&me, &ProfileKey::generate()?.to_hex(), next)?;
         self.write_my_fields(&me, next, &fields)?;
         self.net.profiles.shares_dirty = true;
         self.net.wake();

@@ -1,4 +1,4 @@
-//! Explicit owner policy; the legacy MonthlyBudget projection cannot issue it.
+//! Explicit owner policy; the legacy `MonthlyBudget` projection cannot issue it.
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,6 +27,7 @@ pub struct SignedOwnerPolicy {
     pub signature: String,
 }
 
+#[must_use]
 pub fn digest_id(value: &str) -> bool {
     value.len() == 64
         && value
@@ -35,6 +36,7 @@ pub fn digest_id(value: &str) -> bool {
 }
 
 impl OwnerPeriodPolicy {
+    #[must_use]
     pub fn valid_shape(&self) -> bool {
         digest_id(&self.owner)
             && (2000..=2200).contains(&self.year)

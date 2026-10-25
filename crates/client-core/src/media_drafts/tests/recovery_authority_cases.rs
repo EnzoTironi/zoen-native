@@ -2,27 +2,37 @@
 
 use super::*;
 
-pub(super) fn media_contract_recovery_only_file_refuses_legacy_attachment_command() {
-    media_contract_recovery_command_refused("legacy");
+pub(super) fn media_contract_recovery_only_file_refuses_legacy_attachment_command(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    media_contract_recovery_command_refused("legacy")?;
+
+    Ok(())
 }
 
-pub(super) fn media_contract_recovery_only_file_refuses_new_version_before_writes() {
-    media_contract_recovery_command_refused("version");
+pub(super) fn media_contract_recovery_only_file_refuses_new_version_before_writes(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    media_contract_recovery_command_refused("version")?;
+
+    Ok(())
 }
 
-pub(super) fn media_contract_recovery_only_file_refuses_revert_command() {
-    media_contract_recovery_command_refused("revert");
+pub(super) fn media_contract_recovery_only_file_refuses_revert_command(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    media_contract_recovery_command_refused("revert")?;
+
+    Ok(())
 }
 
-pub(super) fn media_contract_recovery_only_file_refuses_signed_projection_and_ingest() {
-    for operation in ["legacy", "version", "revert"] {
-        let dir = temp();
+pub(super) fn media_contract_recovery_only_file_refuses_signed_projection_and_ingest(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Ok(for operation in ["legacy", "version", "revert"] {
+        let dir = temp()?;
         let path = dir.join("recovery-authority.sqlite");
-        let (f, item) = media_contract_recovered_writer_at(path.to_str().unwrap());
+        let (f, item) = media_contract_recovered_writer_at(path.to_str().unwrap())?;
         let content = f.engine.lock().state.items[&item].current().content.clone();
         let body = match operation {
             "legacy" => types::EventBody::MessagePosted {
-                message: types::new_id("msg"),
+                message: types::new_id("msg")?,
                 text: "signed remote recovery claim".into(),
                 attaches: Some(item.clone()),
                 media: None,
@@ -48,11 +58,11 @@ pub(super) fn media_contract_recovery_only_file_refuses_signed_projection_and_in
                 .unwrap()
                 .sign_event(
                     &f.scope.space_id,
-                    &types::new_id("remote"),
+                    &types::new_id("remote")?,
                     crate::engine::now_ms(),
                     engine.logs[&f.scope.space_id].head(),
                     body.clone(),
-                );
+                )?;
             event_log::verify_author(&event).unwrap();
             let context = crate::pages::PlanReplay::new(&engine.store, &engine.logs)
                 .local(&engine.state, &engine.identities, &event)
@@ -64,7 +74,7 @@ pub(super) fn media_contract_recovery_only_file_refuses_signed_projection_and_in
                 "signed {operation} gained authority in the recovery overlay"
             );
         }
-        media_contract_receive(&f, body, false);
+        media_contract_receive(&f, body, false)?;
         assert_eq!(f.engine.lock().state.items[&item].versions.len(), 1);
         assert!(!f
             .engine
@@ -91,11 +101,12 @@ pub(super) fn media_contract_recovery_only_file_refuses_signed_projection_and_in
         );
         drop(reopened);
         std::fs::remove_dir_all(dir).unwrap();
-    }
+    })
 }
 
-pub(super) fn media_contract_recovery_bytes_can_be_explicitly_copied_to_a_fresh_file() {
-    let (f, item) = media_contract_recovered_writer();
+pub(super) fn media_contract_recovery_bytes_can_be_explicitly_copied_to_a_fresh_file(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (f, item) = media_contract_recovered_writer()?;
     let bytes = f.engine.file_bytes(item.clone(), None).unwrap().unwrap();
     let copied = f
         .engine
@@ -120,10 +131,13 @@ pub(super) fn media_contract_recovery_bytes_can_be_explicitly_copied_to_a_fresh_
         )
         .unwrap();
     assert_eq!(f.engine.file_bytes(copied, None).unwrap(), Some(bytes));
+
+    Ok(())
 }
 
-pub(super) fn media_contract_recovery_reservation_yields_to_a_validated_file_creation() {
-    let (f, item) = media_contract_recovered_writer();
+pub(super) fn media_contract_recovery_reservation_yields_to_a_validated_file_creation(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (f, item) = media_contract_recovered_writer()?;
     let source = f
         .engine
         .lock()
@@ -139,13 +153,13 @@ pub(super) fn media_contract_recovery_reservation_yields_to_a_validated_file_cre
         event_log::verify_author(&source).unwrap();
         let event = engine.logs[&f.scope.space_id]
             .clone()
-            .sequence(source)
+            .sequence(source)?
             .clone();
         let _ = engine.ingest(protocol::Sequenced {
             seq: event.seq,
             prev: event.prev.clone(),
             hash: event.hash.clone(),
-            env: protocol::Envelope::plain(&event),
+            env: protocol::Envelope::plain(&event)?,
         });
     }
     assert!(!f.engine.lock().state.is_recovery_item(&item));
@@ -164,4 +178,6 @@ pub(super) fn media_contract_recovery_reservation_yields_to_a_validated_file_cre
         f.engine.file_bytes(item, None).unwrap(),
         Some(b"authorized after actual creation".to_vec())
     );
+
+    Ok(())
 }

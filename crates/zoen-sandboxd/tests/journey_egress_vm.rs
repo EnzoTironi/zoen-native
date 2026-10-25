@@ -135,7 +135,8 @@ async fn a_tool_in_a_microvm_uses_the_owners_key_over_https_without_ever_holding
         ])),
         Arc::new(Vault),
         cards.clone(),
-    );
+    )
+    .unwrap();
     let p = FirecrackerProvider::new(cfg, Some(egress.clone()));
 
     let mut spec = spec("tool.invoice-sync", 2, 256);
@@ -238,7 +239,10 @@ async fn a_tool_in_a_microvm_uses_the_owners_key_over_https_without_ever_holding
     let card = cards.lock_last();
     assert_eq!(card.agent, "id_agent");
     assert_eq!(card.title, "Permitir acesso a docs.billing.test");
-    let _ = egress.approve(&card.id, ApprovalScope::Once);
+    assert!(egress
+        .approve(&card.id, ApprovalScope::Once)
+        .unwrap()
+        .is_none());
     assert_eq!(
         p.exec(&l, sh(code.clone())).await.unwrap().stdout_str(),
         "200"
@@ -247,7 +251,10 @@ async fn a_tool_in_a_microvm_uses_the_owners_key_over_https_without_ever_holding
 
     // 5. The key can't be sent anywhere else, even to an approved host.
     let card = cards.lock_last();
-    let _ = egress.approve(&card.id, ApprovalScope::Task);
+    assert!(egress
+        .approve(&card.id, ApprovalScope::Task)
+        .unwrap()
+        .is_none());
     let o = p
         .exec(
             &l,
@@ -281,13 +288,13 @@ async fn a_tool_in_a_microvm_uses_the_owners_key_over_https_without_ever_holding
     assert_ne!(o.stdout_str().trim(), "rc=0");
 
     // 7. The log knows who went where, and nothing else.
-    let log = serde_json::to_string(&egress.log()).unwrap();
+    let log = serde_json::to_string(&egress.log().unwrap()).unwrap();
     assert!(log.contains("api.billing.test") && log.contains(&l.id));
     assert!(!log.contains(KEY) && !log.contains("/v1/invoices") && !log.contains("zoen-secret"));
 
     // 8. End of task: the lease, its CA and its route are gone.
     p.release(l.clone()).await.unwrap();
-    assert!(egress.lease_ca_pem(&l.id).is_none());
+    assert!(egress.lease_ca_pem(&l.id).unwrap().is_none());
 }
 
 trait LastCard {
