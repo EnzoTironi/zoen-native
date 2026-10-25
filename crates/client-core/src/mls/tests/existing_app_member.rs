@@ -158,7 +158,7 @@ fn late_word_mode(owner_path: &str, agent_path: &str, legacy: bool) -> R<LateWor
         .author
         .clone()
         .ok_or_else(|| storage("fixture needs the Agent device author"))?;
-    add_member(&mut owner, &author, SPACE, &agent_author);
+    add_member(&mut owner, &author, SPACE, &agent_author).map_err(storage)?;
     let added = owner.logs[SPACE]
         .events()
         .last()

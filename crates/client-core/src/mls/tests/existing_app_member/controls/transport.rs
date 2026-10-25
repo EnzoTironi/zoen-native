@@ -86,7 +86,7 @@ fn changed_audience_before_sealing(already_sealed: bool) -> R<()> {
 
     // Normal membership + genuine KeyPackage/Commit/Welcome arrive before this
     // retained intent is sent. Handshakes pass waiting application rows normally.
-    add_member(&mut owner, &author, SPACE, &newcomer_author);
+    add_member(&mut owner, &author, SPACE, &newcomer_author).map_err(storage)?;
     let added = owner.logs[SPACE]
         .events()
         .last()

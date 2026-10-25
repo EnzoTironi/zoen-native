@@ -195,7 +195,8 @@ fn scoped_owned_picker_is_read_only_for_member_and_direct_without_making_direct_
             identity: identity.clone(),
             role: types::Role::Member,
         },
-    );
+    )
+    .map_err(storage)?;
     assert!(f
         .owner
         .member_candidates_mode(SPACE, "", &identity, &device, false)
@@ -242,7 +243,8 @@ fn missing_owned_agent_disclosed_send_has_closed_conflict_without_share_or_reque
         &author,
         SPACE,
         EventBody::MemberRemoved { identity: id },
-    );
+    )
+    .map_err(storage)?;
     let before = counts(&f.owner);
     assert!(matches!(
         f.owner.app_edit_conflict_kind(&command),

@@ -84,7 +84,7 @@ fn exercise(change: Change) -> R<()> {
         .author
         .clone()
         .ok_or_else(|| storage("agent author"))?;
-    add_member(&mut owner, &author, ROOM, &aa);
+    add_member(&mut owner, &author, ROOM, &aa).map_err(storage)?;
     let e = owner.logs[ROOM]
         .events()
         .last()

@@ -324,7 +324,7 @@ fn canonical_removal_and_writer_downgrade_refuse_new_sharing_but_target_removal_
                 role: types::Role::Reader,
             }
         };
-        ingest_signed(&mut f.owner, &author, SPACE, body);
+        ingest_signed(&mut f.owner, &author, SPACE, body).map_err(storage)?;
         let before = counts(&f.owner);
         assert!(context(&f).is_err());
         if case == "target" {

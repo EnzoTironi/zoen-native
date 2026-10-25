@@ -42,7 +42,7 @@ fn foreign_word(f: &mut LateWord, partial: bool) -> R<crate::AppBinaryDocumentDt
         .author
         .clone()
         .ok_or_else(|| storage("agent author"))?;
-    add_member(&mut f.owner, &owner_author, OTHER, &agent_author);
+    add_member(&mut f.owner, &owner_author, OTHER, &agent_author).map_err(storage)?;
     let added = f.owner.logs[OTHER]
         .events()
         .last()

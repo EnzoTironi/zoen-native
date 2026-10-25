@@ -146,7 +146,8 @@ fn confirmed_non_e2e_members_are_ready_without_an_mls_group(
                 kind: SpaceKind::Group,
                 privacy,
             },
-        );
+        )
+        .map_err(storage)?;
         owner.store.set_synced(space)?;
         owner.net.synced.insert(space.into());
         let account = owner.net.account.clone().ok_or("missing account")?;
