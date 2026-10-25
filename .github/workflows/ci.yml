@@ -237,6 +237,19 @@ jobs:
           cargo test --locked -p client-core --lib agent_binary_documents::tool_approvals::tests::json_order
           cargo test --locked -p client-core --lib --features serde_json/preserve_order,serde_json/float_roundtrip,serde_json/raw_value agent_binary_documents::tool_approvals::tests::json_order
 
+      # This test owns its FDB network and uses the already provisioned real
+      # PG/FDB/NATS. The ordinary workspace run intentionally leaves it ignored.
+      - name: Final encrypted event after actual publisher queue refusal
+        if: matrix.shard == 'workspace'
+        run: |
+          evidence_root="$(mktemp -d "$RUNNER_TEMP/zoen-publisher-recovery.XXXXXX")"
+          export ZOEN_PUBLISHER_RECOVERY_EVIDENCE_DIR="$evidence_root/witness"
+          cargo test --locked -p zoen-relay --lib \
+            fanout::nats::recovery::actual_publisher_queue_refusal_recovers_final_mls_event_on_the_same_native_socket \
+            -- --ignored --exact --test-threads=1
+          # Also fail if an exact test name drifts and Cargo runs zero tests.
+          test -f "$ZOEN_PUBLISHER_RECOVERY_EVIDENCE_DIR/result.json"
+
       - name: Prepare safe synthetic Sync diagnostics
         env:
           ZOEN_SYNC_DIAGNOSTIC_DIR: ${{ runner.temp }}/zoen-sync-diagnostics

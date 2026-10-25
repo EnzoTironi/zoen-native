@@ -50,18 +50,18 @@ pub struct Record {
     pub kind: Kind,
 }
 
-struct Selector {
-    space: String,
-    author: String,
-    text: String,
-    consumed: bool,
+pub(super) struct Selector {
+    pub(super) space: String,
+    pub(super) author: String,
+    pub(super) text: String,
+    pub(super) consumed: bool,
 }
 
-struct State {
+pub(super) struct State {
     born: Instant,
     connections: u64,
-    selector: Option<Selector>,
-    records: Vec<Record>,
+    pub(super) selector: Option<Selector>,
+    pub(super) records: Vec<Record>,
 }
 
 impl State {
@@ -78,7 +78,7 @@ impl State {
 
 pub struct FinalEventProxy {
     pub url: String,
-    state: Arc<Mutex<State>>,
+    pub(super) state: Arc<Mutex<State>>,
     evidence: PathBuf,
     task: JoinHandle<()>,
 }
@@ -114,21 +114,6 @@ impl FinalEventProxy {
             evidence,
             task,
         }
-    }
-
-    /// Unique synthetic plaintext selector avoids a race with send_message's automatic poke.
-    /// Once consumed, the selected signed client_id/seq/hash are captured in the trace.
-    pub fn arm(&self, space: &str, author: &str, text: &str) -> usize {
-        let mut state = self.state.lock().unwrap();
-        assert!(state.selector.is_none(), "one exact fault per test");
-        let checkpoint = state.records.len();
-        state.selector = Some(Selector {
-            space: space.into(),
-            author: author.into(),
-            text: text.into(),
-            consumed: false,
-        });
-        checkpoint
     }
 
     pub fn snapshot(&self) -> Vec<Record> {
