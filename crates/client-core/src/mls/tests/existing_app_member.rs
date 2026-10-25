@@ -119,7 +119,20 @@ fn late_word_mode(owner_path: &str, agent_path: &str, legacy: bool) -> R<LateWor
             row.event.seen.clone(),
             body,
         );
-        owner.store.outbox_put(&old)?;
+        // outbox_put is intentionally insert-only. Install these re-signed old
+        // producer bytes in this private, not-yet-published row without changing
+        // its FIFO position or any canonical/MLS state.
+        owner
+            .store
+            .conn()
+            .execute(
+                "UPDATE outbox SET json=?1 WHERE client_id=?2",
+                rusqlite::params![
+                    serde_json::to_string(&old).map_err(|e| storage(&e.to_string()))?,
+                    old.client_id
+                ],
+            )
+            .map_err(|e| storage(&e.to_string()))?;
         owner.reproject_approval_overlay()?;
     }
     let original_root = owner
