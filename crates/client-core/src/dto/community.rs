@@ -24,8 +24,13 @@ pub struct SpaceMemberContext {
     pub can_remove: bool,
     pub can_manage_members: bool,
     pub can_add: bool,
-    /// Confirmed role plus this device's actual E2E group roster. For a
-    /// non-E2E conversation the confirmed role suffices; no history is implied.
+    /// Verified Agent owner proof for this observed local actor, not is_mine UI.
+    #[uniffi(default = false)]
+    #[serde(default)]
+    pub owned_agent: bool,
+    /// Current member and actual MLS reader when encrypted; never online status.
+    #[uniffi(default = false)]
+    #[serde(default)]
     pub delivery_ready: bool,
     /// Known profile for an absent participant; never a membership receipt.
     pub candidate: Option<Persona>,

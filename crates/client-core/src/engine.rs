@@ -224,6 +224,8 @@ pub(crate) struct ItemState {
     pub kind: ItemKind,
     pub origin: String,
     pub versions: Vec<Version>,
+    /// Derived from one accepted share; earlier plaintext remains unavailable.
+    pub shared: Option<crate::app_current_share::SharedOrigin>,
     /// Derived only while applying accepted content, including replay. A MIME or
     /// path change must not turn an earlier voice recording into recent music.
     pub has_voice_history: bool,

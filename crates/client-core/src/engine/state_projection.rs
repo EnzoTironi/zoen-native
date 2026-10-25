@@ -50,6 +50,9 @@ impl State {
             at_ms: e.at_ms,
             body,
         };
+        if let EventBody::AppCurrentShared { share } = &e.body {
+            return self.apply_app_current_share(e, share, identities, context);
+        }
         match &e.body {
             EventBody::SpaceCreated {
                 title,
@@ -226,7 +229,9 @@ impl State {
                 note,
             } => {
                 if let Some(it) = self.items.get_mut(item) {
-                    let number = it.versions.len() as u32 + 1;
+                    let Some(number) = it.current().number.checked_add(1) else {
+                        return Projection::Refused;
+                    };
                     let content =
                         crate::apps::reconcile_concurrent(&it.current().content, content, e.at_ms)
                             .unwrap_or_else(|| content.clone());
@@ -263,7 +268,9 @@ impl State {
                         .find(|v| v.number == *to_version)
                         .cloned()
                     {
-                        let number = it.versions.len() as u32 + 1;
+                        let Some(number) = it.current().number.checked_add(1) else {
+                            return Projection::Refused;
+                        };
                         it.has_voice_history |=
                             matches!(&target.content, ItemContent::File(file) if file.is_voice());
                         it.versions.push(Version {
@@ -286,11 +293,7 @@ impl State {
                 }
             }
             EventBody::GrantIssued { grant } => {
-                self.grants.push(GrantState {
-                    grant: grant.clone(),
-                    at_ms: e.at_ms,
-                    revoked: false,
-                });
+                self.apply_issued_grant(e, grant);
             }
             EventBody::GrantRevoked { grant } => {
                 for g in self
@@ -393,7 +396,8 @@ impl State {
             | EventBody::Checkpoint { .. }
             | EventBody::DeviceJoining { .. }
             | EventBody::Sealed { .. }
-            | EventBody::Unsupported { .. } => {}
+            | EventBody::Unsupported { .. }
+            | EventBody::AppCurrentShared { .. } => {}
         }
         match &e.body {
             EventBody::ItemCreated {

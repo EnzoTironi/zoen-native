@@ -3,6 +3,35 @@
 use super::*;
 
 impl State {
+    pub(crate) fn grant_issuer_allowed(
+        &self,
+        e: &Event,
+        grant: &Grant,
+        identities: &HashMap<IdentityId, Identity>,
+    ) -> bool {
+        grant.grantor == e.author
+            && self.writer(&e.space, &e.author)
+            && !self.grants.iter().any(|g| g.grant.id == grant.id)
+            && !grant.id.starts_with("gr_app_")
+            && !grant.id.starts_with("gr_standing_")
+            && !matches!(grant.capability, Capability::MonthlyBudget { cents } if cents < 0)
+            && grant
+                .grantee
+                .as_ref()
+                .and_then(|id| identities.get(id))
+                .is_none_or(|agent| {
+                    agent.kind != IdentityKind::Agent
+                        || agent.owner.as_deref() == Some(e.author.as_str())
+                })
+    }
+
+    pub(crate) fn apply_issued_grant(&mut self, e: &Event, grant: &Grant) {
+        self.grants.push(GrantState {
+            grant: grant.clone(),
+            at_ms: e.at_ms,
+            revoked: false,
+        });
+    }
     /// Replay and live ingestion use the same authorization checks as local decisions.
     /// A signed but unauthorized event remains in the verified chain without changing
     /// an approval, output or usage projection.
@@ -85,21 +114,8 @@ impl State {
                     })
             }
             EventBody::GrantIssued { grant } => {
-                if grant.grantor != e.author
-                    || !self.writer(&e.space, &e.author)
-                    || self.grants.iter().any(|g| g.grant.id == grant.id)
-                    || grant.id.starts_with("gr_app_")
-                    || grant.id.starts_with("gr_standing_")
-                    || matches!(grant.capability, Capability::MonthlyBudget { cents } if cents < 0)
-                {
+                if !self.grant_issuer_allowed(e, grant, identities) {
                     return false;
-                }
-                if let Some(agent) = grant.grantee.as_ref().and_then(|id| identities.get(id)) {
-                    if agent.kind == IdentityKind::Agent
-                        && agent.owner.as_deref() != Some(e.author.as_str())
-                    {
-                        return false;
-                    }
                 }
                 match &grant.scope {
                     GrantScope::Space(space) => space == &e.space,
@@ -293,6 +309,7 @@ impl State {
                             note: t("Criado", "Created"),
                             is_undo: false,
                         }],
+                        shared: None,
                     },
                 );
                 if p.kind == ItemKind::App {

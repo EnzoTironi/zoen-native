@@ -105,6 +105,8 @@ impl Engine {
         };
         let person =
             (target_role.is_some() || projected(member).is_some()).then(|| self.persona(member));
+        // Preserve AAC633: confirmed roles plus the real roster, for humans
+        // and Readers too. Owner proof and write authority are separate facts.
         let delivery_ready = target_role.is_some()
             && (!self.is_e2e(space)
                 || self
@@ -163,6 +165,7 @@ impl Engine {
         } else {
             None
         };
+        let owned_agent = self.verified_owned_agent(member, identity);
         let review = serde_json::to_vec(&(
             space,
             &room.title,
@@ -176,6 +179,7 @@ impl Engine {
             failure,
             addition_failure,
             delivery_ready,
+            owned_agent,
             candidate
                 .as_ref()
                 .map(|p| (&p.name, &p.handle, &p.kind, &p.owner_id)),
@@ -200,6 +204,7 @@ impl Engine {
             can_remove,
             can_manage_members,
             can_add,
+            owned_agent,
             delivery_ready,
             candidate,
             addition_failed: addition_failure.is_some(),

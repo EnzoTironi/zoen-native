@@ -66,8 +66,34 @@ impl Engine {
             title: snapshot
                 .as_ref()
                 .map_or_else(|| v.content.title(), |plan| plan.document.title.clone()),
-            origin: it.origin.clone(),
-            created_by: self.persona(&it.versions[0].author),
+            origin: it
+                .shared
+                .as_ref()
+                .and_then(|shared| {
+                    self.state
+                        .spaces
+                        .get(&it.space)
+                        .and_then(|space| space.entries.iter().find(|e| e.id() == shared.event))
+                })
+                .map_or_else(
+                    || it.origin.clone(),
+                    |entry| {
+                        format!(
+                            "{} {}",
+                            t(
+                                "Versão atual compartilhada por",
+                                "Current version shared by"
+                            ),
+                            self.persona(&entry.author).name
+                        )
+                    },
+                ),
+            // A current-state share does not reveal/prove the original creator.
+            created_by: self.persona(if it.shared.is_some() {
+                ""
+            } else {
+                &it.versions[0].author
+            }),
             plan,
             text,
             version: snapshot.as_ref().map_or(v.number, |plan| plan.version),

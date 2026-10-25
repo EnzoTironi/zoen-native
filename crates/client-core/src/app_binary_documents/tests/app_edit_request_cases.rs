@@ -54,6 +54,7 @@ fn input(f: &Fixture, base: &AppBinaryDocumentDto, id: &str) -> R<AppEditRequest
         expected_sha256: base.sha256.clone(),
         text: "  Make the title bold  ".into(),
         mutation_id: id.into(),
+        share_current: false,
     })
 }
 fn post(f: &Fixture, base: &AppBinaryDocumentDto, id: &str) -> R<crate::TimelineEntry> {
