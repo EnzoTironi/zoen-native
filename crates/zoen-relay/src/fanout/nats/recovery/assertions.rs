@@ -25,9 +25,11 @@ pub(super) fn healthy_socket(records: &[Record], connection: u64) {
     for record in records {
         assert_eq!(record.connection, connection);
         match &record.kind {
-            Kind::Close | Kind::TransportError(_) | Kind::RelayError(_) => {
+            Kind::Close => {
                 panic!("receiver socket changed or failed: {records:#?}");
             }
+            Kind::TransportError(error) => panic!("receiver transport failed: {error}"),
+            Kind::RelayError(error) => panic!("receiver relay refused a frame: {error}"),
             _ => {}
         }
     }
@@ -74,11 +76,17 @@ pub(super) fn recovered_wire(
         matches!(&received[0].kind, Kind::Event { space: s, id, seq, hash, dropped: false }
         if s == space && id == refused.env.client_id() && *seq == refused.seq && hash == &refused.hash)
     );
+    let recovery_triggers: Vec<_> = after
+        .iter()
+        .filter_map(|record| match &record.kind {
+            Kind::Publish => Some("receiver Publish".to_owned()),
+            Kind::Joined(space) => Some(format!("receiver Joined {space}")),
+            _ => None,
+        })
+        .collect();
     assert!(
-        !after
-            .iter()
-            .any(|r| matches!(r.kind, Kind::Publish | Kind::Joined(_))),
-        "receiver content/membership cannot provoke recovery"
+        recovery_triggers.is_empty(),
+        "recovery must be autonomous: {recovery_triggers:?}"
     );
 }
 

@@ -95,7 +95,6 @@ pub(super) struct World {
     pub a: Node,
     pub b: Node,
     pub log: crate::log::fdb::FdbLog,
-    pub cell: String,
     database: String,
     admin: PgConnection,
 }
@@ -148,7 +147,6 @@ impl World {
             a,
             b,
             log,
-            cell,
             database,
             admin,
         }

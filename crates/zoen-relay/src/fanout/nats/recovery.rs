@@ -171,6 +171,14 @@ async fn run() {
     assert!(!heartbeat[checkpoint..]
         .iter()
         .any(|r| matches!(r.kind, Kind::Event { .. } | Kind::Sync { .. })));
+    assert!(
+        !heartbeat[checkpoint..]
+            .iter()
+            .any(|record| matches!(&record.kind,
+            Kind::Delivered { space: delivered_space, seq }
+            if delivered_space == &space && *seq >= refused.seq)),
+        "native peer cannot acknowledge the final event while it remains absent"
+    );
     let recovered = proxy
         .until(
             Duration::from_secs(75),
@@ -199,6 +207,13 @@ async fn run() {
         &space,
         &refused,
     );
+    let recovered_at_ms = recovered
+        .iter()
+        .find_map(|record| match &record.kind {
+            Kind::Event { id, .. } if id == &sent.id => Some(record.elapsed_ms),
+            _ => None,
+        })
+        .unwrap();
     assert_eq!(
         world.events(&space).await,
         canonical,
@@ -237,6 +252,7 @@ async fn run() {
             "same_native_socket":connection, "final_cid":sent.id, "final_seq":refused.seq,
             "wire_hash":refused.env.wire_hash(), "canonical_hash":refused.hash,
             "same_signed_ciphertext_frame_in_fdb":true, "cold_exact_once":true,
+            "final_event_observed_ms_since_proxy_start":recovered_at_ms,
             "new_durable_events_after_target":0, "production_repair_seconds":60
         }))
         .unwrap(),
