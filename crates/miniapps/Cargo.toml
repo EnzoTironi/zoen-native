@@ -20,3 +20,6 @@ chrono-tz = { version = "0.10", default-features = false, features = ["std"] }
 
 zip = { version = "=8.6.0", default-features = false, features = ["deflate"] }
 quick-xml = "=0.41.0"
+# Structural PDF inspection only: upstream COS/filter/security layers, no UI,
+# raster/image decoder, document JavaScript interpreter or separate PDF model.
+pdfcraft-cos = { git = "https://github.com/storytold/pdfcraft", rev = "d445410807e7eefbe5b96f9662ab963ae8dd2a3a" }

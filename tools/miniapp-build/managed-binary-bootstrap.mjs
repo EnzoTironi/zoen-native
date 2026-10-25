@@ -5,11 +5,17 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 export async function buildManagedBinaryBootstrap(editor, outputDir, check = false) {
-  if (!["deckcraft", "gridcraft", "wordcraft", "photocraft"].includes(editor))
+  if (!["deckcraft", "gridcraft", "wordcraft", "photocraft", "pdfcraft"].includes(editor))
     throw Error("Unsupported binary App");
   if (editor !== "deckcraft" && !outputDir)
     throw Error("This editor requires an explicit build directory");
-  const title = { deckcraft: "Presentation", gridcraft: "Workbook", wordcraft: "Document", photocraft: "Image" }[editor];
+  const title = {
+    deckcraft: "Presentation",
+    gridcraft: "Workbook",
+    wordcraft: "Document",
+    photocraft: "Image",
+    pdfcraft: "PDF",
+  }[editor];
   const result = await build({
     absWorkingDir: root,
     entryPoints: [`miniapps/${editor}-ui/src/mcp-app.ts`],
@@ -81,6 +87,17 @@ export async function buildManagedBinaryBootstrap(editor, outputDir, check = fal
       : {
           [`${editor}.html`]: html,
           [`${editor}-bootstrap.manifest.json`]: `${JSON.stringify(manifest, null, 2)}\n`,
+          // Endpoint-neutral defaults stay unavailable until an operator binds
+          // the actual sealed runtime with buildBinaryResourceManifest.
+          [`${editor}.manifest.json`]: `${JSON.stringify({
+            id: editor, name: {
+              gridcraft: "GridCraft", wordcraft: "WordCraft", photocraft: "PhotoCraft", pdfcraft: "PdfCraft",
+            }[editor], resourceUri: manifest.resourceUri,
+            mimeType: "text/html;profile=mcp-app", capabilities: [], allowedDomains: [],
+            linkDomains: [], networkPurpose: "", permissions: {},
+            csp: { connectDomains: [], resourceDomains: [], frameDomains: [], baseUriDomains: [] },
+            sha256: manifest.sha256, bytes: manifest.bytes,
+          }, null, 2)}\n`,
           "BOOTSTRAP-LICENSES.txt": notices,
         };
   if (editor === "deckcraft") {

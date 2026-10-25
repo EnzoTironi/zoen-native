@@ -15,6 +15,31 @@ pub const DOCUMENT_LIMIT: usize = 512 * 1024;
 pub const METADATA_LIMIT: usize = 64 * 1024;
 pub const ENGINE_REVISION: &str = "a31b990d32f2c8562f1588562f922960c3fde48b";
 pub const WORKER_ID: &str = "deckcraft-canonical-v1";
+// The fixed deployment allowlist is also the composition bound. Adding an App
+// cannot accidentally leave a stale numeric ceiling on the shared worker set.
+const WORKERS: &[(&str, &str, &str)] = &[
+    ("deckcraft", WORKER_ID, ENGINE_REVISION),
+    (
+        "gridcraft",
+        "gridcraft-canonical-v1",
+        "b8771d51fb4da60bd48c13cf313d6d6014dc5e66",
+    ),
+    (
+        "wordcraft",
+        "wordcraft-canonical-v1",
+        "d1b0bfc3f9dd83126b162a42b667facecb003b7f",
+    ),
+    (
+        "photocraft",
+        "photocraft-canonical-v1",
+        "9b9643764f3fb77d9f0e48d7510983ae50621e11",
+    ),
+    (
+        "pdfcraft",
+        "pdfcraft-canonical-v1",
+        "d445410807e7eefbe5b96f9662ab963ae8dd2a3a",
+    ),
+];
 pub struct DeckcraftWorker {
     primary: Worker,
     companions: Vec<Worker>,
@@ -66,25 +91,10 @@ impl DeckcraftWorker {
         component: &[u8],
         cache: Option<&CompilationCache>,
     ) -> Result<Self, String> {
-        let (app, id, revision) = match app {
-            "deckcraft" => ("deckcraft", WORKER_ID, ENGINE_REVISION),
-            "gridcraft" => (
-                "gridcraft",
-                "gridcraft-canonical-v1",
-                "b8771d51fb4da60bd48c13cf313d6d6014dc5e66",
-            ),
-            "wordcraft" => (
-                "wordcraft",
-                "wordcraft-canonical-v1",
-                "d1b0bfc3f9dd83126b162a42b667facecb003b7f",
-            ),
-            "photocraft" => (
-                "photocraft",
-                "photocraft-canonical-v1",
-                "9b9643764f3fb77d9f0e48d7510983ae50621e11",
-            ),
-            _ => return Err("Unsupported binary App worker".into()),
-        };
+        let &(app, id, revision) = WORKERS
+            .iter()
+            .find(|(name, _, _)| *name == app)
+            .ok_or("Unsupported binary App worker")?;
         let spec = manifest.verify(&trusted).map_err(|e| e.to_string())?;
         if spec.id != id
             || spec.version != revision
@@ -119,7 +129,7 @@ impl DeckcraftWorker {
     }
     pub fn combine(mut self, other: Self) -> Result<Self, String> {
         let incoming = std::iter::once(&other.primary).chain(&other.companions);
-        if self.companions.len() + other.companions.len() + 2 > 4
+        if self.companions.len() + other.companions.len() + 2 > WORKERS.len()
             || incoming
                 .clone()
                 .any(|worker| self.select(worker.app).is_ok())

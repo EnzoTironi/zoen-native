@@ -176,6 +176,7 @@ pub(crate) fn mutation_id(p: &ToolProposal, intent: &str) -> String {
         Some(binary::Format::Gridcraft) => "gridcmd",
         Some(binary::Format::Wordcraft) => "wordcmd",
         Some(binary::Format::Photocraft) => "photocmd",
+        Some(binary::Format::Pdfcraft) => "pdfcmd",
         _ => "deckcmd",
     };
     format!("{prefix}_{intent}")
@@ -190,6 +191,9 @@ pub(crate) fn operation(tool: &str) -> String {
         "read_page" => t("Ler página", "Read Page"),
         "create_gridcraft" => t("Criar planilha", "Create spreadsheet"),
         "create_photocraft" => t("Criar imagem", "Create image"),
+        "create_pdfcraft" => t("Criar PDF", "Create PDF"),
+        "read_pdfcraft" => t("Ler PDF", "Read PDF"),
+        "pdfcraft_edit" => t("Editar PDF", "Edit PDF"),
         "read_photocraft" => t("Ler imagem", "Read image"),
         "photocraft_transform" => t("Transformar imagem", "Transform image"),
         "create_wordcraft" => t("Criar documento", "Create document"),
@@ -222,7 +226,8 @@ pub(crate) fn review_detail(p: &ToolProposal, title: &str) -> String {
             crate::i18n::t("Depois", "After"),
             args["after"]["text"].as_str().unwrap_or_default()
         ),
-        "read_deckcraft" | "read_gridcraft" | "read_wordcraft" | "read_photocraft" => heading,
+        "read_deckcraft" | "read_gridcraft" | "read_wordcraft" | "read_photocraft"
+        | "read_pdfcraft" => heading,
         "wordcraft_edit_range" | "wordcraft_format_range" => format!(
             "{}\n{}:{} → {}:{}\n{}",
             heading,
@@ -241,6 +246,7 @@ pub(crate) fn review_detail(p: &ToolProposal, title: &str) -> String {
             heading,
             args["action"].as_str().unwrap_or_default()
         ),
+        "pdfcraft_edit" => format!("{}\n{}", heading, args["action"]),
         "gridcraft_cell_set" => format!(
             "{}\n{}!{}\n{}",
             heading,

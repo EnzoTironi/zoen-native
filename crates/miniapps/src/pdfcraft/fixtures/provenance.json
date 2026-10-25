@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "upstream": "https://github.com/storytold/pdfcraft",
+  "revision": "d445410807e7eefbe5b96f9662ab963ae8dd2a3a",
+  "authorship": "Contributor-authored synthetic review created by real pdfcraft-create/COS writer; no user data or external assets.",
+  "sourceRecipe": "miniapps/pdfcraft-ui/inspection/src/fixture.rs",
+  "rotationRecipe": "crates/zoen-agentd/examples/pdfcraft_component_check.rs",
+  "execution": "Real WasmTier with wasm32-wasip2 component; baseline operation envelope is deliberately RED, generated PDF independently checked.",
+  "componentSha256": "92c61dfeebddeb44dbc892f06a1644d5f6623edcbe446319238136f2b6e22371",
+  "files": {
+    "actual-source.pdf": {
+      "bytes": 1188,
+      "sha256": "ce44b249ced07b484e00ae3c979de739b955ffb68484092984b171c0d4bedea6"
+    },
+    "actual-wasi-rotated.pdf": {
+      "bytes": 1614,
+      "sha256": "07a276ec4dca95882553325e4053c73bb0c0ffd20960dc2e32ed08d4cf3df3e5"
+    }
+  }
+}

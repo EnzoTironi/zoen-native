@@ -17,6 +17,8 @@ pub use execution::ApprovedAppCreation;
 #[cfg(test)]
 mod gridcraft_tests;
 #[cfg(test)]
+mod pdfcraft_tests;
+#[cfg(test)]
 mod photocraft_tests;
 mod recovery;
 mod staging;
@@ -29,12 +31,14 @@ pub const TOOL: &str = "create_deckcraft";
 pub const GRID_TOOL: &str = "create_gridcraft";
 pub const WORD_TOOL: &str = "create_wordcraft";
 pub const PHOTO_TOOL: &str = "create_photocraft";
+pub const PDF_TOOL: &str = "create_pdfcraft";
 pub fn creation_format(tool: &str) -> Option<Format> {
     match tool {
         TOOL => Some(Format::Deckcraft),
         GRID_TOOL => Some(Format::Gridcraft),
         WORD_TOOL => Some(Format::Wordcraft),
         PHOTO_TOOL => Some(Format::Photocraft),
+        PDF_TOOL => Some(Format::Pdfcraft),
         _ => None,
     }
 }
@@ -101,6 +105,7 @@ fn definition_unchecked(space: &str) -> Option<Value> {
 }
 fn definition_unchecked_for(tool: &str, space: &str) -> Option<Value> {
     let description=match creation_format(tool)? {
+        Format::Pdfcraft=>"Create one shared editable PDF in this conversation. Call alone and wait for the owner's exact review before requesting its PDF tools. Does not replace an existing document.",
         Format::Photocraft=>"Create one shared editable raster image in this conversation. Call alone and wait for the owner's exact review before requesting its image tools. Does not replace an existing image.",
         Format::Wordcraft=>"Create one shared editable plain-text document in this conversation. Call alone and wait for the owner's exact review before requesting its document tools. Does not replace an existing document.",
         Format::Deckcraft=>"Create one shared editable presentation in this conversation. Call alone and wait for the owner's exact review before requesting its document tools. Does not replace an existing document.",

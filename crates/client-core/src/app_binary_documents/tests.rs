@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use types::Role;
 mod app_edit_request_cases;
 mod gridcraft_cases;
+mod pdfcraft_cases;
 mod photocraft_cases;
 mod wordcraft_cases;
 const ORIGINAL: &[u8] = include_bytes!("fixtures/original.deckcraft");

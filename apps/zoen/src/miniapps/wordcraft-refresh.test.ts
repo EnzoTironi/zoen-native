@@ -13,7 +13,7 @@ import { hash } from './canonical-scene.ts';
 
 // SDK orchestration only. Actual Session/Undo/pixels are tested in each engine adapter.
 async function refreshFixture(
-  editor: 'wordcraft' | 'photocraft',
+  editor: 'wordcraft' | 'photocraft' | 'pdfcraft',
   original: Uint8Array,
   changed: Uint8Array,
 ) {
@@ -131,17 +131,21 @@ async function refreshFixture(
   };
 }
 
-for (const editor of ['wordcraft', 'photocraft'] as const) {
+for (const editor of ['wordcraft', 'photocraft', 'pdfcraft'] as const) {
   const read = (path: string) => new Uint8Array(readFileSync(new URL(path, import.meta.url)));
   const original = read(
     editor === 'wordcraft'
       ? '../../../../crates/miniapps/resources/wordcraft-empty.docx'
-      : '../../../../crates/miniapps/src/photocraft/fixtures/native-asymmetric.pcraft',
+      : editor === 'photocraft'
+        ? '../../../../crates/miniapps/src/photocraft/fixtures/native-asymmetric.pcraft'
+        : '../../../../crates/miniapps/src/pdfcraft/fixtures/actual-source.pdf',
   );
   const changed = read(
     editor === 'wordcraft'
       ? '../../../../crates/miniapps/src/wordcraft/fixtures/actual-special.docx'
-      : '../../../../crates/miniapps/src/photocraft/fixtures/native-rotated.pcraft',
+      : editor === 'photocraft'
+        ? '../../../../crates/miniapps/src/photocraft/fixtures/native-rotated.pcraft'
+        : '../../../../crates/miniapps/src/pdfcraft/fixtures/actual-wasi-rotated.pdf',
   );
   const fixture = () => refreshFixture(editor, original, changed);
   test(`${editor}: official SDK refresh drains input and opens the new canonical head on the same binding without writes`, async (t) => {

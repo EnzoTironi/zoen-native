@@ -162,6 +162,9 @@ pub fn specs() -> Vec<AppSpec> {
     if let Some(photo) = crate::binary::photocraft_registration::spec() {
         specs.push(photo);
     }
+    if let Some(pdf) = crate::binary::pdfcraft_registration::spec() {
+        specs.push(pdf);
+    }
     specs
 }
 

@@ -1,0 +1,33 @@
+[package]
+name = "pdfcraft-zoen-inspection"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+publish = false
+
+[features]
+ui = ["dep:pdfcraft-ui-egui", "dep:egui", "dep:egui_kittest"]
+
+[dependencies]
+pdfcraft-engine = { workspace = true }
+pdfcraft-cos = { workspace = true }
+pdfcraft-create = { workspace = true }
+pdfcraft-render = { workspace = true }
+pdfcraft-ui-egui = { workspace = true, optional = true }
+egui = { workspace = true, optional = true }
+egui_kittest = { workspace = true, optional = true, features = ["eframe", "wgpu"] }
+serde_json = { workspace = true }
+sha2 = { version = "0.10", default-features = false }
+png = "0.18"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+unimplemented = "deny"
+todo = "deny"

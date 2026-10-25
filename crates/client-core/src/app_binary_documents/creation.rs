@@ -144,6 +144,7 @@ impl Engine {
                     }),
                     origin: match format {
                         Format::Photocraft => crate::i18n::t("Imagem criada", "Created image"),
+                        Format::Pdfcraft => crate::i18n::t("PDF criado", "Created PDF"),
                         Format::Wordcraft => crate::i18n::t("Documento criado", "Created document"),
                         Format::Deckcraft => {
                             crate::i18n::t("Apresentação criada", "Created presentation")
@@ -172,6 +173,10 @@ impl Engine {
                 space,
                 &me,
                 &match format {
+                    Format::Pdfcraft => crate::i18n::t(
+                        "PDF adicionado a esta conversa.",
+                        "PDF added to this conversation.",
+                    ),
                     Format::Photocraft => crate::i18n::t(
                         "Imagem adicionada a esta conversa.",
                         "Image added to this conversation.",

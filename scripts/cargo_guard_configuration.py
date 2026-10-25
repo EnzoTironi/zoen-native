@@ -1,5 +1,6 @@
 """Read Cargo invocation configuration and target/profile namespaces."""
 
+import argparse
 import pathlib
 import re
 import tomllib
@@ -72,3 +73,17 @@ def compilation_scope(arguments, configured_targets):
         if any(not re.fullmatch(r"[A-Za-z0-9_.-]+", value) for value in targets):
             raise ValueError("Custom target JSON is unsupported; pass target triples")
     return {"targets": sorted(set(targets)), "profile": profile}
+
+
+def argument_parser(description):
+    parser = argparse.ArgumentParser(description=description)
+    parser.add_argument("--manifest-path", required=True)
+    parser.add_argument("--target-dir", required=True)
+    parser.add_argument("--receipt", required=True)
+    parser.add_argument("--cargo", default="cargo")
+    parser.add_argument("--input-env", action="append", default=[])
+    parser.add_argument("--input-file", action="append", default=[])
+    parser.add_argument("--adopt-idle-target", action="store_true")
+    parser.add_argument("--allow-collateral-package-clean", action="append", default=[], metavar="NAME", help="Allow normal Cargo cleanup of all versions of this colliding package in the owned target")
+    parser.add_argument("command", nargs=argparse.REMAINDER)
+    return parser

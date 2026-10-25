@@ -71,7 +71,16 @@ pub fn configured() -> Result<Option<Arc<DeckcraftWorker>>, String> {
         cache.as_ref(),
     )?;
     let mut configured: Option<DeckcraftWorker> = None;
-    for worker in [deck, grid, word, photo].into_iter().flatten() {
+    let pdf = configured_for(
+        "pdfcraft",
+        [
+            "ZOEN_PDFCRAFT_WORKER_COMPONENT",
+            "ZOEN_PDFCRAFT_WORKER_MANIFEST",
+            "ZOEN_PDFCRAFT_WORKER_PUBLISHER",
+        ],
+        cache.as_ref(),
+    )?;
+    for worker in [deck, grid, word, photo, pdf].into_iter().flatten() {
         configured = Some(match configured {
             None => worker,
             Some(current) => current.combine(worker)?,
@@ -169,9 +178,17 @@ pub(crate) fn gate_public_references(
     client.agent_binary_finish_read(&turn).ok()?;
     zoen_agentd::PublicArtifactReferences::new(tool.into(), item.into(), sha)
 }
-fn grid_read(tool: &str, args: &Value) -> Option<Value> {
-    (tool == "read_gridcraft" && args.get("sheet").is_some())
-        .then(|| json!({"sheet":args["sheet"],"cell":args["cell"]}))
+fn document_read(tool: &str, args: &Value) -> Option<Value> {
+    match tool {
+        "read_gridcraft" if args.get("sheet").is_some() => {
+            Some(json!({"sheet":args["sheet"],"cell":args["cell"]}))
+        }
+        "read_pdfcraft" => Some(json!({
+            "page":args.get("page").and_then(Value::as_u64).unwrap_or(0),
+            "offset":args.get("offset").and_then(Value::as_u64).unwrap_or(0),
+        })),
+        _ => None,
+    }
 }
 fn receipt(document: &AppBinaryDocumentDto, replay: bool) -> String {
     json!({"itemId":document.item_id,"version":document.version,"currentVersion":document.current_version,"sha256":document.sha256,"authorId":document.author_id,"engineRevision":document.engine_revision,"replayed":replay}).to_string()
@@ -201,7 +218,7 @@ pub async fn call(
         serving,
         tool,
         action,
-        grid_read(tool, args),
+        document_read(tool, args),
     )
     .await
 }
@@ -227,7 +244,7 @@ pub async fn call_approved(
         &p.serving,
         &p.canonical_tool,
         action,
-        grid_read(&p.canonical_tool, &args),
+        document_read(&p.canonical_tool, &args),
     )
     .await
 }
@@ -273,6 +290,7 @@ async fn execute_turn(
         "gridcraft" => "gridcmd",
         "wordcraft" => "wordcmd",
         "photocraft" => "photocmd",
+        "pdfcraft" => "pdfcmd",
         _ => return Err("Unsupported binary App executor".into()),
     };
     let mutation = format!("{prefix}_{intent}");
