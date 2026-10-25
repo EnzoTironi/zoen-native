@@ -3,6 +3,7 @@ use super::*;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 
 fn control(h: &Harness, label: &str) -> Result<(egui::Rect, bool)> {
+    let label = wordcraft_ui_egui::i18n::t(label);
     let node = h
         .query_by_label(label)
         .ok_or_else(|| failure("managed_history_control_missing"))?;
