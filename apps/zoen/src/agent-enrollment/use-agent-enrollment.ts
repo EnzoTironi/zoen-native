@@ -12,13 +12,13 @@ import {
 } from './session';
 import type { ConnectAgentViewProps } from './connect-agent-view';
 
-export function useAgentEnrollment() {
+export function useAgentEnrollment(spaceId?: string) {
   const { store, mode, snapshot, phase, erasePending } = useClient();
   const scopeKey =
     phase === 'ready' && !erasePending
       ? enrollmentScopeKey(enrollmentScope(mode, snapshot?.account))
       : '';
-  const port = useMemo(() => createEnrollmentPort(store), [store]);
+  const port = useMemo(() => createEnrollmentPort(store, spaceId), [store, spaceId]);
   const session = useMemo(() => new EnrollmentSession(port), [port]);
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
   const [boot, setBoot] = useState<{
@@ -29,10 +29,12 @@ export function useAgentEnrollment() {
   const [scannerError, setScannerError] = useState<ConnectAgentViewProps['scannerError']>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const scanning = useRef<EnrollmentInputTicket | null>(null);
+  const scanOwner = useRef<(() => boolean) | null>(null);
   const launching = useRef(false);
   const closeScanner = useCallback(() => {
     const wasScanning = scanning.current !== null;
     scanning.current = null;
+    scanOwner.current = null;
     if (wasScanning && process.env.EXPO_OS === 'ios')
       void CameraView.dismissScanner().catch(() => {});
   }, []);
@@ -91,9 +93,10 @@ export function useAgentEnrollment() {
         session.retire();
       });
       const subscription = CameraView.onModernBarcodeScanned((result) => {
-        const scan = scanning.current;
+        const scan = scanning.current,
+          current = scanOwner.current;
         closeScanner();
-        if (!active || !scan || !session.accepts(scan)) return;
+        if (!active || !scan || !session.accepts(scan) || current?.() === false) return;
         setScannerError(null);
         if (session.setCode(result.data, scan)) void session.check();
       });
@@ -113,16 +116,17 @@ export function useAgentEnrollment() {
   const visibleState =
     state.scope === scopeKey ? state : { ...emptyEnrollmentState, scope: scopeKey };
   const availability = boot.scope === scopeKey ? boot.availability : 'loading';
-  const scan = async () => {
-    if (availability !== 'ready' || launching.current) return;
+  const scan = async (isCurrent: () => boolean = () => true) => {
+    if (!isCurrent() || availability !== 'ready' || launching.current) return;
     const ticket = session.inputTicket();
     if (!ticket) return;
     launching.current = true;
     scanning.current = ticket;
+    scanOwner.current = isCurrent;
     setScannerError(null);
     try {
       const access = permission?.granted ? permission : await requestPermission();
-      if (!session.accepts(ticket)) return;
+      if (!session.accepts(ticket) || !isCurrent()) return;
       if (!access.granted) {
         scanning.current = null;
         setScannerError('denied');

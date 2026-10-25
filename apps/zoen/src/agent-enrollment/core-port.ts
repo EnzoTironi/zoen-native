@@ -23,6 +23,7 @@ function displayReview(value: AgentEnrollmentPreviewDto): EnrollmentReview {
 
 export function createEnrollmentPort(
   store: Pick<ClientStore, 'driver' | 'request' | 'getSnapshot'>,
+  spaceId?: string,
 ): EnrollmentPort {
   const current = (scope: EnrollmentScope) => {
     const state = store.getSnapshot();
@@ -103,7 +104,21 @@ export function createEnrollmentPort(
       current(scope);
       // Existing canonical discovery persists the public profile in the normal
       // identity projection, so it remains in Permissions after closing this flow.
-      const found = await store.request({ op: 'find_people', query: review.handle });
+      const found = spaceId
+        ? (
+            await store.driver.request({
+              op: 'find_member_candidates',
+              space_id: spaceId,
+              query: review.handle,
+              expected_identity_id: scope.owner,
+              expected_device_id: scope.device,
+              owned_agents_only: true,
+            })
+          )
+            .filter((c) => c.owned_agent)
+            .map((c) => c.member ?? c.candidate)
+            .filter((p) => p !== null)
+        : await store.request({ op: 'find_people', query: review.handle });
       current(scope);
       if (
         !found.some(

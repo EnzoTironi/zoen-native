@@ -234,3 +234,27 @@ test('only canonical agent replies to the current source are shown and retiremen
   f.session.retire();
   assert.deepEqual(f.session.getSnapshot().replies, []);
 });
+
+test('captured prompt/send tickets cannot act after dismissal or content replacement', async () => {
+  const f = fixture();
+  f.session.open();
+  await tick();
+  f.session.setDraft('Original');
+  const stale = f.session.ticket();
+  assert.ok(stale);
+  f.session.renewTicket();
+  f.session.setDraft('Stale panel event', stale);
+  await f.session.send(stale);
+  assert.equal(f.session.getSnapshot().draft, 'Original');
+  assert.deepEqual(f.calls, []);
+  const closed = f.session.ticket();
+  f.session.close();
+  f.session.open();
+  await tick();
+  f.session.setDraft('Stale dismissed event', closed);
+  await f.session.send(closed);
+  assert.equal(f.session.getSnapshot().draft, 'Original');
+  assert.deepEqual(f.calls, []);
+  await f.session.send(f.session.ticket());
+  assert.equal(f.calls.filter((call) => call[0] === 'send').length, 1);
+});

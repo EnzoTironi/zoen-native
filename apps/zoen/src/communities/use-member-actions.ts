@@ -7,15 +7,18 @@ import { MemberActionsSession, emptyMemberActions } from './member-actions';
 import { createMemberActionsPort, createMemberAdditionPort } from './member-context-port';
 import { MemberAdditionSession, emptyMemberAddition } from './member-addition';
 
-export function useMemberActions(space: string) {
+export function useMemberActions(space: string, ownedAgentsOnly = false) {
   const client = useClient();
   const { store } = client;
   const port = useMemo(() => createMemberActionsPort(store, space), [store, space]);
   const session = useMemo(() => new MemberActionsSession(space, port), [space, port]);
-  const additionPort = useMemo(() => createMemberAdditionPort(store, space), [store, space]);
+  const additionPort = useMemo(
+    () => createMemberAdditionPort(store, space, ownedAgentsOnly),
+    [store, space, ownedAgentsOnly],
+  );
   const addition = useMemo(
-    () => new MemberAdditionSession(space, additionPort),
-    [space, additionPort],
+    () => new MemberAdditionSession(space, additionPort, ownedAgentsOnly),
+    [space, additionPort, ownedAgentsOnly],
   );
   const additionState = useSyncExternalStore(
     addition.subscribe,

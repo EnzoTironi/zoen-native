@@ -38,6 +38,7 @@ test('compiled prompt sends current typed identity/item/head after flush without
     assert.equal(sent.length, 1);
     assert.deepEqual(sent[0], {
       op: 'request_app_edit',
+      share_current: true,
       expected_identity_id: f.snapshot.account!.identity_id,
       expected_device_id: f.snapshot.account!.device_id,
       space_id: f.snapshot.conversations[0]!.id,
@@ -115,7 +116,7 @@ test('a definitive agent-membership conflict keeps the real prompt editable and 
     await f.act(() => f.controls.get('editor-agent-send')!.onPress());
     assert.equal(f.controls.get('editor-agent-prompt')!.value, 'Centralize o primeiro parágrafo');
     assert.equal(f.controls.get('editor-agent-prompt')!.editable, true);
-    assert.equal(f.controls.get('editor-agent-send')!.label, t('miniapps.askAgent'));
+    assert.equal(f.controls.get('editor-agent-send')!.label, t('miniapps.sendEditRequest'));
     assert.equal(f.controls.has(`text:${reason}`), true);
     assert.equal(f.controls.has(`text:${t('miniapps.editRequestSent')}`), false);
     assert.equal(f.controls.has(`text:${t('miniapps.editRequestUncertain')}`), false);

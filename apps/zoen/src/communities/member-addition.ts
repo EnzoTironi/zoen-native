@@ -10,6 +10,7 @@ export type MemberAdditionState = Readonly<{
   query: string;
   phase: 'idle' | 'loading' | 'ready' | 'failed';
   results: SpaceMemberContext[];
+  allResults: SpaceMemberContext[];
   selected: SpaceMemberContext | null;
   busy: boolean;
   failed: boolean;
@@ -21,6 +22,7 @@ export const emptyMemberAddition: MemberAdditionState = {
   query: '',
   phase: 'idle',
   results: [],
+  allResults: [],
   selected: null,
   busy: false,
   failed: false,
@@ -36,6 +38,12 @@ function validate(c: SpaceMemberContext, space: string, owner: AccountScope, id?
     typeof c.can_manage_members !== 'boolean' ||
     typeof c.can_add !== 'boolean' ||
     typeof c.delivery_ready !== 'boolean' ||
+    typeof c.owned_agent !== 'boolean' ||
+    (c.owned_agent &&
+      (!(c.member ?? c.candidate) ||
+        (c.member ?? c.candidate)?.kind !== 'Agent' ||
+        (c.member ?? c.candidate)?.owner_id !== owner.identity ||
+        !(c.member ?? c.candidate)?.is_mine)) ||
     typeof c.addition_failed !== 'boolean' ||
     !['Active', 'Updating', 'Removing', 'Removed'].includes(c.state) ||
     (c.candidate !== null && c.candidate.id !== c.member_id) ||
@@ -63,9 +71,11 @@ export class MemberAdditionSession {
   private readonly listeners = new Set<() => void>();
   private readonly space: string;
   private readonly port: MemberAdditionPort;
-  constructor(space: string, port: MemberAdditionPort) {
+  private readonly ownedOnly: boolean;
+  constructor(space: string, port: MemberAdditionPort, ownedOnly = false) {
     this.space = space;
     this.port = port;
+    this.ownedOnly = ownedOnly;
   }
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => {
@@ -108,13 +118,17 @@ export class MemberAdditionSession {
       ticket.scope === accountScopeKey(this.port.scope()),
     );
   }
-  open(ticket: AdditionTicket | null = this.ticket()) {
-    if (!this.current(ticket) || !this.state.canManage) return;
+  open(ticket: AdditionTicket | null = this.ticket(), preserveSearch = false) {
+    if (!this.current(ticket) || (!this.state.canManage && !this.ownedOnly)) return;
     ++this.generation;
-    this.publish({ open: true, query: '', selected: null, results: [], failed: false });
+    this.publish(
+      preserveSearch
+        ? { open: true }
+        : { open: true, query: '', selected: null, results: [], failed: false },
+    );
     void this.refresh();
   }
-  close(ticket: AdditionTicket | null) {
+  close(ticket: AdditionTicket | null, preserveSearch = false) {
     if (!this.current(ticket)) return;
     if (this.searchTimer) clearTimeout(this.searchTimer);
     this.searchTimer = null;
@@ -123,9 +137,7 @@ export class MemberAdditionSession {
     this.review = null;
     this.publish({
       open: false,
-      selected: null,
-      results: [],
-      query: '',
+      ...(preserveSearch ? {} : { selected: null, results: [], query: '' }),
       phase: 'idle',
       busy: this.writes.has(this.state.scope),
     });
@@ -145,24 +157,48 @@ export class MemberAdditionSession {
       owner = this.owner;
     if (!this.current(ticket) || !owner) return;
     const reading = ++this.reading;
-    if (this.state.open) this.publish({ phase: 'loading' });
+    if (this.state.open || this.ownedOnly) this.publish({ phase: 'loading' });
     try {
-      const permission = validate(
-        await this.port.read(owner.identity, owner),
-        this.space,
-        owner,
-        owner.identity,
-      );
+      let allResults: SpaceMemberContext[] = [];
+      let canManage = false;
+      if (this.ownedOnly) {
+        allResults = (await this.port.find('', owner))
+          .map((c) => validate(c, this.space, owner))
+          .filter((c) => c.owned_agent);
+        canManage = allResults.some((c) => c.can_manage_members);
+        if (!allResults.length) {
+          try {
+            canManage = validate(
+              await this.port.read(owner.identity, owner),
+              this.space,
+              owner,
+              owner.identity,
+            ).can_manage_members;
+          } catch {
+            canManage = false;
+          } // Direct is intentionally never addable.
+        }
+      } else {
+        canManage = validate(
+          await this.port.read(owner.identity, owner),
+          this.space,
+          owner,
+          owner.identity,
+        ).can_manage_members;
+      }
       if (!this.current(ticket) || reading !== this.reading) return;
-      if (!permission.can_manage_members) {
+      if (!canManage && !this.ownedOnly) {
         this.publish({ canManage: false, results: [], selected: null, phase: 'ready' });
         return;
       }
-      this.publish({ canManage: true });
-      if (!this.state.open) return;
-      const results = (await this.port.find(this.state.query, owner)).map((c) =>
-        validate(c, this.space, owner),
-      );
+      this.publish({ canManage });
+      if (!this.state.open && !this.ownedOnly) return;
+      const results =
+        this.ownedOnly && !this.state.query.trim()
+          ? allResults
+          : (await this.port.find(this.state.query, owner)).map((c) =>
+              validate(c, this.space, owner),
+            );
       if (!this.current(ticket) || reading !== this.reading) return;
       const selected = this.state.selected
         ? (results.find((c) => c.member_id === this.state.selected?.member_id) ??
@@ -170,18 +206,21 @@ export class MemberAdditionSession {
         : null;
       // Read the selected member even when the search list no longer contains it.
       const current = selected
-        ? validate(
-            await this.port.read(selected.member_id, owner),
-            this.space,
-            owner,
-            selected.member_id,
-          )
+        ? validate(await this.readCandidate(selected, owner), this.space, owner, selected.member_id)
         : null;
       if (!this.current(ticket) || reading !== this.reading) return;
-      this.publish({ results, selected: current, phase: 'ready' });
+      this.publish({ results, allResults, selected: current, phase: 'ready' });
     } catch {
       if (this.current(ticket) && reading === this.reading) this.publish({ phase: 'failed' });
     }
+  }
+  private async readCandidate(context: SpaceMemberContext, owner: AccountScope) {
+    if (!this.ownedOnly) return this.port.read(context.member_id, owner);
+    const profile = context.member ?? context.candidate;
+    const candidates = await this.port.find(profile?.handle ?? '', owner);
+    const current = candidates.find((c) => c.member_id === context.member_id && c.owned_agent);
+    if (!current) throw Error('Owned agent changed');
+    return current;
   }
   async select(
     member: string,
@@ -207,7 +246,7 @@ export class MemberAdditionSession {
     let dispatched = false;
     try {
       if (!(await confirm(context)) || !this.current(ticket) || this.review !== review) return;
-      const current = validate(await this.port.read(member, owner), this.space, owner, member);
+      const current = validate(await this.readCandidate(context, owner), this.space, owner, member);
       if (!this.current(ticket) || this.review !== review) return;
       if (!current.can_add || current.revision !== context.revision) {
         await this.refresh();

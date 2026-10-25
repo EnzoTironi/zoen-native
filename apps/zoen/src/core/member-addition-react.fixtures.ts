@@ -24,7 +24,7 @@ type Sheet = { isPresented: boolean; onDismiss(): void; children?: React.ReactNo
 
 /** Real React/Compiler + real external-store session. Native controls are ports;
  * invoking a captured callback does not prove native hit testing or touch delivery. */
-export async function memberAdditionReactFixture() {
+export async function memberAdditionReactFixture(inline = false) {
   const f = await additionFixture();
   const root = createReactTestRoot();
   const controls = new Map<string, Action>();
@@ -110,11 +110,17 @@ export async function memberAdditionReactFixture() {
     },
     '../profile/profile-avatar': { ProfileAvatar: () => null },
   };
-  const module = { exports: {} as { MemberAdditionSheet: React.ComponentType<any> } };
+  const module = {
+    exports: {} as {
+      MemberAdditionSheet: React.ComponentType<any>;
+      MemberAdditionContent: React.ComponentType<any>;
+    },
+  };
   runInNewContext(compiled, {
     module,
     exports: module.exports,
     require(name: string) {
+      if (name.startsWith('@babel/runtime/helpers/')) return require(name);
       assert.ok(name in ports, name);
       return ports[name];
     },
@@ -125,7 +131,15 @@ export async function memberAdditionReactFixture() {
       f.session.getSnapshot,
       f.session.getSnapshot,
     );
-    return React.createElement(module.exports.MemberAdditionSheet, { session: f.session, state });
+    return React.createElement(
+      inline ? module.exports.MemberAdditionContent : module.exports.MemberAdditionSheet,
+      {
+        session: f.session,
+        state,
+        inlineConfirmation: inline,
+        onBack: inline ? () => routes.push('back') : undefined,
+      },
+    );
   }
   return {
     ...f,
