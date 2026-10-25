@@ -1,4 +1,5 @@
 //! One native command on the existing `PageSession` and encrypted journal.
+use super::super::doc_err;
 use super::*;
 use crate::{
     agent_page_tools::{self as tools, ReplaceBlock},

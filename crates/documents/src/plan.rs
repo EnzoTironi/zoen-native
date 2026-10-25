@@ -489,8 +489,7 @@ use replay::{initialize_block, replay_version, stable_id};
 
 mod commands;
 use commands::{
-    apply_command, block_map, block_position, find, new_block_id, set_budget, set_text,
-    text_container,
+    apply_command, block_map, block_position, new_block_id, set_budget, set_text, text_container,
 };
 
 #[cfg(test)]

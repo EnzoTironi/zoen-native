@@ -1,5 +1,6 @@
 //! Editing operations on the original `PageSession` state.
 
+use super::super::doc_err;
 use super::*;
 
 impl PageSession {
