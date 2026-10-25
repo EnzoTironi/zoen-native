@@ -8,6 +8,7 @@ export const PHOTOCRAFT_ENGINE_REVISION = '9b9643764f3fb77d9f0e48d7510983ae50621
 const formats = Object.freeze({
   deckcraft: Object.freeze({
     id: 'deckcraft' as const,
+    liveReview: false,
     messages: 'decks' as const,
     resourceUri: 'ui://zoen/deckcraft/index.html',
     engineRevision: DECKCRAFT_ENGINE_REVISION,
@@ -16,6 +17,7 @@ const formats = Object.freeze({
   }),
   wordcraft: Object.freeze({
     id: 'wordcraft' as const,
+    liveReview: true,
     messages: 'wordDocuments' as const,
     resourceUri: 'ui://zoen/wordcraft/index.html',
     engineRevision: WORDCRAFT_ENGINE_REVISION,
@@ -24,6 +26,7 @@ const formats = Object.freeze({
   }),
   gridcraft: Object.freeze({
     id: 'gridcraft' as const,
+    liveReview: false,
     messages: 'workbooks' as const,
     resourceUri: 'ui://zoen/gridcraft/index.html',
     engineRevision: GRIDCRAFT_ENGINE_REVISION,
@@ -32,6 +35,7 @@ const formats = Object.freeze({
   }),
   photocraft: Object.freeze({
     id: 'photocraft' as const,
+    liveReview: true,
     messages: 'wordDocuments' as const,
     resourceUri: 'ui://zoen/photocraft/index.html',
     engineRevision: PHOTOCRAFT_ENGINE_REVISION,

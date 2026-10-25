@@ -9,6 +9,7 @@ import { build } from "../../../apps/zoen/node_modules/esbuild/lib/main.js";
 import { findBrowserExecutable } from "../../../tools/miniapp-build/browser-executable.ts";
 import { pauseOnCompletedTouch } from "./input-flush-assertions.mjs";
 import { rotateFromHumanMenu } from "./menu-rotation.mjs";
+import { reviewExternalPhoto } from "./live-review.mjs";
 const editor = "photocraft";
 const [modulePath, wasmPath, htmlPath, seedPath, output, playwrightPath] = process.argv.slice(2);
 if (
@@ -213,8 +214,12 @@ try {
     process.env.PHOTO_MENU_ROTATION === "1"
       ? await rotateFromHumanMenu(page, output, edited, pixels)
       : undefined;
-  const finalDocument = menuRotation ?? edited;
-  const finalPixels = menuRotation?.pixels ?? editedPixels;
+  assert.ok(!(process.env.PHOTO_LIVE_REVIEW === "1" && menuRotation), "Run live review and menu suites separately");
+  const liveReview = process.env.PHOTO_LIVE_REVIEW === "1"
+    ? await reviewExternalPhoto(page, output, edited, pixels)
+    : undefined;
+  const finalDocument = liveReview ?? menuRotation ?? edited;
+  const finalPixels = liveReview?.pixels ?? menuRotation?.pixels ?? editedPixels;
   await page.setViewportSize({ width: 844, height: 390 });
   await page.screenshot({ path: resolve(output, "landscape.png") });
   assert.equal(
@@ -269,6 +274,7 @@ try {
     editedPixels,
     edited,
     menuRotation,
+    liveReview,
     coldReopen: {
       version: finalDocument.version,
       writes: 0,

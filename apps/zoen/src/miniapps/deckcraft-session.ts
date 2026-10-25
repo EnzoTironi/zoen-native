@@ -236,7 +236,7 @@ export function createDeckcraftSession(options: Options) {
   });
   const controller: MiniappDocumentController = {
     observedHead:
-      editor === 'wordcraft' && !selected
+      binaryEditorFormat(editor).liveReview && !selected
         ? () => {
             try {
               lifetime.check();
@@ -425,8 +425,9 @@ export function createDeckcraftSession(options: Options) {
     } catch (failure) {
       return Promise.reject(failure);
     }
-    // Higher-head Undo is qualified for Word; other editors retain their current lifecycle.
-    if (editor !== 'wordcraft' || selected || !opened || retiring) return Promise.resolve();
+    // Only formats with qualified same-Session higher-head Undo admit live review.
+    if (!binaryEditorFormat(editor).liveReview || selected || !opened || retiring)
+      return Promise.resolve();
     // A canonical notification is observational, not a user-requested pause.
     // Core publishes our save before its ACK reaches the guest. Blocking the
     // frame here can blur live input while the guest is waiting to recognize

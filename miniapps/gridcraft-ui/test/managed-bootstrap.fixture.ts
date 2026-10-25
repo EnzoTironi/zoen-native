@@ -166,7 +166,7 @@ export async function startProbe(config: {
     // Actual agent authorization/CAS is separately exercised by native Core tests.
     receiveCanonical: async (data: string, nextVersion: number) => {
       check();
-      if (format.id !== "wordcraft" || releaseWrite || nextVersion !== version + 1)
+      if (!format.liveReview || releaseWrite || nextVersion !== version + 1)
         throw Error("Invalid synthetic canonical publication");
       const next = decode64(data);
       if (!next.length || next.length > format.maxDocumentBytes)
@@ -175,6 +175,7 @@ export async function startProbe(config: {
       version = nextVersion;
       await session.refresh(nextVersion);
     },
+    observedHead: () => session.controller.observedHead?.(),
     share: (kind: BinaryExportFormat) => session.share(kind),
     flush: () => session.controller.flush(),
     close: () => session.controller.flush({ retire: true }),
