@@ -48,6 +48,27 @@ fn external(source: &[u8], version: &str) -> Result<Vec<u8>> {
         .bytes)
 }
 
+fn assert_clockwise_pixels(old_png: &[u8], next_png: &[u8]) -> Result<()> {
+    let before = photocraft_codecs::decode(old_png)
+        .map_err(|_| failure("png_decode"))?
+        .to_rgba8();
+    let after = photocraft_codecs::decode(next_png)
+        .map_err(|_| failure("png_decode"))?
+        .to_rgba8();
+    for y in 0..240 {
+        for x in 0..320 {
+            let a = (y * 320 + x) * 4;
+            let b = (x * 240 + (239 - y)) * 4;
+            assert_eq!(
+                &before[a..a + 4],
+                &after[b..b + 4],
+                "every clockwise pixel must match"
+            );
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn higher_head_keeps_binding_real_history_pixels_and_undo_checkpoint_baseline() -> Result<()> {
     let original = seed()?;
@@ -95,23 +116,7 @@ fn higher_head_keeps_binding_real_history_pixels_and_undo_checkpoint_baseline() 
         "canonical refresh must not thaw user input"
     );
     let next_png = png(&bridge, &session, "3", &next)?;
-    let before = photocraft_codecs::decode(&old_png)
-        .map_err(|_| failure("png_decode"))?
-        .to_rgba8();
-    let after = photocraft_codecs::decode(&next_png)
-        .map_err(|_| failure("png_decode"))?
-        .to_rgba8();
-    for y in 0..240 {
-        for x in 0..320 {
-            let a = (y * 320 + x) * 4;
-            let b = (x * 240 + (239 - y)) * 4;
-            assert_eq!(
-                &before[a..a + 4],
-                &after[b..b + 4],
-                "every clockwise pixel must match"
-            );
-        }
-    }
+    assert_clockwise_pixels(&old_png, &next_png)?;
     // Idempotent notifications add neither an edit nor another document.
     bridge.open(&mut session, open("3", &next), &next)?;
     assert_eq!(
