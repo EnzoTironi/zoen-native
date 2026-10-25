@@ -1,7 +1,7 @@
 use super::{
-    edit, error, stable_id, text_container, BlockKind, Container, HashSet, LineView, LoroMap,
-    LoroValue, Node, Page, PlanLine, PlanView, Result, SectionView, Sha256, TotalCents,
-    ValueOrContainer,
+    edit, error, stable_id, text_container, BlockKind, Container, ContainerTrait, Digest, HashSet,
+    LineView, LoroMap, LoroValue, Node, Page, PlanLine, PlanView, Result, SectionView, Sha256,
+    TotalCents, ValueOrContainer, SCHEMA,
 };
 
 pub(super) fn string(map: &LoroMap, key: &str) -> Result<String> {

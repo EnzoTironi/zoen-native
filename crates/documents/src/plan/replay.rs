@@ -1,7 +1,7 @@
 use super::{
-    block_map, block_position, budget, error, integer, line, set_budget, set_text, string,
-    text_container, BlockKind, HashMap, HashSet, LoroMap, LoroText, LoroValue, Page, PlanDoc,
-    PlanLine, Result, Sha256, ValueOrContainer,
+    block_map, block_position, error, integer, set_budget, set_text, string, text_container,
+    BlockKind, Digest, HashMap, HashSet, LoroMap, LoroText, LoroValue, Page, PlanDoc, PlanLine,
+    Result, Sha256, ValueOrContainer,
 };
 
 pub(super) fn stable_id(root: &str, kind: &str, legacy: &str, occurrence: usize) -> Result<String> {
