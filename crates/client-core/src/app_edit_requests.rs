@@ -122,6 +122,26 @@ impl Engine {
         {
             return Err(stale());
         }
+        let has_agent = self
+            .space_state(&input.space_id)?
+            .members
+            .iter()
+            .any(|(id, _)| {
+                self.state.writer(&input.space_id, id)
+                    && self.identities.get(id).is_some_and(|profile| {
+                        profile.kind == types::IdentityKind::Agent
+                            && profile.owner.as_deref() == Some(&input.expected_identity_id)
+                            && event_log::agent_owner::profile_authorized(profile)
+                    })
+            });
+        if !has_agent {
+            return Err(CoreError::Stale {
+                reason: t(
+                    "Adicione seu agente à conversa antes de pedir uma alteração.",
+                    "Add your agent to this conversation before requesting an edit.",
+                ),
+            });
+        }
         let message = types::new_id("msg");
         let appended = self.append(
             &input.space_id,
