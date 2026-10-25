@@ -311,8 +311,12 @@ function DeckcraftDocument({
       close();
       await current.drain();
     });
+    let foreground = AppState.currentState === 'active';
     const background = AppState.addEventListener('change', (next) => {
-      if (next !== 'active' && live) void current.controller.flush().catch(() => {});
+      const active = next === 'active';
+      if (!live || active === foreground) return;
+      foreground = active;
+      void current.checkpoint().catch(() => {});
     });
     return () => {
       stop();

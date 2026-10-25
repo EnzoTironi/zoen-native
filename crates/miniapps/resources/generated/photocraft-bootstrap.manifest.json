@@ -1,7 +1,7 @@
 {
   "resourceUri": "ui://zoen/photocraft/index.html",
-  "sha256": "0d0d0a32f6d5f34045d5f4d0c01761c6466b2516e998ecc5c45f87591e30358a",
-  "bytes": 626960,
+  "sha256": "7ee1eb9192e559093d40e21a2ed22329f5443748455c62ab0b2ad9991c8b5512",
+  "bytes": 627277,
   "sources": {
     "apps/zoen/node_modules/@modelcontextprotocol/client/dist/cfWorkerProvider-BylNJ1R5.mjs": "eb39ab8996af767751fc34bea128d6b2adaef5a39cd42ec94749a091f76ab268",
     "apps/zoen/node_modules/@modelcontextprotocol/client/dist/chunk-Br0eD_fh.mjs": "d4a000980e7c6a8a2ee04c12d80cf538b11e5040e8487dad7661b09d85894e74",
@@ -167,7 +167,7 @@
     "apps/zoen/src/miniapps/binary-formats.ts": "c33272794f2dcb738988693d8446fbc8a8f790596af85420298900326ce4c04a",
     "apps/zoen/src/miniapps/canonical-scene.ts": "e43df63ef2b90e2b60d6e0fc58277964238ead166e8c991894d6e99aa59a1a6e",
     "apps/zoen/src/miniapps/deckcraft-document-wire.ts": "939ffb2acd4b2f40ad6fc396aa204c33d137709291dd77347c8c181fc8e06bcf",
-    "apps/zoen/src/miniapps/deckcraft-document.ts": "9cde7b7f6aa54fee25edde4a564a789fda334d7e2a8b0e0cba260a39ea7336e6",
+    "apps/zoen/src/miniapps/deckcraft-document.ts": "3bd3bf9f368889e33f023e1389736b035d7efa43f618cd7fa0e2f780c18b5052",
     "apps/zoen/src/miniapps/deckcraft-feedback.ts": "d5f3770a43cf3d1d5b115f5f885e6be89a982f2b3c9178f20536f3d50987c153",
     "apps/zoen/src/miniapps/managed-binary-app.ts": "a4f6dd8e62badfb8ec7b7420a7c6fc4e20ecaa0d8bc4e2477db0eb0ef504eb93",
     "miniapps/photocraft-ui/src/mcp-app.ts": "184e9fdc856a2e250eb7633730629d24a6788f2e0c5969f7c93cdd21b22e1498",

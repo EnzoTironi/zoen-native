@@ -312,7 +312,7 @@ export class DeckcraftDocument {
   }
   /** Teardown pauses instead of destroying the Session: failed close preserves the
    * original draft, and a background flush can explicitly resume the same document. */
-  flush(): Promise<void> {
+  flush(deferInteraction = false): Promise<void> {
     return this.serial(async () => {
       if (this.readOnly) return;
       this.paused = true;
@@ -332,14 +332,27 @@ export class DeckcraftDocument {
           await this.engine('freeze', { frozen: false }).catch(() => {});
           this.paused = false;
         }
-        this.state(
-          'error',
-          error,
-          deckcraftInteractionRefusal(error) ? 'flush_busy' : 'flush_failed',
-        );
+        if (deferInteraction && deckcraftInteractionRefusal(error)) this.state('pending');
+        else
+          this.state(
+            'error',
+            error,
+            deckcraftInteractionRefusal(error) ? 'flush_busy' : 'flush_failed',
+          );
         throw error;
       }
     });
+  }
+  /** A lifecycle interruption cannot certify input retained by a hidden UI frame. */
+  async checkpoint(): Promise<boolean> {
+    try {
+      await this.flush(true);
+    } catch (error) {
+      if (deckcraftInteractionRefusal(error)) return false;
+      throw error;
+    }
+    await this.resume();
+    return true;
   }
   resume(): Promise<void> {
     return this.serial(async () => {
@@ -418,6 +431,10 @@ export async function attachDeckcraftDocument(options: Options & { app: App }) {
   };
   options.app.oncalltool = async ({ name, arguments: input }) => {
     const args = record(input ?? {});
+    if (name === 'checkpoint_document') {
+      if (Object.keys(args).length) throw Error('Invalid document checkpoint request.');
+      return { content: [], structuredContent: { saved: await document.checkpoint() } };
+    }
     if (name === 'document_head') {
       if (Object.keys(args).length) throw Error('Invalid document head request.');
       return { content: [], structuredContent: await document.observedHead() };

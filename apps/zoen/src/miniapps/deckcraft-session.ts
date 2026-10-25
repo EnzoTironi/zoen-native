@@ -462,9 +462,52 @@ export function createDeckcraftSession(options: Options) {
     tail = operation;
     return operation;
   };
+  // Unlike teardown, a lifecycle checkpoint can defer a known busy input frame.
+  // Real refusals retain the explicit recovery gate; foreground is not permission to retry.
+  const checkpoint = (): Promise<void> => {
+    const operation = tail
+      .catch(() => {})
+      .then(async () => {
+        lifetime.check();
+        if (
+          !opened ||
+          selected ||
+          retiring ||
+          recoveryRequired ||
+          (phase === 'error' && reason !== 'autosave_busy')
+        )
+          return;
+        phase = 'pending';
+        error = null;
+        reason = null;
+        publish();
+        try {
+          const response = await current.callAppTool('checkpoint_document');
+          lifetime.check();
+          if (response.isError) throw Error(t(`${messages}.saveFailed`));
+          const value = record(response.structuredContent);
+          if (Object.keys(value).join(',') !== 'saved' || typeof value.saved !== 'boolean')
+            throw Error(t(`${messages}.saveFailed`));
+          // Guest status owns the current dirty state: new input may follow its
+          // strict save ACK before this RPC returns. Never replace it with 'saved'.
+        } catch (failure) {
+          recoveryRequired = true;
+          if (live) {
+            phase = 'error';
+            error = t(`${messages}.saveFailed`);
+          }
+          throw failure;
+        } finally {
+          publish();
+        }
+      });
+    tail = operation;
+    return operation;
+  };
   publish();
   return {
     controller,
+    checkpoint,
     refresh,
     get opened() {
       return opened;
