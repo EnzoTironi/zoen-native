@@ -15,10 +15,7 @@ impl Engine {
             item_id: input.item_id.clone(),
             target_id: target.into(),
         };
-        let mutation = format!(
-            "app_request_{}",
-            event_log::sha256_hex(binding.request_id.as_bytes())
-        );
+        let mutation = crate::app_current_share::request_share_mutation(&binding.request_id);
         self.share_request_current(scope, binding.version, &binding.sha256, &mutation)
     }
 }

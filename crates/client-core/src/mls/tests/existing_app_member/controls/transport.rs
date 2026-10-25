@@ -13,7 +13,10 @@ fn broadcast(
 }
 
 fn changed_audience_before_sealing(already_sealed: bool) -> R<()> {
-    let (mut owner, author, _) = member(":memory:");
+    let dir = std::env::temp_dir().join(types::new_id("share-audience-cold"));
+    std::fs::create_dir_all(&dir).map_err(storage)?;
+    let path = dir.join("owner.sqlite").to_string_lossy().into_owned();
+    let (mut owner, author, owner_secret) = member(&path);
     let (mut reader, _, _) = member(":memory:");
     let (mut newcomer, newcomer_author, _) = member(":memory:");
     let profiles: Vec<_> = [&owner, &reader, &newcomer]
@@ -157,6 +160,43 @@ fn changed_audience_before_sealing(already_sealed: bool) -> R<()> {
         !exact_keys_opened,
         "new member decrypted the exact old-audience snapshot and file keys: prior_seal={already_sealed} old_epoch={old_epoch} new_epoch={epoch}; projection_refused={refused}"
     );
+    assert!(owner
+        .store
+        .outbox()?
+        .iter()
+        .any(|row| row.event.client_id == original.client_id && row.failed));
+    drop(owner);
+    let mut owner = Engine::open(&path)?;
+    assert!(owner.unlock(Some(owner_secret.to_vec()))?);
+    owner.mls_seal_outbox()?;
+    assert!(owner
+        .outbox_envelopes()
+        .iter()
+        .all(|env| env.client_id() != original.client_id));
+    let account = owner.account().ok_or_else(|| storage("reopened owner"))?;
+    let fresh = owner.app_current_share_context(AppShareScope {
+        expected_identity_id: account.identity.clone(),
+        expected_device_id: account.device.clone(),
+        space_id: SPACE.into(),
+        item_id: app.item_id.clone(),
+        target_id: reader.me_id()?,
+    })?;
+    let next = owner.share_app_current(fresh, "new_explicit_audience_review")?;
+    assert!(next.applied);
+    assert_ne!(next.entry.id, original.client_id);
+    broadcast(&mut owner, &mut reader, &mut newcomer, &mut blobs);
+    receive_wanted(&mut newcomer, &blobs)?;
+    let document = newcomer.app_binary_read(&app.item_id, Some(app.version), Some(&app.sha256))?;
+    assert_eq!(
+        document.data_base64,
+        base64::engine::general_purpose::STANDARD.encode(EDITED)
+    );
+    assert!(newcomer.logs[SPACE]
+        .events()
+        .iter()
+        .all(|event| event.client_id != original.client_id));
+    drop((owner, reader, newcomer));
+    std::fs::remove_dir_all(dir).map_err(storage)?;
     Ok(())
 }
 

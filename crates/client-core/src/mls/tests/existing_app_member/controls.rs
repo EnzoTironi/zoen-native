@@ -7,6 +7,7 @@ mod interleaving;
 mod legacy;
 mod origin;
 mod transport;
+mod transport_recovery;
 mod wire;
 
 fn context(f: &LateWord) -> R<AppShareContext> {

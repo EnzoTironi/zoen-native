@@ -6,6 +6,8 @@ use types::{AppCurrentShare, AppDoc, AppShareRef, Event, EventBody};
 mod origin;
 mod producer;
 mod projection;
+mod transport;
+pub(crate) use transport::request_share_mutation;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -155,7 +157,7 @@ fn current_prefix(prefix: &[Event], share: &AppCurrentShare) -> bool {
     true
 }
 
-fn refused() -> CoreError {
+pub(crate) fn refused() -> CoreError {
     CoreError::Stale {
         reason: t(
             "O App, o acesso ou a conversa mudou. Confira antes de compartilhar.",
