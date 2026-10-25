@@ -23,7 +23,7 @@ fn visible_hash_and_source_fingerprint_legacy_vector() {
     };
     let page = Page::new();
     page.apply(
-        &[block.id.clone()],
+        std::slice::from_ref(&block.id),
         &[BlockEdit {
             id: block.id.clone(),
             kind: block.kind.clone(),
