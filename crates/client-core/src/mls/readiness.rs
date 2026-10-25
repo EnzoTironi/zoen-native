@@ -45,7 +45,14 @@ impl Engine {
             });
         };
         let secret = author.key.secret();
-        Device::new(conn, state_key(&secret), &acct.identity, secret, &acct.cert).map_err(mls_err)
+        Device::new(
+            conn,
+            state_key(&secret).map_err(storage)?,
+            &acct.identity,
+            secret,
+            &acct.cert,
+        )
+        .map_err(mls_err)
     }
 
     pub(crate) fn device(&self) -> R<Device<'_>> {
