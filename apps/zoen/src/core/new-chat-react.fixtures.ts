@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
@@ -52,6 +53,7 @@ export async function newChatFixture(platform = 'ios') {
     plugins: [['babel-plugin-react-compiler', { target: '19' }]],
     caller: { name: 'metro', platform, isDev: false, supportsStaticESM: false },
   });
+  assert.match(code, /react\/compiler-runtime/);
   const loaded = { exports: {} as { default: React.ComponentType } };
   runInNewContext(code, {
     module: loaded,
