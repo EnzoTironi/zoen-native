@@ -1,4 +1,4 @@
-"""Reviewed inputs for the existing CI selector; no job-selection logic."""
+"""Reviewed inputs shared by the CI selectors; no job-selection logic."""
 
 # Reviewed Cargo roots, test commands, client coverage and embedded-resource
 # recipes. Drift selects the full lane; refreshing a pin never bypasses tests.

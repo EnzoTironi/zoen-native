@@ -16,13 +16,19 @@ from expo_artifact_dependencies import compiler_inputs, graph
 
 # These reviewed build contracts establish the roots in the metadata reader.
 # Drift disables optimization, never a build or test. It does not require an ACK.
-CONTRACTS = {
-    "scripts/expo-cargo-artifacts.mjs": "cebc6836153781bb5b172f1f80be5f401d1bc4a45c1429e22d6f6f20500b99dd",
-    ".github/workflows/expo.yml": "085e800264619bcc17f43b676a40b9ee682cb8e7dff845058b9ff4247e1bf7e7",
-    "scripts/build-expo-core.mjs": "99fa3265955b75ce881f413b4ef93832c1010aa948fd3e7b225e95ae1b9aef96",
-    "scripts/build-expo-web-core.mjs": "9504ad593e1413ed9b8e36c4b79032df1336e7ad740adbac18b5e9361fa8dfd2",
-    "apps/zoen/package.json": "d58538007aec677d34171d4a09f883973c1c8bf9440b141d5bc72f33b2dba14b",
-}
+# Share reviewed bytes with the frontend selector so one producer change cannot
+# leave the artifact selector pinned to an obsolete copy. Each selector retains
+# its own positive classification and conservative fallback checks.
+from ci_frontend_inputs import FRONTEND_CONTRACTS
+
+CONTRACTS = {path: FRONTEND_CONTRACTS[path] for path in (
+    "scripts/expo-cargo-artifacts.mjs",
+    ".github/workflows/expo.yml",
+    "scripts/build-expo-core.mjs",
+    "scripts/build-expo-web-core.mjs",
+    "apps/zoen/package.json",
+)}
+
 JOBS = ("android", "client", "release_web")
 
 
