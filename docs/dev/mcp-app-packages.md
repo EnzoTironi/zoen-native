@@ -48,6 +48,8 @@ captures the current identity/device, Space, File Item/version/SHA and title.
 It obtains a mutation id from Core, asks `app_resource_find` for the canonical
 existing Item, and calls `app_resource_install` only after an unambiguous miss.
 Lookup failures and multiple matches are refusals, not a reason to install again.
+Lookup includes authenticated historical release pins on the same App, so a cold
+retry of an older package still finds the document after a renderer update.
 
 Both commands accept an `input` shaped as:
 
@@ -123,8 +125,11 @@ bytes, title and scene metadata. A changed base refuses the update. Lost respons
 recovery uses the existing bounded durable document receipts.
 
 An already open frame retains its captured renderer and draft; a remote release
-change does not reload it. Stale pinned reads/saves/copies refuse instead of
-silently switching to the newer renderer. The editor's existing recovery choices
+change does not reload it. Stale pinned reads and new save/copy mutations refuse
+instead of silently switching to the newer renderer. An already accepted mutation
+can still recover its durable receipt without a new effect after a release or
+App-grant change; current owner/account and readable-scope checks still apply.
+The editor's existing recovery choices
 remain explicit. Background, focus or owner retirement closes the old authority
 and prevents a late result from navigating in a new scope.
 
