@@ -52,7 +52,7 @@ fn scoped_discovery_and_dispatch_never_fall_back_to_other_space_tools_or_cached_
         .filter(|p| p.event.space == space)
     {
         if !existing.contains(&pending.event.client_id) {
-            db.append_event(log.sequence(pending.event.clone()))
+            db.append_event(log.sequence(pending.event.clone())?)
                 .unwrap();
         }
         db.outbox_remove(&pending.event.client_id).unwrap();
