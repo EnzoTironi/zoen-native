@@ -251,3 +251,7 @@ mod contract_tests;
 #[cfg(test)]
 #[path = "browser_rollback_tests.rs"]
 mod rollback_tests;
+
+#[cfg(test)]
+#[path = "browser_refresh_tests.rs"]
+mod refresh_tests;
