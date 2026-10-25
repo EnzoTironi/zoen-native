@@ -2,6 +2,7 @@
 //! only the reviewed producer. No fabricated MLS state or imported past keys.
 use super::*;
 use types::AppCurrentShare;
+mod continuity;
 
 pub(super) fn template(f: &mut LateWord) -> R<AppCurrentShare> {
     receipt(f, "template")?;
@@ -16,7 +17,10 @@ pub(super) fn template(f: &mut LateWord) -> R<AppCurrentShare> {
         .ok_or_else(|| storage("actual pending canonical share"))
 }
 
-fn sealed(f: &LateWord, mut share: AppCurrentShare, id: &str) -> R<Sequenced> {
+fn sealed(f: &LateWord, share: AppCurrentShare, id: &str) -> R<Sequenced> {
+    sealed_intent(f, share, id).map(|(frame, _)| frame)
+}
+fn sealed_intent(f: &LateWord, mut share: AppCurrentShare, id: &str) -> R<(Sequenced, Event)> {
     let author = f
         .owner
         .net
@@ -46,7 +50,7 @@ fn sealed(f: &LateWord, mut share: AppCurrentShare, id: &str) -> R<Sequenced> {
             .encode(),
         )
         .map_err(|e| storage(&e.to_string()))?;
-    Ok(ordered(
+    let frame = ordered(
         &f.agent,
         Envelope::sealed(
             author,
@@ -56,7 +60,8 @@ fn sealed(f: &LateWord, mut share: AppCurrentShare, id: &str) -> R<Sequenced> {
             e.seen.as_ref(),
             event_log::content::Sealed::new(SealedKind::Application, SUITE_ID, data),
         ),
-    ))
+    );
+    Ok((frame, e))
 }
 
 #[test]
