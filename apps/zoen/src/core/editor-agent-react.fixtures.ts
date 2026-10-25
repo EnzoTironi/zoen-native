@@ -94,6 +94,8 @@ export async function editorAgentReactFixture() {
         return remoteRequests;
       case 'timeline':
         return { entries: remoteEntries, before: null, has_more: false };
+      case 'thread':
+        return remoteEntries;
       case 'app_binary_read':
         return {
           item_id: itemId,
@@ -109,7 +111,14 @@ export async function editorAgentReactFixture() {
         if (editConflict)
           return { entry: null, conflict: editConflict, conflict_kind: editConflictKind };
         return {
-          entry: { id: 'canonical-request', kind: { Message: { text: command.text, card: null } } },
+          entry: {
+            id:
+              calls.filter(({ op }) => op === 'request_app_edit').length === 1
+                ? 'canonical-request'
+                : `canonical-${command.mutation_id}`,
+            delivery: 'Sending',
+            kind: { Message: { text: command.text, card: null } },
+          },
           conflict: null,
         };
       default:

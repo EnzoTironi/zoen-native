@@ -120,8 +120,16 @@ export function EditorAgentContent({
         </Text>
       ) : null}
       {state.sent ? (
-        <Text accessibilityLiveRegion="polite" selectable style={{ color: colors.secondary }}>
-          {t('miniapps.editRequestSent')}
+        <Text
+          accessibilityLiveRegion="polite"
+          selectable
+          style={{ color: state.sent.delivery === 'Failed' ? colors.danger : colors.secondary }}
+        >
+          {t(
+            state.sent.delivery === 'Failed'
+              ? 'miniapps.editRequestFailed'
+              : 'miniapps.editRequestSent',
+          )}
         </Text>
       ) : null}
       {state.sent && 'Message' in state.sent.kind ? (

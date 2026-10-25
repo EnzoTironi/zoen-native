@@ -6,6 +6,7 @@ export const miniappsEn = {
   askAgent: 'Ask AI',
   editRequestPlaceholder: 'What would you like to change?',
   editRequestSent: 'Request sent',
+  editRequestFailed: 'Request not sent. Review and send again.',
   editRequestUncertain: 'Retry to confirm this request before changing it.',
   theAccountHasChangedOpenTheMiniappAgain: 'The account has changed. Open the app again.',
   timelineUpdates: '%{name} · %{count} updates',

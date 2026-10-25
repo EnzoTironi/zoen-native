@@ -71,14 +71,13 @@ export function editorAgentPort(
     },
     replies: async (sourceId) => {
       check();
-      const page = await store.driver.request({
-        op: 'timeline',
+      const entries = await store.driver.request({
+        op: 'thread',
         space_id: spaceId,
-        before: null,
-        limit: 200,
+        root_id: sourceId,
       });
       check();
-      return page.entries.filter((entry) => entry.reply_to?.id === sourceId);
+      return entries;
     },
     send: async (text, head, mutation_id) => {
       const scope = check();
