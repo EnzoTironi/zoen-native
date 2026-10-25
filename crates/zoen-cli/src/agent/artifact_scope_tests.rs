@@ -4,8 +4,9 @@ use client_core::SecretVault;
 use sha2::{Digest, Sha256};
 
 #[test]
-fn scoped_discovery_and_dispatch_never_fall_back_to_other_space_tools_or_cached_calls() {
-    let f = crate::deckcraft::tests::fixture();
+fn scoped_discovery_and_dispatch_never_fall_back_to_other_space_tools_or_cached_calls(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = crate::deckcraft::tests::fixture()?;
     let space = f.client.item(f.base.item_id.clone()).unwrap().space_id;
     let page = f
         .client
@@ -62,10 +63,10 @@ fn scoped_discovery_and_dispatch_never_fall_back_to_other_space_tools_or_cached_
         item_id: base.item_id.clone(),
         version: base.version,
         sha256: base.sha256.clone(),
-        request_id: types::new_id("app_request"),
+        request_id: types::new_id("app_request")?,
         text_sha256: hex::encode(Sha256::digest(text.as_bytes())),
     });
-    let source = types::new_id("source");
+    let source = types::new_id("source")?;
     let event = log.append(
         &event_log::Signer::from_secret(&key),
         1_792_510_810_000,
@@ -74,7 +75,7 @@ fn scoped_discovery_and_dispatch_never_fall_back_to_other_space_tools_or_cached_
             text: text.into(),
             reply,
         },
-    );
+    )?;
     let source = event.client_id.clone();
     db.append_event(event).unwrap();
     log.verify().unwrap();
@@ -112,4 +113,5 @@ fn scoped_discovery_and_dispatch_never_fall_back_to_other_space_tools_or_cached_
     drop(context);
     drop(client);
     std::fs::remove_dir_all(path).unwrap();
+    Ok(())
 }

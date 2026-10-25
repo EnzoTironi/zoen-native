@@ -53,7 +53,7 @@ fn legacy_steps_remain_readable_and_writes_stay_legacy_until_a_resume_is_reserve
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let directory = Directory::new()?;
     let path = directory.journal();
-    let fixture = crate::deckcraft::tests::fixture_at(directory.0.clone(), [72; 32]);
+    let fixture = crate::deckcraft::tests::fixture_at(directory.0.clone(), [72; 32])?;
     let host = tools(&fixture, &path);
     let original = vec![(fixture.source.clone(), vec![step("first")])];
     std::fs::write(&path, serde_json::to_vec(&original).unwrap()).unwrap();
@@ -83,7 +83,7 @@ fn exact_request_budget_survives_reopens_and_step_recording_without_reset(
     let directory = Directory::new()?;
     let path = directory.journal();
     let hash = "ab".repeat(32);
-    let mut fixture = crate::deckcraft::tests::fixture_at(directory.0.clone(), [72; 32]);
+    let mut fixture = crate::deckcraft::tests::fixture_at(directory.0.clone(), [72; 32])?;
     for expected in 1..=MAX_TRIES {
         // Reopen both the signed native account/source and journal. No counter
         // or authority is supplied by an anonymous in-memory Client.
@@ -133,7 +133,7 @@ fn corrupt_or_unsupported_journal_cannot_reset_the_budget_or_be_overwritten_by_r
         let path = directory.journal();
         std::fs::write(&path, corrupt).unwrap();
         assert!(JournalState::begin_resume(&path, "synthetic-request", &"ab".repeat(32), None).is_err());
-        let fixture = crate::deckcraft::tests::fixture_at(directory.0.clone(), [72; 32]);
+        let fixture = crate::deckcraft::tests::fixture_at(directory.0.clone(), [72; 32])?;
         tools(&fixture, &path).record(step("must-not-replace-corrupt-data"));
         assert_eq!(std::fs::read(&path).unwrap(), corrupt);
         assert!(!path.with_extension("tmp").exists());
@@ -177,7 +177,7 @@ fn prepared_and_completed_metadata_survive_reopen_bound_to_the_same_source_and_r
     let directory = Directory::new()?;
     let path = directory.journal();
     let hash = "ab".repeat(32);
-    let mut fixture = crate::deckcraft::tests::fixture_at(directory.0.clone(), [72; 32]);
+    let mut fixture = crate::deckcraft::tests::fixture_at(directory.0.clone(), [72; 32])?;
     let account = fixture.client.account().unwrap();
     let space = fixture
         .client

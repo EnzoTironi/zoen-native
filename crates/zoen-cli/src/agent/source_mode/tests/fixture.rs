@@ -91,7 +91,7 @@ impl Fixture {
         // Admit the signed canonical prefix through the normal ingestion path.
         // Direct Store insertion omits the durable relay-ordered Space marker.
         let mut engine = client_core::Engine::open(db.to_str().unwrap()).unwrap();
-        let mut admit = |event: &types::Event| {
+        let mut admit = |event: &types::Event| -> Result<(), Box<dyn std::error::Error>> {
             assert_eq!(
                 engine.ingest(protocol::Sequenced {
                     seq: event.seq,
@@ -101,6 +101,7 @@ impl Fixture {
                 }),
                 client_core::Ingest::Applied
             );
+            Ok(())
         };
         let mut log = SpaceLog::new(&space);
         admit(log.append(
@@ -111,7 +112,7 @@ impl Fixture {
                 kind: types::SpaceKind::Group,
                 privacy: types::Privacy::Closed,
             },
-        )?);
+        )?)?;
         admit(log.append(
             &agent,
             1_792_510_809_001,
@@ -119,12 +120,12 @@ impl Fixture {
                 identity: owner.clone(),
                 role: types::Role::Member,
             },
-        )?);
+        )?)?;
         let mut post = |text: &str| -> std::result::Result<String, Box<dyn std::error::Error>> {
             let event = log
                 .append(&signer, 1_792_510_809_002, message(text, None)?)?
                 .clone();
-            admit(&event);
+            admit(&event)?;
             Ok(event.client_id)
         };
         let other = post("Other source must never be executed by this run.")?;
@@ -289,13 +290,15 @@ impl Fixture {
         let history = log
             .events()
             .iter()
-            .map(|event| protocol::Sequenced {
-                seq: event.seq,
-                prev: event.prev.clone(),
-                hash: event.hash.clone(),
-                env: protocol::Envelope::plain(event)?,
+            .map(|event| {
+                Ok(protocol::Sequenced {
+                    seq: event.seq,
+                    prev: event.prev.clone(),
+                    hash: event.hash.clone(),
+                    env: protocol::Envelope::plain(event)?,
+                })
             })
-            .collect();
+            .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
         drop(db);
         self.reopen();
         Ok((expired, intent, history))

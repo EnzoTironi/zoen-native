@@ -86,10 +86,11 @@ fn context(
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[ignore = "explicit pinned offline WASI component and configured genuine editor; no providers or services"]
-async fn actual_word_create_approve_lost_result_edit_and_cold_reopen() {
+async fn actual_word_create_approve_lost_result_edit_and_cold_reopen(
+) -> Result<(), Box<dyn std::error::Error>> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let worker = super::wordcraft_worker_tests::worker();
-    let fixture = crate::deckcraft::tests::fixture();
+    let fixture = crate::deckcraft::tests::fixture()?;
     let space = fixture
         .client
         .item(fixture.base.item_id.clone())
@@ -243,4 +244,5 @@ async fn actual_word_create_approve_lost_result_edit_and_cold_reopen() {
     );
     drop(cold);
     std::fs::remove_dir_all(path).expect("owned cleanup");
+    Ok(())
 }
