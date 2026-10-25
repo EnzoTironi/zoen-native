@@ -106,9 +106,10 @@ fn continuity(partial: bool) -> R<()> {
     let grants = f.agent.state.grants.len();
     let (frame, intent) = sealed_intent(&f, bad, "refused_foreign_origin")?;
     // A malicious but genuinely signed/sealed wire intent is consumed through
-    // the ordinary own echo and peer paths, never an altered Item/MLS state.
+    // normal ingestion and peer paths, never an altered Item/MLS state.
+    // An injected row is not an ordinary own pending receipt: Applied is exact.
     f.owner.store.outbox_put(&intent)?;
-    assert_eq!(f.owner.ingest(frame.clone()), Ingest::Confirmed);
+    assert_eq!(f.owner.ingest(frame.clone()), Ingest::Applied);
     assert_eq!(f.agent.ingest(frame), Ingest::Applied);
     assert_eq!(f.agent.state.grants.len(), grants);
     assert_eq!(
@@ -129,7 +130,7 @@ fn continuity(partial: bool) -> R<()> {
         retained.is_ok(),
         "refused foreign share poisoned original partial={partial} after cold: {retained:?}"
     );
-    let next = owner.app_binary_save(
+    let next = agent.app_binary_save(
         &original.item_id,
         2,
         &original.sha256,
@@ -139,8 +140,8 @@ fn continuity(partial: bool) -> R<()> {
     );
     assert!(next.is_ok(), "refused foreign share blocked a legitimate original-space edit partial={partial}: {next:?}");
     let next = next?;
-    publish(&mut owner, &mut agent, &mut f.blobs);
-    receive_wanted(&mut agent, &f.blobs)?;
+    publish(&mut agent, &mut owner, &mut f.blobs);
+    receive_wanted(&mut owner, &f.blobs)?;
     let actual = agent.app_binary_read(&original.item_id, Some(3), Some(&next.sha256))?;
     assert_eq!(actual.data_base64, next.data_base64);
     assert_eq!(agent.item(&original.item_id)?.space_id, OTHER);
