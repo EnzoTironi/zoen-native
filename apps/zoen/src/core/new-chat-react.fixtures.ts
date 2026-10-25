@@ -10,7 +10,7 @@ type Props = Record<string, any>;
 
 /** Real compiled route and React state. Native header/keyboard are ports;
  * visibility above the software keyboard still needs the iPhone journey. */
-export async function newChatFixture(platform = 'ios') {
+export async function newChatFixture(platform = 'ios', members: Props[] = []) {
   const root = createReactTestRoot();
   const controls = new Map<string, Props>();
   const calls: any[] = [],
@@ -89,7 +89,7 @@ export async function newChatFixture(platform = 'ios') {
         return {
           useClient: () => ({
             store: { request, driver: { request } },
-            snapshot: { conversations: [] },
+            snapshot: { conversations: [{ members }] },
           }),
         };
       if (name === '../theme')

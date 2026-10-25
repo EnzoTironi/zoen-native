@@ -1,9 +1,10 @@
 //! The concrete binary formats accepted by the existing App Item contract.
 //! This selects validation/metadata only; it never grants access or stores state.
-use crate::{deckcraft, gridcraft, photocraft, wordcraft};
+use crate::{deckcraft, gridcraft, pdfcraft, photocraft, wordcraft};
 
 pub mod agent_tools;
 pub mod gridcraft_registration;
+pub mod pdfcraft_registration;
 pub mod photocraft_registration;
 pub(crate) mod resource;
 pub mod wordcraft_registration;
@@ -14,6 +15,7 @@ pub enum Format {
     Gridcraft,
     Wordcraft,
     Photocraft,
+    Pdfcraft,
 }
 impl Format {
     pub fn for_id(id: &str) -> Option<Self> {
@@ -22,6 +24,7 @@ impl Format {
             gridcraft::APP => Some(Self::Gridcraft),
             wordcraft::APP => Some(Self::Wordcraft),
             photocraft::APP => Some(Self::Photocraft),
+            pdfcraft::APP => Some(Self::Pdfcraft),
             _ => None,
         }
     }
@@ -31,6 +34,7 @@ impl Format {
             Self::Gridcraft => gridcraft::APP,
             Self::Wordcraft => wordcraft::APP,
             Self::Photocraft => photocraft::APP,
+            Self::Pdfcraft => pdfcraft::APP,
         }
     }
     pub fn resource(self) -> &'static str {
@@ -39,6 +43,7 @@ impl Format {
             Self::Gridcraft => gridcraft::RESOURCE,
             Self::Wordcraft => wordcraft::RESOURCE,
             Self::Photocraft => photocraft::RESOURCE,
+            Self::Pdfcraft => pdfcraft::RESOURCE,
         }
     }
     pub fn mime(self) -> &'static str {
@@ -47,6 +52,7 @@ impl Format {
             Self::Gridcraft => gridcraft::MIME,
             Self::Wordcraft => wordcraft::MIME,
             Self::Photocraft => photocraft::MIME,
+            Self::Pdfcraft => pdfcraft::MIME,
         }
     }
     pub fn revision(self) -> &'static str {
@@ -55,6 +61,7 @@ impl Format {
             Self::Gridcraft => gridcraft::ENGINE_REVISION,
             Self::Wordcraft => wordcraft::ENGINE_REVISION,
             Self::Photocraft => photocraft::ENGINE_REVISION,
+            Self::Pdfcraft => pdfcraft::ENGINE_REVISION,
         }
     }
     pub fn max_bytes(self) -> usize {
@@ -63,6 +70,7 @@ impl Format {
             Self::Gridcraft => gridcraft::MAX_BYTES,
             Self::Wordcraft => wordcraft::MAX_BYTES,
             Self::Photocraft => photocraft::MAX_BYTES,
+            Self::Pdfcraft => pdfcraft::MAX_BYTES,
         }
     }
     pub fn seed(self) -> &'static [u8] {
@@ -71,6 +79,7 @@ impl Format {
             Self::Gridcraft => gridcraft_registration::EMPTY,
             Self::Wordcraft => wordcraft::EMPTY,
             Self::Photocraft => photocraft::EMPTY,
+            Self::Pdfcraft => pdfcraft::EMPTY,
         }
     }
     pub fn available(self) -> bool {
@@ -79,6 +88,7 @@ impl Format {
             Self::Gridcraft => gridcraft_registration::available(),
             Self::Wordcraft => wordcraft_registration::available(),
             Self::Photocraft => photocraft_registration::available(),
+            Self::Pdfcraft => pdfcraft_registration::available(),
         }
     }
     pub fn filename(self) -> &'static str {
@@ -87,6 +97,7 @@ impl Format {
             Self::Gridcraft => "workbook.xlsx",
             Self::Wordcraft => "document.docx",
             Self::Photocraft => "image.pcraft",
+            Self::Pdfcraft => "document.pdf",
         }
     }
     pub fn item_prefix(self) -> &'static str {
@@ -95,6 +106,7 @@ impl Format {
             Self::Gridcraft => "it_grid_",
             Self::Wordcraft => "it_word_",
             Self::Photocraft => "it_photo_",
+            Self::Pdfcraft => "it_pdf_",
         }
     }
     pub fn metadata(self, bytes: &[u8], title: &str) -> Result<String, &'static str> {
@@ -103,6 +115,7 @@ impl Format {
             Self::Gridcraft => Ok(gridcraft::Document::parse(bytes)?.metadata(title)),
             Self::Wordcraft => Ok(wordcraft::Document::parse(bytes)?.metadata(title)),
             Self::Photocraft => Ok(photocraft::Document::parse(bytes)?.metadata(title)),
+            Self::Pdfcraft => Ok(pdfcraft::Document::parse(bytes)?.metadata(title)),
         }
     }
 }

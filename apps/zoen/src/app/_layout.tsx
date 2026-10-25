@@ -142,6 +142,7 @@ function Navigation() {
                   options={{
                     title: t('common.newChat'),
                     presentation: 'formSheet',
+                    headerTransparent: false,
                     sheetGrabberVisible: true,
                   }}
                 />

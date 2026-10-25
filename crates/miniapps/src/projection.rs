@@ -67,6 +67,15 @@ pub(super) fn pet_mood(v: &Value) -> &'static str {
 pub fn headline(app: &str, state: &Value, now: i64) -> (String, Vec<(String, f64)>) {
     let v = view(app, state, now);
     match app {
+        "pdfcraft" => {
+            let pages = state["declaredPages"].as_u64().unwrap_or(0);
+            let label = if pages == 1 {
+                t("1 página", "1 page")
+            } else {
+                tr!("{} páginas", "{} pages", pages)
+            };
+            (label, vec![])
+        }
         "wordcraft" => {
             let words = state["words"].as_u64().unwrap_or(0);
             let label = if words == 1 {
@@ -290,6 +299,9 @@ pub fn snapshot(app: &str, state: &Value, item_id: &str, now: i64) -> Option<Val
     let v = view(app, state, now);
     let link = format!("zoen://app/{item_id}");
     let snap = match app {
+        "pdfcraft" => {
+            json!({"template":"caption","title":state["title"],"eyebrow":"PDF","detail":headline(app,state,now).0,"accentHex":"#A55553","symbol":"doc.richtext"})
+        }
         "wordcraft" => {
             json!({"template":"caption","title":state["title"],"eyebrow":t("Documento", "Document"),"detail":headline(app,state,now).0,"accentHex":"#667C99","symbol":"doc.text"})
         }

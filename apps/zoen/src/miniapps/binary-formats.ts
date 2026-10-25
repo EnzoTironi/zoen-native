@@ -1,11 +1,21 @@
 /** Trusted build-time format parameters; the document/guest cannot widen them. */
-export type BinaryEditorId = 'deckcraft' | 'gridcraft' | 'wordcraft' | 'photocraft';
+export type BinaryEditorId = 'deckcraft' | 'gridcraft' | 'wordcraft' | 'photocraft' | 'pdfcraft';
 export type BinaryExportFormat = 'pptx' | 'pdf' | 'xlsx' | 'docx' | 'pcraft' | 'png';
 export const DECKCRAFT_ENGINE_REVISION = 'a31b990d32f2c8562f1588562f922960c3fde48b';
 export const GRIDCRAFT_ENGINE_REVISION = 'b8771d51fb4da60bd48c13cf313d6d6014dc5e66';
 export const WORDCRAFT_ENGINE_REVISION = 'd1b0bfc3f9dd83126b162a42b667facecb003b7f';
 export const PHOTOCRAFT_ENGINE_REVISION = '9b9643764f3fb77d9f0e48d7510983ae50621e11';
+export const PDFCRAFT_ENGINE_REVISION = 'd445410807e7eefbe5b96f9662ab963ae8dd2a3a';
 const formats = Object.freeze({
+  pdfcraft: Object.freeze({
+    id: 'pdfcraft' as const,
+    liveReview: true,
+    messages: 'wordDocuments' as const,
+    resourceUri: 'ui://zoen/pdfcraft/index.html',
+    engineRevision: PDFCRAFT_ENGINE_REVISION,
+    maxDocumentBytes: 8 * 1024 * 1024,
+    exports: Object.freeze(['pdf'] as const),
+  }),
   deckcraft: Object.freeze({
     id: 'deckcraft' as const,
     liveReview: false,
@@ -44,7 +54,13 @@ const formats = Object.freeze({
   }),
 });
 export function isBinaryEditorId(id: unknown): id is BinaryEditorId {
-  return id === 'deckcraft' || id === 'gridcraft' || id === 'wordcraft' || id === 'photocraft';
+  return (
+    id === 'deckcraft' ||
+    id === 'gridcraft' ||
+    id === 'wordcraft' ||
+    id === 'photocraft' ||
+    id === 'pdfcraft'
+  );
 }
 export function binaryEditorFormat(id: unknown = 'deckcraft') {
   if (!isBinaryEditorId(id)) throw Error('Unsupported binary App format.');

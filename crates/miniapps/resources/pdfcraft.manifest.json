@@ -1,0 +1,19 @@
+{
+  "id": "pdfcraft",
+  "name": "PdfCraft",
+  "resourceUri": "ui://zoen/pdfcraft/index.html",
+  "mimeType": "text/html;profile=mcp-app",
+  "capabilities": [],
+  "allowedDomains": [],
+  "linkDomains": [],
+  "networkPurpose": "",
+  "permissions": {},
+  "csp": {
+    "connectDomains": [],
+    "resourceDomains": [],
+    "frameDomains": [],
+    "baseUriDomains": []
+  },
+  "sha256": "99d9b2b1303333db21705eb5024bc6d7aee8006d6a8a4f9f4d800adde33c3017",
+  "bytes": 626946
+}

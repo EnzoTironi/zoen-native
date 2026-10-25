@@ -1,0 +1,49 @@
+diff --git a/crates/engine/src/lib.rs b/crates/engine/src/lib.rs
+index aa71d82..52e3d44 100644
+--- a/crates/engine/src/lib.rs
++++ b/crates/engine/src/lib.rs
+@@ -3551,6 +3551,44 @@ impl Session {
+         Self::default()
+     }
+ 
++    /// Adopt already-authorized canonical bytes in this same managed document.
++    /// The upstream COS/keys snapshots remain the only Undo/Redo authority.
++    pub fn managed_adopt_canonical(&mut self, id: DocId, generation: u64, bytes: Arc<Vec<u8>>) -> Result<u64, EditError> {
++        if self.managed_binding.is_none() || self.managed_document != Some(id) || self.docs.len() != 1 || !self.managed_frozen || !self.js_off {
++            return Err(EditError::ReadOnly("The managed document must be paused in its current binding.".into()));
++        }
++        let previous = self.docs.first().filter(|doc| doc.id == id).ok_or(EditError::NoDocument)?;
++        if previous.generation != generation {
++            return Err(EditError::ReadOnly("The managed document changed before canonical adoption.".into()));
++        }
++        let next_generation = generation.checked_add(1).ok_or_else(|| EditError::Invalid("Managed document generation exhausted.".into()))?;
++        // Preparation uses this Session's disabled-script context and does not mutate it.
++        let mut next = self.prepare_open(previous.name.clone(), previous.path.clone(), bytes, None)
++            .map_err(|error| EditError::Reopen(error.to_string()))?.document;
++        if previous.xfa.is_some() || next.xfa.is_some() || !previous.signatures.is_empty() || !next.signatures.is_empty() || next.read_only_reason.is_some() {
++            return Err(EditError::ReadOnly("Unsupported managed canonical document.".into()));
++        }
++        let old_editor = previous.editor.as_ref().ok_or(EditError::NoDocument)?;
++        let next_editor = next.editor.as_mut().ok_or(EditError::NoDocument)?;
++        next_editor.undo.clone_from(&old_editor.undo);
++        next_editor.undo.push((Label::of("Update document"), old_editor.cos.clone(), old_editor.keys.clone(), Scope::Full));
++        next_editor.redo.clear();
++        next.id = id;
++        next.generation = next_generation;
++        next.snapshot_generation = previous.snapshot_generation;
++        // Keep the reader's presentation choices; canonical bytes do not own them.
++        for layer in &mut next.info.layers {
++            if let Some(old) = previous.info.layers.iter().find(|old| old.id == layer.id) {
++                layer.visible = old.visible;
++            }
++        }
++        next.config = previous.config.clone();
++        next.renderer = RenderPool::new(next.display.clone(), render_threads(), next.config.clone());
++        // All fallible validation is complete before the existing slot is replaced.
++        *self.docs.first_mut().filter(|doc| doc.id == id).ok_or(EditError::NoDocument)? = next;
++        Ok(next_generation)
++    }
++
+     /// Use a fixed clock (tests) instead of the system time.
+     pub fn with_clock(mut self, clock: fn() -> i64) -> Self {
+         self.clock = Some(clock);

@@ -33,7 +33,7 @@ bytes = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "process", "fs", "io-util"] }
 
 [target.'cfg(unix)'.dependencies]
-rustix = { version = "1", features = ["process"] }
+rustix = { version = "1", features = ["process", "fs"] }
 
 [features]
 # Journey seams: the scripted brain and fault points. Never in a production build.
