@@ -6,14 +6,15 @@ fn broadcast(
     reader: &mut Engine,
     newcomer: &mut Engine,
     blobs: &mut HashMap<String, Vec<u8>>,
-) {
-    for frame in publish(owner, reader, blobs) {
+) -> R<()> {
+    for frame in publish(owner, reader, blobs)? {
         assert_eq!(newcomer.ingest(frame), Ingest::Applied);
     }
+    Ok(())
 }
 
 fn changed_audience_before_sealing(already_sealed: bool) -> R<()> {
-    let dir = std::env::temp_dir().join(types::new_id("share-audience-cold"));
+    let dir = std::env::temp_dir().join(types::new_id("share-audience-cold")?);
     std::fs::create_dir_all(&dir).map_err(storage)?;
     let path = dir.join("owner.sqlite").to_string_lossy().into_owned();
     let (mut owner, author, owner_secret) = member(&path);
@@ -26,7 +27,9 @@ fn changed_audience_before_sealing(already_sealed: bool) -> R<()> {
     for e in [&mut owner, &mut reader, &mut newcomer] {
         e.put_profiles(profiles.clone())?;
     }
-    for frame in claim_group(&mut owner, SPACE, std::slice::from_mut(&mut reader)) {
+    for frame in
+        claim_group(&mut owner, SPACE, std::slice::from_mut(&mut reader)).map_err(storage)?
+    {
         assert_eq!(reader.ingest(frame.clone()), Ingest::Applied);
         assert_eq!(newcomer.ingest(frame), Ingest::Applied);
     }
@@ -37,7 +40,7 @@ fn changed_audience_before_sealing(already_sealed: bool) -> R<()> {
     );
     owner.commit_now(SPACE, &[records[0].data.clone()], &Default::default())?;
     let mut blobs = HashMap::new();
-    broadcast(&mut owner, &mut reader, &mut newcomer, &mut blobs);
+    broadcast(&mut owner, &mut reader, &mut newcomer, &mut blobs)?;
     let app = owner.app_binary_create_format(
         Format::Wordcraft,
         SPACE,
@@ -45,7 +48,7 @@ fn changed_audience_before_sealing(already_sealed: bool) -> R<()> {
         &base64::engine::general_purpose::STANDARD.encode(EDITED),
         "transport_before_join",
     )?;
-    broadcast(&mut owner, &mut reader, &mut newcomer, &mut blobs);
+    broadcast(&mut owner, &mut reader, &mut newcomer, &mut blobs)?;
     assert!(newcomer.item_state(&app.item_id).is_err());
     let account = owner.account().ok_or_else(|| storage("owner account"))?;
     let context = owner.app_current_share_context(AppShareScope {
@@ -83,12 +86,12 @@ fn changed_audience_before_sealing(already_sealed: bool) -> R<()> {
 
     // Normal membership + genuine KeyPackage/Commit/Welcome arrive before this
     // retained intent is sent. Handshakes pass waiting application rows normally.
-    add_member(&mut owner, &author, SPACE, &newcomer_author);
+    add_member(&mut owner, &author, SPACE, &newcomer_author).map_err(storage)?;
     let added = owner.logs[SPACE]
         .events()
         .last()
         .ok_or_else(|| storage("member added"))?;
-    let frame = ordered(&reader, Envelope::plain(added));
+    let frame = ordered(&reader, Envelope::plain(added)?).map_err(storage)?;
     assert_eq!(reader.ingest(frame.clone()), Ingest::Applied);
     assert_eq!(newcomer.ingest(frame), Ingest::Applied);
     let id = newcomer.me_id()?;
@@ -110,7 +113,7 @@ fn changed_audience_before_sealing(already_sealed: bool) -> R<()> {
             break;
         }
         for env in handshakes {
-            let frame = ordered(&owner, env);
+            let frame = ordered(&owner, env).map_err(storage)?;
             assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
             assert_eq!(reader.ingest(frame.clone()), Ingest::Applied);
             assert_eq!(newcomer.ingest(frame), Ingest::Applied);
@@ -129,7 +132,7 @@ fn changed_audience_before_sealing(already_sealed: bool) -> R<()> {
         .into_iter()
         .find(|e| e.client_id() == original.client_id);
     if let Some(env) = offer {
-        let frame = ordered(&owner, env);
+        let frame = ordered(&owner, env).map_err(storage)?;
         assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
         assert_eq!(reader.ingest(frame.clone()), Ingest::Applied);
         assert_eq!(newcomer.ingest(frame), Ingest::Applied);
@@ -184,7 +187,7 @@ fn changed_audience_before_sealing(already_sealed: bool) -> R<()> {
     let next = owner.share_app_current(fresh, "new_explicit_audience_review")?;
     assert!(next.applied);
     assert_ne!(next.entry.id, original.client_id);
-    broadcast(&mut owner, &mut reader, &mut newcomer, &mut blobs);
+    broadcast(&mut owner, &mut reader, &mut newcomer, &mut blobs)?;
     receive_wanted(&mut newcomer, &blobs)?;
     let document = newcomer.app_binary_read(&app.item_id, Some(app.version), Some(&app.sha256))?;
     assert_eq!(

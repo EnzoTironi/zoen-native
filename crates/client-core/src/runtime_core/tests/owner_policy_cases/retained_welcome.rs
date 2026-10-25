@@ -10,13 +10,15 @@ fn history(owner: &Engine) -> StdResult<Vec<Sequenced>, Box<dyn std::error::Erro
         .ok_or("canonical owner log")?
         .events()
         .iter()
-        .map(|event| Sequenced {
-            seq: event.seq,
-            prev: event.prev.clone(),
-            hash: event.hash.clone(),
-            env: Envelope::plain(event),
+        .map(|event| {
+            Ok::<_, event_log::LogError>(Sequenced {
+                seq: event.seq,
+                prev: event.prev.clone(),
+                hash: event.hash.clone(),
+                env: Envelope::plain(event)?,
+            })
         })
-        .collect())
+        .collect::<std::result::Result<Vec<_>, _>>()?)
 }
 
 fn ingest_at(core: &mut DeviceCore, entries: Vec<Sequenced>, phase: &str) -> TestResult {
@@ -38,7 +40,7 @@ pub(super) fn deliver_handshakes(
         let entries = owner.outbox_envelopes();
         assert!(!entries.is_empty());
         for envelope in entries {
-            let entry = ordered(owner, envelope);
+            let entry = ordered(owner, envelope)?;
             assert_eq!(owner.ingest(entry.clone()), Ingest::Confirmed);
             ingest_at(worker, vec![entry], phase)?;
             delivered += 1;
@@ -71,10 +73,10 @@ fn recovery(typed: bool) -> TestResult {
         public_stock = Some((batch.packages().to_vec(), batch.digest().to_owned()));
         before_welcome = Some(core.image().expect("retained native private package"));
         first
-    });
+    })?;
     let early = before_welcome.ok_or("pre-Welcome native image")?;
     let (public_stock, original_digest) = public_stock.ok_or("initial public batch")?;
-    let worker_key = Signer::generate();
+    let worker_key = Signer::generate()?;
     assert_ne!(worker_key.id(), f.agent_device.id());
     let worker_author = Author::device(&f.agent_root, worker_key.clone());
     let worker_cert = worker_author.cert.ok_or("worker certificate")?;
@@ -112,7 +114,7 @@ fn recovery(typed: bool) -> TestResult {
     deliver_handshakes(&mut f.owner, &mut worker, "owner checkpoint")?;
     assert!(worker.engine.mls_checkpoints()?);
     for envelope in worker.engine.outbox_envelopes() {
-        let entry = ordered(&f.owner, envelope);
+        let entry = ordered(&f.owner, envelope)?;
         assert_eq!(f.owner.ingest(entry.clone()), Ingest::Applied);
         ingest_at(&mut worker, vec![entry], "worker checkpoint echo")?;
     }
@@ -207,7 +209,7 @@ fn recovery(typed: bool) -> TestResult {
         let other = f.owner.request_account_policy_options(&scope)?;
         f.owner.mls_seal_outbox()?;
         for envelope in f.owner.outbox_envelopes() {
-            let entry = ordered(&f.owner, envelope);
+            let entry = ordered(&f.owner, envelope)?;
             assert_eq!(f.owner.ingest(entry.clone()), Ingest::Confirmed);
             ingest_at(
                 &mut worker,
@@ -255,7 +257,7 @@ fn recovery(typed: bool) -> TestResult {
         )?;
     }
     for envelope in worker.engine.outbox_envelopes() {
-        let entry = ordered(&f.owner, envelope);
+        let entry = ordered(&f.owner, envelope)?;
         assert_eq!(f.owner.ingest(entry.clone()), Ingest::Applied);
         ingest_at(&mut worker, vec![entry.clone()], "worker rejoin echo")?;
         ingest_at(&mut cold, vec![entry], "cold native rejoin event")?;

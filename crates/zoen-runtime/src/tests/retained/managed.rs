@@ -26,10 +26,10 @@ async fn reopen(world: &mut World, vault: Arc<Vault>) {
     world.runtime = Arc::new(runtime);
 }
 
-async fn fixture() -> (Fixture, Arc<Vault>) {
-    let mut world = World::with_relay().await;
+async fn fixture() -> std::result::Result<(Fixture, Arc<Vault>), Box<dyn std::error::Error>> {
+    let mut world = World::with_relay().await?;
     let actor = &world.agents[0];
-    let vault = Vault::new();
+    let vault = Vault::new()?;
     assert!(vault.save(
         RuntimeAuthority::native_capsule_vault_key(&world.config_namespace, 1).unwrap(),
         vec![63; 32]
@@ -64,7 +64,7 @@ async fn fixture() -> (Fixture, Arc<Vault>) {
     .unwrap();
     let mut store = Store::open(":memory:").unwrap();
     mls::migrate(store.conn_mut()).unwrap();
-    (
+    Ok((
         Fixture {
             world,
             log: Arc::new(log),
@@ -72,15 +72,18 @@ async fn fixture() -> (Fixture, Arc<Vault>) {
             second,
             agent,
             owner,
-            space: new_id("managed-ingress"),
+            space: new_id("managed-ingress")?,
             head: None,
             managed_directory: None,
         },
         vault,
-    )
+    ))
 }
 
-async fn publication(f: &mut Fixture, vault: Arc<Vault>) -> Vec<u8> {
+async fn publication(
+    f: &mut Fixture,
+    vault: Arc<Vault>,
+) -> std::result::Result<Vec<u8>, Box<dyn std::error::Error>> {
     let actor = f.world.agents[0].clone();
     let agent = &actor.identity;
     let device = actor.device.as_deref().unwrap();
@@ -166,7 +169,7 @@ async fn publication(f: &mut Fixture, vault: Arc<Vault>) -> Vec<u8> {
         zoen_relay::key_package_claims::clock_ms(&f.world.runtime.finance.pool)
             .await
             .unwrap(),
-    );
+    )?;
     let mut claimed = zoen_relay::key_package_claims::claim(
         &f.world.runtime.finance.pool,
         &f.owner.id,
@@ -227,10 +230,14 @@ async fn publication(f: &mut Fixture, vault: Arc<Vault>) -> Vec<u8> {
         published
     );
 
-    package.data
+    Ok(package.data)
 }
 
-async fn join_and_recover(f: &mut Fixture, vault: Arc<Vault>, package: Vec<u8>) {
+async fn join_and_recover(
+    f: &mut Fixture,
+    vault: Arc<Vault>,
+    package: Vec<u8>,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let actor = f.world.agents[0].clone();
     let agent = &actor.identity;
     let device = actor.device.as_deref().unwrap();
@@ -239,12 +246,12 @@ async fn join_and_recover(f: &mut Fixture, vault: Arc<Vault>, package: Vec<u8>) 
         kind: SpaceKind::Direct,
         privacy: Privacy::EndToEnd,
     })
-    .await;
+    .await?;
     f.clear(EventBody::MemberAdded {
         identity: agent.clone(),
         role: Role::Member,
     })
-    .await;
+    .await?;
     let owner = f.device();
     owner.create_group(&f.space).unwrap();
     let commit = owner
@@ -258,13 +265,14 @@ async fn join_and_recover(f: &mut Fixture, vault: Arc<Vault>, package: Vec<u8>) 
         Opened::Commit { epoch: 1 }
     );
     drop(owner);
-    f.sealed(SealedKind::Commit, commit.commit).await;
-    f.sealed(SealedKind::Welcome, commit.welcome.unwrap()).await;
+    f.sealed(SealedKind::Commit, commit.commit).await?;
+    f.sealed(SealedKind::Welcome, commit.welcome.unwrap())
+        .await?;
     let joined = f.sync(false).await.unwrap();
     assert!(joined.caught_up);
     assert!(joined.runs.is_empty());
-    f.grant("managed-initial-trust").await;
-    let trigger = f.message("Private managed ingress request").await;
+    f.grant("managed-initial-trust").await?;
+    let trigger = f.message("Private managed ingress request").await?;
     let discovered = f.sync(false).await.unwrap();
     assert!(discovered.caught_up);
     assert_eq!(discovered.runs.len(), 1);
@@ -304,6 +312,7 @@ async fn join_and_recover(f: &mut Fixture, vault: Arc<Vault>, package: Vec<u8>) 
         0
     );
     assert_eq!(f.world.http.sends.load(Ordering::SeqCst), 0);
+    Ok(())
 }
 
 async fn revoke(f: &Fixture) {
@@ -343,15 +352,16 @@ async fn revoke(f: &Fixture) {
     assert_eq!(f.world.count("SELECT count(*) FROM key_packages").await, 0);
 }
 
-pub(super) async fn run() {
-    let (mut f, vault) = Box::pin(fixture()).await;
+pub(super) async fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut f, vault) = Box::pin(fixture()).await?;
     println!("managed MLS ingress: fresh managed fixture opened");
-    let package = Box::pin(publication(&mut f, vault.clone())).await;
+    let package = Box::pin(publication(&mut f, vault.clone())).await?;
     println!("managed MLS ingress: retained publication and recoverable claim verified");
-    Box::pin(join_and_recover(&mut f, vault.clone(), package)).await;
+    Box::pin(join_and_recover(&mut f, vault.clone(), package)).await?;
     println!("managed MLS ingress: actual join and cold discovery verified");
     Box::pin(revoke(&f)).await;
     f.world.finish().await;
     drop(vault);
     println!("managed MLS ingress: public custody, retained initial packages, real SQL ACK loss/claim/replay, actual Welcome/Commit/Application through RuntimeSource, cold discovery, revocation PASS; continuity/model/output remain closed");
+    Ok(())
 }

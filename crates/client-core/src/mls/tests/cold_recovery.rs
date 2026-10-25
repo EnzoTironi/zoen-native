@@ -12,7 +12,7 @@ fn settled_groups_do_not_repeat_recovery_download_group_reads(
         .ok_or("missing fixture clock")?;
     for index in 0..32 {
         let space = format!("recovery-download-{index}");
-        for frame in claim_group(&mut owner, &space, std::slice::from_mut(&mut peer)) {
+        for frame in claim_group(&mut owner, &space, std::slice::from_mut(&mut peer))? {
             assert_eq!(peer.ingest(frame), Ingest::Applied);
         }
         owner.send_message(&space, "Exact established source")?;
@@ -21,7 +21,7 @@ fn settled_groups_do_not_repeat_recovery_download_group_reads(
             .ok_or("missing fixture claim")?;
         let records = claimed_records(std::slice::from_mut(&mut peer), &targets);
         owner.mls_claimed(&space, &operation, Ok(records));
-        relay_ready_to_peer(&mut owner, &mut peer);
+        relay_ready_to_peer(&mut owner, &mut peer)?;
         assert!(peer.device()?.has_group(&space));
         assert!(peer.store.meta(&format!("recovery:{space}"))?.is_some());
         assert!(peer.timeline(&space)?.iter().any(|entry| matches!(
@@ -95,7 +95,7 @@ fn settled_groups_do_not_repeat_recovery_download_group_reads(
             revoked: false,
         },
         protocol::DeviceRecord {
-            device: Signer::generate().id(),
+            device: Signer::generate()?.id(),
             revoked: true,
         },
     ])?;

@@ -3,9 +3,9 @@
 use super::*;
 
 pub(super) fn media_contract_group_dependencies_wait_for_confirmed_files_and_do_not_block_other_spaces(
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let f = fixture(":memory:");
-    media_contract_confirm_scope(&f);
+    media_contract_confirm_scope(&f)?;
     let other_space = f
         .engine
         .create_group_with("Other space".into(), vec![], PrivacyDto::Closed)
@@ -18,7 +18,7 @@ pub(super) fn media_contract_group_dependencies_wait_for_confirmed_files_and_do_
             ..f.scope.clone()
         },
     };
-    media_contract_confirm_scope(&other);
+    media_contract_confirm_scope(&other)?;
     let draft = save(
         &f,
         "0",
@@ -85,7 +85,7 @@ pub(super) fn media_contract_group_dependencies_wait_for_confirmed_files_and_do_
             .all(|env| sent.entries.iter().all(|entry| env.client_id() != entry.id)),
         "a socket write cannot confirm the referenced File"
     );
-    media_contract_confirm_id(&f, &first_file);
+    media_contract_confirm_id(&f, &first_file)?;
     let offered = f.engine.lock().outbox_envelopes();
     assert!(offered
         .iter()
@@ -99,7 +99,7 @@ pub(super) fn media_contract_group_dependencies_wait_for_confirmed_files_and_do_
         .unwrap()
         .client_id()
         .to_string();
-    media_contract_confirm_id(&f, &second_file);
+    media_contract_confirm_id(&f, &second_file)?;
     let written = HashMap::from([(sent.entries[0].id.clone(), None)]);
     let offered = f.engine.lock().outbox_envelopes_except(&written);
     assert!(
@@ -109,16 +109,18 @@ pub(super) fn media_contract_group_dependencies_wait_for_confirmed_files_and_do_
         "confirmed File bytes and a sent predecessor still do not confirm its group position"
     );
     assert!(offered.iter().any(|env| env.client_id() == independent.id));
-    media_contract_confirm_id(&f, &sent.entries[0].id);
+    media_contract_confirm_id(&f, &sent.entries[0].id)?;
     assert!(f
         .engine
         .lock()
         .outbox_envelopes()
         .iter()
         .any(|env| env.client_id() == sent.entries[1].id));
+    Ok(())
 }
 
-pub(super) fn media_contract_grouped_preexisting_confirmed_files_need_no_new_creation() {
+pub(super) fn media_contract_grouped_preexisting_confirmed_files_need_no_new_creation(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let f = fixture(":memory:");
     let items: Vec<_> = ["one.pdf", "two.pdf"]
         .into_iter()
@@ -137,7 +139,7 @@ pub(super) fn media_contract_grouped_preexisting_confirmed_files_need_no_new_cre
         })
         .collect();
     media_contract_upload_all(&f);
-    media_contract_confirm_scope(&f);
+    media_contract_confirm_scope(&f)?;
     let original_file = f.engine.file_info_at(items[0].clone(), None).unwrap();
     media_contract_receive(
         &f,
@@ -150,7 +152,7 @@ pub(super) fn media_contract_grouped_preexisting_confirmed_files_need_no_new_cre
             origin: String::new(),
         },
         false,
-    );
+    )?;
     assert_eq!(
         f.engine.file_info_at(items[0].clone(), None).unwrap(),
         original_file,
@@ -164,33 +166,34 @@ pub(super) fn media_contract_grouped_preexisting_confirmed_files_need_no_new_cre
         .iter()
         .enumerate()
         .map(|(index, item)| {
-            f.engine
-                .lock()
-                .append(
-                    &f.scope.space_id,
-                    &f.scope.expected_identity_id,
-                    types::EventBody::MessagePosted {
-                        message: types::new_id("msg"),
-                        text: format!("Existing {index}"),
-                        attaches: Some(item.clone()),
-                        media: options
-                            .metadata(
-                                &f.scope.expected_identity_id,
-                                &f.scope.space_id,
-                                None,
-                                false,
-                                &["existing-one", "existing-two"],
-                                index,
-                            )
-                            .unwrap(),
-                        reply: None,
-                        forwarded: false,
-                    },
-                )
-                .unwrap()
-                .client_id
+            Ok::<_, crate::CoreError>(
+                f.engine
+                    .lock()
+                    .append(
+                        &f.scope.space_id,
+                        &f.scope.expected_identity_id,
+                        types::EventBody::MessagePosted {
+                            message: types::new_id("msg")?,
+                            text: format!("Existing {index}"),
+                            attaches: Some(item.clone()),
+                            media: options
+                                .metadata(
+                                    &f.scope.expected_identity_id,
+                                    &f.scope.space_id,
+                                    None,
+                                    false,
+                                    &["existing-one", "existing-two"],
+                                    index,
+                                )
+                                .unwrap(),
+                            reply: None,
+                            forwarded: false,
+                        },
+                    )?
+                    .client_id,
+            )
         })
-        .collect();
+        .collect::<std::result::Result<_, _>>()?;
     let offered = f.engine.lock().outbox_envelopes();
     assert_eq!(
         offered
@@ -199,7 +202,7 @@ pub(super) fn media_contract_grouped_preexisting_confirmed_files_need_no_new_cre
             .collect::<Vec<_>>(),
         [ids[0].as_str()]
     );
-    media_contract_confirm_id(&f, &ids[0]);
+    media_contract_confirm_id(&f, &ids[0])?;
     assert_eq!(
         f.engine
             .lock()
@@ -209,9 +212,12 @@ pub(super) fn media_contract_grouped_preexisting_confirmed_files_need_no_new_cre
             .collect::<Vec<_>>(),
         [ids[1].clone()]
     );
+
+    Ok(())
 }
 
-pub(super) fn media_contract_rejects_invalid_options_and_foreign_authority_without_mutation() {
+pub(super) fn media_contract_rejects_invalid_options_and_foreign_authority_without_mutation(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let f = fixture(":memory:");
     let before = counts(&f.engine);
     for options in [
@@ -242,10 +248,12 @@ pub(super) fn media_contract_rejects_invalid_options_and_foreign_authority_witho
         vec![input("a"), input("b")],
     );
     let mut foreign = f.scope.clone();
-    foreign.expected_identity_id = event_log::Signer::generate().id();
+    foreign.expected_identity_id = event_log::Signer::generate()?.id();
     let before = counts(&f.engine);
     assert!(f.engine.send_media_draft(foreign, draft.revision).is_err());
     assert_eq!(counts(&f.engine), before);
+
+    Ok(())
 }
 
 pub(super) fn media_contract_rejects_invalid_group_index_and_duplicate_membership_atomically() {
@@ -328,7 +336,7 @@ pub(super) fn media_contract_rejects_invalid_group_index_and_duplicate_membershi
 }
 
 pub(super) fn media_contract_forwarded_group_is_rejected_and_single_forward_preserves_file_presentation(
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let f = fixture(":memory:");
     let draft = save(
         &f,
@@ -384,7 +392,7 @@ pub(super) fn media_contract_forwarded_group_is_rejected_and_single_forward_pres
             &f.scope.space_id,
             &f.scope.expected_identity_id,
             types::EventBody::MessagePosted {
-                message: types::new_id("msg"),
+                message: types::new_id("msg")?,
                 text: String::new(),
                 attaches: Some(item),
                 media: metadata,
@@ -394,4 +402,6 @@ pub(super) fn media_contract_forwarded_group_is_rejected_and_single_forward_pres
         )
         .is_err());
     assert_eq!(counts(&f.engine), before);
+
+    Ok(())
 }

@@ -1,7 +1,7 @@
 use super::*;
 
-pub(super) async fn native_device_custody() {
-    let mut w = World::new().await;
+pub(super) async fn native_device_custody() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut w = World::new().await?;
     let actor = w.agents[0].clone();
     let device = actor.device.clone().unwrap();
     let agent: sqlx::types::Json<Identity> =
@@ -71,8 +71,8 @@ pub(super) async fn native_device_custody() {
             .unwrap(),
         packed
     );
-    native::testing::authorization_cuts(&reopened, &actor.identity, &device).await;
-    native::testing::storage_cuts(&reopened, &actor.identity, &device).await;
+    native::testing::authorization_cuts(&reopened, &actor.identity, &device).await?;
+    native::testing::storage_cuts(&reopened, &actor.identity, &device).await?;
     assert_eq!(
         reopened.run_model("fixture-run").await.unwrap_err(),
         RuntimeError::Denied
@@ -136,7 +136,7 @@ pub(super) async fn native_device_custody() {
     reopened.finance.pool.close().await;
     w.finish().await;
 
-    let mut admitted = World::new().await;
+    let mut admitted = World::new().await?;
     let actor = admitted.agents[0].clone();
     let device = actor.device.clone().unwrap();
     let agent: sqlx::types::Json<Identity> =
@@ -168,11 +168,13 @@ pub(super) async fn native_device_custody() {
     );
     assert_eq!(admitted.http.sends.load(Ordering::SeqCst), 0);
     admitted.finish().await;
+    Ok(())
 }
 
-pub(super) async fn closed_sql_pool_retains_fdb_evidence() {
-    let mut w = World::new().await;
-    let step = Arc::new(w.step(0).await);
+pub(super) async fn closed_sql_pool_retains_fdb_evidence(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut w = World::new().await?;
+    let step = Arc::new(w.step(0).await?);
     w.http.paused.store(true, Ordering::SeqCst);
     let (runtime, task_step) = (w.runtime.clone(), step.clone());
     let call = tokio::spawn(async move { runtime.complete_verified(&task_step).await });
@@ -206,11 +208,13 @@ pub(super) async fn closed_sql_pool_retains_fdb_evidence() {
     assert_eq!(w.http.sends.load(Ordering::SeqCst), 1);
     w.runtime = reopened;
     w.finish().await;
+    Ok(())
 }
 
-pub(super) async fn settlement_ack_loss_and_outbox_ack_selection() {
-    let w = World::new().await;
-    let step = w.step(0).await;
+pub(super) async fn settlement_ack_loss_and_outbox_ack_selection(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let w = World::new().await?;
+    let step = w.step(0).await?;
     w.runtime.fault.store(5, Ordering::SeqCst);
     // Real SQL settlement commits; its return is suppressed, not a DB wire fault.
     assert_eq!(
@@ -243,7 +247,10 @@ pub(super) async fn settlement_ack_loss_and_outbox_ack_selection() {
     );
     reopened.finance.pool.close().await;
     w.runtime.fault.store(0, Ordering::SeqCst);
-    w.runtime.complete_verified(&w.step(1).await).await.unwrap();
+    w.runtime
+        .complete_verified(&w.step(1).await?)
+        .await
+        .unwrap();
     let pending = w.runtime.finance.pending_outbox(64).await.unwrap();
     assert_eq!(pending.len(), 2);
     // Acknowledge the later sorted entry first. Missing-ACK selection must still
@@ -270,11 +277,13 @@ pub(super) async fn settlement_ack_loss_and_outbox_ack_selection() {
         .is_empty());
     assert_eq!(w.http.sends.load(Ordering::SeqCst), 2);
     w.finish().await;
+    Ok(())
 }
 
-pub(super) async fn declared_restore_closes_dispatch_and_release() {
-    let w = World::new().await;
-    let step = w.step(0).await;
+pub(super) async fn declared_restore_closes_dispatch_and_release(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let w = World::new().await?;
+    let step = w.step(0).await?;
     w.runtime.fault.store(2, Ordering::SeqCst);
     assert!(w.runtime.complete_verified(&step).await.is_err());
     let binding = w
@@ -308,8 +317,8 @@ pub(super) async fn declared_restore_closes_dispatch_and_release() {
     assert_eq!(w.http.sends.load(Ordering::SeqCst), 0);
     w.finish().await;
 
-    let w = World::new().await;
-    let step = w.step(0).await;
+    let w = World::new().await?;
+    let step = w.step(0).await?;
     w.runtime.fault.store(1, Ordering::SeqCst);
     assert!(w.runtime.complete_verified(&step).await.is_err());
     let binding = w
@@ -336,11 +345,15 @@ pub(super) async fn declared_restore_closes_dispatch_and_release() {
     );
     assert_eq!(w.balance().await.held_units, 13);
     w.finish().await;
+    Ok(())
 }
 
-pub(super) async fn sealed_store_canaries() {
-    let w = World::new().await;
-    w.runtime.complete_verified(&w.step(0).await).await.unwrap();
+pub(super) async fn sealed_store_canaries() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let w = World::new().await?;
+    w.runtime
+        .complete_verified(&w.step(0).await?)
+        .await
+        .unwrap();
     let sql: Vec<String>=sqlx::query_scalar("SELECT row_to_json(r)::TEXT FROM runtime_attempts r UNION ALL SELECT row_to_json(r)::TEXT FROM runtime_evidence r")
         .fetch_all(&w.runtime.finance.pool).await.unwrap();
     for row in sql {
@@ -380,4 +393,5 @@ pub(super) async fn sealed_store_canaries() {
         .open::<serde_json::Value>("subject", Some(&hash(b"wrong")), &sealed)
         .is_err());
     w.finish().await;
+    Ok(())
 }

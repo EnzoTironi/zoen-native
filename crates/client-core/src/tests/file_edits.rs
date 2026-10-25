@@ -172,7 +172,7 @@ fn checked_file_edit_preserves_original_metadata_caption_history_and_ignores_ide
     assert_eq!(caption(&e, &f), CAPTION);
     assert_eq!(e.item_at(f.item.clone(), version).unwrap().version, version);
     assert!(e.verify_log(f.space).valid);
-    identical_checked_file_and_thumbnail_do_not_create_a_duplicate_version_or_upload();
+    identical_checked_file_and_thumbnail_do_not_create_a_duplicate_version_or_upload().unwrap();
 }
 
 #[test]
@@ -235,7 +235,7 @@ fn checked_file_edit_keeps_existing_errors_without_writes_and_uses_the_session_l
         }
         assert_eq!(snapshot(&e, &f), before);
     }
-    checked_file_errors_use_session_language_and_restore_the_ambient_thread_language();
+    checked_file_errors_use_session_language_and_restore_the_ambient_thread_language().unwrap();
 }
 
 #[test]
@@ -327,7 +327,8 @@ fn foreign_voice_owner_is_denied_even_after_the_owner_changes_its_visible_file_t
     }
 }
 
-fn identical_checked_file_and_thumbnail_do_not_create_a_duplicate_version_or_upload() {
+fn identical_checked_file_and_thumbnail_do_not_create_a_duplicate_version_or_upload(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for synced in [false, true] {
         let e = seeded();
         let f = fixture(&e);
@@ -351,6 +352,7 @@ fn identical_checked_file_and_thumbnail_do_not_create_a_duplicate_version_or_upl
         assert_eq!(unchanged.version, version);
         assert_eq!(snapshot(&e, &f), before, "synced={synced}");
     }
+    Ok(())
 }
 
 #[test]
@@ -407,7 +409,7 @@ fn rejected_item_version_append_restores_every_sql_row_projection_and_upload_the
 
 #[test]
 fn checked_file_edit_and_original_history_survive_a_cold_database_reopen() {
-    let directory = std::env::temp_dir().join(types::new_id("checked-file-reopen"));
+    let directory = std::env::temp_dir().join(types::new_id("checked-file-reopen").unwrap());
     std::fs::create_dir_all(&directory).unwrap();
     let path = directory.join("core.sqlite").to_string_lossy().to_string();
     let (f, saved) = {
@@ -442,7 +444,8 @@ fn checked_file_edit_and_original_history_survive_a_cold_database_reopen() {
     std::fs::remove_dir_all(directory).unwrap();
 }
 
-fn checked_file_errors_use_session_language_and_restore_the_ambient_thread_language() {
+fn checked_file_errors_use_session_language_and_restore_the_ambient_thread_language(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for (tag, ambient, stale, forbidden) in [
         (
             "en",
@@ -494,4 +497,5 @@ fn checked_file_errors_use_session_language_and_restore_the_ambient_thread_langu
         }
         assert_eq!(crate::i18n::lang(), ambient);
     }
+    Ok(())
 }

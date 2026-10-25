@@ -1,6 +1,12 @@
 //! Existing projection on the same canonical State authority.
 
-use super::*;
+use super::{
+    content_matches, standing_allow_permitted, standing_key, t, BeforeEvent, Capability,
+    Currentness, Entry, EntryBody, Event, EventBody, Grant, GrantScope, GrantState, HashMap,
+    Identity, IdentityId, IdentityKind, ItemContent, ItemKind, ItemState, PageContent,
+    PageManifest, Projection, ReqStatus, RequestResolution, RequestState, State, ToolDecision,
+    TrustLevel, Version,
+};
 
 impl State {
     pub(crate) fn grant_issuer_allowed(
@@ -195,10 +201,10 @@ impl State {
                     || (*approved && !self.writer(&r.space, &r.req.agent))
                     || (*approved
                         && match (&r.req.item, &r.req.line) {
-                            (Some(item), Some(_)) => !self
+                            (Some(item), Some(_)) => self
                                 .items
                                 .get(item)
-                                .is_some_and(|item| item.space == r.space),
+                                .is_none_or(|item| item.space != r.space),
                             (None, None) => false,
                             _ => true,
                         })
@@ -301,14 +307,14 @@ impl State {
                         kind: p.kind,
                         origin: p.origin.clone(),
                         has_voice_history: matches!(&p.content, ItemContent::File(file) if file.is_voice()),
-                        versions: vec![Version {
+                        versions: crate::engine::ItemVersions::new(Version {
                             number: 1,
                             content: p.content.clone(),
                             author: r.req.agent.clone(),
                             at_ms: e.at_ms,
                             note: t("Criado", "Created"),
                             is_undo: false,
-                        }],
+                        }),
                         shared: None,
                     },
                 );

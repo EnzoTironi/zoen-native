@@ -2,9 +2,10 @@
 
 use super::*;
 
-pub(super) fn typed_plan_draft_and_exact_receipt_survive_file_reopen() {
-    let db = Database::new();
-    let mut f = Fixture::at(&db.path());
+pub(super) fn typed_plan_draft_and_exact_receipt_survive_file_reopen(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let db = Database::new()?;
+    let mut f = Fixture::at(&db.path())?;
     let mut s = f.session();
     let read = s.read(&f.engine).unwrap();
     let mut edit = text_edit(&read, RAW);
@@ -79,10 +80,13 @@ pub(super) fn typed_plan_draft_and_exact_receipt_survive_file_reopen() {
     assert_eq!(f.cipher().unwrap(), cipher);
     drop(s);
     drop(f);
+
+    Ok(())
 }
 
-pub(super) fn contexts_bind_actor_space_item_kind_and_creation() {
-    let mut f = Fixture::new();
+pub(super) fn contexts_bind_actor_space_item_kind_and_creation(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
     let mut s = f.session();
     let read = s.read(&f.engine).unwrap();
     apply(
@@ -122,13 +126,13 @@ pub(super) fn contexts_bind_actor_space_item_kind_and_creation() {
         .is_err());
     }
     no_change(&f, &s, &before);
-    let other_id = new_id("other-plan");
+    let other_id = new_id("other-plan")?;
     f.ordered(EventBody::ItemCreated {
         item: other_id.clone(),
         kind: ItemKind::Plan,
         content: ItemContent::Plan(original()),
         origin: "other".into(),
-    });
+    })?;
     let mut other = PageSession::open(&f.engine, &other_id).unwrap();
     let other_read = other.read(&f.engine).unwrap();
     assert!(other
@@ -147,7 +151,7 @@ pub(super) fn contexts_bind_actor_space_item_kind_and_creation() {
     f.ordered(EventBody::MemberAdded {
         identity: actor.clone(),
         role: Role::Member,
-    });
+    })?;
     f.engine.me = Some(actor.clone());
     f.engine.store.set_meta("me", &actor).unwrap();
     assert!(verify_receipt(
@@ -191,7 +195,7 @@ pub(super) fn contexts_bind_actor_space_item_kind_and_creation() {
         .decode_page_edit_context(it, &read.edit_context)
         .is_err());
     // Same actor/item spelling with an independent valid signed creation is refused.
-    let mut recreated = Fixture::with_ids(":memory:", f.space.clone(), f.item.clone());
+    let mut recreated = Fixture::with_ids(":memory:", f.space.clone(), f.item.clone())?;
     let secret = f.engine.signers[&f.owner].secret();
     recreated
         .engine
@@ -205,7 +209,7 @@ pub(super) fn contexts_bind_actor_space_item_kind_and_creation() {
     recreated.ordered(EventBody::MemberAdded {
         identity: f.owner.clone(),
         role: Role::Member,
-    });
+    })?;
     let mut foreign = recreated.session();
     let view = foreign.read(&recreated.engine).unwrap();
     assert!(foreign
@@ -220,17 +224,20 @@ pub(super) fn contexts_bind_actor_space_item_kind_and_creation() {
         )
         .is_err());
     assert!(recreated.cipher().is_none());
+
+    Ok(())
 }
 
-pub(super) fn same_mutation_replays_exact_accepted_context_but_returns_current_view() {
-    let mut f = Fixture::new();
+pub(super) fn same_mutation_replays_exact_accepted_context_but_returns_current_view(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
     let mut s = f.session();
     let read = s.read(&f.engine).unwrap();
     let edit = text_edit(&read, "own accepted text");
     let accepted = apply(&f, &mut s, &read, "same-id", std::slice::from_ref(&edit)).unwrap();
     let mut remote = changed(&blocks(&read)[1]);
     remote.text = "remote unseen summary".into();
-    f.remote(remote);
+    f.remote(remote)?;
     let current = s.read(&f.engine).unwrap();
     let before = exact(&f, &s);
     let retry = apply(&f, &mut s, &read, "same-id", &[edit]).unwrap();
@@ -242,10 +249,13 @@ pub(super) fn same_mutation_replays_exact_accepted_context_but_returns_current_v
     assert_ne!(retry.current.content_hash, retry.applied_content_hash);
     assert_eq!(retry.current.view, current.view);
     no_change(&f, &s, &before);
+
+    Ok(())
 }
 
-pub(super) fn changed_request_with_same_mutation_refuses_atomically() {
-    let f = Fixture::new();
+pub(super) fn changed_request_with_same_mutation_refuses_atomically(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = Fixture::new()?;
     let mut s = f.session();
     let read = s.read(&f.engine).unwrap();
     let edit = text_edit(&read, "one request");
@@ -294,4 +304,6 @@ pub(super) fn changed_request_with_same_mutation_refuses_atomically() {
         )
         .is_err());
     no_change(&f, &s, &before);
+
+    Ok(())
 }

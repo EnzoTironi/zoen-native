@@ -1,6 +1,9 @@
 //! Existing currentness on the same canonical State authority.
 
-use super::*;
+use super::{
+    content_hash, ActionClass, AgentRequest, Currentness, ItemContent, ItemKind, PlanDoc, PlanRead,
+    Role, State,
+};
 
 impl State {
     pub(crate) fn writer(&self, space: &str, identity: &str) -> bool {
@@ -82,7 +85,8 @@ impl State {
                 it.space == space
                     && read_plan.is_some_and(|plan| {
                         plan.line(line).is_some_and(|line| {
-                            content_hash(&(&line.text, line.cost_cents)) == req.content_hash
+                            content_hash(&(&line.text, line.cost_cents))
+                                .is_ok_and(|hash| hash == req.content_hash)
                         })
                     })
             }),
@@ -90,7 +94,8 @@ impl State {
                 // Old creation cards did not retain their output. They can be denied,
                 // but cannot claim to create a document that was never persisted.
                 req.action != ActionClass::Reversible
-                    || content_hash(&(&req.title, &req.detail, &req.audience)) == req.content_hash
+                    || content_hash(&(&req.title, &req.detail, &req.audience))
+                        .is_ok_and(|hash| hash == req.content_hash)
             }
             _ => false,
         }

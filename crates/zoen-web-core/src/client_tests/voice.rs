@@ -1,7 +1,8 @@
 //! Original whole test bodies, called by their unchanged registered facade.
 use super::*;
 
-pub(super) fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
+pub(super) fn native_voice_replies_versions_and_reverts_stay_on_the_original_post(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use types::{FileDoc, ItemContent, ItemKind, ReplyRef, VoiceMeta};
 
     let identity = NativeSigner::from_secret(&[31; 32]);
@@ -11,10 +12,12 @@ pub(super) fn native_voice_replies_versions_and_reverts_stay_on_the_original_pos
     let mut client = Client::new(account(&identity, &host.0), host, "").unwrap();
     let space = "sp_voice";
     let mut log = SpaceLog::new(space);
-    let append = |log: &mut SpaceLog, author: &Author, body| {
-        let now = log.next_seq() as i64 + 1;
-        clear(log, author, body, now);
-    };
+    let append =
+        |log: &mut SpaceLog, author: &Author, body| -> Result<(), Box<dyn std::error::Error>> {
+            let now = log.next_seq() as i64 + 1;
+            clear(log, author, body, now)?;
+            Ok(())
+        };
     append(
         &mut log,
         &author,
@@ -23,7 +26,7 @@ pub(super) fn native_voice_replies_versions_and_reverts_stay_on_the_original_pos
             kind: SpaceKind::Group,
             privacy: Privacy::EndToEnd,
         },
-    );
+    )?;
     append(
         &mut log,
         &author,
@@ -35,7 +38,7 @@ pub(super) fn native_voice_replies_versions_and_reverts_stay_on_the_original_pos
             media: None,
             forwarded: false,
         },
-    );
+    )?;
     let root = log.events().last().unwrap().hash.clone();
     let root_alias = log.events().last().unwrap().client_id.clone();
     let mut original = crate::media::seal_file("voice.webm", "audio/webm", b"original", None)
@@ -55,11 +58,11 @@ pub(super) fn native_voice_replies_versions_and_reverts_stay_on_the_original_pos
         content: ItemContent::File(doc),
         origin: "Voice message".into(),
     };
-    append(&mut log, &author, post("it_voice", original.clone()));
+    append(&mut log, &author, post("it_voice", original.clone()))?;
     let entry = log.events().last().unwrap().hash.clone();
     let mut threaded = original.clone();
     threaded.voice.as_mut().unwrap().reply = Some(ReplyRef::thread(&root_alias));
-    append(&mut log, &author, post("it_thread", threaded));
+    append(&mut log, &author, post("it_thread", threaded))?;
     let thread_entry = log.events().last().unwrap().hash.clone();
     client.logs.insert(space.into(), log.clone());
 
@@ -101,8 +104,8 @@ pub(super) fn native_voice_replies_versions_and_reverts_stay_on_the_original_pos
         content: ItemContent::File(doc),
         note: "Trimmed".into(),
     };
-    append(&mut log, &author, version(edited.clone()));
-    append(&mut log, &other, version(original.clone()));
+    append(&mut log, &author, version(edited.clone()))?;
+    append(&mut log, &other, version(original.clone()))?;
     // A retained caption/forward must resolve the same current manifest as the
     // original card, including ownership-checked versions and reverts.
     let attachment = author.sign_event(
@@ -118,7 +121,7 @@ pub(super) fn native_voice_replies_versions_and_reverts_stay_on_the_original_pos
             media: None,
             forwarded: true,
         },
-    );
+    )?;
     let assert_attachment = |client: &Client<HostSigner>, expected: &FileDoc| {
         let view = client
             .message_view(
@@ -162,9 +165,9 @@ pub(super) fn native_voice_replies_versions_and_reverts_stay_on_the_original_pos
         to_version,
         note: "Restored".into(),
     };
-    append(&mut log, &other, revert(1));
-    append(&mut log, &author, revert(0));
-    append(&mut log, &author, revert(99));
+    append(&mut log, &other, revert(1))?;
+    append(&mut log, &author, revert(0))?;
+    append(&mut log, &author, revert(99))?;
     client.logs.insert(space.into(), log.clone());
     assert_eq!(
         client.conversations()[0].messages[1].file.as_ref(),
@@ -176,15 +179,15 @@ pub(super) fn native_voice_replies_versions_and_reverts_stay_on_the_original_pos
         4,
         "Foreign-author and invalid restore targets add no activity"
     );
-    append(&mut log, &author, revert(1)); // Version 3 is a copy of version 1.
+    append(&mut log, &author, revert(1))?; // Version 3 is a copy of version 1.
     client.logs.insert(space.into(), log.clone());
     assert_eq!(
         client.conversations()[0].messages[1].file.as_ref(),
         Some(&original)
     );
     assert_attachment(&client, &original);
-    append(&mut log, &author, revert(2)); // Version 4 is a copy of version 2.
-    append(&mut log, &author, revert(3)); // Reverts can target earlier reverts.
+    append(&mut log, &author, revert(2))?; // Version 4 is a copy of version 2.
+    append(&mut log, &author, revert(3))?; // Reverts can target earlier reverts.
     client.logs.insert(space.into(), log);
     let conversation = &client.conversations()[0];
     assert_eq!(conversation.messages.len(), 7);
@@ -232,7 +235,7 @@ pub(super) fn native_voice_replies_versions_and_reverts_stay_on_the_original_pos
             target: native_target.clone(),
             note: types::Annotation::Delete,
         },
-    );
+    )?;
     client.logs.insert(space.into(), log.clone());
     assert!(!client.conversations()[0].messages[1].deleted);
     append(
@@ -242,15 +245,16 @@ pub(super) fn native_voice_replies_versions_and_reverts_stay_on_the_original_pos
             target: native_target,
             note: types::Annotation::Delete,
         },
-    );
+    )?;
     client.logs.insert(space.into(), log);
     let conversations = client.conversations();
     assert!(conversations[0].messages[1].deleted);
     assert!(conversations[0].messages[1].file.is_none());
+    Ok(())
 }
 
 pub(super) fn native_forwarded_voice_is_one_destination_only_message_after_receive_and_saved_reload(
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use types::{ItemContent, ItemKind, VoiceMeta};
 
     for forwarded in [false, true] {
@@ -270,7 +274,7 @@ pub(super) fn native_forwarded_voice_is_one_destination_only_message_after_recei
                 privacy: Privacy::Closed,
             },
             1,
-        );
+        )?;
         client.receive(&create, 2).unwrap();
         let mut document =
             crate::media::seal_file("forwarded.wav", "audio/wav", b"synthetic audio", None)
@@ -295,7 +299,7 @@ pub(super) fn native_forwarded_voice_is_one_destination_only_message_after_recei
                 origin: "Voice message".into(),
             },
             3,
-        );
+        )?;
         let update = client.receive(&posted, 4).unwrap();
         let assert_projection = |client: &Client<HostSigner>| {
             let conversations = client.conversations();
@@ -320,4 +324,5 @@ pub(super) fn native_forwarded_voice_is_one_destination_only_message_after_recei
         let restored = Client::new(linked, host, &update.snapshot).unwrap();
         assert_projection(&restored);
     }
+    Ok(())
 }

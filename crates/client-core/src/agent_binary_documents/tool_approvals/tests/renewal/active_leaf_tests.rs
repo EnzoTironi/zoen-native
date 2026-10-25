@@ -1,7 +1,7 @@
 //! Actual signed later steps cannot be renewed through an older review card.
 use super::*;
 
-fn later_step(f: &Fixture) -> AgentRequestDto {
+fn later_step(f: &Fixture) -> std::result::Result<AgentRequestDto, Box<dyn std::error::Error>> {
     let turn = f
         .agent
         .agent_binary_turn(&f.base.item_id, &f.source, &f.owner, None, None)
@@ -15,7 +15,7 @@ fn later_step(f: &Fixture) -> AgentRequestDto {
     ask["round"] = json!(1);
     input.continuation_json = ask.to_string();
     let request = f.agent.stage_tool_approval(&turn, input).unwrap();
-    confirm_pending(f);
+    confirm_pending(f)?;
     let p = proposal(f, &request.id);
     assert_eq!(p.step, 1);
     assert_eq!(request.status, RequestStatus::Pending);
@@ -27,14 +27,15 @@ fn later_step(f: &Fixture) -> AgentRequestDto {
             .id,
         request.id
     );
-    request
+    Ok(request)
 }
 
 #[test]
-fn later_signed_pending_step_refuses_older_owner_intent_and_available_projection() {
-    let f = fixture();
-    let (old, _) = expired_approved(&f, "read_deckcraft");
-    let next = later_step(&f);
+fn later_signed_pending_step_refuses_older_owner_intent_and_available_projection(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = fixture().unwrap();
+    let (old, _) = expired_approved(&f, "read_deckcraft").unwrap();
+    let next = later_step(&f)?;
     let before = counts(&f);
     assert!(owner_decide(
         &f,
@@ -53,7 +54,8 @@ fn later_signed_pending_step_refuses_older_owner_intent_and_available_projection
             content_hash: observed(&old).into(),
         },
         crate::engine::now_ms(),
-    );
+    )
+    .unwrap();
     assert!(f.agent.tool_review_pending_intent(&old.id).is_none());
     let mut e = f.agent.lock();
     let me = e.me.replace(f.owner.clone());
@@ -77,14 +79,16 @@ fn later_signed_pending_step_refuses_older_owner_intent_and_available_projection
             .status,
         RequestStatus::Pending
     );
+    Ok(())
 }
 
 #[test]
-fn later_signed_step_retires_prior_requested_intent_without_staging_a_successor() {
-    let f = fixture();
-    let (old, _) = expired_approved(&f, "read_deckcraft");
+fn later_signed_step_retires_prior_requested_intent_without_staging_a_successor(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = fixture().unwrap();
+    let (old, _) = expired_approved(&f, "read_deckcraft").unwrap();
     let intent = request_again(&f, &old);
-    let next = later_step(&f);
+    let next = later_step(&f)?;
     let before = counts(&f);
     assert!(f.agent.tool_review_pending_intent(&old.id).is_none());
     assert!(f
@@ -93,7 +97,7 @@ fn later_signed_step_retires_prior_requested_intent_without_staging_a_successor(
         .is_err());
     assert_eq!(counts(&f), before);
     let mut forged = f.agent.lock().state.requests[&old.id].req.clone();
-    forged.id = types::new_id("obsolete-successor");
+    forged.id = types::new_id("obsolete-successor").unwrap();
     let p = forged.tool_proposal.as_mut().unwrap();
     p.expires_at_ms = crate::engine::now_ms() + 60_000;
     p.review = Some(types::ToolReviewLineage {
@@ -104,7 +108,7 @@ fn later_signed_step_retires_prior_requested_intent_without_staging_a_successor(
     });
     forged.content_hash = forged.tool_proposal_hash(&f.space).unwrap();
     let forged_id = forged.id.clone();
-    append_at(&f, forged, crate::engine::now_ms());
+    append_at(&f, forged, crate::engine::now_ms()).unwrap();
     assert!(!f.agent.lock().state.requests.contains_key(&forged_id));
     assert_eq!(
         f.agent
@@ -129,20 +133,22 @@ fn later_signed_step_retires_prior_requested_intent_without_staging_a_successor(
             .id,
         next.id
     );
+    Ok(())
 }
 
 #[test]
-fn renewed_pending_or_approved_read_retires_when_a_later_step_is_canonical() {
+fn renewed_pending_or_approved_read_retires_when_a_later_step_is_canonical(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for approved_before in [false, true] {
-        let f = fixture();
-        let (old, _) = expired_approved(&f, "read_deckcraft");
+        let f = fixture().unwrap();
+        let (old, _) = expired_approved(&f, "read_deckcraft").unwrap();
         let intent = request_again(&f, &old);
         let next = f
             .agent
             .stage_tool_review_successor(&old.id, &intent)
             .unwrap()
             .unwrap();
-        confirm_pending(&f);
+        confirm_pending(&f)?;
         let permit = if approved_before {
             owner_decide(
                 &f,
@@ -151,12 +157,12 @@ fn renewed_pending_or_approved_read_retires_when_a_later_step_is_canonical() {
                 ToolRequestDecision::ApproveOnce,
             )
             .unwrap();
-            confirm_pending(&f);
+            confirm_pending(&f)?;
             Some(f.agent.approved_tool_turn(&next.id, WORKER).unwrap())
         } else {
             None
         };
-        later_step(&f);
+        later_step(&f)?;
         let before = counts(&f);
         if let Some(permit) = permit {
             assert!(f.agent.agent_binary_finish_read(permit.turn()).is_err());
@@ -198,27 +204,30 @@ fn renewed_pending_or_approved_read_retires_when_a_later_step_is_canonical() {
                     }),
                 },
                 crate::engine::now_ms(),
-            );
+            )
+            .unwrap();
             assert_eq!(
                 f.agent.lock().state.requests[&next.id].status,
                 ReqStatus::Pending
             );
         }
     }
+    Ok(())
 }
 
 #[test]
-fn accepted_renewed_deck_receipt_recovers_before_obsolete_leaf_refusal() {
-    let f = fixture();
-    signed_trust(&f, TrustLevel::Suggest);
-    let (old, _) = expired_approved(&f, "deckcraft_slide_notes");
+fn accepted_renewed_deck_receipt_recovers_before_obsolete_leaf_refusal(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = fixture().unwrap();
+    signed_trust(&f, TrustLevel::Suggest).unwrap();
+    let (old, _) = expired_approved(&f, "deckcraft_slide_notes").unwrap();
     let review = request_again(&f, &old);
     let next = f
         .agent
         .stage_tool_review_successor(&old.id, &review)
         .unwrap()
         .unwrap();
-    confirm_pending(&f);
+    confirm_pending(&f)?;
     owner_decide(
         &f,
         &next.id,
@@ -226,15 +235,15 @@ fn accepted_renewed_deck_receipt_recovers_before_obsolete_leaf_refusal() {
         ToolRequestDecision::ApproveOnce,
     )
     .unwrap();
-    confirm_pending(&f);
+    confirm_pending(&f)?;
     let permit = f.agent.approved_tool_turn(&next.id, WORKER).unwrap();
     let (mutation, digest) = intent(permit.proposal());
     let saved = f
         .agent
         .agent_binary_save(permit.turn(), &mutation, &digest, &STANDARD.encode(CHANGED))
         .unwrap();
-    confirm_pending(&f);
-    later_step(&f);
+    confirm_pending(&f)?;
+    later_step(&f)?;
     let before = counts(&f);
     assert_eq!(
         f.agent
@@ -249,13 +258,14 @@ fn accepted_renewed_deck_receipt_recovers_before_obsolete_leaf_refusal() {
         saved
     );
     assert_eq!(counts(&f), before);
+    Ok(())
 }
 
 #[test]
 fn leaf_order_uses_only_matching_agent_space_source_task_and_canonical_order() {
     // Predicate unit coverage complements the signed admission/race fixtures.
-    let f = fixture();
-    let (old, _) = expired_approved(&f, "read_deckcraft");
+    let f = fixture().unwrap();
+    let (old, _) = expired_approved(&f, "read_deckcraft").unwrap();
     let mut e = f.agent.lock();
     let original = e.state.requests[&old.id].clone();
     assert!(e.state.tool_review_active_leaf(&original));

@@ -19,7 +19,7 @@ fn history_state(client: &Client) -> [Option<String>; 3] {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn retired_history_owner_cannot_read_a_new_manifest_or_commit_its_import() {
-    let f = Fixture::new().await;
+    let f = Fixture::new().await.unwrap();
     f.online().await;
     let owner = owner::LinkOwner::capture(f.client()).unwrap();
     f.client().stop_sync();
@@ -60,11 +60,12 @@ async fn retired_history_owner_cannot_read_a_new_manifest_or_commit_its_import()
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn history_fetch_accepted_before_retirement_cannot_install_its_late_box_in_new_session() {
-    let mut f = Fixture::new().await;
+async fn history_fetch_accepted_before_retirement_cannot_install_its_late_box_in_new_session(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new().await.unwrap();
     f.online().await;
-    let (recipient_secret, recipient_public) = link::key_pair();
-    let (_, primary_public) = link::key_pair();
+    let (recipient_secret, recipient_public) = link::key_pair()?;
+    let (_, primary_public) = link::key_pair()?;
     let primary = Signer::from_secret(&[75; 32]).id();
     let secret = [76; 32];
     {
@@ -115,11 +116,13 @@ async fn history_fetch_accepted_before_retirement_cannot_install_its_late_box_in
     // operation only verifies that the replacement Net remains usable.
     assert!(!f.client().devices_impl().await.unwrap().is_empty());
     assert_eq!(history_state(f.client()), before);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn retired_history_signer_cannot_borrow_a_replacement_accounts_key() {
-    let f = Fixture::new().await;
+    let f = Fixture::new().await.unwrap();
     f.online().await;
     let owner = owner::LinkOwner::capture(f.client()).unwrap();
     let old = f.client().account().unwrap();

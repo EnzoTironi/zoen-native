@@ -1,5 +1,5 @@
 //! Admission for this capsule's exact original pending approval publication.
-use super::*;
+use super::{direct_writers, image_tasks, DeviceCore, EventBody, NativeError, Result};
 use protocol::Envelope;
 
 impl DeviceCore {

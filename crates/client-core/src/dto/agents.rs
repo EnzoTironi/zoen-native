@@ -1,5 +1,5 @@
 //! Existing public DTO declarations, grouped by domain.
-use super::*;
+use super::{ItemDetail, Persona, TrustLevelDto};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
@@ -81,7 +81,7 @@ pub enum ToolRequestDecision {
     ApproveOnce,
     Deny,
     Cancel,
-    /// Preparation only. A successor needs a separate normal ApproveOnce.
+    /// Preparation only. A successor needs a separate normal `ApproveOnce`.
     RequestReview,
 }
 

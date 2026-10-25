@@ -2,8 +2,9 @@
 
 use super::*;
 
-pub(super) fn unknown_foreign_removed_and_inaccessible_receipts_never_write() {
-    let (_db, e, c) = fixture();
+pub(super) fn unknown_foreign_removed_and_inaccessible_receipts_never_write(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (_db, e, c) = fixture()?;
     let before = snapshot(&e);
     for (space, peer) in [
         ("missing-space", c.peer.as_str()),
@@ -19,7 +20,7 @@ pub(super) fn unknown_foreign_removed_and_inaccessible_receipts_never_write() {
         EventBody::MemberRemoved {
             identity: c.peer.clone(),
         },
-    );
+    )?;
     let before = snapshot(&e);
     assert!(!e
         .lock()
@@ -33,14 +34,14 @@ pub(super) fn unknown_foreign_removed_and_inaccessible_receipts_never_write() {
             identity: c.peer.clone(),
             role: Role::Member,
         },
-    );
+    )?;
     membership(
         &e,
         &c,
         EventBody::MemberRemoved {
             identity: c.me.clone(),
         },
-    );
+    )?;
     let before = snapshot(&e);
     for peer in [&c.peer, &c.me] {
         assert!(!e
@@ -49,11 +50,12 @@ pub(super) fn unknown_foreign_removed_and_inaccessible_receipts_never_write() {
             .unwrap());
         assert_eq!(snapshot(&e), before);
     }
+    Ok(())
 }
 
 pub(super) fn early_receipts_survive_sync_boundaries_until_membership_and_foreign_pairs_stay_bounded(
-) {
-    let (_db, e, c) = fixture();
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (_db, e, c) = fixture()?;
     let mut deferred = crate::net::DeferredReceipts::default();
     let mut dirty = std::collections::HashSet::new();
     let before = snapshot(&e);
@@ -77,7 +79,7 @@ pub(super) fn early_receipts_survive_sync_boundaries_until_membership_and_foreig
             identity: c.outsider.clone(),
             role: Role::Member,
         },
-    );
+    )?;
     let before_flush = snapshot(&e);
     e.lock().store.conn().execute_batch(
         "CREATE TEMP TRIGGER refuse_deferred BEFORE INSERT ON peer_receipts BEGIN SELECT RAISE(ABORT, 'synthetic deferred failure'); END;",
@@ -138,10 +140,13 @@ pub(super) fn early_receipts_survive_sync_boundaries_until_membership_and_foreig
     deferred.flush(&mut e.lock(), &mut dirty).unwrap();
     assert_eq!(snapshot(&e), before);
     assert!(dirty.is_empty());
+
+    Ok(())
 }
 
-pub(super) fn pending_membership_cannot_admit_a_new_peer_or_suppress_a_confirmed_peers_receipt() {
-    let (_db, e, c) = fixture();
+pub(super) fn pending_membership_cannot_admit_a_new_peer_or_suppress_a_confirmed_peers_receipt(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (_db, e, c) = fixture()?;
     e.lock()
         .add_member(&c.space, &c.outsider, Role::Member)
         .unwrap();
@@ -165,13 +170,13 @@ pub(super) fn pending_membership_cannot_admit_a_new_peer_or_suppress_a_confirmed
             matches!(&row.event.body, EventBody::MemberAdded { identity, .. } if identity == &c.outsider)
         }).unwrap().event;
         let mut relay = engine.logs[&c.space].clone();
-        let event = relay.sequence(pending).clone();
+        let event = relay.sequence(pending)?.clone();
         assert_eq!(
             engine.ingest(protocol::Sequenced {
                 seq: event.seq,
                 prev: event.prev.clone(),
                 hash: event.hash.clone(),
-                env: protocol::Envelope::plain(&event),
+                env: protocol::Envelope::plain(&event)?,
             }),
             crate::sync::Ingest::Confirmed
         );
@@ -198,11 +203,14 @@ pub(super) fn pending_membership_cannot_admit_a_new_peer_or_suppress_a_confirmed
     );
     assert_eq!(snapshot(&e).rows.len(), 2);
     assert_delivery(&e, &c, Delivery::Read);
+
+    Ok(())
 }
 
-pub(super) fn confirmed_removal_discards_new_and_deferred_marks_so_rejoin_cannot_authorize_them() {
+pub(super) fn confirmed_removal_discards_new_and_deferred_marks_so_rejoin_cannot_authorize_them(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for remove_reader in [false, true] {
-        let (_db, e, c) = fixture();
+        let (_db, e, c) = fixture()?;
         membership(
             &e,
             &c,
@@ -210,7 +218,7 @@ pub(super) fn confirmed_removal_discards_new_and_deferred_marks_so_rejoin_cannot
                 identity: c.peer.clone(),
                 role: Role::Owner,
             },
-        );
+        )?;
         assert!(e.lock().receipt(&c.space, &c.peer, 10, 5).unwrap());
         let historical = snapshot(&e).rows;
         let mut deferred = crate::net::DeferredReceipts::default();
@@ -221,30 +229,31 @@ pub(super) fn confirmed_removal_discards_new_and_deferred_marks_so_rejoin_cannot
             c.peer.clone()
         };
         let actor = if remove_reader { &c.peer } else { &c.me };
-        let transition = |body| {
+        let transition = |body| -> std::result::Result<(), crate::CoreError> {
             let mut engine = e.lock();
             let signed = engine.author_for(actor).unwrap().sign_event(
                 &c.space,
-                &types::new_id("membership"),
+                &types::new_id("membership")?,
                 crate::engine::now_ms(),
                 engine.logs[&c.space].head(),
                 body,
-            );
+            )?;
             let mut relay = engine.logs[&c.space].clone();
-            let event = relay.sequence(signed).clone();
+            let event = relay.sequence(signed)?.clone();
             assert_eq!(
                 engine.ingest(protocol::Sequenced {
                     seq: event.seq,
                     prev: event.prev.clone(),
                     hash: event.hash.clone(),
-                    env: protocol::Envelope::plain(&event)
+                    env: protocol::Envelope::plain(&event)?
                 }),
                 crate::sync::Ingest::Applied
             );
+            Ok(())
         };
         transition(EventBody::MemberRemoved {
             identity: removed.clone(),
-        });
+        })?;
         assert!(!deferred
             .receive(&mut e.lock(), &c.space, &c.peer, u64::MAX, u64::MAX)
             .unwrap());
@@ -257,7 +266,7 @@ pub(super) fn confirmed_removal_discards_new_and_deferred_marks_so_rejoin_cannot
         transition(EventBody::MemberAdded {
             identity: removed,
             role: Role::Owner,
-        });
+        })?;
         deferred.flush(&mut e.lock(), &mut dirty).unwrap();
         assert_eq!(
             snapshot(&e).rows,
@@ -271,4 +280,5 @@ pub(super) fn confirmed_removal_discards_new_and_deferred_marks_so_rejoin_cannot
         assert_eq!(snapshot(&e).rows[0].2, format!("{:020}", 12));
         assert_eq!(snapshot(&e).rows[0].3, format!("{:020}", 11));
     }
+    Ok(())
 }

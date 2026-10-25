@@ -1,6 +1,9 @@
 //! Session publication and durable exact upload replay.
 
-use super::*;
+use super::{
+    seal_profile, sign_agreement, sign_upload, DeviceSigned, Engine, SealedProfile, StoredUpload,
+    MAX_CIPHERTEXT, META_AGREEMENT,
+};
 
 impl Engine {
     // ── relay traffic ──
@@ -79,7 +82,7 @@ impl Engine {
                 return Some(upload.sealed(&me));
             }
         }
-        let ciphertext = seal_profile(&key, &me, version, &fields);
+        let ciphertext = seal_profile(&key, &me, version, &fields).ok()?;
         if ciphertext.len() > MAX_CIPHERTEXT {
             return None;
         }

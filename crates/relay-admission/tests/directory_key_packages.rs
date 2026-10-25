@@ -1,8 +1,9 @@
 use relay_admission::directory::key_packages as kp;
 const NOW: i64 = 1_800_000_000_000;
 #[test]
-fn native_claim_targets_are_sorted_sets_and_operation_clock_bounds_are_exact() {
-    let op = types::new_ulid(NOW);
+fn native_claim_targets_are_sorted_sets_and_operation_clock_bounds_are_exact(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let op = types::new_ulid(NOW)?;
     let a = "a".repeat(64);
     let b = "b".repeat(64);
     let claim = kp::claim_input(&op, &[b.clone(), a.clone(), b]).unwrap();
@@ -17,10 +18,12 @@ fn native_claim_targets_are_sorted_sets_and_operation_clock_bounds_are_exact() {
         protocol::KEY_PACKAGE_CLAIM_EXPIRED
     );
     assert!(kp::claim_input(&op.to_lowercase(), &["a".repeat(64)]).is_err());
+    Ok(())
 }
 #[test]
-fn native_claim_input_refuses_invalid_id_sets_before_any_sql_selection() {
-    let op = types::new_ulid(NOW);
+fn native_claim_input_refuses_invalid_id_sets_before_any_sql_selection(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let op = types::new_ulid(NOW)?;
     assert!(kp::claim_input("bad", &[]).is_err());
     assert!(kp::claim_input(&op, &[]).is_err());
     for id in ["A".repeat(64), "g".repeat(64), "a".repeat(63)] {
@@ -41,9 +44,11 @@ fn native_claim_input_refuses_invalid_id_sets_before_any_sql_selection() {
             .len(),
         1
     );
+    Ok(())
 }
 #[test]
-fn native_publication_bounds_precede_real_mls_parsing_and_no_malformed_key_is_accepted() {
+fn native_publication_bounds_precede_real_mls_parsing_and_no_malformed_key_is_accepted(
+) -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(
         kp::validate_publications("id", "device", &vec![vec![]; 101], None).unwrap_err(),
         "at most 100 key packages at a time"
@@ -71,4 +76,5 @@ fn native_publication_bounds_precede_real_mls_parsing_and_no_malformed_key_is_ac
         (kp::MAX_STOCK, kp::MAX_RECEIPTS, kp::MAX_RECEIPT_BYTES),
         (200, 4096, 8 * 1024 * 1024)
     );
+    Ok(())
 }

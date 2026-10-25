@@ -10,8 +10,9 @@ pub(super) fn failed_delivery_send_does_not_consume_the_watermark() {
     assert_eq!(e.lock().delivered_to_announce(&s.id), Some(first));
 }
 
-pub(super) fn receipt_replay_survives_offline_reads_and_restarts() {
-    let path = std::env::temp_dir().join(types::new_id("receipt-replay"));
+pub(super) fn receipt_replay_survives_offline_reads_and_restarts(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let path = std::env::temp_dir().join(types::new_id("receipt-replay")?);
     let e = Client::open(path.to_string_lossy().into(), "en".into()).unwrap();
     e.seed_demo_if_empty().unwrap();
     let spaces: Vec<_> = e.spaces().into_iter().filter(|s| s.unread > 0).collect();
@@ -49,10 +50,13 @@ pub(super) fn receipt_replay_survives_offline_reads_and_restarts() {
     }
     drop(e);
     std::fs::remove_file(path).unwrap();
+
+    Ok(())
 }
 
-pub(super) fn ticks_follow_the_lowest_read_up_to_watermark() {
-    let dir = std::env::temp_dir().join(format!("client-test-{}", types::new_id("t")));
+pub(super) fn ticks_follow_the_lowest_read_up_to_watermark(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = std::env::temp_dir().join(format!("client-test-{}", types::new_id("t")?));
     std::fs::create_dir_all(&dir).unwrap();
     let e = Client::open(
         dir.join("r.sqlite").to_string_lossy().into(),
@@ -127,4 +131,6 @@ pub(super) fn ticks_follow_the_lowest_read_up_to_watermark() {
         .unwrap());
     assert!(!e.lock().receipt(&other_space.id, &me, 0, 1).unwrap());
     assert_eq!(e.lock().space_summary(&other_space.id).unwrap().unread, 0);
+
+    Ok(())
 }

@@ -1,5 +1,8 @@
 //! Original ordered profile completion predicate, retaining only its first blocker.
-use super::*;
+#[cfg(test)]
+use super::{META_AGREEMENT, META_OWN_SYNC};
+
+use super::Engine;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]

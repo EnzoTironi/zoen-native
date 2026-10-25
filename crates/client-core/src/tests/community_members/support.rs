@@ -63,7 +63,7 @@ impl Fixture {
             let mut engine = client.lock();
             let founder = engine.create_identity(person("Founder"), true)?;
             let member = engine.create_identity(person("Selected"), true)?;
-            let space = types::new_id("sp");
+            let space = types::new_id("sp")?;
             engine.append(
                 &space,
                 &founder,
@@ -156,19 +156,19 @@ impl Fixture {
             .ok_or("missing confirmed log")?;
         let signed = engine.author_for(&self.founder)?.sign_event(
             &self.space,
-            &types::new_id("membership"),
+            &types::new_id("membership")?,
             crate::engine::now_ms(),
             log.head(),
             body,
-        );
+        )?;
         let mut relay = log.clone();
-        let event = relay.sequence(signed).clone();
+        let event = relay.sequence(signed)?.clone();
         assert_eq!(
             engine.ingest(protocol::Sequenced {
                 seq: event.seq,
                 prev: event.prev.clone(),
                 hash: event.hash.clone(),
-                env: protocol::Envelope::plain(&event)
+                env: protocol::Envelope::plain(&event)?
             }),
             crate::sync::Ingest::Applied
         );
@@ -203,20 +203,20 @@ impl Fixture {
             let secret: [u8; 32] = bytes.as_slice().try_into()?;
             event_log::Author::device(
                 &event_log::Signer::from_secret(&secret),
-                event_log::Signer::generate(),
+                event_log::Signer::generate()?,
             )
         } else {
             engine.author_for(&self.founder)?
         };
         let event = author.sign_event(
             &self.space,
-            &types::new_id("refused"),
+            &types::new_id("refused")?,
             crate::engine::now_ms(),
             engine.causal_head(&self.space)?,
             types::EventBody::MemberRemoved {
                 identity: self.member.clone(),
             },
-        );
+        )?;
         event_log::verify_author(&event)?;
         engine.store.outbox_put(&event)?;
         engine
@@ -231,13 +231,13 @@ impl Fixture {
             .get(&self.space)
             .ok_or("missing confirmed log")?
             .clone();
-        let event = relay.sequence(pending).clone();
+        let event = relay.sequence(pending)?.clone();
         assert_eq!(
             engine.ingest(protocol::Sequenced {
                 seq: event.seq,
                 prev: event.prev.clone(),
                 hash: event.hash.clone(),
-                env: protocol::Envelope::plain(&event)
+                env: protocol::Envelope::plain(&event)?
             }),
             crate::sync::Ingest::Confirmed
         );

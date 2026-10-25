@@ -17,6 +17,8 @@ pub enum PushEnvironment {
 }
 
 impl PushEnvironment {
+    /// # Errors
+    /// Rejects values other than the exact `sandbox` or `production` names.
     pub fn parse(value: &str) -> Result<Self, PushInputError> {
         match value {
             "sandbox" => Ok(Self::Sandbox),
@@ -25,6 +27,7 @@ impl PushEnvironment {
         }
     }
 
+    #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Sandbox => "sandbox",
@@ -40,6 +43,9 @@ pub struct ApnsToken(String);
 impl ApnsToken {
     /// APNs tokens have variable length. The protocol bounds input without assuming
     /// that every OS token is 32 bytes, and keeps one canonical hexadecimal form.
+    ///
+    /// # Errors
+    /// Rejects empty, odd-length, oversized or non-hexadecimal tokens.
     pub fn parse(value: &str) -> Result<Self, PushInputError> {
         if value.is_empty()
             || value.len() > MAX_APNS_TOKEN_HEX_BYTES
@@ -51,6 +57,7 @@ impl ApnsToken {
         Ok(Self(value.to_ascii_lowercase()))
     }
 
+    #[must_use]
     pub fn as_hex(&self) -> &str {
         &self.0
     }
@@ -94,11 +101,14 @@ impl fmt::Display for PushInputError {
 
 impl std::error::Error for PushInputError {}
 
+/// # Errors
+/// Rejects empty or oversized topics, missing or empty dot-separated components,
+/// and characters outside ASCII letters, digits, dots and hyphens.
 pub fn validate_topic(topic: &str) -> Result<(), PushInputError> {
     if topic.is_empty()
         || topic.len() > 255
         || !topic.contains('.')
-        || topic.split('.').any(|part| part.is_empty())
+        || topic.split('.').any(str::is_empty)
         || !topic
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'.' || byte == b'-')
@@ -110,6 +120,9 @@ pub fn validate_topic(topic: &str) -> Result<(), PushInputError> {
 
 /// A sync hint only. The client still authenticates and validates Space membership
 /// and the signed log; this payload cannot approve, execute or author anything.
+///
+/// # Errors
+/// Rejects an empty, oversized or invalid Space id, or a zero event sequence.
 pub fn encode_sync_wake(space_id: &str, event_seq: u64) -> Result<Vec<u8>, PushInputError> {
     if space_id.is_empty()
         || space_id.len() > 128
@@ -147,6 +160,9 @@ impl fmt::Debug for CallWake {
 }
 
 impl CallWake {
+    /// # Errors
+    /// Rejects a nonce outside the 32-character lowercase hexadecimal format, a
+    /// nonpositive current time, or expiry outside the next 60 seconds.
     pub fn new(nonce: String, expires_at_ms: i64, now_ms: i64) -> Result<Self, PushInputError> {
         let value = Self {
             nonce,
@@ -156,11 +172,16 @@ impl CallWake {
         Ok(value)
     }
 
+    #[must_use]
     pub fn expires_at_ms(&self) -> i64 {
         self.expires_at_ms
     }
 
     /// Revalidate at delivery, so a queued provider task cannot send an old wake.
+    ///
+    /// # Errors
+    /// Rejects an invalid nonce, nonpositive current time, or expiry at/before
+    /// that time or more than 60 seconds later.
     pub fn encode(&self, now_ms: i64) -> Result<String, PushInputError> {
         if now_ms <= 0
             || self.expires_at_ms <= now_ms

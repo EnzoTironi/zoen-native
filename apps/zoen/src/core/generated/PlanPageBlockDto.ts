@@ -4,7 +4,7 @@ import type { TextSpanDto } from "./TextSpanDto";
 
 export type PlanPageBlockDto = { 
 /**
- * CRDT identity in DocumentSession; a presentation ID in LocalPendingLegacy.
+ * CRDT identity in `DocumentSession`; a presentation ID in `LocalPendingLegacy`.
  * Both are distinct from a line's possibly duplicated legacy ID.
  */
 id: string, content: PlanPageContentDto, 

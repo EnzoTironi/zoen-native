@@ -1,5 +1,10 @@
 //! Retained outgoing ciphertext, handshakes and stale-epoch fences.
-use super::*;
+use super::{
+    event_from_content, mls_err, must_seal, new_ulid, sealed_meta, storage, t, CoreError, Engine,
+    Envelope, Event, EventBody, HashMap, HashSet, InnerEvent, Sealed, SealedKind, SpaceId, R,
+    SUITE_ID,
+};
+use crate::net::tracing_like;
 
 impl Engine {
     /// The epoch a queued event was sealed at, without reading its sealed bytes.
@@ -143,7 +148,7 @@ impl Engine {
             e.at_ms,
             e.seen.as_ref(),
             Sealed::new(SealedKind::Application, SUITE_ID, data),
-        );
+        )?;
         self.store.set_meta(
             &sealed_meta(&e.client_id),
             &format!("{epoch}:{}:{}", hex::encode(outer.content()), outer.sig),
@@ -167,7 +172,9 @@ impl Engine {
             return Envelope::new(e.content.clone(), e.sig.clone(), e.cert.clone(), None);
         }
         if !(self.is_e2e(&e.space) && must_seal(&e.body)) {
-            return Some(Envelope::plain(e));
+            return Envelope::plain(e)
+                .inspect_err(|_| tracing_like("publication waiting malformed_signed_content"))
+                .ok();
         }
         let epoch = *ready.entry(e.space.clone()).or_insert_with(|| {
             match self.ready_epoch_checked(&e.space, &self.state) {
@@ -201,8 +208,8 @@ impl Engine {
                 reason: t("Entre na sua conta primeiro.", "Sign in first."),
             })?;
         let at_ms = crate::engine::now_ms();
-        let client_id = new_ulid(at_ms);
-        let seen = self.logs.get(space).and_then(|l| l.head());
+        let client_id = new_ulid(at_ms)?;
+        let seen = self.logs.get(space).and_then(event_log::SpaceLog::head);
         let (content, sig) = author.sign_sealed(space, &client_id, at_ms, seen.as_ref(), sealed);
         let e = event_from_content(
             content,

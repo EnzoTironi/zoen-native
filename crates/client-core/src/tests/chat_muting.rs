@@ -74,7 +74,7 @@ impl Fixture {
 
 #[tokio::test]
 async fn merges_latest_local_pin_archive_instead_of_a_stale_review_and_replays() {
-    let directory = std::env::temp_dir().join(types::new_id("chat-muting-test"));
+    let directory = std::env::temp_dir().join(types::new_id("chat-muting-test").unwrap());
     std::fs::create_dir(&directory).unwrap();
     let path = directory
         .join("synthetic.sqlite")

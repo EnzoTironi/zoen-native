@@ -1,5 +1,5 @@
 //! Read-only confirmation against this retained native capsule, not approval.
-use super::*;
+use super::{DeviceCore, ImageTaskInput, NativeError, Result};
 use types::owner_policy_context::SignedOwnerPolicyInquiry;
 impl DeviceCore {
     pub fn owner_policy_account_context(

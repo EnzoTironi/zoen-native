@@ -1,6 +1,10 @@
-//! Device image operations on the original DeviceCore state.
+//! Device image operations on the original `DeviceCore` state.
 
-use super::*;
+use super::{
+    limit_pages, validate_image, AccountMeta, Author, DeviceCore, Engine, Ingest, NativeError,
+    NativeImage, Result, Sequenced, Signer, Store, UnlockedDevice, Zeroizing, MAX_BATCH,
+    MAX_EVENT_BYTES,
+};
 
 impl DeviceCore {
     /// Installs public profiles and a certified device without local personas,
@@ -14,8 +18,8 @@ impl DeviceCore {
         engine
             .store
             .put_identity(&device.agent, None)
-            .and_then(|_| engine.store.put_identity(&device.owner, None))
-            .and_then(|_| engine.store.set_meta("me", &device.agent.id))
+            .and_then(|()| engine.store.put_identity(&device.owner, None))
+            .and_then(|()| engine.store.set_meta("me", &device.agent.id))
             .map_err(|_| NativeError::Storage)?;
         let account = AccountMeta {
             identity: device.agent.id.clone(),
@@ -82,7 +86,7 @@ impl DeviceCore {
         Ok(NativeImage(Zeroizing::new(bytes)))
     }
 
-    /// Retains the matching private OpenMLS material before a host publishes
+    /// Retains the matching private `OpenMLS` material before a host publishes
     /// these public packages. A host must activate this image before delivery.
     pub fn key_packages(&mut self, count: usize) -> Result<(Vec<Vec<u8>>, NativeImage)> {
         if !self.usable {

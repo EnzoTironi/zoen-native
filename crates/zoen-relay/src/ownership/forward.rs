@@ -476,8 +476,9 @@ mod tests {
     use event_log::{Author, Signer};
 
     #[test]
-    fn new_and_duplicate_responses_retain_supported_audiences_and_joined() {
-        let author = Author::root(Signer::generate());
+    fn new_and_duplicate_responses_retain_supported_audiences_and_joined(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let author = Author::root(Signer::generate()?);
         let env = Envelope::plain(&author.sign_event(
             "space",
             "cid",
@@ -488,7 +489,7 @@ mod tests {
                 kind: types::SpaceKind::Group,
                 privacy: types::Privacy::Closed,
             },
-        ));
+        )?)?;
         for size in [
             4_000,
             crate::log::admission::MAX_MEMBERS as usize,
@@ -534,5 +535,6 @@ mod tests {
                 assert_eq!(decoded_joined, joined);
             }
         }
+        Ok(())
     }
 }

@@ -66,8 +66,8 @@ pub(super) fn fifo_keeps_all_snapshots_and_advances_only_its_own_base_while_the_
 }
 
 pub(super) fn lost_commit_ack_reopens_and_returns_its_exact_receipt_without_touching_newer_edits_or_versions(
-) {
-    let dir = temp();
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = temp()?;
     let path = dir.join("device.sqlite");
     let f = fixture(path.to_str().unwrap());
     let a = stage(&f, "0", "editor", "a");
@@ -121,6 +121,8 @@ pub(super) fn lost_commit_ack_reopens_and_returns_its_exact_receipt_without_touc
     assert_eq!(counts(&engine), before);
     drop(engine);
     std::fs::remove_dir_all(dir).unwrap();
+
+    Ok(())
 }
 
 pub(super) fn remote_change_preserves_late_full_capture_but_never_rebases_or_publishes_it() {

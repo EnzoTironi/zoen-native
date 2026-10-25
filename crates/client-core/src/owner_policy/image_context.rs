@@ -1,5 +1,8 @@
-//! Read-only image-review facts; never Act, ApproveOnce or paid dispatch authority.
-use super::*;
+//! Read-only image-review facts; never Act, `ApproveOnce` or paid dispatch authority.
+use super::{
+    denied, invalid, ContextAdmissionFailure, Engine, EventBody, IdentityKind,
+    OwnerPolicyContextRejection, Privacy, SpaceKind, R,
+};
 use crate::image_tasks::ImageTaskInput;
 use types::owner_policy_context::OwnerPolicyInquiry;
 

@@ -34,7 +34,10 @@ struct Host {
     log: std::path::PathBuf,
 }
 impl Host {
-    async fn start(w: &World, config: &Path) -> Self {
+    async fn start(
+        w: &World,
+        config: &Path,
+    ) -> std::result::Result<Self, Box<dyn std::error::Error>> {
         let script = w.dir.join("image-script.json");
         if !script.exists() {
             write_json(
@@ -48,7 +51,7 @@ impl Host {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => panic!("ready cleanup: {e}"),
         }
-        let log = w.dir.join(types::new_id("image-agent-log"));
+        let log = w.dir.join(types::new_id("image-agent-log")?);
         let output = std::fs::File::create(&log).unwrap();
         let child = Command::new(env!("CARGO_BIN_EXE_zoen"))
             .arg("--home")
@@ -73,7 +76,7 @@ impl Host {
             );
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
-        host
+        Ok(host)
     }
     fn output(&self) -> String {
         std::fs::read_to_string(&self.log).unwrap()
@@ -220,7 +223,7 @@ pub(super) async fn run(
     runtime: RuntimeAuthority,
     space: &str,
     provider: &Provider,
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let runtime = runtime
         .open_managed_image_continuity(&config.continuity, &config.agent, &config.device)
         .await
@@ -243,7 +246,7 @@ pub(super) async fn run(
         .set_trust(config.agent.clone(), space.into(), TrustLevelDto::Act)
         .unwrap();
     owner.wait_until_settled(20_000).await.unwrap();
-    let mut host = Host::start(w, path).await;
+    let mut host = Host::start(w, path).await?;
     let source = owner
         .send_message(space.into(), "Create the image through the tool".into())
         .unwrap()
@@ -256,7 +259,7 @@ pub(super) async fn run(
         "provider reached before owner review"
     );
     assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 0);
-    owner_controls::run(w, path, &owner, config, &request, &mut host, provider).await;
+    owner_controls::run(w, path, &owner, config, &request, &mut host, provider).await?;
     // Stop the actual ordinary host before the human's decision; the new host
     // must recover the same scheduling/review through its existing journal.
     drop(host);
@@ -287,7 +290,7 @@ pub(super) async fn run(
         )
         .unwrap();
     owner.wait_until_settled(20_000).await.unwrap();
-    let mut restarted = Host::start(w, path).await;
+    let mut restarted = Host::start(w, path).await?;
     let first = delivered(w, &source, &mut restarted).await;
     assert_eq!(provider.sends.load(Ordering::SeqCst), 1);
     let item = first["item"].as_str().unwrap().to_owned();
@@ -319,7 +322,7 @@ pub(super) async fn run(
         provider::PNG
     );
     drop(restarted);
-    let mut cold = Host::start(w, path).await;
+    let mut cold = Host::start(w, path).await?;
     let recovered = delivered(w, &source, &mut cold).await;
     assert_eq!(
         recovered, first,
@@ -401,7 +404,8 @@ pub(super) async fn run(
             .count(),
         1
     );
-    account_controls::run(w, path, &owner, config, space, provider).await;
+    account_controls::run(w, path, &owner, config, space, provider).await?;
     owner.stop_sync();
     println!("image product: actual ToolHost IPC review -> owner ApproveOnce -> cold restart -> one provider/charge/accepted FileDoc -> same output PASS");
+    Ok(())
 }

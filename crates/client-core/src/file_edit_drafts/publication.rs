@@ -1,6 +1,9 @@
 //! Publication on the original Engine and canonical document state.
 
-use super::*;
+use super::{
+    intent_id, invalid, stale, storage_error, CommitReceipt, Engine, FileEditDraftCommitResult,
+    FileEditDraftDto, FileEditDraftScope, MAX_RECEIPTS, R,
+};
 
 impl Engine {
     pub(super) fn commit_file_edit_draft(
@@ -55,7 +58,7 @@ impl Engine {
             let result = engine.file_edit_pdf_base(scope, None)?;
             record.pending.remove(0);
             record.binding.as_mut().ok_or_else(storage_error)?.base = result.clone();
-            record.revision = types::new_id("file_edit_draft");
+            record.revision = types::new_id("file_edit_draft")?;
             record.commits.push(CommitReceipt {
                 editor_id: editor.into(),
                 capture_id: capture_id.into(),
@@ -87,7 +90,7 @@ impl Engine {
                     .meta_delete(&storage.asset_key(&capture.capture_id))?;
             }
             record.pending.clear();
-            record.revision = types::new_id("file_edit_draft");
+            record.revision = types::new_id("file_edit_draft")?;
             engine.persist_file_edit_draft(&storage, &record)?;
             Ok(record.dto())
         })

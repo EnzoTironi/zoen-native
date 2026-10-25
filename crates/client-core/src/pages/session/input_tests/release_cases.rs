@@ -2,9 +2,10 @@
 
 use super::*;
 
-pub(super) fn release_empty_binding_is_atomic_durable_and_replays_without_dropping_newer_input() {
+pub(super) fn release_empty_binding_is_atomic_durable_and_replays_without_dropping_newer_input(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for kind in [ItemKind::Page, ItemKind::Plan] {
-        let (_db, mut f) = cold_input_fixture(kind);
+        let (_db, mut f) = cold_input_fixture(kind)?;
         let mut session = f.session();
         let pending = queued(
             session
@@ -172,11 +173,13 @@ pub(super) fn release_empty_binding_is_atomic_durable_and_replays_without_droppi
             pending_event
         );
     }
+    Ok(())
 }
 
-pub(super) fn release_empty_requires_the_current_scope_key_and_writing_membership() {
+pub(super) fn release_empty_requires_the_current_scope_key_and_writing_membership(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for kind in [ItemKind::Page, ItemKind::Plan] {
-        let (_db, mut f) = cold_input_fixture(kind);
+        let (_db, mut f) = cold_input_fixture(kind)?;
         let scope = input_scope(&f);
         let opened = input_open(&f, WRITER_A);
         let cipher = f.cipher();
@@ -222,7 +225,7 @@ pub(super) fn release_empty_requires_the_current_scope_key_and_writing_membershi
         f.ordered(EventBody::MemberAdded {
             identity: f.owner.clone(),
             role: Role::Reader,
-        });
+        })?;
         let events = f.engine.store.event_count().unwrap();
         let outbox = f.engine.store.outbox_len().unwrap();
         assert!(f
@@ -234,4 +237,5 @@ pub(super) fn release_empty_requires_the_current_scope_key_and_writing_membershi
         assert_eq!(f.engine.store.event_count().unwrap(), events);
         assert_eq!(f.engine.store.outbox_len().unwrap(), outbox);
     }
+    Ok(())
 }

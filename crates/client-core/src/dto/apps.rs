@@ -1,5 +1,5 @@
 //! Existing public DTO declarations, grouped by domain.
-use super::*;
+use super::{ItemDetail, TrustLevelDto};
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
@@ -78,7 +78,7 @@ pub struct AppStateDto {
     pub last_action: Option<String>,
     /// Nível da Concessão do mini-app neste Item.
     pub trust: TrustLevelDto,
-    /// Widget snapshot JSON (native template for the Home strip and WidgetKit); empty = none.
+    /// Widget snapshot JSON (native template for the Home strip and `WidgetKit`); empty = none.
     pub snapshot_json: String,
 }
 

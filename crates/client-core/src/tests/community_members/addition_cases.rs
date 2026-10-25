@@ -153,7 +153,7 @@ fn rejected_addition_remains_absent_and_requires_explicit_fresh_review() -> Test
 
 #[tokio::test]
 async fn json_dispatch_and_cold_reopen_preserve_the_exact_single_intent() -> TestResult<()> {
-    let dir = std::env::temp_dir().join(types::new_id("native-add-member"));
+    let dir = std::env::temp_dir().join(types::new_id("native-add-member")?);
     std::fs::create_dir(&dir)?;
     let f = Fixture::at(
         dir.join("core.sqlite").to_string_lossy().into_owned(),

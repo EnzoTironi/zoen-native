@@ -1,4 +1,4 @@
-//! The account and sync surface of the core (UniFFI).
+//! The account and sync surface of the core (`UniFFI`).
 //!
 //! Swift supplies two things: a [`SecretVault`] (the Keychain) and a [`CoreListener`]
 //! (callbacks that trigger a refresh on the main actor). Everything else stays in Rust.
@@ -151,11 +151,12 @@ fn net_err(e: String) -> CoreError {
     }
 }
 
+#[must_use]
 pub fn normalize_code(raw: &str) -> String {
     let s = raw.trim();
     let s = s.rsplit('/').next().unwrap_or(s);
     s.chars()
-        .filter(|c| c.is_ascii_alphanumeric())
+        .filter(char::is_ascii_alphanumeric)
         .collect::<String>()
         .to_uppercase()
 }
@@ -183,7 +184,7 @@ impl Client {
     pub(crate) fn with_net<T>(&self, f: impl FnOnce(&Net) -> T) -> Option<T> {
         self.net
             .lock()
-            .unwrap_or_else(|p| p.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .as_ref()
             .map(f)
     }
@@ -222,7 +223,10 @@ impl Client {
     pub(crate) async fn request(&self, op: Op) -> Result<Reply, CoreError> {
         // Clone the command channel out of the lock; never hold a lock across an await.
         let fut = {
-            let guard = self.net.lock().unwrap_or_else(|p| p.into_inner());
+            let guard = self
+                .net
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             let net = guard.as_ref().ok_or_else(|| net_err("offline".into()))?;
             net.request_handle()
         };

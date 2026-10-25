@@ -141,7 +141,7 @@ impl Engine {
             if input.share_current {
                 engine.share_app_for_request(&input, &binding, &target)?;
             }
-            let message = types::new_id("msg");
+            let message = types::new_id("msg")?;
             let appended = engine.append(
                 &input.space_id,
                 &input.expected_identity_id,

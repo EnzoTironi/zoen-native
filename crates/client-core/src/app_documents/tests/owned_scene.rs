@@ -38,7 +38,7 @@ pub(super) fn install_and_save_have_one_app_item_compact_cards_and_owned_encrypt
     assert_ne!(chunk.blob, chunk.sha256);
     assert_eq!(
         e.owned_file_bytes(
-            state.versions[0].content.owned_file().unwrap(),
+            state.versions.initial().content.owned_file().unwrap(),
             MAX_SCENE_BYTES as u64
         )
         .unwrap()
@@ -48,9 +48,9 @@ pub(super) fn install_and_save_have_one_app_item_compact_cards_and_owned_encrypt
     assert!(e.verify_log(&f.space).valid);
 }
 
-pub(super) fn disk_reopen_reverifies_scene_receipts_and_preserves_exact_unknown_fields_and_images()
-{
-    let dir = std::env::temp_dir().join(new_id("app-document-test"));
+pub(super) fn disk_reopen_reverifies_scene_receipts_and_preserves_exact_unknown_fields_and_images(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = std::env::temp_dir().join(new_id("app-document-test")?);
     std::fs::create_dir(&dir).unwrap();
     let path = dir.join("device.sqlite");
     let f = fixture(path.to_str().unwrap());
@@ -84,6 +84,8 @@ pub(super) fn disk_reopen_reverifies_scene_receipts_and_preserves_exact_unknown_
     );
     drop(engine);
     std::fs::remove_dir_all(dir).unwrap();
+
+    Ok(())
 }
 
 pub(super) fn invalid_scenes_and_stale_bases_never_write_or_silently_drop_embedded_assets() {

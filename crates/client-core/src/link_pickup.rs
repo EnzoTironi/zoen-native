@@ -326,7 +326,7 @@ impl PickupControl {
     }
 
     /// Retryable cancellation. The occupied slot remains until both real owners
-    /// retire; it is never released merely because abort() was called.
+    /// retire; it is never released merely because `abort()` was called.
     pub(crate) fn cancel(&self) {
         Self::revoke(&mut self.lock());
         self.notify();

@@ -1,6 +1,9 @@
 //! Last locally queued inquiry, committed atomically with its signed original.
 //! This association recovers an ACK, never a quote, policy or financial grant.
-use super::*;
+use super::{
+    denied, invalid, Deserialize, Engine, EventBody, OwnerPolicyOptionsStatus, OwnerPolicyScope,
+    Serialize, R,
+};
 use types::{owner_policy_context::OwnerPolicyInquiryPurpose, Event};
 
 const PREFIX: &str = "runtime.owner-policy.inquiry/1/";

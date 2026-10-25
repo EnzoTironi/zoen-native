@@ -20,7 +20,8 @@ async fn phase(directory: &Path, request: &str, completed: &str) {
 
 #[tokio::test]
 #[ignore = "requires an explicit disposable-PG outage controller and private phase directory"]
-async fn bounded_receipts_survive_actual_postgresql_stop_and_restart() {
+async fn bounded_receipts_survive_actual_postgresql_stop_and_restart(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let admin_url = std::env::var("ZOEN_TEST_PG").expect("owned PG URL required");
     let directory =
         std::env::var_os("ZOEN_TEST_PG_OUTAGE_DIR").expect("owned phase directory required");
@@ -32,7 +33,7 @@ async fn bounded_receipts_survive_actual_postgresql_stop_and_restart() {
             "use a fresh phase directory"
         );
     }
-    let name = format!("zoen_outage_{}", &Signer::generate().id()[..16]);
+    let name = format!("zoen_outage_{}", &Signer::generate()?.id()[..16]);
     let mut admin = PgConnection::connect(&admin_url).await.unwrap();
     sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {name}")))
         .execute(&mut admin)
@@ -109,4 +110,5 @@ async fn bounded_receipts_survive_actual_postgresql_stop_and_restart() {
     .execute(&mut admin)
     .await
     .unwrap();
+    Ok(())
 }

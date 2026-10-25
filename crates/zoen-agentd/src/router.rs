@@ -64,6 +64,8 @@ pub enum RouteError {
     Manifest(#[from] ManifestError),
     #[error("the tool asked for {asked:?} but its manifest declares {declared:?}")]
     NotDeclared { declared: Tier, asked: Tier },
+    #[error("tool request preparation failed: {0}")]
+    Preparation(String),
 }
 
 pub struct Router {
@@ -106,7 +108,10 @@ impl Router {
                 spec: Some(spec_for(m)),
             }
         } else {
-            Route::NeedsApproval(card(agent, m))
+            match card(agent, m) {
+                Ok(request) => Route::NeedsApproval(request),
+                Err(error) => Route::Refused(error),
+            }
         }
     }
 
@@ -127,9 +132,10 @@ impl Router {
         agent: &IdentityId,
         m: &ToolManifest,
         expires_at_ms: Option<i64>,
-    ) -> Grant {
-        Grant {
-            id: types::new_id("grant"),
+    ) -> Result<Grant, RouteError> {
+        Ok(Grant {
+            id: types::new_id("grant")
+                .map_err(|error| RouteError::Preparation(error.to_string()))?,
             grantor: owner.clone(),
             grantee: Some(agent.clone()),
             scope: GrantScope::Everywhere,
@@ -138,7 +144,7 @@ impl Router {
                 purpose: m.summary.clone(),
             },
             expires_at_ms,
-        }
+        })
     }
 }
 
@@ -171,7 +177,7 @@ pub fn spec_for(m: &ToolManifest) -> SandboxSpec {
     }
 }
 
-fn card(agent: &str, m: &ToolManifest) -> AgentRequest {
+fn card(agent: &str, m: &ToolManifest) -> Result<AgentRequest, RouteError> {
     let tier = Tier::of(&m.needs);
     let (title, mins) = match m.needs {
         Needs::Browser { max_secs, .. } => (
@@ -197,11 +203,11 @@ fn card(agent: &str, m: &ToolManifest) -> AgentRequest {
         )
     };
     let hash = hex::encode(Sha256::digest(
-        serde_json::to_vec(m).expect("manifest serializes"),
+        serde_json::to_vec(m).map_err(|error| RouteError::Preparation(error.to_string()))?,
     ));
-    AgentRequest {
+    Ok(AgentRequest {
         tool_proposal: None,
-        id: types::new_id("req"),
+        id: types::new_id("req").map_err(|error| RouteError::Preparation(error.to_string()))?,
         agent: agent.into(),
         title,
         detail: format!("Até {mins} min por vez, {sites}. Ele é apagado quando a tarefa acaba."),
@@ -215,5 +221,5 @@ fn card(agent: &str, m: &ToolManifest) -> AgentRequest {
         item: None,
         line: None,
         proposal: None,
-    }
+    })
 }

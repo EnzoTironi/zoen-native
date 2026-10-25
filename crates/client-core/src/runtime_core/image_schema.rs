@@ -1,9 +1,9 @@
 //! One exact, non-destructive native image compatibility step.
-use super::*;
+use super::{schema, Result, Schema, Store};
 
 // SQLite's retained SQL for the pre-FIFO outbox. Do not accept merely similar
 // columns: additional triggers, constraints or schema objects must still refuse.
-pub(super) const PRE_FIFO_OUTBOX: &str = r#"CREATE TABLE outbox (
+pub(super) const PRE_FIFO_OUTBOX: &str = r"CREATE TABLE outbox (
                 client_id  TEXT PRIMARY KEY,
                 space      TEXT NOT NULL,
                 json       TEXT NOT NULL,
@@ -11,7 +11,7 @@ pub(super) const PRE_FIFO_OUTBOX: &str = r#"CREATE TABLE outbox (
                 attempts   INTEGER NOT NULL DEFAULT 0,
                 last_error TEXT,
                 failed     INTEGER NOT NULL DEFAULT 0
-            )"#;
+            )";
 
 pub(super) fn supported(store: &Store, trusted: &Store) -> Result<bool> {
     let actual = schema(store)?;

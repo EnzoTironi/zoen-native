@@ -52,7 +52,11 @@ fn fence(space: &str) -> Fence {
     }
 }
 
-fn envelope(author: &Author, space: &str, i: u64) -> Envelope {
+fn envelope(
+    author: &Author,
+    space: &str,
+    i: u64,
+) -> std::result::Result<Envelope, Box<dyn std::error::Error>> {
     let body = EventBody::MessagePosted {
         message: format!("m{i}"),
         text: format!("text {i}"),
@@ -61,7 +65,13 @@ fn envelope(author: &Author, space: &str, i: u64) -> Envelope {
         media: None,
         forwarded: false,
     };
-    Envelope::plain(&author.sign_event(space, &format!("c{i:04}"), 0, None, body))
+    Ok(Envelope::plain(&author.sign_event(
+        space,
+        &format!("c{i:04}"),
+        0,
+        None,
+        body,
+    )?)?)
 }
 
 fn reason(r: Result<Sequencing, Reject>) -> String {
@@ -76,7 +86,8 @@ fn ids(n: u64) -> Vec<String> {
 }
 
 #[tokio::test]
-async fn poisoned_queue_refuses_without_dispatch_or_retaining_admission_permits() {
+async fn poisoned_queue_refuses_without_dispatch_or_retaining_admission_permits(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let rec = Arc::new(Recorder::default());
     let seq = Sequencer::new(rec.clone());
     let queues = seq.queues.clone();
@@ -87,9 +98,9 @@ async fn poisoned_queue_refuses_without_dispatch_or_retaining_admission_permits(
     .join()
     .is_err());
     assert!(seq.active().is_err());
-    let author = Author::root(Signer::generate());
+    let author = Author::root(Signer::generate()?);
     let (result, stats) = seq
-        .append(envelope(&author, "poisoned", 0), true, fence("poisoned"))
+        .append(envelope(&author, "poisoned", 0)?, true, fence("poisoned"))
         .await;
     let rejection = result.unwrap_err();
     assert!(!rejection.permanent);
@@ -99,16 +110,18 @@ async fn poisoned_queue_refuses_without_dispatch_or_retaining_admission_permits(
     assert!(rec.batches.lock().unwrap().is_empty());
     assert_eq!(seq.count.available_permits(), MAX_PENDING);
     assert_eq!(seq.bytes.available_permits(), MAX_PENDING_BYTES);
+    Ok(())
 }
 
 #[tokio::test]
-async fn backlog_commits_in_order_in_capped_batches() {
+async fn backlog_commits_in_order_in_capped_batches(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let rec = Arc::new(Recorder::default());
     let seq = Arc::new(Sequencer::new(rec.clone()));
-    let a = Author::root(Signer::generate());
+    let a = Author::root(Signer::generate()?);
     // Queue 1 + 120 envelopes while the first batch is held, in a known order.
     let first = tokio::spawn({
-        let (seq, env) = (seq.clone(), envelope(&a, "s1", 0));
+        let (seq, env) = (seq.clone(), envelope(&a, "s1", 0)?);
         async move { seq.append(env, true, fence("s1")).await }
     });
     while seq.active().unwrap() == 0 {
@@ -117,7 +130,7 @@ async fn backlog_commits_in_order_in_capped_batches() {
     tokio::task::yield_now().await;
     let mut rest = Vec::new();
     for i in 1..=120 {
-        let (seq, env) = (seq.clone(), envelope(&a, "s1", i));
+        let (seq, env) = (seq.clone(), envelope(&a, "s1", i)?);
         rest.push(tokio::spawn(async move {
             seq.append(env, true, fence("s1")).await
         }));
@@ -137,20 +150,22 @@ async fn backlog_commits_in_order_in_capped_batches() {
     assert_eq!(sizes, [1, MAX_BATCH, 120 - MAX_BATCH]);
     let order: Vec<String> = batches.into_iter().flat_map(|(_, b)| b).collect();
     assert_eq!(order, ids(121), "queue order is commit order");
+    Ok(())
 }
 
 #[tokio::test]
-async fn spaces_have_their_own_workers_and_idle_ones_exit() {
+async fn spaces_have_their_own_workers_and_idle_ones_exit(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let rec = Arc::new(Recorder::default());
     rec.gate.add_permits(100);
     let seq = Sequencer {
         idle: Duration::from_millis(50),
         ..Sequencer::new(rec.clone())
     };
-    let a = Author::root(Signer::generate());
+    let a = Author::root(Signer::generate()?);
     let (one, two) = tokio::join!(
-        seq.append(envelope(&a, "s1", 0), true, fence("s1")),
-        seq.append(envelope(&a, "s2", 1), true, fence("s2"))
+        seq.append(envelope(&a, "s1", 0)?, true, fence("s1")),
+        seq.append(envelope(&a, "s2", 1)?, true, fence("s2"))
     );
     assert_eq!(seq.active().unwrap(), 2);
     assert_eq!(
@@ -161,18 +176,20 @@ async fn spaces_have_their_own_workers_and_idle_ones_exit() {
 
     tokio::time::sleep(Duration::from_millis(200)).await;
     assert_eq!(seq.active().unwrap(), 0, "idle workers leave");
-    let (_, again) = seq.append(envelope(&a, "s1", 2), true, fence("s1")).await;
+    let (_, again) = seq.append(envelope(&a, "s1", 2)?, true, fence("s1")).await;
     assert_eq!(again.attempts, 1, "a new worker starts from fresh state");
     assert_eq!(seq.active().unwrap(), 1);
+    Ok(())
 }
 #[tokio::test]
-async fn slow_space_rejects_excess_and_keeps_capacity_until_commit() {
+async fn slow_space_rejects_excess_and_keeps_capacity_until_commit(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use futures_util::FutureExt;
     let rec = Arc::new(Recorder::default());
     let seq = Arc::new(Sequencer::new(rec.clone()));
-    let a = Author::root(Signer::generate());
+    let a = Author::root(Signer::generate()?);
     let first = tokio::spawn({
-        let (seq, env) = (seq.clone(), envelope(&a, "slow", 0));
+        let (seq, env) = (seq.clone(), envelope(&a, "slow", 0)?);
         async move { seq.append(env, true, fence("slow")).await }
     });
     while rec.entered.load(std::sync::atomic::Ordering::Relaxed) == 0 {
@@ -181,12 +198,12 @@ async fn slow_space_rejects_excess_and_keeps_capacity_until_commit() {
     // Drop the callers: pending jobs still own their capacity until committed.
     for i in 1..=SPACE_QUEUE {
         assert!(seq
-            .append(envelope(&a, "slow", i as u64), true, fence("slow"))
+            .append(envelope(&a, "slow", i as u64)?, true, fence("slow"))
             .now_or_never()
             .is_none());
     }
     let refused = seq
-        .append(envelope(&a, "slow", 999), true, fence("slow"))
+        .append(envelope(&a, "slow", 999)?, true, fence("slow"))
         .now_or_never()
         .unwrap()
         .0
@@ -212,14 +229,16 @@ async fn slow_space_rejects_excess_and_keeps_capacity_until_commit() {
             .sum::<usize>(),
         SPACE_QUEUE + 1
     );
+    Ok(())
 }
 
 #[tokio::test]
-async fn unsigned_invites_consume_bytes_while_batches_and_callers_are_stalled() {
+async fn unsigned_invites_consume_bytes_while_batches_and_callers_are_stalled(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use futures_util::FutureExt;
     let rec = Arc::new(Recorder::default());
-    let author = Author::root(Signer::generate());
-    let mut env = envelope(&author, "one", 0);
+    let author = Author::root(Signer::generate()?);
+    let mut env = envelope(&author, "one", 0)?;
     env.invite = Some("x".repeat(1024 * 1024 - 1024));
     assert!(env.verify().is_ok(), "invite bytes are unsigned");
     assert!(env.stored_len() < 1024);
@@ -230,7 +249,7 @@ async fn unsigned_invites_consume_bytes_while_batches_and_callers_are_stalled() 
         ..Sequencer::new(rec.clone())
     };
     for space in ["one", "two"] {
-        let mut queued = envelope(&author, space, 0);
+        let mut queued = envelope(&author, space, 0)?;
         queued.invite = env.invite.clone();
         assert!(seq
             .append(queued, true, fence(space))
@@ -259,25 +278,27 @@ async fn unsigned_invites_consume_bytes_while_batches_and_callers_are_stalled() 
     .await
     .unwrap();
     assert_eq!(seq.bytes.available_permits(), size * 2);
+    Ok(())
 }
 
 #[tokio::test]
-async fn routing_across_spaces_still_obeys_process_count_and_byte_limits() {
+async fn routing_across_spaces_still_obeys_process_count_and_byte_limits(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use futures_util::FutureExt;
     let rec = Arc::new(Recorder::default());
-    let a = Author::root(Signer::generate());
+    let a = Author::root(Signer::generate()?);
     let seq = Sequencer {
         count: Arc::new(Semaphore::new(2)),
         ..Sequencer::new(rec.clone())
     };
     for space in ["one", "two"] {
         assert!(seq
-            .append(envelope(&a, space, 0), true, fence(space))
+            .append(envelope(&a, space, 0)?, true, fence(space))
             .now_or_never()
             .is_none());
     }
     let r = seq
-        .append(envelope(&a, "three", 0), true, fence("three"))
+        .append(envelope(&a, "three", 0)?, true, fence("three"))
         .now_or_never()
         .unwrap()
         .0
@@ -289,7 +310,7 @@ async fn routing_across_spaces_still_obeys_process_count_and_byte_limits() {
         ..Sequencer::new(rec.clone())
     };
     let r = seq
-        .append(envelope(&a, "bytes", 0), true, fence("bytes"))
+        .append(envelope(&a, "bytes", 0)?, true, fence("bytes"))
         .now_or_never()
         .unwrap()
         .0
@@ -298,4 +319,5 @@ async fn routing_across_spaces_still_obeys_process_count_and_byte_limits() {
     assert_eq!(seq.active().unwrap(), 0);
     assert_eq!(seq.count.available_permits(), MAX_PENDING);
     rec.gate.add_permits(100);
+    Ok(())
 }

@@ -173,3 +173,30 @@ fn native_editor_markdown_roundtrips_unicode_marks_and_block_structure() {
         }
     }
 }
+
+#[tokio::test]
+async fn recovery_key_command_preserves_a_string_reply_without_publishing_or_retaining_the_key(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let core = Client::open(":memory:".into(), "en".into())?;
+    let vault = Arc::new(Vault::default());
+    let before = core.lock().store.event_count()?;
+    let encoded = core
+        .client_vault_request(
+            r#"{"op":"backup_create_recovery_key"}"#.into(),
+            vault.clone(),
+        )
+        .await?;
+    let reply: serde_json::Value = serde_json::from_str(&encoded)?;
+    let key = reply
+        .as_str()
+        .ok_or("expected a JSON string, not a Result envelope")?;
+    assert_eq!(key.len(), 79);
+    assert_eq!(key.split(' ').count(), 16);
+    assert!(key
+        .bytes()
+        .all(|byte| byte.is_ascii_digit() || byte == b' '));
+    assert!(vault.0.lock().map_err(|_| "test vault lock")?.is_empty());
+    assert_eq!(core.lock().store.event_count()?, before);
+    assert!(!core.backup_status().enabled);
+    Ok(())
+}

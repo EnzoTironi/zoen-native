@@ -13,8 +13,8 @@ pub async fn audience(
     author: &Author,
     owner: &str,
     live: &[String],
-) -> Author {
-    let space = choose_space(owner, live);
+) -> std::result::Result<Author, Box<dyn std::error::Error>> {
+    let space = choose_space(owner, live)?;
     let genesis = ingress
         .publish(signed(
             author,
@@ -25,7 +25,7 @@ pub async fn audience(
                 kind: SpaceKind::Group,
                 privacy: Privacy::Closed,
             },
-        ))
+        )?)
         .await
         .unwrap();
     let seen = Seen {
@@ -46,8 +46,8 @@ pub async fn audience(
                 identity: identity.clone(),
                 role: Role::Member,
             },
-        );
-        let hash = event_log::chain_hash(&space, i, &previous, &env.wire_hash());
+        )?;
+        let hash = event_log::chain_hash(&space, i, &previous, &env.wire_hash())?;
         let ev = Sequenced {
             seq: i,
             prev: previous,
@@ -76,7 +76,7 @@ pub async fn audience(
     })
     .await
     .unwrap();
-    let target = Author::device(&Signer::generate(), Signer::generate());
+    let target = Author::device(&Signer::generate()?, Signer::generate()?);
     let mut recipient = Device::connect(ingress_port, target.clone(), true).await;
     let add = signed(
         author,
@@ -86,7 +86,7 @@ pub async fn audience(
             identity: target.identity.clone(),
             role: Role::Member,
         },
-    );
+    )?;
     let cid = add.client_id().to_string();
     assert_eq!(ingress.publish(add).await.unwrap().seq, 4_000);
     let (mut event, mut joined) = (false, false);
@@ -98,7 +98,7 @@ pub async fn audience(
         }
     }
     println!("ok  a seeded 4000-member owner response preserves New live delivery and Joined");
-    target
+    Ok(target)
 }
 
 fn headers(fence: &ownership::Fence) -> async_nats::HeaderMap {
@@ -118,9 +118,13 @@ async fn wait_slots(receiver: &Forwarder, slots: usize) {
     .expect("receiver capacity recovered within its deadline");
 }
 
-pub async fn deadlines(database: &str, author: &Author, target: &Author) {
+pub async fn deadlines(
+    database: &str,
+    author: &Author,
+    target: &Author,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let cluster = std::env::var("FDB_CLUSTER_FILE").unwrap();
-    let cell = types::new_id("forward-deadline");
+    let cell = types::new_id("forward-deadline")?;
     let log = Arc::new(
         FdbLog::open_as(
             Some(&cluster),
@@ -150,7 +154,7 @@ pub async fn deadlines(database: &str, author: &Author, target: &Author) {
         hex::encode(Sha256::digest(cell.as_bytes())),
         hex::encode(Sha256::digest(b"deadline-owner"))
     );
-    let space = types::new_id("sp");
+    let space = types::new_id("sp")?;
     let db = Database::new(Some(&cluster)).unwrap();
     let root = Subspace::all().subspace(&("zoen", &cell));
     let fence = current(&db, &root, &space).await.fence;
@@ -163,7 +167,7 @@ pub async fn deadlines(database: &str, author: &Author, target: &Author) {
             kind: SpaceKind::Group,
             privacy: Privacy::Closed,
         },
-    );
+    )?;
     let Sequencing::New { ev, .. } = log
         .append_fenced(&create, true, fence.clone())
         .await
@@ -193,7 +197,7 @@ pub async fn deadlines(database: &str, author: &Author, target: &Author) {
             identity: target.identity.clone(),
             role: Role::Member,
         },
-    );
+    )?;
     let wire = ClientFrame::Publish {
         env: uncertain.clone(),
     }
@@ -241,7 +245,7 @@ pub async fn deadlines(database: &str, author: &Author, target: &Author) {
                     identity: target.identity.clone(),
                     role: Role::Member,
                 },
-            );
+            )?;
             let wire = ClientFrame::Publish { env }.encode();
             requests.push(tokio::spawn(async move {
                 client
@@ -270,7 +274,7 @@ pub async fn deadlines(database: &str, author: &Author, target: &Author) {
     wait_slots(&receiver, MAX_REQUESTS).await;
     assert!(timed.elapsed() < RECEIVER_TIMEOUT + Duration::from_secs(2));
     assert!(
-        matches!(receiver.append(&message(author, &space, &seen, "capacity recovered while lookup is locked"), &fence).await.unwrap(), Sequencing::New { ev, .. } if ev.seq == 2)
+        matches!(receiver.append(&message(author, &space, &seen, "capacity recovered while lookup is locked")?, &fence).await.unwrap(), Sequencing::New { ev, .. } if ev.seq == 2)
     );
     assert_eq!(
         log.read(&space, 0, 100).await.unwrap().len(),
@@ -282,6 +286,7 @@ pub async fn deadlines(database: &str, author: &Author, target: &Author) {
     log.drop_cell().await.unwrap();
     pool.close().await;
     println!("ok  blocked PostgreSQL lookups and pool waits release all 64 receiver slots within the whole-operation deadline");
+    Ok(())
 }
 
 pub async fn public_lookup(
@@ -292,10 +297,10 @@ pub async fn public_lookup(
     target: &Author,
     owner: &str,
     live: &[String],
-) {
-    let author = Author::device(&Signer::generate(), Signer::generate());
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let author = Author::device(&Signer::generate()?, Signer::generate()?);
     let mut ingress = Device::connect(port, author.clone(), true).await;
-    let space = choose_space(owner, live);
+    let space = choose_space(owner, live)?;
     let genesis = ingress
         .publish(signed(
             &author,
@@ -306,7 +311,7 @@ pub async fn public_lookup(
                 kind: SpaceKind::Group,
                 privacy: Privacy::Closed,
             },
-        ))
+        )?)
         .await
         .unwrap();
     let seen = Seen {
@@ -338,7 +343,7 @@ pub async fn public_lookup(
                 identity: target.identity.clone(),
                 role: Role::Member,
             },
-        );
+        )?;
         ids.push(env.client_id().to_string());
         socket.send(ClientFrame::Publish { env }).await;
     }
@@ -366,7 +371,7 @@ pub async fn public_lookup(
             &space,
             &seen,
             "ordinary messages recover while directory lookup is locked",
-        ))
+        )?)
         .await
         .unwrap();
     assert_eq!(healthy.seq, 1);
@@ -390,6 +395,7 @@ pub async fn public_lookup(
     assert_eq!(current_hash(db, root, &space).await, healthy.hash);
     sqlx::query("COMMIT").execute(&mut lock).await.unwrap();
     println!("ok  real WebSocket directory lookups fail retryably and ordinary messages recover while the identities table remains locked");
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -402,7 +408,7 @@ pub async fn late_delivery(
     target: &Author,
     owner: &str,
     live: &[String],
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let cluster = std::env::var("FDB_CLUSTER_FILE").unwrap();
     let log = FdbLog::open_as(
         Some(&cluster),
@@ -413,7 +419,7 @@ pub async fn late_delivery(
     .unwrap();
     let db = Database::new(Some(&cluster)).unwrap();
     let root = Subspace::all().subspace(&("zoen", cell));
-    let space = choose_space(owner, live);
+    let space = choose_space(owner, live)?;
     let genesis = ingress
         .publish(signed(
             author,
@@ -424,7 +430,7 @@ pub async fn late_delivery(
                 kind: SpaceKind::Group,
                 privacy: Privacy::Closed,
             },
-        ))
+        )?)
         .await
         .unwrap();
     let seen = Seen {
@@ -441,7 +447,7 @@ pub async fn late_delivery(
             identity: target.identity.clone(),
             role: Role::Member,
         },
-    );
+    )?;
     let mut lock = PgConnection::connect(database).await.unwrap();
     sqlx::query("BEGIN").execute(&mut lock).await.unwrap();
     sqlx::query("SELECT 1 FROM devices WHERE device = $1 FOR UPDATE")
@@ -511,7 +517,7 @@ pub async fn late_delivery(
         EventBody::MemberRemoved {
             identity: target.identity.clone(),
         },
-    );
+    )?;
     let removal_id = remove.client_id().to_string();
     assert_eq!(ingress.publish(remove).await.unwrap().seq, 2);
     loop {
@@ -546,4 +552,5 @@ pub async fn late_delivery(
         1
     );
     println!("ok  unknown owner outcomes replay Event and Joined to live current members with one durable CID and no replay to removed identities");
+    Ok(())
 }

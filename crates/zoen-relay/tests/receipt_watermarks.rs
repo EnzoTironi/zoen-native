@@ -3,9 +3,9 @@
 use sqlx::{Connection, PgConnection, PgPool};
 use zoen_relay::{db, metrics::Metrics, receipts::Receipts};
 
-async fn database() -> (PgPool, String, String) {
+async fn database() -> std::result::Result<(PgPool, String, String), Box<dyn std::error::Error>> {
     let admin = std::env::var("ZOEN_TEST_PG").expect("set ZOEN_TEST_PG for receipt tests");
-    let name = format!("zoen_rcpt_{}", &event_log::Signer::generate().id()[..16]);
+    let name = format!("zoen_rcpt_{}", &event_log::Signer::generate()?.id()[..16]);
     let mut c = PgConnection::connect(&admin).await.unwrap();
     sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {name}")))
         .execute(&mut c)
@@ -17,7 +17,7 @@ async fn database() -> (PgPool, String, String) {
         .database(&name);
     let pool = PgPool::connect_with(options).await.unwrap();
     sqlx::migrate!("./migrations").run(&pool).await.unwrap();
-    (pool, admin, name)
+    Ok((pool, admin, name))
 }
 
 async fn drop_db(pool: PgPool, admin: &str, name: &str) {
@@ -47,8 +47,9 @@ async fn all(r: &Receipts, pool: &PgPool, space: &str, ceiling: &str) -> Vec<(St
     rows
 }
 #[tokio::test]
-async fn full_unsigned_marks_fold_flush_restart_and_never_regress() {
-    let (pool, admin, name) = database().await;
+async fn full_unsigned_marks_fold_flush_restart_and_never_regress(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (pool, admin, name) = database().await?;
     let r = Receipts::default();
     let metrics = Metrics::default();
     for seq in 1..=500 {
@@ -72,10 +73,12 @@ async fn full_unsigned_marks_fold_flush_restart_and_never_regress() {
             (who(3), 0, 0)
         ]
     );
+    Ok(())
 }
 #[tokio::test]
-async fn keyset_crosses_pages_without_table_snapshot_and_preserves_initial_ceiling() {
-    let (pool, admin, name) = database().await;
+async fn keyset_crosses_pages_without_table_snapshot_and_preserves_initial_ceiling(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (pool, admin, name) = database().await?;
     let r = Receipts::default();
     let metrics = Metrics::default();
     for n in 1..=600 {
@@ -121,10 +124,12 @@ async fn keyset_crosses_pages_without_table_snapshot_and_preserves_initial_ceili
         u64::MAX
     );
     drop_db(pool, &admin, &name).await;
+    Ok(())
 }
 #[tokio::test]
-async fn numeric_storage_accepts_unsigned_boundaries_and_rejects_out_of_range_or_read_ahead() {
-    let (pool, admin, name) = database().await;
+async fn numeric_storage_accepts_unsigned_boundaries_and_rejects_out_of_range_or_read_ahead(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (pool, admin, name) = database().await?;
     for (n, value) in [0, 9_007_199_254_740_993, i64::MAX as u64 + 1, u64::MAX]
         .into_iter()
         .enumerate()
@@ -145,10 +150,12 @@ async fn numeric_storage_accepts_unsigned_boundaries_and_rejects_out_of_range_or
         vec![0, 9_007_199_254_740_993, i64::MAX as u64 + 1, u64::MAX]
     );
     assert!(refused.into_iter().all(|r| r));
+    Ok(())
 }
 #[tokio::test]
-async fn failed_later_flush_chunk_keeps_unwritten_marks_visible_and_retryable() {
-    let (pool, admin, name) = database().await;
+async fn failed_later_flush_chunk_keeps_unwritten_marks_visible_and_retryable(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (pool, admin, name) = database().await?;
     let r = Receipts::default();
     let metrics = Metrics::default();
     // Actual PostgreSQL trigger fails the second real 2000-row chunk.
@@ -175,4 +182,5 @@ async fn failed_later_flush_chunk_keeps_unwritten_marks_visible_and_retryable() 
     drop_db(pool, &admin, &name).await;
     assert_eq!(actual.len(), 4500);
     assert!(actual.into_iter().all(|(_, d, r)| d > 0 && r == 0));
+    Ok(())
 }

@@ -253,7 +253,8 @@ impl Drop for PgProxy {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn claims_before_the_publish_reply_are_reconciled_after_it() {
+async fn claims_before_the_publish_reply_are_reconciled_after_it(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut w = World::with_env(
         "kp_publish_race",
         &[("ZOEN_LIMITS", "lookup_account=1000/m:1000")],
@@ -263,7 +264,7 @@ async fn claims_before_the_publish_reply_are_reconciled_after_it() {
     w.stop_relay();
     w.set_relay_env("DATABASE_URL", &proxy.database_url);
     w.start_relay();
-    let mut ana = RawClient::connect(&w.relay_url(), "ana").await;
+    let mut ana = RawClient::connect(&w.relay_url(), "ana").await?;
     let bruno = Device::new(&w, w.relay_url());
     proxy.gate.armed.store(true, Ordering::SeqCst);
     bruno.core.start_sync(None).unwrap();
@@ -288,10 +289,12 @@ async fn claims_before_the_publish_reply_are_reconciled_after_it() {
         "an old Low7 must not produce a second top-up"
     );
     eprintln!("publish race: committed32, claimed25 before Done, reconciled32");
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_offline_profile_update_keeps_the_registration_low_notice() {
+async fn an_offline_profile_update_keeps_the_registration_low_notice(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let w = World::with_env(
         "kp_register",
         &[("ZOEN_LIMITS", "lookup_account=1000/m:1000")],
@@ -301,7 +304,7 @@ async fn an_offline_profile_update_keeps_the_registration_low_notice() {
     bruno.start().await;
     bruno.wait_stock(&w, 32).await;
     bruno.core.stop_sync();
-    let mut ana = RawClient::connect(&w.relay_url(), "ana").await;
+    let mut ana = RawClient::connect(&w.relay_url(), "ana").await?;
     claim(&mut ana, &bruno.account.identity_id, 25).await;
     assert_eq!(bruno.stock(&w).await, 7);
     let account = bruno
@@ -321,6 +324,7 @@ async fn an_offline_profile_update_keeps_the_registration_low_notice() {
         "bruno_novo"
     );
     eprintln!("registration race: offline stock7, changed handle, registered and refilled32");
+    Ok(())
 }
 
 struct RetryProxy {
@@ -408,10 +412,11 @@ impl Drop for RetryProxy {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_lost_publish_ack_does_not_reoffer_consumed_single_use_packages() {
+async fn a_lost_publish_ack_does_not_reoffer_consumed_single_use_packages(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let w = World::with_env("kp_retry", &[("ZOEN_LIMITS", "lookup_account=1000/m:1000")]).await;
     let mut proxy = RetryProxy::new(w.port).await;
-    let mut ana = RawClient::connect(&w.relay_url(), "ana").await;
+    let mut ana = RawClient::connect(&w.relay_url(), "ana").await?;
     let bruno = Device::new(&w, proxy.relay_url.clone());
     bruno.core.start_sync(None).unwrap();
     let first = tokio::time::timeout(Duration::from_secs(10), &mut proxy.first)
@@ -450,4 +455,5 @@ async fn a_lost_publish_ack_does_not_reoffer_consumed_single_use_packages() {
     let distinct = w.count(&format!("SELECT count(DISTINCT data) FROM key_packages WHERE identity = '{}' AND NOT last_resort", bruno.account.identity_id)).await;
     assert_eq!(distinct, 32);
     eprintln!("lost ack: actual deadline retry preserved consumed stock0, then generated32 fresh packages");
+    Ok(())
 }

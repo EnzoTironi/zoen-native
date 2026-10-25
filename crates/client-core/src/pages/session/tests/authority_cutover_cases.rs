@@ -2,8 +2,9 @@
 
 use super::*;
 
-pub(super) fn plan_refresh_reuses_verified_payload_and_rechecks_after_reload() {
-    let mut f = Fixture::new();
+pub(super) fn plan_refresh_reuses_verified_payload_and_rechecks_after_reload(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
     let mut session = f.session();
     let initial = session.read(&f.engine).unwrap();
     let mut document = plan_doc(&session.shadow).unwrap().fork().unwrap();
@@ -20,7 +21,7 @@ pub(super) fn plan_refresh_reuses_verified_payload_and_rechecks_after_reload() {
     let mut page = f.page(&document);
     page.blob = Some(blob.clone());
     page.loro.clear();
-    let event = f.ordered(f.version(ItemContent::Page(page)));
+    let event = f.ordered(f.version(ItemContent::Page(page)))?;
     let fold = f.engine.plan_timeline(&f.item).unwrap();
     assert!(fold.acknowledges(
         &event.client_id,
@@ -63,11 +64,14 @@ pub(super) fn plan_refresh_reuses_verified_payload_and_rechecks_after_reload() {
     assert!(resumed.can_edit && resumed.save_error.is_none());
     assert_eq!(resumed.view, before.view);
     assert_eq!(resumed.content_hash, before.content_hash);
+
+    Ok(())
 }
 
-pub(super) fn pending_legacy_and_remote_cutover_never_expand_seed() {
+pub(super) fn pending_legacy_and_remote_cutover_never_expand_seed(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for undo in [false, true] {
-        let mut f = Fixture::new();
+        let mut f = Fixture::new()?;
         let mut s = f.session();
         let read = s.read(&f.engine).unwrap();
         let original_manifest = f.engine.plan_timeline(&f.item).unwrap().manifest().unwrap();
@@ -107,7 +111,7 @@ pub(super) fn pending_legacy_and_remote_cutover_never_expand_seed() {
             blob: None,
             manifest: Some(PageManifest::PlanV1(original_manifest.clone())),
         };
-        f.ordered(f.version(ItemContent::Page(page)));
+        f.ordered(f.version(ItemContent::Page(page)))?;
         let fold = f.engine.plan_timeline(&f.item).unwrap();
         assert!(fold.frozen_at.is_some());
         assert!(fold.pending_legacy);
@@ -121,7 +125,7 @@ pub(super) fn pending_legacy_and_remote_cutover_never_expand_seed() {
         );
         assert!(fold.accepts_prefix(&original_manifest));
         if undo {
-            deliver(&mut f.engine, &legacy, Ingest::Confirmed);
+            deliver(&mut f.engine, &legacy, Ingest::Confirmed)?;
             assert!(matches!(
                 f.engine
                     .plan_timeline(&f.item)
@@ -147,10 +151,12 @@ pub(super) fn pending_legacy_and_remote_cutover_never_expand_seed() {
             .unwrap()
             .accepts_prefix(&original_manifest));
     }
+    Ok(())
 }
 
-pub(super) fn late_legacy_versions_never_ack_or_change_canonical_shadow() {
-    let mut f = Fixture::new();
+pub(super) fn late_legacy_versions_never_ack_or_change_canonical_shadow(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
     let mut s = f.session();
     let read = s.read(&f.engine).unwrap();
     apply(
@@ -162,7 +168,7 @@ pub(super) fn late_legacy_versions_never_ack_or_change_canonical_shadow() {
     )
     .unwrap();
     let reference = queued(s.commit(&mut f.engine, "cutover").unwrap());
-    f.ack(&reference);
+    f.ack(&reference)?;
     let canonical = s.read(&f.engine).unwrap();
     let shadow = plan_doc(&s.shadow)
         .unwrap()
@@ -172,12 +178,12 @@ pub(super) fn late_legacy_versions_never_ack_or_change_canonical_shadow() {
     let cipher = f.cipher();
     let mut legacy = original();
     legacy.title = "late incompatible title".into();
-    f.ordered(f.version(ItemContent::Plan(legacy)));
+    f.ordered(f.version(ItemContent::Plan(legacy)))?;
     f.ordered(EventBody::ItemReverted {
         item: f.item.clone(),
         to_version: 1,
         note: "late undo".into(),
-    });
+    })?;
     let fold = f.engine.plan_timeline(&f.item).unwrap();
     assert!(fold
         .slots
@@ -205,9 +211,12 @@ pub(super) fn late_legacy_versions_never_ack_or_change_canonical_shadow() {
         &fold.slots.last().unwrap().source.client_id,
         &fold.slots.last().unwrap().source.event_id
     ));
+
+    Ok(())
 }
 
-pub(super) fn reader_removed_actor_and_key_loss_refuse_mutation_but_keep_saved_read() {
+pub(super) fn reader_removed_actor_and_key_loss_refuse_mutation_but_keep_saved_read(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for mode in [
         "reader",
         "reader-unchanged",
@@ -215,7 +224,7 @@ pub(super) fn reader_removed_actor_and_key_loss_refuse_mutation_but_keep_saved_r
         "key-loss",
         "pending-grant",
     ] {
-        let mut f = Fixture::new();
+        let mut f = Fixture::new()?;
         let mut s = f.session();
         let read = s.read(&f.engine).unwrap();
         let edit = text_edit(&read, "private intent remains");
@@ -236,7 +245,7 @@ pub(super) fn reader_removed_actor_and_key_loss_refuse_mutation_but_keep_saved_r
             f.ordered(EventBody::MemberAdded {
                 identity: admin.clone(),
                 role: Role::Owner,
-            });
+            })?;
             Some(admin)
         } else {
             None
@@ -246,12 +255,12 @@ pub(super) fn reader_removed_actor_and_key_loss_refuse_mutation_but_keep_saved_r
                 f.ordered(EventBody::MemberAdded {
                     identity: author.clone(),
                     role: Role::Reader,
-                });
+                })?;
             }
             "removed" => {
                 f.ordered(EventBody::MemberRemoved {
                     identity: author.clone(),
-                });
+                })?;
             }
             "key-loss" => {
                 f.engine.signers.remove(&author);
@@ -291,4 +300,5 @@ pub(super) fn reader_removed_actor_and_key_loss_refuse_mutation_but_keep_saved_r
         no_change(&f, &s, &before);
         assert!(journal(&s).has_draft);
     }
+    Ok(())
 }

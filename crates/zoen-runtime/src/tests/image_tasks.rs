@@ -34,8 +34,8 @@ pub(crate) fn profile() -> ImagePriceProfile {
         max_response_bytes: 2_000_000,
     }
 }
-pub(super) async fn world() -> World {
-    let mut w = World::with_relay().await;
+pub(super) async fn world() -> std::result::Result<World, Box<dyn std::error::Error>> {
+    let mut w = World::with_relay().await?;
     let capability = native::testing::output::provision(&w.runtime).await;
     Arc::get_mut(&mut w.runtime).unwrap().output_fixture = Some(capability);
     let mut policy = w.signed.policy.clone();
@@ -49,10 +49,12 @@ pub(super) async fn world() -> World {
     );
     w.signed = event_log::owner_budget::sign(&w.owner, policy).unwrap();
     w.policy_digest = w.runtime.install_policy(w.signed.clone()).await.unwrap();
-    w
+    Ok(w)
 }
-pub(super) async fn image_task(w: &World) -> (VerifiedStep, ImageTask) {
-    let mut step = w.step(0).await;
+pub(super) async fn image_task(
+    w: &World,
+) -> std::result::Result<(VerifiedStep, ImageTask), Box<dyn std::error::Error>> {
+    let mut step = w.step(0).await?;
     let VerifiedStep::Fixture(fixture) = &mut step else {
         panic!("controlled scope only")
     };
@@ -101,7 +103,7 @@ pub(super) async fn image_task(w: &World) -> (VerifiedStep, ImageTask) {
     };
     task.task_digest = task.expected_digest().unwrap();
     task.validate().unwrap();
-    (step, task)
+    Ok((step, task))
 }
 pub(super) fn result(task: &ImageTask, known: bool) -> ImageAttemptResult {
     let usage = if known {
@@ -177,9 +179,9 @@ impl ImageAttemptAdapter for Provider {
         Ok(self.result.clone())
     }
 }
-pub(super) async fn run() {
-    let mut w = world().await;
-    let (step, task) = image_task(&w).await;
+pub(super) async fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut w = world().await?;
+    let (step, task) = image_task(&w).await?;
     native::testing::seed_association_fixture(&w.runtime, &task).await;
     w.runtime.fault.store(40, Ordering::SeqCst); // suppress association before evidence succeeds
     let provider = Provider {
@@ -308,8 +310,8 @@ pub(super) async fn run() {
     drop(provider);
     w.finish().await;
 
-    let w = world().await;
-    let (step, task) = image_task(&w).await;
+    let w = world().await?;
+    let (step, task) = image_task(&w).await?;
     let provider = Provider {
         result: result(&task, false),
         task: task.clone(),
@@ -350,7 +352,7 @@ pub(super) async fn run() {
     );
     assert_eq!(w.count("SELECT count(*) FROM runtime_claims").await, 1);
     // The same SQL table still refuses a large legacy-chat receipt.
-    let chat = w.step(1).await;
+    let chat = w.step(1).await?;
     let binding = w.binding(&chat);
     w.runtime.finance.reserve(&binding).await.unwrap();
     w.runtime.finance.claim(&binding).await.unwrap().unwrap();
@@ -364,6 +366,7 @@ pub(super) async fn run() {
             .unwrap_err();
     assert!(matches!(error,sqlx::Error::Database(ref db) if db.code().as_deref()==Some("23514")));
     w.finish().await;
+    Ok(())
 }
 
 #[test]

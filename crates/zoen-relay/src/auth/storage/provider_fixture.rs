@@ -525,13 +525,14 @@ async fn android_scenarios(pool: &PgPool) -> Value {
 
 #[tokio::test]
 #[ignore = "requires isolated ZOEN_TEST_PG and a fresh ZOEN_PROVIDER_FIXTURE output path"]
-async fn write_native_provider_enrollment_fixture() {
+async fn write_native_provider_enrollment_fixture(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let output = std::env::var("ZOEN_PROVIDER_FIXTURE").expect("ZOEN_PROVIDER_FIXTURE");
     let url = std::env::var("ZOEN_TEST_PG").expect("ZOEN_TEST_PG");
     let mut admin = PgConnection::connect(&url).await.unwrap();
     let schema = format!(
         "provider_oracle_{}",
-        &hex::encode(Signer::generate().secret())[..16]
+        &hex::encode(Signer::generate()?.secret())[..16]
     );
     sqlx::query(sqlx::AssertSqlSafe(format!("CREATE SCHEMA {schema}")))
         .execute(&mut admin)
@@ -581,4 +582,5 @@ async fn write_native_provider_enrollment_fixture() {
         .unwrap();
     serde_json::to_writer_pretty(&mut file, &fixture).unwrap();
     file.write_all(b"\n").unwrap();
+    Ok(())
 }

@@ -61,21 +61,23 @@ impl Client {
     }
 
     /// This install's experiment unit, made on first use.
-    fn unit(&self) -> String {
+    fn unit(&self) -> Result<String, CoreError> {
         if let Some(u) = self.meta(META_UNIT) {
-            return u;
+            return Ok(u);
         }
-        let mut b = [0u8; 16];
-        getrandom::getrandom(&mut b).expect("os randomness");
-        let u = hex::encode(b);
-        let _ = self.set_meta(META_UNIT, &u);
-        u
+        let unit = hex::encode(crate::link::random::<16>()?);
+        self.set_meta(META_UNIT, &unit)?;
+        Ok(unit)
     }
 
-    fn config(&self) -> RemoteConfig {
-        self.meta(META_CONFIG)
+    fn config(&self) -> Result<RemoteConfig, CoreError> {
+        match self
+            .meta(META_CONFIG)
             .and_then(|j| RemoteConfig::parse(&j).ok())
-            .unwrap_or_else(RemoteConfig::builtin)
+        {
+            Some(config) => Ok(config),
+            None => RemoteConfig::builtin().map_err(invalid),
+        }
     }
 
     fn source(&self) -> Attribution {
@@ -84,7 +86,7 @@ impl Client {
             .unwrap_or_else(Attribution::organic)
     }
 
-    fn mark_exposed(&self, flag: &str, variant: &str) {
+    fn mark_exposed(&self, flag: &str, variant: &str) -> Result<(), CoreError> {
         let mut pending: Vec<Exposure> = self
             .meta(META_EXPOSURES)
             .and_then(|j| serde_json::from_str(&j).ok())
@@ -94,10 +96,10 @@ impl Client {
                 flag: flag.into(),
                 variant: variant.into(),
             });
-            if let Ok(j) = serde_json::to_string(&pending) {
-                let _ = self.set_meta(META_EXPOSURES, &j);
-            }
+            let json = serde_json::to_string(&pending)?;
+            self.set_meta(META_EXPOSURES, &json)?;
         }
+        Ok(())
     }
 }
 
@@ -132,12 +134,15 @@ impl Client {
     }
 
     /// The onboarding to show now. Showing it counts as an exposure of the arm that chose it.
-    pub fn growth_onboarding_plan(&self) -> OnboardingPlanDto {
-        let unit = self.unit();
+    ///
+    /// # Errors
+    /// Refuses unavailable entropy, an invalid built-in config or a failed unit/exposure save.
+    pub fn growth_onboarding_plan(&self) -> Result<OnboardingPlanDto, CoreError> {
+        let unit = self.unit()?;
         let source = self.source();
-        let plan = self.config().onboarding_for(&unit, &source);
+        let plan = self.config()?.onboarding_for(&unit, &source);
         if let Some(a) = plan.exposure.as_ref().filter(|a| a.enrolled) {
-            self.mark_exposed(&a.flag, &a.variant);
+            self.mark_exposed(&a.flag, &a.variant)?;
         }
         let target = plan.landing_target.clone().unwrap_or_default();
         let source_target = source.target.clone().unwrap_or_default();
@@ -151,7 +156,7 @@ impl Client {
                 },
             )
         };
-        OnboardingPlanDto {
+        Ok(OnboardingPlanDto {
             flow: plan.flow,
             steps: plan.steps,
             landing: plan.landing,
@@ -162,22 +167,23 @@ impl Client {
                 .map(|(k, v)| (k.clone(), fill(v)))
                 .collect(),
             experiment: plan.exposure.map(|a| format!("{}:{}", a.flag, a.variant)),
-        }
+        })
     }
 
-    /// The arm of a flag for this install (`None` for an unknown flag). Reading it counts
+    /// The arm of a flag (`None` when unknown or local config/unit storage is unavailable).
+    /// Reading it counts
     /// as an exposure when the install is enrolled in that experiment.
     pub fn growth_variant(&self, flag: String) -> Option<String> {
-        let a = self.config().assign(&flag, &self.unit())?;
+        let a = self.config().ok()?.assign(&flag, &self.unit().ok()?)?;
         if a.enrolled {
-            self.mark_exposed(&a.flag, &a.variant);
+            self.mark_exposed(&a.flag, &a.variant).ok()?;
         }
         Some(a.variant)
     }
 
     /// Remote copy for `key`: `key@<lang>` first, then `key`. `None` = use the app's own.
     pub fn growth_copy(&self, key: String, lang: String) -> Option<String> {
-        let copy = self.config().copy_for(&self.unit());
+        let copy = self.config().ok()?.copy_for(&self.unit().ok()?);
         copy.get(&format!("{key}@{lang}"))
             .or_else(|| copy.get(&key))
             .cloned()
@@ -203,7 +209,7 @@ impl Client {
             .or_else(|| account.as_ref().map(|a| a.relay_url.clone()))
             .ok_or_else(|| invalid("no relay".into()))?;
         let base = crate::net::http_base(&relay);
-        let http = crate::https::client()
+        let http = crate::https::client()?
             .timeout(std::time::Duration::from_secs(15))
             // A redirect cannot establish the authenticated socket's HTTP domain.
             // Keep config cached and report intents queued on redirect responses.
@@ -232,7 +238,7 @@ impl Client {
                 }
             }
         }
-        let version = self.config().version;
+        let version = self.config()?.version;
 
         let Some(acct) = account.filter(|a| a.registered && a.unlocked) else {
             return Ok(GrowthSyncDto {
@@ -263,7 +269,7 @@ impl Client {
             });
         }
         let report = ClientReport {
-            unit: self.unit(),
+            unit: self.unit()?,
             attribution: source_pending.then(|| self.source().reportable()),
             exposures: exposures.clone(),
             health,
@@ -276,7 +282,7 @@ impl Client {
         let relay_name = self
             .net
             .lock()
-            .unwrap_or_else(|p| p.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .as_ref()
             .and_then(|net| net.authenticated_relay_name(&relay, &acct.identity_id, &key.id()))
             .ok_or_else(|| {
@@ -308,7 +314,7 @@ impl Client {
         let rest: Vec<&Exposure> = now.iter().filter(|e| !exposures.contains(e)).collect();
         self.set_meta(
             META_EXPOSURES,
-            &serde_json::to_string(&rest).unwrap_or_else(|_| "[]".into()),
+            &serde_json::to_string(&rest).map_err(|error| invalid(error.to_string()))?,
         )?;
         Ok(GrowthSyncDto {
             config_version: version,
@@ -327,3 +333,6 @@ impl Client {
             .map(|a| protocol::links::friend(&a.handle))
     }
 }
+
+#[cfg(test)]
+mod tests;

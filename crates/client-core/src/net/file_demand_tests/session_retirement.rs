@@ -33,8 +33,10 @@ fn independent_http_task(
     ))
 }
 
-async fn retired_http_completion(replace_account: bool) {
-    let f = Fixture::new();
+async fn retired_http_completion(
+    replace_account: bool,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = Fixture::new()?;
     let chunk = current_chunk(&f);
     let mut server = BlobServer::start(f.uploads(), chunk.blob.clone(), false);
     f.reader.start_sync(None).unwrap();
@@ -152,21 +154,27 @@ async fn retired_http_completion(replace_account: bool) {
     }
     f.reader.stop_sync();
     server.stop().expect("owned HTTP fixture must terminate");
+    Ok(())
 }
 
 #[tokio::test]
-async fn stop_restart_retires_inflight_http_even_when_new_session_wants_same_file() {
-    retired_http_completion(false).await;
+async fn stop_restart_retires_inflight_http_even_when_new_session_wants_same_file(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    retired_http_completion(false).await?;
+    Ok(())
 }
 
 #[tokio::test]
-async fn erase_recreate_account_retires_inflight_http_before_new_identity_owns_engine() {
-    retired_http_completion(true).await;
+async fn erase_recreate_account_retires_inflight_http_before_new_identity_owns_engine(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    retired_http_completion(true).await?;
+    Ok(())
 }
 
 #[tokio::test]
-async fn canceling_only_foreground_waiter_preserves_authorized_current_background_download() {
-    let f = Fixture::new();
+async fn canceling_only_foreground_waiter_preserves_authorized_current_background_download(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = Fixture::new()?;
     let chunk = current_chunk(&f);
     let mut server = BlobServer::start(f.uploads(), chunk.blob.clone(), false);
     let (reader, item) = (f.reader.clone(), f.item.clone());
@@ -206,4 +214,5 @@ async fn canceling_only_foreground_waiter_preserves_authorized_current_backgroun
     task.abort();
     let _ = task.await;
     server.stop().expect("owned HTTP fixture must terminate");
+    Ok(())
 }

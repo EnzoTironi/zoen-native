@@ -2,7 +2,7 @@
 
 export type BackupStatusDto = { enabled: boolean, 
 /**
- * "password" or "recovery_key" (empty while off).
+ * "password" or "`recovery_key`" (empty while off).
  */
 mode: string, 
 /**

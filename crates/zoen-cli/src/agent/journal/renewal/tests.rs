@@ -2,10 +2,10 @@ use super::*;
 
 struct Directory(std::path::PathBuf);
 impl Directory {
-    fn new() -> Self {
-        let path = std::env::temp_dir().join(types::new_id("renewal-journal"));
+    fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        let path = std::env::temp_dir().join(types::new_id("renewal-journal")?);
         std::fs::create_dir(&path).unwrap();
-        Self(path)
+        Ok(Self(path))
     }
     fn path(&self) -> std::path::PathBuf {
         self.0.join("steps.json")
@@ -18,8 +18,9 @@ impl Drop for Directory {
 }
 
 #[test]
-fn absent_or_legacy_data_never_proves_the_held_call_did_not_execute() {
-    let dir = Directory::new();
+fn absent_or_legacy_data_never_proves_the_held_call_did_not_execute(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = Directory::new()?;
     let path = dir.path();
     let hash = "ab".repeat(32);
     assert!(!JournalState::renewal_safe(&path, "root", &hash, "source").unwrap());
@@ -29,11 +30,13 @@ fn absent_or_legacy_data_never_proves_the_held_call_did_not_execute() {
     assert_eq!(std::fs::read(&path).unwrap(), legacy);
     assert!(!JournalState::renewal_safe(&path, "root", &hash, "source").unwrap());
     assert!(!String::from_utf8(legacy).unwrap().contains("registered"));
+    Ok(())
 }
 
 #[test]
-fn before_executor_witness_and_operational_budget_survive_cold_journal_reads() {
-    let dir = Directory::new();
+fn before_executor_witness_and_operational_budget_survive_cold_journal_reads(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = Directory::new()?;
     let path = dir.path();
     let hash = "ab".repeat(32);
     JournalState::register_hold(&path, "root", &hash, "source").unwrap();
@@ -55,11 +58,13 @@ fn before_executor_witness_and_operational_budget_survive_cold_journal_reads() {
     }
     assert!(!JournalState::begin_resume(&path, "root", &hash, Some("source")).unwrap());
     assert_eq!(JournalState::load(&path).unwrap().continuations.len(), 1);
+    Ok(())
 }
 
 #[test]
-fn wrong_binding_interrupted_writer_and_corrupt_optional_witness_refuse_without_overwriting() {
-    let dir = Directory::new();
+fn wrong_binding_interrupted_writer_and_corrupt_optional_witness_refuse_without_overwriting(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = Directory::new()?;
     let path = dir.path();
     let hash = "ab".repeat(32);
     JournalState::register_hold(&path, "root", &hash, "source").unwrap();
@@ -78,4 +83,5 @@ fn wrong_binding_interrupted_writer_and_corrupt_optional_witness_refuse_without_
         assert!(JournalState::load(&path).is_err());
         assert!(JournalState::renewal_safe(&path, "root", &hash, "source").is_err());
     }
+    Ok(())
 }

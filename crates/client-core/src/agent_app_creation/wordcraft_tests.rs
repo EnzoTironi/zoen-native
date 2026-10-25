@@ -15,8 +15,9 @@ fn word_input(f: &crate::agent_binary_documents::tests::Fixture) -> AgentToolApp
     input
 }
 #[test]
-fn word_creation_is_pending_until_exact_owner_review_and_replays_the_original_real_seed() {
-    let f = setup();
+fn word_creation_is_pending_until_exact_owner_review_and_replays_the_original_real_seed(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = setup()?;
     let before = f.agent.items().len();
     let dto = f
         .agent
@@ -64,10 +65,13 @@ fn word_creation_is_pending_until_exact_owner_review_and_replays_the_original_re
         STANDARD.encode(Format::Wordcraft.seed())
     );
     assert_ne!(executor_binding_for(WORD_TOOL), executor_binding_for(TOOL));
+
+    Ok(())
 }
 #[test]
-fn word_creation_cannot_borrow_a_deck_seed_binding_or_change_frozen_tool_arguments() {
-    let f = setup();
+fn word_creation_cannot_borrow_a_deck_seed_binding_or_change_frozen_tool_arguments(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = setup()?;
     let before = f.agent.items().len();
     let mut wrong = word_input(&f);
     wrong.worker_binding = executor_binding();
@@ -84,4 +88,6 @@ fn word_creation_cannot_borrow_a_deck_seed_binding_or_change_frozen_tool_argumen
         .stage_app_creation_approval(&f.space, &f.source, &f.owner, wrong)
         .is_err());
     assert_eq!(f.agent.items().len(), before);
+
+    Ok(())
 }

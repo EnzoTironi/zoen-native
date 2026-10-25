@@ -3,7 +3,7 @@ use types::{Annotation, EventBody};
 
 #[test]
 fn mutations_search_and_references_survive_reopen() {
-    historical_references_cases::mutations_search_and_references_survive_reopen()
+    historical_references_cases::mutations_search_and_references_survive_reopen().unwrap()
 }
 
 #[test]
@@ -23,7 +23,7 @@ fn scoped_search_propagates_database_errors_and_checks_membership() {
 
 #[test]
 fn historical_recipe_activity_is_searchable_by_its_exact_entry_after_reopen() {
-    historical_references_cases::historical_recipe_activity_is_searchable_by_its_exact_entry_after_reopen()
+    historical_references_cases::historical_recipe_activity_is_searchable_by_its_exact_entry_after_reopen().unwrap()
 }
 
 #[test]

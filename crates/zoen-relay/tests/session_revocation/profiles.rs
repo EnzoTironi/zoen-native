@@ -3,12 +3,13 @@ use super::*;
 /// Actual Session authentication/signatures and PostgreSQL replacement semantics.
 /// The existing BlockedLog fixture is not a canonical-history/FDB acceptance proof.
 #[tokio::test]
-async fn sealed_profile_retries_versions_and_linked_resigning_use_authoritative_sql() {
-    let test = TestRelay::new().await;
+async fn sealed_profile_retries_versions_and_linked_resigning_use_authoritative_sql(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let test = TestRelay::new().await?;
     let result = std::panic::AssertUnwindSafe(async {
-        let root = Signer::generate();
-        let first = Author::device(&root, Signer::generate());
-        let second = Author::device(&root, Signer::generate());
+        let root = Signer::generate()?;
+        let first = Author::device(&root, Signer::generate()?);
+        let second = Author::device(&root, Signer::generate()?);
         let mut a = connect(&test.ws_url, &first).await;
         request(
             &mut a,
@@ -19,11 +20,11 @@ async fn sealed_profile_retries_versions_and_linked_resigning_use_authoritative_
         )
         .await
         .unwrap();
-        request(&mut a, 2, link_op(&second, &Signer::generate().id()))
+        request(&mut a, 2, link_op(&second, &Signer::generate()?.id()))
             .await
             .unwrap();
         let mut b = connect(&test.ws_url, &second).await;
-        let key = ProfileKey::generate();
+        let key = ProfileKey::generate()?;
         let fields = ProfileFields {
             name: "Synthetic profile".into(),
             bio: "Private".into(),
@@ -39,7 +40,7 @@ async fn sealed_profile_retries_versions_and_linked_resigning_use_authoritative_
         let original = make(
             &first,
             version,
-            seal_profile(&key, &first.identity, version, &fields),
+            seal_profile(&key, &first.identity, version, &fields)?,
         );
         assert_eq!(
             request(
@@ -94,12 +95,12 @@ async fn sealed_profile_retries_versions_and_linked_resigning_use_authoritative_
         let lower = make(
             &first,
             version + 1,
-            seal_profile(&key, &first.identity, version + 1, &fields),
+            seal_profile(&key, &first.identity, version + 1, &fields)?,
         );
         let higher = make(
             &first,
             version + 2,
-            seal_profile(&key, &first.identity, version + 2, &fields),
+            seal_profile(&key, &first.identity, version + 2, &fields)?,
         );
         let (left, right) = tokio::join!(
             zoen_relay::db::put_profile(&test.state.pool, &lower),
@@ -116,7 +117,7 @@ async fn sealed_profile_retries_versions_and_linked_resigning_use_authoritative_
         let maximum = make(
             &first,
             i64::MAX as u64,
-            seal_profile(&key, &first.identity, i64::MAX as u64, &fields),
+            seal_profile(&key, &first.identity, i64::MAX as u64, &fields)?,
         );
         assert_eq!(
             request(
@@ -152,9 +153,11 @@ async fn sealed_profile_retries_versions_and_linked_resigning_use_authoritative_
         );
         let _ = a.close(None).await;
         let _ = b.close(None).await;
+        Ok::<(), Box<dyn std::error::Error>>(())
     })
     .catch_unwind()
     .await;
     test.close().await;
-    result.unwrap();
+    result.unwrap()?;
+    Ok(())
 }

@@ -97,13 +97,14 @@ impl Oracle<'_> {
 }
 
 #[tokio::test]
-async fn native_encrypted_transfer_http_contract() {
-    let test = TestRelay::new().await;
-    let a = test.register().await;
-    let id = Signer::generate().id();
-    let other = Signer::generate().id();
+async fn native_encrypted_transfer_http_contract(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let test = TestRelay::new().await?;
+    let a = test.register().await?;
+    let id = Signer::generate()?.id();
+    let other = Signer::generate()?.id();
     let plain = b"synthetic encrypted device history with messages and pages";
-    let (key, sealed) = event_log::media::seal(plain);
+    let (key, sealed) = event_log::media::seal(plain)?;
     assert_eq!(event_log::media::open(&key, &sealed).unwrap(), plain);
     let profile: Value = sqlx::query_scalar("SELECT profile FROM identities WHERE id=$1")
         .bind(&a.identity)
@@ -421,4 +422,5 @@ async fn native_encrypted_transfer_http_contract() {
         std::fs::write(path, serde_json::to_vec(&fixture).unwrap()).unwrap();
     }
     test.close().await;
+    Ok(())
 }

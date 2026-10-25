@@ -10,6 +10,7 @@
 
 use std::collections::BTreeMap;
 
+use num_traits::ToPrimitive;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -123,6 +124,7 @@ pub enum SourceKind {
 }
 
 impl SourceKind {
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             SourceKind::Friend => "friend",
@@ -133,6 +135,7 @@ impl SourceKind {
         }
     }
 
+    #[must_use]
     pub fn parse(s: &str) -> Option<SourceKind> {
         Some(match s {
             "friend" => SourceKind::Friend,
@@ -159,6 +162,7 @@ pub struct Attribution {
 }
 
 impl Attribution {
+    #[must_use]
     pub fn organic() -> Attribution {
         Attribution {
             kind: SourceKind::Organic,
@@ -168,6 +172,7 @@ impl Attribution {
     }
 
     /// What the relay may learn: the kind and the campaign, never the target.
+    #[must_use]
     pub fn reportable(&self) -> Attribution {
         Attribution {
             target: None,
@@ -178,6 +183,7 @@ impl Attribution {
 
 /// Campaign ids: 1–32 of `a-z 0-9 _ -`, lowercased. Anything else is dropped, so a link
 /// can't smuggle an id or free text into the metrics.
+#[must_use]
 pub fn clean_campaign(raw: &str) -> Option<String> {
     let c = raw.trim().to_lowercase();
     let ok = (1..=32).contains(&c.len())
@@ -195,6 +201,7 @@ fn clean_target(raw: &str) -> Option<String> {
 }
 
 /// Reads a link that opened the app. Hosts other than ours give `None`.
+#[must_use]
 pub fn attribution_from_link(link: &str) -> Option<Attribution> {
     let link = link.trim();
     let (rest, query) = link.split_once('?').unwrap_or((link, ""));
@@ -244,6 +251,7 @@ pub fn attribution_from_link(link: &str) -> Option<Attribution> {
 }
 
 /// A unit is 32 lowercase hex characters (a fresh random one per install).
+#[must_use]
 pub fn valid_unit(u: &str) -> bool {
     u.len() == 32
         && u.bytes()
@@ -252,6 +260,7 @@ pub fn valid_unit(u: &str) -> bool {
 
 /// A deterministic unit, for tests and tools: 32 hex characters of SHA-256 over a tag and
 /// a seed.
+#[must_use]
 pub fn unit_for(identity: &str) -> String {
     let d = Sha256::new()
         .chain_update(b"zoen-unit-v1\0")
@@ -261,6 +270,7 @@ pub fn unit_for(identity: &str) -> String {
 }
 
 /// 0..[`BUCKETS`], uniform, independent per salt.
+#[must_use]
 pub fn bucket(salt: &str, unit: &str) -> u32 {
     let d = Sha256::new()
         .chain_update(salt.as_bytes())
@@ -271,7 +281,11 @@ pub fn bucket(salt: &str, unit: &str) -> u32 {
 }
 
 fn pct_buckets(p: f64) -> u32 {
-    (p.clamp(0.0, 100.0) * (BUCKETS as f64) / 100.0).round() as u32
+    // Preserve the old clamped conversion, including NaN -> zero, without a lossy cast.
+    (p.clamp(0.0, 100.0) * f64::from(BUCKETS) / 100.0)
+        .round()
+        .to_u32()
+        .unwrap_or(0)
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -283,22 +297,33 @@ pub struct Assignment {
 }
 
 impl RemoteConfig {
+    /// # Errors
+    /// Rejects malformed JSON, empty/overflowing variant weights or unknown onboarding flows.
     pub fn parse(json: &str) -> Result<RemoteConfig, String> {
         let c: RemoteConfig = serde_json::from_str(json).map_err(|e| e.to_string())?;
         c.validate()?;
         Ok(c)
     }
 
-    pub fn builtin() -> RemoteConfig {
-        RemoteConfig::parse(DEFAULT_CONFIG).expect("built-in config is valid")
+    /// # Errors
+    /// Rejects an invalid embedded configuration using the same validation as remote updates.
+    pub fn builtin() -> Result<RemoteConfig, String> {
+        RemoteConfig::parse(DEFAULT_CONFIG)
     }
 
+    /// # Errors
+    /// Rejects empty/overflowing weights or onboarding rules that reference missing flows/arms.
     pub fn validate(&self) -> Result<(), String> {
         for (k, f) in &self.flags {
             if f.variants.is_empty() {
                 return Err(format!("flag {k} has no variants"));
             }
-            if f.variants.iter().map(|v| v.weight).sum::<u32>() == 0 {
+            let weight = f
+                .variants
+                .iter()
+                .try_fold(0u32, |sum, v| sum.checked_add(v.weight))
+                .ok_or_else(|| format!("flag {k} total weight overflows"))?;
+            if weight == 0 {
                 return Err(format!("flag {k} has zero total weight"));
             }
         }
@@ -324,6 +349,7 @@ impl RemoteConfig {
         Ok(())
     }
 
+    #[must_use]
     pub fn in_holdout(&self, unit: &str) -> bool {
         self.holdout
             .as_ref()
@@ -331,11 +357,20 @@ impl RemoteConfig {
     }
 
     /// The arm of one flag for this unit.
+    #[must_use]
     pub fn assign(&self, flag: &str, unit: &str) -> Option<Assignment> {
         let f = self.flags.get(flag)?;
+        let first = f.variants.first()?;
+        let total = f
+            .variants
+            .iter()
+            .try_fold(0u32, |sum, v| sum.checked_add(v.weight))?;
+        if total == 0 {
+            return None;
+        }
         let control = || Assignment {
             flag: flag.to_string(),
-            variant: f.variants[0].key.clone(),
+            variant: first.key.clone(),
             enrolled: false,
         };
         if self.in_holdout(unit) {
@@ -344,11 +379,12 @@ impl RemoteConfig {
         if bucket(&format!("{}:rollout", f.salt), unit) >= pct_buckets(f.rollout) {
             return Some(control());
         }
-        let total: u32 = f.variants.iter().map(|v| v.weight).sum();
-        let b = (u64::from(bucket(&f.salt, unit)) * u64::from(total) / u64::from(BUCKETS)) as u32;
-        let mut acc = 0;
+        let b =
+            u32::try_from(u64::from(bucket(&f.salt, unit)) * u64::from(total) / u64::from(BUCKETS))
+                .ok()?;
+        let mut acc = 0u32;
         for v in &f.variants {
-            acc += v.weight;
+            acc = acc.checked_add(v.weight)?;
             if b < acc {
                 return Some(Assignment {
                     flag: flag.to_string(),
@@ -360,6 +396,7 @@ impl RemoteConfig {
         Some(control())
     }
 
+    #[must_use]
     pub fn assignments(&self, unit: &str) -> Vec<Assignment> {
         self.flags
             .keys()
@@ -368,6 +405,7 @@ impl RemoteConfig {
     }
 
     /// Copy for this unit: defaults, then each flag's arm overrides (flags in name order).
+    #[must_use]
     pub fn copy_for(&self, unit: &str) -> BTreeMap<String, String> {
         let mut out = self.copy.clone();
         for a in self.assignments(unit) {
@@ -383,6 +421,7 @@ impl RemoteConfig {
     }
 
     /// The onboarding a new account gets for where it came from and its arms.
+    #[must_use]
     pub fn onboarding_for(&self, unit: &str, source: &Attribution) -> OnboardingPlan {
         let matches = |r: &Rule| {
             r.source.is_none_or(|s| s == source.kind)
@@ -403,7 +442,7 @@ impl RemoteConfig {
                     exposure = Some(a);
                 }
             } else if let Some(f) = &rule.flow {
-                flow_id = f.clone();
+                flow_id.clone_from(f);
             }
         }
         let flow = self
@@ -493,6 +532,7 @@ pub struct Health {
 }
 
 /// What a device signs to send a [`ClientReport`].
+#[must_use]
 pub fn report_message(body_sha256: &str, ts_ms: i64, relay: &str) -> Vec<u8> {
     format!(
         "{}:client-report:{relay}:{body_sha256}:{ts_ms}",
@@ -502,108 +542,4 @@ pub fn report_message(body_sha256: &str, ts_ms: i64, relay: &str) -> Vec<u8> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn builtin_config_is_valid_and_has_both_onboarding_arms() {
-        let c = RemoteConfig::builtin();
-        assert!(c.onboarding.flows.contains_key("default"));
-        assert!(c.onboarding.flows.contains_key("friend_invite"));
-        assert!(c.flags["onboarding_friend_v1"].experiment);
-    }
-
-    #[test]
-    fn links_become_sources_without_leaking_targets() {
-        let f = attribution_from_link("https://tryzoen.com/@ana_b?c=ig_reels_01").unwrap();
-        assert_eq!(f.kind, SourceKind::Friend);
-        assert_eq!(f.target.as_deref(), Some("ana_b"));
-        assert_eq!(f.campaign.as_deref(), Some("ig_reels_01"));
-        assert_eq!(f.reportable().target, None);
-        let s = attribution_from_link("zoen://join/AB12CD34EF").unwrap();
-        assert_eq!(
-            (s.kind, s.target.as_deref()),
-            (SourceKind::Space, Some("AB12CD34EF"))
-        );
-        let a = attribution_from_link("https://tryzoen.com/a/barbeiro").unwrap();
-        assert_eq!(
-            (a.kind, a.target.as_deref()),
-            (SourceKind::Agent, Some("barbeiro"))
-        );
-        let c = attribution_from_link("https://tryzoen.com/?utm_campaign=Ads-X").unwrap();
-        assert_eq!(
-            (c.kind, c.campaign.as_deref()),
-            (SourceKind::Campaign, Some("ads-x"))
-        );
-        let bad = attribution_from_link("https://tryzoen.com/?c=Ana%20Silva%20cpf").unwrap();
-        assert_eq!((bad.kind, bad.campaign), (SourceKind::Organic, None));
-        assert!(attribution_from_link("https://evil.example/@ana").is_none());
-    }
-
-    #[test]
-    fn bucketing_is_deterministic_uniform_and_weighted() {
-        let c = RemoteConfig::builtin();
-        let mut direct = 0;
-        for i in 0..4000 {
-            let u = unit_for(&format!("id{i}"));
-            let a = c.assign("onboarding_friend_v1", &u).unwrap();
-            assert_eq!(Some(a.clone()), c.assign("onboarding_friend_v1", &u));
-            if a.variant == "direct" {
-                direct += 1;
-            }
-        }
-        // 50/50 inside a 5% holdout: ~47.5% direct.
-        assert!((1700..2100).contains(&direct), "{direct}");
-        // Known vector, shared with the Swift side.
-        assert_eq!(bucket("s", "u"), bucket("s", "u"));
-        assert_ne!(unit_for("a"), unit_for("b"));
-    }
-
-    #[test]
-    fn onboarding_follows_source_and_arm() {
-        let c = RemoteConfig::builtin();
-        let friend = attribution_from_link("zoen://friend/ana_b").unwrap();
-        let (mut saw_direct, mut saw_control) = (false, false);
-        for i in 0..200 {
-            let u = unit_for(&format!("x{i}"));
-            let p = c.onboarding_for(&u, &friend);
-            let arm = p.exposure.as_ref().unwrap().variant.clone();
-            if arm == "direct" {
-                saw_direct = true;
-                assert_eq!(p.flow, "friend_invite");
-                assert_eq!(p.landing, "chat_with_inviter");
-                assert_eq!(p.landing_target.as_deref(), Some("ana_b"));
-            } else {
-                saw_control = true;
-                assert_eq!(p.flow, "default");
-                assert_eq!(p.landing, "home");
-            }
-        }
-        assert!(saw_direct && saw_control);
-        let organic = c.onboarding_for(&unit_for("z"), &Attribution::organic());
-        assert_eq!(
-            (organic.flow.as_str(), organic.landing.as_str()),
-            ("default", "home")
-        );
-        assert!(organic.exposure.is_none());
-        let space = c.onboarding_for(
-            &unit_for("z"),
-            &attribution_from_link("zoen://join/AB12CD34EF").unwrap(),
-        );
-        assert_eq!(
-            (space.flow.as_str(), space.landing.as_str()),
-            ("space_link", "space")
-        );
-    }
-
-    #[test]
-    fn bad_configs_are_refused() {
-        let mut c = RemoteConfig::builtin();
-        c.onboarding.rules[0].arms.clear();
-        assert!(c.validate().is_err());
-        assert!(RemoteConfig::parse(
-            "{\"version\":1,\"flags\":{\"x\":{\"salt\":\"s\",\"variants\":[]}}}"
-        )
-        .is_err());
-    }
-}
+mod tests;

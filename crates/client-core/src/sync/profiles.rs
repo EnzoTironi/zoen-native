@@ -1,6 +1,9 @@
 //! Directory/profile reconciliation and transient presence.
 
-use super::*;
+use super::{
+    normalize_handle, t, CoreError, Engine, Event, EventBody, HashSet, Identity, IdentityId,
+    IdentityKind, R,
+};
 
 impl Engine {
     pub(super) fn recompute_unknown(&mut self) {

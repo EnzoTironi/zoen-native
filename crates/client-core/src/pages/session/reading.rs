@@ -1,4 +1,4 @@
-//! Reading operations on the original PageSession state.
+//! Reading operations on the original `PageSession` state.
 
 use super::*;
 

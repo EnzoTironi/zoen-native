@@ -2,9 +2,10 @@
 
 use super::*;
 
-pub(super) fn sql_insert_and_update_failures_leave_disk_and_published_ticks_unchanged_then_retry() {
+pub(super) fn sql_insert_and_update_failures_leave_disk_and_published_ticks_unchanged_then_retry(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for operation in ["INSERT", "UPDATE"] {
-        let (_db, e, c) = fixture();
+        let (_db, e, c) = fixture()?;
         let expected = if operation == "UPDATE" {
             assert!(e.lock().receipt(&c.space, &c.peer, c.voice.seq, 0).unwrap());
             Delivery::Delivered
@@ -45,12 +46,14 @@ pub(super) fn sql_insert_and_update_failures_leave_disk_and_published_ticks_unch
             )]
         );
     }
+    Ok(())
 }
 
-pub(super) fn reload_preserves_watermarks_and_wipe_or_erase_device_clears_only_its_database() {
+pub(super) fn reload_preserves_watermarks_and_wipe_or_erase_device_clears_only_its_database(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for through_public_api in [false, true] {
-        let (db, e, c) = fixture();
-        let (_other_db, other, other_c) = fixture();
+        let (db, e, c) = fixture()?;
+        let (_other_db, other, other_c) = fixture()?;
         assert!(e.lock().receipt(&c.space, &c.peer, 0, c.voice.seq).unwrap());
         assert!(other
             .lock()
@@ -98,10 +101,12 @@ pub(super) fn reload_preserves_watermarks_and_wipe_or_erase_device_clears_only_i
         assert!(e.spaces().is_empty());
         assert_delivery(&other, &other_c, Delivery::Delivered);
     }
+    Ok(())
 }
 
-pub(super) fn device_peer_receipts_are_excluded_from_backup_without_changing_the_live_store() {
-    let (db, e, c) = fixture();
+pub(super) fn device_peer_receipts_are_excluded_from_backup_without_changing_the_live_store(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (db, e, c) = fixture()?;
     assert!(e.lock().receipt(&c.space, &c.peer, 0, c.voice.seq).unwrap());
     let before = snapshot(&e);
     let bytes = e.lock().backup_snapshot().unwrap();
@@ -132,10 +137,13 @@ pub(super) fn device_peer_receipts_are_excluded_from_backup_without_changing_the
     );
     assert_eq!(snapshot(&e), before);
     assert_delivery(&e, &c, Delivery::Read);
+
+    Ok(())
 }
 
-pub(super) fn legacy_sample_receipts_migrate_only_canonical_peers_and_failure_keeps_the_blob() {
-    let (db, e, c) = fixture();
+pub(super) fn legacy_sample_receipts_migrate_only_canonical_peers_and_failure_keeps_the_blob(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (db, e, c) = fixture()?;
     assert!(e.lock().receipt(&c.space, &c.peer, c.voice.seq, 0).unwrap());
     let legacy = BTreeMap::from([
         (
@@ -197,10 +205,13 @@ pub(super) fn legacy_sample_receipts_migrate_only_canonical_peers_and_failure_ke
     let e = db.open();
     assert_eq!(snapshot(&e).rows.len(), 1);
     assert_delivery(&e, &c, Delivery::Read);
+
+    Ok(())
 }
 
-pub(super) fn own_identity_read_storage_failure_propagates_through_receive_and_retry_is_durable() {
-    let (db, e, c) = fixture();
+pub(super) fn own_identity_read_storage_failure_propagates_through_receive_and_retry_is_durable(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (db, e, c) = fixture()?;
     let mut deferred = crate::net::DeferredReceipts::default();
     let before = snapshot(&e);
     e.lock().store.conn().execute_batch(
@@ -233,4 +244,6 @@ pub(super) fn own_identity_read_storage_failure_propagates_through_receive_and_r
     let e = db.open();
     assert_eq!(e.lock().read_up_to(&c.space), Some(c.voice.seq));
     assert!(snapshot(&e).rows.is_empty());
+
+    Ok(())
 }

@@ -1,7 +1,8 @@
 //! Existing MLS assertions grouped by behavior; stable entrypoints live in tests.rs.
 use super::*;
 
-pub(super) fn direct_seed_waits_for_missing_package_then_reaches_the_same_recipient() {
+pub(super) fn direct_seed_waits_for_missing_package_then_reaches_the_same_recipient(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut owner = Engine::open(":memory:").unwrap();
     owner
         .create_account("Ana", "ana", "http://relay.test")
@@ -16,7 +17,7 @@ pub(super) fn direct_seed_waits_for_missing_package_then_reaches_the_same_recipi
         space,
         SpaceKind::Direct,
         std::slice::from_mut(&mut peer),
-    );
+    )?;
     for frame in frames {
         assert_eq!(peer.ingest(frame), Ingest::Applied);
     }
@@ -46,7 +47,7 @@ pub(super) fn direct_seed_waits_for_missing_package_then_reaches_the_same_recipi
         None,
         "commit and Welcome must land first"
     );
-    let published = relay_ready_to_peer(&mut owner, &mut peer);
+    let published = relay_ready_to_peer(&mut owner, &mut peer)?;
     let seed_frame = published
         .iter()
         .find(|frame| frame.env.client_id() == seed.id)
@@ -61,9 +62,11 @@ pub(super) fn direct_seed_waits_for_missing_package_then_reaches_the_same_recipi
     );
     owner.logs[space].verify().unwrap();
     peer.logs[space].verify().unwrap();
+    Ok(())
 }
 
-pub(super) fn group_existing_reader_can_receive_while_another_identity_has_no_package() {
+pub(super) fn group_existing_reader_can_receive_while_another_identity_has_no_package(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut owner = Engine::open(":memory:").unwrap();
     owner
         .create_account("Ana", "ana", "http://relay.test")
@@ -79,7 +82,7 @@ pub(super) fn group_existing_reader_can_receive_while_another_identity_has_no_pa
         })
         .collect();
     let space = "group-missing-newcomer-package";
-    let frames = claim_group(&mut owner, space, &mut peers);
+    let frames = claim_group(&mut owner, space, &mut peers)?;
     for frame in frames {
         assert_eq!(peers[0].ingest(frame), Ingest::Applied);
     }
@@ -89,12 +92,12 @@ pub(super) fn group_existing_reader_can_receive_while_another_identity_has_no_pa
     let records = claimed_records(&mut peers[..1], &targets);
     owner.mls_claimed(space, &operation, Ok(records));
     assert!(owner.net.mls.stuck.contains(space));
-    relay_ready_to_peer(&mut owner, &mut peers[0]);
+    relay_ready_to_peer(&mut owner, &mut peers[0])?;
     assert!(owner.ready_epoch(space).is_some());
     let message = owner
         .send_message(space, "for existing group readers")
         .unwrap();
-    relay_ready_to_peer(&mut owner, &mut peers[0]);
+    relay_ready_to_peer(&mut owner, &mut peers[0])?;
     assert!(peers[0]
         .timeline(space)
         .unwrap()
@@ -106,9 +109,11 @@ pub(super) fn group_existing_reader_can_receive_while_another_identity_has_no_pa
         .roster(space)
         .unwrap()
         .contains(peers[1].me.as_ref().unwrap()));
+    Ok(())
 }
 
-pub(super) fn fifty_one_members_reconcile_in_two_durable_claim_batches() {
+pub(super) fn fifty_one_members_reconcile_in_two_durable_claim_batches(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut owner = Engine::open(":memory:").unwrap();
     owner
         .create_account("Ana", "ana", "http://relay.test")
@@ -127,7 +132,7 @@ pub(super) fn fifty_one_members_reconcile_in_two_durable_claim_batches() {
         })
         .collect();
     let space = "fifty-one-claim-members";
-    let mut frames = claim_group(&mut owner, space, &mut peers);
+    let mut frames = claim_group(&mut owner, space, &mut peers)?;
     let clock =
         Some(protocol::KeyPackageClaimClock::from_server_ms(crate::engine::now_ms()).unwrap());
     let (first_space, first_targets, first_operation) = owner.mls_to_claim(clock).unwrap().unwrap();
@@ -139,7 +144,7 @@ pub(super) fn fifty_one_members_reconcile_in_two_durable_claim_batches() {
         &first_operation,
         Ok(claimed_records(&mut peers, &first_targets)),
     );
-    frames.extend(confirm_claim_handshakes(&mut owner));
+    frames.extend(confirm_claim_handshakes(&mut owner)?);
     let (second_space, second_targets, second_operation) =
         owner.mls_to_claim(clock).unwrap().unwrap();
     assert_eq!(second_space, space);
@@ -151,7 +156,7 @@ pub(super) fn fifty_one_members_reconcile_in_two_durable_claim_batches() {
         &second_operation,
         Ok(claimed_records(&mut peers, &second_targets)),
     );
-    frames.extend(confirm_claim_handshakes(&mut owner));
+    frames.extend(confirm_claim_handshakes(&mut owner)?);
     assert!(owner.mls_to_claim(clock).unwrap().is_none());
     assert_eq!(owner.device().unwrap().leaves(space).unwrap().len(), 52);
     assert!(owner.ready_epoch(space).is_some());
@@ -166,9 +171,11 @@ pub(super) fn fifty_one_members_reconcile_in_two_durable_claim_batches() {
         recipient.device().unwrap().checkpoint(space).unwrap(),
         owner.device().unwrap().checkpoint(space).unwrap()
     );
+    Ok(())
 }
 
-pub(super) fn unsupported_claims_in_one_chat_do_not_block_another_chats_removal() {
+pub(super) fn unsupported_claims_in_one_chat_do_not_block_another_chats_removal(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut owner = Engine::open(":memory:").unwrap();
     owner
         .create_account("Ana", "ana", "http://relay.test")
@@ -179,7 +186,7 @@ pub(super) fn unsupported_claims_in_one_chat_do_not_block_another_chats_removal(
         .unwrap();
     let peer_identity = peer.me.clone().unwrap();
     for space in ["fallback-one", "fallback-two"] {
-        claim_group(&mut owner, space, std::slice::from_mut(&mut peer));
+        claim_group(&mut owner, space, std::slice::from_mut(&mut peer))?;
         let records = claimed_records(
             std::slice::from_mut(&mut peer),
             std::slice::from_ref(&peer_identity),
@@ -187,7 +194,7 @@ pub(super) fn unsupported_claims_in_one_chat_do_not_block_another_chats_removal(
         owner
             .commit_now(space, &[records[0].data.clone()], &Default::default())
             .unwrap();
-        confirm_claim_handshakes(&mut owner);
+        confirm_claim_handshakes(&mut owner)?;
     }
     owner.net.mls.dirty = ["fallback-one".into(), "fallback-two".into()]
         .into_iter()
@@ -227,8 +234,8 @@ pub(super) fn unsupported_claims_in_one_chat_do_not_block_another_chats_removal(
             2,
             seen(&owner, space),
             body,
-        ));
-        assert_eq!(owner.ingest(ordered(&owner, env)), Ingest::Applied);
+        )?)?;
+        assert_eq!(owner.ingest(ordered(&owner, env)?), Ingest::Applied);
     }
     assert_eq!(
         owner.net.mls.dirty.iter().next(),
@@ -242,7 +249,8 @@ pub(super) fn unsupported_claims_in_one_chat_do_not_block_another_chats_removal(
         owner.device().unwrap().pending(&removing),
         "unrelated removal was never staged"
     );
-    confirm_claim_handshakes(&mut owner);
+    confirm_claim_handshakes(&mut owner)?;
     assert_eq!(owner.device().unwrap().leaves(&removing).unwrap().len(), 1);
     assert!(owner.ready_epoch(&removing).is_some());
+    Ok(())
 }

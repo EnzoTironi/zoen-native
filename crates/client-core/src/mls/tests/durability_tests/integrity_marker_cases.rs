@@ -29,12 +29,12 @@ fn pending_json(engine: &Engine, id: &str) -> rusqlite::Result<String> {
 #[test]
 fn unreadable_integrity_marker_parks_exact_ciphertext_without_blocking_another_space() -> TestResult
 {
-    let database = Database::new();
+    let database = Database::new()?;
     let space = "unreadable-integrity-ciphertext";
     let healthy = "readable-independent-space";
-    let (mut owner, owner_secret, mut peer, peer_secret) = encrypted_pair(&database, space);
+    let (mut owner, owner_secret, mut peer, peer_secret) = encrypted_pair(&database, space)?;
     let peer_author = peer.net.author.clone().ok_or("missing peer author")?;
-    closed_space(&mut owner, &peer_author, healthy);
+    closed_space(&mut owner, &peer_author, healthy)?;
     for event in owner
         .logs
         .get(healthy)
@@ -42,7 +42,7 @@ fn unreadable_integrity_marker_parks_exact_ciphertext_without_blocking_another_s
         .events()
         .to_vec()
     {
-        let frame = ordered(&peer, Envelope::plain(&event));
+        let frame = ordered(&peer, Envelope::plain(&event)?)?;
         assert_eq!(peer.ingest(frame), Ingest::Applied);
     }
     let message = owner.send_message(space, "Preserve this exact encrypted intent")?;
@@ -93,7 +93,7 @@ fn unreadable_integrity_marker_parks_exact_ciphertext_without_blocking_another_s
         vec![other.id.as_str()]
     );
     for envelope in offered_after_reopen {
-        let frame = ordered(&owner, envelope);
+        let frame = ordered(&owner, envelope)?;
         assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
         assert_eq!(peer.ingest(frame), Ingest::Applied);
     }
@@ -109,7 +109,7 @@ fn unreadable_integrity_marker_parks_exact_ciphertext_without_blocking_another_s
     assert_eq!(envelope.client_id(), message.id);
     assert_eq!(envelope.content(), original.1.content());
     assert_eq!(envelope.sig, original.1.sig);
-    let frame = ordered(&owner, envelope);
+    let frame = ordered(&owner, envelope)?;
     assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
     assert_eq!(peer.ingest(frame.clone()), Ingest::Applied);
     assert_eq!(peer.ingest(frame), Ingest::Duplicate);
@@ -136,9 +136,9 @@ fn unreadable_integrity_marker_parks_exact_ciphertext_without_blocking_another_s
 
 #[test]
 fn a_recorded_fork_stays_blocked_when_its_marker_becomes_unreadable() -> TestResult {
-    let database = Database::new();
+    let database = Database::new()?;
     let space = "recorded-fork-marker-read";
-    let (mut owner, secret, peer, _) = encrypted_pair(&database, space);
+    let (mut owner, secret, peer, _) = encrypted_pair(&database, space)?;
     let message = owner.send_message(space, "Never publish across a known fork")?;
     assert!(owner.mls_seal_outbox()?);
     let pending = owner
@@ -161,7 +161,7 @@ fn a_recorded_fork_stays_blocked_when_its_marker_becomes_unreadable() -> TestRes
             },
             &"ab".repeat(32),
         ),
-    );
+    )?;
     assert_eq!(owner.store.meta(&fork_meta(space))?.as_deref(), Some(FORK));
     assert!(owner.outbox_envelopes().is_empty());
     unreadable_marker(&owner, space)?;
@@ -186,9 +186,9 @@ fn a_recorded_fork_stays_blocked_when_its_marker_becomes_unreadable() -> TestRes
 
 #[test]
 fn marker_read_error_refuses_new_message_admission_without_changing_the_journal() -> TestResult {
-    let database = Database::new();
+    let database = Database::new()?;
     let space = "unreadable-integrity-new-intent";
-    let (mut owner, _, _, _) = encrypted_pair(&database, space);
+    let (mut owner, _, _, _) = encrypted_pair(&database, space)?;
     let before = owner.store.event_count()?;
     let pending = owner.outbox_len();
     unreadable_marker(&owner, space)?;

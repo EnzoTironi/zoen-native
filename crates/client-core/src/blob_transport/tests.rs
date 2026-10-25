@@ -2,9 +2,10 @@ use super::*;
 use std::io::{Read, Write};
 
 #[tokio::test]
-async fn only_actual_exact_signed_put_success_constructs_a_receipt() {
+async fn only_actual_exact_signed_put_success_constructs_a_receipt(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for status in [Some(201), Some(200), Some(204), Some(400), Some(403), None] {
-        let key = Signer::generate();
+        let key = Signer::generate().unwrap();
         let device = key.id();
         let bytes = vec![91; 4096];
         let sha = hex::encode(Sha256::digest(&bytes));
@@ -50,7 +51,7 @@ async fn only_actual_exact_signed_put_success_constructs_a_receipt() {
                 socket.write_all(format!("HTTP/1.1 {status} Test\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").as_bytes()).unwrap();
             }
         });
-        let http = crate::https::client()
+        let http = crate::https::client()?
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .unwrap();
@@ -69,17 +70,20 @@ async fn only_actual_exact_signed_put_success_constructs_a_receipt() {
         }
         server.join().unwrap();
     }
+
+    Ok(())
 }
 
 #[tokio::test]
-async fn changed_ciphertext_is_refused_before_any_network_attempt() {
-    let http = crate::https::client().build().unwrap();
+async fn changed_ciphertext_is_refused_before_any_network_attempt(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let http = crate::https::client()?.build().unwrap();
     assert!(matches!(
         put(
             &http,
             "http://127.0.0.1:1",
             "test",
-            &Signer::generate(),
+            &Signer::generate().unwrap(),
             &"a".repeat(64),
             vec![1, 2, 3],
             1234
@@ -87,4 +91,6 @@ async fn changed_ciphertext_is_refused_before_any_network_attempt() {
         .await,
         Err(BlobUploadError::Invalid)
     ));
+
+    Ok(())
 }

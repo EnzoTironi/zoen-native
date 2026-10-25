@@ -18,6 +18,7 @@ impl std::fmt::Debug for TurnCredentials {
     }
 }
 
+#[must_use]
 pub fn valid_url(url: &str) -> bool {
     if url.len() > 320 || !url.is_ascii() {
         return false;
@@ -73,6 +74,7 @@ fn valid_port_suffix(value: &str) -> bool {
         })
 }
 
+#[must_use]
 pub fn valid_urls(urls: &[String]) -> bool {
     !urls.is_empty()
         && urls.len() <= MAX_URLS
@@ -82,6 +84,7 @@ pub fn valid_urls(urls: &[String]) -> bool {
 }
 
 impl TurnCredentials {
+    #[must_use]
     pub fn valid(&self) -> bool {
         valid_urls(&self.urls)
             && self.username.len() <= 128

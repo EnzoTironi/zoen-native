@@ -1,5 +1,8 @@
 //! Checkpoint refresh, observation and durable outbound positions.
-use super::*;
+use super::{
+    checkpoint_refresh_ms, checkpointed_meta, checkpointed_ms_meta, mls_err, Engine, Event,
+    EventBody, SpaceId, R,
+};
 
 impl Engine {
     /// Checkpoints this device owes for being alive: in every group it is in, once a
@@ -115,7 +118,7 @@ impl Engine {
         let due: Vec<SpaceId> = self.net.mls.checkpoint_due.drain().collect();
         let mut queued = false;
         for space in due {
-            let Some(upto) = self.logs.get(&space).and_then(|l| l.head()) else {
+            let Some(upto) = self.logs.get(&space).and_then(event_log::SpaceLog::head) else {
                 continue;
             };
             let (epoch, digest) = match self

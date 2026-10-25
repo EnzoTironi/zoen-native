@@ -3,10 +3,10 @@
 use super::*;
 
 pub(super) fn failed_media_recovery_copies_single_or_whole_signed_album_without_sending_or_reusing_intents(
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for ids in [vec!["a"], vec!["a", "b", "c"]] {
         let f = fixture(":memory:");
-        let sent = refused(&f, &ids, if ids.len() > 1 { "grouped" } else { "separate" });
+        let sent = refused(&f, &ids, if ids.len() > 1 { "grouped" } else { "separate" })?;
         let before = public_state(&f);
         let counts_before = counts(&f.engine);
         let draft = recover(&f, &sent.entries.last().unwrap().id).unwrap();
@@ -71,10 +71,11 @@ pub(super) fn failed_media_recovery_copies_single_or_whole_signed_album_without_
             );
         }
     }
+    Ok(())
 }
 
-pub(super) fn failed_media_recovery_cas_keeps_normal_and_media_drafts_and_rejects_stale_revisions()
-{
+pub(super) fn failed_media_recovery_cas_keeps_normal_and_media_drafts_and_rejects_stale_revisions(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for case in [
         "normal",
         "reply",
@@ -83,7 +84,7 @@ pub(super) fn failed_media_recovery_cas_keeps_normal_and_media_drafts_and_reject
         "media_revision",
     ] {
         let f = fixture(":memory:");
-        let sent = refused(&f, &["a"], "separate");
+        let sent = refused(&f, &["a"], "separate")?;
         let expected = read(&f).revision;
         let mut normal_revision = "0".to_string();
         match case {
@@ -136,17 +137,19 @@ pub(super) fn failed_media_recovery_cas_keeps_normal_and_media_drafts_and_reject
         assert_eq!(rows(&f), private, "{case}");
         assert_eq!(public_state(&f), before, "{case}");
     }
+    Ok(())
 }
 
-pub(super) fn failed_media_recovery_preserves_the_signed_inline_or_thread_destination() {
+pub(super) fn failed_media_recovery_preserves_the_signed_inline_or_thread_destination(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for thread in [false, true] {
         let mut f = fixture(":memory:");
-        media_contract_confirm_scope(&f);
+        media_contract_confirm_scope(&f)?;
         let root = f
             .engine
             .send_message(f.scope.space_id.clone(), "Synthetic reply root".into())
             .unwrap();
-        media_contract_confirm_scope(&f);
+        media_contract_confirm_scope(&f)?;
         f.scope.thread_root_id = thread.then(|| root.id.clone());
         let mut content: serde_json::Value =
             serde_json::from_str(&media_options(&["a"], "file", "separate")).unwrap();
@@ -189,13 +192,15 @@ pub(super) fn failed_media_recovery_preserves_the_signed_inline_or_thread_destin
         assert_eq!(reply_to, (!thread).then_some(root.id));
         assert_eq!(f.scope.thread_root_id.is_some(), thread);
     }
+    Ok(())
 }
 
-pub(super) fn failed_media_recovery_reopens_the_same_encrypted_copy_and_original_failed_history() {
-    let dir = temp();
+pub(super) fn failed_media_recovery_reopens_the_same_encrypted_copy_and_original_failed_history(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = temp()?;
     let path = dir.join("recovery.sqlite");
     let f = fixture(path.to_str().unwrap());
-    let sent = refused(&f, &["a", "b"], "grouped");
+    let sent = refused(&f, &["a", "b"], "grouped")?;
     let recovered = recover(&f, &sent.entries[0].id).unwrap();
     let scope = f.scope.clone();
     let vault = f.vault.clone();
@@ -225,12 +230,14 @@ pub(super) fn failed_media_recovery_reopens_the_same_encrypted_copy_and_original
     }
     drop(reopened);
     std::fs::remove_dir_all(dir).unwrap();
+
+    Ok(())
 }
 
 pub(super) async fn failed_media_recovery_json_api_keeps_integer_wire_contract_and_rejects_extra_fields(
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let f = fixture(":memory:");
-    let sent = refused(&f, &["a"], "separate");
+    let sent = refused(&f, &["a"], "separate")?;
     let mut request = serde_json::json!({"op":"recover_failed_media_draft","scope":f.scope,"message_id":sent.entries[0].id,"expected_revision":read(&f).revision,"expected_message_revision":"0"});
     request["send"] = true.into();
     assert!(f.engine.client_request(request.to_string()).await.is_err());
@@ -242,4 +249,5 @@ pub(super) async fn failed_media_recovery_json_api_keeps_integer_wire_contract_a
         input("a").bytes.len().to_string()
     );
     assert_eq!(result["attempted"], false);
+    Ok(())
 }

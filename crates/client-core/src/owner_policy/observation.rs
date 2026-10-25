@@ -1,5 +1,7 @@
 //! Rust-only evidence from an authenticated current control, never authority.
-use super::*;
+use super::{
+    denied, Client, CoreError, Engine, IdentityKind, OwnerPolicyInquiryControl, Serialize, R,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]

@@ -72,10 +72,10 @@ fn vault(home: &Path) -> Arc<dyn SecretVault> {
 }
 
 impl Fixture {
-    pub async fn new() -> Self {
+    pub async fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
-        let directory = std::env::temp_dir().join(types::new_id("export-admission"));
+        let directory = std::env::temp_dir().join(types::new_id("export-admission")?);
         private_directory(&directory);
         let source = directory.join("source");
         let home = directory.join("cached");
@@ -144,7 +144,7 @@ impl Fixture {
                 .unwrap_or_else(|| types::GENESIS_PREV.into());
             log.push(Sequenced {
                 seq,
-                hash: event_log::chain_hash(env.space(), seq, &prev, &env.wire_hash()),
+                hash: event_log::chain_hash(env.space(), seq, &prev, &env.wire_hash())?,
                 prev,
                 env,
             });
@@ -216,7 +216,7 @@ impl Fixture {
                 }
             }
         });
-        Self {
+        Ok(Self {
             directory,
             home,
             space,
@@ -227,7 +227,7 @@ impl Fixture {
             syncs,
             completed,
             task,
-        }
+        })
     }
 
     pub fn assert_cached_subset(&self) {

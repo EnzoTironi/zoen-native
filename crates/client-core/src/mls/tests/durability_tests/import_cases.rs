@@ -2,10 +2,11 @@
 use super::*;
 
 #[test]
-fn hundred_page_import_cold_reopen_and_lost_confirmation_keep_exact_originals() -> R<()> {
-    let database = Database::new();
+fn hundred_page_import_cold_reopen_and_lost_confirmation_keep_exact_originals(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let database = Database::new()?;
     let space = "hundred-pages-cold-publication";
-    let (owner, owner_secret, peer, peer_secret) = encrypted_pair(&database, space);
+    let (owner, owner_secret, peer, peer_secret) = encrypted_pair(&database, space)?;
     drop(owner);
     drop(peer);
     let mut owner = reopen(&database.path("owner.sqlite"), &owner_secret);
@@ -45,7 +46,7 @@ fn hundred_page_import_cold_reopen_and_lost_confirmation_keep_exact_originals() 
     let mut accepted = Vec::new();
     // The actual recipient sees the ordered ciphertext, while the owner loses its echo.
     for env in &first {
-        let frame = ordered(&peer, env.clone());
+        let frame = ordered(&peer, env.clone())?;
         assert_eq!(peer.ingest(frame.clone()), Ingest::Applied);
         accepted.push(frame);
     }
@@ -85,7 +86,7 @@ fn hundred_page_import_cold_reopen_and_lost_confirmation_keep_exact_originals() 
         );
         assert!(offered.len() <= 5);
         for env in offered {
-            let frame = ordered(&owner, env);
+            let frame = ordered(&owner, env)?;
             assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
             assert_eq!(peer.ingest(frame), Ingest::Applied);
             count += 1;
@@ -144,7 +145,11 @@ fn receive_page_payload(peer: &mut Engine, uploads: &HashMap<String, Vec<u8>>) {
         assert!(peer.media_arrived(&w, sealed));
     }
 }
-fn check_pages(owner: &Engine, peer: &Engine, pages: &[(String, String)]) -> R<()> {
+fn check_pages(
+    owner: &Engine,
+    peer: &Engine,
+    pages: &[(String, String)],
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for (item, markdown) in pages {
         assert_eq!(&owner.page_markdown(item)?, markdown);
         assert_eq!(&peer.page_markdown(item)?, markdown);

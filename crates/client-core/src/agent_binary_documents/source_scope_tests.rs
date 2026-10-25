@@ -2,7 +2,10 @@
 use super::tests::{counts, fixture, turn, Fixture, CHANGED, ORIGINAL};
 use super::*;
 
-pub(crate) fn scope(f: &mut Fixture, alter: impl FnOnce(&mut types::ReplyRef)) {
+pub(crate) fn scope(
+    f: &mut Fixture,
+    alter: impl FnOnce(&mut types::ReplyRef),
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let text = "Edit only this artifact";
     let root = f
         .agent
@@ -17,7 +20,7 @@ pub(crate) fn scope(f: &mut Fixture, alter: impl FnOnce(&mut types::ReplyRef)) {
         item_id: f.base.item_id.clone(),
         version: f.base.version,
         sha256: f.base.sha256.clone(),
-        request_id: types::new_id("app_request"),
+        request_id: types::new_id("app_request")?,
         text_sha256: hex::encode(Sha256::digest(text.as_bytes())),
     });
     alter(&mut reference);
@@ -27,18 +30,21 @@ pub(crate) fn scope(f: &mut Fixture, alter: impl FnOnce(&mut types::ReplyRef)) {
             &f.space,
             &f.owner,
             types::EventBody::AppEditRequested {
-                message: types::new_id("m"),
+                message: types::new_id("m")?,
                 text: text.into(),
                 reply: reference,
             },
         )
         .unwrap();
     f.source = event.client_id;
+
+    Ok(())
 }
 
 #[test]
-fn signed_scope_fences_other_artifacts_creation_sites_pages_images_and_stale_results() {
-    let mut f = fixture();
+fn signed_scope_fences_other_artifacts_creation_sites_pages_images_and_stale_results(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = fixture()?;
     let other = f
         .agent
         .app_binary_create_for(
@@ -57,7 +63,7 @@ fn signed_scope_fences_other_artifacts_creation_sites_pages_images_and_stale_res
             "# Private sibling\n".into(),
         )
         .unwrap();
-    scope(&mut f, |_| {});
+    scope(&mut f, |_| {})?;
     let t = turn(&f);
     let before = counts(&f);
     assert_eq!(
@@ -110,12 +116,15 @@ fn signed_scope_fences_other_artifacts_creation_sites_pages_images_and_stale_res
         .agent_binary_save(&t, "late", &"22".repeat(32), &STANDARD.encode(ORIGINAL))
         .is_err());
     assert_eq!(counts(&f), before);
+
+    Ok(())
 }
 
 #[test]
-fn own_accepted_chain_allows_multiple_steps_and_lost_ack_but_not_another_source() {
-    let mut f = fixture();
-    scope(&mut f, |_| {});
+fn own_accepted_chain_allows_multiple_steps_and_lost_ack_but_not_another_source(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = fixture()?;
+    scope(&mut f, |_| {})?;
     let first = turn(&f);
     let result = f
         .agent
@@ -154,15 +163,18 @@ fn own_accepted_chain_allows_multiple_steps_and_lost_ack_but_not_another_source(
         2
     );
     // New source cannot inherit earlier effects by reusing its initial head.
-    scope(&mut f, |_| {});
+    scope(&mut f, |_| {})?;
     assert!(f
         .agent
         .agent_binary_turn(&f.base.item_id, &f.source, &f.owner, None, None)
         .is_err());
+
+    Ok(())
 }
 
 #[test]
-fn malformed_forged_and_changed_signed_scope_fail_closed_without_effects() {
+fn malformed_forged_and_changed_signed_scope_fail_closed_without_effects(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for alter in [
         |r: &mut types::ReplyRef| r.artifact = None,
         |r: &mut types::ReplyRef| r.thread = false,
@@ -171,8 +183,8 @@ fn malformed_forged_and_changed_signed_scope_fail_closed_without_effects() {
         |r: &mut types::ReplyRef| r.artifact.as_mut().unwrap().sha256 = "00".repeat(32),
         |r: &mut types::ReplyRef| r.artifact.as_mut().unwrap().text_sha256 = "00".repeat(32),
     ] {
-        let mut f = fixture();
-        scope(&mut f, alter);
+        let mut f = fixture()?;
+        scope(&mut f, alter)?;
         let before = counts(&f);
         assert!(f
             .agent
@@ -185,8 +197,8 @@ fn malformed_forged_and_changed_signed_scope_fail_closed_without_effects() {
         assert!(!f.agent.can_create_agent_app(&f.space, &f.source, &f.owner));
         assert_eq!(counts(&f), before);
     }
-    let mut f = fixture();
-    scope(&mut f, |_| {});
+    let mut f = fixture()?;
+    scope(&mut f, |_| {})?;
     let t = turn(&f);
     f.agent
         .lock()
@@ -202,18 +214,21 @@ fn malformed_forged_and_changed_signed_scope_fail_closed_without_effects() {
         )
         .unwrap();
     assert!(f.agent.agent_binary_finish_read(&t).is_err());
+
+    Ok(())
 }
 
 #[test]
-fn scoped_receipt_survives_cold_unlock_and_requires_the_actual_signed_version_event() {
-    let mut f = fixture();
-    scope(&mut f, |_| {});
+fn scoped_receipt_survives_cold_unlock_and_requires_the_actual_signed_version_event(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = fixture()?;
+    scope(&mut f, |_| {})?;
     let t = turn(&f);
     let accepted = f
         .agent
         .agent_binary_save(&t, "accepted", &"11".repeat(32), &STANDARD.encode(CHANGED))
         .unwrap();
-    let directory = std::env::temp_dir().join(types::new_id("artifact_scope_cold"));
+    let directory = std::env::temp_dir().join(types::new_id("artifact_scope_cold")?);
     std::fs::create_dir(&directory).unwrap();
     let path = directory.join("state.sqlite");
     f.agent
@@ -266,12 +281,15 @@ fn scoped_receipt_survives_cold_unlock_and_requires_the_actual_signed_version_ev
     drop(cold);
     drop(f);
     std::fs::remove_dir_all(directory).unwrap();
+
+    Ok(())
 }
 
 #[test]
-fn a_scoped_prompt_under_the_legacy_discriminator_is_not_projected_or_dispatched() {
-    let mut f = fixture();
-    scope(&mut f, |_| {});
+fn a_scoped_prompt_under_the_legacy_discriminator_is_not_projected_or_dispatched(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = fixture()?;
+    scope(&mut f, |_| {})?;
     let mut e = f.agent.lock();
     let EntryBody::Message { text, reply, .. } = e
         .space_state(&f.space)
@@ -290,7 +308,7 @@ fn a_scoped_prompt_under_the_legacy_discriminator_is_not_projected_or_dispatched
             &f.space,
             &f.owner,
             types::EventBody::MessagePosted {
-                message: types::new_id("m"),
+                message: types::new_id("m")?,
                 text,
                 attaches: None,
                 reply,
@@ -310,12 +328,15 @@ fn a_scoped_prompt_under_the_legacy_discriminator_is_not_projected_or_dispatched
         .agent
         .agent_artifact_request(&f.space, &event.client_id, &f.owner)
         .is_err());
+
+    Ok(())
 }
 
 #[test]
-fn scoped_answer_is_atomic_source_linked_idempotent_and_fenced_after_context_changes() {
-    let mut f = fixture();
-    scope(&mut f, |_| {});
+fn scoped_answer_is_atomic_source_linked_idempotent_and_fenced_after_context_changes(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = fixture()?;
+    scope(&mut f, |_| {})?;
     let answer = f
         .agent
         .agent_artifact_reply(&f.space, &f.source, &f.owner, "Scoped answer")
@@ -345,4 +366,6 @@ fn scoped_answer_is_atomic_source_linked_idempotent_and_fenced_after_context_cha
         .agent_artifact_reply(&f.space, &f.source, &f.owner, "Late answer")
         .is_err());
     assert_eq!(counts(&f), before);
+
+    Ok(())
 }

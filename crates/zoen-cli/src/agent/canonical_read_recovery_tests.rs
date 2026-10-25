@@ -187,10 +187,11 @@ impl ToolHost for CrashAfterAcceptedWrite<'_, '_> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[ignore = "explicit offline signed WASI component; no inference, provider credentials or services"]
-async fn offline_read_ask_accepted_write_and_cold_recovery_never_repeat_the_effect() {
+async fn offline_read_ask_accepted_write_and_cold_recovery_never_repeat_the_effect(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let worker = crate::deckcraft::tests::worker();
-    let fixture = crate::deckcraft::tests::fixture();
+    let fixture = crate::deckcraft::tests::fixture()?;
     let inspected = crate::deckcraft::tests::inspect(&fixture, &worker).await;
     assert!(!inspected["slides"].as_array().unwrap().is_empty());
     assert!(inspected["slides"][0]["id"].is_u64());
@@ -274,7 +275,7 @@ async fn offline_read_ask_accepted_write_and_cold_recovery_never_repeat_the_effe
     let owner = fixture.owner.clone();
     drop(cx);
     drop(fixture);
-    signed_owner_resolution(&path, &space, &request, &owner);
+    signed_owner_resolution(&path, &space, &request, &owner)?;
 
     let accepted;
     {
@@ -437,4 +438,5 @@ async fn offline_read_ask_accepted_write_and_cold_recovery_never_repeat_the_effe
     assert_eq!(cold.item(item).unwrap().versions.len(), 2);
     drop(cold);
     std::fs::remove_dir_all(path).unwrap();
+    Ok(())
 }

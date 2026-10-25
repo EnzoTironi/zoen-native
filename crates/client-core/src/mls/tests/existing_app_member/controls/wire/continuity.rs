@@ -18,11 +18,11 @@ fn create_foreign(f: &mut LateWord, mutation: &str) -> R<crate::AppBinaryDocumen
         &format!("{mutation}_two"),
         &event_log::sha256_hex(mutation.as_bytes()),
     )?;
-    publish(&mut f.owner, &mut f.agent, &mut f.blobs);
+    publish(&mut f.owner, &mut f.agent, &mut f.blobs)?;
     Ok(updated)
 }
 fn foreign_word(f: &mut LateWord, partial: bool) -> R<crate::AppBinaryDocumentDto> {
-    for frame in claim_group(&mut f.owner, OTHER, &mut []) {
+    for frame in claim_group(&mut f.owner, OTHER, &mut []).map_err(storage)? {
         assert_eq!(f.agent.ingest(frame), Ingest::Applied);
     }
     let before = if partial {
@@ -42,13 +42,14 @@ fn foreign_word(f: &mut LateWord, partial: bool) -> R<crate::AppBinaryDocumentDt
         .author
         .clone()
         .ok_or_else(|| storage("agent author"))?;
-    add_member(&mut f.owner, &owner_author, OTHER, &agent_author);
+    add_member(&mut f.owner, &owner_author, OTHER, &agent_author).map_err(storage)?;
     let added = f.owner.logs[OTHER]
         .events()
         .last()
         .ok_or_else(|| storage("MemberAdded"))?;
     assert_eq!(
-        f.agent.ingest(ordered(&f.agent, Envelope::plain(added))),
+        f.agent
+            .ingest(ordered(&f.agent, Envelope::plain(added)?).map_err(storage)?),
         Ingest::Applied
     );
     let records = claimed_records(
@@ -61,7 +62,7 @@ fn foreign_word(f: &mut LateWord, partial: bool) -> R<crate::AppBinaryDocumentDt
         .data;
     f.owner
         .commit_now(OTHER, std::slice::from_ref(package), &Default::default())?;
-    publish(&mut f.owner, &mut f.agent, &mut f.blobs);
+    publish(&mut f.owner, &mut f.agent, &mut f.blobs)?;
     assert!(f.agent.device()?.has_group(OTHER));
     if let Some(before) = before {
         assert!(f.agent.item_state(&before.item_id).is_err());
@@ -78,7 +79,7 @@ fn foreign_word(f: &mut LateWord, partial: bool) -> R<crate::AppBinaryDocumentDt
                 .share_app_current(c, "legitimate_foreign_share")?
                 .applied
         );
-        publish(&mut f.owner, &mut f.agent, &mut f.blobs);
+        publish(&mut f.owner, &mut f.agent, &mut f.blobs)?;
         receive_wanted(&mut f.agent, &f.blobs)?;
         assert!(f.agent.item_state(&before.item_id)?.shared.is_some());
         assert!(!f.agent.logs[OTHER].events().iter().any(
@@ -93,7 +94,7 @@ fn foreign_word(f: &mut LateWord, partial: bool) -> R<crate::AppBinaryDocumentDt
     }
 }
 fn continuity(partial: bool) -> R<()> {
-    let dir = std::env::temp_dir().join(types::new_id("foreign-origin-continuity"));
+    let dir = std::env::temp_dir().join(types::new_id("foreign-origin-continuity")?);
     std::fs::create_dir_all(&dir).map_err(storage)?;
     let op = dir.join("owner.sqlite").to_string_lossy().into_owned();
     let ap = dir.join("agent.sqlite").to_string_lossy().into_owned();
@@ -140,7 +141,7 @@ fn continuity(partial: bool) -> R<()> {
     );
     assert!(next.is_ok(), "refused foreign share blocked a legitimate original-space edit partial={partial}: {next:?}");
     let next = next?;
-    publish(&mut agent, &mut owner, &mut f.blobs);
+    publish(&mut agent, &mut owner, &mut f.blobs)?;
     receive_wanted(&mut owner, &f.blobs)?;
     let actual = agent.app_binary_read(&original.item_id, Some(3), Some(&next.sha256))?;
     assert_eq!(actual.data_base64, next.data_base64);
