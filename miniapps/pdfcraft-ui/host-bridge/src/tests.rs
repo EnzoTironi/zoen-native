@@ -14,7 +14,7 @@ fn source() -> Result<Vec<u8>> {
         dict.set(
             b"ZoenUnknown",
             Object::String(PdfString::text("preserve me")),
-        )
+        );
     })
     .map_err(|error| error.to_string())?;
     write_full(&doc, &SaveOptions::default()).map_err(|error| error.to_string())
@@ -279,7 +279,7 @@ fn image_codec_refuses_false_pdf_dimensions_and_bounded_decode_refuses_expansion
         &vec![0; (8 << 20) + 1],
     )));
     doc.update_dict(doc.root().ok_or("missing_root")?, |dict| {
-        dict.set(b"ZoenOpaquePayload", Object::Ref(payload))
+        dict.set(b"ZoenOpaquePayload", Object::Ref(payload));
     })
     .map_err(|error| error.to_string())?;
     let bytes = write_full(&doc, &SaveOptions::default()).map_err(|error| error.to_string())?;

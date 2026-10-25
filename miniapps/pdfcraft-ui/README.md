@@ -1,8 +1,8 @@
 # PdfCraft managed integration
 
-Preserved integration candidate for #581; not registered or enabled in Zoen.
-Further integration is deferred while the existing Word/Photo/Deck delivery
-batch is completed. No PdfCraft PR or production availability is claimed.
+Integration candidate for #581; resumed from the preserved native/worker baseline.
+Not registered or enabled in Zoen. No PdfCraft PR or production availability is
+claimed. Browser and worker qualification precede canonical integration.
 
 Tracks #581 under #180/#170. Upstream is fixed to PdfCraft 0.13.0,
 `d445410807e7eefbe5b96f9662ab963ae8dd2a3a`; source/dependency hashes are in
@@ -37,14 +37,14 @@ Clippy all-targets run passed with pedantic/perf and warnings denied. The native
 host/App batch subsequently passed 11 cases, including real
 pointer/text events, a newer paragraph draft during ACK, native Undo/Redo,
 orientation/short viewport and 70 retained-session checkpoints with compaction.
-The latest small lint refactor has not repeated that native run. Browser release/
-execution, the updated WASIp2 worker, canonical end-to-end integration and native
-iPhone acceptance remain pending. The first browser all-targets Clippy run stopped
-in upstream `pdfcraft-render`: four WASM-only dead-code diagnostics became errors
-under `-D warnings` (`byte_capacity`, `record_request`, `Shared.stuck` and unused
-RenderPool fields). This is a lint-gate failure, not browser execution or proof
-that the renderer is incompatible. No lint flag was relaxed and no browser
-release/assets were produced. GitHub #581 is the status authority.
+The latest small lint refactor has not repeated that native run. Browser all-targets
+Clippy now passes with pedantic/perf and warnings denied. The original four
+renderer diagnostics, the consequent watchdog-key diagnostic, desktop-only UI
+paths and adapter/test style failures remain preserved in the external v581/v612
+receipts. Platform cfg matches the existing worker, installed-font, save-dialog
+and update-thread paths; no lint was suppressed. Browser release/execution,
+updated WASIp2, canonical integration and iPhone acceptance remain pending.
+GitHub #581 is the status authority.
 
 The initial structural limits are 8 MiB, 32 declared pages, 8,192 current objects,
 64 internal PDF revisions and image dimensions ≤2,048 / 2,000,000 pixels. The

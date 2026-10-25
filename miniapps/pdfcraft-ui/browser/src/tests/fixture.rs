@@ -17,7 +17,7 @@ pub fn source() -> Result<Vec<u8>> {
             pdfcraft_cos::Object::String(pdfcraft_cos::PdfString::text(
                 "Retain original publisher data",
             )),
-        )
+        );
     })?;
     Ok(pdfcraft_cos::write_full(
         &doc,

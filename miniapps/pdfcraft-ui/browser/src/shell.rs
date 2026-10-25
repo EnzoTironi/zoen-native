@@ -39,7 +39,7 @@ pub async fn start() -> Result<(), JsValue> {
                 // Do not restore old guest layout/cursor state into another owner.
                 creation
                     .egui_ctx
-                    .memory_mut(|memory| *memory = Default::default());
+                    .memory_mut(|memory| *memory = egui::Memory::default());
                 let mut app = PdfCraftApp::new();
                 app.session.set_javascript(false);
                 app.managed_export = Some(api::export_intent);
@@ -70,7 +70,7 @@ impl eframe::App for Shell {
             if !self.wiped {
                 self.app = PdfCraftApp::new();
                 self.bridge = BrowserBridge::default();
-                ctx.memory_mut(|memory| *memory = Default::default());
+                ctx.memory_mut(|memory| *memory = egui::Memory::default());
                 self.wiped = true;
             }
             return;
@@ -110,7 +110,7 @@ impl eframe::App for Shell {
         }
         crate::viewport::show(ui, |ui| {
             ui.add_enabled_ui(!self.app.session.managed_frozen, |ui| {
-                self.app.ui(ui, frame)
+                self.app.ui(ui, frame);
             });
         });
         api::drain(&mut self.bridge, &mut self.app, api::Phase::AfterInput);
