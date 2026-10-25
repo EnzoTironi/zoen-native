@@ -22,6 +22,7 @@ import type { AgentRequestDto } from './generated/AgentRequestDto';
 import type { AppSpecDto } from './generated/AppSpecDto';
 import type { AppCallOutcome } from './generated/AppCallOutcome';
 import type { AppBinaryDocumentDto } from './generated/AppBinaryDocumentDto';
+import type { AppEditRequestResult } from './generated/AppEditRequestResult';
 import type { AppDocumentDto } from './generated/AppDocumentDto';
 import type { DeviceDto } from './generated/DeviceDto';
 import type { InviteDto } from './generated/InviteDto';
@@ -107,7 +108,7 @@ type Results = {
   snapshot: Snapshot;
   timeline: TimelinePage;
   send_message: TimelineEntry;
-  request_app_edit: import('./generated/AppEditRequestResult').AppEditRequestResult;
+  request_app_edit: AppEditRequestResult;
   message_draft: MessageDraftDto;
   save_message_draft: MessageDraftDto;
   send_message_draft: MessageDraftSendResult;

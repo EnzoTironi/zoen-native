@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from 'react';
 import { router } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 import type { AgentRequestDto } from '../core/generated/AgentRequestDto';
+import type { DecideOutcome } from '../core/generated/DecideOutcome';
 import {
   requestDecisionCommand,
   toolApprovalExpired,
@@ -40,9 +41,7 @@ export function RequestCard({
   onResolved?: () => void;
   disabled?: boolean;
   embedded?: boolean;
-  onDecision?: (
-    command: DecisionCommand,
-  ) => Promise<import('../core/generated/DecideOutcome').DecideOutcome>;
+  onDecision?: (command: DecisionCommand) => Promise<DecideOutcome>;
 }) {
   const { store } = useClient();
   const dialogs = useDialogs();

@@ -117,15 +117,15 @@ export async function editorAgentReactFixture() {
     }, [props]);
     return props.isPresented ? props.children : null;
   }
-  function Editor(props: Control) {
+  function Editor({ onDocumentController }: Control) {
     React.useEffect(() => {
       mounts++;
-      props.onDocumentController(document);
+      onDocumentController(document);
       return () => {
         unmounts++;
-        props.onDocumentController(null);
+        onDocumentController(null);
       };
-    }, [props.onDocumentController]);
+    }, [onDocumentController]);
     return null;
   }
   const colors = {
