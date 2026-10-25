@@ -58,6 +58,7 @@ export async function ownWriteFixture() {
       return empty;
     }
     if (command.op === 'app_binary_read') {
+      events.push('core-read');
       const value = versions.get(command.version ?? source.version);
       assert.ok(value);
       return { ...value, current_version: source.version };
@@ -165,6 +166,7 @@ export async function ownWriteFixture() {
   events.length = 0;
   return {
     session,
+    app,
     owner,
     port,
     states,

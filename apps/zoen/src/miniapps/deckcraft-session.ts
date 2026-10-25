@@ -4,6 +4,7 @@ import type { CoreDriver } from '../core/types';
 import type { VerifiedMiniappResource } from './sandbox';
 import { createNativeCanonicalBinaryHost } from './canonical-binary-native.ts';
 import { canonicalBinaryTools } from './canonical-binary.ts';
+import { head, record } from './deckcraft-document-wire.ts';
 import { MiniappSession } from './protocol.ts';
 import { frameAuthority } from './lifetime.ts';
 import type { MiniappDocumentController } from './document-controller';
@@ -234,6 +235,46 @@ export function createDeckcraftSession(options: Options) {
     close: options.close,
   });
   const controller: MiniappDocumentController = {
+    observedHead:
+      editor === 'wordcraft' && !selected
+        ? () => {
+            try {
+              lifetime.check();
+              if (!opened || retiring) throw Error(t(`${messages}.saveFailed`));
+            } catch (failure) {
+              return Promise.reject(failure);
+            }
+            // A read of the installed Session shares ordering, never frame blocking.
+            const operation = tail
+              .catch(() => {})
+              .then(async () => {
+                lifetime.check();
+                if (!opened || retiring) throw Error(t(`${messages}.saveFailed`));
+                const response = await current.callAppTool('document_head', {});
+                lifetime.check();
+                if (retiring || response.isError) throw Error(t(`${messages}.saveFailed`));
+                const value = record(response.structuredContent);
+                const installed = record(value.head);
+                if (
+                  Object.keys(value).sort().join(',') !== 'head,itemId' ||
+                  value.itemId !== options.itemId ||
+                  Object.keys(installed).sort().join(',') !== 'sha256,version'
+                )
+                  throw Error(t(`${messages}.saveFailed`));
+                const accepted = head(installed);
+                return Object.freeze({
+                  itemId: options.itemId,
+                  version: Number(accepted.version),
+                  sha256: accepted.sha256,
+                });
+              });
+            tail = operation.then(
+              () => {},
+              () => {},
+            );
+            return operation;
+          }
+        : undefined,
     flush: (intent) => {
       try {
         lifetime.check();
