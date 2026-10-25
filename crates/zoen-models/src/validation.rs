@@ -259,3 +259,6 @@ fn prepare_block(block: &OutputBlock) -> Result<AssistantContent, GatewayError> 
         ),
     })
 }
+
+#[cfg(test)]
+mod tests;
