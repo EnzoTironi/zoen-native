@@ -44,7 +44,7 @@ impl Relay {
             android_store_url: None,
             backup_vault: None,
             backup_settings: Default::default(),
-            analytics: zoen_relay::analytics::Analytics::with_key([93; 32], ""),
+            analytics: zoen_relay::analytics::Analytics::with_key([93; 32], "")?,
             push: Arc::new(zoen_relay::push::Pusher::disabled()),
             receipts: Default::default(),
         });

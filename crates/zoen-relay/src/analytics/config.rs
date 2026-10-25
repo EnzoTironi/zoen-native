@@ -29,32 +29,33 @@ pub struct Current {
 }
 
 impl Current {
-    fn new(config: RemoteConfig) -> Current {
-        let json = serde_json::to_string(&config).expect("config serializes");
+    fn new(config: RemoteConfig) -> serde_json::Result<Current> {
+        let json = serde_json::to_string(&config)?;
         let etag = format!(
             "\"v{}-{}\"",
             config.version,
             &hex::encode(Sha256::digest(json.as_bytes()))[..12]
         );
-        Current { config, json, etag }
+        Ok(Current { config, json, etag })
     }
 }
 
 pub struct ConfigStore(RwLock<Current>);
 
-impl Default for ConfigStore {
-    fn default() -> Self {
-        ConfigStore(RwLock::new(Current::new(RemoteConfig::builtin())))
-    }
-}
-
 impl ConfigStore {
+    pub fn new() -> anyhow::Result<Self> {
+        let config = RemoteConfig::builtin().map_err(anyhow::Error::msg)?;
+        Ok(Self(RwLock::new(Current::new(config)?)))
+    }
+
     pub fn get(&self) -> std::sync::RwLockReadGuard<'_, Current> {
         self.0.read().unwrap_or_else(|e| e.into_inner())
     }
 
-    fn set(&self, c: RemoteConfig) {
-        *self.0.write().unwrap_or_else(|e| e.into_inner()) = Current::new(c);
+    fn set(&self, c: RemoteConfig) -> serde_json::Result<()> {
+        let current = Current::new(c)?;
+        *self.0.write().unwrap_or_else(|e| e.into_inner()) = current;
+        Ok(())
     }
 
     /// Picks up a document another node stored.
@@ -68,7 +69,7 @@ impl ConfigStore {
             if self.get().config.version != version as u64 {
                 let mut c: RemoteConfig = serde_json::from_value(doc)?;
                 c.version = version as u64;
-                self.set(c);
+                self.set(c)?;
             }
         }
         Ok(())
@@ -123,7 +124,10 @@ pub async fn put(State(st): State<Shared>, headers: HeaderMap, body: Bytes) -> R
         Ok(v) => {
             let mut c = config;
             c.version = v as u64;
-            st.analytics.config.set(c);
+            if let Err(error) = st.analytics.config.set(c) {
+                tracing::error!(%error, "remote config publication failed");
+                return StatusCode::SERVICE_UNAVAILABLE.into_response();
+            }
             tracing::info!(version = v, "remote config stored");
             Json(serde_json::json!({ "version": v })).into_response()
         }

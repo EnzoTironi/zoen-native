@@ -159,22 +159,22 @@ impl Analytics {
         };
         let prefixes = std::env::var("ZOEN_METRICS_TEST_HANDLES")
             .unwrap_or_else(|_| DEFAULT_TEST_PREFIXES.into());
-        let a = Analytics::with_key(key, &prefixes);
+        let a = Analytics::with_key(key, &prefixes)?;
         a.config.refresh(pool).await?;
         Ok(a)
     }
 
-    pub fn with_key(key: [u8; 32], test_prefixes: &str) -> Analytics {
-        Analytics {
+    pub fn with_key(key: [u8; 32], test_prefixes: &str) -> anyhow::Result<Analytics> {
+        Ok(Analytics {
             key,
-            config: config::ConfigStore::default(),
+            config: config::ConfigStore::new()?,
             pending: Mutex::new(Pending::default()),
             test_prefixes: test_prefixes
                 .split(',')
                 .map(|s| s.trim().to_lowercase())
                 .filter(|s| !s.is_empty())
                 .collect(),
-        }
+        })
     }
 
     /// 16 bytes of SHA-256(key ‖ tag ‖ id): stable while the key is, useless without it.
@@ -369,27 +369,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn pseudonyms_are_keyed_and_tagged() {
-        let a = Analytics::with_key([1; 32], "");
-        let b = Analytics::with_key([2; 32], "");
+    fn pseudonyms_are_keyed_and_tagged() -> anyhow::Result<()> {
+        let a = Analytics::with_key([1; 32], "")?;
+        let b = Analytics::with_key([2; 32], "")?;
         let id = "a3f9c2e17b4d5e6f";
         assert_eq!(a.pseudonym(b"acct\0", id), a.pseudonym(b"acct\0", id));
         assert_ne!(a.pseudonym(b"acct\0", id), b.pseudonym(b"acct\0", id));
         assert_ne!(a.pseudonym(b"acct\0", id), a.pseudonym(b"peer\0", id));
         assert_eq!(a.pseudonym(b"acct\0", id).len(), 16);
+        Ok(())
     }
 
     #[test]
-    fn test_handles_by_prefix() {
-        let a = Analytics::with_key([0; 32], "qa_, Bruno_s");
+    fn test_handles_by_prefix() -> anyhow::Result<()> {
+        let a = Analytics::with_key([0; 32], "qa_, Bruno_s")?;
         assert!(a.is_test_handle("qa_ana"));
         assert!(a.is_test_handle("bruno_s123"));
         assert!(!a.is_test_handle("ana"));
+        Ok(())
     }
 
     #[test]
-    fn counts_merge_when_a_flush_fails() {
-        let a = Analytics::with_key([0; 32], "");
+    fn counts_merge_when_a_flush_fails() -> anyhow::Result<()> {
+        let a = Analytics::with_key([0; 32], "")?;
         let aud = vec!["x".to_string(), "y".to_string(), "z".to_string()];
         a.message_sent(SentMessage {
             author: "x",
@@ -409,6 +411,7 @@ mod tests {
             assert!(acc.peers.count_ones() >= 1 && acc.peers.count_ones() <= 2);
             assert_eq!(p.spaces.values().next().unwrap().messages, 2);
         });
+        Ok(())
     }
 }
 
