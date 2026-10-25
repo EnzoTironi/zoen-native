@@ -106,7 +106,7 @@ impl Engine {
             dto.input_revision = "0".into();
             dto.unsaved = false;
             dto.can_edit = false;
-            dto.content_hash = old.content_hash();
+            dto.content_hash = old.content_hash().map_err(doc_err)?;
             dto.edit_context = String::new();
             dto.pending_sync = false;
             dto.save_error = None;

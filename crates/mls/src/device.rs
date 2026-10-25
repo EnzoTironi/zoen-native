@@ -2,17 +2,18 @@
 
 use std::collections::BTreeSet;
 
-use openmls::messages::group_info::VerifiableGroupInfo;
 use openmls::prelude::{tls_codec::Deserialize as _, tls_codec::Serialize as _, *};
 use openmls_basic_credential::SignatureKeyPair;
 use openmls_rust_crypto::RustCrypto;
 use openmls_sqlite_storage::SqliteStorageProvider;
 use rusqlite::Connection;
-use sha2::{Digest, Sha256};
 
 use crate::group::*;
-use crate::sealed::{Scope, SealedCodec};
+use crate::sealed::{Keys, Scope, SealedCodec};
 use crate::{leaf_name, leaf_of, mls, validate_key_package, Leaf, MlsError, SUITE};
+
+mod recovery;
+mod views;
 
 struct Provider<'c> {
     crypto: RustCrypto,
@@ -61,7 +62,7 @@ pub fn clear_recovery_markers(conn: &Connection) -> Result<(), MlsError> {
 /// This device as an MLS client, over the device database.
 pub struct Device<'c> {
     conn: &'c Connection,
-    state_key: [u8; 32],
+    state_keys: Keys,
     signer: SignatureKeyPair,
     leaf: Leaf,
 }
@@ -86,9 +87,10 @@ impl<'c> Device<'c> {
         if Leaf::verified(&leaf.encode(), &public).is_none() {
             return Err(MlsError::Credential);
         }
+        let state_keys = Keys::derive(state_key).map_err(storage_error)?;
         Ok(Self {
             conn,
-            state_key,
+            state_keys,
             signer: SignatureKeyPair::from_raw(
                 SUITE.signature_algorithm(),
                 device_secret.to_vec(),
@@ -104,7 +106,7 @@ impl<'c> Device<'c> {
 
     /// Runs `f` with a provider over the device database and the state key in scope.
     fn with<R>(&self, f: impl FnOnce(&Provider<'c>) -> R) -> R {
-        let _scope = Scope::enter(self.state_key);
+        let _scope = Scope::enter(self.state_keys);
         f(&Provider {
             crypto: RustCrypto::default(),
             storage: SqliteStorageProvider::new(self.conn),
@@ -244,170 +246,6 @@ impl<'c> Device<'c> {
                 .map_err(mls)?;
             commit_bytes(&bundle)
         })
-    }
-
-    /// Join from the latest authenticated public context without an online member.
-    /// The caller must sequence the returned external commit before confirming it.
-    pub fn recover(
-        &self,
-        space: &str,
-        group_info: &[u8],
-        roster: &BTreeSet<String>,
-    ) -> Result<Commit, MlsError> {
-        if !roster.contains(&self.leaf.identity) {
-            return Err(MlsError::Unlisted(BTreeSet::from([self
-                .leaf
-                .identity
-                .clone()])));
-        }
-        let verified = crate::recovery::verify_group_info(space, group_info, None)?;
-        unlisted(verified.identities, roster)?;
-        let info = VerifiableGroupInfo::tls_deserialize_exact(group_info)
-            .map_err(|e| MlsError::Decode(e.to_string()))?;
-        if info.group_id() != &group_id(space) || info.ciphersuite() != SUITE {
-            return Err(MlsError::Mls("GroupInfo for another group or suite".into()));
-        }
-        // The native engine wraps group state, outbox and blob queue together. A direct
-        // caller still gets rollback on every validation or storage error.
-        let tx = self
-            .conn
-            .is_autocommit()
-            .then(|| self.conn.unchecked_transaction().map_err(mls))
-            .transpose()?;
-        let out = self.with(|p| {
-            if self.load(p, space).is_ok() {
-                return Err(MlsError::Mls("this device already has a group".into()));
-            }
-            let (group, bundle) = MlsGroup::external_commit_builder()
-                .with_config(join_config())
-                .build_group(p, info, self.credential())
-                .map_err(mls)?
-                .leaf_node_parameters(
-                    LeafNodeParameters::builder()
-                        .with_capabilities(capabilities())
-                        .build(),
-                )
-                .load_psks(p.storage())
-                .map_err(mls)?
-                .build(p.rand(), p.crypto(), &self.signer, |_| true)
-                .map_err(mls)?
-                .finalize(p)
-                .map_err(mls)?;
-            unlisted(identities(&group)?, roster)?;
-            let c = commit_bytes(&bundle)?;
-            self.conn
-                .execute(
-                    "INSERT INTO mls_recovery_pending (space, commit_hash) VALUES (?1, ?2)",
-                    rusqlite::params![space, Sha256::digest(&c.commit).as_slice()],
-                )
-                .map_err(mls)?;
-            Ok(c)
-        })?;
-        if let Some(tx) = tx {
-            tx.commit().map_err(mls)?;
-        }
-        Ok(out)
-    }
-
-    /// Only after the log confirms this device's exact external commit.
-    pub fn confirm_recovery(
-        &self,
-        space: &str,
-        commit: &[u8],
-        roster: &BTreeSet<String>,
-    ) -> Result<Opened, MlsError> {
-        let tx = self
-            .conn
-            .is_autocommit()
-            .then(|| self.conn.unchecked_transaction())
-            .transpose()
-            .map_err(|e| MlsError::Storage(e.to_string()))?;
-        let opened = self.with(|p| {
-            let expected: Vec<u8> = self
-                .conn
-                .query_row(
-                    "SELECT commit_hash FROM mls_recovery_pending WHERE space = ?1",
-                    [space],
-                    |r| r.get(0),
-                )
-                .map_err(|e| MlsError::Storage(e.to_string()))?;
-            if expected != Sha256::digest(commit).as_slice() {
-                return Err(MlsError::Mls(
-                    "another recovery commit was confirmed".into(),
-                ));
-            }
-            let group = self.load(p, space)?;
-            // Staging verified this roster. A later clear removal cannot leave
-            // the only confirmed handshake attached to an unsequenced marker.
-            let reconcile = !identities(&group)?.is_subset(roster);
-            self.set_reconciliation(space, reconcile)?;
-            self.conn
-                .execute("DELETE FROM mls_recovery_pending WHERE space = ?1", [space])
-                .map_err(|e| MlsError::Storage(e.to_string()))?;
-            let epoch = group.epoch().as_u64();
-            Ok(if reconcile {
-                Opened::Reconcile { epoch }
-            } else {
-                Opened::Commit { epoch }
-            })
-        })?;
-        if let Some(tx) = tx {
-            tx.commit().map_err(|e| MlsError::Storage(e.to_string()))?;
-        }
-        Ok(opened)
-    }
-
-    fn set_reconciliation(&self, space: &str, held: bool) -> Result<(), MlsError> {
-        let sql = if held {
-            "INSERT INTO mls_recovery_reconcile (space) VALUES (?1) ON CONFLICT DO NOTHING"
-        } else {
-            "DELETE FROM mls_recovery_reconcile WHERE space = ?1"
-        };
-        self.conn
-            .execute(sql, [space])
-            .map(drop)
-            .map_err(|e| MlsError::Storage(e.to_string()))
-    }
-
-    pub fn needs_reconciliation(&self, space: &str) -> bool {
-        self.conn
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM mls_recovery_reconcile WHERE space = ?1)",
-                [space],
-                |r| r.get(0),
-            )
-            .unwrap_or(true)
-    }
-
-    /// An external commit that lost its epoch must discard its tentative group.
-    pub fn abandon_recovery(&self, space: &str) -> Result<(), MlsError> {
-        let tx = self
-            .conn
-            .is_autocommit()
-            .then(|| self.conn.unchecked_transaction().map_err(mls))
-            .transpose()?;
-        self.with(|p| {
-            self.load(p, space)?.delete(p.storage()).map_err(mls)?;
-            self.conn
-                .execute("DELETE FROM mls_recovery_pending WHERE space = ?1", [space])
-                .map(drop)
-                .map_err(mls)?;
-            self.set_reconciliation(space, false)
-        })?;
-        if let Some(tx) = tx {
-            tx.commit().map_err(mls)?;
-        }
-        Ok(())
-    }
-
-    pub fn recovery_pending(&self, space: &str) -> bool {
-        self.conn
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM mls_recovery_pending WHERE space = ?1)",
-                [space],
-                |r| r.get(0),
-            )
-            .unwrap_or(true)
     }
 
     /// Whether this device has a commit out that the log hasn't answered yet.
@@ -648,55 +486,6 @@ impl<'c> Device<'c> {
         }
         Ok(Opened::Commit {
             epoch: group.epoch().as_u64(),
-        })
-    }
-
-    /// Member identities in the group as this device has it.
-    pub fn roster(&self, space: &str) -> Result<BTreeSet<String>, MlsError> {
-        self.with(|p| identities(&self.load(p, space)?))
-    }
-
-    /// The group's leaves: (identity, device) -> the leaf's current encryption key. A leaf
-    /// that was taken out and added again (a device back from a long absence) has a new key.
-    pub fn leaves(&self, space: &str) -> Result<LeafKeys, MlsError> {
-        self.with(|p| leaf_keys(&self.load(p, space)?))
-    }
-
-    /// Verified leaf keys of a group with no commit awaiting confirmation. Missing
-    /// groups and held recovery commits return `None`; storage failures remain errors.
-    pub fn committed_leaves(&self, space: &str) -> Result<Option<LeafKeys>, MlsError> {
-        if self.recovery_pending(space) {
-            return Ok(None);
-        }
-        self.with(|p| {
-            let group = match self.load(p, space) {
-                Ok(group) => group,
-                Err(MlsError::NoGroup) => return Ok(None),
-                Err(error) => return Err(error),
-            };
-            if group.pending_commit().is_some() {
-                return Ok(None);
-            }
-            leaf_keys(&group).map(Some)
-        })
-    }
-
-    pub fn epoch(&self, space: &str) -> Result<u64, MlsError> {
-        self.with(|p| Ok(self.load(p, space)?.epoch().as_u64()))
-    }
-
-    /// `(epoch, digest)` for a `Checkpoint`: SHA-256 over a tag, the group id, the epoch and
-    /// the epoch authenticator. Only members of this exact epoch can compute it.
-    pub fn checkpoint(&self, space: &str) -> Result<(u64, String), MlsError> {
-        self.with(|p| {
-            let group = self.load(p, space)?;
-            let epoch = group.epoch().as_u64();
-            let mut h = Sha256::new();
-            h.update(CHECKPOINT_TAG);
-            h.update(group.group_id().as_slice());
-            h.update(epoch.to_be_bytes());
-            h.update(group.epoch_authenticator().as_slice());
-            Ok((epoch, hex::encode(h.finalize())))
         })
     }
 }

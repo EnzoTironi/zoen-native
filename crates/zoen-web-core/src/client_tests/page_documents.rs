@@ -298,7 +298,7 @@ pub(super) fn browser_large_page_upload_barrier_survives_reload_and_missing_down
     let bytes = crate::media::open_chunk(&reference, &sealed).unwrap();
     let page = ::documents::Page::new();
     page.import(&bytes).unwrap();
-    assert!(page.to_markdown().contains("Parágrafo 7999"));
+    assert!(page.to_markdown().unwrap().contains("Parágrafo 7999"));
     reopened.synced = true;
     let released = reopened.document_uploaded(&resumed).unwrap();
     assert!(released

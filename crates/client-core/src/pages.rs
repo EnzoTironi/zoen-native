@@ -291,13 +291,19 @@ pub(crate) fn editor_blocks_markdown(blocks: &[PageBlockDto]) -> R<String> {
             .collect::<R<Vec<_>>>()?,
     )
     .map_err(doc_err)?;
-    Ok(page.canonical_markdown())
+    page.canonical_markdown().map_err(doc_err)
 }
 
-fn rand_u64() -> u64 {
+fn rand_u64() -> R<u64> {
+    rand_u64_with(getrandom::getrandom)
+}
+
+fn rand_u64_with(fill: impl FnOnce(&mut [u8]) -> Result<(), getrandom::Error>) -> R<u64> {
     let mut b = [0u8; 8];
-    getrandom::getrandom(&mut b).expect("system randomness");
-    u64::from_le_bytes(b)
+    fill(&mut b).map_err(|error| CoreError::Storage {
+        message: error.to_string(),
+    })?;
+    Ok(u64::from_le_bytes(b))
 }
 
 mod authoring;

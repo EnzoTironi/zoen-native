@@ -1,5 +1,6 @@
 //! Editing operations on the original `PageSession` state.
 
+use super::super::doc_err;
 use super::*;
 
 impl PageSession {
@@ -282,7 +283,7 @@ impl PageSession {
             live.import(&observed.updates_since(&base))
                 .map_err(super::super::doc_err)?;
         }
-        let hash = observed.content_hash();
+        let hash = observed.content_hash().map_err(doc_err)?;
         let fronts = observed.frontiers().encode();
         let mut journal = journal.clone();
         journal.accept(

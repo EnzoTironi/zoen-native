@@ -27,22 +27,17 @@ impl std::error::Error for InvalidScene {}
 
 /// A validated scene. Private construction keeps compact metadata safe to read.
 #[derive(Debug)]
-pub struct Scene(Value);
+pub struct Scene {
+    element_count: usize,
+    text_count: usize,
+}
 impl Scene {
     pub fn parse(text: &str) -> Result<Self, InvalidScene> {
-        validate_scene(text).map(Self)
+        validate_scene(text)
     }
 
     pub fn metadata(&self) -> String {
-        let scene = &self.0;
-        let live = scene["elements"]
-            .as_array()
-            .expect("validated")
-            .iter()
-            .filter(|e| e["isDeleted"] != true)
-            .collect::<Vec<_>>();
-        json!({"elementCount":live.len(),"textCount":live.iter().filter(|e| e["type"]=="text").count()})
-        .to_string()
+        json!({"elementCount": self.element_count, "textCount": self.text_count}).to_string()
     }
 }
 
@@ -85,7 +80,7 @@ fn bounded_json(v: &Value, depth: usize, nodes: &mut usize) -> Result<(), Invali
 }
 
 /// Unknown passive JSON fields survive byte-for-byte; executable embeds and remote assets do not.
-fn validate_scene(text: &str) -> Result<Value, InvalidScene> {
+fn validate_scene(text: &str) -> Result<Scene, InvalidScene> {
     if text.is_empty() || text.len() > MAX_SCENE_BYTES {
         return Err(InvalidScene);
     }
@@ -220,5 +215,14 @@ fn validate_scene(text: &str) -> Result<Value, InvalidScene> {
             }
         }
     }
-    Ok(scene)
+    let (element_count, text_count) = elements
+        .iter()
+        .filter(|element| element["isDeleted"] != true)
+        .fold((0, 0), |(elements, texts), element| {
+            (elements + 1, texts + usize::from(element["type"] == "text"))
+        });
+    Ok(Scene {
+        element_count,
+        text_count,
+    })
 }

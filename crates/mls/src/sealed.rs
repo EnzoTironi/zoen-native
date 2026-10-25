@@ -25,30 +25,36 @@ const NONCE: usize = 24;
 
 /// The state key of a device, derived from its Ed25519 secret: it lives wherever that
 /// secret lives (the Keychain), and needs no vault entry of its own.
-pub fn state_key(device_secret: &[u8; 32]) -> [u8; 32] {
-    let mut key = [0; 32];
-    Hkdf::<Sha256>::new(Some(b"zoen-mls-state-key/1"), device_secret)
-        .expand(b"state", &mut key)
-        .expect("32 bytes");
-    key
+///
+/// # Errors
+/// Refuses a key if HKDF cannot derive the required bytes.
+pub fn state_key(device_secret: &[u8; 32]) -> Result<[u8; 32], SealError> {
+    expand_key(
+        &Hkdf::<Sha256>::new(Some(b"zoen-mls-state-key/1"), device_secret),
+        b"state",
+    )
+}
+
+fn expand_key<const N: usize>(hk: &Hkdf<Sha256>, info: &[u8]) -> Result<[u8; N], SealError> {
+    let mut key = [0; N];
+    hk.expand(info, &mut key)
+        .map_err(|_| SealError::Derivation)?;
+    Ok(key)
 }
 
 #[derive(Clone, Copy)]
-struct Keys {
+pub(crate) struct Keys {
     seal: [u8; 32],
     siv: [u8; 32],
 }
 
 impl Keys {
-    fn derive(state_key: [u8; 32]) -> Self {
+    pub(crate) fn derive(state_key: [u8; 32]) -> Result<Self, SealError> {
         let hk = Hkdf::<Sha256>::new(Some(b"zoen-mls-state/1"), &state_key);
-        let mut keys = Self {
-            seal: [0; 32],
-            siv: [0; 32],
-        };
-        hk.expand(b"seal", &mut keys.seal).expect("32 bytes");
-        hk.expand(b"siv", &mut keys.siv).expect("32 bytes");
-        keys
+        Ok(Self {
+            seal: expand_key(&hk, b"seal")?,
+            siv: expand_key(&hk, b"siv")?,
+        })
     }
 }
 
@@ -63,9 +69,9 @@ pub(crate) struct Scope {
 }
 
 impl Scope {
-    pub(crate) fn enter(state_key: [u8; 32]) -> Self {
+    pub(crate) fn enter(keys: Keys) -> Self {
         Self {
-            previous: KEYS.with(|k| k.replace(Some(Keys::derive(state_key)))),
+            previous: KEYS.with(|k| k.replace(Some(keys))),
         }
     }
 }
@@ -78,6 +84,8 @@ impl Drop for Scope {
 
 #[derive(Debug, thiserror::Error)]
 pub enum SealError {
+    #[error("MLS state key derivation failed")]
+    Derivation,
     #[error("MLS state touched outside a device scope")]
     NoKey,
     #[error("MLS state doesn't open with this device's key")]
@@ -100,7 +108,8 @@ impl Codec for SealedCodec {
     fn to_vec<T: serde::Serialize>(value: &T) -> Result<Vec<u8>, SealError> {
         let keys = keys()?;
         let plain = serde_json::to_vec(value)?;
-        let mut mac = Hmac::<Sha256>::new_from_slice(&keys.siv).expect("any key length");
+        let mut mac =
+            Hmac::<Sha256>::new_from_slice(&keys.siv).map_err(|_| SealError::Derivation)?;
         mac.update(&plain);
         let mut nonce = [0u8; NONCE];
         nonce.copy_from_slice(&mac.finalize().into_bytes()[..NONCE]);
@@ -123,3 +132,6 @@ impl Codec for SealedCodec {
         Ok(serde_json::from_slice(&plain)?)
     }
 }
+
+#[cfg(test)]
+mod tests;

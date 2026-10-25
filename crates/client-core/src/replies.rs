@@ -168,7 +168,7 @@ impl Engine {
             });
         }
         let reply = self.reply_ref(space, to, thread)?;
-        self.append(
+        let appended = self.append(
             space,
             author,
             EventBody::MessagePosted {
@@ -181,7 +181,14 @@ impl Engine {
             },
         )?;
         let s = self.space_state(space)?;
-        Ok(self.entry_dto(s.entries.last().expect("just appended")))
+        let entry = s
+            .entries
+            .iter()
+            .find(|entry| entry.id() == appended.client_id)
+            .ok_or_else(|| CoreError::Storage {
+                message: "The appended message is missing from its projection.".into(),
+            })?;
+        Ok(self.entry_dto(entry))
     }
 
     /// Validate before storing a voice file, so a bad target cannot post it to the main chat.

@@ -282,10 +282,10 @@ impl<S: Signer> Client<S> {
         Ok(json!({
             "item_id": item.id, "space_id": item.space, "title": content.title, "path": content.path,
             "version": item.versions.len(), "ready": read.ready,
-            "unsaved": !historical && read.live.content_hash() != read.shadow.content_hash(),
+            "unsaved": !historical && read.live.content_hash().map_err(|error| error.to_string())? != read.shadow.content_hash().map_err(|error| error.to_string())?,
             "pending_sync": !historical && item.versions.iter().any(|version| version.pending),
             "save_error": read.error.clone().or_else(|| item.versions.iter().find_map(|version| version.failure.clone())),
-            "can_edit": can_edit, "content_hash": read.live.content_hash(),
+            "can_edit": can_edit, "content_hash": read.live.content_hash().map_err(|error| error.to_string())?,
             "edit_context": if can_edit { self.page_context(item, read.live.frontiers().encode())? } else { String::new() },
             "blocks": read.live.blocks().iter().map(Block::from).collect::<Vec<_>>()
         }))

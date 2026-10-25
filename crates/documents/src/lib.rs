@@ -124,80 +124,7 @@ pub struct Block {
     pub fp: String,
 }
 
-#[derive(Serialize, Deserialize)]
-struct Fp {
-    k: Kind,
-    h: String,
-}
-
-impl Block {
-    pub fn new(kind: Kind, runs: Vec<Run>) -> Block {
-        Block {
-            id: new_id(),
-            kind,
-            runs,
-            src: String::new(),
-            tail: String::new(),
-            lead: String::new(),
-            fp: String::new(),
-        }
-    }
-
-    /// The kind plus a hash of the canonical inline Markdown: equal fingerprints mean the
-    /// block reads the same.
-    pub fn fingerprint(&self) -> String {
-        let md = markdown::inline_md(&self.runs);
-        serde_json::to_string(&Fp {
-            k: self.kind.clone(),
-            h: hex::encode(&Sha256::digest(md.as_bytes())[..12]),
-        })
-        .unwrap_or_default()
-    }
-
-    pub(crate) fn kind_from_fp(fp: &str) -> Option<Kind> {
-        serde_json::from_str::<Fp>(fp).ok().map(|f| f.k)
-    }
-
-    pub fn plain_text(&self) -> String {
-        self.runs.iter().map(|r| r.text.as_str()).collect()
-    }
-
-    /// SHA-256 of the visible kind, exact text and normalized marks. Source spelling,
-    /// run segmentation and the block's identity are not content.
-    pub fn content_hash(&self) -> String {
-        #[derive(Serialize)]
-        struct Content {
-            kind: Kind,
-            text: String,
-            spans: Vec<Span>,
-        }
-        let kind = match &self.kind {
-            Kind::Heading { level, .. } => Kind::Heading {
-                level: *level,
-                setext: false,
-            },
-            kind => kind.clone(),
-        };
-        let bytes = serde_json::to_vec(&Content {
-            kind,
-            text: self.plain_text(),
-            spans: canonical_spans(&self.runs),
-        })
-        .expect("page content serializes");
-        hex::encode(
-            Sha256::new()
-                .chain_update(b"zoen-page-block-content-v1\0")
-                .chain_update(bytes)
-                .finalize(),
-        )
-    }
-}
-
-fn new_id() -> String {
-    let mut b = [0u8; 8];
-    getrandom::getrandom(&mut b).expect("randomness");
-    hex::encode(b)
-}
+mod block;
 
 // ───────────────────────────── the Loro page ─────────────────────────────
 
@@ -275,7 +202,7 @@ impl Page {
     /// A page from Markdown: one block per Markdown block.
     pub fn from_markdown(md: &str) -> Result<Page, DocError> {
         let p = Page::new();
-        let imported = markdown::import(md);
+        let imported = markdown::import(md)?;
         p.doc
             .get_map("page")
             .insert("lead", imported.lead.as_str())
@@ -353,37 +280,38 @@ impl Page {
 
     /// SHA-256 of ordered block identities and semantic content, independent of CRDT
     /// history and original Markdown spelling.
-    pub fn content_hash(&self) -> String {
-        let blocks: Vec<_> = self
+    pub fn content_hash(&self) -> Result<String, DocError> {
+        let blocks = self
             .blocks()
             .into_iter()
-            .map(|b| (b.id.clone(), b.content_hash()))
-            .collect();
-        let bytes = serde_json::to_vec(&blocks).expect("page content serializes");
-        hex::encode(
+            .map(|b| Ok((b.id.clone(), b.content_hash()?)))
+            .collect::<Result<Vec<_>, DocError>>()?;
+        let bytes = serde_json::to_vec(&blocks).map_err(err)?;
+        Ok(hex::encode(
             Sha256::new()
                 .chain_update(b"zoen-page-content-v1\0")
                 .chain_update(bytes)
                 .finalize(),
-        )
+        ))
     }
 
     /// Editor equality also preserves stored syntax metadata that the public semantic
     /// hash intentionally normalizes (currently Heading.setext). No hash/version change.
-    pub fn editor_content_eq(&self, other: &Self) -> bool {
-        self.content_hash() == other.content_hash()
+    pub fn editor_content_eq(&self, other: &Self) -> Result<bool, DocError> {
+        Ok(self.content_hash()? == other.content_hash()?
             && self
                 .blocks()
                 .iter()
                 .map(|b| &b.kind)
-                .eq(other.blocks().iter().map(|b| &b.kind))
+                .eq(other.blocks().iter().map(|b| &b.kind)))
     }
 
-    pub fn block_hash(&self, id: &str) -> Option<String> {
+    pub fn block_hash(&self, id: &str) -> Result<Option<String>, DocError> {
         self.blocks()
             .into_iter()
             .find(|b| b.id == id)
             .map(|b| b.content_hash())
+            .transpose()
     }
 
     pub fn title(&self) -> String {
@@ -401,7 +329,7 @@ impl Page {
             .unwrap_or_default()
     }
 
-    pub fn to_markdown(&self) -> String {
+    pub fn to_markdown(&self) -> Result<String, DocError> {
         let lead = match self.doc.get_map("page").get("lead") {
             Some(ValueOrContainer::Value(LoroValue::String(s))) => s.to_string(),
             _ => String::new(),
@@ -410,7 +338,7 @@ impl Page {
     }
 
     /// Every block written in house style, ignoring how the source spelled it.
-    pub fn canonical_markdown(&self) -> String {
+    pub fn canonical_markdown(&self) -> Result<String, DocError> {
         markdown::export("", &self.blocks(), true)
     }
 
@@ -440,8 +368,8 @@ impl Page {
         };
         let from = staged.version();
         staged.apply_validated(order, changed)?;
-        if staged.content_hash() == self.content_hash()
-            && (!exact_kind || staged.editor_content_eq(self))
+        if staged.content_hash()? == self.content_hash()?
+            && (!exact_kind || staged.editor_content_eq(self)?)
         {
             return Ok(());
         }
@@ -613,3 +541,6 @@ fn canonical_spans(runs: &[Run]) -> Vec<Span> {
     }
     merged
 }
+
+#[cfg(test)]
+mod hash_compatibility_tests;

@@ -203,51 +203,62 @@ pub(crate) fn prepare(
     let mut messages = request
         .messages
         .iter()
-        .map(|message| match message {
-            InputMessage::System { text } => Message::system(text),
-            InputMessage::User { text } => Message::user(text),
-            InputMessage::Assistant { blocks } => Message::Assistant(AssistantMessage::new(
-                blocks
-                    .iter()
-                    .map(|block| match block {
-                        OutputBlock::Text { text } => AssistantContent::text(text),
-                        OutputBlock::ToolCall {
-                            call_id,
-                            name,
-                            arguments,
-                        } => AssistantContent::tool_call(
-                            call_id,
-                            ToolName::new(name).expect("validated name"),
-                            arguments.clone(),
-                        ),
-                    })
-                    .collect(),
-            )),
-            InputMessage::ToolResult {
-                call_id,
-                name,
-                text,
-            } => Message::tool_result(
-                CallId::from_wire(call_id),
-                ToolName::new(name).expect("validated name"),
-                text,
-            ),
-        })
-        .collect::<Vec<_>>();
-    let last = messages.pop().expect("nonempty messages");
+        .map(prepare_message)
+        .collect::<Result<Vec<_>, _>>()?;
+    let last = messages.pop().ok_or(GatewayError::InvalidRequest)?;
     let tools = request
         .tools
         .iter()
         .map(|tool| {
-            RigTool::new(
-                ToolName::new(&tool.name).expect("validated name"),
+            Ok(RigTool::new(
+                ToolName::new(&tool.name).map_err(|_| GatewayError::InvalidRequest)?,
                 &tool.description,
                 tool.parameters.clone(),
-            )
+            ))
         })
-        .collect();
+        .collect::<Result<Vec<_>, GatewayError>>()?;
     Ok(CompletionRequest::new(last)
         .messages(messages)
         .tools(tools)
         .max_tokens(request.max_output_tokens))
 }
+
+fn prepare_message(message: &InputMessage) -> Result<Message, GatewayError> {
+    Ok(match message {
+        InputMessage::System { text } => Message::system(text),
+        InputMessage::User { text } => Message::user(text),
+        InputMessage::Assistant { blocks } => Message::Assistant(AssistantMessage::new(
+            blocks
+                .iter()
+                .map(prepare_block)
+                .collect::<Result<Vec<_>, _>>()?,
+        )),
+        InputMessage::ToolResult {
+            call_id,
+            name,
+            text,
+        } => Message::tool_result(
+            CallId::from_wire(call_id),
+            ToolName::new(name).map_err(|_| GatewayError::InvalidRequest)?,
+            text,
+        ),
+    })
+}
+
+fn prepare_block(block: &OutputBlock) -> Result<AssistantContent, GatewayError> {
+    Ok(match block {
+        OutputBlock::Text { text } => AssistantContent::text(text),
+        OutputBlock::ToolCall {
+            call_id,
+            name,
+            arguments,
+        } => AssistantContent::tool_call(
+            call_id,
+            ToolName::new(name).map_err(|_| GatewayError::InvalidRequest)?,
+            arguments.clone(),
+        ),
+    })
+}
+
+#[cfg(test)]
+mod tests;
