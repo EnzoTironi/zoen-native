@@ -57,6 +57,10 @@ pub trait Bus: Send + Sync {
     fn stats(&self) -> BusStats {
         BusStats::default()
     }
+    #[cfg(test)]
+    fn publisher_probe(&self) -> Option<nats::testing::PublisherProbe> {
+        None
+    }
 }
 
 #[derive(Default, Clone, Copy)]

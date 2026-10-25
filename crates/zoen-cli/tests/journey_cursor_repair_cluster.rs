@@ -2,6 +2,8 @@
 //! relay-B -> client wire boundary. No synthetic relay, Pong, refresh or next content.
 //! Production's 60s cursor-repair cadence is exercised unchanged.
 mod common;
+#[path = "common/final_event_loss.rs"]
+mod final_event_loss;
 #[path = "common/final_event_proxy.rs"]
 mod final_event_proxy;
 

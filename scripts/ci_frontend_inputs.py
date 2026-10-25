@@ -43,7 +43,7 @@ FRONTEND_CONTRACTS = {
     "crates/zoen-agentd/src/citizen/codex.rs": "43dc6b20260f9db0fd0977d389437c756835a610bac1f6784240efd8f9790eb6",
     "crates/zoen-relay/src/lib.rs": "0a85a11509ff1968e85b09abefab3b979c5e19ba797624f2fb7a42ab1deb0981",
     "Cargo.toml": "6abf6b794f912e0e95fcb66d5ea6f89a176b04a1b2b8714d1c21f40f091827bb",
-    ".github/workflows/ci.yml": "7f022560bb9ba28bfda8db147ab1a62e403eba5b12bd30b4588f207b4ecee9f6",
+    ".github/workflows/ci.yml": "c637a5786ca818e0fbae1b01108cbdf3a96ed6c461d232f32098846148fd48a4",
     ".github/workflows/expo.yml": "085e800264619bcc17f43b676a40b9ee682cb8e7dff845058b9ff4247e1bf7e7",
     "apps/zoen/package.json": "d58538007aec677d34171d4a09f883973c1c8bf9440b141d5bc72f33b2dba14b",
     "apps/zoen/src/miniapps/vendor/deckcraft-bootstrap.manifest.json": "2f0eccb5f4de55d63dd56a287685921b4acdb4224308d9d7747edd2eec2464cd",
