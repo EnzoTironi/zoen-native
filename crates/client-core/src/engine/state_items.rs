@@ -253,7 +253,9 @@ impl State {
         {
             return false;
         }
-        let state = self.spaces.get_mut(&event.space).expect("checked above");
+        let Some(state) = self.spaces.get_mut(&event.space) else {
+            return false;
+        };
         if state
             .entries
             .iter()

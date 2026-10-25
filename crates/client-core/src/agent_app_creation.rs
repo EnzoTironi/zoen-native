@@ -72,12 +72,12 @@ pub fn executor_binding_for(tool: &str) -> Option<String> {
     creation_format(tool).map(binding_for)
 }
 fn binding_for(format: Format) -> String {
-    sha(&serde_json::to_vec(&(
-        "zoen.native-app.create.v1",
-        format.revision(),
-        sha(format.seed()),
-    ))
-    .expect("fixed creation binding"))
+    let binding = Value::Array(vec![
+        Value::String("zoen.native-app.create.v1".into()),
+        Value::String(format.revision().into()),
+        Value::String(sha(format.seed())),
+    ]);
+    sha(binding.to_string().as_bytes())
 }
 // Each concrete App has one closed creation operation. Scope remains
 // in the signed envelope and future-item intent, not a credential-shaped alias.

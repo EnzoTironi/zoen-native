@@ -108,7 +108,7 @@ impl Fixture {
         ::mls::migrate(&mut conn).unwrap();
         let peer = ::mls::Device::new(
             &conn,
-            ::mls::sealed::state_key(&peer_author.key.secret()),
+            ::mls::sealed::state_key(&peer_author.key.secret())?,
             &peer_author.identity,
             peer_author.key.secret(),
             peer_author.cert.as_deref().unwrap(),

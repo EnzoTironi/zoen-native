@@ -4,10 +4,13 @@ use documents::Page;
 
 fn exact_roundtrip(source: &str) {
     let page = Page::from_markdown(source).unwrap();
-    assert_eq!(page.to_markdown().as_bytes(), source.as_bytes());
+    assert_eq!(page.to_markdown().unwrap().as_bytes(), source.as_bytes());
     let reopened = Page::new();
     reopened.import(&page.snapshot()).unwrap();
-    assert_eq!(reopened.to_markdown().as_bytes(), source.as_bytes());
+    assert_eq!(
+        reopened.to_markdown().unwrap().as_bytes(),
+        source.as_bytes()
+    );
 }
 
 #[test]

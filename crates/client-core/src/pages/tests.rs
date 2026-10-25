@@ -182,3 +182,20 @@ mod lossless_duplication;
 mod publication;
 
 mod version_exports;
+
+#[test]
+fn page_nonce_refuses_partial_entropy_instead_of_publishing_a_value() {
+    let result = rand_u64_with(|bytes| {
+        bytes[..4].fill(7);
+        Err(getrandom::Error::UNSUPPORTED)
+    });
+    assert!(matches!(result, Err(CoreError::Storage { .. })));
+    assert_eq!(
+        rand_u64_with(|bytes| {
+            bytes.copy_from_slice(&[1, 2, 3, 4, 5, 6, 7, 8]);
+            Ok(())
+        })
+        .unwrap(),
+        u64::from_le_bytes([1, 2, 3, 4, 5, 6, 7, 8])
+    );
+}

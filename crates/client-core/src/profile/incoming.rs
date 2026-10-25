@@ -111,15 +111,14 @@ impl Engine {
         }
         let mut changed = Vec::new();
         let me = self.me.clone();
-        let own_asked = me.as_ref().is_some_and(|me| asked.contains(me));
+        let own_asked = me.as_ref().filter(|me| asked.contains(me));
         let own_present = me
             .as_ref()
             .is_some_and(|me| list.iter().any(|record| &record.identity == me));
-        let own_sync = own_asked
-            .then(|| self.own_profile_journal().ok().map(|journal| journal.sync))
-            .flatten();
+        let own_sync =
+            own_asked.and_then(|_| self.own_profile_journal().ok().map(|journal| journal.sync));
         let mut own_verified = false;
-        if own_asked {
+        if own_asked.is_some() {
             self.net.profiles.own_refreshed = false;
         }
         for p in list {
@@ -170,17 +169,16 @@ impl Engine {
                 }
             }
         }
-        if own_asked {
-            let me = me.expect("own profile was requested");
+        if let Some(me) = own_asked {
             let bootstrap_absent = !own_present
                 && own_sync.as_ref().is_some_and(|sync| {
                     sync.published == 0 && sync.pending.is_some() && !sync.key_unavailable()
                 });
-            let complete = (own_verified || bootstrap_absent)
-                && !self.net.profiles.need_profiles.contains(&me);
+            let complete =
+                (own_verified || bootstrap_absent) && !self.net.profiles.need_profiles.contains(me);
             self.net.profiles.own_refreshed = complete;
             if !complete {
-                self.net.profiles.need_profiles.insert(me);
+                self.net.profiles.need_profiles.insert(me.clone());
             }
         }
         changed

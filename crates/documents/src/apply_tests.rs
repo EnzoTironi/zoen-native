@@ -34,10 +34,10 @@ fn concurrent_insertion_of_the_same_external_id_cannot_corrupt_the_page() {
     second.apply(&ids, &[edit("shared-id", "Second")]).unwrap();
     page.import(&first.updates_since(&page.version())).unwrap();
     let before = page.snapshot();
-    let hash = page.content_hash();
+    let hash = page.content_hash().unwrap();
     assert!(page.import(&second.updates_since(&page.version())).is_err());
     assert_eq!(page.snapshot(), before);
-    assert_eq!(page.content_hash(), hash);
+    assert_eq!(page.content_hash().unwrap(), hash);
     assert_eq!(
         page.blocks().iter().filter(|b| b.id == "shared-id").count(),
         1
@@ -53,19 +53,19 @@ fn concurrent_insertion_of_the_same_external_id_cannot_corrupt_the_page() {
 }
 
 fn assert_refused_without_mutation(page: &Page, ids: &[String], edits: &[BlockEdit]) {
-    let markdown = page.to_markdown();
+    let markdown = page.to_markdown().unwrap();
     let blocks = page.blocks();
     let snapshot = page.snapshot();
     let frontiers = page.frontiers();
     let version = page.version();
-    let hash = page.content_hash();
+    let hash = page.content_hash().unwrap();
     assert!(page.apply(ids, edits).is_err());
-    assert_eq!(page.to_markdown(), markdown);
+    assert_eq!(page.to_markdown().unwrap(), markdown);
     assert_eq!(page.blocks(), blocks);
     assert_eq!(page.snapshot(), snapshot);
     assert_eq!(page.frontiers(), frontiers);
     assert_eq!(page.version(), version);
-    assert_eq!(page.content_hash(), hash);
+    assert_eq!(page.content_hash().unwrap(), hash);
 }
 
 #[test]
@@ -166,7 +166,7 @@ fn an_import_with_ambiguous_block_ids_cannot_be_edited() {
     let page = Page::new();
     let list = page.blocks_list();
     for text in ["First", "Second"] {
-        let mut block = Block::new(Kind::Paragraph, vec![Run::plain(text)]);
+        let mut block = Block::new(Kind::Paragraph, vec![Run::plain(text)]).unwrap();
         block.id = "same".into();
         let map = list.insert_container(list.len(), LoroMap::new()).unwrap();
         write_block(&map, &block, false).unwrap();
@@ -207,7 +207,7 @@ fn exact_utf16_scalar_ranges_and_explicit_new_blocks_apply() {
 fn semantic_no_ops_preserve_original_markdown_and_frontiers() {
     let source = "Title\n=====\n\n*Alpha* _Bravo_\n\n```rust\nlet a = 1;\n```\n";
     let page = Page::from_markdown(source).unwrap();
-    assert_eq!(page.to_markdown(), source);
+    assert_eq!(page.to_markdown().unwrap(), source);
     let snapshot = page.snapshot();
     let frontiers = page.frontiers();
     let before = page.blocks();
@@ -228,7 +228,7 @@ fn semantic_no_ops_preserve_original_markdown_and_frontiers() {
         })
         .collect();
     page.apply(&order(&page), &edits).unwrap();
-    assert_eq!(page.to_markdown(), source);
+    assert_eq!(page.to_markdown().unwrap(), source);
     assert_eq!(page.blocks(), before);
     assert_eq!(page.snapshot(), snapshot);
     assert_eq!(page.frontiers(), frontiers);
@@ -250,7 +250,8 @@ fn semantic_hashes_ignore_history_source_spelling_and_run_segmentation() {
             text: "ab".into(),
             attrs: attrs.clone(),
         }],
-    );
+    )
+    .unwrap();
     let mut b = a.clone();
     b.id = "different".into();
     b.kind = Kind::Heading {
@@ -271,31 +272,34 @@ fn semantic_hashes_ignore_history_source_spelling_and_run_segmentation() {
             attrs,
         },
     ];
-    assert_eq!(a.content_hash(), b.content_hash());
-    assert_eq!(hex::decode(a.content_hash()).unwrap().len(), 32);
+    assert_eq!(a.content_hash().unwrap(), b.content_hash().unwrap());
+    assert_eq!(hex::decode(a.content_hash().unwrap()).unwrap().len(), 32);
     b.runs[0].attrs.bold = false;
-    assert_ne!(a.content_hash(), b.content_hash());
+    assert_ne!(a.content_hash().unwrap(), b.content_hash().unwrap());
 
     let page = fixture();
-    let hash = page.content_hash();
+    let hash = page.content_hash().unwrap();
     let version = page.version();
     page.apply(&order(&page), &[edit("a", "Temporary")])
         .unwrap();
     page.apply(&order(&page), &[edit("a", "Alpha")]).unwrap();
     assert_ne!(page.version(), version);
-    assert_eq!(page.content_hash(), hash);
-    assert_eq!(page.block_hash("a"), Some(page.blocks()[0].content_hash()));
-    assert!(page.block_hash("missing").is_none());
+    assert_eq!(page.content_hash().unwrap(), hash);
+    assert_eq!(
+        page.block_hash("a").unwrap(),
+        Some(page.blocks()[0].content_hash().unwrap())
+    );
+    assert!(page.block_hash("missing").unwrap().is_none());
     page.apply(&["c".into(), "a".into(), "b".into()], &[])
         .unwrap();
-    assert_ne!(page.content_hash(), hash);
-    let moved_hash = page.content_hash();
+    assert_ne!(page.content_hash().unwrap(), hash);
+    let moved_hash = page.content_hash().unwrap();
     page.apply(
         &["c".into(), "replacement".into(), "b".into()],
         &[edit("replacement", "Alpha")],
     )
     .unwrap();
-    assert_ne!(page.content_hash(), moved_hash);
+    assert_ne!(page.content_hash().unwrap(), moved_hash);
 }
 
 fn merge_edit_from_observed_frontiers(remote_edit: impl FnOnce(&Page)) -> Page {
@@ -320,7 +324,7 @@ fn merge_edit_from_observed_frontiers(remote_edit: impl FnOnce(&Page)) -> Page {
     editor.import(&remote_delta).unwrap();
     assert_eq!(live.blocks(), remote.blocks());
     assert_eq!(live.blocks(), editor.blocks());
-    assert_eq!(live.content_hash(), remote.content_hash());
+    assert_eq!(live.content_hash().unwrap(), remote.content_hash().unwrap());
     live
 }
 
@@ -378,19 +382,19 @@ fn observed_fork_edit_merges_distinct_text_and_formatting_changes() {
 
 fn assert_import_refused_without_mutation(page: &Page, delta: &[u8]) {
     let blocks = page.blocks();
-    let markdown = page.to_markdown();
+    let markdown = page.to_markdown().unwrap();
     let snapshot = page.snapshot();
     let frontiers = page.frontiers();
     let version = page.version();
-    let hash = page.content_hash();
+    let hash = page.content_hash().unwrap();
     let error = page.import(delta).unwrap_err();
     assert!(error.0.contains("missing dependencies"));
     assert_eq!(page.blocks(), blocks);
-    assert_eq!(page.to_markdown(), markdown);
+    assert_eq!(page.to_markdown().unwrap(), markdown);
     assert_eq!(page.snapshot(), snapshot);
     assert_eq!(page.frontiers(), frontiers);
     assert_eq!(page.version(), version);
-    assert_eq!(page.content_hash(), hash);
+    assert_eq!(page.content_hash().unwrap(), hash);
 }
 
 #[test]
@@ -410,7 +414,10 @@ fn incomplete_import_does_not_remember_pending_changes() {
     assert_eq!(receiving.blocks()[0].plain_text(), "Alpha");
     receiving.import(&delta).unwrap();
     assert_eq!(receiving.blocks(), source.blocks());
-    assert_eq!(receiving.content_hash(), source.content_hash());
+    assert_eq!(
+        receiving.content_hash().unwrap(),
+        source.content_hash().unwrap()
+    );
 }
 
 #[test]
@@ -445,7 +452,10 @@ fn incomplete_mixed_import_refuses_even_independent_changes() {
     receiving.import(&delta).unwrap();
     assert_eq!(receiving.blocks(), source.blocks());
     assert_eq!(receiving.version(), source.version());
-    assert_eq!(receiving.content_hash(), source.content_hash());
+    assert_eq!(
+        receiving.content_hash().unwrap(),
+        source.content_hash().unwrap()
+    );
     let completed = receiving.snapshot();
     receiving.import(&delta).unwrap();
     assert_eq!(receiving.snapshot(), completed);

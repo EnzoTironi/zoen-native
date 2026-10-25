@@ -384,9 +384,15 @@ impl State {
                     }));
                 }
             }
-            EventBody::CallTransportV1 { .. } => self.apply_call_transport(e),
+            EventBody::CallTransportV1 { .. } => {
+                if !self.apply_call_transport(e) {
+                    return Projection::Refused;
+                }
+            }
             EventBody::CallV1 { .. } => {
-                self.apply_call(e);
+                if !self.apply_call(e) {
+                    return Projection::Refused;
+                }
             }
             EventBody::UsageRecorded { agent, cents, .. } => {
                 self.usage.push((agent.clone(), *cents, e.at_ms));

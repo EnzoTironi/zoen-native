@@ -337,3 +337,22 @@ fn renewed_creation_keeps_the_future_item_but_requires_its_own_signed_decision(
     assert!(f.agent.verify_all().iter().all(|result| result.valid));
     Ok(())
 }
+
+#[test]
+fn creation_binding_keeps_the_published_tuple_serialization_bytes(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for format in [
+        Format::Deckcraft,
+        Format::Gridcraft,
+        Format::Wordcraft,
+        Format::Photocraft,
+    ] {
+        let legacy = serde_json::to_vec(&(
+            "zoen.native-app.create.v1",
+            format.revision(),
+            sha(format.seed()),
+        ))?;
+        assert_eq!(binding_for(format), sha(&legacy));
+    }
+    Ok(())
+}

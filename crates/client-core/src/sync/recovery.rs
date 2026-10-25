@@ -229,12 +229,9 @@ impl Engine {
                 continue;
             }
             if p.failed {
-                if is_message_send(&e.body)
-                    && projections
-                        .get(&e.space)
-                        .is_some_and(|scoped| scoped.spaces.contains_key(&e.space))
-                {
-                    let scoped = projections.get_mut(&e.space).expect("checked above");
+                if let Some(scoped) = projections.get_mut(&e.space).filter(|scoped| {
+                    is_message_send(&e.body) && scoped.spaces.contains_key(&e.space)
+                }) {
                     let retained = if let EventBody::MessagePosted {
                         attaches: Some(item),
                         ..

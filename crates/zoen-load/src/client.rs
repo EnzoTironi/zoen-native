@@ -22,8 +22,8 @@ type Ws = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 /// Latencies in microseconds up to a minute, to 1% (two significant figures): small enough
 /// that every simulated person can keep their own.
-pub fn histogram() -> Histogram<u32> {
-    Histogram::new_with_bounds(1, 60_000_000, 2).expect("histogram bounds")
+pub fn histogram() -> anyhow::Result<Histogram<u32>> {
+    Histogram::new_with_bounds(1, 60_000_000, 2).context("load latency histogram")
 }
 
 pub struct Conn {
@@ -54,8 +54,16 @@ impl Conn {
             protocol: PROTOCOL_VERSION,
             capabilities: Vec::new(),
             identity: root.id(),
-            device: c.author.device.clone().expect("device"),
-            cert: c.author.cert.clone().expect("cert"),
+            device: c
+                .author
+                .device
+                .clone()
+                .context("load device identity missing")?,
+            cert: c
+                .author
+                .cert
+                .clone()
+                .context("load device certificate missing")?,
         })
         .await?;
         let (nonce, relay_name) = match c.recv().await? {
@@ -237,15 +245,15 @@ pub struct Tally {
 }
 
 impl Tally {
-    pub fn new() -> Tally {
-        Tally {
+    pub fn new() -> anyhow::Result<Tally> {
+        Ok(Tally {
             sent: 0,
             accepted: 0,
             delivered: 0,
             rejected: HashMap::new(),
-            ack: histogram(),
-            delivery: histogram(),
-        }
+            ack: histogram()?,
+            delivery: histogram()?,
+        })
     }
 
     pub fn merge(&mut self, o: Tally) {
@@ -287,7 +295,7 @@ pub async fn run(conn: Conn, plan: Plan, mut rx: mpsc::Receiver<Publish>) -> any
     } = plan;
     let (mut sink, mut stream) = ws.split();
     let mut pending: HashMap<String, u64> = HashMap::new();
-    let mut t = Tally::new();
+    let mut t = Tally::new()?;
     let mut stop_at: Option<Instant> = None;
     loop {
         let frame = tokio::select! {

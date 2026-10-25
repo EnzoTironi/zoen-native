@@ -340,9 +340,9 @@ async fn ana_s_agent_shops_and_ana_signs_in_herself() {
 
     // 7. Ana opens the live view on her phone. Frames reach the host sealed; only her
     //    phone's key opens them.
-    let phone = DeviceKey::generate();
+    let phone = DeviceKey::generate().unwrap();
     let mut live = p.live_start(&lease, phone.public()).await.unwrap();
-    let keys = phone.accept(&live.offer);
+    let keys = phone.accept(&live.offer).unwrap();
     let mut frames_in = keys.opener(Direction::Frames);
     let t = Instant::now();
     let first = tokio::time::timeout(Duration::from_secs(20), live.frames.recv())
@@ -404,19 +404,21 @@ async fn ana_s_agent_shops_and_ana_signs_in_herself() {
         },
     ];
     for ev in &events {
-        let sealed = up.seal(&serde_json::to_vec(ev).unwrap());
+        let sealed = up.seal(&serde_json::to_vec(ev).unwrap()).unwrap();
         assert!(!p.takeover_input(&lease, &sealed).await.unwrap());
         sent.push(sealed);
     }
     // A replayed keystroke, and one the host made up, are refused.
     let e = p.takeover_input(&lease, &sent[3]).await.unwrap_err();
     assert!(e.to_string().contains("replay"), "{e}");
-    let impostor = DeviceKey::generate().accept(&live.offer);
+    let impostor = DeviceKey::generate().unwrap().accept(&live.offer).unwrap();
     let mut forged = impostor.sealer(Direction::Input);
     for _ in 0..20 {
-        forged.seal(b"{}");
+        forged.seal(b"{}").unwrap();
     }
-    let done_forged = forged.seal(&serde_json::to_vec(&InputEvent::Done).unwrap());
+    let done_forged = forged
+        .seal(&serde_json::to_vec(&InputEvent::Done).unwrap())
+        .unwrap();
     assert!(p.takeover_input(&lease, &done_forged).await.is_err());
     // ...so the takeover is still on.
     assert_eq!(p.browser_status(&lease).await.unwrap()["takeover"], true);
@@ -434,7 +436,9 @@ async fn ana_s_agent_shops_and_ana_signs_in_herself() {
     }
 
     // 9. Done, from her phone: the agent continues, signed in, and never sees what she typed.
-    let done = up.seal(&serde_json::to_vec(&InputEvent::Done).unwrap());
+    let done = up
+        .seal(&serde_json::to_vec(&InputEvent::Done).unwrap())
+        .unwrap();
     sent.push(done.clone());
     assert!(p.takeover_input(&lease, &done).await.unwrap());
     let read = p.browser(&lease, BrowserCall::Read).await.unwrap();

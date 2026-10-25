@@ -121,7 +121,7 @@ impl Engine {
             });
         }
         let mut order = order;
-        let extra = format!("{:016x}", rand_u64());
+        let extra = format!("{:016x}", rand_u64()?);
         order.push(extra.clone());
         edits.push(BlockEdit {
             id: extra,

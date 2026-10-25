@@ -17,19 +17,16 @@ impl Engine {
             });
         }
         let is_me = self.me.as_deref() == Some(id);
-        let agent = ident.is_some_and(|i| i.kind == IdentityKind::Agent);
+        let agent = ident.filter(|identity| identity.kind == IdentityKind::Agent);
         let (name, bio, version, photo) = match (&held, agent) {
-            (Some((v, f)), false) => (
+            (Some((v, f)), None) => (
                 Some(f.name.clone()),
                 Some(f.bio.clone()),
                 *v,
                 f.photo.clone(),
             ),
-            (_, true) => {
-                let i = ident.expect("agent is known");
-                (Some(i.name.clone()), Some(i.bio.clone()), 0, None)
-            }
-            (None, false) => (None, None, 0, None),
+            (_, Some(i)) => (Some(i.name.clone()), Some(i.bio.clone()), 0, None),
+            (None, None) => (None, None, 0, None),
         };
         let photo_ready = photo
             .as_ref()

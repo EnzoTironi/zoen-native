@@ -112,14 +112,17 @@ impl State {
         }
     }
 
-    pub(crate) fn apply_call(&mut self, event: &Event) {
+    #[must_use]
+    pub(crate) fn apply_call(&mut self, event: &Event) -> bool {
         let EventBody::CallV1 { signal } = &event.body else {
-            return;
+            return false;
         };
-        let space = self
-            .spaces
-            .get_mut(&event.space)
-            .expect("validated call Space");
+        let Some(device) = event.device.as_ref() else {
+            return false;
+        };
+        let Some(space) = self.spaces.get_mut(&event.space) else {
+            return false;
+        };
         match signal {
             CallSignal::Invite {
                 call_id,
@@ -148,7 +151,7 @@ impl State {
                     call_id: call_id.clone(),
                     invitation: event_log::content_hash_of(event),
                     caller: event.author.clone(),
-                    caller_device: event.device.clone().expect("validated call device"),
+                    caller_device: device.clone(),
                     callee: callee.clone(),
                     media: *media,
                     invited_at_ms: event.at_ms,
@@ -163,11 +166,9 @@ impl State {
                 });
             }
             CallSignal::Accept { call_id, .. } => {
-                let call = space
-                    .calls
-                    .iter_mut()
-                    .find(|c| c.call_id == *call_id)
-                    .expect("validated call");
+                let Some(call) = space.calls.iter_mut().find(|c| c.call_id == *call_id) else {
+                    return false;
+                };
                 if call.accepted_device.is_none() {
                     call.accepted_device = event.device.clone();
                     call.accepted_at_ms = Some(event.at_ms);
@@ -177,11 +178,9 @@ impl State {
             CallSignal::End {
                 call_id, reason, ..
             } => {
-                let call = space
-                    .calls
-                    .iter_mut()
-                    .find(|c| c.call_id == *call_id)
-                    .expect("validated call");
+                let Some(call) = space.calls.iter_mut().find(|c| c.call_id == *call_id) else {
+                    return false;
+                };
                 if call.end_reason.is_none() {
                     call.ended_at_ms = Some(event.at_ms);
                     call.end_reason = Some(*reason);
@@ -191,6 +190,7 @@ impl State {
                     .retain(|record| record.signal.call_id != *call_id);
             }
         }
+        true
     }
 }
 

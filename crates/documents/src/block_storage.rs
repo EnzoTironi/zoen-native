@@ -17,9 +17,9 @@ fn text_of(m: &LoroMap) -> Option<LoroText> {
 }
 
 pub(super) fn write_block(m: &LoroMap, b: &Block, imported: bool) -> Result<(), DocError> {
+    let kind = serde_json::to_string(&b.kind).map_err(err)?;
     m.insert("id", b.id.as_str()).map_err(err)?;
-    m.insert("kind", serde_json::to_string(&b.kind).unwrap_or_default())
-        .map_err(err)?;
+    m.insert("kind", kind).map_err(err)?;
     if imported {
         m.insert("src", b.src.as_str()).map_err(err)?;
         m.insert("tail", b.tail.as_str()).map_err(err)?;
@@ -150,7 +150,7 @@ pub(super) fn char_marks(runs: &[Run]) -> HashMap<&'static str, Vec<Option<Strin
 }
 
 pub(super) fn apply_edit(m: &LoroMap, e: &BlockEdit) -> Result<(), DocError> {
-    let kind_json = serde_json::to_string(&e.kind).unwrap_or_default();
+    let kind_json = serde_json::to_string(&e.kind).map_err(err)?;
     if get_str(m, "kind") != kind_json {
         m.insert("kind", kind_json).map_err(err)?;
     }
@@ -173,13 +173,13 @@ pub(super) fn apply_edit(m: &LoroMap, e: &BlockEdit) -> Result<(), DocError> {
     for s in &e.spans {
         let a = u16_to_char(&e.text, s.start as usize).min(n);
         let z = u16_to_char(&e.text, s.end as usize).min(n);
-        if let Some((k, _)) = MARKS.iter().find(|(k, _)| *k == s.key) {
-            let v = if *k == "a" {
+        if let Some(slot) = want.get_mut(s.key.as_str()) {
+            let v = if s.key == "a" {
                 s.value.clone()
             } else {
                 "1".into()
             };
-            for x in &mut want.get_mut(k).unwrap()[a..z] {
+            for x in &mut slot[a..z] {
                 *x = Some(v.clone());
             }
         }

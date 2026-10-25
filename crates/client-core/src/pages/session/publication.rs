@@ -1,5 +1,6 @@
 //! Publication operations on the original `PageSession` state.
 
+use super::super::doc_err;
 use super::*;
 
 impl PageSession {
@@ -71,7 +72,7 @@ impl PageSession {
                     == shadow.semantic_hash().map_err(plan_error)?
             }
             (SessionDocument::BinaryPage(live), SessionDocument::BinaryPage(shadow)) => {
-                live.editor_content_eq(shadow)
+                live.editor_content_eq(shadow).map_err(doc_err)?
             }
             _ => return Err(invalid("session document kinds differ")),
         };
@@ -122,7 +123,7 @@ impl PageSession {
                 live.title(),
                 None,
                 None,
-                live.content_hash(),
+                live.content_hash().map_err(doc_err)?,
             ),
             _ => return Err(invalid("session document kinds differ")),
         };

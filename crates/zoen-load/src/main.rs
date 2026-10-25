@@ -141,7 +141,7 @@ async fn main() -> anyhow::Result<()> {
         .await?;
     let connect_secs = t0.elapsed().as_secs_f64();
     let cpu_connected = procfs::snapshot(&a.pids);
-    let mut handshake = histogram();
+    let mut handshake = histogram()?;
     let mut conns = Vec::with_capacity(opened.len());
     for (c, us) in opened {
         handshake.saturating_record(us.max(1));
@@ -175,8 +175,11 @@ async fn main() -> anyhow::Result<()> {
         groups.push(people.by_ref().take(a.group).collect());
     }
     if groups.len() > 1 && groups.last().is_some_and(|g| g.len() < 2) {
-        let lone = groups.pop().and_then(|mut g| g.pop());
-        groups.last_mut().unwrap().extend(lone);
+        let trailing = groups.pop().context("load trailing group missing")?;
+        groups
+            .last_mut()
+            .context("load preceding group missing")?
+            .extend(trailing);
     }
     let t1 = Instant::now();
     let formed: Vec<(String, Vec<Conn>)> = stream::iter(groups)
@@ -269,7 +272,7 @@ async fn main() -> anyhow::Result<()> {
     let cpu_end = procfs::snapshot(&a.pids);
     drop(senders);
 
-    let mut tally = Tally::new();
+    let mut tally = Tally::new()?;
     let mut failed = 0;
     for t in tasks {
         match t.await? {

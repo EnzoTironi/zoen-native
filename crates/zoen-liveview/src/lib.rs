@@ -34,6 +34,14 @@ pub enum Error {
     /// Not newer than the last accepted message.
     Replay,
     Malformed,
+    /// The operating system could not provide fresh randomness.
+    Entropy,
+    /// Session key derivation refused the output.
+    Derivation,
+    /// No unused sequence number remains.
+    Exhausted,
+    /// The authenticated cipher refused the plaintext.
+    Encryption,
 }
 
 impl std::fmt::Display for Error {
@@ -42,6 +50,10 @@ impl std::fmt::Display for Error {
             Error::Auth => "live view: authentication failed",
             Error::Replay => "live view: replayed or out-of-order message",
             Error::Malformed => "live view: malformed message",
+            Error::Entropy => "live view: randomness unavailable",
+            Error::Derivation => "live view: key derivation failed",
+            Error::Exhausted => "live view: sequence exhausted",
+            Error::Encryption => "live view: encryption failed",
         })
     }
 }
@@ -86,24 +98,23 @@ fn derive(
     vm_pub: &[u8; 32],
     device_pub: &[u8; 32],
     session: [u8; SESSION_ID_LEN],
-) -> SessionKeys {
+) -> Result<SessionKeys, Error> {
     let hk = Hkdf::<Sha256>::new(Some(VERSION), shared);
     let mut info = Vec::with_capacity(80);
     info.extend_from_slice(vm_pub);
     info.extend_from_slice(device_pub);
     info.extend_from_slice(&session);
     let mut okm = [0u8; 64];
-    hk.expand(&info, &mut okm)
-        .expect("64 bytes is a valid HKDF length");
+    hk.expand(&info, &mut okm).map_err(|_| Error::Derivation)?;
     let mut frames = [0u8; 32];
     let mut input = [0u8; 32];
     frames.copy_from_slice(&okm[..32]);
     input.copy_from_slice(&okm[32..]);
-    SessionKeys {
+    Ok(SessionKeys {
         session,
         frames,
         input,
-    }
+    })
 }
 
 /// What the VM sends the device to open a session (in the clear: public values only).
@@ -114,18 +125,31 @@ pub struct Offer {
 }
 
 /// VM side: a fresh key per session, agreed with the device's public key.
-pub fn vm_start(device_pub: &[u8; 32]) -> (Offer, SessionKeys) {
+///
+/// # Errors
+/// Refuses unavailable entropy, noncontributory peer keys, or failed key derivation.
+pub fn vm_start(device_pub: &[u8; 32]) -> Result<(Offer, SessionKeys), Error> {
+    vm_start_with(device_pub, getrandom::getrandom)
+}
+
+fn vm_start_with(
+    device_pub: &[u8; 32],
+    mut fill: impl FnMut(&mut [u8]) -> Result<(), getrandom::Error>,
+) -> Result<(Offer, SessionKeys), Error> {
     let mut seed = [0u8; 32];
-    getrandom::getrandom(&mut seed).expect("os randomness");
+    fill(&mut seed).map_err(|_| Error::Entropy)?;
     let mut session = [0u8; SESSION_ID_LEN];
-    getrandom::getrandom(&mut session).expect("os randomness");
+    fill(&mut session).map_err(|_| Error::Entropy)?;
     // Used once and dropped at the end of this function (an ephemeral key; x25519-dalek's
     // EphemeralSecret type needs a rand_core RNG, which getrandom stands in for here).
     let secret = StaticSecret::from(seed);
     let vm_pub = PublicKey::from(&secret).to_bytes();
     let shared = secret.diffie_hellman(&PublicKey::from(*device_pub));
-    let keys = derive(shared.as_bytes(), &vm_pub, device_pub, session);
-    (Offer { vm_pub, session }, keys)
+    if !shared.was_contributory() {
+        return Err(Error::Auth);
+    }
+    let keys = derive(shared.as_bytes(), &vm_pub, device_pub, session)?;
+    Ok((Offer { vm_pub, session }, keys))
 }
 
 /// The owner's device key.
@@ -134,15 +158,26 @@ pub struct DeviceKey {
 }
 
 impl DeviceKey {
-    pub fn generate() -> Self {
+    /// Creates a fresh device key from operating-system randomness.
+    ///
+    /// # Errors
+    /// Returns [`Error::Entropy`] if the operating system cannot fill the secret.
+    pub fn generate() -> Result<Self, Error> {
+        Self::generate_with(getrandom::getrandom)
+    }
+
+    fn generate_with(
+        fill: impl FnOnce(&mut [u8]) -> Result<(), getrandom::Error>,
+    ) -> Result<Self, Error> {
         let mut seed = [0u8; 32];
-        getrandom::getrandom(&mut seed).expect("os randomness");
-        DeviceKey {
+        fill(&mut seed).map_err(|_| Error::Entropy)?;
+        Ok(DeviceKey {
             secret: StaticSecret::from(seed),
-        }
+        })
     }
 
     /// The same key again, from the secret half kept in the device's keychain.
+    #[must_use]
     pub fn from_secret(secret: [u8; 32]) -> Self {
         DeviceKey {
             secret: StaticSecret::from(secret),
@@ -150,17 +185,25 @@ impl DeviceKey {
     }
 
     /// The secret half, to keep in the device's keychain (never leaves the device).
+    #[must_use]
     pub fn secret(&self) -> [u8; 32] {
         self.secret.to_bytes()
     }
 
+    #[must_use]
     pub fn public(&self) -> [u8; 32] {
         PublicKey::from(&self.secret).to_bytes()
     }
 
     /// Device side of [`vm_start`].
-    pub fn accept(&self, offer: &Offer) -> SessionKeys {
+    ///
+    /// # Errors
+    /// Refuses noncontributory peer keys or failed key derivation.
+    pub fn accept(&self, offer: &Offer) -> Result<SessionKeys, Error> {
         let shared = self.secret.diffie_hellman(&PublicKey::from(offer.vm_pub));
+        if !shared.was_contributory() {
+            return Err(Error::Auth);
+        }
         derive(
             shared.as_bytes(),
             &offer.vm_pub,
@@ -193,18 +236,20 @@ impl SessionKeys {
         }
     }
 
+    #[must_use]
     pub fn sealer(&self, dir: Direction) -> Sealer {
         Sealer {
-            aead: ChaCha20Poly1305::new_from_slice(self.key(dir)).expect("32-byte key"),
+            aead: ChaCha20Poly1305::new(self.key(dir).into()),
             session: self.session,
             dir,
             next: 1,
         }
     }
 
+    #[must_use]
     pub fn opener(&self, dir: Direction) -> Opener {
         Opener {
-            aead: ChaCha20Poly1305::new_from_slice(self.key(dir)).expect("32-byte key"),
+            aead: ChaCha20Poly1305::new(self.key(dir).into()),
             session: self.session,
             dir,
             last: 0,
@@ -221,9 +266,15 @@ pub struct Sealer {
 }
 
 impl Sealer {
-    pub fn seal(&mut self, plaintext: &[u8]) -> Vec<u8> {
+    /// Encrypts the next envelope and advances its nonce only after success.
+    /// Sequence `u64::MAX` is reserved as the exhausted terminal state.
+    ///
+    /// # Errors
+    /// Returns [`Error::Exhausted`] at the terminal counter or [`Error::Encryption`]
+    /// when the cipher refuses the plaintext. Either failure preserves the counter.
+    pub fn seal(&mut self, plaintext: &[u8]) -> Result<Vec<u8>, Error> {
         let seq = self.next;
-        self.next += 1;
+        let next = self.next.checked_add(1).ok_or(Error::Exhausted)?;
         let ct = self
             .aead
             .encrypt(
@@ -233,11 +284,12 @@ impl Sealer {
                     aad: &aad(&self.session, self.dir, seq),
                 },
             )
-            .expect("chacha20poly1305 encryption does not fail");
+            .map_err(|_| Error::Encryption)?;
         let mut out = Vec::with_capacity(8 + ct.len());
         out.extend_from_slice(&seq.to_be_bytes());
         out.extend_from_slice(&ct);
-        out
+        self.next = next;
+        Ok(out)
     }
 }
 
@@ -250,11 +302,16 @@ pub struct Opener {
 }
 
 impl Opener {
+    /// Authenticates a newer envelope, updating the replay cursor only on success.
+    ///
+    /// # Errors
+    /// Refuses malformed, replayed, unauthenticated, or foreign-session envelopes.
     pub fn open(&mut self, sealed: &[u8]) -> Result<Vec<u8>, Error> {
         if sealed.len() < 8 + 16 {
             return Err(Error::Malformed);
         }
-        let seq = u64::from_be_bytes(sealed[..8].try_into().unwrap());
+        let (prefix, ciphertext) = sealed.split_first_chunk::<8>().ok_or(Error::Malformed)?;
+        let seq = u64::from_be_bytes(*prefix);
         if seq <= self.last {
             return Err(Error::Replay);
         }
@@ -263,7 +320,7 @@ impl Opener {
             .decrypt(
                 &nonce(seq),
                 Payload {
-                    msg: &sealed[8..],
+                    msg: ciphertext,
                     aad: &aad(&self.session, self.dir, seq),
                 },
             )
@@ -272,6 +329,7 @@ impl Opener {
         Ok(pt)
     }
 
+    #[must_use]
     pub fn last_seq(&self) -> u64 {
         self.last
     }
@@ -297,34 +355,34 @@ pub enum InputEvent {
 mod tests {
     use super::*;
 
-    fn pair() -> (SessionKeys, SessionKeys) {
-        let device = DeviceKey::generate();
-        let (offer, vm) = vm_start(&device.public());
-        (vm, device.accept(&offer))
+    fn pair() -> Result<(SessionKeys, SessionKeys), Error> {
+        let device = DeviceKey::generate()?;
+        let (offer, vm) = vm_start(&device.public())?;
+        Ok((vm, device.accept(&offer)?))
     }
 
     #[test]
     fn frames_reach_the_device_and_input_reaches_the_vm() {
-        let (vm, dev) = pair();
+        let (vm, dev) = pair().unwrap();
         let mut s = vm.sealer(Direction::Frames);
         let mut o = dev.opener(Direction::Frames);
-        let f = s.seal(b"\xff\xd8jpeg");
+        let f = s.seal(b"\xff\xd8jpeg").unwrap();
         assert!(!f.windows(4).any(|w| w == b"jpeg"));
         assert_eq!(o.open(&f).unwrap(), b"\xff\xd8jpeg");
 
         let ev = serde_json::to_vec(&InputEvent::Done).unwrap();
         let mut up = dev.sealer(Direction::Input);
         let mut down = vm.opener(Direction::Input);
-        assert_eq!(down.open(&up.seal(&ev)).unwrap(), ev);
+        assert_eq!(down.open(&up.seal(&ev).unwrap()).unwrap(), ev);
     }
 
     #[test]
     fn replays_reflections_and_other_sessions_are_refused() {
-        let (vm, dev) = pair();
+        let (vm, dev) = pair().unwrap();
         let mut up = dev.sealer(Direction::Input);
         let mut down = vm.opener(Direction::Input);
-        let m1 = up.seal(b"one");
-        let m2 = up.seal(b"two");
+        let m1 = up.seal(b"one").unwrap();
+        let m2 = up.seal(b"two").unwrap();
         assert_eq!(down.open(&m2).unwrap(), b"two");
         // Older than the last accepted, or the same one again.
         assert_eq!(down.open(&m1), Err(Error::Replay));
@@ -332,19 +390,19 @@ mod tests {
         // A frame (other direction) presented as input.
         let mut frames = vm.sealer(Direction::Frames);
         for _ in 0..5 {
-            frames.seal(b"x");
+            frames.seal(b"x").unwrap();
         }
-        assert_eq!(down.open(&frames.seal(b"x")), Err(Error::Auth));
+        assert_eq!(down.open(&frames.seal(b"x").unwrap()), Err(Error::Auth));
         // Another session's input.
-        let (vm2, dev2) = pair();
+        let (vm2, dev2) = pair().unwrap();
         let _ = vm2;
         let mut other = dev2.sealer(Direction::Input);
         for _ in 0..9 {
-            other.seal(b"x");
+            other.seal(b"x").unwrap();
         }
-        assert_eq!(down.open(&other.seal(b"x")), Err(Error::Auth));
+        assert_eq!(down.open(&other.seal(b"x").unwrap()), Err(Error::Auth));
         // A flipped bit.
-        let mut m3 = up.seal(b"three");
+        let mut m3 = up.seal(b"three").unwrap();
         let n = m3.len();
         m3[n - 1] ^= 1;
         assert_eq!(down.open(&m3), Err(Error::Auth));
@@ -353,14 +411,19 @@ mod tests {
 
     #[test]
     fn someone_without_the_device_key_derives_nothing_useful() {
-        let device = DeviceKey::generate();
-        let (offer, vm) = vm_start(&device.public());
-        let impostor = DeviceKey::generate();
-        let wrong = impostor.accept(&offer);
+        let device = DeviceKey::generate().unwrap();
+        let (offer, vm) = vm_start(&device.public()).unwrap();
+        let impostor = DeviceKey::generate().unwrap();
+        let wrong = impostor.accept(&offer).unwrap();
         let mut s = vm.sealer(Direction::Frames);
         assert_eq!(
-            wrong.opener(Direction::Frames).open(&s.seal(b"frame")),
+            wrong
+                .opener(Direction::Frames)
+                .open(&s.seal(b"frame").unwrap()),
             Err(Error::Auth)
         );
     }
 }
+
+#[cfg(test)]
+mod integrity_tests;

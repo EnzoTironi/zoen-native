@@ -1,8 +1,8 @@
 //! MLS device, roster and ready-epoch projections.
 use super::{
-    fold_roster, fork_meta, mls_err, state_key, t, tracing_like, BTreeMap, BTreeSet, Connection,
-    CoreError, Device, Engine, Event, EventBody, IdentityId, Privacy, Role, SealedKind, SpaceId,
-    SpaceKind, META_PUBLISHED, R,
+    fold_roster, fork_meta, mls_err, state_key, storage, t, tracing_like, BTreeMap, BTreeSet,
+    Connection, CoreError, Device, Engine, Event, EventBody, IdentityId, Privacy, Role, SealedKind,
+    SpaceId, SpaceKind, META_PUBLISHED, R,
 };
 
 /// Closed readiness facts, shared with the normal sealing gate. No keys or IDs.
@@ -45,7 +45,14 @@ impl Engine {
             });
         };
         let secret = author.key.secret();
-        Device::new(conn, state_key(&secret), &acct.identity, secret, &acct.cert).map_err(mls_err)
+        Device::new(
+            conn,
+            state_key(&secret).map_err(storage)?,
+            &acct.identity,
+            secret,
+            &acct.cert,
+        )
+        .map_err(mls_err)
     }
 
     pub(crate) fn device(&self) -> R<Device<'_>> {
