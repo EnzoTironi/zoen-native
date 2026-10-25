@@ -312,6 +312,8 @@ export function fixture(kind: keyof typeof sources, overrides: Record<string, un
     // This fixture tests the existing profile surface; member controls have their own real-port suite.
     if (path.endsWith('communities/use-member-actions'))
       return { useMemberActions: () => ({ available: false, session: {}, state: {} }) };
+    if (path.endsWith('communities/member-addition-sheet'))
+      return { MemberAdditionSheet: 'MemberAdditionSheet' };
     if (path.endsWith('communities/member-actions-sheet'))
       return { MemberActionsSheet: 'MemberActionsSheet' };
     if (path.endsWith('components/primitives')) return primitives;

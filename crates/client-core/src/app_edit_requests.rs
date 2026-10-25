@@ -6,6 +6,10 @@ use crate::{
     CoreError, TimelineEntry,
 };
 use sha2::{Digest, Sha256};
+mod admission;
+mod sharing;
+pub(crate) use admission::AppEditConflictKind;
+
 use types::{ArtifactRequest, EventBody, ItemContent, ReplyRef};
 
 #[derive(serde::Serialize)]
@@ -14,8 +18,12 @@ pub(crate) struct AppEditRequestResult {
     pub entry: Option<TimelineEntry>,
     /// A definitive pre-publication conflict; the prompt remains editable.
     pub conflict: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "client-types", ts(optional))]
+    pub conflict_kind: Option<AppEditConflictKind>,
 }
 
+#[derive(Clone)]
 pub(crate) struct AppEditRequestInput {
     pub expected_identity_id: String,
     pub expected_device_id: String,
@@ -25,6 +33,7 @@ pub(crate) struct AppEditRequestInput {
     pub expected_sha256: String,
     pub text: String,
     pub mutation_id: String,
+    pub share_current: bool,
 }
 fn invalid() -> CoreError {
     CoreError::Invalid {
@@ -64,7 +73,7 @@ impl Engine {
             item_id: input.item_id.clone(),
             version: input.expected_version,
             sha256: input.expected_sha256.clone(),
-            request_id: input.mutation_id,
+            request_id: input.mutation_id.clone(),
             text_sha256: hex::encode(Sha256::digest(text.as_bytes())),
         };
         if !binding.is_well_formed() {
@@ -101,6 +110,7 @@ impl Engine {
                 || !reference.thread
                 || reference.to != root.id
                 || reference.artifact.as_ref() != Some(&binding)
+                || self.net.failed.contains_key(&entry.client_id)
             {
                 return Err(stale());
             }
@@ -122,63 +132,39 @@ impl Engine {
         {
             return Err(stale());
         }
-        let agents: Vec<_> = self
-            .space_state(&input.space_id)?
-            .members
-            .iter()
-            .filter_map(|(id, _)| {
-                (self.state.writer(&input.space_id, id)
-                    && self.identities.get(id).is_some_and(|profile| {
-                        profile.kind == types::IdentityKind::Agent
-                            && profile.owner.as_deref() == Some(&input.expected_identity_id)
-                            && event_log::agent_owner::profile_authorized(profile)
-                    }))
-                .then_some(id)
-            })
-            .collect();
-        if agents.is_empty() {
-            return Err(CoreError::Stale {
-                reason: t(
-                    "Adicione seu agente à conversa antes de pedir uma alteração.",
-                    "Add your agent to this conversation before requesting an edit.",
-                ),
-            });
-        }
-        // A canonical role can precede a usable KeyPackage/Welcome. One actual
-        // owned MLS reader is enough; another pending owned agent must not block it.
-        if self.is_e2e(&input.space_id)
-            && !self
-                .mls_status(&input.space_id)
-                .is_some_and(|(_, _, members)| agents.iter().any(|id| members.contains(id)))
-        {
-            return Err(CoreError::Stale {
-                reason: t(
-                    "Aguarde a entrada do seu agente na conversa.",
-                    "Wait for your agent to join this conversation.",
-                ),
-            });
-        }
-        let message = types::new_id("msg");
-        let appended = self.append(
-            &input.space_id,
-            &input.expected_identity_id,
-            EventBody::AppEditRequested {
-                message,
-                text: text.into(),
-                reply: ReplyRef {
-                    to: root.id,
-                    thread: true,
-                    artifact: Some(binding),
+        let target = self
+            .ready_owned_app_agent(&input.space_id, &input.expected_identity_id)
+            .map_err(|kind| CoreError::Stale {
+                reason: kind.message(),
+            })?;
+        self.atomic_agent_action(|engine| {
+            if input.share_current {
+                engine.share_app_for_request(&input, &binding, &target)?;
+            }
+            let message = types::new_id("msg");
+            let appended = engine.append(
+                &input.space_id,
+                &input.expected_identity_id,
+                EventBody::AppEditRequested {
+                    message,
+                    text: text.into(),
+                    reply: ReplyRef {
+                        to: root.id,
+                        thread: true,
+                        artifact: Some(binding),
+                    },
                 },
-            },
-        )?;
-        self.space_state(&input.space_id)?
-            .entries
-            .iter()
-            .find(|entry| {
-                matches!(&entry.body, EntryBody::Message { .. }) && entry.id() == appended.client_id
-            })
-            .map(|entry| self.entry_dto(entry))
-            .ok_or_else(invalid)
+            )?;
+            engine
+                .space_state(&input.space_id)?
+                .entries
+                .iter()
+                .find(|entry| {
+                    matches!(&entry.body, EntryBody::Message { .. })
+                        && entry.id() == appended.client_id
+                })
+                .map(|entry| engine.entry_dto(entry))
+                .ok_or_else(invalid)
+        })
     }
 }

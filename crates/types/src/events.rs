@@ -45,6 +45,11 @@ pub enum EventBody {
         text: String,
         reply: ReplyRef,
     },
+    /// A new reader receives only this explicitly shared current App state.
+    /// Older consumers retain the whole variant as Unsupported, including grant.
+    AppCurrentShared {
+        share: Box<crate::AppCurrentShare>,
+    },
     /// Closed v1 signaling; carried inside MLS for an encrypted person-to-person DM.
     CallV1 {
         signal: crate::calls::CallSignal,

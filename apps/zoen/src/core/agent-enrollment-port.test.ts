@@ -45,7 +45,7 @@ function deferred<T>() {
   });
   return { promise, resolve };
 }
-function fixture() {
+function fixture(spaceId?: string) {
   const state = {
     phase: 'ready',
     mode: 'account',
@@ -70,11 +70,14 @@ function fixture() {
     calls.push({ kind, command });
     return (await handler(command)) as CommandResult<C>;
   };
-  const port = createEnrollmentPort({
-    driver: { request: <C extends Command>(command: C) => run('read', command) } as any,
-    request: <C extends Command>(command: C) => run('refresh', command),
-    getSnapshot: () => state,
-  });
+  const port = createEnrollmentPort(
+    {
+      driver: { request: <C extends Command>(command: C) => run('read', command) } as any,
+      request: <C extends Command>(command: C) => run('refresh', command),
+      getSnapshot: () => state,
+    },
+    spaceId,
+  );
   return {
     port,
     state,
@@ -230,4 +233,49 @@ test('explicit dismissal uses the exact receipt/digest CAS without granting, rev
       },
     },
   ]);
+});
+
+test('embedded registration uses scoped proof-filtered candidates instead of an unscoped profile lookup', async () => {
+  const f = fixture('conversation');
+  const person = {
+    id: review.agent,
+    kind: 'Agent',
+    handle: review.handle,
+    owner_id: scope.owner,
+    is_mine: true,
+  } as Persona;
+  f.handle(async (command) =>
+    command.op === 'find_member_candidates'
+      ? [{ owned_agent: true, member: null, candidate: person }]
+      : command.op === 'agent_status'
+        ? 'Active'
+        : null,
+  );
+  assert.equal(await f.port.registration(review, scope), 'Active');
+  assert.deepEqual(f.calls[0], {
+    kind: 'read',
+    command: {
+      op: 'find_member_candidates',
+      space_id: 'conversation',
+      query: review.handle,
+      expected_identity_id: scope.owner,
+      expected_device_id: scope.device,
+      owned_agents_only: true,
+    },
+  });
+  assert.equal(
+    f.calls.some((c) => c.command.op === 'find_people'),
+    false,
+  );
+});
+
+test('embedded registration refuses a late owned lookup after device change before agent status', async () => {
+  const f = fixture('conversation'),
+    pending = deferred<unknown>();
+  f.handle(async () => pending.promise);
+  const reading = f.port.registration(review, scope);
+  f.state.snapshot!.account!.device_id = 'replacement';
+  pending.resolve([]);
+  await assert.rejects(reading);
+  assert.equal(f.calls.length, 1);
 });

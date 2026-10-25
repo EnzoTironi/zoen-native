@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 test(
   'actual Swift scroll metrics preserve no-op reads, ordering, coalescing and retirement',
-  { skip: process.platform !== 'darwin', timeout: 60_000 },
+  { skip: process.platform !== 'darwin', timeout: 150_000 },
   () => {
     const directory = mkdtempSync(join(tmpdir(), 'zoen-scroll-metrics-'));
     try {
@@ -28,13 +28,15 @@ test(
           '6',
           '-strict-concurrency=complete',
           '-warnings-as-errors',
+          '-j',
+          '1',
           '-module-cache-path',
           join(directory, 'module-cache'),
           ...files,
           '-o',
           binary,
         ],
-        { env: { ...process.env, SDKROOT: sdk }, timeout: 40_000 },
+        { env: { ...process.env, SDKROOT: sdk }, timeout: 120_000 },
       );
       const result = execFileSync(binary, [], { encoding: 'utf8', timeout: 10_000 });
       assert.match(

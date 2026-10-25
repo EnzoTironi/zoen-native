@@ -9,6 +9,25 @@ impl Client {
     ) -> Result<String, CoreError> {
         use Command::*;
         match command {
+            AppCurrentShareContext { scope } => encode(&self.app_current_share_context(scope)?),
+            ShareAppCurrent {
+                context,
+                mutation_id,
+            } => {
+                use crate::app_current_share::AppShareResult;
+                let result = match self.share_app_current(context, &mutation_id) {
+                    Ok(receipt) => AppShareResult {
+                        receipt: Some(receipt),
+                        conflict: None,
+                    },
+                    Err(CoreError::Stale { reason }) => AppShareResult {
+                        receipt: None,
+                        conflict: Some(reason),
+                    },
+                    Err(error) => return Err(error),
+                };
+                encode(&result)
+            }
             StartOwnerPolicyDirect {
                 expected_identity_id,
                 expected_device_id,
@@ -193,33 +212,18 @@ impl Client {
                 expected_sha256,
                 text,
                 mutation_id,
-            } => {
-                let result =
-                    self.lock()
-                        .request_app_edit(crate::app_edit_requests::AppEditRequestInput {
-                            expected_identity_id,
-                            expected_device_id,
-                            space_id,
-                            item_id,
-                            expected_version,
-                            expected_sha256,
-                            text,
-                            mutation_id,
-                        });
-                match result {
-                    Ok(entry) => encode(&crate::app_edit_requests::AppEditRequestResult {
-                        entry: Some(entry),
-                        conflict: None,
-                    }),
-                    Err(CoreError::Stale { reason }) => {
-                        encode(&crate::app_edit_requests::AppEditRequestResult {
-                            entry: None,
-                            conflict: Some(reason),
-                        })
-                    }
-                    Err(error) => Err(error),
-                }
-            }
+                share_current,
+            } => self.request_app_edit_bridge(crate::app_edit_requests::AppEditRequestInput {
+                expected_identity_id,
+                expected_device_id,
+                space_id,
+                item_id,
+                expected_version,
+                expected_sha256,
+                text,
+                mutation_id,
+                share_current: share_current.unwrap_or(false),
+            }),
             SendMessage {
                 space_id,
                 text,
@@ -310,6 +314,36 @@ impl Client {
                 space_id,
                 identity_id,
             } => encode(&self.add_member(space_id, identity_id)?),
+            FindMemberCandidates {
+                space_id,
+                query,
+                expected_identity_id,
+                expected_device_id,
+                owned_agents_only,
+            } => encode(
+                &self
+                    .find_member_candidates(
+                        &space_id,
+                        &query,
+                        &expected_identity_id,
+                        &expected_device_id,
+                        owned_agents_only.unwrap_or(false),
+                    )
+                    .await?,
+            ),
+            AddMemberReviewed {
+                space_id,
+                identity_id,
+                expected_identity_id,
+                expected_device_id,
+                observed_revision,
+            } => encode(&self.lock().add_member_reviewed(
+                &space_id,
+                &identity_id,
+                &expected_identity_id,
+                &expected_device_id,
+                &observed_revision,
+            )?),
             AddAdmin {
                 space_id,
                 identity_id,

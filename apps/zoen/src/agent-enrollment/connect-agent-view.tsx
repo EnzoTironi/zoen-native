@@ -10,6 +10,8 @@ import { useTheme } from '../theme';
 import type { EnrollmentState } from './session';
 
 export type ConnectAgentViewProps = {
+  embedded?: boolean;
+  profileLabel?: string;
   state: EnrollmentState;
   availability: 'ready' | 'loading' | 'restore-error' | 'account-required' | 'unsupported';
   scannerAvailable: boolean;
@@ -38,13 +40,8 @@ export function ConnectAgentView(props: ConnectAgentViewProps) {
     Keyboard.dismiss();
     props.onCheck();
   };
-  return (
-    <SettingsScreen
-      title={t('agentEnrollment.connect')}
-      testID="agent-enrollment-screen"
-      keyboardShouldPersistTaps="always"
-      automaticallyAdjustKeyboardInsets
-    >
+  const contents = (
+    <>
       {unavailable ? (
         props.availability === 'loading' ? (
           <Loading label={t('agentEnrollment.checking')} />
@@ -196,7 +193,7 @@ export function ConnectAgentView(props: ConnectAgentViewProps) {
                   }
                   label={
                     state.phase === 'registered'
-                      ? t('agentEnrollment.profile')
+                      ? (props.profileLabel ?? t('agentEnrollment.profile'))
                       : state.reconciling
                         ? t('agentEnrollment.statusChecking')
                         : t('agentEnrollment.status')
@@ -326,6 +323,20 @@ export function ConnectAgentView(props: ConnectAgentViewProps) {
           <NativeButton secondary label={t('agentEnrollment.cancel')} onPress={props.onDismiss} />
         </>
       )}
+    </>
+  );
+  return props.embedded ? (
+    <View testID="agent-enrollment-screen" style={{ gap: 24 }}>
+      {contents}
+    </View>
+  ) : (
+    <SettingsScreen
+      title={t('agentEnrollment.connect')}
+      testID="agent-enrollment-screen"
+      keyboardShouldPersistTaps="always"
+      automaticallyAdjustKeyboardInsets
+    >
+      {contents}
     </SettingsScreen>
   );
 }

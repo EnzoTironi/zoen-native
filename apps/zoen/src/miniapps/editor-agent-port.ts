@@ -1,13 +1,15 @@
-import type { ClientStore } from '../core/store';
+import type { ClientState, ClientStore } from '../core/store';
 import { accountScope, accountScopeKey } from '../core/account-scope.ts';
 import { homeSpacesFor } from '../home/access.ts';
 import type { MiniappDocumentController } from './document-controller';
 import type { EditorAgentPort } from './editor-agent-session';
 
-export function editorAgentScope(store: ClientStore, spaceId: string) {
-  return homeSpacesFor(store.getSnapshot()).has(spaceId)
-    ? accountScopeKey(accountScope(store))
-    : '';
+export function editorAgentScope(
+  store: ClientStore,
+  spaceId: string,
+  observed: ClientState = store.getSnapshot(),
+) {
+  return homeSpacesFor(observed).has(spaceId) ? accountScopeKey(accountScope(store, observed)) : '';
 }
 export function editorAgentPort(
   store: ClientStore,
@@ -69,19 +71,19 @@ export function editorAgentPort(
     },
     replies: async (sourceId) => {
       check();
-      const page = await store.driver.request({
-        op: 'timeline',
+      const entries = await store.driver.request({
+        op: 'thread',
         space_id: spaceId,
-        before: null,
-        limit: 200,
+        root_id: sourceId,
       });
       check();
-      return page.entries.filter((entry) => entry.reply_to?.id === sourceId);
+      return entries;
     },
     send: async (text, head, mutation_id) => {
       const scope = check();
       const result = await store.request({
         op: 'request_app_edit',
+        share_current: true,
         expected_identity_id: scope.identity,
         expected_device_id: scope.device,
         space_id: spaceId,

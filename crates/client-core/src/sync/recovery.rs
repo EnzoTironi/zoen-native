@@ -95,6 +95,7 @@ impl Engine {
                     | EventBody::MemberAdded { .. }
                     | EventBody::MemberRemoved { .. }
                     | EventBody::GrantIssued { .. }
+                    | EventBody::AppCurrentShared { .. }
                     | EventBody::GrantRevoked { .. }
                     | EventBody::ItemCreated { .. }
                     | EventBody::ItemVersioned { .. }
@@ -249,7 +250,13 @@ impl Engine {
                     };
                     // Preserve normal replay for text and canonical non-File
                     // cards. Recovery reservations still fence the checked fold.
-                    if !retained && matches!(e.body, EventBody::MessagePosted { media: None, .. }) {
+                    if !retained
+                        && matches!(
+                            e.body,
+                            EventBody::MessagePosted { media: None, .. }
+                                | EventBody::AppEditRequested { .. }
+                        )
+                    {
                         let context = plans.pending(scoped, &self.identities, e)?;
                         scoped.apply_checked(e, &self.identities, &context);
                     } else if !matches!(e.body, EventBody::MessagePosted { .. }) {

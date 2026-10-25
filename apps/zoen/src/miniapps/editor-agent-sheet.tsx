@@ -1,12 +1,11 @@
 import * as Crypto from 'expo-crypto';
 import { BottomSheet, Host, RNHostView } from '@expo/ui';
-import { useEffect, useMemo, useSyncExternalStore } from 'react';
-import { AppState, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { AppState, Keyboard, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { RequestCard } from '../agents/request-card';
-import { IconButton, Loading, NativeButton } from '../components/primitives';
-import { MessageMarkdown } from '../components/message-markdown';
-import { ComposerTextField } from '../components/composer-text-field';
+import { IconButton } from '../components/primitives';
+import { useMemberActions } from '../communities/use-member-actions';
+import { MemberAdditionContent } from '../communities/member-addition-sheet';
 import { useClient } from '../core/provider';
 import { t } from '../i18n';
 import { useTheme } from '../theme';
@@ -14,8 +13,12 @@ import { useAppSheetCloseButton } from './app-sheet-context';
 import type { MiniappDocumentController } from './document-controller';
 import { editorAgentPort, editorAgentScope } from './editor-agent-port';
 import { EditorAgentSession } from './editor-agent-session';
+import { EditorAgentContent } from './editor-agent-content';
+import { EditorAgentEnrollment } from './editor-agent-enrollment';
+import { editorAgentAdmission } from './editor-agent-admission';
 
-/** A state-presented native sheet; the sibling editor/route never changes identity. */
+type Pane = 'prompt' | 'members' | 'enrollment';
+/** State-presented content changes never replace the sibling document or its session. */
 export function EditorAgentAccess({
   itemId,
   spaceId,
@@ -25,12 +28,16 @@ export function EditorAgentAccess({
   spaceId: string;
   document: MiniappDocumentController;
 }) {
-  const { store } = useClient();
+  const client = useClient();
+  const { store } = client;
   const { scheme, colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const chrome = useAppSheetCloseButton();
-  const owner = editorAgentScope(store, spaceId);
+  const owner = editorAgentScope(store, spaceId, client);
+  const [pane, setPane] = useState<Pane>('prompt');
+  const [enrollmentOpened, setEnrollmentOpened] = useState(false);
+  const members = useMemberActions(spaceId, true);
   const session = useMemo(
     () =>
       new EditorAgentSession(
@@ -42,6 +49,28 @@ export function EditorAgentAccess({
     [store, itemId, spaceId, document, owner],
   );
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
+  const ticket = session.ticket(state);
+  const memberTicket = members.addition.ticket(members.additionState);
+  const admission = editorAgentAdmission(members.additionState);
+  const navigate = (next: Pane) => {
+    if (!session.accepts(ticket)) return;
+    Keyboard.dismiss();
+    session.renewTicket();
+    if (next === 'members') {
+      members.addition.open(memberTicket, true);
+    }
+    if (next !== 'members') {
+      members.addition.close(memberTicket, true);
+      void members.addition.refresh();
+    }
+    if (next === 'enrollment') setEnrollmentOpened(true);
+    setPane(next);
+  };
+  const close = () => {
+    if (!session.accepts(ticket)) return;
+    members.addition.close(memberTicket, true);
+    session.close();
+  };
   useEffect(() => {
     session.activate();
     const stop = store.subscribe(() => {
@@ -60,6 +89,7 @@ export function EditorAgentAccess({
       session.retire();
     };
   }, [store, spaceId, owner, session]);
+  const visiblePane = state.visible ? pane : 'prompt';
   return (
     <>
       <View
@@ -76,7 +106,11 @@ export function EditorAgentAccess({
           name={{ ios: 'sparkles', android: 'auto_awesome', web: 'auto_awesome' }}
           label={t('miniapps.askAgent')}
           disabled={!owner || state.visible}
-          onPress={session.open}
+          onPress={() => {
+            setPane('prompt');
+            session.open();
+            void members.addition.refresh();
+          }}
         />
       </View>
       <Host
@@ -88,116 +122,94 @@ export function EditorAgentAccess({
         <BottomSheet
           testID="editor-agent-sheet"
           isPresented={state.visible}
-          onDismiss={session.close}
+          onDismiss={close}
           snapPoints={['half', 'full']}
           containerColor={colors.background}
         >
           <RNHostView>
-            <ScrollView
-              contentInsetAdjustmentBehavior="automatic"
-              onAccessibilityEscape={session.close}
-              keyboardShouldPersistTaps="handled"
-              automaticallyAdjustKeyboardInsets
-              contentContainerStyle={{ padding: 20, gap: 16, paddingBottom: 32 }}
-            >
-              <View style={{ alignItems: 'flex-end' }}>
-                <IconButton
-                  name={{ ios: 'xmark', android: 'close', web: 'close' }}
-                  label={t('common.close')}
-                  onPress={session.close}
+            <View style={{ flex: 1 }}>
+              <View
+                style={{ flex: 1, display: visiblePane === 'prompt' ? 'flex' : 'none' }}
+                accessibilityElementsHidden={visiblePane !== 'prompt'}
+                importantForAccessibility={
+                  visiblePane === 'prompt' ? 'auto' : 'no-hide-descendants'
+                }
+              >
+                <EditorAgentContent
+                  session={session}
+                  state={state}
+                  ticket={ticket}
+                  itemId={itemId}
+                  width={width}
+                  admission={admission}
+                  hasAgents={members.additionState.allResults.length > 0}
+                  onClose={() => {
+                    if (session.accepts(ticket)) close();
+                  }}
+                  onAdd={() =>
+                    navigate(members.additionState.allResults.length ? 'members' : 'enrollment')
+                  }
+                  onRefresh={() => {
+                    if (session.accepts(ticket)) void members.addition.refresh();
+                  }}
+                  onSend={() => {
+                    if (
+                      !session.accepts(ticket) ||
+                      (!session.getSnapshot().uncertain &&
+                        editorAgentAdmission(members.addition.getSnapshot()) !== 'ready')
+                    )
+                      return;
+                    void session.send(ticket).then(() => {
+                      if (
+                        session.getSnapshot().conflictKind === 'MissingOwnedAgent' ||
+                        session.getSnapshot().conflictKind === 'WaitingForMls'
+                      )
+                        void members.addition.refresh();
+                    });
+                  }}
                 />
               </View>
-              <ComposerTextField
-                context={`editor-agent:${itemId}`}
-                testID="editor-agent-prompt"
-                accessibilityLabel={t('miniapps.editRequestPlaceholder')}
-                placeholder={t('miniapps.editRequestPlaceholder')}
-                value={state.draft}
-                onChangeText={session.setDraft}
-                multiline
-                maxLength={4000}
-                editable={!state.busy && !state.uncertain}
-                style={{
-                  minHeight: 72,
-                  fontSize: 17,
-                  color: colors.text,
-                  backgroundColor: colors.surface,
-                  borderRadius: 12,
-                  padding: 14,
-                }}
-              />
-              <NativeButton
-                testID="editor-agent-send"
-                label={state.uncertain ? t('miniapps.tryAgain') : t('miniapps.askAgent')}
-                disabled={state.busy || !state.draft.trim()}
-                onPress={() => {
-                  void session.send();
-                }}
-              />
-              {state.uncertain ? (
-                <Text selectable style={{ color: colors.secondary }}>
-                  {t('miniapps.editRequestUncertain')}
-                </Text>
-              ) : null}
-              {state.error ? (
-                <Text accessibilityRole="alert" selectable style={{ color: colors.danger }}>
-                  {state.error.startsWith('editor_agent_')
-                    ? t('miniapps.theMiniappCouldNotCompleteThisAction')
-                    : state.error}
-                </Text>
-              ) : null}
-              {state.sent ? (
-                <Text
-                  accessibilityLiveRegion="polite"
-                  selectable
-                  style={{ color: colors.secondary }}
+              <View
+                style={{ flex: 1, display: visiblePane === 'members' ? 'flex' : 'none' }}
+                accessibilityElementsHidden={visiblePane !== 'members'}
+                importantForAccessibility={
+                  visiblePane === 'members' ? 'auto' : 'no-hide-descendants'
+                }
+              >
+                <MemberAdditionContent
+                  session={members.addition}
+                  state={members.additionState}
+                  inlineConfirmation
+                  title={t('miniapps.addOwnAgent')}
+                  onBack={() => navigate('prompt')}
+                  onClose={() => {
+                    if (session.accepts(ticket)) close();
+                  }}
+                />
+              </View>
+              {enrollmentOpened ? (
+                <View
+                  style={{ flex: 1, display: visiblePane === 'enrollment' ? 'flex' : 'none' }}
+                  accessibilityElementsHidden={visiblePane !== 'enrollment'}
+                  importantForAccessibility={
+                    visiblePane === 'enrollment' ? 'auto' : 'no-hide-descendants'
+                  }
                 >
-                  {t('miniapps.editRequestSent')}
-                </Text>
+                  <EditorAgentEnrollment
+                    key={owner}
+                    spaceId={spaceId}
+                    active={state.visible && visiblePane === 'enrollment'}
+                    allowed={() => session.accepts(ticket) && pane === 'enrollment'}
+                    onBack={() => navigate('prompt')}
+                    onContinue={() => {
+                      navigate('members');
+                      void members.addition.refresh();
+                    }}
+                    onClose={close}
+                  />
+                </View>
               ) : null}
-              {state.sent && 'Message' in state.sent.kind ? (
-                <MessageMarkdown
-                  text={state.sent.kind.Message.text}
-                  color={colors.secondary}
-                  fontSize={16}
-                  maxWidth={Math.max(180, width - 40)}
-                  selectable
-                />
-              ) : null}
-              {state.replies.map((entry) =>
-                'Message' in entry.kind ? (
-                  <View key={entry.id} style={{ gap: 6 }}>
-                    <Text style={{ color: colors.secondary, fontWeight: '600' }}>
-                      {entry.author.name}
-                    </Text>
-                    <MessageMarkdown
-                      text={entry.kind.Message.text}
-                      color={colors.text}
-                      fontSize={17}
-                      maxWidth={Math.max(180, width - 40)}
-                      selectable
-                    />
-                  </View>
-                ) : null,
-              )}
-              {state.loading ? <Loading /> : null}
-              {state.requests.map((request) => (
-                <RequestCard
-                  key={request.id}
-                  request={request}
-                  embedded
-                  disabled={state.busy}
-                  onResolved={() => {
-                    void session.refresh();
-                  }}
-                  onDecision={(command) => {
-                    if (command.op !== 'decide_tool_request')
-                      return Promise.reject(Error('editor_agent_review_changed'));
-                    return session.decide(command);
-                  }}
-                />
-              ))}
-            </ScrollView>
+            </View>
           </RNHostView>
         </BottomSheet>
       </Host>

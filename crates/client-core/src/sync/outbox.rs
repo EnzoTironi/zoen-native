@@ -114,9 +114,10 @@ impl Engine {
         let mut forked = HashMap::new();
         let mut in_flight: HashMap<String, usize> = HashMap::new();
         for head in &heads {
-            if sent
-                .get(&head.client_id)
-                .is_some_and(|epoch| epoch.is_some())
+            if !head.failed
+                && sent
+                    .get(&head.client_id)
+                    .is_some_and(|epoch| epoch.is_some())
             {
                 *in_flight.entry(head.space.clone()).or_default() += 1;
             }
