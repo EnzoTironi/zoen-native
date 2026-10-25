@@ -86,6 +86,8 @@ export type CoreEvent =
 type Results = {
   space_member_context: SpaceMemberContext;
   remove_member_reviewed: SpaceMemberContext;
+  add_member_reviewed: SpaceMemberContext;
+  find_member_candidates: SpaceMemberContext[];
   start_owner_policy_direct: string;
   request_account_policy_options: OwnerPolicyOptionsStatus;
   find_account_policy_options: OwnerPolicyOptionsStatus | null;

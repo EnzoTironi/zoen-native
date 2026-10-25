@@ -2,6 +2,16 @@ import { defineFeature } from '../catalog.ts';
 
 export const community = defineFeature(
   {
+    add: 'Add participant',
+    addUnavailable: 'You can no longer add participants.',
+    addNamed: 'Add %{name}?',
+    addTo: 'Add to “%{title}”?',
+    adding: 'Addition pending',
+    added: 'Participant added',
+    alreadyMember: 'Already a participant',
+    addFailed: 'Could not add this participant. Your search is kept; try again.',
+    addRefused: 'Addition was refused. This person has not joined.',
+    searchFailed: 'Could not find participants. Try again.',
     member: 'Member',
     owner: 'Owner',
     admin: 'Administrator',
@@ -19,6 +29,16 @@ export const community = defineFeature(
       'Removal could not be confirmed. Check the current membership before trying again.',
   },
   {
+    add: 'Adicionar participante',
+    addUnavailable: 'Você não pode mais adicionar participantes.',
+    addNamed: 'Adicionar %{name}?',
+    addTo: 'Adicionar a “%{title}”?',
+    adding: 'Inclusão pendente',
+    added: 'Participante adicionado',
+    alreadyMember: 'Já participa',
+    addFailed: 'Não foi possível adicionar. Sua busca foi mantida; tente novamente.',
+    addRefused: 'Inclusão recusada. Esta pessoa não entrou na conversa.',
+    searchFailed: 'Não foi possível buscar participantes. Tente novamente.',
     member: 'Participante',
     owner: 'Proprietário',
     admin: 'Administrador',
