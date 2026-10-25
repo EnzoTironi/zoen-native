@@ -1,6 +1,6 @@
 import { t } from '../i18n/index.ts';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
-import { Host, Button } from '@expo/ui';
+import { Host, Button, Text as NativeText } from '@expo/ui';
 import { Image } from 'expo-image';
 import type { ReactNode } from 'react';
 import {
@@ -71,6 +71,7 @@ export function IconButton({
 }
 export function NativeButton({
   label,
+  wrapLabel = false,
   onPress,
   disabled = false,
   secondary = false,
@@ -83,17 +84,27 @@ export function NativeButton({
   secondary?: boolean;
   destructive?: boolean;
   testID?: string;
+  /** Constrain long content labels to the parent while allowing native height to grow. */
+  wrapLabel?: boolean;
 }) {
   const { presentation: p, scheme } = useTheme();
   return (
-    <Host matchContents colorScheme={scheme} seedColor={destructive ? p.destructive : p.accent}>
+    <Host
+      matchContents={wrapLabel ? { vertical: true } : true}
+      style={wrapLabel ? { alignSelf: 'stretch' } : undefined}
+      colorScheme={scheme}
+      seedColor={destructive ? p.destructive : p.accent}
+    >
       <Button
         testID={testID}
         label={label}
         onPress={onPress}
         disabled={disabled}
         variant={secondary ? 'outlined' : 'filled'}
-      />
+        style={wrapLabel ? { width: '100%' } : undefined}
+      >
+        {wrapLabel ? <NativeText textStyle={{ textAlign: 'center' }}>{label}</NativeText> : null}
+      </Button>
     </Host>
   );
 }
