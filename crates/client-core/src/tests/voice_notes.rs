@@ -71,12 +71,13 @@ fn unresolved_legacy_voice_markers_cannot_escape_their_source_chat_as_text() {
 
 #[test]
 fn forwarded_voice_survives_cold_reopen_and_a_destination_only_peer_decrypts_new_chunks() {
-    forwarding_recovery_cases::forwarded_voice_survives_cold_reopen_and_a_destination_only_peer_decrypts_new_chunks()
+    forwarding_recovery_cases::forwarded_voice_survives_cold_reopen_and_a_destination_only_peer_decrypts_new_chunks().unwrap()
 }
 
 #[test]
 fn another_author_or_a_removed_author_cannot_deduplicate_an_earlier_note() {
     author_admission_cases::another_author_or_a_removed_author_cannot_deduplicate_an_earlier_note()
+        .unwrap()
 }
 
 #[test]
@@ -97,17 +98,20 @@ fn renaming_voice_audio_keeps_metadata_but_replacing_bytes_invalidates_it() {
 #[test]
 fn voice_versions_and_reverts_are_author_only_locally_and_on_replay() {
     author_admission_cases::voice_versions_and_reverts_are_author_only_locally_and_on_replay()
+        .unwrap()
 }
 
 #[test]
 fn ordinary_files_stay_collaborative_but_only_the_author_can_make_them_voice() {
     presentation_cases::ordinary_files_stay_collaborative_but_only_the_author_can_make_them_voice()
+        .unwrap()
 }
 
 #[test]
 fn rejected_voice_sends_keep_their_audio_reply_and_delivery_error_after_reopen() {
     presentation_cases::rejected_voice_sends_keep_their_audio_reply_and_delivery_error_after_reopen(
     )
+    .unwrap()
 }
 
 #[test]
@@ -131,7 +135,8 @@ fn legacy_two_event_voice_replies_still_replay_once() {
 }
 
 #[test]
-fn voice_reply_syncs_its_metadata_and_encrypted_bytes_and_survives_replay() {
+fn voice_reply_syncs_its_metadata_and_encrypted_bytes_and_survives_replay(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     search_compatibility_cases::voice_reply_syncs_its_metadata_and_encrypted_bytes_and_survives_replay()
 }
 

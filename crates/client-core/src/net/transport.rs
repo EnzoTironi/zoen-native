@@ -1,6 +1,9 @@
 //! Socket I/O, reconnect outcomes and ordered publication writes.
 
-use super::*;
+use super::{
+    mpsc, session, tracing_like, ClientFrame, Cmd, ConnState, Ctx, Duration, ErrorCode, Exit,
+    HashMap, Identity, Message, Op, ServerFrame, Sink, SinkExt, Stream, StreamExt,
+};
 
 pub(super) async fn run(ctx: Ctx, mut cmd_rx: mpsc::UnboundedReceiver<Cmd>) {
     let mut backoff = Duration::from_millis(500);
@@ -38,7 +41,7 @@ pub(super) async fn run(ctx: Ctx, mut cmd_rx: mpsc::UnboundedReceiver<Cmd>) {
         tokio::pin!(sleep);
         loop {
             tokio::select! {
-                _ = &mut sleep, if !blocked => break,
+                () = &mut sleep, if !blocked => break,
                 cmd = cmd_rx.recv() => match cmd {
                     None | Some(Cmd::Stop) => { ctx.set(|s| s.state = ConnState::Offline); return }
                     Some(Cmd::Req { reply, .. }) => { let _ = reply.send(Err("offline".into())); }

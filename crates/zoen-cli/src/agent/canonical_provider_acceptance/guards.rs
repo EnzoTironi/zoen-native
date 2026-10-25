@@ -40,8 +40,9 @@ fn expected() -> Expected {
     }
 }
 #[test]
-fn one_attempt_marker_refuses_reentry_before_any_provider_setup() {
-    let path = std::env::temp_dir().join(types::new_id("canonical-provider-one-attempt"));
+fn one_attempt_marker_refuses_reentry_before_any_provider_setup(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let path = std::env::temp_dir().join(types::new_id("canonical-provider-one-attempt")?);
     std::fs::create_dir(&path).unwrap();
     mark_once(&path).unwrap();
     assert_eq!(
@@ -49,9 +50,11 @@ fn one_attempt_marker_refuses_reentry_before_any_provider_setup() {
         std::io::ErrorKind::AlreadyExists
     );
     std::fs::remove_dir_all(path).unwrap();
+    Ok(())
 }
 #[test]
-fn reservation_is_persisted_before_the_delegate_observes_the_request() {
+fn reservation_is_persisted_before_the_delegate_observes_the_request(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     struct ObservesReservation(std::path::PathBuf);
     impl DecisionProvider for ObservesReservation {
         fn name(&self) -> String {
@@ -67,7 +70,7 @@ fn reservation_is_persisted_before_the_delegate_observes_the_request() {
             Ok(DecisionResponse::default())
         }
     }
-    let path = std::env::temp_dir().join(types::new_id("canonical-provider-reservation"));
+    let path = std::env::temp_dir().join(types::new_id("canonical-provider-reservation")?);
     std::fs::create_dir(&path).unwrap();
     let budget = Budget::with_evidence(&path);
     BoundedClef {
@@ -77,10 +80,11 @@ fn reservation_is_persisted_before_the_delegate_observes_the_request() {
     .decide(&request())
     .unwrap();
     std::fs::remove_dir_all(path).unwrap();
+    Ok(())
 }
 #[tokio::test]
 async fn signed_fixture_transfer_uses_the_real_owner_command_and_recovers_the_same_approved_request(
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let crate::deckcraft::tests::Fixture {
         path,
         client,
@@ -89,7 +93,7 @@ async fn signed_fixture_transfer_uses_the_real_owner_command_and_recovers_the_sa
         owner,
         source,
         base,
-    } = crate::deckcraft::tests::fixture();
+    } = crate::deckcraft::tests::fixture()?;
     let account = client.account().unwrap();
     let space = client.item(base.item_id.clone()).unwrap().space_id;
     let turn = client
@@ -124,7 +128,7 @@ async fn signed_fixture_transfer_uses_the_real_owner_command_and_recovers_the_sa
         )
         .unwrap();
     drop(client);
-    approve_as_owner(&path, owner_vault, &space, &request).await;
+    approve_as_owner(&path, owner_vault, &space, &request).await?;
     let reopened = canonical_tool_approval_tests::reopen(&path, vault);
     let approved = reopened
         .requests()
@@ -145,6 +149,7 @@ async fn signed_fixture_transfer_uses_the_real_owner_command_and_recovers_the_sa
     );
     drop(reopened);
     std::fs::remove_dir_all(path).unwrap();
+    Ok(())
 }
 #[test]
 fn clef_concurrent_reservation_refuses_before_a_fifth_delegate() {
@@ -394,12 +399,13 @@ fn native_id_guard_rejects_unverified_head_artifact_engine_worker_and_read_shape
         .is_err());
 }
 #[tokio::test]
-async fn rejected_proposal_persists_only_reason_shape_flags_and_cumulative_counts() {
+async fn rejected_proposal_persists_only_reason_shape_flags_and_cumulative_counts(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let expected = expected();
     let read = verified_read(&expected);
     let mut candidate = native_write(&expected, json!(1));
     candidate.arguments["untrusted-key-DO_NOT_LOG"] = json!("untrusted-value-DO_NOT_LOG");
-    let path = std::env::temp_dir().join(types::new_id("redacted-provider-rejection"));
+    let path = std::env::temp_dir().join(types::new_id("redacted-provider-rejection")?);
     std::fs::create_dir(&path).unwrap();
     let budget = Budget::with_evidence(&path);
     let inner = zoen_agentd::citizen::testing::ControlledToolBrain {
@@ -430,14 +436,16 @@ async fn rejected_proposal_persists_only_reason_shape_flags_and_cumulative_count
     assert_eq!(value["trace"][1]["shape"]["calls"][0]["nativeSlideId"], 1);
     assert_eq!(value["trace"][1]["shape"]["readFirstNativeSlideId"], 257);
     std::fs::remove_dir_all(path).unwrap();
+    Ok(())
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "offline only; requires the actual operator-signed pinned WASI worker"]
-async fn native_slide_id_from_actual_signed_worker_is_admitted() {
+async fn native_slide_id_from_actual_signed_worker_is_admitted(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let worker = crate::deckcraft::configured()
         .unwrap()
         .expect("explicit signed worker required");
-    let fixture = crate::deckcraft::tests::fixture();
+    let fixture = crate::deckcraft::tests::fixture()?;
     let result = crate::deckcraft::tests::inspect(&fixture, &worker).await;
     assert_eq!(result["slides"][0]["id"], json!(257));
     let expected = Expected {
@@ -465,4 +473,5 @@ async fn native_slide_id_from_actual_signed_worker_is_admitted() {
         admitted.is_ok(),
         "the verified native first-slide ID must be admitted: {admitted:?}"
     );
+    Ok(())
 }

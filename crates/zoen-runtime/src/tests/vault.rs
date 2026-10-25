@@ -5,8 +5,8 @@ use std::{fs, path::PathBuf};
 
 pub(super) struct Vault(PathBuf);
 impl Vault {
-    pub(super) fn new() -> Arc<Self> {
-        let path = std::env::temp_dir().join(types::new_id("runtime-vault-test"));
+    pub(super) fn new() -> std::result::Result<Arc<Self>, Box<dyn std::error::Error>> {
+        let path = std::env::temp_dir().join(types::new_id("runtime-vault-test")?);
         let mut builder = fs::DirBuilder::new();
         #[cfg(unix)]
         {
@@ -14,7 +14,7 @@ impl Vault {
             builder.mode(0o700);
         }
         builder.create(&path).unwrap();
-        Arc::new(Self(path))
+        Ok(Arc::new(Self(path)))
     }
 }
 impl SecretVault for Vault {

@@ -1,6 +1,11 @@
 //! Copies on the original Engine and canonical document state.
 
-use super::*;
+use super::{
+    hash, invalid, json, metadata, new_id, stale, storage, t, unavailable, valid_hash, valid_id,
+    validate_scene, AppDoc, AppDocumentDto, BTreeSet, Capability, CopyReceipt, Engine, EventBody,
+    Grant, GrantScope, HashMap, ItemContent, ItemKind, Scene, TrustLevel, Value, MAX_RECEIPTS,
+    MIME, R,
+};
 
 impl Engine {
     /// Copy is an explicit conflict recovery action, never an automatic overwrite.
@@ -48,8 +53,9 @@ impl Engine {
             let accepted = self
                 .item_state(&r.item_id)?
                 .versions
-                .first()
-                .and_then(|v| v.content.owned_file())
+                .initial()
+                .content
+                .owned_file()
                 .filter(|f| f.sha256 == sha && f.sha256 == r.sha256)
                 .ok_or_else(storage)?;
             if accepted_space != space {
@@ -150,7 +156,10 @@ impl Engine {
         caption: &str,
         item_id: Option<String>,
     ) -> R<String> {
-        let item = item_id.unwrap_or_else(|| new_id("it"));
+        let item = match item_id {
+            Some(item) => item,
+            None => new_id("it")?,
+        };
         let key = self.file_key(None)?;
         let file = self.file_doc(
             space,
@@ -186,7 +195,7 @@ impl Engine {
             me,
             EventBody::GrantIssued {
                 grant: Grant {
-                    id: new_id("gr"),
+                    id: new_id("gr")?,
                     grantor: me.into(),
                     grantee: Some(format!("app:{item}")),
                     scope: GrantScope::Item(item.clone()),
@@ -199,7 +208,7 @@ impl Engine {
             space,
             me,
             EventBody::MessagePosted {
-                message: new_id("msg"),
+                message: new_id("msg")?,
                 text: caption.into(),
                 attaches: Some(item.clone()),
                 reply: None,

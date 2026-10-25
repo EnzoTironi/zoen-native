@@ -325,7 +325,10 @@ async fn main() {
         if relay.is_some() || e.account().is_some() {
             let _ = e.growth_sync(relay, false, 0, 0).await;
         }
-        let p = e.growth_onboarding_plan();
+        let p = match e.growth_onboarding_plan() {
+            Ok(plan) => plan,
+            Err(error) => die(error),
+        };
         println!("flow={}", p.flow);
         println!("steps={}", p.steps.join(","));
         println!("landing={}", p.landing);

@@ -2,8 +2,9 @@
 
 use super::*;
 
-pub(super) fn accepted_cold_retry_returns_same_entries_and_preserves_a_newer_unsent_selection() {
-    let dir = temp();
+pub(super) fn accepted_cold_retry_returns_same_entries_and_preserves_a_newer_unsent_selection(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = temp()?;
     let path = dir.join("device.sqlite");
     let f = fixture(path.to_str().unwrap());
     let draft = save(
@@ -59,6 +60,8 @@ pub(super) fn accepted_cold_retry_returns_same_entries_and_preserves_a_newer_uns
     );
     drop(e);
     std::fs::remove_dir_all(dir).unwrap();
+
+    Ok(())
 }
 
 pub(super) fn accepted_retry_precedes_changed_writer_reply_and_clear_retains_receipt() {

@@ -1,6 +1,10 @@
 //! Publication operations on the original Engine state.
 
-use super::*;
+use super::{
+    invalid, invalid_file, new_id, t, CoreError, Digest, Engine, EventBody, FileAddInput, Sha256,
+    TimelineEntry, VoiceMeta, VoiceNoteDto, MAX_FILE_BYTES, MAX_FILE_CAPTION_BYTES,
+    MAX_THUMBNAIL_BYTES, R,
+};
 
 /// Validated by the normal file-send boundary. A fixed ID is an optional Rust
 /// creation fence; it grants no authority and cannot replace an existing Item.
@@ -217,7 +221,7 @@ impl Engine {
                 space,
                 &me,
                 EventBody::MessagePosted {
-                    message: new_id("msg"),
+                    message: new_id("msg")?,
                     text: caption.to_string(),
                     attaches: Some(item),
                     reply,
@@ -369,7 +373,7 @@ impl Engine {
                 to_space,
                 &me,
                 EventBody::MessagePosted {
-                    message: new_id("msg"),
+                    message: new_id("msg")?,
                     text: caption.to_string(),
                     attaches: Some(item),
                     reply: None,

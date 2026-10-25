@@ -266,16 +266,32 @@ impl Device {
     }
 }
 
-fn signed(author: &Author, space: &str, seen: Option<Seen>, body: EventBody) -> Envelope {
-    Envelope::plain(&author.sign_event(space, &types::new_id("cid"), 0, seen, body))
+fn signed(
+    author: &Author,
+    space: &str,
+    seen: Option<Seen>,
+    body: EventBody,
+) -> std::result::Result<Envelope, Box<dyn std::error::Error>> {
+    Ok(Envelope::plain(&author.sign_event(
+        space,
+        &types::new_id("cid")?,
+        0,
+        seen,
+        body,
+    )?)?)
 }
-fn message(author: &Author, space: &str, seen: &Seen, text: &str) -> Envelope {
+fn message(
+    author: &Author,
+    space: &str,
+    seen: &Seen,
+    text: &str,
+) -> std::result::Result<Envelope, Box<dyn std::error::Error>> {
     signed(
         author,
         space,
         Some(seen.clone()),
         EventBody::MessagePosted {
-            message: types::new_id("m"),
+            message: types::new_id("m")?,
             text: text.into(),
             attaches: None,
             reply: None,
@@ -309,12 +325,15 @@ async fn wait_owner(db: &Database, root: &Subspace, space: &str, owner: &str) ->
     .await
     .expect("ownership converged")
 }
-fn choose_space(preferred: &str, live: &[String]) -> String {
+fn choose_space(
+    preferred: &str,
+    live: &[String],
+) -> std::result::Result<String, Box<dyn std::error::Error>> {
     let owned = ownership::owned_partitions(preferred, live).unwrap();
     loop {
-        let space = types::new_id("sp");
+        let space = types::new_id("sp")?;
         if owned.contains(&ownership::partition_of(&space)) {
-            return space;
+            return Ok(space);
         }
     }
 }
@@ -336,8 +355,8 @@ async fn current_hash(db: &Database, root: &Subspace, space: &str) -> String {
     .unwrap()
 }
 
-async fn transaction_conflict() {
-    let cell = types::new_id("t");
+async fn transaction_conflict() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let cell = types::new_id("t")?;
     let cluster = std::env::var("FDB_CLUSTER_FILE").unwrap();
     let db = Arc::new(Database::new(Some(&cluster)).unwrap());
     let root = Subspace::all().subspace(&("zoen", &cell));
@@ -355,7 +374,7 @@ async fn transaction_conflict() {
         Duration::from_secs(30),
     )
     .unwrap();
-    let space = choose_space("beta", &["alpha".into(), "beta".into()]);
+    let space = choose_space("beta", &["alpha".into(), "beta".into()])?;
     a.maintain().await.unwrap();
     let initial = current(&db, &root, &space).await;
     let old = db.create_trx().unwrap();
@@ -423,14 +442,17 @@ async fn transaction_conflict() {
     println!(
         "ok  a transaction admitted before takeover cannot commit after the generation changes"
     );
+    Ok(())
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let network = unsafe { foundationdb::boot() };
     tokio::runtime::Runtime::new().unwrap().block_on(async {
-        journey().await;
-        transaction_conflict().await;
-        registry::run().await;
-    });
+        journey().await?;
+        transaction_conflict().await?;
+        registry::run().await?;
+        Ok::<(), Box<dyn std::error::Error>>(())
+    })?;
     drop(network);
+    Ok(())
 }

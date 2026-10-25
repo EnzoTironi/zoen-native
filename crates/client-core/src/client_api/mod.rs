@@ -1,6 +1,6 @@
 //! The application boundary for the shared Expo client.
 //!
-//! Native adapters own the engine and SecretVault. JavaScript can request domain
+//! Native adapters own the engine and `SecretVault`. JavaScript can request domain
 //! operations, never private keys, database paths, or arbitrary native execution.
 //! Every mutation below goes through the same engine methods as the native apps.
 

@@ -137,11 +137,17 @@ fn row_order_and_unique_keys_are_checked_across_page_boundaries() {
     }
 }
 #[test]
-fn large_device_directory_is_complete_but_the_operational_profile_is_finite() {
+fn large_device_directory_is_complete_but_the_operational_profile_is_finite(
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut a = assembly(Kind::Devices);
     let mut digest = Vec::new();
     for n in 0..DEVICE_ROWS / PAGE_ROWS {
-        let mut p = page(Kind::Devices, n as u32, ((n + 1) * PAGE_ROWS) as u32, false);
+        let mut p = page(
+            Kind::Devices,
+            u32::try_from(n)?,
+            u32::try_from((n + 1) * PAGE_ROWS)?,
+            false,
+        );
         p.devices = (n * PAGE_ROWS..(n + 1) * PAGE_ROWS)
             .map(|i| Device {
                 device: format!("{i:064x}"),
@@ -154,20 +160,22 @@ fn large_device_directory_is_complete_but_the_operational_profile_is_finite() {
     }
     let mut extra = page(
         Kind::Devices,
-        (DEVICE_ROWS / PAGE_ROWS) as u32,
-        (DEVICE_ROWS + 1) as u32,
+        u32::try_from(DEVICE_ROWS / PAGE_ROWS)?,
+        u32::try_from(DEVICE_ROWS + 1)?,
         true,
     );
     extra.devices.push(Device {
-        device: format!("{:064x}", DEVICE_ROWS),
+        device: format!("{DEVICE_ROWS:064x}"),
         revoked: false,
     });
     assert_eq!(a.accept(seal(extra, &digest)), Err(PROFILE_EXCEEDED));
     assert!(a.finish().is_err());
+    Ok(())
 }
 #[test]
-fn query_page_and_encoding_limits_are_independent_of_total_assembly() {
-    let mut oversized = page(Kind::AgentState, 0, (PAGE_ROWS + 1) as u32, true);
+fn query_page_and_encoding_limits_are_independent_of_total_assembly(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut oversized = page(Kind::AgentState, 0, u32::try_from(PAGE_ROWS + 1)?, true);
     oversized.cursors = (0..=PAGE_ROWS)
         .map(|n| Cursor {
             space: format!("sp_{n:04}"),
@@ -193,6 +201,7 @@ fn query_page_and_encoding_limits_are_independent_of_total_assembly() {
         ..Request::begin(Kind::Devices)
     }
     .valid());
+    Ok(())
 }
 
 #[test]

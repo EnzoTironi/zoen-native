@@ -137,7 +137,7 @@ impl Engine {
                 "Made the list “{title}”. Check off what you’re bringing."
             ),
         };
-        let item = new_id("it");
+        let item = new_id("it")?;
         let doc = self.attach_app_document(space, &item, doc)?;
         let proposal = ItemProposal {
             item,
@@ -276,7 +276,7 @@ impl Engine {
         };
         let (title, state) = apps::create_as(spec.id, &args, &creator, now_ms())
             .map_err(|reason| CoreError::Invalid { reason })?;
-        let item = new_id("it");
+        let item = new_id("it")?;
         let document = self.attach_app_document(
             space,
             &item,
@@ -303,7 +303,7 @@ impl Engine {
             &me,
             EventBody::GrantIssued {
                 grant: Grant {
-                    id: new_id("gr"),
+                    id: new_id("gr")?,
                     grantor: me.clone(),
                     grantee: Some(format!("app:{item}")),
                     scope: GrantScope::Item(item.clone()),

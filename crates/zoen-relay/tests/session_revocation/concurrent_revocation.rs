@@ -1,11 +1,13 @@
 use super::*;
 
-async fn stalled_operation_revocation(publish: bool) {
-    let test = TestRelay::new().await;
+async fn stalled_operation_revocation(
+    publish: bool,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let test = TestRelay::new().await?;
     let (state, log, ws_url) = (&test.state, &test.log, &test.ws_url);
-    let root = Signer::generate();
-    let first = Author::device(&root, Signer::generate());
-    let lost = Author::device(&root, Signer::generate());
+    let root = Signer::generate()?;
+    let first = Author::device(&root, Signer::generate()?);
+    let lost = Author::device(&root, Signer::generate()?);
     let mut controller = connect(ws_url, &first).await;
     send(
         &mut controller,
@@ -35,9 +37,13 @@ async fn stalled_operation_revocation(publish: bool) {
             break;
         }
     }
-    request(&mut controller, 3, link_op(&lost, &Signer::generate().id()))
-        .await
-        .unwrap();
+    request(
+        &mut controller,
+        3,
+        link_op(&lost, &Signer::generate()?.id()),
+    )
+    .await
+    .unwrap();
     let mut target = connect(ws_url, &lost).await;
     let operation = if publish {
         ClientFrame::Publish {
@@ -51,7 +57,7 @@ async fn stalled_operation_revocation(publish: bool) {
                     kind: types::SpaceKind::Group,
                     privacy: types::Privacy::Closed,
                 },
-            )),
+            )?)?,
         }
     } else {
         ClientFrame::Sync {
@@ -128,15 +134,20 @@ async fn stalled_operation_revocation(publish: bool) {
     }
     let _ = controller.close(None).await;
     test.close().await;
+    Ok(())
 }
 
 /// A stalled bounded presence lookup must not consume the login/frame budget.
 #[tokio::test]
-async fn a_stalled_sync_cannot_block_online_device_revocation() {
-    stalled_operation_revocation(false).await;
+async fn a_stalled_sync_cannot_block_online_device_revocation(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    stalled_operation_revocation(false).await?;
+    Ok(())
 }
 
 #[tokio::test]
-async fn an_admitted_queued_publish_can_finish_without_blocking_revocation() {
-    stalled_operation_revocation(true).await;
+async fn an_admitted_queued_publish_can_finish_without_blocking_revocation(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    stalled_operation_revocation(true).await?;
+    Ok(())
 }

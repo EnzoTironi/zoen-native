@@ -2,12 +2,13 @@
 
 use super::*;
 
-pub(super) fn media_contract_permanent_file_refusal_fails_dependents_and_releases_later_heads() {
+pub(super) fn media_contract_permanent_file_refusal_fails_dependents_and_releases_later_heads(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for (grouping, ids) in [("separate", vec!["a"]), ("grouped", vec!["a", "b"])] {
-        let dir = temp();
+        let dir = temp()?;
         let path = dir.join("terminal-file.sqlite");
         let f = fixture(path.to_str().unwrap());
-        media_contract_confirm_scope(&f);
+        media_contract_confirm_scope(&f)?;
         let draft = save(
             &f,
             "0",
@@ -102,17 +103,21 @@ pub(super) fn media_contract_permanent_file_refusal_fails_dependents_and_release
         drop(reopened);
         std::fs::remove_dir_all(dir).unwrap();
     }
+    Ok(())
 }
 
-pub(super) fn media_contract_refused_duplicate_creation_cannot_poison_confirmed_file_reference() {
+pub(super) fn media_contract_refused_duplicate_creation_cannot_poison_confirmed_file_reference(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for presentation in ["media", "file"] {
-        media_contract_refused_duplicate_creation(presentation);
+        media_contract_refused_duplicate_creation(presentation)?;
     }
+    Ok(())
 }
 
-pub(super) fn media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped() {
+pub(super) fn media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let f = fixture(":memory:");
-    media_contract_confirm_scope(&f);
+    media_contract_confirm_scope(&f)?;
     let draft = save(
         &f,
         "0",
@@ -161,7 +166,7 @@ pub(super) fn media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped
         .unwrap()
         .event
         .client_id;
-    media_contract_confirm_id(&f, &first_file);
+    media_contract_confirm_id(&f, &first_file)?;
     let original = f
         .engine
         .lock()
@@ -174,7 +179,7 @@ pub(super) fn media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped
         .lock()
         .author_for(&f.scope.expected_identity_id)
         .unwrap();
-    let foreign = event_log::Author::root(event_log::Signer::generate());
+    let foreign = event_log::Author::root(event_log::Signer::generate()?);
     let identity_secret: [u8; 32] = f
         .vault
         .load(crate::sync::VAULT_IDENTITY.into())
@@ -183,7 +188,7 @@ pub(super) fn media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped
         .unwrap();
     let sibling = event_log::Author::device(
         &event_log::Signer::from_secret(&identity_secret),
-        event_log::Signer::generate(),
+        event_log::Signer::generate()?,
     );
     let mut unrelated = Vec::new();
     // Authenticated negative fixtures deliberately do not represent authorized local sends.
@@ -194,11 +199,11 @@ pub(super) fn media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped
     ] {
         let event = author.sign_event(
             space,
-            &types::new_id("unrelated"),
+            &types::new_id("unrelated")?,
             original.at_ms + 10,
             None,
             original.body.clone(),
-        );
+        )?;
         f.engine.lock().store.outbox_put(&event).unwrap();
         unrelated.push(event.client_id);
     }
@@ -222,11 +227,11 @@ pub(super) fn media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped
         }
         let mut event = own.sign_event(
             &f.scope.space_id,
-            &types::new_id("drift"),
+            &types::new_id("drift")?,
             original.at_ms + 11,
             None,
             body,
-        );
+        )?;
         if drift == "signature" {
             event.sig.push('x');
         }
@@ -313,4 +318,5 @@ pub(super) fn media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped
         assert_eq!(entry.delivery, crate::Delivery::Failed);
         assert_eq!(entry.media, original.media);
     }
+    Ok(())
 }

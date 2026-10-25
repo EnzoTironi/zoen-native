@@ -16,7 +16,7 @@ fn snapshot_at(fixture: &Fixture, end: usize) -> (PlanFold, u32) {
 
 #[test]
 fn bounded_prefix_excludes_a_later_cutover_and_late_legacy_write() {
-    let mut fixture = Fixture::new();
+    let mut fixture = Fixture::new().unwrap();
     let before_end = frontier(&fixture);
     let (before, before_number) = snapshot_at(&fixture, before_end);
     let manifest = before.manifest().unwrap();
@@ -30,14 +30,17 @@ fn bounded_prefix_excludes_a_later_cutover_and_late_legacy_write() {
             ..Default::default()
         },
     );
-    let canonical =
-        fixture.ordered(fixture.version(ItemContent::Page(page(manifest.clone(), &document))));
+    let canonical = fixture
+        .ordered(fixture.version(ItemContent::Page(page(manifest.clone(), &document))))
+        .unwrap();
     let canonical_end = frontier(&fixture);
     let late_document = PlanDoc {
         summary: "Late legacy overwrite".into(),
         ..original()
     };
-    let late = fixture.ordered(fixture.version(ItemContent::Plan(late_document.clone())));
+    let late = fixture
+        .ordered(fixture.version(ItemContent::Plan(late_document.clone())))
+        .unwrap();
 
     let (historical, number) = snapshot_at(&fixture, before_end);
     assert_eq!(number, before_number);
@@ -85,12 +88,14 @@ fn bounded_prefix_excludes_a_later_cutover_and_late_legacy_write() {
 
 #[test]
 fn prefix_roster_checks_use_membership_at_each_ordered_event() {
-    let mut fixture = Fixture::new();
+    let mut fixture = Fixture::new().unwrap();
     let member = add_identity(&mut fixture.engine, "Historical member");
-    fixture.ordered(EventBody::MemberAdded {
-        identity: member.clone(),
-        role: Role::Reader,
-    });
+    fixture
+        .ordered(EventBody::MemberAdded {
+            identity: member.clone(),
+            role: Role::Reader,
+        })
+        .unwrap();
     let baseline = fixture.fold();
     let document = edited(
         baseline.document.as_ref().unwrap(),
@@ -100,17 +105,25 @@ fn prefix_roster_checks_use_membership_at_each_ordered_event() {
         },
     );
     let content = page(baseline.manifest().unwrap(), &document);
-    let reader = fixture.ordered_as(&member, fixture.version(ItemContent::Page(content.clone())));
+    let reader = fixture
+        .ordered_as(&member, fixture.version(ItemContent::Page(content.clone())))
+        .unwrap();
     let reader_end = frontier(&fixture);
-    fixture.ordered(EventBody::MemberAdded {
-        identity: member.clone(),
-        role: Role::Member,
-    });
-    let accepted = fixture.ordered_as(&member, fixture.version(ItemContent::Page(content)));
+    fixture
+        .ordered(EventBody::MemberAdded {
+            identity: member.clone(),
+            role: Role::Member,
+        })
+        .unwrap();
+    let accepted = fixture
+        .ordered_as(&member, fixture.version(ItemContent::Page(content)))
+        .unwrap();
     let accepted_end = frontier(&fixture);
-    fixture.ordered(EventBody::MemberRemoved {
-        identity: member.clone(),
-    });
+    fixture
+        .ordered(EventBody::MemberRemoved {
+            identity: member.clone(),
+        })
+        .unwrap();
     let later_document = edited(
         &document,
         LinePatch {
@@ -118,13 +131,15 @@ fn prefix_roster_checks_use_membership_at_each_ordered_event() {
             ..Default::default()
         },
     );
-    let removed = fixture.ordered_as(
-        &member,
-        fixture.version(ItemContent::Page(page(
-            baseline.manifest().unwrap(),
-            &later_document,
-        ))),
-    );
+    let removed = fixture
+        .ordered_as(
+            &member,
+            fixture.version(ItemContent::Page(page(
+                baseline.manifest().unwrap(),
+                &later_document,
+            ))),
+        )
+        .unwrap();
 
     let (read_only, number) = snapshot_at(&fixture, reader_end);
     assert_eq!(number, 2);
@@ -160,20 +175,26 @@ fn prefix_roster_checks_use_membership_at_each_ordered_event() {
 
 #[test]
 fn ui_overlay_keeps_version_addresses_after_invalid_undo_and_duplicate_creation() {
-    let mut fixture = Fixture::new();
-    fixture.ordered(fixture.undo(99));
+    let mut fixture = Fixture::new().unwrap();
+    fixture.ordered(fixture.undo(99)).unwrap();
     let reader = add_identity(&mut fixture.engine, "Reader");
-    fixture.ordered(EventBody::MemberAdded {
-        identity: reader.clone(),
-        role: Role::Reader,
-    });
-    fixture.ordered_as(&reader, fixture.version(ItemContent::Plan(original())));
-    fixture.ordered(EventBody::ItemCreated {
-        item: fixture.item.clone(),
-        kind: ItemKind::Plan,
-        content: ItemContent::Plan(original()),
-        origin: "Duplicate creation".into(),
-    });
+    fixture
+        .ordered(EventBody::MemberAdded {
+            identity: reader.clone(),
+            role: Role::Reader,
+        })
+        .unwrap();
+    fixture
+        .ordered_as(&reader, fixture.version(ItemContent::Plan(original())))
+        .unwrap();
+    fixture
+        .ordered(EventBody::ItemCreated {
+            item: fixture.item.clone(),
+            kind: ItemKind::Plan,
+            content: ItemContent::Plan(original()),
+            origin: "Duplicate creation".into(),
+        })
+        .unwrap();
     let end = frontier(&fixture);
     let stored = fixture.engine.store.events(&fixture.space).unwrap();
     let (confirmed, number) = snapshot_at(&fixture, end);
@@ -240,12 +261,14 @@ fn ui_overlay_keeps_version_addresses_after_invalid_undo_and_duplicate_creation(
 
 #[test]
 fn bounded_fold_never_reads_payloads_beyond_its_frontier() {
-    let mut fixture = Fixture::new();
+    let mut fixture = Fixture::new().unwrap();
     let member = add_identity(&mut fixture.engine, "Removed writer");
-    fixture.ordered(EventBody::MemberAdded {
-        identity: member.clone(),
-        role: Role::Member,
-    });
+    fixture
+        .ordered(EventBody::MemberAdded {
+            identity: member.clone(),
+            role: Role::Member,
+        })
+        .unwrap();
     let baseline = fixture.fold();
     let document = edited(
         baseline.document.as_ref().unwrap(),
@@ -256,24 +279,34 @@ fn bounded_fold_never_reads_payloads_beyond_its_frontier() {
     );
     let valid = page(baseline.manifest().unwrap(), &document);
     let before_end = frontier(&fixture);
-    fixture.ordered(fixture.version(ItemContent::Page(valid.clone())));
+    fixture
+        .ordered(fixture.version(ItemContent::Page(valid.clone())))
+        .unwrap();
     let valid_end = frontier(&fixture);
     let mut wrong_manifest = baseline.manifest().unwrap();
     wrong_manifest.space = "wrong-space".into();
-    fixture.ordered(fixture.version(ItemContent::Page(PageContent {
-        manifest: Some(PageManifest::PlanV1(wrong_manifest)),
-        ..valid.clone()
-    })));
-    fixture.ordered(EventBody::MemberRemoved {
-        identity: member.clone(),
-    });
-    fixture.ordered_as(&member, fixture.version(ItemContent::Page(valid.clone())));
+    fixture
+        .ordered(fixture.version(ItemContent::Page(PageContent {
+            manifest: Some(PageManifest::PlanV1(wrong_manifest)),
+            ..valid.clone()
+        })))
+        .unwrap();
+    fixture
+        .ordered(EventBody::MemberRemoved {
+            identity: member.clone(),
+        })
+        .unwrap();
+    fixture
+        .ordered_as(&member, fixture.version(ItemContent::Page(valid.clone())))
+        .unwrap();
     let refused_end = frontier(&fixture);
     let malformed = PageContent {
         loro: "invalid base64!!!".into(),
         ..valid.clone()
     };
-    fixture.ordered(fixture.version(ItemContent::Page(malformed.clone())));
+    fixture
+        .ordered(fixture.version(ItemContent::Page(malformed.clone())))
+        .unwrap();
     let malformed_end = frontier(&fixture);
     let bytes = document.full_update().to_json().unwrap();
     let missing = PageContent {
@@ -286,7 +319,9 @@ fn bounded_fold_never_reads_payloads_beyond_its_frontier() {
         }),
         ..valid.clone()
     };
-    fixture.ordered(fixture.version(ItemContent::Page(missing.clone())));
+    fixture
+        .ordered(fixture.version(ItemContent::Page(missing.clone())))
+        .unwrap();
     let missing_end = frontier(&fixture);
     let stored = fixture.engine.store.events(&fixture.space).unwrap();
     for (end, expected) in [
@@ -330,12 +365,12 @@ fn bounded_fold_never_reads_payloads_beyond_its_frontier() {
 
 #[test]
 fn wrong_space_or_unavailable_prefix_cannot_borrow_future_history() {
-    let mut fixture = Fixture::new();
-    let other = Fixture::new();
+    let mut fixture = Fixture::new().unwrap();
+    let other = Fixture::new().unwrap();
     let end = frontier(&fixture);
     let stored = fixture.engine.store.events(&fixture.space).unwrap();
     let other_stored = other.engine.store.events(&other.space).unwrap();
-    let pending_item = new_id("pending-origin");
+    let pending_item = new_id("pending-origin").unwrap();
     fixture.queue(EventBody::ItemCreated {
         item: pending_item.clone(),
         kind: ItemKind::Plan,

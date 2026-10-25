@@ -110,6 +110,7 @@ impl Engine {
                 || !reference.thread
                 || reference.to != root.id
                 || reference.artifact.as_ref() != Some(&binding)
+                || self.net.failed.contains_key(&entry.client_id)
             {
                 return Err(stale());
             }
@@ -140,7 +141,7 @@ impl Engine {
             if input.share_current {
                 engine.share_app_for_request(&input, &binding, &target)?;
             }
-            let message = types::new_id("msg");
+            let message = types::new_id("msg")?;
             let appended = engine.append(
                 &input.space_id,
                 &input.expected_identity_id,

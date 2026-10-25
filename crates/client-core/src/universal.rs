@@ -3,10 +3,12 @@
 
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use types::*;
+use types::{BackgroundSpec, EventBody, IdentityKind, ItemContent, ItemKind};
 
 use crate::apps;
-use crate::dto::*;
+use crate::dto::{
+    BackgroundDto, MediaRefDto, MessageSearchPage, TimelineEntry, UniversalHit, UniversalResults,
+};
 use crate::engine::{now_ms, Engine, Entry, EntryBody, R};
 use crate::i18n::t;
 use crate::CoreError;
@@ -235,7 +237,7 @@ impl Engine {
             }
         }
         for it in self.state.items.values() {
-            let v = it.versions.last().expect("item sempre tem v1");
+            let v = it.versions.current();
             let plan = if it.kind == ItemKind::Plan {
                 match self.plan_snapshot(&it.id) {
                     Ok(plan) => Some(plan),

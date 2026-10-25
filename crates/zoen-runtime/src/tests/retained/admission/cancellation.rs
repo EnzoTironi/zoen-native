@@ -1,20 +1,22 @@
 use super::*;
 
-pub(super) async fn run() {
-    Box::pin(no_reservation_creates_no_fake_finance()).await;
-    Box::pin(valid_holder_before_reservation()).await;
-    Box::pin(valid_holder_during_http()).await;
-    Box::pin(request_conflicts_after_final_read()).await;
-    Box::pin(request_after_known_admission()).await;
-    Box::pin(actual_expiry_blocks_late_reservation()).await;
-    Box::pin(independent_cleanup_after_permission_loss()).await;
-    Box::pin(known_ack_losses()).await;
-    Box::pin(exact_marker_replay()).await;
-    Box::pin(both_fenced_orderings()).await;
+pub(super) async fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Box::pin(no_reservation_creates_no_fake_finance()).await?;
+    Box::pin(valid_holder_before_reservation()).await?;
+    Box::pin(valid_holder_during_http()).await?;
+    Box::pin(request_conflicts_after_final_read()).await?;
+    Box::pin(request_after_known_admission()).await?;
+    Box::pin(actual_expiry_blocks_late_reservation()).await?;
+    Box::pin(independent_cleanup_after_permission_loss()).await?;
+    Box::pin(known_ack_losses()).await?;
+    Box::pin(exact_marker_replay()).await?;
+    Box::pin(both_fenced_orderings()).await?;
+    Ok(())
 }
 
-async fn no_reservation_creates_no_fake_finance() {
-    let (fixture, run) = original().await;
+async fn no_reservation_creates_no_fake_finance(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (fixture, run) = original().await?;
     let cleaner = without_native(&fixture).await;
     let policies = fixture
         .world
@@ -78,10 +80,11 @@ async fn no_reservation_creates_no_fake_finance() {
     cleaner.finance.pool.close().await;
     fixture.finish().await;
     println!("native cancellation journey: installed policy supplies original period, cancellation before reserve creates no attempt or posting PASS");
+    Ok(())
 }
 
-async fn valid_holder_before_reservation() {
-    let (fixture, run) = original().await;
+async fn valid_holder_before_reservation() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (fixture, run) = original().await?;
     let runtime = fixture.world.runtime.clone();
     let cleaner = without_native(&fixture).await;
     runtime.fault.store(21, Ordering::SeqCst);
@@ -118,10 +121,11 @@ async fn valid_holder_before_reservation() {
     cleaner.finance.pool.close().await;
     fixture.finish().await;
     println!("native cancellation journey: valid holder receives permanent request before reserve, final admission stops and later cleanup releases once PASS");
+    Ok(())
 }
 
-async fn valid_holder_during_http() {
-    let (fixture, run) = original().await;
+async fn valid_holder_during_http() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (fixture, run) = original().await?;
     let runtime = fixture.world.runtime.clone();
     let cleaner = without_native(&fixture).await;
     fixture.world.http.paused.store(true, Ordering::SeqCst);
@@ -181,10 +185,12 @@ async fn valid_holder_during_http() {
     cleaner.finance.pool.close().await;
     fixture.finish().await;
     println!("native cancellation HTTP cut: lost known request ACK and exact replay preserve valid worker leases, admitted bill never refunds or resends PASS");
+    Ok(())
 }
 
-async fn request_conflicts_after_final_read() {
-    let (fixture, run) = original().await;
+async fn request_conflicts_after_final_read() -> std::result::Result<(), Box<dyn std::error::Error>>
+{
+    let (fixture, run) = original().await?;
     let runtime = fixture.world.runtime.clone();
     let cleaner = without_native(&fixture).await;
     runtime.fault.store(22, Ordering::SeqCst);
@@ -206,10 +212,11 @@ async fn request_conflicts_after_final_read() {
     cleaner.finance.pool.close().await;
     fixture.finish().await;
     println!("native cancellation admission race: actual request write conflicts after final admission read, no HTTP and one later release PASS");
+    Ok(())
 }
 
-async fn request_after_known_admission() {
-    let (fixture, run) = original().await;
+async fn request_after_known_admission() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (fixture, run) = original().await?;
     let runtime = fixture.world.runtime.clone();
     let cleaner = without_native(&fixture).await;
     runtime.fault.store(24, Ordering::SeqCst);
@@ -248,10 +255,12 @@ async fn request_after_known_admission() {
     cleaner.finance.pool.close().await;
     fixture.finish().await;
     println!("native cancellation admission race: known admission precedes request, finite dispatch settles once and cannot refund PASS");
+    Ok(())
 }
 
-async fn actual_expiry_blocks_late_reservation() {
-    let (fixture, run) = original().await;
+async fn actual_expiry_blocks_late_reservation(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (fixture, run) = original().await?;
     let runtime = fixture.world.runtime.clone();
     let cleaner = without_native(&fixture).await;
     runtime.fault.store(21, Ordering::SeqCst);
@@ -299,11 +308,13 @@ async fn actual_expiry_blocks_late_reservation() {
     cleaner.finance.pool.close().await;
     fixture.finish().await;
     println!("native cancellation expiry cut: real lease expiry hands off cleanup, permanent SQL gate rejects late old reservation PASS");
+    Ok(())
 }
 
-async fn independent_cleanup_after_permission_loss() {
+async fn independent_cleanup_after_permission_loss(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for loss in 0..4 {
-        let (mut fixture, run) = original().await;
+        let (mut fixture, run) = original().await?;
         let runtime = fixture.world.runtime.clone();
         runtime.fault.store(4, Ordering::SeqCst);
         assert!(runtime.run_model(&run.run).await.is_err());
@@ -318,7 +329,7 @@ async fn independent_cleanup_after_permission_loss() {
                     .encrypted(EventBody::GrantRevoked {
                         grant: "admitted-owner-trust".into(),
                     })
-                    .await;
+                    .await?;
                 fixture.sync(false).await.unwrap();
             }
             1 => {
@@ -345,7 +356,7 @@ async fn independent_cleanup_after_permission_loss() {
                     .unwrap();
             }
             _ => {
-                fixture.message(LATER).await;
+                fixture.message(LATER).await?;
                 // Actual relay is ahead; no native hydrate/currentness is available.
             }
         }
@@ -386,192 +397,7 @@ async fn independent_cleanup_after_permission_loss() {
         fixture.finish().await;
     }
     println!("native cancellation permission cuts: revoked grant or device, disabled latest policy and unavailable current native head still permit exact unsent cleanup PASS");
+    Ok(())
 }
 
-async fn known_ack_losses() {
-    for fault in [26, 27, 28] {
-        let (fixture, run) = original().await;
-        let runtime = fixture.world.runtime.clone();
-        runtime.fault.store(4, Ordering::SeqCst);
-        assert!(runtime.run_model(&run.run).await.is_err());
-        runtime.fault.store(fault, Ordering::SeqCst);
-        assert_eq!(
-            runtime.cancel_model(&run.run).await.unwrap_err(),
-            RuntimeError::Unavailable
-        );
-        assert_zero_send(&fixture).await;
-        assert_eq!(
-            fixture.world.balance().await.held_units,
-            if fault == 28 {
-                0
-            } else {
-                quote(&fixture, &run).await
-            }
-        );
-        assert_eq!(
-            fixture
-                .world
-                .count("SELECT count(*) FROM runtime_dispositions WHERE kind='release'")
-                .await,
-            if fault == 28 { 1 } else { 0 }
-        );
-        runtime.fault.store(0, Ordering::SeqCst);
-        assert_eq!(
-            runtime.cancel_model(&run.run).await.unwrap(),
-            ModelCancellation::Released
-        );
-        assert_eq!(
-            runtime.cancel_model(&run.run).await.unwrap(),
-            ModelCancellation::Released
-        );
-        assert_one_release(&fixture).await;
-        fixture.finish().await;
-    }
-    println!("native cancellation ACK cuts: explicit suppression after known request, fenced closure or SQL release commit never duplicates release PASS");
-}
-
-async fn exact_marker_replay() {
-    let (mut fixture, run) = original().await;
-    let runtime = fixture.world.runtime.clone();
-    runtime
-        .execution
-        .request_reply_cancel(&run.run, &runtime.custody, &runtime)
-        .await
-        .unwrap();
-    let key = runtime.execution.run(&run.run, "cancel");
-    let trx = runtime.execution.transaction().await.unwrap();
-    let sealed = trx.get(&key, false).await.unwrap().unwrap().to_vec();
-    let original: serde_json::Value = runtime
-        .custody
-        .open(&format!("native-cancel/1/{}", run.run), None, &sealed)
-        .unwrap();
-    for field in ["run", "attempt", "record_digest", "binding_digest"] {
-        let mut wrong = original.clone();
-        wrong[field] = serde_json::Value::String(if field.ends_with("digest") {
-            hash(b"wrong cancellation original")
-        } else {
-            new_id("wrong")
-        });
-        let (_, forged) = runtime
-            .custody
-            .seal(&format!("native-cancel/1/{}", run.run), &wrong)
-            .unwrap();
-        let trx = runtime.execution.transaction().await.unwrap();
-        trx.set(&key, &forged);
-        trx.commit().await.unwrap();
-        assert_eq!(
-            runtime.cancel_model(&run.run).await.unwrap_err(),
-            RuntimeError::InvalidBinding
-        );
-    }
-    let trx = runtime.execution.transaction().await.unwrap();
-    trx.set(&key, &sealed);
-    trx.commit().await.unwrap();
-    runtime
-        .execution
-        .request_reply_cancel(&run.run, &runtime.custody, &runtime)
-        .await
-        .unwrap();
-    let trx = runtime.execution.transaction().await.unwrap();
-    assert_eq!(
-        trx.get(&key, false).await.unwrap().unwrap().as_ref(),
-        sealed.as_slice()
-    );
-    fixture.message(LATER).await;
-    let other = fixture.sync(false).await.unwrap().runs.remove(0);
-    let other_key = runtime.execution.run(&other.run, "cancel");
-    let trx = runtime.execution.transaction().await.unwrap();
-    trx.set(&other_key, &sealed);
-    trx.commit().await.unwrap();
-    assert_eq!(
-        runtime.cancel_model(&other.run).await.unwrap_err(),
-        RuntimeError::InvalidBinding
-    );
-    assert_eq!(
-        runtime.cancel_model(&run.run).await.unwrap(),
-        ModelCancellation::Released
-    );
-    assert_eq!(
-        fixture
-            .world
-            .count("SELECT count(*) FROM runtime_postings")
-            .await,
-        0
-    );
-    assert_zero_send(&fixture).await;
-    fixture.finish().await;
-    println!("native cancellation marker cuts: four bound fields and cross-run ciphertext swap reject substitution, exact replay retains same ciphertext PASS");
-}
-
-async fn both_fenced_orderings() {
-    for close_first in [true, false] {
-        let (fixture, run) = original().await;
-        let runtime = fixture.world.runtime.clone();
-        let step = runtime.verified_step(&run.run).await.unwrap();
-        let original = binding(&runtime, &step);
-        runtime.finance.reserve(&original).await.unwrap();
-        let claim = runtime.finance.claim(&original).await.unwrap().unwrap();
-        let guard = runtime.finance.guard(&original, &step).await.unwrap();
-        if !close_first {
-            let admission = runtime
-                .execution
-                .admit_once(&step, claim, &original, &runtime.custody, &runtime)
-                .await
-                .unwrap();
-            guard.finish(admission).await.unwrap().consume().unwrap();
-            runtime
-                .execution
-                .request_reply_cancel(&run.run, &runtime.custody, &runtime)
-                .await
-                .unwrap();
-            let VerifiedStep::Native(native) = &step else {
-                panic!()
-            };
-            let cleanup = native
-                .cleanup_for_known_holder(&runtime.execution, &runtime.custody)
-                .await
-                .unwrap();
-            assert!(runtime
-                .execution
-                .close_reply_before_dispatch(&cleanup, &runtime.custody, &runtime)
-                .await
-                .unwrap()
-                .is_none());
-            assert_eq!(
-                fixture.world.balance().await.held_units,
-                quote(&fixture, &run).await
-            );
-        } else {
-            runtime
-                .execution
-                .request_reply_cancel(&run.run, &runtime.custody, &runtime)
-                .await
-                .unwrap();
-            let VerifiedStep::Native(native) = &step else {
-                panic!()
-            };
-            let cleanup = native
-                .cleanup_for_known_holder(&runtime.execution, &runtime.custody)
-                .await
-                .unwrap();
-            let proof = runtime
-                .execution
-                .close_reply_before_dispatch(&cleanup, &runtime.custody, &runtime)
-                .await
-                .unwrap()
-                .unwrap();
-            assert!(runtime
-                .execution
-                .admit_once(&step, claim, &original, &runtime.custody, &runtime)
-                .await
-                .is_err());
-            guard.rollback().await.unwrap();
-            runtime.finance.release(proof, &runtime).await.unwrap();
-            assert_one_release(&fixture).await;
-        }
-        step.release(&runtime.execution).await.unwrap();
-        assert_zero_send(&fixture).await;
-        fixture.finish().await;
-    }
-    println!("native cancellation orderings: exact actual holder closure excludes later admission, admitted winner retains hold PASS");
-}
+include!("cancellation/replay.rs");

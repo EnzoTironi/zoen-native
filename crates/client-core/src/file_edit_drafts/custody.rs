@@ -1,6 +1,11 @@
 //! Custody on the original Engine and canonical document state.
 
-use super::*;
+use super::{
+    invalid, stale, storage_error, valid_pdf, validate, Digest, DraftScope, Engine,
+    FileEditDraftCapture, FileEditDraftCommitResult, FileEditDraftScope, Hkdf, ItemContent,
+    OptionalExtension, Record, Sha256, Storage, Zeroizing, DOMAIN, FILE_EDIT_DRAFT_REVISION_ZERO,
+    MAX_ASSET_BYTES, MAX_RECORD_BYTES, MAX_RETAINED_BYTES, MAX_SCOPES, PREFIX, R,
+};
 
 impl Engine {
     pub(super) fn file_edit_draft_scope(&self, scope: &FileEditDraftScope) -> R<Storage> {
@@ -83,7 +88,7 @@ impl Engine {
         };
         let bytes = Zeroizing::new(
             crate::local_sealed::open(&storage.key, &storage.aad, &encoded, MAX_RECORD_BYTES)
-                .map_err(|_| storage_error())?,
+                .map_err(|()| storage_error())?,
         );
         let record: Record = serde_json::from_slice(&bytes).map_err(|_| storage_error())?;
         if record.revision == FILE_EDIT_DRAFT_REVISION_ZERO {
@@ -100,7 +105,7 @@ impl Engine {
             return Err(invalid());
         }
         let encoded = crate::local_sealed::seal(&storage.key, &storage.aad, &bytes)
-            .map_err(|_| storage_error())?;
+            .map_err(|()| storage_error())?;
         self.store.set_meta(&storage.id, &encoded)?;
         let (scopes, size): (usize, usize) = self.store.conn().query_row(
             "SELECT COUNT(CASE WHEN key LIKE 'file.edit.draft.record.%' THEN 1 END), COALESCE(SUM(length(CAST(value AS BLOB))),0) FROM meta WHERE key LIKE 'file.edit.draft.%'",
@@ -126,7 +131,7 @@ impl Engine {
                 &encoded,
                 MAX_ASSET_BYTES,
             )
-            .map_err(|_| storage_error())?,
+            .map_err(|()| storage_error())?,
         );
         if !valid_pdf(&bytes)
             || bytes.len() as u64 != capture.size

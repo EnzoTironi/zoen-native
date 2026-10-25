@@ -61,7 +61,7 @@ fn pdf_creation_owns_encrypted_exact_bytes_and_format_scoped_identity(
 #[test]
 fn pdf_cas_lost_ack_cold_history_and_undo_save_keep_chosen_bytes(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let dir = std::env::temp_dir().join(types::new_id("pdf-cas"));
+    let dir = std::env::temp_dir().join(types::new_id("pdf-cas")?);
     std::fs::create_dir(&dir)?;
     let path = dir.join("pdf.sqlite");
     let f = fixture(path.to_str().ok_or("invalid fixture path")?);

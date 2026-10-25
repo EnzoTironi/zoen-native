@@ -1,8 +1,8 @@
-use super::*;
+use super::{approvals, invalid, stale, AgentPageResult, AgentPageTurn, Client, R};
 use crate::agent_page_tools::{self as tools, ReplaceBlock};
 
 impl Client {
-    /// Only an exact current canonical ApproveOnce can publish a Page command.
+    /// Only an exact current canonical `ApproveOnce` can publish a Page command.
     pub fn agent_page_replace(
         &self,
         turn: &AgentPageTurn,

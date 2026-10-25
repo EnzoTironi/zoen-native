@@ -15,9 +15,9 @@ impl Client {
                     "This device already has an account.",
                 )));
             }
-            let device = Signer::generate();
-            let (hpke_secret, hpke_public) = link::key_pair();
-            let secret = link::random::<32>();
+            let device = Signer::generate()?;
+            let (hpke_secret, hpke_public) = link::key_pair()?;
+            let secret = link::random::<32>()?;
             let code = LinkCode {
                 device: device.id(),
                 hpke: hpke_public.clone(),
@@ -30,10 +30,7 @@ impl Client {
                 secret: hex::encode(secret),
                 relay: relay_url,
             };
-            if !vault.save(
-                link::VAULT_PENDING.into(),
-                serde_json::to_vec(&pending).unwrap_or_default(),
-            ) {
+            if !vault.save(link::VAULT_PENDING.into(), serde_json::to_vec(&pending)?) {
                 return Err(invalid(t(
                     "Não deu para guardar a chave no Keychain.",
                     "Couldn't store the key in the Keychain.",

@@ -27,8 +27,9 @@ fn photo_worker() -> DeckcraftWorker {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires a pinned actual Photo WASIp2 component via ZOEN_TEST_PHOTOCRAFT_COMPONENT"]
-async fn actual_photo_reply_survives_cli_guard_and_scoped_core_cas() {
-    let path = std::env::temp_dir().join(types::new_id("photo-cli-reply"));
+async fn actual_photo_reply_survives_cli_guard_and_scoped_core_cas(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = std::env::temp_dir().join(types::new_id("photo-cli-reply")?);
     std::fs::create_dir(&path).unwrap();
     let f = fixture_construction::fixture_for_format_at(
         path,
@@ -36,7 +37,7 @@ async fn actual_photo_reply_survives_cli_guard_and_scoped_core_cas() {
         types::Privacy::Closed,
         "photocraft",
         PHOTO,
-    );
+    )?;
     let worker = photo_worker();
     let args = json!({"artifactId":f.base.item_id,"version":f.base.version,
         "sha256":f.base.sha256,"action":"rotate_clockwise"});
@@ -127,4 +128,5 @@ async fn actual_photo_reply_survives_cli_guard_and_scoped_core_cas() {
     );
     drop(f.client);
     std::fs::remove_dir_all(f.path).unwrap();
+    Ok(())
 }

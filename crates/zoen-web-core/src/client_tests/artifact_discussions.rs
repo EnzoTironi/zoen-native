@@ -19,8 +19,9 @@ fn read(client: &mut Client<HostSigner>, space: &str, item: &str) -> DocumentRes
 }
 
 #[test]
-fn browser_page_creation_is_one_stable_card_and_discussion_survives_ack_reply_and_reload() {
-    let (mut client, author, mut log) = document_fixture();
+fn browser_page_creation_is_one_stable_card_and_discussion_survives_ack_reply_and_reload(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, author, mut log) = document_fixture()?;
     let space = log.space().to_owned();
     let created = doc(
         &mut client,
@@ -34,7 +35,7 @@ fn browser_page_creation_is_one_stable_card_and_discussion_survives_ack_reply_an
     assert_eq!(view[0].messages.len(), 1);
     assert!(view[0].messages[0].text.is_empty());
     assert_eq!(view[0].messages[0].card.as_ref().unwrap()["item_id"], item);
-    confirm_documents(&mut client, &mut log, created.update.unwrap(), 11);
+    confirm_documents(&mut client, &mut log, created.update.unwrap(), 11)?;
     assert_eq!(read(&mut client, &space, &item).result, pending);
     let sent = client
         .queue_post(
@@ -45,7 +46,7 @@ fn browser_page_creation_is_one_stable_card_and_discussion_survives_ack_reply_an
             12,
         )
         .unwrap();
-    confirm_documents(&mut client, &mut log, sent, 13);
+    confirm_documents(&mut client, &mut log, sent, 13)?;
     let original_content = client
         .document_item(&item)
         .unwrap()
@@ -61,7 +62,7 @@ fn browser_page_creation_is_one_stable_card_and_discussion_survives_ack_reply_an
             note: "New version, same discussion".into(),
         },
         14,
-    );
+    )?;
     client.receive(&version, 15).unwrap();
     let snapshot = client.update(Vec::new()).unwrap().snapshot;
     let mut reopened =
@@ -84,11 +85,13 @@ fn browser_page_creation_is_one_stable_card_and_discussion_survives_ack_reply_an
             .count(),
         1
     );
+    Ok(())
 }
 
 #[test]
-fn browser_discussion_rejects_foreign_space_removed_membership_and_failed_local_creation() {
-    let (mut client, author, mut log) = document_fixture();
+fn browser_discussion_rejects_foreign_space_removed_membership_and_failed_local_creation(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, author, mut log) = document_fixture()?;
     let space = log.space().to_owned();
     let created = doc(
         &mut client,
@@ -111,7 +114,7 @@ fn browser_discussion_rejects_foreign_space_removed_membership_and_failed_local_
             privacy: Privacy::Closed,
         },
         11,
-    );
+    )?;
     client.receive(&other, 12).unwrap();
     assert!(client
         .roster(other_log.space())
@@ -143,7 +146,7 @@ fn browser_discussion_rejects_foreign_space_removed_membership_and_failed_local_
         .outbox
         .values_mut()
         .for_each(|pending| pending.failure = None);
-    confirm_documents(&mut client, &mut log, created.update.unwrap(), 13);
+    confirm_documents(&mut client, &mut log, created.update.unwrap(), 13)?;
     let removed = clear(
         &mut log,
         &author,
@@ -151,14 +154,16 @@ fn browser_discussion_rejects_foreign_space_removed_membership_and_failed_local_
             identity: client.account.identity.clone(),
         },
         14,
-    );
+    )?;
     client.receive(&removed, 15).unwrap();
     assert!(client.document_request(&request(&space), 16).is_err());
+    Ok(())
 }
 
 #[test]
-fn browser_discussion_does_not_publish_private_draft_or_choose_forwarded_inline_or_nested_posts() {
-    let (mut client, author, mut log) = document_fixture();
+fn browser_discussion_does_not_publish_private_draft_or_choose_forwarded_inline_or_nested_posts(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, author, mut log) = document_fixture()?;
     let space = log.space().to_owned();
     let created = doc(
         &mut client,
@@ -166,7 +171,7 @@ fn browser_discussion_does_not_publish_private_draft_or_choose_forwarded_inline_
         10,
     );
     let item = created.result["id"].as_str().unwrap().to_owned();
-    confirm_documents(&mut client, &mut log, created.update.unwrap(), 11);
+    confirm_documents(&mut client, &mut log, created.update.unwrap(), 11)?;
     let root = read(&mut client, &space, &item).result;
     let page = doc(&mut client, json!({"op":"page","item_id":item}), 12).result;
     let mut block = page["blocks"][0].clone();
@@ -189,7 +194,7 @@ fn browser_discussion_does_not_publish_private_draft_or_choose_forwarded_inline_
             origin: "Rejected duplicate creation".into(),
         },
         16,
-    );
+    )?;
     client.receive(&duplicate, 17).unwrap();
     let duplicate_event = log.events().last().unwrap();
     assert!(
@@ -242,7 +247,7 @@ fn browser_discussion_does_not_publish_private_draft_or_choose_forwarded_inline_
                 forwarded,
             },
             20 + index,
-        );
+        )?;
         client.receive(&event, 30 + index).unwrap();
     }
     let discussion = read(&mut client, &space, &item).result;
@@ -256,4 +261,5 @@ fn browser_discussion_does_not_publish_private_draft_or_choose_forwarded_inline_
     .result;
     assert!(!published.to_string().contains("Unpublished secret draft"));
     assert_eq!(client.document_item(&item).unwrap().versions.len(), 1);
+    Ok(())
 }

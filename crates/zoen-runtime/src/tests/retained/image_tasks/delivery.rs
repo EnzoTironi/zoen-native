@@ -20,9 +20,13 @@ async fn head(f: &Fixture) -> Seen {
     }
 }
 
-pub(super) async fn run(f: &mut Fixture, run: &str, output: &crate::ImageOutputInspection) {
-    let relay = relay::Relay::start(f).await;
-    Box::pin(binding::run(f, run, &relay)).await;
+pub(super) async fn run(
+    f: &mut Fixture,
+    run: &str,
+    output: &crate::ImageOutputInspection,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let relay = relay::Relay::start(f).await?;
+    Box::pin(binding::run(f, run, &relay)).await?;
     let proxy = proxy::Proxy::start(relay.address).await;
     let target = relay.target(f, proxy.address);
     assert_eq!(
@@ -79,7 +83,7 @@ pub(super) async fn run(f: &mut Fixture, run: &str, output: &crate::ImageOutputI
     f.encrypted(EventBody::GrantRevoked {
         grant: "native-image-owner-act".into(),
     })
-    .await;
+    .await?;
     assert_eq!(
         proof::deliver(&f.world.runtime, run, &target)
             .await
@@ -98,7 +102,7 @@ pub(super) async fn run(f: &mut Fixture, run: &str, output: &crate::ImageOutputI
             expires_at_ms: None,
         },
     })
-    .await;
+    .await?;
     let before = head(f).await;
 
     // Genuine CREATED after authenticated signed PUT reaches durable object
@@ -206,4 +210,5 @@ pub(super) async fn run(f: &mut Fixture, run: &str, output: &crate::ImageOutputI
     assert_eq!(proxy.publish_dropped.load(Ordering::SeqCst), 1);
     relay.stop().await;
     println!("native image transport: real signed HTTP PUT, lost CREATED and lost real WS Accepted, cold exact original FileDoc/Publish, current revocation refusal and inert receipt replay PASS (production gate closed)");
+    Ok(())
 }

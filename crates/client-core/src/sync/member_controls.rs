@@ -1,5 +1,5 @@
 //! Review and removal use the existing log/outbox, never a second membership store.
-use super::*;
+use super::{t, CoreError, Engine, EventBody, Role, SpaceKind, R};
 use crate::{MemberActionState, SpaceMemberContext};
 use sha2::{Digest, Sha256};
 
@@ -214,7 +214,7 @@ impl Engine {
     }
 
     /// A single Engine guard spans current device/permission/review checks and
-    /// the normal signed MemberRemoved enqueue. No automatic mutation retry.
+    /// the normal signed `MemberRemoved` enqueue. No automatic mutation retry.
     pub(crate) fn remove_member_reviewed(
         &mut self,
         space: &str,

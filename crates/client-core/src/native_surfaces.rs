@@ -147,7 +147,7 @@ impl Engine {
                     return None;
                 }
                 let item = scoped.items.get(id)?;
-                let version = item.versions.last()?;
+                let version = item.versions.current();
                 if item.id != *id
                     || item.space != indexed.space
                     || item.kind != ItemKind::App

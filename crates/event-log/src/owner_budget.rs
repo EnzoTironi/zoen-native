@@ -42,6 +42,7 @@ pub(crate) fn strict(id: &str, message: &[u8], signature: &str) -> bool {
             .is_ok()
 }
 
+#[must_use]
 pub fn sign(author: &Author, policy: OwnerPeriodPolicy) -> Option<SignedOwnerPolicy> {
     if policy.owner != author.identity || author.device.as_deref() != Some(&author.key.id()) {
         return None;
@@ -55,6 +56,7 @@ pub fn sign(author: &Author, policy: OwnerPeriodPolicy) -> Option<SignedOwnerPol
     verify(&signed).then_some(signed)
 }
 
+#[must_use]
 pub fn verify(signed: &SignedOwnerPolicy) -> bool {
     message(&signed.policy).is_some_and(|msg| {
         strict(
@@ -65,6 +67,7 @@ pub fn verify(signed: &SignedOwnerPolicy) -> bool {
     })
 }
 
+#[must_use]
 pub fn digest(policy: &OwnerPeriodPolicy) -> Option<String> {
     Some(hex::encode(Sha256::digest(message(policy)?)))
 }
@@ -75,7 +78,7 @@ mod tests {
     use crate::Signer;
     #[test]
     fn every_policy_field_and_certified_signer_is_bound() {
-        let author = Author::device(&Signer::generate(), Signer::generate());
+        let author = Author::device(&Signer::generate().unwrap(), Signer::generate().unwrap());
         let policy = OwnerPeriodPolicy {
             owner: author.identity.clone(),
             year: 2026,
@@ -107,11 +110,11 @@ mod tests {
         changed.policy.enabled = false;
         assert!(!verify(&changed));
         changed = signed.clone();
-        changed.device = Signer::generate().id();
+        changed.device = Signer::generate().unwrap().id();
         assert!(!verify(&changed));
-        changed = signed.clone();
+        changed = signed;
         changed.cert = "00".repeat(64);
         assert!(!verify(&changed));
-        assert!(sign(&Author::root(Signer::generate()), policy).is_none());
+        assert!(sign(&Author::root(Signer::generate().unwrap()), policy).is_none());
     }
 }

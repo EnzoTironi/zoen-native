@@ -1,6 +1,26 @@
 //! The existing request result carries a closed, optional refusal classification.
-use super::*;
+use super::{encode, Client, CoreError};
+use crate::app_current_share::{AppShareContext, AppShareResult};
 impl Client {
+    pub(super) fn share_app_current_bridge(
+        &self,
+        context: AppShareContext,
+        mutation: &str,
+    ) -> Result<String, CoreError> {
+        let result = match self.share_app_current(context, mutation) {
+            Ok(receipt) => AppShareResult {
+                receipt: Some(receipt),
+                conflict: None,
+            },
+            Err(CoreError::Stale { reason }) => AppShareResult {
+                receipt: None,
+                conflict: Some(reason),
+            },
+            Err(error) => return Err(error),
+        };
+        encode(&result)
+    }
+
     pub(super) fn request_app_edit_bridge(
         &self,
         input: crate::app_edit_requests::AppEditRequestInput,

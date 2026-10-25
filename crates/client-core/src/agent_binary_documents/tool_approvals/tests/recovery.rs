@@ -2,9 +2,10 @@
 
 use super::*;
 
-pub(super) fn accepted_receipt_replays_once_and_wrong_mutation_or_intent_never_write() {
-    let fixture = fixture();
-    signed_trust(&fixture, TrustLevel::Suggest);
+pub(super) fn accepted_receipt_replays_once_and_wrong_mutation_or_intent_never_write(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    signed_trust(&fixture, TrustLevel::Suggest)?;
     let request = stage(&fixture, "deckcraft_slide_notes");
     owner_decide(
         &fixture,
@@ -83,11 +84,14 @@ pub(super) fn accepted_receipt_replays_once_and_wrong_mutation_or_intent_never_w
     );
     assert_eq!(counts(&fixture), before);
     assert_eq!(current(&fixture).version, 2);
+
+    Ok(())
 }
 
-pub(super) fn canonical_approval_and_accepted_document_survive_a_cold_unlocked_reopen() {
-    let fixture = fixture();
-    signed_trust(&fixture, TrustLevel::Suggest);
+pub(super) fn canonical_approval_and_accepted_document_survive_a_cold_unlocked_reopen(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    signed_trust(&fixture, TrustLevel::Suggest)?;
     let request = stage(&fixture, "deckcraft_slide_notes");
     owner_decide(
         &fixture,
@@ -110,7 +114,7 @@ pub(super) fn canonical_approval_and_accepted_document_survive_a_cold_unlocked_r
             &STANDARD.encode(CHANGED),
         )
         .unwrap();
-    let directory = std::env::temp_dir().join(types::new_id("zoen_tool_approval_cold"));
+    let directory = std::env::temp_dir().join(types::new_id("zoen_tool_approval_cold")?);
     std::fs::create_dir(&directory).unwrap();
     #[cfg(unix)]
     {
@@ -195,11 +199,13 @@ pub(super) fn canonical_approval_and_accepted_document_survive_a_cold_unlocked_r
             .unwrap(),
         before
     );
+
+    Ok(())
 }
 
 pub(super) fn read_only_approval_cannot_authorize_a_result_probe_or_save_even_with_its_exact_intent(
-) {
-    let fixture = fixture();
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
     let request = stage(&fixture, "read_deckcraft");
     owner_decide(
         &fixture,
@@ -233,11 +239,13 @@ pub(super) fn read_only_approval_cannot_authorize_a_result_probe_or_save_even_wi
         .is_err());
     assert_eq!(counts(&fixture), before);
     assert_v1(&fixture);
+
+    Ok(())
 }
 
 pub(super) fn completed_read_then_accepted_write_recovers_context_without_relaxing_read_cas_or_authorizing_new_effects(
-) {
-    let fixture = fixture();
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
     let request = stage(&fixture, "read_deckcraft");
     owner_decide(
         &fixture,
@@ -324,4 +332,6 @@ pub(super) fn completed_read_then_accepted_write_recovers_context_without_relaxi
         .agent
         .recover_tool_results(&request.id, WORKER, &steps.to_string())
         .is_err());
+
+    Ok(())
 }

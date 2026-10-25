@@ -8,8 +8,8 @@ fn early_directory_then_real_welcome_reconciles_dedicated_native_sibling_after_r
     let mut early = None;
     let mut f = Fixture::new_observing_welcome(SPACE, |core| {
         early = Some(core.image().unwrap());
-    });
-    let native_key = Signer::generate();
+    })?;
+    let native_key = Signer::generate()?;
     let native_author = Author::device(&f.agent_root, native_key.clone());
     let native_cert = native_author.cert.clone().ok_or("native certificate")?;
     let native_credential = || {
@@ -46,13 +46,15 @@ fn early_directory_then_real_welcome_reconciles_dedicated_native_sibling_after_r
         .ok_or("owner log")?
         .events()
         .iter()
-        .map(|event| Sequenced {
-            seq: event.seq,
-            prev: event.prev.clone(),
-            hash: event.hash.clone(),
-            env: Envelope::plain(event),
+        .map(|event| {
+            Ok::<_, event_log::LogError>(Sequenced {
+                seq: event.seq,
+                prev: event.prev.clone(),
+                hash: event.hash.clone(),
+                env: Envelope::plain(event)?,
+            })
         })
-        .collect();
+        .collect::<std::result::Result<Vec<_>, _>>()?;
     let after = worker.retained_head(SPACE)?.ok_or("early head")?.seq;
     worker.ingest(history.iter().filter(|e| e.seq > after).cloned().collect())?;
     native.ingest(history)?;
@@ -86,7 +88,7 @@ fn early_directory_then_real_welcome_reconciles_dedicated_native_sibling_after_r
         1,
         "cold retry reuses original DeviceJoining"
     );
-    let joining = ordered(&f.owner, joins[0].clone());
+    let joining = ordered(&f.owner, joins[0].clone())?;
     assert_eq!(f.owner.ingest(joining.clone()), Ingest::Applied);
     worker.ingest(vec![joining.clone()])?;
     native.ingest(vec![joining])?;
@@ -112,7 +114,7 @@ fn early_directory_then_real_welcome_reconciles_dedicated_native_sibling_after_r
         let frames = f.owner.outbox_envelopes();
         assert!(!frames.is_empty());
         for envelope in frames {
-            let entry = ordered(&f.owner, envelope);
+            let entry = ordered(&f.owner, envelope)?;
             assert_eq!(f.owner.ingest(entry.clone()), Ingest::Confirmed);
             worker.ingest(vec![entry.clone()])?;
             native.ingest(vec![entry])?;
@@ -135,7 +137,7 @@ fn early_directory_then_real_welcome_reconciles_dedicated_native_sibling_after_r
     let pending = f.owner.request_account_policy_options(&scope)?;
     f.owner.mls_seal_outbox()?;
     for envelope in f.owner.outbox_envelopes() {
-        let entry = ordered(&f.owner, envelope);
+        let entry = ordered(&f.owner, envelope)?;
         assert_eq!(f.owner.ingest(entry.clone()), Ingest::Confirmed);
         worker.ingest(vec![entry.clone()])?;
         native.ingest(vec![entry])?;
@@ -151,8 +153,8 @@ fn early_directory_then_real_welcome_reconciles_dedicated_native_sibling_after_r
 #[test]
 fn sibling_join_suppression_and_intent_rollback_together_and_revocation_stays_excluded(
 ) -> TestResult {
-    let mut f = Fixture::new();
-    let sibling = Signer::generate().id();
+    let mut f = Fixture::new()?;
+    let sibling = Signer::generate()?.id();
     let records = |revoked| {
         vec![protocol::DeviceRecord {
             device: sibling.clone(),

@@ -2238,6 +2238,7 @@ name = "grants"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
  "types",
 ]
 
@@ -4693,6 +4694,7 @@ dependencies = [
  "event-log",
  "hex",
  "hmac 0.12.1",
+ "num-traits",
  "prost",
  "serde",
  "serde_json",

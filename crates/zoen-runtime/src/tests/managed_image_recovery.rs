@@ -3,8 +3,8 @@
 use super::*;
 use relay_admission::managed_images::{AnchorError, AnchorReader};
 
-pub(super) async fn run() {
-    let mut world = image_tasks::world().await;
+pub(super) async fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut world = image_tasks::world().await?;
     let actor = world.agents[0].clone();
     let device = actor.device.as_deref().unwrap();
     let sqlx::types::Json(agent): sqlx::types::Json<Identity> =
@@ -26,7 +26,7 @@ pub(super) async fn run() {
         actor.cert.clone().unwrap(),
         actor.key.secret(),
     ));
-    let directory = managed_images::Directory::new();
+    let directory = managed_images::Directory::new()?;
     let runtime = match Arc::try_unwrap(world.runtime) {
         Ok(runtime) => runtime,
         Err(_) => panic!("fresh recovery fixture unexpectedly shared"),
@@ -44,7 +44,7 @@ pub(super) async fn run() {
         .unwrap();
     let reader = AnchorReader::open(&directory.0, deployment.clone()).unwrap();
     let before = reader.checkpoint().unwrap();
-    let (step, task) = image_tasks::image_task(&world).await;
+    let (step, task) = image_tasks::image_task(&world).await?;
     let provider = image_tasks::Provider {
         task: task.clone(),
         result: image_tasks::result(&task, true),
@@ -142,7 +142,7 @@ pub(super) async fn run() {
 
     // Recovery unblocks a different original task; it does not resurrect the
     // consumed first claim or manufacture an absent bill/refund for that claim.
-    let (next_step, next_task) = image_tasks::image_task(&world).await;
+    let (next_step, next_task) = image_tasks::image_task(&world).await?;
     let next_provider = image_tasks::Provider {
         task: next_task.clone(),
         result: image_tasks::result(&next_task, true),
@@ -179,4 +179,5 @@ pub(super) async fn run() {
     );
     world.finish().await;
     println!("managed image recovery: actual FDB admission/SQL-finish cut, altered reference refused, original claim retained without witness/Fresh/refund, second task progresses once PASS (controlled adapter; production gate closed)");
+    Ok(())
 }

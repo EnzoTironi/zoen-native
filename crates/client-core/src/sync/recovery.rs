@@ -1,6 +1,10 @@
 //! Confirmed-history reload and optimistic approval overlays.
 
-use super::*;
+use super::{
+    is_message_send, CoreError, Engine, Event, EventBody, HashMap, HashSet, ItemContent, ItemKind,
+    PageContent, PendingCommitment, PlanReplay, Projection, State, EVENT_FORMAT_META,
+    EVENT_FORMAT_VALUE, R,
+};
 
 impl Engine {
     /// Logs from an older event format can't be re-verified under the current one: start over (pre-launch only; ADR 0010).
@@ -95,6 +99,7 @@ impl Engine {
                     | EventBody::MemberAdded { .. }
                     | EventBody::MemberRemoved { .. }
                     | EventBody::GrantIssued { .. }
+                    | EventBody::AppCurrentShared { .. }
                     | EventBody::GrantRevoked { .. }
                     | EventBody::ItemCreated { .. }
                     | EventBody::ItemVersioned { .. }
@@ -249,7 +254,13 @@ impl Engine {
                     };
                     // Preserve normal replay for text and canonical non-File
                     // cards. Recovery reservations still fence the checked fold.
-                    if !retained && matches!(e.body, EventBody::MessagePosted { media: None, .. }) {
+                    if !retained
+                        && matches!(
+                            e.body,
+                            EventBody::MessagePosted { media: None, .. }
+                                | EventBody::AppEditRequested { .. }
+                        )
+                    {
                         let context = plans.pending(scoped, &self.identities, e)?;
                         scoped.apply_checked(e, &self.identities, &context);
                     } else if !matches!(e.body, EventBody::MessagePosted { .. }) {

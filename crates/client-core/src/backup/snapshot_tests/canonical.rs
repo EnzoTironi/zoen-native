@@ -1,9 +1,10 @@
-//! Canonical backup round trip through the shared signed-history fixture.
+//! Canonical backup round trip with fallible signed-history preparation.
 use super::*;
 
 #[test]
-fn canonical_backup_restores_every_row_and_projection_across_new_device_and_cold_reopen() {
-    let database = Database::new();
+fn canonical_backup_restores_every_row_and_projection_across_new_device_and_cold_reopen(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let database = Database::new().unwrap();
     let source_path = database.path("source.sqlite");
     let restored_path = database.path("restored.sqlite");
     let root = Signer::from_secret(&[51; 32]);
@@ -75,7 +76,7 @@ fn canonical_backup_restores_every_row_and_projection_across_new_device_and_cold
                 kind: SpaceKind::Group,
                 privacy: Privacy::Closed,
             },
-        );
+        )?;
         push(
             &mut source,
             &mut log,
@@ -85,13 +86,13 @@ fn canonical_backup_restores_every_row_and_projection_across_new_device_and_cold
                 identity: peer.id(),
                 role: Role::Member,
             },
-        );
+        )?;
         for i in 0..MESSAGES {
             let id = format!("{space}-message-{i:02}");
             let reply = matches!(i, 1 | 2).then(|| ReplyRef {
-                artifact: None,
                 to: format!("{space}-message-00"),
                 thread: i == 2,
+                artifact: None,
             });
             push(
                 &mut source,
@@ -109,7 +110,7 @@ fn canonical_backup_restores_every_row_and_projection_across_new_device_and_cold
                     media: None,
                     forwarded: i == 3,
                 },
-            );
+            )?;
         }
         for (id, author, target, note) in [
             (
@@ -139,7 +140,7 @@ fn canonical_backup_restores_every_row_and_projection_across_new_device_and_cold
                     target: format!("{space}-message-{target:02}"),
                     note,
                 },
-            );
+            )?;
         }
         if space == SPACES[0] {
             push(
@@ -153,7 +154,7 @@ fn canonical_backup_restores_every_row_and_projection_across_new_device_and_cold
                     content: ItemContent::File(first.clone()),
                     origin: "Synthetic attachment".into(),
                 },
-            );
+            )?;
             push(
                 &mut source,
                 &mut log,
@@ -164,7 +165,7 @@ fn canonical_backup_restores_every_row_and_projection_across_new_device_and_cold
                     content: ItemContent::File(last.clone()),
                     note: "Revised route".into(),
                 },
-            );
+            )?;
             push(
                 &mut source,
                 &mut log,
@@ -178,7 +179,7 @@ fn canonical_backup_restores_every_row_and_projection_across_new_device_and_cold
                     media: None,
                     forwarded: false,
                 },
-            );
+            )?;
         }
         source.mark_read(space).unwrap();
     }
@@ -214,7 +215,7 @@ fn canonical_backup_restores_every_row_and_projection_across_new_device_and_cold
             media: None,
             forwarded: false,
         },
-    );
+    )?;
     source.store.outbox_put(&pending).unwrap();
     let source_outbox = rows(source.store.conn(), "outbox", "client_id");
     let source_uploads = rows(source.store.conn(), "blob_uploads", "blob_sha");
@@ -317,7 +318,10 @@ fn canonical_backup_restores_every_row_and_projection_across_new_device_and_cold
         (1, &first_sealed, FIRST_BYTES),
         (2, &last_sealed, LAST_BYTES),
     ] {
-        let ItemContent::File(doc) = restored.state.items[FILE].versions[(version - 1) as usize]
+        let ItemContent::File(doc) = restored.state.items[FILE]
+            .versions
+            .get((version - 1) as usize)
+            .ok_or("missing restored immutable version")?
             .content
             .clone()
         else {
@@ -358,4 +362,5 @@ fn canonical_backup_restores_every_row_and_projection_across_new_device_and_cold
     );
     drop(restored);
     drop(source);
+    Ok(())
 }

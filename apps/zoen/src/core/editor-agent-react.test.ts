@@ -148,3 +148,47 @@ test('a definitive agent-membership conflict keeps the real prompt editable and 
     await f.close();
   }
 });
+
+test('a canonical failed request becomes an editable reviewed prompt in the same compiled sheet', async () => {
+  const f = await editorAgentReactFixture();
+  try {
+    await f.render();
+    await f.act(() => f.controls.get('editor-agent-open')!.onPress());
+    await f.act(() => f.controls.get('editor-agent-prompt')!.onChangeText('Keep this paragraph'));
+    await f.act(() => f.controls.get('editor-agent-send')!.onPress());
+    const failed = {
+      id: 'canonical-request',
+      author: { kind: 'Person' },
+      kind: { Message: { text: 'Keep this paragraph', card: null } },
+      delivery: 'Failed',
+    } as TimelineEntry;
+    await f.act(() => f.remote([failed]));
+    assert.equal(f.controls.get('editor-agent-prompt')!.value, 'Keep this paragraph');
+    assert.equal(f.controls.get('editor-agent-prompt')!.editable, true);
+    assert.equal(f.controls.has(`text:${t('miniapps.editRequestFailed')}`), true);
+    assert.equal(f.controls.has(`text:${t('miniapps.editRequestSent')}`), false);
+    assert.equal(f.calls.filter(({ op }) => op === 'request_app_edit').length, 1);
+    assert.equal(
+      f.calls.some(({ op, root_id }) => op === 'thread' && root_id === failed.id),
+      true,
+    );
+    assert.equal(
+      f.calls.some(({ op }) => op === 'timeline'),
+      false,
+    );
+    await f.act(() => f.controls.get('sheet')!.onDismiss());
+    await f.act(() => f.controls.get('editor-agent-open')!.onPress());
+    assert.equal(f.controls.get('editor-agent-prompt')!.value, 'Keep this paragraph');
+    assert.equal(f.calls.filter(({ op }) => op === 'request_app_edit').length, 1);
+    await f.act(() => f.controls.get('editor-agent-send')!.onPress());
+    const sends = f.calls.filter(({ op }) => op === 'request_app_edit');
+    assert.equal(sends.length, 2);
+    assert.equal(sends[1]!.mutation_id, 'request-2');
+    assert.equal(sends[1]!.text, 'Keep this paragraph');
+    assert.equal(f.controls.has(`text:${t('miniapps.editRequestFailed')}`), false);
+    assert.deepEqual(f.counters(), { mounts: 1, unmounts: 0, flushes: 2, presented: true });
+    assert.deepEqual(f.errors, []);
+  } finally {
+    await f.close();
+  }
+});

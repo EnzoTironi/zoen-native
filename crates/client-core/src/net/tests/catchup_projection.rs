@@ -4,7 +4,10 @@ use crate::sync::replay_probe::{page_body, projection, Home};
 
 const SPACE: &str = "sp_remote_page_catchup";
 
-fn pages(author: &Author, count: usize) -> Vec<Sequenced> {
+fn pages(
+    author: &Author,
+    count: usize,
+) -> std::result::Result<Vec<Sequenced>, Box<dyn std::error::Error>> {
     let mut head = None;
     let mut events = vec![sequence(
         Envelope::plain(&author.sign_event(
@@ -17,9 +20,9 @@ fn pages(author: &Author, count: usize) -> Vec<Sequenced> {
                 kind: SpaceKind::Group,
                 privacy: Privacy::Closed,
             },
-        )),
+        )?)?,
         &mut head,
-    )];
+    )?];
     for index in 0..count {
         events.push(sequence(
             Envelope::plain(&author.sign_event(
@@ -28,19 +31,20 @@ fn pages(author: &Author, count: usize) -> Vec<Sequenced> {
                 2 + index as i64,
                 head.clone(),
                 page_body(index),
-            )),
+            )?)?,
             &mut head,
-        ));
+        )?);
     }
-    events
+    Ok(events)
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn ordinary_remote_page_catchup_is_single_pass_and_cold_projection_exact() {
+async fn ordinary_remote_page_catchup_is_single_pass_and_cold_projection_exact(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("ws://{}", listener.local_addr().unwrap());
-    let home = Home(std::env::temp_dir().join(types::new_id("catchup-projection")));
+    let home = Home(std::env::temp_dir().join(types::new_id("catchup-projection").unwrap()));
     std::fs::create_dir(&home.0).unwrap();
     let path = home.0.join("reader.sqlite");
     let mut engine = Engine::open(path.to_str().unwrap()).unwrap();
@@ -48,8 +52,8 @@ async fn ordinary_remote_page_catchup_is_single_pass_and_cold_projection_exact()
     engine.set_registered(true).unwrap();
     let _ = engine.mls_key_packages_to_publish().unwrap();
     engine.mls_key_packages_published(Ok(()));
-    let author = Author::device(&Signer::generate(), Signer::generate());
-    let events = pages(&author, 32);
+    let author = Author::device(&Signer::generate().unwrap(), Signer::generate().unwrap());
+    let events = pages(&author, 32)?;
     let engine = Arc::new(Mutex::new(engine));
     let (status, _) = watch::channel(NetStatus {
         state: ConnState::Connecting,
@@ -149,4 +153,5 @@ async fn ordinary_remote_page_catchup_is_single_pass_and_cold_projection_exact()
     assert_eq!(reopened.next_seq(SPACE), cursor);
     assert!(reopened.logs[SPACE].verify().is_ok());
     assert_eq!(folds, 0, "ordinary empty-overlay catch-up must apply each new event once, not replay its whole prefix");
+    Ok(())
 }

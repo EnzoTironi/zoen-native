@@ -4,7 +4,7 @@ use super::*;
 pub(in crate::tests::retained::image_tasks::delivery) async fn run(
     f: &Fixture,
     relay: &relay::Relay,
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let actor = actor(f);
     let deployment = f
         .world
@@ -41,11 +41,11 @@ pub(in crate::tests::retained::image_tasks::delivery) async fn run(
     let envelope = Envelope::sealed(
         &actor,
         &f.space,
-        &new_id("genesis-no-publish"),
+        &new_id("genesis-no-publish")?,
         now,
         Some(&before),
         protocol::Sealed::new(protocol::SealedKind::Application, 1, vec![1, 2, 3]),
-    );
+    )?;
     let result = transport
         .publish_managed(&envelope, expected(f, 62, &sql))
         .await;
@@ -68,4 +68,5 @@ pub(in crate::tests::retained::image_tasks::delivery) async fn run(
         0
     );
     println!("managed image bootstrap: actual SQL/FDB/FS genesis MAC binding accepted; real signed HTTP upload and WS Publish refused before effect PASS");
+    Ok(())
 }

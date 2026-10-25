@@ -10,8 +10,9 @@ fn digest_field(digest: &mut Sha256, bytes: &[u8]) {
 }
 
 #[test]
-fn missing_canonical_bytes_block_both_native_authority_consumers_until_repaired() {
-    let mut fixture = Fixture::new();
+fn missing_canonical_bytes_block_both_native_authority_consumers_until_repaired(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = Fixture::new().unwrap();
     let item = "native-confirmed-plan";
     let document = PlanDoc {
         title: "Native linked approval".into(),
@@ -27,12 +28,14 @@ fn missing_canonical_bytes_block_both_native_authority_consumers_until_repaired(
             }],
         }],
     };
-    let creation_hash = fixture.clear(EventBody::ItemCreated {
-        item: item.into(),
-        kind: ItemKind::Plan,
-        content: ItemContent::Plan(document.clone()),
-        origin: "Explicit owner creation".into(),
-    });
+    let creation_hash = fixture
+        .clear(EventBody::ItemCreated {
+            item: item.into(),
+            kind: ItemKind::Plan,
+            content: ItemContent::Plan(document.clone()),
+            origin: "Explicit owner creation".into(),
+        })
+        .unwrap();
     let creation = fixture.core.engine.logs[SPACE]
         .events()
         .iter()
@@ -78,22 +81,24 @@ fn missing_canonical_bytes_block_both_native_authority_consumers_until_repaired(
         .engine
         .import_media(&sha, &bytes, "application/json")
         .unwrap());
-    fixture.clear(EventBody::ItemVersioned {
-        item: item.into(),
-        content: ItemContent::Page(PageContent {
-            title: document.title.clone(),
-            path: String::new(),
-            loro: String::new(),
-            manifest: Some(PageManifest::PlanV1(manifest)),
-            blob: Some(ChunkRef {
-                sha256: sha.clone(),
-                bytes: bytes.len() as u64,
-                blob: "11".repeat(32),
-                key: "22".repeat(32),
+    fixture
+        .clear(EventBody::ItemVersioned {
+            item: item.into(),
+            content: ItemContent::Page(PageContent {
+                title: document.title.clone(),
+                path: String::new(),
+                loro: String::new(),
+                manifest: Some(PageManifest::PlanV1(manifest)),
+                blob: Some(ChunkRef {
+                    sha256: sha.clone(),
+                    bytes: bytes.len() as u64,
+                    blob: "11".repeat(32),
+                    key: "22".repeat(32),
+                }),
             }),
-        }),
-        note: "Canonical confirmed version".into(),
-    });
+            note: "Canonical confirmed version".into(),
+        })
+        .unwrap();
     let line = &document.sections[0].lines[0];
     let request = AgentRequest {
         tool_proposal: None,
@@ -103,7 +108,7 @@ fn missing_canonical_bytes_block_both_native_authority_consumers_until_repaired(
         detail: String::new(),
         audience: SPACE.into(),
         action: ActionClass::Money { cents: 27 },
-        content_hash: content_hash(&(&line.text, line.cost_cents)),
+        content_hash: content_hash(&(&line.text, line.cost_cents))?,
         item: Some(item.into()),
         line: Some(line.id.clone()),
         proposal: None,
@@ -111,28 +116,32 @@ fn missing_canonical_bytes_block_both_native_authority_consumers_until_repaired(
     let author = fixture.core.engine.net.author.as_ref().unwrap();
     let event = author.sign_event(
         SPACE,
-        &new_id("agent-request"),
+        &new_id("agent-request").unwrap(),
         150,
         fixture.core.engine.logs[SPACE].head(),
         EventBody::RequestOpened {
             request: request.clone(),
         },
-    );
-    let frame = ordered(&fixture.owner, Envelope::plain(&event));
+    )?;
+    let frame = ordered(&fixture.owner, Envelope::plain(&event)?)?;
     assert_eq!(fixture.owner.ingest(frame.clone()), Ingest::Applied);
     fixture.core.ingest(vec![frame]).unwrap();
-    fixture.clear(EventBody::RequestResolved {
-        request: request.id.clone(),
-        approved: true,
-        content_hash: request.content_hash.clone(),
-        resolution: None,
-    });
+    fixture
+        .clear(EventBody::RequestResolved {
+            request: request.id.clone(),
+            approved: true,
+            content_hash: request.content_hash.clone(),
+            resolution: None,
+        })
+        .unwrap();
     assert_eq!(
         fixture.core.engine.state.requests[&request.id].status,
         crate::engine::ReqStatus::Approved
     );
-    fixture.grant("native-after-approved-plan", Some(1000));
-    let trigger = fixture.message("Certified owner message after the decision");
+    fixture.grant("native-after-approved-plan", Some(1000))?;
+    let trigger = fixture
+        .message("Certified owner message after the decision")
+        .unwrap();
     let facts = fixture.core.reply(SPACE, &trigger, 400).unwrap();
     let original = facts.intent().clone();
     let prepared = fixture
@@ -151,7 +160,7 @@ fn missing_canonical_bytes_block_both_native_authority_consumers_until_repaired(
     );
 
     for (reader, at_ms) in [(false, 1), (true, 1_900_000_000_000)] {
-        let other = new_id("native-unrelated-space");
+        let other = new_id("native-unrelated-space").unwrap();
         let owner_author = fixture.owner.net.author.clone().unwrap();
         let agent_author = fixture.core.engine.net.author.clone().unwrap();
         let mut foreign_document = document.clone();
@@ -161,7 +170,7 @@ fn missing_canonical_bytes_block_both_native_authority_consumers_until_repaired(
         let line = &foreign_document.sections[0].lines[0];
         let mut foreign_request = request.clone();
         foreign_request.title = "Unrelated duplicate request".into();
-        foreign_request.content_hash = content_hash(&(&line.text, line.cost_cents));
+        foreign_request.content_hash = content_hash(&(&line.text, line.cost_cents))?;
         let mut bodies = vec![
             EventBody::SpaceCreated {
                 title: "Unrelated retained history".into(),
@@ -204,12 +213,12 @@ fn missing_canonical_bytes_block_both_native_authority_consumers_until_repaired(
             };
             let event = author.sign_event(
                 &other,
-                &new_id("native-unrelated-event"),
+                &new_id("native-unrelated-event").unwrap(),
                 at_ms,
                 fixture.owner.logs.get(&other).and_then(SpaceLog::head),
                 body,
-            );
-            let frame = ordered(&fixture.owner, Envelope::plain(&event));
+            )?;
+            let frame = ordered(&fixture.owner, Envelope::plain(&event)?)?;
             assert_eq!(fixture.owner.ingest(frame.clone()), Ingest::Applied);
             fixture.core.ingest(vec![frame]).unwrap();
         }
@@ -259,4 +268,5 @@ fn missing_canonical_bytes_block_both_native_authority_consumers_until_repaired(
     assert_eq!(recovered.intent().grant_digest, grant_digest);
     assert_eq!(recovered.intent().trigger_digest, trigger_digest);
     assert!(fixture.core.reply_reference(&client_id).unwrap().is_some());
+    Ok(())
 }

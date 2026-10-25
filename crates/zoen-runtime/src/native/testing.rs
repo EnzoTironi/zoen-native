@@ -153,7 +153,11 @@ pub(crate) async fn stale_reply_admission(runtime: &RuntimeAuthority, step: &cra
     runs::testing::stale_admission(runtime, step).await;
 }
 
-pub(crate) async fn storage_cuts(runtime: &RuntimeAuthority, agent: &str, device: &str) {
+pub(crate) async fn storage_cuts(
+    runtime: &RuntimeAuthority,
+    agent: &str,
+    device: &str,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let custody = runtime.native.as_ref().unwrap();
     let credential = custody.credential(agent, device).unwrap();
     let principal = credential.principal();
@@ -182,7 +186,7 @@ pub(crate) async fn storage_cuts(runtime: &RuntimeAuthority, agent: &str, device
             9 => candidate.root.context.image_bytes = u32::MAX,
             10 => candidate.root.context.chunks = u32::MAX,
             11 => candidate.manifest.resize(MANIFEST_BYTES, 0),
-            12 => candidate.root.context.principal.device = event_log::Signer::generate().id(),
+            12 => candidate.root.context.principal.device = event_log::Signer::generate()?.id(),
             _ => unreachable!(),
         }
         assert!(
@@ -214,6 +218,7 @@ pub(crate) async fn storage_cuts(runtime: &RuntimeAuthority, agent: &str, device
     assert!(NativeImage::decode_bounded(vec![0; IMAGE_BYTES + 1]).is_err());
     storage::test_cuts(&runtime.execution, custody, &principal, &image).await;
     println!("native custody journey: binary chunks, authenticated complete restore and fenced activation cuts PASS");
+    Ok(())
 }
 
 pub(crate) async fn generation(runtime: &RuntimeAuthority, agent: &str, device: &str) -> u64 {
@@ -234,7 +239,11 @@ pub(crate) async fn generation(runtime: &RuntimeAuthority, agent: &str, device: 
         .generation
 }
 
-pub(crate) async fn authorization_cuts(runtime: &RuntimeAuthority, agent: &str, device: &str) {
+pub(crate) async fn authorization_cuts(
+    runtime: &RuntimeAuthority,
+    agent: &str,
+    device: &str,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let custody = runtime.native.as_ref().unwrap();
     let credential = custody.credential(agent, device).unwrap();
     let principal = credential.principal();
@@ -264,19 +273,19 @@ pub(crate) async fn authorization_cuts(runtime: &RuntimeAuthority, agent: &str, 
         match mutation {
             0 => wrong.namespace.push(0),
             1 => wrong.deployment = hash(b"other deployment"),
-            2 => wrong.target.context.principal.owner = event_log::Signer::generate().id(),
-            3 => wrong.target.context.principal.agent = event_log::Signer::generate().id(),
-            4 => wrong.target.context.principal.device = event_log::Signer::generate().id(),
+            2 => wrong.target.context.principal.owner = event_log::Signer::generate()?.id(),
+            3 => wrong.target.context.principal.agent = event_log::Signer::generate()?.id(),
+            4 => wrong.target.context.principal.device = event_log::Signer::generate()?.id(),
             5 => wrong.target.context.principal.certificate_digest = hash(b"other certificate"),
-            6 => wrong.target.context.capsule = types::new_id("capsule"),
+            6 => wrong.target.context.capsule = types::new_id("capsule")?,
             7 => wrong.target.context.generation += 1,
             8 => wrong.target.manifest_digest = hash(b"other manifest"),
             9 => wrong.target.context.image_digest = hash(b"other image"),
             10 => {
                 wrong.previous.as_mut().unwrap().manifest_digest = hash(b"other previous manifest")
             }
-            11 => wrong.previous.as_mut().unwrap().context.capsule = types::new_id("capsule"),
-            12 => wrong.fence.holder = types::new_id("other holder"),
+            11 => wrong.previous.as_mut().unwrap().context.capsule = types::new_id("capsule")?,
+            12 => wrong.fence.holder = types::new_id("other holder")?,
             13 => wrong.fence.token += 1,
             14 => wrong.previous = None,
             _ => unreachable!(),
@@ -390,6 +399,7 @@ pub(crate) async fn authorization_cuts(runtime: &RuntimeAuthority, agent: &str, 
         .await
         .unwrap();
     println!("native maintenance admission cuts: 15 exact-scope mutations refused; known SQL ACK suppression/delay and actual post-ACK expiry preserve root PASS");
+    Ok(())
 }
 
 pub(crate) async fn admitted_before_revocation(

@@ -393,12 +393,13 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "requires an isolated schema in ZOEN_TEST_PG"]
-    async fn database_proofs_are_single_use_binds_are_atomic_and_revoked_devices_stay_revoked() {
+    async fn database_proofs_are_single_use_binds_are_atomic_and_revoked_devices_stay_revoked(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let url = std::env::var("ZOEN_TEST_PG").expect("ZOEN_TEST_PG");
         let mut admin = PgConnection::connect(&url).await.unwrap();
         let schema = format!(
             "auth_test_{}",
-            &hex::encode(Signer::generate().secret())[..16]
+            &hex::encode(Signer::generate()?.secret())[..16]
         );
         sqlx::query(sqlx::AssertSqlSafe(format!("CREATE SCHEMA {schema}")))
             .execute(&mut admin)
@@ -431,5 +432,6 @@ mod tests {
             .await
             .unwrap();
         outcome.expect("isolated provider enrollment fixture failed after schema cleanup");
+        Ok(())
     }
 }

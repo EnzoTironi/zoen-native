@@ -77,7 +77,7 @@ fn canonical_reader_role_remains_denied_by_both_account_context_interfaces_after
     f.clear(EventBody::MemberAdded {
         identity: scope.agent_id.clone(),
         role: Role::Reader,
-    });
+    })?;
     let cold = DeviceCore::restore(f.core.image()?, f.credential())?;
     let before = cold.image()?;
     assert_eq!(

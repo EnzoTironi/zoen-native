@@ -43,9 +43,9 @@ struct Case {
     _directory: OwnedDirectory,
 }
 impl Case {
-    fn new() -> Self {
-        let directory = OwnedDirectory(std::env::temp_dir().join(types::new_id("managed-queue")));
-        let author = Author::device(&Signer::generate(), Signer::generate());
+    fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        let directory = OwnedDirectory(std::env::temp_dir().join(types::new_id("managed-queue")?));
+        let author = Author::device(&Signer::generate()?, Signer::generate()?);
         let envelope = Envelope::sealed(
             &author,
             "space",
@@ -53,7 +53,7 @@ impl Case {
             1,
             None,
             protocol::Sealed::new(protocol::SealedKind::Application, 1, vec![3; 32]),
-        );
+        )?;
         let deployment = Deployment {
             namespace: "managed-queue".into(),
             witness: "11".repeat(32),
@@ -72,12 +72,12 @@ impl Case {
             writer.reconcile(&prepared.next, &prepared.next).unwrap(),
             Recovery::BothAfter
         );
-        Self {
+        Ok(Self {
             writer,
             envelope,
             checkpoint: prepared.next,
             _directory: directory,
-        }
+        })
     }
     fn fence(&self) -> Fence {
         Fence {
@@ -104,8 +104,9 @@ fn batcher() -> Arc<HeldBatch> {
 }
 
 #[tokio::test]
-async fn cancelled_publisher_cannot_release_generation_while_its_batch_can_commit() {
-    let mut case = Case::new();
+async fn cancelled_publisher_cannot_release_generation_while_its_batch_can_commit(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut case = Case::new()?;
     let batcher = batcher();
     let sequencer = Arc::new(Sequencer::new(batcher.clone()));
     let ManagedAdmission::Queued(queued) = case.admit(&sequencer).expect("admitted once") else {
@@ -150,12 +151,14 @@ async fn cancelled_publisher_cannot_release_generation_while_its_batch_can_commi
             .unwrap(),
         Recovery::BothBefore
     );
+    Ok(())
 }
 
 #[tokio::test]
-async fn saturated_count_bytes_or_space_slots_do_not_consume_the_original_effect() {
+async fn saturated_count_bytes_or_space_slots_do_not_consume_the_original_effect(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for limit in ["count", "bytes", "slots"] {
-        let case = Case::new();
+        let case = Case::new()?;
         let mut sequencer = Sequencer::new(batcher());
         let mut reservations = Vec::new();
         match limit {
@@ -187,11 +190,13 @@ async fn saturated_count_bytes_or_space_slots_do_not_consume_the_original_effect
             "{limit} refusal must leave the exact original effect unconsumed"
         );
     }
+    Ok(())
 }
 
 #[tokio::test(start_paused = true)]
-async fn reserved_slot_keeps_the_worker_alive_across_idle_until_the_original_is_enqueued() {
-    let case = Case::new();
+async fn reserved_slot_keeps_the_worker_alive_across_idle_until_the_original_is_enqueued(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let case = Case::new()?;
     let batcher = batcher();
     let mut sequencer = Sequencer::new(batcher.clone());
     sequencer.idle = Duration::from_secs(1);
@@ -214,4 +219,5 @@ async fn reserved_slot_keeps_the_worker_alive_across_idle_until_the_original_is_
     assert_eq!(result.unwrap_err().reason, "fixture result");
     assert_eq!(stats.size, 1);
     assert_eq!(sequencer.count.available_permits(), MAX_PENDING);
+    Ok(())
 }

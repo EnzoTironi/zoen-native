@@ -23,7 +23,7 @@ impl<S: Signer> Client<S> {
             title = t("Sem título", "Untitled");
         }
         let (content, uploads) = self.page_content(title, path.into(), page.snapshot())?;
-        let item = browser_id("it", now);
+        let item = browser_id("it", now)?;
         self.queue_domain_body(
             space,
             EventBody::ItemCreated {

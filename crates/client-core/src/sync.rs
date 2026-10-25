@@ -21,6 +21,9 @@
 //! - **Reopen:** confirmed events are re-verified from disk, then the outbox is replayed
 //!   on top. Kill the app mid-send and nothing is lost or duplicated.
 
+#[cfg(test)]
+use types::TrustLevel;
+
 use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},
@@ -30,7 +33,10 @@ use event_log::content::SealedKind;
 use event_log::{chain_hash, content_hash_of, Author, Signer, SpaceLog};
 use protocol::{normalize_handle, Cursor, Envelope, Sequenced};
 use serde::{Deserialize, Serialize};
-use types::*;
+use types::{
+    new_id, new_ulid, Event, EventBody, FileDoc, Identity, IdentityId, IdentityKind, ItemContent,
+    ItemKind, PageContent, Privacy, Role, Seen, SpaceId, SpaceKind, GENESIS_PREV,
+};
 
 use crate::dto::Delivery;
 use crate::engine::{Engine, Entry, State};
@@ -49,6 +55,8 @@ pub(crate) struct PreparedAccount<'a> {
     pub(crate) root: &'a [u8; 32],
     pub(crate) device: &'a [u8; 32],
     pub(crate) agreement: &'a [u8; 32],
+    pub(crate) profile_key: Option<&'a event_log::profile::ProfileKey>,
+    pub(crate) personal_agent_key: Option<&'a Signer>,
     pub(crate) name: &'a str,
     pub(crate) handle: &'a str,
     pub(crate) relay: &'a str,
@@ -99,11 +107,11 @@ pub struct NetState {
     /// The unlocked device key (loaded from the vault).
     pub author: Option<Author>,
     pub synced: HashSet<SpaceId>,
-    /// client_id → Space, for events in the outbox.
+    /// `client_id` → Space, for events in the outbox.
     pub pending: HashMap<String, SpaceId>,
     /// Spaces whose pending resolutions overlay their ordered approval state.
     pub(crate) optimistic_approvals: HashSet<SpaceId>,
-    /// client_id → why the relay refused it.
+    /// `client_id` → why the relay refused it.
     pub failed: HashMap<String, String>,
     /// Identities seen in logs whose profile this device doesn't have yet.
     pub unknown: HashSet<IdentityId>,
@@ -174,8 +182,10 @@ pub(crate) fn tint_for(id: &str) -> String {
 }
 
 fn is_message_send(body: &EventBody) -> bool {
-    matches!(body, EventBody::MessagePosted { .. })
-        || matches!(body, EventBody::ItemCreated {
+    matches!(
+        body,
+        EventBody::MessagePosted { .. } | EventBody::AppEditRequested { .. }
+    ) || matches!(body, EventBody::ItemCreated {
             kind: ItemKind::File, content: ItemContent::File(doc), ..
         } if doc.is_voice())
 }
@@ -234,6 +244,7 @@ fn same_media_group(first: &Event, second: &Event) -> bool {
 }
 
 mod account;
+mod account_preparation;
 mod ingestion;
 mod member_controls;
 mod outbox;
@@ -248,7 +259,7 @@ pub(crate) mod replay_probe;
 mod spaces;
 
 impl Engine {
-    /// OpenMLS `SenderRatchetConfiguration` default `out_of_order_tolerance`.
+    /// `OpenMLS` `SenderRatchetConfiguration` default `out_of_order_tolerance`.
     /// A generation this far behind one already opened still decrypts; one step
     /// further is `TooDistantInThePast` and that page never opens on the device.
     const APPLICATION_IN_FLIGHT: usize = 5;
@@ -277,14 +288,14 @@ mod owner_tests {
     #[test]
     fn remote_agents_need_authorization_and_cannot_change_their_owner() {
         let mut e = Engine::open(":memory:").unwrap();
-        let owner = Author::device(&Signer::generate(), Signer::generate());
-        let original = agent(&owner, Signer::generate().id());
+        let owner = Author::device(&Signer::generate().unwrap(), Signer::generate().unwrap());
+        let original = agent(&owner, Signer::generate().unwrap().id());
         let mut unsigned = original.clone();
         unsigned.owner_proof = None;
         e.put_profiles(vec![unsigned]).unwrap();
         assert!(!e.identities.contains_key(&original.id));
         e.put_profiles(vec![original.clone()]).unwrap();
-        let other = Author::device(&Signer::generate(), Signer::generate());
+        let other = Author::device(&Signer::generate().unwrap(), Signer::generate().unwrap());
         let transferred = agent(&other, original.id.clone());
         e.put_profiles(vec![transferred]).unwrap();
         assert_eq!(e.identities[&original.id], original);
@@ -299,7 +310,7 @@ mod owner_tests {
     #[test]
     fn authorization_requires_an_unlocked_account_device_and_does_not_issue_a_grant() {
         let mut e = Engine::open(":memory:").unwrap();
-        let agent = Signer::generate().id();
+        let agent = Signer::generate().unwrap().id();
         assert!(e.authorize_agent(&agent).is_err());
         e.create_account("Owner", "owner", "http://127.0.0.1:9")
             .unwrap();
@@ -322,7 +333,7 @@ mod owner_tests {
         e.create_account("Owner", "owner", "http://127.0.0.1:9")
             .unwrap();
         let owner = e.net.author.clone().unwrap();
-        let mut legacy = agent(&owner, Signer::generate().id());
+        let mut legacy = agent(&owner, Signer::generate().unwrap().id());
         legacy.owner_proof = None;
         e.store.put_identity(&legacy, None).unwrap();
         let space = e
@@ -350,7 +361,7 @@ mod owner_tests {
 
         let me = e.me_id().unwrap();
         let original = e.identities[&me].clone();
-        let other = Author::device(&Signer::generate(), Signer::generate());
+        let other = Author::device(&Signer::generate().unwrap(), Signer::generate().unwrap());
         e.put_profiles(vec![agent(&other, me.clone())]).unwrap();
         assert_eq!(e.identities[&me], original);
     }

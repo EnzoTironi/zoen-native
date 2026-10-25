@@ -108,9 +108,10 @@ impl LogStore for BlockedLog {
             self.finished.clone(),
             env.clone(),
         );
+        let hash = event_log::chain_hash(env.space(), 0, types::GENESIS_PREV, &env.wire_hash())
+            .map_err(|_| Reject::unavailable())?;
         tokio::spawn(async move {
             release.acquire().await.unwrap().forget();
-            let hash = event_log::chain_hash(env.space(), 0, types::GENESIS_PREV, &env.wire_hash());
             let ev = Sequenced {
                 seq: 0,
                 prev: types::GENESIS_PREV.into(),
@@ -319,20 +320,22 @@ struct TestRelay {
 }
 
 impl TestRelay {
-    async fn new() -> Self {
+    async fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
         Self::with_snapshot_test_lease(snapshot_test_lease::shared().await).await
     }
 
-    async fn exclusive_snapshots() -> Self {
+    async fn exclusive_snapshots() -> std::result::Result<Self, Box<dyn std::error::Error>> {
         Self::with_snapshot_test_lease(snapshot_test_lease::exclusive().await).await
     }
 
-    async fn with_snapshot_test_lease(lease: snapshot_test_lease::Lease) -> Self {
+    async fn with_snapshot_test_lease(
+        lease: snapshot_test_lease::Lease,
+    ) -> std::result::Result<Self, Box<dyn std::error::Error>> {
         let lease = Arc::new(lease);
         let admin_url = std::env::var("ZOEN_TEST_PG").expect("set ZOEN_TEST_PG");
         let database = format!(
             "zoen_t_read_revoke_{}",
-            &hex::encode(Signer::generate().secret())[..12]
+            &hex::encode(Signer::generate()?.secret())[..12]
         );
         let mut admin = PgConnection::connect(&admin_url).await.unwrap();
         sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {database}")))
@@ -404,7 +407,7 @@ impl TestRelay {
             .await
             .unwrap();
         });
-        Self {
+        Ok(Self {
             _snapshot_test_lease: lease,
             state,
             log,
@@ -413,7 +416,7 @@ impl TestRelay {
             database,
             database_url: url,
             admin,
-        }
+        })
     }
 
     async fn close(mut self) {

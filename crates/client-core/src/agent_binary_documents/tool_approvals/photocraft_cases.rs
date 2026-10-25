@@ -1,6 +1,6 @@
 use super::*;
 use crate::agent_binary_documents::tests::fixture_binary;
-fn photo_fixture() -> Fixture {
+fn photo_fixture() -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
     fixture_binary(
         types::Privacy::Closed,
         "photocraft",
@@ -10,9 +10,10 @@ fn photo_fixture() -> Fixture {
 const PHOTO_EDITED: &[u8] =
     include_bytes!("../../../../miniapps/src/photocraft/fixtures/native-rotated.pcraft");
 #[test]
-fn reviewed_photo_read_cannot_replace_its_stable_source_step_with_a_write() {
-    let f = photo_fixture();
-    signed_trust(&f, TrustLevel::Act);
+fn reviewed_photo_read_cannot_replace_its_stable_source_step_with_a_write(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = photo_fixture()?;
+    signed_trust(&f, TrustLevel::Act)?;
     let read = stage(&f, "read_photocraft");
     owner_decide(
         &f,
@@ -37,11 +38,13 @@ fn reviewed_photo_read_cannot_replace_its_stable_source_step_with_a_write() {
         .is_err());
     assert_eq!(counts(&f), before);
     assert_eq!(current(&f).version, 1);
+    Ok(())
 }
 #[test]
-fn certified_photo_turn_uses_current_native_source_and_exact_approved_binary_cas() {
-    let f = photo_fixture();
-    signed_trust(&f, TrustLevel::Act);
+fn certified_photo_turn_uses_current_native_source_and_exact_approved_binary_cas(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = photo_fixture()?;
+    signed_trust(&f, TrustLevel::Act)?;
     let write = stage(&f, "photocraft_transform");
     assert!(f.agent.approved_tool_turn(&write.id, WORKER).is_err());
     owner_decide(
@@ -82,14 +85,16 @@ fn certified_photo_turn_uses_current_native_source_and_exact_approved_binary_cas
         .expect("retained result");
     assert_eq!(repeated.sha256, accepted.sha256);
     assert_eq!(repeated.version, 2);
+    Ok(())
 }
 #[test]
-fn binary_approval_refuses_cross_format_tools_without_creating_requests() {
+fn binary_approval_refuses_cross_format_tools_without_creating_requests(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for (f, tool) in [
-        (photo_fixture(), "deckcraft_slide_notes"),
-        (fixture(), "photocraft_transform"),
+        (photo_fixture()?, "deckcraft_slide_notes"),
+        (fixture()?, "photocraft_transform"),
     ] {
-        signed_trust(&f, TrustLevel::Act);
+        signed_trust(&f, TrustLevel::Act)?;
         let t = turn(&f);
         let before = counts(&f);
         assert!(f
@@ -98,11 +103,13 @@ fn binary_approval_refuses_cross_format_tools_without_creating_requests() {
             .is_err());
         assert_eq!(counts(&f), before);
     }
+    Ok(())
 }
 #[test]
-fn photo_approved_turn_cannot_outlive_current_app_grant() {
-    let f = photo_fixture();
-    signed_trust(&f, TrustLevel::Act);
+fn photo_approved_turn_cannot_outlive_current_app_grant(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = photo_fixture()?;
+    signed_trust(&f, TrustLevel::Act)?;
     let request = stage(&f, "photocraft_transform");
     owner_decide(
         &f,
@@ -152,4 +159,5 @@ fn photo_approved_turn_cannot_outlive_current_app_grant() {
     assert!(f.agent.approved_tool_turn(&request.id, WORKER).is_err());
     assert_eq!(counts(&f), before);
     assert_eq!(current(&f).version, 1);
+    Ok(())
 }

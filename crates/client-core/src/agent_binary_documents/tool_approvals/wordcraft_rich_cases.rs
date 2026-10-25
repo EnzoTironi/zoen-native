@@ -14,8 +14,8 @@ fn reviewed_rich_word_operations_preserve_style_bytes_versions_and_exact_intent(
     p.runs[0].props.italic = Some(true);
     let original = zoen_word_profile::encode(&source)?;
     for tool in ["wordcraft_format_range", "wordcraft_edit_range"] {
-        let f = fixture_binary(types::Privacy::Closed, "wordcraft", &original);
-        signed_trust(&f, TrustLevel::Act);
+        let f = fixture_binary(types::Privacy::Closed, "wordcraft", &original)?;
+        signed_trust(&f, TrustLevel::Act)?;
         let request = stage(&f, tool);
         assert!(f.agent.approved_tool_turn(&request.id, WORKER).is_err());
         assert_eq!(current(&f).version, 1);

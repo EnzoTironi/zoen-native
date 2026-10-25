@@ -39,7 +39,7 @@ pub(super) struct Fixture {
     pub directory: PathBuf,
     pub deadline: tokio::time::Instant,
     control: mpsc::UnboundedSender<Control>,
-    task: tokio::task::JoinHandle<()>,
+    task: tokio::task::JoinHandle<std::result::Result<(), serde_json::Error>>,
 }
 impl Drop for Fixture {
     fn drop(&mut self) {
@@ -60,7 +60,7 @@ async fn send(
 }
 
 impl Fixture {
-    pub async fn new() -> Self {
+    pub async fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let relay = format!("http://{}", listener.local_addr().unwrap());
         let client = Client::open(":memory:".into(), "en".into()).unwrap();
@@ -78,7 +78,7 @@ impl Fixture {
         client
             .page_import_markdown(space.clone(), "page.md".into(), MARKDOWN.into())
             .unwrap();
-        let directory = std::env::temp_dir().join(types::new_id("export-mls-boundary"));
+        let directory = std::env::temp_dir().join(types::new_id("export-mls-boundary")?);
         let mut builder = std::fs::DirBuilder::new();
         #[cfg(unix)]
         {
@@ -164,7 +164,7 @@ impl Fixture {
                                 let entries = logs.entry(env.space().into()).or_default();
                                 let seq = entries.len() as u64;
                                 let prev = entries.last().map(|e|e.hash.clone()).unwrap_or_else(||types::GENESIS_PREV.into());
-                                let ev = Sequenced { seq, hash: event_log::chain_hash(env.space(), seq, &prev, &env.wire_hash()), prev, env: env.clone() };
+                                let ev = Sequenced { seq, hash: event_log::chain_hash(env.space(), seq, &prev, &env.wire_hash())?, prev, env: env.clone() };
                                 entries.push(ev.clone());
                                 send(&mut socket, ServerFrame::Event { ev }).await;
                                 send(&mut socket, ServerFrame::Accepted { space: env.space().into(), client_id: env.client_id().into(), seq }).await;
@@ -182,6 +182,7 @@ impl Fixture {
                     }
                 }
             }
+            Ok::<(), serde_json::Error>(())
         });
         let mut budget = crate::commands::SyncBudget::new(5000);
         client.start_sync(None).unwrap();
@@ -191,14 +192,14 @@ impl Fixture {
         assert_eq!(connection.state, "online");
         assert!(connection.synced);
         assert_eq!(connection.pending, 0);
-        Self {
+        Ok(Self {
             client,
             space,
             directory,
             deadline,
             control,
             task,
-        }
+        })
     }
 
     pub async fn hold_top_up(&self) {

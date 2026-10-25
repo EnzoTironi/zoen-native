@@ -1,6 +1,10 @@
 //! Saving on the original Engine and canonical document state.
 
-use super::*;
+use super::{
+    hash, invalid, json, metadata, stale, storage, t, unavailable, valid_hash, valid_id,
+    validate_scene, AppDoc, AppDocumentDto, BTreeSet, Engine, EventBody, HashMap, ItemContent,
+    Receipt, TrustLevel, Value, MAX_RECEIPTS, MAX_SCENE_BYTES, MIME, R,
+};
 
 impl Engine {
     pub(crate) fn app_document_save(
@@ -79,7 +83,7 @@ impl Engine {
         if !self.state.writer(&space, &me) || self.app_trust(item) < TrustLevel::Act {
             return Err(unavailable());
         }
-        let current = app.document.as_ref().expect("checked");
+        let current = app.document.as_ref().ok_or_else(invalid)?;
         if expected_version != current_version || expected_sha256 != current.sha256 {
             return Err(stale());
         }

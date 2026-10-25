@@ -108,6 +108,7 @@ impl Engine {
         if self.state.items.contains_key(&item) {
             return Err(stale());
         }
+        let grant_id = new_id("gr")?;
         self.atomic_agent_action(|e| {
             let file_key = e.file_key(None)?;
             let mut file = e.file_doc(
@@ -159,7 +160,7 @@ impl Engine {
                 &me,
                 EventBody::GrantIssued {
                     grant: Grant {
-                        id: new_id("gr"),
+                        id: grant_id,
                         grantor: me.clone(),
                         grantee: Some(format!("app:{item}")),
                         scope: GrantScope::Item(item.clone()),

@@ -1,7 +1,7 @@
 use super::*;
 
-pub(super) async fn live_event_overtaking_final_replay_page_reconciles_once_without_later_message()
-{
+pub(super) async fn live_event_overtaking_final_replay_page_reconciles_once_without_later_message(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     fn assert_history(engine: &Engine, space: &str) {
         let messages: Vec<_> = engine
             .timeline(space)
@@ -48,7 +48,7 @@ pub(super) async fn live_event_overtaking_final_replay_page_reconciles_once_with
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("ws://{}", listener.local_addr().unwrap());
     let directory = Directory(
-        std::env::temp_dir().join(format!("zoen-replay-handoff-{}", Signer::generate().id())),
+        std::env::temp_dir().join(format!("zoen-replay-handoff-{}", Signer::generate()?.id())),
     );
     std::fs::create_dir(&directory.0).unwrap();
     let reader_path = directory.0.join("reader.sqlite");
@@ -59,7 +59,7 @@ pub(super) async fn live_event_overtaking_final_replay_page_reconciles_once_with
     let _ = engine.mls_key_packages_to_publish().unwrap();
     engine.mls_key_packages_published(Ok(()));
     let author = engine.net.author.clone().unwrap();
-    let peer = Author::root(Signer::generate());
+    let peer = Author::root(Signer::generate()?);
     let space = "sp_replay_handoff";
     let mut head = None;
     let canonical = store::Store::open(relay_path.to_str().unwrap()).unwrap();
@@ -81,9 +81,9 @@ pub(super) async fn live_event_overtaking_final_replay_page_reconciles_once_with
         ),
     ] {
         let ev = sequence(
-            Envelope::plain(&author.sign_event(space, id, 1, head.clone(), body)),
+            Envelope::plain(&author.sign_event(space, id, 1, head.clone(), body)?)?,
             &mut head,
-        );
+        )?;
         canonical.append_event(&ev.plain_event().unwrap()).unwrap();
         assert_eq!(engine.ingest(ev), Ingest::Applied);
     }
@@ -101,9 +101,9 @@ pub(super) async fn live_event_overtaking_final_replay_page_reconciles_once_with
                 media: None,
                 forwarded: false,
             },
-        )),
+        )?)?,
         &mut head,
-    );
+    )?;
     canonical
         .append_event(&replay.plain_event().unwrap())
         .unwrap();
@@ -124,9 +124,9 @@ pub(super) async fn live_event_overtaking_final_replay_page_reconciles_once_with
                 media: None,
                 forwarded: false,
             },
-        )),
+        )?)?,
         &mut head,
-    );
+    )?;
     let engine = Arc::new(Mutex::new(engine));
     let (cmd, mut commands) = mpsc::unbounded_channel();
     let (status, _) = watch::channel(NetStatus {
@@ -211,7 +211,7 @@ pub(super) async fn live_event_overtaking_final_replay_page_reconciles_once_with
                 seq: event.seq,
                 prev: event.prev.clone(),
                 hash: event.hash.clone(),
-                env: Envelope::plain(&event),
+                env: Envelope::plain(&event)?,
             };
             reply(&mut socket, ServerFrame::Event { ev }).await;
         }
@@ -270,6 +270,7 @@ pub(super) async fn live_event_overtaking_final_replay_page_reconciles_once_with
         assert_history(&lock(&engine), space);
         cmd.send(Cmd::Stop).unwrap();
         close_socket.await.unwrap();
+        Ok::<_, Box<dyn std::error::Error>>(())
     };
     let mut backoff = Duration::from_millis(500);
     let client = async {
@@ -277,11 +278,12 @@ pub(super) async fn live_event_overtaking_final_replay_page_reconciles_once_with
         finished.send(()).unwrap();
         exit
     };
-    let (exit, ()) = tokio::time::timeout(Duration::from_secs(15), async {
+    let (exit, relay_result) = tokio::time::timeout(Duration::from_secs(15), async {
         tokio::join!(client, relay)
     })
     .await
     .expect("replay/live handoff did not finish");
+    relay_result?;
     assert!(matches!(exit, Exit::Stop));
     // Aborting the spawned media task does not synchronously drop its lease.
     ctx.engine.revoke();
@@ -291,6 +293,8 @@ pub(super) async fn live_event_overtaking_final_replay_page_reconciles_once_with
     let mut reopened = Engine::open(reader_path.to_str().unwrap()).unwrap();
     assert!(reopened.unlock(Some(device_secret.to_vec())).unwrap());
     assert_history(&reopened, space);
+
+    Ok(())
 }
 
 pub(super) async fn initial_catch_up_unavailable_retries_without_resetting_backoff() {

@@ -27,8 +27,8 @@ fn revoke_latest(fixture: &Fixture) {
 }
 #[test]
 fn revoked_newest_trust_cannot_be_overridden_by_pending_approve_once() {
-    let fixture = fixture();
-    signed_trust(&fixture, TrustLevel::Suggest);
+    let fixture = fixture().unwrap();
+    signed_trust(&fixture, TrustLevel::Suggest).unwrap();
     let request = stage(&fixture, "deckcraft_slide_notes");
     revoke_latest(&fixture);
     let before = counts(&fixture);
@@ -55,8 +55,8 @@ fn revoked_newest_trust_cannot_be_overridden_by_pending_approve_once() {
 }
 #[test]
 fn held_approved_tool_cannot_execute_after_the_newest_trust_is_revoked() {
-    let fixture = fixture();
-    signed_trust(&fixture, TrustLevel::Suggest);
+    let fixture = fixture().unwrap();
+    signed_trust(&fixture, TrustLevel::Suggest).unwrap();
     let request = stage(&fixture, "deckcraft_slide_notes");
     owner_decide(
         &fixture,
@@ -91,8 +91,8 @@ fn held_approved_tool_cannot_execute_after_the_newest_trust_is_revoked() {
 
 #[test]
 fn revoked_newest_item_grant_cannot_revive_an_old_app_act_for_a_held_tool() {
-    let fixture = fixture();
-    signed_trust(&fixture, TrustLevel::Suggest);
+    let fixture = fixture().unwrap();
+    signed_trust(&fixture, TrustLevel::Suggest).unwrap();
     let request = stage(&fixture, "deckcraft_slide_notes");
     owner_decide(
         &fixture,
@@ -108,7 +108,7 @@ fn revoked_newest_item_grant_cannot_revive_an_old_app_act_for_a_held_tool() {
     let (mutation, intent) = intent(approved.proposal());
     {
         let mut e = fixture.agent.lock();
-        let id = types::new_id("lower_app_trust");
+        let id = types::new_id("lower_app_trust").unwrap();
         e.append(
             &fixture.space,
             &fixture.owner,

@@ -24,6 +24,7 @@ pub enum Kind {
     AgentState = 1,
 }
 impl Kind {
+    #[must_use]
     pub fn max_rows(self) -> usize {
         match self {
             Self::Devices => DEVICE_ROWS,
@@ -46,6 +47,7 @@ pub struct Request {
     pub cancel: bool,
 }
 impl Request {
+    #[must_use]
     pub fn begin(kind: Kind) -> Self {
         Self {
             kind: kind as i32,
@@ -54,6 +56,7 @@ impl Request {
             cancel: false,
         }
     }
+    #[must_use]
     pub fn valid(&self) -> bool {
         Kind::try_from(self.kind).is_ok()
             && (if self.snapshot.is_empty() {
@@ -61,7 +64,8 @@ impl Request {
             } else {
                 self.snapshot.len() == 64 && self.snapshot.bytes().all(|b| b.is_ascii_hexdigit())
             })
-            && self.ordinal <= (CURSOR_ROWS / PAGE_ROWS + 1) as u32
+            && usize::try_from(self.ordinal)
+                .is_ok_and(|ordinal| ordinal <= CURSOR_ROWS / PAGE_ROWS + 1)
     }
 }
 #[derive(Clone, PartialEq, Eq, Message)]
@@ -90,6 +94,7 @@ pub struct Header {
     pub definition: Vec<u8>,
 }
 impl Header {
+    #[must_use]
     pub fn valid(&self) -> bool {
         matches!(self.status.as_str(), "active" | "paused" | "revoked")
             && matches!(self.kind.as_str(), "" | "Creator" | "User")
@@ -125,10 +130,12 @@ fn hex_key(key: &str) -> bool {
     key.len() == 64 && key.bytes().all(|b| b.is_ascii_hexdigit())
 }
 impl Page {
+    #[must_use]
     pub fn wire_len(&self) -> usize {
         self.encoded_len()
     }
     /// One bounded payload copy; digest commits owner/kind/header/order/count/EOF.
+    #[must_use]
     pub fn rolling_digest(&self, previous: &[u8]) -> Vec<u8> {
         let mut payload = self.clone();
         payload.digest.clear();
@@ -186,6 +193,7 @@ pub struct Assembly {
     complete: bool,
 }
 impl Assembly {
+    #[must_use]
     pub fn new(kind: Kind, identity: String, device: String) -> Self {
         Self {
             kind,
@@ -203,6 +211,8 @@ impl Assembly {
             complete: false,
         }
     }
+    /// # Errors
+    /// Rejects invalid ownership, order, digest or profile bounds and poisons this assembly.
     pub fn accept(&mut self, page: Page) -> Result<Option<Request>, &'static str> {
         if self.poisoned {
             return Err(INVALID);
@@ -271,6 +281,7 @@ impl Assembly {
         }))
     }
     /// Release only the accepted transport snapshot; never an account mutation.
+    #[must_use]
     pub fn cancel_request(&self) -> Option<Request> {
         if self.complete {
             return None;
@@ -282,6 +293,8 @@ impl Assembly {
             cancel: true,
         })
     }
+    /// # Errors
+    /// Rejects poisoned or incomplete reads and agent-state reads without their header.
     pub fn finish(self) -> Result<Reply, &'static str> {
         if self.poisoned || !self.complete {
             return Err(INVALID);

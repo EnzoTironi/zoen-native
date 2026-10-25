@@ -1,5 +1,8 @@
 //! Current/historical item views and ordinary restoration.
-use super::*;
+use super::{
+    kind_id, kind_label, not_found, plan_to_dto, t, CoreError, Engine, EventBody, ItemContent,
+    ItemDetail, ItemKind, ItemState, VersionDto, R,
+};
 
 impl Engine {
     pub fn item(&self, id: &str) -> R<ItemDetail> {
@@ -92,7 +95,7 @@ impl Engine {
             created_by: self.persona(if it.shared.is_some() {
                 ""
             } else {
-                &it.versions[0].author
+                &it.versions.initial().author
             }),
             plan,
             text,
@@ -131,7 +134,7 @@ impl Engine {
             .position(|v| v.number == number)
             .ok_or_else(|| not_found(&t("versão", "version")))?;
         let mut past = state.clone();
-        past.versions.truncate(position + 1);
+        past.versions.truncate_after(position);
         let version = past.current();
         let mut detail = self.item(id)?;
         detail.version = version.number;

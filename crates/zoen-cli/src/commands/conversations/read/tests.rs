@@ -3,7 +3,8 @@ use crate::{EntryKind, SecretVault};
 use std::sync::Arc;
 
 #[test]
-fn peek_flags_are_explicit_and_cannot_fetch_history_or_ignore_extra_arguments() {
+fn peek_flags_are_explicit_and_cannot_fetch_history_or_ignore_extra_arguments(
+) -> Result<(), Box<dyn std::error::Error>> {
     for args in [
         vec!["space", "--json", "--peek"],
         vec!["--peek", "space", "--json"],
@@ -31,11 +32,13 @@ fn peek_flags_are_explicit_and_cannot_fetch_history_or_ignore_extra_arguments() 
     };
     let options = Options::parse(&mut legacy).unwrap();
     assert!(options.older && !options.peek && !options.json);
+    Ok(())
 }
 
 #[tokio::test]
-async fn json_peek_keeps_real_source_ids_seq_thread_and_reply_without_marking_read() {
-    let f = crate::deckcraft::tests::fixture();
+async fn json_peek_keeps_real_source_ids_seq_thread_and_reply_without_marking_read(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = crate::deckcraft::tests::fixture()?;
     let space = f.client.item(f.base.item_id.clone()).unwrap().space_id;
     let thread = f
         .client
@@ -98,11 +101,13 @@ async fn json_peek_keeps_real_source_ids_seq_thread_and_reply_without_marking_re
     let path = f.path.clone();
     drop(f);
     std::fs::remove_dir_all(path).unwrap();
+    Ok(())
 }
 
 #[test]
-fn public_member_and_mls_json_use_only_the_existing_public_dtos() {
-    let f = crate::deckcraft::tests::fixture();
+fn public_member_and_mls_json_use_only_the_existing_public_dtos(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = crate::deckcraft::tests::fixture()?;
     let space = f
         .client
         .create_group_with(
@@ -129,11 +134,13 @@ fn public_member_and_mls_json_use_only_the_existing_public_dtos() {
     let path = f.path.clone();
     drop(f);
     std::fs::remove_dir_all(path).unwrap();
+    Ok(())
 }
 
 #[tokio::test]
-async fn diagnostics_refuse_anonymous_missing_and_nonmember_cached_conversations() {
-    let f = crate::deckcraft::tests::fixture();
+async fn diagnostics_refuse_anonymous_missing_and_nonmember_cached_conversations(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = crate::deckcraft::tests::fixture()?;
     let space = f.client.item(f.base.item_id.clone()).unwrap().space_id;
     let anonymous = Client::open(":memory:".into(), "en".into()).unwrap();
     assert!(members_json(&anonymous, &space).is_err());
@@ -203,4 +210,5 @@ async fn diagnostics_refuse_anonymous_missing_and_nonmember_cached_conversations
     drop(foreign);
     let path = f.path.clone();
     std::fs::remove_dir_all(path).unwrap();
+    Ok(())
 }

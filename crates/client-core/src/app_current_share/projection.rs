@@ -51,9 +51,7 @@ impl State {
                 .grant
                 .expires_at_ms
                 .is_some_and(|at| at <= event.at_ms)
-            || (context.ordered()
-                && (share.cut.seq.checked_add(1) != Some(event.seq)
-                    || share.cut.hash != event.prev))
+            || (context.ordered() && share.cut.seq >= event.seq)
         {
             return Projection::Refused;
         }
@@ -116,7 +114,7 @@ impl State {
                         space: event.space.clone(),
                         kind: ItemKind::App,
                         origin: t("Versão atual compartilhada", "Current version shared"),
-                        versions: vec![version],
+                        versions: crate::engine::ItemVersions::new(version),
                         shared: Some(origin),
                         has_voice_history: false,
                     },

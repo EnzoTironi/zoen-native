@@ -1,8 +1,9 @@
 //! Original whole test bodies, called by their unchanged registered facade.
 use super::*;
 
-pub(super) fn web_receipts_replay_after_saved_unsent_frames_and_each_reconnect() {
-    let (mut client, _, _, log, _) = web_fixture();
+pub(super) fn web_receipts_replay_after_saved_unsent_frames_and_each_reconnect(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, _, _, log, _) = web_fixture()?;
     let space = log.space().to_owned();
     let last = log.next_seq() - 1;
     client.logs.insert(space.clone(), log);
@@ -29,13 +30,14 @@ pub(super) fn web_receipts_replay_after_saved_unsent_frames_and_each_reconnect()
         );
         assert!(restored.delivered().is_empty());
     }
+    Ok(())
 }
 
 pub(super) fn actual_public_receive_emits_delivery_and_mark_read_replays_after_serialized_snapshot_reload(
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     // Actual signed canonical Event ingestion, not direct logs/receipt-map writes.
     // This is the Rust browser adapter, not WebCrypto/IDB or browser runtime proof.
-    let (mut client, author, mut log) = document_fixture();
+    let (mut client, author, mut log) = document_fixture()?;
     let space = log.space().to_string();
     let wire = clear(
         &mut log,
@@ -49,7 +51,7 @@ pub(super) fn actual_public_receive_emits_delivery_and_mark_read_replays_after_s
             forwarded: false,
         },
         50,
-    );
+    )?;
     let seq = log.next_seq() - 1;
     let received = client.receive(&wire, 51).unwrap();
     assert!(receipt_marks(&received.frames).contains(&("delivered", seq)));
@@ -70,12 +72,13 @@ pub(super) fn actual_public_receive_emits_delivery_and_mark_read_replays_after_s
         vec![("delivered", seq), ("read", seq)]
     );
     assert!(restored.delivered().is_empty());
+    Ok(())
 }
 
 pub(super) fn actual_signed_removal_discards_new_receipts_and_rejoin_cannot_authorize_the_discarded_arrival(
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for remove_reader in [false, true] {
-        let (mut client, owner, mut log) = document_fixture();
+        let (mut client, owner, mut log) = document_fixture()?;
         let space = log.space().to_string();
         let peer = Author::device(
             &NativeSigner::from_secret(&[121; 32]),
@@ -89,7 +92,7 @@ pub(super) fn actual_signed_removal_discards_new_receipts_and_rejoin_cannot_auth
                 role: Role::Owner,
             },
             60,
-        );
+        )?;
         client.receive(&added, 61).unwrap();
         let incoming = |kind| {
             ServerFrame::Ephemeral {
@@ -116,7 +119,7 @@ pub(super) fn actual_signed_removal_discards_new_receipts_and_rejoin_cannot_auth
                 identity: subject.clone(),
             },
             63,
-        );
+        )?;
         client.receive(&removed, 64).unwrap();
         for kind in [
             protocol::EphemeralKind::Delivered { seq: u64::MAX },
@@ -142,7 +145,7 @@ pub(super) fn actual_signed_removal_discards_new_receipts_and_rejoin_cannot_auth
                 role: Role::Owner,
             },
             66,
-        );
+        )?;
         client.receive(&rejoined, 67).unwrap();
         assert_eq!(client.saved.receipts[&space][&peer.identity], (7, 7));
         client
@@ -154,11 +157,12 @@ pub(super) fn actual_signed_removal_discards_new_receipts_and_rejoin_cannot_auth
             .unwrap();
         assert_eq!(client.saved.receipts[&space][&peer.identity], (11, 11));
     }
+    Ok(())
 }
 
 pub(super) fn actual_early_receipt_waits_for_confirmed_signed_membership_and_connection_buffer_is_bounded(
-) {
-    let (mut client, owner, mut log) = document_fixture();
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, owner, mut log) = document_fixture()?;
     let space = log.space().to_string();
     let peer = NativeSigner::from_secret(&[123; 32]).id();
     let early = ServerFrame::Ephemeral {
@@ -192,7 +196,7 @@ pub(super) fn actual_early_receipt_waits_for_confirmed_signed_membership_and_con
             role: Role::Member,
         },
         71,
-    );
+    )?;
     client.receive(&added, 72).unwrap();
     assert_eq!(client.saved.receipts[&space][&peer], (25, 25));
     assert!(client.deferred_receipts.is_empty());
@@ -222,11 +226,12 @@ pub(super) fn actual_early_receipt_waits_for_confirmed_signed_membership_and_con
     client.bootstrap().unwrap();
     assert!(client.deferred_receipts.is_empty());
     assert_eq!(client.saved.receipts[&space][&peer], (25, 25));
+    Ok(())
 }
 
-pub(super) fn browser_closed_chat_posts_queue_offline_and_never_publish_plaintext_after_encryption()
-{
-    let (mut client, author, mut log) = document_fixture();
+pub(super) fn browser_closed_chat_posts_queue_offline_and_never_publish_plaintext_after_encryption(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, author, mut log) = document_fixture()?;
     client.synced = false;
     let queued = client
         .queue_message(log.space(), "Uma mensagem offline", 10)
@@ -239,14 +244,16 @@ pub(super) fn browser_closed_chat_posts_queue_offline_and_never_publish_plaintex
         .frames
         .iter()
         .any(|frame| matches!(ClientFrame::decode(frame), Ok(ClientFrame::Publish { .. }))));
-    let upgraded = clear(&mut log, &author, EventBody::SpaceEncrypted, 11);
+    let upgraded = clear(&mut log, &author, EventBody::SpaceEncrypted, 11)?;
     client.receive(&upgraded, 12).unwrap();
     let resumed = client.receive(&ServerFrame::SyncDone.encode(), 13).unwrap();
     assert!(!resumed.frames.iter().any(|frame|matches!(ClientFrame::decode(frame),Ok(ClientFrame::Publish{env}) if env.plain_event().is_some_and(|event|matches!(event.body,EventBody::MessagePosted{..})))));
+    Ok(())
 }
 
-pub(super) fn browser_file_cards_keep_the_native_message_identity_for_deletion_and_replies() {
-    let (mut client, _, mut log) = document_fixture();
+pub(super) fn browser_file_cards_keep_the_native_message_identity_for_deletion_and_replies(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, _, mut log) = document_fixture()?;
     let file = crate::media::seal_file("report.txt", "text/plain", b"report", None)
         .unwrap()
         .doc;
@@ -258,13 +265,14 @@ pub(super) fn browser_file_cards_keep_the_native_message_identity_for_deletion_a
         before[0].messages[0].file_item_id.as_deref(),
         Some(item.as_str())
     );
-    confirm_documents(&mut client, &mut log, update, 11);
+    confirm_documents(&mut client, &mut log, update, 11)?;
     let posted = client.conversations()[0].messages[0].entry.clone().unwrap();
     let deleted = client
         .queue_annotation(log.space(), &posted, types::Annotation::Delete, 12)
         .unwrap();
-    confirm_documents(&mut client, &mut log, deleted, 13);
+    confirm_documents(&mut client, &mut log, deleted, 13)?;
     let after = client.conversations();
     assert!(after[0].messages[0].deleted);
     assert!(after[0].messages[0].file.is_none());
+    Ok(())
 }

@@ -1,6 +1,9 @@
 //! Non-model recovery of a configured Runtime's missing MLS group. No options,
 //! refusal, policy installation or paid execution authority comes from this hint.
-use super::*;
+use super::{
+    denied, invalid, Client, CoreError, Deserialize, Engine, EventBody, OwnerPolicyInquiryControl,
+    Serialize, R,
+};
 use types::{Event, Seen};
 
 mod reference;
@@ -49,7 +52,7 @@ impl Engine {
         })
     }
 
-    /// Called only for a precise configured Runtime MlsGroup reply, not generic
+    /// Called only for a precise configured Runtime `MlsGroup` reply, not generic
     /// IPC/storage/pending errors. Rechecks everything after the asynchronous cut.
     pub(crate) fn request_owner_policy_welcome(
         &mut self,

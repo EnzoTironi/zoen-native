@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 fn candidate() -> StdResult<(Fixture, String, OwnerPolicyInquiryControl), Box<dyn std::error::Error>>
 {
     let (mut f, scope, _) = setup()?;
-    let key = Signer::generate();
+    let key = Signer::generate()?;
     let author = Author::device(&f.agent_root, key.clone());
     let credential = UnlockedDevice::verify(
         f.agent_profile.clone(),
@@ -302,7 +302,7 @@ fn failed_accepted_reference_write_keeps_original_outbox_and_exact_echo_retryabl
         .into_iter()
         .next()
         .ok_or("original joining")?;
-    let frame = ordered(&f.owner, envelope.clone());
+    let frame = ordered(&f.owner, envelope.clone())?;
     assert_eq!(f.owner.ingest(frame.clone()), Ingest::Applied);
     f.core.engine.store.conn().execute_batch("CREATE TRIGGER fail_welcome_receipt BEFORE UPDATE ON meta WHEN NEW.key LIKE 'link.asked:%' BEGIN SELECT RAISE(ABORT, 'injected rejoin receipt failure'); END;")?;
     assert!(matches!(

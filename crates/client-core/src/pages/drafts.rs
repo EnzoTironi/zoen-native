@@ -76,7 +76,7 @@ impl Journal {
         mutation_id: String,
         fingerprint: String,
         context_hash: String,
-        content_hash: String,
+        document_digest: String,
         generation: u64,
         frontiers: Vec<u8>,
     ) -> R<()> {
@@ -87,7 +87,7 @@ impl Journal {
             context_hash,
             generation,
             accepted_generation: self.generation,
-            content_hash,
+            content_hash: document_digest,
             frontiers,
             publication: None,
         });
@@ -176,18 +176,13 @@ impl Engine {
     }
 
     pub(super) fn load_page_journal(&self, item: &ItemState) -> R<Journal> {
-        if self.me.is_none() {
+        let Some(me) = self.me.as_ref() else {
             return Ok(Journal::default());
-        }
+        };
         // Looking up the journal before deriving the key keeps historical reads
         // available when this device no longer has an account signing key.
-        let aad = serde_json::to_vec(&(
-            "zoen.page.draft.v1",
-            self.me.as_ref().expect("checked above"),
-            &item.space,
-            &item.id,
-        ))
-        .map_err(|_| storage_error())?;
+        let aad = serde_json::to_vec(&("zoen.page.draft.v1", me, &item.space, &item.id))
+            .map_err(|_| storage_error())?;
         let id = format!("page.draft.{}", hex::encode(Sha256::digest(&aad)));
         let Some(encoded) = self.store.meta(&id)? else {
             return Ok(Journal::default());
@@ -197,7 +192,7 @@ impl Engine {
             tagged::open_v3(&key, &aad, &encoded, b"binary-page")?
         } else {
             crate::local_sealed::open(&key, &aad, &encoded, tagged::MAX_JOURNAL_BYTES)
-                .map_err(|_| storage_error())?
+                .map_err(|()| storage_error())?
         };
         let journal: Journal = tagged::strict_legacy(&plain)?;
         journal.input.validate()?;
@@ -253,9 +248,9 @@ impl Engine {
 }
 
 fn seal(key: &[u8; 32], aad: &[u8], plain: &[u8]) -> R<String> {
-    crate::local_sealed::seal(key, aad, plain).map_err(|_| storage_error())
+    crate::local_sealed::seal(key, aad, plain).map_err(|()| storage_error())
 }
 
 fn open(key: &[u8; 32], aad: &[u8], encoded: &str) -> R<Vec<u8>> {
-    crate::local_sealed::open(key, aad, encoded, usize::MAX).map_err(|_| storage_error())
+    crate::local_sealed::open(key, aad, encoded, usize::MAX).map_err(|()| storage_error())
 }

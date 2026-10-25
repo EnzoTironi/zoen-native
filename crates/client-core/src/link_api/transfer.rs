@@ -24,15 +24,15 @@ impl Client {
             Ok((e.history_bundle(), peer))
         })?;
         let plain = serde_json::to_vec(&bundle).map_err(|e| invalid(e.to_string()))?;
-        let key = link::random::<32>();
-        let transfer = hex::encode(link::random::<32>());
+        let key = link::random::<32>()?;
+        let transfer = hex::encode(link::random::<32>()?);
         let base = owner.relay_base(self)?;
         let client = http()?;
         let pieces: Vec<&[u8]> = plain.chunks(chunk_size()).collect();
         let total = pieces.len() as u32;
         let mut hashes = Vec::new();
         for (n, piece) in pieces.iter().enumerate() {
-            let sealed = link::seal_chunk(&key, n as u32, piece);
+            let sealed = link::seal_chunk(&key, n as u32, piece)?;
             let sha = event_log::sha256_hex(&sealed);
             let (device, ts, sig) = owner.signed_headers(self, |ts| {
                 transfer_message("put", &transfer, &n.to_string(), &sha, ts)
@@ -139,7 +139,7 @@ impl Client {
                 if let Some(retained) =
                     owner.with(self, |engine| Ok(engine.store.meta(&chunk_meta(n))?))?
                 {
-                    if b64.decode(retained).ok().is_some_and(|bytes| {
+                    if b64.decode(retained).is_ok_and(|bytes| {
                         bytes.len() <= MAX_HISTORY_CHUNK && event_log::sha256_hex(&bytes) == *sha
                     }) {
                         resumed += 1;
@@ -148,7 +148,7 @@ impl Client {
                     return Err(invalid("A retained history chunk does not match."));
                 }
                 if stop_after.is_some_and(|s| fetched >= s) {
-                    return Err(invalid(format!("history stopped at {}/{total}", n)));
+                    return Err(invalid(format!("history stopped at {n}/{total}")));
                 }
                 let mut r = receive
                     .wait(async {
@@ -259,7 +259,7 @@ impl Client {
         space_id: String,
         timeout_ms: u64,
     ) -> Result<OlderDto, CoreError> {
-        let Some(req) = self.lock().request_page(&space_id) else {
+        let Some(req) = self.lock().request_page(&space_id)? else {
             return Ok(OlderDto {
                 loaded: 0,
                 more: false,

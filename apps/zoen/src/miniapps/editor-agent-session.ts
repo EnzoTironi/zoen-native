@@ -13,6 +13,7 @@ export type EditorAgentPort = Readonly<{
   flush: () => Promise<void>;
   head: () => Promise<EditorAgentHead>;
   requests: () => Promise<AgentRequestDto[]>;
+  /** The original request and its replies, including its current delivery state. */
   replies: (sourceId: string) => Promise<TimelineEntry[]>;
   send: (
     text: string,
@@ -164,6 +165,11 @@ export class EditorAgentSession {
         ]);
         this.check(ticket);
         if (source !== this.state.sent?.id) this.refreshAgain = true;
+        const original = replies.find((entry) => entry.id === source);
+        const failedPrompt =
+          original?.delivery === 'Failed' && !original.deleted && 'Message' in original.kind
+            ? original.kind.Message.text
+            : null;
         this.update({
           requests: requests.filter(
             (request) =>
@@ -175,6 +181,13 @@ export class EditorAgentSession {
           ),
           ...(source === this.state.sent?.id
             ? {
+                ...(original ? { sent: original } : {}),
+                ...(failedPrompt !== null &&
+                this.state.sent?.delivery !== 'Failed' &&
+                !this.attempt &&
+                !this.state.draft
+                  ? { draft: failedPrompt }
+                  : {}),
                 replies: replies.filter(
                   (entry) =>
                     entry.reply_to?.id === source &&

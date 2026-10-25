@@ -1,4 +1,4 @@
-//! Private Sites use FileDoc versions and the existing signed tool approvals.
+//! Private Sites use `FileDoc` versions and the existing signed tool approvals.
 //! This family has no hosting destination, network or publication operation.
 use crate::{
     agent_binary_documents::tool_approvals as shared,

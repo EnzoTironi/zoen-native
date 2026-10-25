@@ -1,5 +1,8 @@
 //! Closed bounded model contracts. Model data cannot select authority or hosting.
-use super::*;
+use super::{
+    digest, html_valid, invalid, json, sha, token, CoreError, Deserialize, Serialize, Value,
+    ARGUMENT_LIMIT, R,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -29,6 +32,7 @@ pub enum Command {
     Replace(Replace),
 }
 impl Command {
+    #[must_use]
     pub fn artifact(&self) -> Option<&str> {
         match self {
             Self::Create(_) => None,
@@ -36,16 +40,19 @@ impl Command {
             Self::Replace(c) => Some(&c.artifact_id),
         }
     }
+    #[must_use]
     pub fn is_write(&self) -> bool {
         !matches!(self, Self::Read(_))
     }
 }
+#[must_use]
 pub fn executor_binding() -> String {
     sha(b"zoen.native-site.file.v1\0create_site\0read_site\0replace_site_source\0no-publication")
 }
 pub fn recognizes(tool: &str) -> bool {
     matches!(tool, "create_site" | "read_site" | "replace_site_source")
 }
+#[must_use]
 pub fn model_name(tool: &str, item: &str) -> Option<String> {
     if !recognizes(tool) || !token(item) {
         return None;
@@ -56,6 +63,7 @@ pub fn model_name(tool: &str, item: &str) -> Option<String> {
         format!("{tool}_{}", &sha(item.as_bytes())[..16])
     })
 }
+#[must_use]
 pub fn is_model_name(name: &str) -> bool {
     name == "create_site"
         || ["read_site_", "replace_site_source_"].iter().any(|p| {
@@ -112,6 +120,7 @@ pub fn parse(tool: &str, args: &Value) -> R<Command> {
     }
     Ok(command)
 }
+#[must_use]
 pub fn definitions() -> Vec<Value> {
     let mut selected = json!({"artifactId":{"type":"string"},"version":{"type":"integer","minimum":1},"sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"}});
     let read = json!({"name":"read_site","description":"Read the exact saved private Site version. Does not publish or read an unsaved draft.","parameters":{"type":"object","additionalProperties":false,"required":["artifactId","version","sha256"],"properties":selected}});

@@ -25,7 +25,7 @@ impl Engine {
                 .store
                 .outbox()?
                 .iter()
-                .any(|row| row.event.space == scope.space_id)
+                .any(|row| !row.failed && row.event.space == scope.space_id)
             || self.app_trust(&scope.item_id) < TrustLevel::Act
             || !self.app_trust_available(&scope.item_id)
         {
@@ -185,7 +185,7 @@ impl Engine {
     pub(crate) fn app_current_share_context(&self, scope: AppShareScope) -> R<AppShareContext> {
         let snapshot = self.share_snapshot(&scope)?;
         let file = snapshot.content.document.as_ref().ok_or_else(refused)?;
-        let revision = event_log::content_hash(&(&scope, &snapshot));
+        let revision = event_log::content_hash(&(&scope, &snapshot))?;
         Ok(AppShareContext {
             scope,
             version: snapshot.version,
@@ -265,7 +265,7 @@ impl Engine {
                 if share.item != context.scope.item_id
                     || share.target != context.scope.target_id
                     || share.version != context.version
-                    || event_log::content_hash(&(&context.scope, &original)) != context.revision
+                    || event_log::content_hash(&(&context.scope, &original))? != context.revision
                     || share
                         .content
                         .document
@@ -282,7 +282,7 @@ impl Engine {
         }
         let mut share = self.share_snapshot(&context.scope)?;
         share.mutation = mutation.into();
-        share.grant.id = types::new_id("gr");
+        share.grant.id = types::new_id("gr")?;
         self.atomic_agent_action(|engine| {
             let event = engine.append(
                 &context.scope.space_id,

@@ -40,18 +40,25 @@ struct World {
     relay_cell: Option<String>,
 }
 impl World {
-    async fn new() -> Self {
+    async fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
         Self::with_initial_workers(1, false).await
     }
-    async fn with_initial_workers(workers: usize, competing_namespaces: bool) -> Self {
+    async fn with_initial_workers(
+        workers: usize,
+        competing_namespaces: bool,
+    ) -> std::result::Result<Self, Box<dyn std::error::Error>> {
         Self::build(workers, competing_namespaces, false).await
     }
-    async fn with_relay() -> Self {
+    async fn with_relay() -> std::result::Result<Self, Box<dyn std::error::Error>> {
         Self::build(1, false, true).await
     }
-    async fn build(workers: usize, competing_namespaces: bool, relay: bool) -> Self {
+    async fn build(
+        workers: usize,
+        competing_namespaces: bool,
+        relay: bool,
+    ) -> std::result::Result<Self, Box<dyn std::error::Error>> {
         let admin = std::env::var("ZOEN_TEST_PG").expect("real Postgres fixture required");
-        let database = format!("zoen_authority_{}", &Signer::generate().id()[..16]);
+        let database = format!("zoen_authority_{}", &Signer::generate()?.id()[..16]);
         let mut connection = PgConnection::connect(&admin).await.unwrap();
         sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {database}")))
             .execute(&mut connection)
@@ -64,11 +71,11 @@ impl World {
             .await
             .unwrap();
         let http = http::Provider::new().await;
-        let namespace = types::new_id("authority");
+        let namespace = types::new_id("authority")?;
         let mut openers = Vec::new();
         for _ in 0..workers {
             let candidate = if competing_namespaces {
-                types::new_id("authority")
+                types::new_id("authority")?
             } else {
                 namespace.clone()
             };
@@ -99,13 +106,13 @@ impl World {
             worker.finance.pool.close().await;
         }
         pool.close().await;
-        let owner = Author::device(&Signer::generate(), Signer::generate());
+        let owner = Author::device(&Signer::generate()?, Signer::generate()?);
         register(&runtime.finance.pool, &owner, None, "owner").await;
         let mut agents = Vec::new();
         let mut agent_roots = Vec::new();
         for handle in ["agent_one", "agent_two"] {
-            let root = Signer::generate();
-            let agent = Author::device(&root, Signer::generate());
+            let root = Signer::generate()?;
+            let agent = Author::device(&root, Signer::generate()?);
             register(&runtime.finance.pool, &agent, Some(&owner), handle).await;
             agents.push(agent);
             agent_roots.push(root);
@@ -132,7 +139,7 @@ impl World {
         let policy_digest = runtime.install_policy(signed.clone()).await.unwrap();
         // Explicit fresh isolated fixture continuity, never a production entry point.
         runtime.continuity.store(true, Ordering::SeqCst);
-        Self {
+        Ok(Self {
             runtime,
             http,
             owner,
@@ -145,9 +152,12 @@ impl World {
             config_namespace: namespace.clone(),
             db_url,
             relay_cell: relay.then(|| namespace.clone()),
-        }
+        })
     }
-    async fn step(&self, agent: usize) -> VerifiedStep {
+    async fn step(
+        &self,
+        agent: usize,
+    ) -> std::result::Result<VerifiedStep, Box<dyn std::error::Error>> {
         let actor = &self.agents[agent];
         let period_start = finance::period(self.signed.policy.year, self.signed.policy.month)
             .unwrap()
@@ -155,12 +165,12 @@ impl World {
         let step = VerifiedStep::Fixture(Box::new(FixtureStep {
             request: ModelRequest {
                 context: AttemptContext {
-                    attempt_id: types::new_id("attempt"),
-                    run_id: types::new_id("run"),
+                    attempt_id: types::new_id("attempt")?,
+                    run_id: types::new_id("run")?,
                     owner: self.owner.identity.clone(),
                     agent: actor.identity.clone(),
                     device: actor.device.clone().unwrap(),
-                    space: types::new_id("sp"),
+                    space: types::new_id("sp")?,
                     authority_version: "fixture-frontier-v1".into(),
                     definition_version: "fixture-definition-v1".into(),
                     price_version: "fixture-price-v1".into(),
@@ -190,7 +200,7 @@ impl World {
             .seed(&step, &self.runtime.custody)
             .await
             .unwrap();
-        step
+        Ok(step)
     }
     fn binding(&self, step: &VerifiedStep) -> Binding {
         let step = step.fixture();
@@ -324,14 +334,16 @@ async fn register(pool: &PgPool, actor: &Author, owner: Option<&Author>, handle:
     tx.commit().await.unwrap();
 }
 #[test]
-fn real_postgres_fdb_http_authority_journeys() {
+fn real_postgres_fdb_http_authority_journeys() -> std::result::Result<(), Box<dyn std::error::Error>>
+{
     let network = unsafe { foundationdb::boot() };
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
         .build()
         .unwrap();
-    rt.block_on(journeys::run());
+    rt.block_on(journeys::run())?;
     drop(rt);
     drop(network);
+    Ok(())
 }

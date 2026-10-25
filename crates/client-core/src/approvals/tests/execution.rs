@@ -2,8 +2,9 @@
 
 use super::*;
 
-pub(super) fn always_approve_commits_its_grant_with_the_item_and_resumes_an_interrupted_batch() {
-    let (chat, mut e) = Chat::create();
+pub(super) fn always_approve_commits_its_grant_with_the_item_and_resumes_an_interrupted_batch(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (chat, mut e) = Chat::create()?;
     for prompt in ["first", "second"] {
         e.agent_create_plan(
             &chat.space,
@@ -67,10 +68,13 @@ pub(super) fn always_approve_commits_its_grant_with_the_item_and_resumes_an_inte
     e.decide_request(&first, RequestDecision::AlwaysApprove)
         .unwrap();
     assert_eq!(e.store.event_count().unwrap(), count);
+
+    Ok(())
 }
 
-pub(super) fn agent_removal_prevents_execution_and_denial_keeps_the_model_charge_once() {
-    let (chat, mut e) = Chat::create();
+pub(super) fn agent_removal_prevents_execution_and_denial_keeps_the_model_charge_once(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (chat, mut e) = Chat::create()?;
     e.agent_create_plan(
         &chat.space,
         &chat.agent,
@@ -92,7 +96,7 @@ pub(super) fn agent_removal_prevents_execution_and_denial_keeps_the_model_charge
     .unwrap();
     assert_eq!(e.requests()[0].status, RequestStatus::Stale);
     assert!(e.resolve_request(&id, true).is_err());
-    ingest_signed(&mut e, &chat.space, &chat.owner, resolution(&r));
+    ingest_signed(&mut e, &chat.space, &chat.owner, resolution(&r))?;
     assert_eq!(e.state.requests[&id].status, ReqStatus::Pending);
     assert!(e.items().is_empty());
     e.resolve_request(&id, false).unwrap();
@@ -103,10 +107,13 @@ pub(super) fn agent_removal_prevents_execution_and_denial_keeps_the_model_charge
     let e = chat.reopen();
     assert!(e.items().is_empty());
     assert_eq!(e.agent_profile(&chat.agent).budget_spent_cents, Some(37));
+
+    Ok(())
 }
 
-pub(super) fn direct_agent_outputs_and_usage_roll_back_together_when_a_later_write_fails() {
-    let (chat, mut e) = Chat::create();
+pub(super) fn direct_agent_outputs_and_usage_roll_back_together_when_a_later_write_fails(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (chat, mut e) = Chat::create()?;
     e.set_trust(&chat.agent, &chat.space, TrustLevel::Act)
         .unwrap();
     let before = e.store.event_count().unwrap();
@@ -148,10 +155,13 @@ pub(super) fn direct_agent_outputs_and_usage_roll_back_together_when_a_later_wri
         .unwrap();
     assert!(out.item.is_some());
     assert_eq!(e.agent_profile(&chat.agent).budget_spent_cents, Some(37));
+
+    Ok(())
 }
 
-pub(super) fn revoked_standing_grants_cannot_resume_an_interrupted_batch() {
-    let (chat, mut e) = Chat::create();
+pub(super) fn revoked_standing_grants_cannot_resume_an_interrupted_batch(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (chat, mut e) = Chat::create()?;
     for prompt in ["first", "second"] {
         e.agent_create_plan(
             &chat.space,
@@ -191,4 +201,6 @@ pub(super) fn revoked_standing_grants_cannot_resume_an_interrupted_batch() {
         .is_err());
     assert_eq!(e.state.requests[&second].status, ReqStatus::Pending);
     assert_eq!(e.items().len(), 1);
+
+    Ok(())
 }

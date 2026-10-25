@@ -73,7 +73,7 @@ impl Review {
 }
 
 async fn stage(worker: Arc<DeckcraftWorker>) -> TestResult<Review> {
-    let mut f = crate::deckcraft::tests::fixture();
+    let mut f = crate::deckcraft::tests::fixture()?;
     let space = f.client.item(f.base.item_id.clone())?.space_id;
     f.base = f.client.app_binary_create_for(
         "pdfcraft".into(),
@@ -173,7 +173,9 @@ async fn apply_review(
     r: &Review,
     worker: Arc<DeckcraftWorker>,
 ) -> TestResult<client_core::AppBinaryDocumentDto> {
-    canonical_tool_approval_tests::signed_owner_resolution(&r.path, &r.space, &r.request, &r.owner);
+    canonical_tool_approval_tests::signed_owner_resolution(
+        &r.path, &r.space, &r.request, &r.owner,
+    )?;
     let client = canonical_tool_approval_tests::reopen(&r.path, r.vault.clone());
     let cx = r.context(&client, worker.clone(), true);
     let tools = SpaceTools::new(&client, &cx, &r.space, &r.owner, &r.source);

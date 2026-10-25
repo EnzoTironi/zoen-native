@@ -179,7 +179,7 @@ impl Execution {
             1
         };
         let fence = Fence {
-            holder: types::new_id("native-worker"),
+            holder: types::new_id("native-worker").map_err(|_| RuntimeError::Unavailable)?,
             token,
         };
         trx.set(

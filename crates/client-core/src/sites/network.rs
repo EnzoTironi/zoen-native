@@ -1,6 +1,10 @@
 //! Only the authenticated relay discovers publication destinations. All HTTP
 //! clients are disposable, cookie-free, redirect-free and bounded.
-use super::*;
+use super::{
+    forbidden, hex64, invalid, safe_time, stale, valid_source, Change, Client, Configuration,
+    CoreError, Inspection, Mutation, Serialize, SignedMutation, SitePrepared, SiteReview,
+    SiteScope, SiteStatus, SourceVersion, MAX_HTML_BYTES, R, SCHEMA,
+};
 use protocol::sites::{Receipt, SignedInspection};
 use serde::de::DeserializeOwned;
 use std::time::Duration;
@@ -14,7 +18,7 @@ fn unavailable() -> CoreError {
     }
 }
 fn http() -> R<reqwest::Client> {
-    crate::https::client()
+    crate::https::client()?
         .no_proxy()
         .redirect(reqwest::redirect::Policy::none())
         .timeout(Duration::from_secs(15))
@@ -229,7 +233,7 @@ impl Client {
                 schema: SCHEMA,
                 public_origin: config.public_origin,
                 site_id: inspection.site_id,
-                request_id: types::new_secret_id("pub"),
+                request_id: types::new_secret_id("pub")?,
                 expected_head: inspection.head,
                 change: if unpublish {
                     Change::Unpublish

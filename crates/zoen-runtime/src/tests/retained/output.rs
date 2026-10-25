@@ -5,12 +5,12 @@ use super::*;
 pub(super) use cold::cold;
 use native::testing::output as proof;
 
-async fn original() -> (Fixture, ReplyRun) {
-    let mut fixture = Fixture::with_output().await;
-    fixture.grant("output-owner-trust").await;
-    fixture.message(ORIGINAL).await;
+async fn original() -> std::result::Result<(Fixture, ReplyRun), Box<dyn std::error::Error>> {
+    let mut fixture = Fixture::with_output().await?;
+    fixture.grant("output-owner-trust").await?;
+    fixture.message(ORIGINAL).await?;
     let run = fixture.sync(false).await.unwrap().runs.remove(0);
-    (fixture, run)
+    Ok((fixture, run))
 }
 
 pub(super) async fn revoke_device(fixture: &Fixture) {
@@ -50,9 +50,9 @@ async fn assert_one_bill(fixture: &Fixture) {
     );
 }
 
-async fn exact_output_and_missing_usage() {
+async fn exact_output_and_missing_usage() -> std::result::Result<(), Box<dyn std::error::Error>> {
     for case in ["missing-usage", "partial", "tool", "malformed", "empty"] {
-        let (fixture, run) = original().await;
+        let (fixture, run) = original().await?;
         {
             let mut response = fixture.world.http.body.lock().unwrap();
             match case {
@@ -93,23 +93,25 @@ async fn exact_output_and_missing_usage() {
         fixture.finish().await;
     }
     println!("native output shape journey: exact supported text with missing usage retains hold and can prepare separately; partial/tool/malformed/empty replies retain incurred evidence and create no publication PASS");
+    Ok(())
 }
 
-async fn current_permission_and_source_refuse_new_output() {
+async fn current_permission_and_source_refuse_new_output(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for case in ["source", "grant", "directory", "cancel"] {
-        let (mut fixture, run) = original().await;
+        let (mut fixture, run) = original().await?;
         fixture.world.runtime.run_model(&run.run).await.unwrap();
         let original = proof::fingerprints(&fixture.world.runtime, &run.run).await;
         match case {
             "source" => {
-                fixture.message(LATER).await;
+                fixture.message(LATER).await?;
             }
             "grant" => {
                 fixture
                     .encrypted(EventBody::GrantRevoked {
                         grant: "output-owner-trust".into(),
                     })
-                    .await;
+                    .await?;
                 fixture.sync(false).await.unwrap();
             }
             "directory" => revoke_device(&fixture).await,
@@ -132,12 +134,14 @@ async fn current_permission_and_source_refuse_new_output() {
         fixture.finish().await;
     }
     println!("native output permission cuts: actual source drift, native grant revoke, SQL device revoke and cancellation refuse preparation while preserving original paid capture/bill PASS");
+    Ok(())
 }
 
-async fn finite_admission_and_failed_activation() {
+async fn finite_admission_and_failed_activation(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for cut in [42, 45, 46, 50] {
         println!("native output admission setup: cut={cut} stage=fixture_start");
-        let mut fixture = Fixture::with_output().await;
+        let mut fixture = Fixture::with_output().await?;
         if cut == 50 {
             let initial = fixture.sync(false).await.unwrap();
             assert!(initial.caught_up);
@@ -151,15 +155,15 @@ async fn finite_admission_and_failed_activation() {
             println!("native output admission setup: cut={cut} stage=grant_clock observed_ms={observed} expires_at_ms={expiry} initial_lifetime_ms=20000");
             fixture
                 .grant_until("output-owner-trust", Some(expiry))
-                .await;
+                .await?;
         } else {
-            fixture.grant("output-owner-trust").await;
+            fixture.grant("output-owner-trust").await?;
         }
         println!(
             "native output admission setup: cut={cut} stage=grant_retained elapsed_us={}",
             grant_started.elapsed().as_micros()
         );
-        fixture.message(ORIGINAL).await;
+        fixture.message(ORIGINAL).await?;
         println!(
             "native output admission setup: cut={cut} stage=trigger_retained elapsed_us={}",
             grant_started.elapsed().as_micros()
@@ -215,11 +219,13 @@ async fn finite_admission_and_failed_activation() {
         fixture.finish().await;
     }
     println!("native output admission cuts: uncommitted activation, suppressed real SQL ACK, late ACK and shorter actual native expiry yield no publication or active replacement image; incurred bill survives PASS");
+    Ok(())
 }
 
-async fn source_changes_before_final_output_and_receipt() {
+async fn source_changes_before_final_output_and_receipt(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for receipt in [false, true] {
-        let (mut fixture, run) = original().await;
+        let (mut fixture, run) = original().await?;
         fixture.world.runtime.run_model(&run.run).await.unwrap();
         if receipt {
             proof::prepare(&fixture.world.runtime, &run.run)
@@ -259,7 +265,7 @@ async fn source_changes_before_final_output_and_receipt() {
             .clear(EventBody::DeviceJoining {
                 device: fixture.world.owner.device.clone().unwrap(),
             })
-            .await;
+            .await?;
         runtime.native_cut_resume.notify_one();
         assert_eq!(paused.await.unwrap().unwrap_err(), RuntimeError::Denied);
         runtime.fault.store(0, Ordering::SeqCst);
@@ -278,24 +284,27 @@ async fn source_changes_before_final_output_and_receipt() {
         fixture.finish().await;
     }
     println!("native output/source cuts: actual relay append before final preparation or historical receipt transaction refuses stale activation with original image/capture and one bill preserved PASS");
+    Ok(())
 }
 
-pub(in crate::tests) async fn run() {
-    Box::pin(capture_substitutions_refuse()).await;
-    Box::pin(late_paid_capture_remains_independent()).await;
-    Box::pin(recovery::association_failure_does_not_block_incurred_evidence()).await;
-    Box::pin(recovery::accepted_across_prefix_revocation_and_cold_replay()).await;
-    Box::pin(exact_output_and_missing_usage()).await;
-    Box::pin(current_permission_and_source_refuse_new_output()).await;
-    Box::pin(finite_admission_and_failed_activation()).await;
-    Box::pin(source_changes_before_final_output_and_receipt()).await;
-    Box::pin(paired_takeover_and_root_replacement()).await;
-    Box::pin(historical_replay_refuses_changed_source_position()).await;
+pub(in crate::tests) async fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Box::pin(capture_substitutions_refuse()).await?;
+    Box::pin(late_paid_capture_remains_independent()).await?;
+    Box::pin(recovery::association_failure_does_not_block_incurred_evidence()).await?;
+    Box::pin(recovery::accepted_across_prefix_revocation_and_cold_replay()).await?;
+    Box::pin(exact_output_and_missing_usage()).await?;
+    Box::pin(current_permission_and_source_refuse_new_output()).await?;
+    Box::pin(finite_admission_and_failed_activation()).await?;
+    Box::pin(source_changes_before_final_output_and_receipt()).await?;
+    Box::pin(paired_takeover_and_root_replacement()).await?;
+    Box::pin(historical_replay_refuses_changed_source_position()).await?;
+    Ok(())
 }
 
-async fn paired_takeover_and_root_replacement() {
+async fn paired_takeover_and_root_replacement(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for receipt in [false, true] {
-        let (mut fixture, run) = original().await;
+        let (mut fixture, run) = original().await?;
         fixture.world.runtime.run_model(&run.run).await.unwrap();
         if receipt {
             proof::prepare(&fixture.world.runtime, &run.run)
@@ -333,7 +342,7 @@ async fn paired_takeover_and_root_replacement() {
         drop(runtime);
         fixture.finish().await;
     }
-    let (fixture, run) = original().await;
+    let (fixture, run) = original().await?;
     fixture.world.runtime.run_model(&run.run).await.unwrap();
     let before = proof::fingerprints(&fixture.world.runtime, &run.run).await;
     fixture.world.runtime.fault.store(54, Ordering::SeqCst);
@@ -351,10 +360,12 @@ async fn paired_takeover_and_root_replacement() {
     assert_one_bill(&fixture).await;
     fixture.finish().await;
     println!("native output root/pair cuts: known maintenance repack invalidates loaded root; explicit real FDB expiry followed by genuine paired reacquisition refuses stale preparation and receipt; no fabricated fence or relaxed lease window PASS");
+    Ok(())
 }
 
-async fn historical_replay_refuses_changed_source_position() {
-    let (mut fixture, run) = original().await;
+async fn historical_replay_refuses_changed_source_position(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut fixture, run) = original().await?;
     fixture.world.runtime.run_model(&run.run).await.unwrap();
     proof::prepare(&fixture.world.runtime, &run.run)
         .await
@@ -401,10 +412,12 @@ async fn historical_replay_refuses_changed_source_position() {
     assert_one_bill(&fixture).await;
     fixture.finish().await;
     println!("native receipt source-position cuts: existing retained receipt cannot replace missing or pruned actual accepted source bytes; exact restored source allows inert replay with no generation/bill change PASS");
+    Ok(())
 }
 
-async fn late_paid_capture_remains_independent() {
-    let (mut fixture, run) = original().await;
+async fn late_paid_capture_remains_independent(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut fixture, run) = original().await?;
     fixture.world.http.paused.store(true, Ordering::SeqCst);
     let runtime = fixture.world.runtime.clone();
     let worker = runtime.clone();
@@ -420,7 +433,7 @@ async fn late_paid_capture_remains_independent() {
         .encrypted(EventBody::GrantRevoked {
             grant: "output-owner-trust".into(),
         })
-        .await;
+        .await?;
     proof::takeover(&runtime, &run.run).await;
     fixture.world.http.release.notify_one();
     assert_eq!(
@@ -440,10 +453,11 @@ async fn late_paid_capture_remains_independent() {
     drop(runtime);
     fixture.finish().await;
     println!("native capture late-retention cut: actual admitted HTTP finishes after cancellation, SQL/native revocation and real pair takeover; original nonce/capture association and bill survive without authorizing output PASS");
+    Ok(())
 }
 
-async fn capture_substitutions_refuse() {
-    let (fixture, run) = original().await;
+async fn capture_substitutions_refuse() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (fixture, run) = original().await?;
     let step = fixture.world.runtime.verified_step(&run.run).await.unwrap();
     fixture
         .world
@@ -454,9 +468,10 @@ async fn capture_substitutions_refuse() {
     step.release(&fixture.world.runtime.execution)
         .await
         .unwrap();
-    let fixture_step = fixture.world.step(1).await;
-    proof::substitutions(&fixture.world.runtime, &step, &fixture_step).await;
+    let fixture_step = fixture.world.step(1).await?;
+    proof::substitutions(&fixture.world.runtime, &step, &fixture_step).await?;
     assert_one_bill(&fixture).await;
     fixture.finish().await;
     println!("native capture identity cuts: actual binding/request/attempt or another capture digest and financial FixtureStep refuse association; exact original converges without replacing index or another bill PASS");
+    Ok(())
 }

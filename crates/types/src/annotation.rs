@@ -26,6 +26,7 @@ pub enum Annotation {
 
 impl Annotation {
     /// Whether only the message's author may write this.
+    #[must_use]
     pub fn author_only(&self) -> bool {
         matches!(self, Annotation::Edit { .. } | Annotation::Delete)
     }

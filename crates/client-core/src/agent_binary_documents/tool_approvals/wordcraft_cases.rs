@@ -1,6 +1,6 @@
 use super::*;
 use crate::agent_binary_documents::tests::fixture_binary;
-fn word_fixture() -> Fixture {
+fn word_fixture() -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
     fixture_binary(
         types::Privacy::Closed,
         "wordcraft",
@@ -10,9 +10,10 @@ fn word_fixture() -> Fixture {
 const WORD_EDITED: &[u8] =
     include_bytes!("../../../../miniapps/src/wordcraft/fixtures/actual-wasi.docx");
 #[test]
-fn reviewed_word_read_cannot_replace_its_stable_source_step_with_a_write() {
-    let f = word_fixture();
-    signed_trust(&f, TrustLevel::Act);
+fn reviewed_word_read_cannot_replace_its_stable_source_step_with_a_write(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = word_fixture()?;
+    signed_trust(&f, TrustLevel::Act)?;
     let read = stage(&f, "read_wordcraft");
     owner_decide(
         &f,
@@ -43,11 +44,13 @@ fn reviewed_word_read_cannot_replace_its_stable_source_step_with_a_write() {
     }
     assert_eq!(counts(&f), before);
     assert_eq!(current(&f).version, 1);
+    Ok(())
 }
 #[test]
-fn certified_word_turn_uses_current_native_source_and_exact_approved_binary_cas() {
-    let f = word_fixture();
-    signed_trust(&f, TrustLevel::Act);
+fn certified_word_turn_uses_current_native_source_and_exact_approved_binary_cas(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = word_fixture()?;
+    signed_trust(&f, TrustLevel::Act)?;
     let write = stage(&f, "wordcraft_text_replace");
     assert!(f.agent.approved_tool_turn(&write.id, WORKER).is_err());
     owner_decide(
@@ -88,16 +91,18 @@ fn certified_word_turn_uses_current_native_source_and_exact_approved_binary_cas(
         .expect("retained result");
     assert_eq!(repeated.sha256, accepted.sha256);
     assert_eq!(repeated.version, 2);
+    Ok(())
 }
 #[test]
-fn binary_approval_refuses_cross_format_tools_without_creating_requests() {
+fn binary_approval_refuses_cross_format_tools_without_creating_requests(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for (f, tool) in [
-        (word_fixture(), "deckcraft_slide_notes"),
-        (fixture(), "wordcraft_text_replace"),
-        (fixture(), "wordcraft_edit_range"),
-        (fixture(), "wordcraft_format_range"),
+        (word_fixture()?, "deckcraft_slide_notes"),
+        (fixture()?, "wordcraft_text_replace"),
+        (fixture()?, "wordcraft_edit_range"),
+        (fixture()?, "wordcraft_format_range"),
     ] {
-        signed_trust(&f, TrustLevel::Act);
+        signed_trust(&f, TrustLevel::Act)?;
         let t = turn(&f);
         let before = counts(&f);
         assert!(f
@@ -106,16 +111,18 @@ fn binary_approval_refuses_cross_format_tools_without_creating_requests() {
             .is_err());
         assert_eq!(counts(&f), before);
     }
+    Ok(())
 }
 #[test]
-fn word_approved_turn_cannot_outlive_current_app_grant() {
+fn word_approved_turn_cannot_outlive_current_app_grant(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for tool in [
         "wordcraft_text_replace",
         "wordcraft_edit_range",
         "wordcraft_format_range",
     ] {
-        let f = word_fixture();
-        signed_trust(&f, TrustLevel::Act);
+        let f = word_fixture()?;
+        signed_trust(&f, TrustLevel::Act)?;
         let request = stage(&f, tool);
         owner_decide(
             &f,
@@ -166,4 +173,5 @@ fn word_approved_turn_cannot_outlive_current_app_grant() {
         assert_eq!(counts(&f), before);
         assert_eq!(current(&f).version, 1);
     }
+    Ok(())
 }

@@ -1,6 +1,10 @@
 //! Staging on the original Engine and canonical document state.
 
-use super::*;
+use super::{
+    hash, intent_id, invalid, stale, storage_error, t, valid_pdf, validate, Binding, CoreError,
+    Digest, Engine, FileEditDraftCapture, FileEditDraftCommitResult, FileEditDraftDto,
+    FileEditDraftSaveResult, FileEditDraftScope, Sha256, StageReceipt, Zeroizing, MAX_RECEIPTS, R,
+};
 
 impl Engine {
     pub(super) fn file_edit_draft(&self, scope: &FileEditDraftScope) -> R<FileEditDraftDto> {
@@ -99,7 +103,7 @@ impl Engine {
             }
         }
         record.pending.push(capture.clone());
-        record.revision = types::new_id("file_edit_draft");
+        record.revision = types::new_id("file_edit_draft")?;
         record.stages.push(StageReceipt {
             input_revision: expected.into(),
             fingerprint,
@@ -114,7 +118,7 @@ impl Engine {
         self.atomic_agent_action(|engine| {
             let sealed =
                 crate::local_sealed::seal(&storage.key, &storage.asset_aad(&capture)?, &bytes)
-                    .map_err(|_| storage_error())?;
+                    .map_err(|()| storage_error())?;
             engine
                 .store
                 .set_meta(&storage.asset_key(capture_id), &sealed)?;

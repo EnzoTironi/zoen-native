@@ -2,11 +2,12 @@
 
 use super::*;
 
-pub(super) fn bounded_discovery_cursor_survives_complete_image() {
-    let mut fixture = Fixture::new();
-    fixture.grant("discovery-owner-trust", Some(1000));
+pub(super) fn bounded_discovery_cursor_survives_complete_image(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = Fixture::new()?;
+    fixture.grant("discovery-owner-trust", Some(1000))?;
     for index in 0..17 {
-        fixture.message(&format!("Retained request {index}"));
+        fixture.message(&format!("Retained request {index}"))?;
     }
     let first = fixture.core.discover_replies(SPACE, 400).unwrap();
     assert_eq!(first.replies.len(), 16);
@@ -25,12 +26,15 @@ pub(super) fn bounded_discovery_cursor_survives_complete_image() {
     let repeated = reopened.discover_replies(SPACE, 400).unwrap();
     assert!(repeated.replies.is_empty() && repeated.complete && !repeated.changed);
     assert_eq!(repeated.examined, 0);
+
+    Ok(())
 }
 
-pub(super) fn discovery_refuses_cursor_outside_verified_history() {
-    let mut fixture = Fixture::new();
-    fixture.grant("discovery-owner-trust", Some(1000));
-    fixture.message("Actual verified owner request");
+pub(super) fn discovery_refuses_cursor_outside_verified_history(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = Fixture::new()?;
+    fixture.grant("discovery-owner-trust", Some(1000))?;
+    fixture.message("Actual verified owner request")?;
     fixture
         .core
         .engine
@@ -48,12 +52,15 @@ pub(super) fn discovery_refuses_cursor_outside_verified_history() {
         fixture.core.discover_replies(SPACE, 400),
         Err(NativeError::History)
     ));
+
+    Ok(())
 }
 
-pub(super) fn actual_owner_opening_survives_complete_image_and_pins_original_input() {
-    let mut fixture = Fixture::new();
-    fixture.grant("explicit-owner-trust", Some(1000));
-    let trigger = fixture.message("Private retained owner request");
+pub(super) fn actual_owner_opening_survives_complete_image_and_pins_original_input(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = Fixture::new()?;
+    fixture.grant("explicit-owner-trust", Some(1000))?;
+    let trigger = fixture.message("Private retained owner request")?;
     let peer_event = fixture.core.engine.logs[SPACE].events().last().unwrap();
     assert_eq!(
         crate::mls_opening::opened_leaf(&fixture.core.engine.store, peer_event)
@@ -78,7 +85,7 @@ pub(super) fn actual_owner_opening_survives_complete_image_and_pins_original_inp
     let restored = cold.refresh(&original, 400).unwrap();
     assert_eq!(restored.frontier(), live.frontier());
     assert_eq!(restored.text(), live.text());
-    fixture.message("A later request cannot rewrite a held attempt");
+    fixture.message("A later request cannot rewrite a held attempt")?;
     let refreshed = fixture.core.refresh(&original, 500).unwrap();
     assert_ne!(refreshed.frontier().hash(), live.frontier().hash());
     assert_eq!(refreshed.intent(), &original);
@@ -88,10 +95,13 @@ pub(super) fn actual_owner_opening_survives_complete_image_and_pins_original_inp
         Err(NativeError::Permission)
     ));
     println!("JOURNEY certified real Welcome/Commit/Application; live/cold equivalent; original input pinned; expiry denied");
+
+    Ok(())
 }
 
-pub(super) fn whole_image_keeps_non_openmls_provider_tables_and_real_pending_outbox() {
-    let mut fixture = Fixture::new();
+pub(super) fn whole_image_keeps_non_openmls_provider_tables_and_real_pending_outbox(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = Fixture::new()?;
     fixture.core.engine.store.conn().execute_batch(
         "INSERT INTO vc_emulation_bindings VALUES (1,x'01',x'0203'); INSERT INTO registered_vc_emulation_epochs VALUES (1,x'01',x'0405');"
     ).unwrap();
@@ -104,7 +114,7 @@ pub(super) fn whole_image_keeps_non_openmls_provider_tables_and_real_pending_out
             &author,
             400,
             EventBody::MessagePosted {
-                message: new_id("message"),
+                message: new_id("message")?,
                 text: "Retain protocol queue".into(),
                 attaches: None,
                 reply: None,
@@ -143,10 +153,13 @@ pub(super) fn whole_image_keeps_non_openmls_provider_tables_and_real_pending_out
         fixture.core.engine.device().unwrap().epoch(SPACE).unwrap()
     );
     println!("JOURNEY complete image retains actual joined MLS group, pending signed outbox and non-openmls provider table bytes");
+
+    Ok(())
 }
 
-pub(super) fn image_rejects_legacy_schema_provider_and_secrets_before_migrations() {
-    let fixture = Fixture::new();
+pub(super) fn image_rejects_legacy_schema_provider_and_secrets_before_migrations(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let fixture = Fixture::new()?;
     for statement in [
         "PRAGMA user_version=1",
         "UPDATE meta SET value='2' WHERE key='event_format'",
@@ -176,4 +189,6 @@ pub(super) fn image_rejects_legacy_schema_provider_and_secrets_before_migrations
     assert!(NativeImage::decode_bounded(b"SQLite format 3\0".to_vec()).is_err());
     assert!(!format!("{:?}", fixture.core.image().unwrap()).contains("SQLite"));
     println!("JOURNEY strict image bounds, exact schema/event/provider versions and root/demo secret rejection");
+
+    Ok(())
 }

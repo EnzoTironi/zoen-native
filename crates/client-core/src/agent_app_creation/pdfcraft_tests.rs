@@ -21,7 +21,7 @@ fn pdf_input(
 
 #[test]
 fn pdf_creation_requires_exact_owner_review_and_replays_one_canonical_seed() -> TestResult {
-    let f = setup();
+    let f = setup()?;
     let before = f.agent.items().len();
     let request =
         f.agent
@@ -64,7 +64,7 @@ fn pdf_creation_requires_exact_owner_review_and_replays_one_canonical_seed() -> 
 
 #[test]
 fn pdf_creation_refuses_another_format_binding_or_frozen_schema() -> TestResult {
-    let f = setup();
+    let f = setup()?;
     let before = f.agent.items().len();
     let mut wrong = pdf_input(&f)?;
     wrong.worker_binding = executor_binding();

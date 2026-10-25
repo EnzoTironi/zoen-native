@@ -153,6 +153,41 @@ test('definitive conflict leaves an editable draft and never resends automatical
   f.session.setDraft('Updated intent');
   assert.equal(f.session.getSnapshot().draft, 'Updated intent');
 });
+test('a later terminal refusal restores the original prompt without resending or replacing newer text', async () => {
+  for (const draft of ['', 'New human intent']) {
+    const f = fixture();
+    f.session.open();
+    f.session.setDraft('Original reviewed prompt');
+    await f.session.send();
+    f.session.setDraft(draft);
+    f.port.replies = async () =>
+      [
+        {
+          ...f.entry,
+          delivery: 'Failed',
+          kind: { Message: { text: 'Original reviewed prompt', card: null } },
+        },
+      ] as TimelineEntry[];
+    await f.session.refresh();
+    await tick();
+    assert.equal(f.session.getSnapshot().sent?.delivery, 'Failed');
+    assert.equal(f.session.getSnapshot().draft, draft || 'Original reviewed prompt');
+    assert.equal(f.session.getSnapshot().uncertain, false);
+    assert.equal(f.calls.filter(([op]) => op === 'send').length, 1);
+    f.session.setDraft('');
+    await f.session.refresh();
+    assert.equal(f.session.getSnapshot().draft, '', 'a later refresh cannot undo a human clear');
+    f.session.setDraft(draft || 'Original reviewed prompt');
+    f.session.close();
+    f.session.open();
+    await tick();
+    assert.equal(f.calls.filter(([op]) => op === 'send').length, 1);
+    await f.session.send();
+    const sends = f.calls.filter(([op]) => op === 'send');
+    assert.equal(sends.length, 2);
+    assert.equal(sends[1]?.[3], 'request-2');
+  }
+});
 test('review uses existing observed hash after flush and rejects a lateral artifact or cancelled sheet', async () => {
   const f = fixture(),
     barrier = deferred<void>();

@@ -1,6 +1,9 @@
 //! Encrypted media HTTP transfer and existing bounded retry ownership.
 
-use super::*;
+use super::{
+    now_ms, tracing_like, Arc, CoreListener, Duration, EngineLease, MediaDownloadRetries,
+    RecoveryRetries,
+};
 
 /// Uploads queued encrypted copies and downloads the ones the chats need, retrying with
 /// backoff (a peer's event can arrive before their upload finishes).
@@ -21,7 +24,11 @@ pub(super) async fn media_worker(
         };
     }
 
-    let Ok(http) = crate::https::client()
+    let Ok(builder) = crate::https::client() else {
+        tracing_like("media: no TLS configuration");
+        return;
+    };
+    let Ok(http) = builder
         .timeout(Duration::from_secs(60))
         .redirect(reqwest::redirect::Policy::none())
         .build()
@@ -146,8 +153,8 @@ pub(super) async fn media_worker(
         }
 
         tokio::select! {
-            _ = kick.notified() => {}
-            _ = tokio::time::sleep(Duration::from_secs(5)) => {}
+            () = kick.notified() => {}
+            () = tokio::time::sleep(Duration::from_secs(5)) => {}
         }
     }
 }

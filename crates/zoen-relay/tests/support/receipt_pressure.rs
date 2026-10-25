@@ -130,10 +130,13 @@ pub struct Relay {
     admin: PgConnection,
 }
 impl Relay {
-    pub async fn new(roster: Vec<String>, rows: usize) -> Self {
+    pub async fn new(
+        roster: Vec<String>,
+        rows: usize,
+    ) -> std::result::Result<Self, Box<dyn std::error::Error>> {
         let admin_url =
             std::env::var("ZOEN_TEST_PG").expect("set ZOEN_TEST_PG to an owned PostgreSQL");
-        let database = format!("zoen_pressure_{}", &Signer::generate().id()[..16]);
+        let database = format!("zoen_pressure_{}", &Signer::generate()?.id()[..16]);
         let mut admin = PgConnection::connect(&admin_url).await.unwrap();
         sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {database}")))
             .execute(&mut admin)
@@ -179,13 +182,13 @@ impl Relay {
             .await
             .unwrap()
         });
-        Self {
+        Ok(Self {
             state,
             url: format!("ws://{address}/v1/sync"),
             server,
             database,
             admin,
-        }
+        })
     }
     pub async fn connect(&self, author: &Author, register: bool) -> Socket {
         let (mut socket, _) = tokio_tungstenite::connect_async(&self.url).await.unwrap();

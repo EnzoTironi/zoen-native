@@ -133,7 +133,7 @@ pub(crate) fn application_epoch(store: &Store, event: &Event) -> Option<u64> {
 
 fn retained_application(store: &Store, event: &Event) -> Option<StoredOpening> {
     let json = store.meta(&key(&event.hash)).ok()??;
-    if json.len() > 131072 {
+    if json.len() > 131_072 {
         return None;
     }
     let retained: StoredOpening = serde_json::from_str(&json).ok()?;
@@ -160,7 +160,8 @@ fn retained_application(store: &Store, event: &Event) -> Option<StoredOpening> {
         || envelope.at_ms() != event.at_ms
         || envelope.seen() != event.seen
         || envelope.sealed_kind() != Some(event_log::content::SealedKind::Application)
-        || event_log::chain_hash(&event.space, event.seq, &event.prev, &wire_hash) != event.hash
+        || event_log::chain_hash(&event.space, event.seq, &event.prev, &wire_hash).ok()?
+            != event.hash
     {
         return None;
     }

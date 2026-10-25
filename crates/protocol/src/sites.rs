@@ -130,7 +130,7 @@ pub struct Inspection {
     pub site_id: String,
     pub head: Option<String>,
     pub active: bool,
-    /// Newest first, at most 100; historical order follows previous_head links.
+    /// Newest first, at most 100; historical order follows `previous_head` links.
     pub receipts: Vec<Receipt>,
     pub next_before: Option<String>,
 }
