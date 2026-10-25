@@ -96,12 +96,14 @@ fn two_lost_members_recover_from_public_context_without_a_surviving_device(
         marina.join(SPACE, &c.welcome.unwrap(), &both).unwrap();
         c.group_info
     }; // Both original device databases, including their group state, are gone.
-    let replacement = |p: &Person| Person {
-        identity: Signer::from_secret(&p.identity.secret()),
-        device: Signer::generate()?,
-        key: Signer::generate()?.secret(),
+    let replacement = |p: &Person| -> Result<Person, event_log::CryptoError> {
+        Ok(Person {
+            identity: Signer::from_secret(&p.identity.secret()),
+            device: Signer::generate()?,
+            key: Signer::generate()?.secret(),
+        })
     };
-    let (fresh_e, fresh_m) = (replacement(&e), replacement(&m));
+    let (fresh_e, fresh_m) = (replacement(&e)?, replacement(&m)?);
     let (ce, cm) = (db(), db());
     let (enzo, marina) = (fresh_e.open(&ce), fresh_m.open(&cm));
     let first = enzo.recover(SPACE, &info, &both).unwrap();

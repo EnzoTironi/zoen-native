@@ -61,7 +61,7 @@ fn insert_legacy(store: &Store, event: &Event, rowid: i64) {
 
 #[test]
 fn enqueue_order_survives_clock_rollback_retry_duplicate_and_reinsert(
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let store = Store::in_memory().unwrap();
     let events = [
         event("commit", 300, "Commit"),
@@ -104,7 +104,7 @@ fn enqueue_order_survives_clock_rollback_retry_duplicate_and_reinsert(
 
 #[test]
 fn migration_preserves_bytes_retry_state_and_order_through_vacuum_and_image(
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let store = Store::in_memory().unwrap();
     legacy(&store);
     let events = [
@@ -139,7 +139,7 @@ fn migration_preserves_bytes_retry_state_and_order_through_vacuum_and_image(
 
 #[test]
 fn failed_migration_leaves_legacy_schema_and_original_rows_unchanged(
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let store = Store::in_memory().unwrap();
     legacy(&store);
     let e = event("original", 3, "Commit");
@@ -173,7 +173,7 @@ fn failed_migration_leaves_legacy_schema_and_original_rows_unchanged(
 
 #[test]
 fn exhausted_order_refuses_new_intent_but_duplicate_stays_noop(
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let store = Store::in_memory().unwrap();
     let e = event("last", 1, "Commit");
     store.outbox_put(&e).unwrap();
@@ -189,7 +189,8 @@ fn exhausted_order_refuses_new_intent_but_duplicate_stays_noop(
 }
 
 #[test]
-fn disk_reopen_and_vacuum_into_keep_named_order() -> Result<(), Box<dyn std::error::Error>> {
+fn disk_reopen_and_vacuum_into_keep_named_order(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let directory = std::env::temp_dir().join(types::new_id("outbox-fifo")?);
     std::fs::create_dir(&directory).unwrap();
     let path = directory.join("original.sqlite");

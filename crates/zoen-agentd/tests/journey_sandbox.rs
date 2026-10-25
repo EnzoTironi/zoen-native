@@ -201,8 +201,7 @@ async fn only_the_tool_that_needs_a_computer_gets_one_and_only_after_ana_says_ye
 }
 
 #[tokio::test]
-async fn the_daily_budget_stops_heavy_tiers_and_resets_the_next_day(
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn the_daily_budget_stops_heavy_tiers_and_resets_the_next_day() {
     let provider = Arc::new(FakeProvider::new());
     let spec = zoen_agentd::router::spec_for(&python());
     let budget = Arc::new(Mutex::new(DailyBudget::new(1, 0, NOW)));
@@ -235,12 +234,11 @@ async fn the_daily_budget_stops_heavy_tiers_and_resets_the_next_day(
     assert!(b.admit(Tier::Browser, NOW).is_err());
     assert!(b.admit(Tier::None, NOW).is_ok());
     session.finish(NOW + 86_400_000).await.unwrap();
-    Ok(())
 }
 
 /// Real code in gVisor: what the approved Python tool gets in P0.
 #[tokio::test]
-async fn approved_code_runs_isolated_in_gvisor() -> Result<(), Box<dyn std::error::Error>> {
+async fn approved_code_runs_isolated_in_gvisor() {
     if !cfg!(target_os = "linux") {
         eprintln!("gVisor runs on Linux only; skipped on this OS");
         return;
@@ -342,5 +340,4 @@ async fn approved_code_runs_isolated_in_gvisor() -> Result<(), Box<dyn std::erro
     let id = lease.id.clone();
     provider.release(lease).await.unwrap();
     assert!(!work.path().join(&id).exists());
-    Ok(())
 }
