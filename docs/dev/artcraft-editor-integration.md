@@ -1,5 +1,38 @@
 # Integração dos editores ArtCraft no Zoen
 
+## Direção vigente — dependência externa MCP App (25/10/2026)
+
+Por decisão explícita do usuário, o desenvolvimento e o QA dos editores ArtCraft
+estão parados no Zoen. A família deve ser uma dependência externa MCP App,
+derivada da base upstream e com repositório, versão e ciclo de release próprios.
+A migração ainda não foi executada; os pacotes e integrações atuais não devem ser
+anunciados como já separados.
+
+O Zoen mantém o host genérico: cartões, abertura em tela cheia, contexto,
+permissões por artefato, isolamento, persistência criptografada, versões/CAS,
+sincronização, revisão de alterações e compartilhamento. A dependência externa
+mantém motores, UI dos editores, comandos, formatos e exportadores, expondo sua
+interface e ferramentas pelo MCP Apps. Pessoas e agentes operam o mesmo artefato
+autorizado; a WebView ou o servidor do App não ganha outra autoridade durável.
+
+O host deve consumir uma versão fixada do pacote e seu contrato de capacidades,
+sem reconstruir ou portar cada editor a cada mudança do Zoen. Estar em outro
+repositório não autoriza enviar documentos automaticamente a um serviço externo:
+execução, acesso aos bytes e propostas de alteração continuam limitados pelas
+capacidades concedidas pelo Zoen.
+
+Preservar código, revisões, artefatos, documentos e provas já produzidos para
+reaproveitamento/extração. Não apagar dados, reverter versões ou concluir aceites
+pendentes por esta mudança de arquitetura. O PR601 foi encerrado sem merge e
+seus commits preservados; contratos genéricos úteis podem ser extraídos depois.
+O SDK/host continua em #180; a expansão e os testes específicos dos editores não
+retomam como trabalho interno implícito.
+
+As seções seguintes são o plano e as evidências históricos da integração interna.
+Elas preservam contexto técnico, não são autorização para retomar essa frente.
+
+## Plano anterior — histórico
+
 Começar pelo DeckCraft e concluir uma apresentação real dentro da conversa antes
 de repetir o padrão nos outros editores. Reutilizar seu motor, comandos e
 exportadores; o Zoen continua responsável pelo documento criptografado, identidade,
