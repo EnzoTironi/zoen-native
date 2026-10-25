@@ -72,7 +72,8 @@ def prepare(directory, managed=False, browser=False, eframe_crate=None, egui_cra
         patches = [HERE / "patches/0001-managed-session.patch",
                    HERE / "patches/0002-render-target-fields.patch",
                    HERE / "patches/0003-ui-target-paths.patch",
-                   HERE / "patches/0004-paragraph-touch-release.patch"]
+                   HERE / "patches/0004-paragraph-touch-release.patch",
+                   HERE / "patches/0005-retained-canonical-undo.patch"]
         for path in sorted((HERE / "browser").rglob("*")):
             if path.is_symlink():
                 raise ValueError("Refusing symlinked browser inputs")

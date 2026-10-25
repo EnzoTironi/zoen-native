@@ -1,5 +1,7 @@
 //! Native retained-App checks. Browser touch and iPhone keyboard are separate qualifications.
 mod fixture;
+mod live_review;
+mod live_review_guards;
 mod touch;
 use egui_kittest::Harness;
 use fixture::{Editor, Result, accepted, head, mutation, source};

@@ -110,6 +110,9 @@ impl BrowserBridge {
             return Err(failure("unbound_session"));
         }
         let host = HostBridge::open(request, bytes)?;
+        if self.host.is_some() {
+            return self.adopt_canonical(app, host, bytes);
+        }
         let binding = NEXT_BINDING
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
                 value.checked_add(1)
@@ -144,6 +147,33 @@ impl BrowserBridge {
         *app = next;
         self.status(&app.session)
     }
+    fn adopt_canonical(
+        &mut self,
+        app: &mut PdfCraftApp,
+        host: HostBridge,
+        bytes: &[u8],
+    ) -> Result<Value> {
+        let current = self.host()?;
+        // A metadata-only newer version cannot erase pre-existing native Redo.
+        if host.head.sha256 != current.head.sha256 {
+            let doc = self.doc(&app.session)?;
+            let id = doc.id;
+            let generation = doc.edit_generation();
+            let frozen = app.session.managed_frozen;
+            app.session.managed_frozen = true;
+            let adopted = app.session.managed_adopt_canonical(
+                id,
+                generation,
+                std::sync::Arc::new(bytes.to_vec()),
+            );
+            app.session.managed_frozen = frozen;
+            self.accepted_generation =
+                adopted.map_err(|_| failure("canonical_adoption_refused"))?;
+        }
+        self.host = Some(host);
+        self.status(&app.session)
+    }
+
     fn admission(
         &self,
         session: &Session,

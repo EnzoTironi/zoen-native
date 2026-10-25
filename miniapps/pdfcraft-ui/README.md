@@ -60,10 +60,19 @@ fresh-store retry, cold reopen, hash/scope/unknown-operation refusal. Read uses
 The one-thread cold compilation took 225.97s, separate from execution (16ms read,
 2ms rotation); deployment should reuse the existing operator-owned compilation
 cache. Its publisher and scope are synthetic test fixtures. Independent pypdf
-confirms exact text/opaque data and the requested rotation. Canonical CLI/Core
-integration, live agent refresh preserving Undo, and iPhone acceptance remain
-pending. No fifth App resource or worker is enabled on main. GitHub #581 is the
-status authority.
+confirms exact text/opaque data and the requested rotation.
+
+The retained-adoption successor passes eighteen host tests (bridge5, actual
+App/Session13) and both host/WASM all-targets Clippy. A real higher canonical
+version now stays in the same Session binding and DocId, entering the upstream
+COS/keys Undo stack. Undo of the peer update saves as a new version, and Undo of
+the earlier human change remains available. Pending receipts, active paragraph
+drafts, dirty native edits, invalid/foreign sources and pause state are preserved;
+a newer identical payload does not erase Redo. The original binding-replacement
+failure is retained as a causal RED. A genuine successor browser release is built;
+current-SDK WebKit live review, canonical CLI/Core integration and iPhone
+acceptance remain pending. No fifth App resource or worker is enabled on main.
+GitHub #581 is the status authority.
 
 The initial structural limits are 8 MiB, 32 declared pages, 8,192 current objects,
 64 internal PDF revisions and image dimensions ≤2,048 / 2,000,000 pixels. The
