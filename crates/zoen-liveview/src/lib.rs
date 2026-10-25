@@ -125,6 +125,9 @@ pub struct Offer {
 }
 
 /// VM side: a fresh key per session, agreed with the device's public key.
+///
+/// # Errors
+/// Refuses unavailable entropy, noncontributory peer keys, or failed key derivation.
 pub fn vm_start(device_pub: &[u8; 32]) -> Result<(Offer, SessionKeys), Error> {
     vm_start_with(device_pub, getrandom::getrandom)
 }
@@ -155,6 +158,10 @@ pub struct DeviceKey {
 }
 
 impl DeviceKey {
+    /// Creates a fresh device key from operating-system randomness.
+    ///
+    /// # Errors
+    /// Returns [`Error::Entropy`] if the operating system cannot fill the secret.
     pub fn generate() -> Result<Self, Error> {
         Self::generate_with(getrandom::getrandom)
     }
@@ -170,6 +177,7 @@ impl DeviceKey {
     }
 
     /// The same key again, from the secret half kept in the device's keychain.
+    #[must_use]
     pub fn from_secret(secret: [u8; 32]) -> Self {
         DeviceKey {
             secret: StaticSecret::from(secret),
@@ -177,15 +185,20 @@ impl DeviceKey {
     }
 
     /// The secret half, to keep in the device's keychain (never leaves the device).
+    #[must_use]
     pub fn secret(&self) -> [u8; 32] {
         self.secret.to_bytes()
     }
 
+    #[must_use]
     pub fn public(&self) -> [u8; 32] {
         PublicKey::from(&self.secret).to_bytes()
     }
 
     /// Device side of [`vm_start`].
+    ///
+    /// # Errors
+    /// Refuses noncontributory peer keys or failed key derivation.
     pub fn accept(&self, offer: &Offer) -> Result<SessionKeys, Error> {
         let shared = self.secret.diffie_hellman(&PublicKey::from(offer.vm_pub));
         if !shared.was_contributory() {
@@ -223,6 +236,7 @@ impl SessionKeys {
         }
     }
 
+    #[must_use]
     pub fn sealer(&self, dir: Direction) -> Sealer {
         Sealer {
             aead: ChaCha20Poly1305::new(self.key(dir).into()),
@@ -232,6 +246,7 @@ impl SessionKeys {
         }
     }
 
+    #[must_use]
     pub fn opener(&self, dir: Direction) -> Opener {
         Opener {
             aead: ChaCha20Poly1305::new(self.key(dir).into()),
@@ -251,6 +266,12 @@ pub struct Sealer {
 }
 
 impl Sealer {
+    /// Encrypts the next envelope and advances its nonce only after success.
+    /// Sequence `u64::MAX` is reserved as the exhausted terminal state.
+    ///
+    /// # Errors
+    /// Returns [`Error::Exhausted`] at the terminal counter or [`Error::Encryption`]
+    /// when the cipher refuses the plaintext. Either failure preserves the counter.
     pub fn seal(&mut self, plaintext: &[u8]) -> Result<Vec<u8>, Error> {
         let seq = self.next;
         let next = self.next.checked_add(1).ok_or(Error::Exhausted)?;
@@ -281,6 +302,10 @@ pub struct Opener {
 }
 
 impl Opener {
+    /// Authenticates a newer envelope, updating the replay cursor only on success.
+    ///
+    /// # Errors
+    /// Refuses malformed, replayed, unauthenticated, or foreign-session envelopes.
     pub fn open(&mut self, sealed: &[u8]) -> Result<Vec<u8>, Error> {
         if sealed.len() < 8 + 16 {
             return Err(Error::Malformed);
@@ -304,6 +329,7 @@ impl Opener {
         Ok(pt)
     }
 
+    #[must_use]
     pub fn last_seq(&self) -> u64 {
         self.last
     }

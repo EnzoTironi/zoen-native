@@ -129,6 +129,9 @@ impl LiveViewSession {
     }
 
     pub fn seal_click(&self, x: f64, y: f64) -> Result<Vec<u8>, CoreError> {
+        if !x.is_finite() || !y.is_finite() {
+            return Err(bad("live view click coordinates"));
+        }
         self.seal(&InputEvent::Click { x, y })
     }
 
@@ -220,3 +223,6 @@ impl LiveViewDemoVm {
         })
     }
 }
+
+#[cfg(test)]
+mod tests;
