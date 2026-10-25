@@ -13,16 +13,20 @@ fn proof_valid(
         && Some(proof.device.as_str()) == creation.device.as_deref()
         && proof.space == space
         && token(&proof.mutation)
-        && miniapps::binary::Format::for_id(&app.app).is_some_and(|format| {
-            crate::app_binary_documents::creation_item_id_for(
-                format,
-                &proof.author,
-                &proof.device,
-                space,
-                &proof.mutation,
-            )
-            .is_ok_and(|id| id == item)
-        })
+        && ((app.app == "excalidraw"
+            && app.view.is_some()
+            && crate::app_resources::item_id(&proof.author, &proof.device, space, &proof.mutation)
+                .is_ok_and(|id| id == item))
+            || miniapps::binary::Format::for_id(&app.app).is_some_and(|format| {
+                crate::app_binary_documents::creation_item_id_for(
+                    format,
+                    &proof.author,
+                    &proof.device,
+                    space,
+                    &proof.mutation,
+                )
+                .is_ok_and(|id| id == item)
+            }))
 }
 pub(super) fn valid(app: &AppDoc, creation: &AppShareRef, space: &str, item: &str) -> bool {
     app.document

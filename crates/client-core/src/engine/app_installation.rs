@@ -101,6 +101,7 @@ impl Engine {
         let (title, state) = apps::create_as(spec.id, &args, &creator, now_ms())
             .map_err(|reason| CoreError::Invalid { reason })?;
         let doc = AppDoc {
+            view: None,
             document: None,
             app: spec.id.into(),
             resource_uri: spec.resource_uri.into(),
@@ -281,6 +282,7 @@ impl Engine {
             space,
             &item,
             AppDoc {
+                view: None,
                 document: None,
                 app: spec.id.into(),
                 resource_uri: spec.resource_uri.into(),

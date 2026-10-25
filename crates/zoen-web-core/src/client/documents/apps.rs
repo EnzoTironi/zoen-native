@@ -266,6 +266,7 @@ impl<S: Signer> Client<S> {
         let (title, _) = miniapps::create_as("excalidraw", &arguments, &actor, now)?;
         let item = browser_id("it", now)?;
         let app = AppDoc {
+            view: None,
             app: "excalidraw".into(),
             resource_uri: RESOURCE.into(),
             title: title.clone(),

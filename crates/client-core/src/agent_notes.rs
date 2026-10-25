@@ -183,6 +183,7 @@ mod tests {
         let st = serde_json::json!({"timezone": "America/Sao_Paulo", "ownerId": "bruno",
             "agentId": "bot", "resolvers": ["dani"], "bookings": bookings, "events": events});
         types::AppDoc {
+            view: None,
             document: None,
             app: "schedule".into(),
             resource_uri: String::new(),

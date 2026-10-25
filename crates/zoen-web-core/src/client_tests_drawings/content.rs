@@ -183,6 +183,7 @@ fn received_drawing_downloads_verify_signed_chunks_and_whole_scene_before_readin
             item: "it_received".into(),
             kind: ItemKind::App,
             content: ItemContent::App(AppDoc {
+                view: None,
                 app: "excalidraw".into(),
                 resource_uri: RESOURCE.into(),
                 title: "Native".into(),
@@ -224,6 +225,7 @@ fn received_drawing_downloads_verify_signed_chunks_and_whole_scene_before_readin
         EventBody::ItemVersioned {
             item: "it_received".into(),
             content: ItemContent::App(AppDoc {
+                view: None,
                 app: "excalidraw".into(),
                 resource_uri: RESOURCE.into(),
                 title: "Native".into(),

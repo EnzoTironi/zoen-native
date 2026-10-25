@@ -39,6 +39,7 @@ pub use app_binary_documents::AppBinaryDocumentDto;
 mod app_current_share;
 mod app_documents;
 mod app_edit_requests;
+mod app_resources;
 pub use app_documents::AppDocumentDto;
 mod api;
 pub use api::call_turn::CallTurnDto;

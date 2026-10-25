@@ -12,6 +12,9 @@ impl State {
         identities: &HashMap<IdentityId, Identity>,
         context: &BeforeEvent,
     ) -> Projection {
+        if !crate::app_resources::event_valid(self, e, identities) {
+            return Projection::Refused;
+        }
         // Scoped prompts must use the discriminator old consumers cannot dispatch.
         if matches!(&e.body, EventBody::MessagePosted {reply: Some(reply), ..} if reply.artifact.is_some())
         {

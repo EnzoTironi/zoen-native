@@ -5,6 +5,7 @@
 //! Every mutation below goes through the same engine methods as the native apps.
 
 mod app_edit_dispatch;
+mod app_resource_dispatch;
 mod command;
 mod content_dispatch;
 mod conversation_dispatch;
@@ -185,7 +186,13 @@ fn decode(request: &str) -> Result<Command, CoreError> {
             || (site && request.len() > protocol::sites::MAX_HTML_BYTES as usize * 6 + 8 * 1024)
             || (!binary
                 && !site
-                && !matches!(envelope.op, "app_document_save" | "app_document_copy"))
+                && !matches!(
+                    envelope.op,
+                    "app_document_save"
+                        | "app_document_copy"
+                        | "app_document_save_pinned"
+                        | "app_document_copy_pinned"
+                ))
         {
             return Err(invalid("Application request is too large."));
         }
