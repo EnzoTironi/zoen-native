@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpListener;
 use types::AgentRequest;
 use zoen_agentd::{BrowserCall, BrowserTools, ExecRequest, SandboxProvider, SandboxSpec, Tier};
