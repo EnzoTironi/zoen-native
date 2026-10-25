@@ -107,6 +107,7 @@ try {
           ],
         },
   );
+  receipt.browser = { name: browser.browserType().name(), version: browser.version() };
   const page = await browser.newPage({
     ...(isWebkit ? devices["iPhone 13"] : {}),
     viewport:
@@ -257,6 +258,7 @@ try {
   assert.deepEqual(consoleErrors, []);
   receipt = {
     status: "PASS",
+    browser: receipt.browser,
     editor,
     scope:
       "Actual generated MCP bootstrap + pinned engine + shared session/export, synthetic Core read/CAS port; no device or certified-agent claim.",
