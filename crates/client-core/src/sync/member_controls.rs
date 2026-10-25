@@ -206,7 +206,6 @@ impl Engine {
             can_add,
             owned_agent,
             delivery_ready,
-            owned_agent,
             candidate,
             addition_failed: addition_failure.is_some(),
             removal_failed: failure.is_some(),
