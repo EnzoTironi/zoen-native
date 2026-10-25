@@ -44,6 +44,11 @@ pub(crate) fn validate_args(args: &[String]) -> Result<(), String> {
 
 pub(crate) fn preflight(command: &str, args: &[String], home: &Path) -> Result<(), String> {
     if command != COMMAND {
+        // The legacy global parser leaves unknown leading options as `command`.
+        // Refuse that malformed control invocation before it can create a home.
+        if command.starts_with('-') && args.iter().any(|arg| arg == COMMAND) {
+            return Err("agent_controls_invalid_arguments".into());
+        }
         return Ok(());
     }
     validate_args(args)?;

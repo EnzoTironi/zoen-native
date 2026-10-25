@@ -1,4 +1,4 @@
-use super::validate_args;
+use super::{preflight, validate_args};
 
 fn args(values: &[&str]) -> Vec<String> {
     values.iter().map(|value| (*value).to_owned()).collect()
@@ -66,5 +66,21 @@ fn controls_command_refuses_missing_duplicate_and_unrepresentable_bounds() {
         vec!["agent-controls", "--timeout", "100", "--timeout", "200"],
     ] {
         assert!(validate_args(&args(&values)).is_err(), "{values:?}");
+    }
+}
+
+#[test]
+fn controls_preflight_refuses_stranded_options_before_any_home_open() {
+    let home = std::path::Path::new("/nonexistent-controls-preflight-home");
+    for flag in ["--source", "--active", "--relay", "--unknown", "-x"] {
+        let values = args(&["--home", "/missing", flag, "original", "agent-controls"]);
+        assert_eq!(
+            preflight(flag, &values, home),
+            Err("agent_controls_invalid_arguments".into())
+        );
+    }
+    // A message body or another command's argument is not a service invocation.
+    for command in ["send", "agent-host"] {
+        assert!(preflight(command, &args(&[command, "agent-controls"]), home).is_ok());
     }
 }
