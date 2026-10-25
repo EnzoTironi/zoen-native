@@ -51,6 +51,7 @@ pub(crate) struct BeforeEvent {
     ordered_address: Option<(u64, String, String)>,
     scope_valid: bool,
     app_share_refs_valid: bool,
+    share_head: Option<crate::app_current_share::SharedVersionInfo>,
     mode: Mode,
     plan: PlanRead,
 }
@@ -71,6 +72,9 @@ fn binding(event: &Event) -> String {
 }
 
 impl BeforeEvent {
+    pub(crate) fn share_head(&self) -> Option<&crate::app_current_share::SharedVersionInfo> {
+        self.share_head.as_ref()
+    }
     pub(crate) fn app_share_refs_valid(&self) -> bool {
         self.app_share_refs_valid
     }
@@ -340,6 +344,12 @@ impl<'a> PlanReplay<'a> {
             PlanRead::Changed
         };
         Ok(BeforeEvent {
+            share_head: crate::app_current_share::readable_head(
+                self.logs
+                    .get(&event.space)
+                    .map_or(&[], |log| &log.events()[..end]),
+                event,
+            ),
             app_share_refs_valid: crate::app_current_share::references_valid(
                 self.logs
                     .get(&event.space)

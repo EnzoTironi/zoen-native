@@ -84,10 +84,15 @@ impl State {
         let version = Version {
             number: share.version,
             content: ItemContent::App(share.content.clone()),
-            author: event.author.clone(),
-            at_ms: event.at_ms,
-            note: t("Versão atual compartilhada", "Current version shared"),
-            is_undo: false,
+            author: context
+                .share_head()
+                .map_or_else(|| event.author.clone(), |head| head.author.clone()),
+            at_ms: context.share_head().map_or(event.at_ms, |head| head.at_ms),
+            note: context.share_head().map_or_else(
+                || t("Versão atual compartilhada", "Current version shared"),
+                |head| head.note.clone(),
+            ),
+            is_undo: context.share_head().is_some_and(|head| head.is_undo),
         };
         let origin = SharedOrigin {
             creation: share.creation.clone(),

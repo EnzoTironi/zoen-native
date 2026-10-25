@@ -67,7 +67,12 @@ impl Engine {
                 .as_ref()
                 .map_or_else(|| v.content.title(), |plan| plan.document.title.clone()),
             origin: it.origin.clone(),
-            created_by: self.persona(&it.versions[0].author),
+            // A current-state share does not reveal/prove the original creator.
+            created_by: self.persona(if it.shared.is_some() {
+                ""
+            } else {
+                &it.versions[0].author
+            }),
             plan,
             text,
             version: snapshot.as_ref().map_or(v.number, |plan| plan.version),

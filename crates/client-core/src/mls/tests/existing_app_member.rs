@@ -8,6 +8,17 @@ use miniapps::{binary::Format, wordcraft};
 use std::collections::HashMap;
 use types::ItemContent;
 
+mod controls;
+struct LateWord {
+    owner: Engine,
+    agent: Engine,
+    blobs: HashMap<String, Vec<u8>>,
+    original: crate::AppBinaryDocumentDto,
+    original_root: crate::TimelineEntry,
+    owner_secret: [u8; 32],
+    agent_secret: [u8; 32],
+}
+
 const SPACE: &str = "existing-word-new-agent";
 const EDITED: &[u8] =
     include_bytes!("../../../../miniapps/src/wordcraft/fixtures/actual-wasi.docx");
@@ -31,15 +42,14 @@ fn receive_wanted(agent: &mut Engine, blobs: &HashMap<String, Vec<u8>>) -> R<()>
     Ok(())
 }
 
-#[test]
-fn late_certified_agent_existing_word_requires_current_state_bootstrap() -> R<()> {
-    let (mut owner, author, _) = member(":memory:");
-    let mut agent = Engine::open(":memory:")?;
+fn late_word(owner_path: &str, agent_path: &str) -> R<LateWord> {
+    let (mut owner, author, owner_secret) = member(owner_path);
+    let mut agent = Engine::open(agent_path)?;
     let root = [93; 32];
     let agent_id = Signer::from_secret(&root).id();
     let proof = event_log::agent_owner::authorize(&author, &agent_id)
         .ok_or_else(|| storage("fixture needs a certified owner"))?;
-    agent.create_agent_account(
+    let (_, agent_secret, _) = agent.create_agent_account(
         "Word collaborator",
         "word_collaborator",
         "http://relay.test",
@@ -145,6 +155,28 @@ fn late_certified_agent_existing_word_requires_current_state_bootstrap() -> R<()
         .root
         .is_some());
 
+    Ok(LateWord {
+        owner,
+        agent,
+        blobs,
+        original,
+        original_root,
+        owner_secret,
+        agent_secret,
+    })
+}
+
+#[test]
+fn late_certified_agent_existing_word_requires_current_state_bootstrap() -> R<()> {
+    let LateWord {
+        mut owner,
+        mut agent,
+        mut blobs,
+        original,
+        original_root,
+        ..
+    } = late_word(":memory:", ":memory:")?;
+    let agent_id = agent.me_id()?;
     let account = owner.account().ok_or_else(|| storage("owner account"))?;
     let context = owner.app_current_share_context(crate::app_current_share::AppShareScope {
         expected_identity_id: account.identity.clone(),

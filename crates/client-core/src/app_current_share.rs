@@ -54,6 +54,75 @@ pub(crate) struct SharedOrigin {
     pub event: String,
 }
 
+#[derive(Clone)]
+pub(crate) struct SharedVersionInfo {
+    pub author: String,
+    pub at_ms: i64,
+    pub note: String,
+    pub is_undo: bool,
+}
+
+pub(crate) fn readable_head(prefix: &[Event], event: &Event) -> Option<SharedVersionInfo> {
+    let EventBody::AppCurrentShared { share } = &event.body else {
+        return None;
+    };
+    let head = usize::try_from(share.head.seq)
+        .ok()
+        .and_then(|n| prefix.get(n))?;
+    let (note, is_undo) = match &head.body {
+        EventBody::ItemVersioned {
+            item,
+            content: types::ItemContent::App(app),
+            note,
+        } if item == &share.item && app == &share.content => (note.clone(), false),
+        EventBody::ItemCreated {
+            item,
+            content: types::ItemContent::App(app),
+            ..
+        } if item == &share.item && app == &share.content => (t("Criado", "Created"), false),
+        EventBody::ItemReverted { item, note, .. } if item == &share.item => (note.clone(), true),
+        _ => return None,
+    };
+    Some(SharedVersionInfo {
+        author: head.author.clone(),
+        at_ms: head.at_ms,
+        note,
+        is_undo,
+    })
+}
+
+fn current_prefix(prefix: &[Event], share: &AppCurrentShare) -> bool {
+    let mut roles = std::collections::HashMap::new();
+    for event in prefix {
+        let writer = roles
+            .get(&event.author)
+            .is_some_and(|r| *r != types::Role::Reader);
+        if (event.seq == share.creation.seq || event.seq == share.head.seq) && !writer {
+            return false;
+        }
+        if event.seq > share.head.seq
+            && writer
+            && matches!(&event.body,
+            EventBody::ItemVersioned { item, .. } | EventBody::ItemReverted { item, .. } if item == &share.item)
+        {
+            return false;
+        } // Refuse a stale snapshot, never discard an already retained successor.
+        match &event.body {
+            EventBody::SpaceCreated { .. } => {
+                roles.insert(event.author.clone(), types::Role::Owner);
+            }
+            EventBody::MemberAdded { identity, role } => {
+                roles.insert(identity.clone(), *role);
+            }
+            EventBody::MemberRemoved { identity } => {
+                roles.remove(identity);
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
 fn refused() -> CoreError {
     CoreError::Stale {
         reason: t(
@@ -111,6 +180,18 @@ pub(crate) fn references_valid(prefix: &[Event], event: &Event) -> bool {
         if kind == event_log::content::SealedKind::Application.name())
     };
     event.seen.as_ref() == Some(&share.cut)
+        && share.epoch.is_none_or(|epoch| {
+            prefix.iter().rev().find_map(|e| {
+                if e.author != event.author || e.device != event.device {
+                    return None;
+                }
+                match &e.body {
+                    EventBody::Checkpoint { epoch, .. } => Some(*epoch),
+                    _ => None,
+                }
+            }) == Some(epoch)
+        })
+        && current_prefix(prefix, share)
         && prefix
             .last()
             .is_some_and(|e| e.seq == share.cut.seq && e.hash == share.cut.hash)
