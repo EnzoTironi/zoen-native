@@ -152,6 +152,17 @@ export class DeckcraftDocument {
       }
     });
   }
+  /** Read only the accepted head installed in this exact live Session. */
+  observedHead(): Promise<{ itemId: string; head: Head }> {
+    return this.serial(async () => {
+      if (!this.opened || !this.binding) throw Error('The document is not open.');
+      const status = (await this.engine('status')).metadata;
+      if (this.pending || status.dirty !== false || status.pendingMutationId != null)
+        throw Error('The document has unacknowledged changes.');
+      return { itemId: this.options.itemId, head: head(status.head) };
+    });
+  }
+
   /** Receive a canonical higher head on this Session, never overwriting a local draft. */
   refresh(observedVersion?: number): Promise<void> {
     return this.serial(async () => {
@@ -407,6 +418,10 @@ export async function attachDeckcraftDocument(options: Options & { app: App }) {
   };
   options.app.oncalltool = async ({ name, arguments: input }) => {
     const args = record(input ?? {});
+    if (name === 'document_head') {
+      if (Object.keys(args).length) throw Error('Invalid document head request.');
+      return { content: [], structuredContent: await document.observedHead() };
+    }
     if (name === 'refresh_document') {
       if (
         Object.keys(args).some((key) => key !== 'version') ||
