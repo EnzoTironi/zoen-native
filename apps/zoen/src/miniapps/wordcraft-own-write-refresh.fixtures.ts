@@ -48,8 +48,9 @@ export async function ownWriteFixture() {
     count = 0,
     writes = 0,
     observing = true;
-  const states: { blocked: boolean; error: string | null }[] = [];
+  const states: { phase: string; blocked: boolean; error: string | null }[] = [];
   const events: string[] = [];
+  const statusTasks: Promise<unknown>[] = [];
   const driver = new Driver();
   const store = new ClientStore(driver);
   driver.operation = async (command) => {
@@ -141,12 +142,16 @@ export async function ownWriteFixture() {
         return { ...reply, metadata: JSON.stringify(metadata) };
       },
     },
-    onState: (phase) => {
-      void app.updateModelContext({
+    onState: (phase, _error, reason) => {
+      const status = app.updateModelContext({
         structuredContent: {
-          zoen: { binarySave: { itemId: 'it_deck', phase, ready: true } },
+          zoen: { binarySave: { itemId: 'it_deck', phase, ready: true, reason } },
         },
       });
+      statusTasks.push(status);
+      // Retirement can close the SDK while a status response is in flight.
+      // Retain every outcome for orderly fixture cleanup instead of leaking rejection.
+      void status.catch(() => {});
     },
   });
   await tick();
@@ -165,6 +170,7 @@ export async function ownWriteFixture() {
   states.length = 0;
   events.length = 0;
   return {
+    driver,
     session,
     app,
     owner,
@@ -192,6 +198,7 @@ export async function ownWriteFixture() {
       owner.retireAuthority();
       session.retire();
       await app.close();
+      await Promise.allSettled(statusTasks);
       await store.close({ force: true });
     },
   };

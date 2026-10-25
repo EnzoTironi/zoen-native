@@ -46,7 +46,9 @@ function fixture(historical = false, editor: 'deckcraft' | 'gridcraft' = 'deckcr
   let retries = 0;
   let owner: any;
   let controller: any;
-  let flushes = 0;
+  let flushes = 0,
+    checkpoints = 0;
+  let appState: ((state: string) => void) | undefined;
   const shares: string[] = [];
   const same = (a: any[], b: any[]) =>
     a && b && a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
@@ -107,7 +109,17 @@ function fixture(historical = false, editor: 'deckcraft' | 'gridcraft' = 'deckcr
     'react-native': {
       Text: 'Text',
       View: 'View',
-      AppState: { addEventListener: () => ({ remove: () => {} }) },
+      AppState: {
+        currentState: 'active',
+        addEventListener: (_: string, listener: (state: string) => void) => {
+          appState = listener;
+          return {
+            remove: () => {
+              appState = undefined;
+            },
+          };
+        },
+      },
     },
     'expo-router': { router: { back: () => {} } },
     'expo-crypto': { randomUUID: () => 'owned' },
@@ -131,6 +143,9 @@ function fixture(historical = false, editor: 'deckcraft' | 'gridcraft' = 'deckcr
     './deckcraft-session': {
       createDeckcraftSession: (options: any) => {
         const current = {
+          checkpoint: async () => {
+            checkpoints++;
+          },
           share: async (format: string) => {
             shares.push(format);
           },
@@ -195,6 +210,8 @@ function fixture(historical = false, editor: 'deckcraft' | 'gridcraft' = 'deckcr
     owner: () => owner,
     feedback: (state: unknown) => owner.state(state),
     flushes: () => flushes,
+    checkpoints: () => checkpoints,
+    appState: (state: string) => appState?.(state),
     error: () =>
       owner.state({
         phase: 'error',
@@ -357,4 +374,19 @@ test('compiled Grid history offers only XLSX and keeps retired controls bound to
   } finally {
     f.close();
   }
+});
+
+test('native lifecycle deduplicates inactive/background and checkpoints again on foreground without teardown', () => {
+  const f = fixture();
+  f.opened();
+  f.appState('inactive');
+  f.appState('background');
+  assert.equal(f.flushes(), 0);
+  assert.equal(f.checkpoints(), 1);
+  f.appState('active');
+  assert.equal(f.checkpoints(), 2);
+  assert.equal(f.flushes(), 0);
+  f.close();
+  f.appState('inactive');
+  assert.equal(f.checkpoints(), 2);
 });
