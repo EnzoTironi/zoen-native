@@ -8,6 +8,7 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use sha2::{Digest, Sha256};
 use types::{IdentityKind, ItemContent};
 
+pub(crate) mod source_scope;
 pub(crate) mod tool_approvals;
 pub use tool_approvals::{AgentToolApprovalInput, ApprovedToolTurn};
 
@@ -52,12 +53,27 @@ impl Engine {
         write: bool,
     ) -> R<(String, String, String, String)> {
         let state = self.item_state(item)?;
-        self.agent_source_authority(&state.space, source, serving, write)
+        let binding = self.agent_source_binding(&state.space, source, serving, write)?;
+        self.check_artifact_head(item, source, &binding.3, &state.space)?;
+        Ok(binding)
     }
 
     /// Same signed source authority before an artifact exists. Creation cannot
     /// borrow permissions from a different item or a model-supplied actor.
     pub(crate) fn agent_source_authority(
+        &self,
+        space: &str,
+        source: &str,
+        serving: &str,
+        write: bool,
+    ) -> R<(String, String, String, String)> {
+        let binding = self.agent_source_binding(space, source, serving, write)?;
+        if self.artifact_request(space, source)?.is_some() {
+            return Err(denied());
+        }
+        Ok(binding)
+    }
+    fn agent_source_binding(
         &self,
         space: &str,
         source: &str,
@@ -136,6 +152,7 @@ impl Engine {
         {
             return Err(denied());
         }
+        self.check_artifact_version(turn)?;
         self.recheck_tool_turn(turn, None)?;
         Ok(())
     }
@@ -166,6 +183,11 @@ impl Client {
                 .ok_or_else(invalid)?,
             None => state.current(),
         };
+        if e.artifact_request(&space, source)?
+            .is_some_and(|r| selected.number < r.version)
+        {
+            return Err(denied());
+        }
         let ItemContent::App(app) = &selected.content else {
             return Err(invalid());
         };
@@ -232,16 +254,19 @@ impl Client {
         let mut e = self.lock();
         e.recheck_agent_binary_turn(turn, true)?;
         e.recheck_tool_turn(turn, Some((mutation, intent_sha256)))?;
-        e.app_binary_save(
+        let receipt = e.artifact_receipt(turn)?;
+        e.app_binary_save_with_source(
             &turn.document.item_id,
             turn.document.version,
             &turn.document.sha256,
             data_base64,
-            mutation,
-            intent_sha256,
+            (mutation, intent_sha256, receipt),
         )
     }
 }
 
 #[cfg(test)]
 pub(crate) mod tests;
+
+#[cfg(test)]
+mod source_scope_tests;

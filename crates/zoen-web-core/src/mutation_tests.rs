@@ -365,7 +365,7 @@ fn unauthorized_mutations_are_rejected_and_signed_peer_mutations_do_not_fold() {
                 message: "msg_peer".into(),
                 text: "theirs".into(),
                 attaches: None,
-                reply: Some(ReplyRef {
+                reply: Some(ReplyRef { artifact: None,
                     to: mine.clone(),
                     thread: false,
                 }),

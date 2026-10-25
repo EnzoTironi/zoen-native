@@ -38,6 +38,13 @@ pub enum EventBody {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         forwarded: bool,
     },
+    /// A scoped App request uses its own discriminator: older consumers retain
+    /// these signed bytes as Unsupported, never as an unrestricted chat prompt.
+    AppEditRequested {
+        message: ItemId,
+        text: String,
+        reply: ReplyRef,
+    },
     /// Closed v1 signaling; carried inside MLS for an encrypted person-to-person DM.
     CallV1 {
         signal: crate::calls::CallSignal,
