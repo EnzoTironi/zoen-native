@@ -59,7 +59,7 @@ export async function reviewExternalPhoto(page, output, before, pixels) {
   };
   const external = await exportCurrent("external");
   assert.equal(external.writes, before.writes, "review must never save received canonical bytes again");
-  assert.equal(external.accepted, project.toString("base64"));
+  assert.ok(Buffer.from(external.accepted, "base64").equals(project), "received project bytes must be exact");
   const oracle = JSON.parse(execFileSync(process.env.PHOTO_PYTHON ?? "python3", [
     fileURLToPath(new URL("./png-probe.py", import.meta.url)), "rotate-clockwise",
     resolve(output, "edited.png"), resolve(output, "external.png"),
@@ -76,7 +76,7 @@ export async function reviewExternalPhoto(page, output, before, pixels) {
   });
   await page.evaluate(() => window.probe.flush());
   const undone = await exportCurrent("undo-external");
-  assert.equal(undone.accepted, before.accepted, "real Undo must restore exact pre-agent project bytes");
+  assert.ok(Buffer.from(undone.accepted, "base64").equals(bytes), "real Undo must restore exact pre-agent project bytes");
   assert.equal(undone.writes, before.writes + 1, "Undo becomes a new canonical save CAS");
   assert.equal(undone.version, before.version + 2);
   assert.deepEqual(await readFile(resolve(output, "undo-external.png")), await readFile(resolve(output, "edited.png")));
