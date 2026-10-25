@@ -268,7 +268,16 @@ def main():
         scope = compilation_scope(cargo_args, before["context"]["configuredTargets"])
         result["scope"] = scope
         scope_key = digest(scope)
-        owner_source = digest({"context": before["contextDigest"], "packages": {key: value["digest"] for key, value in before["packages"].items()}})
+        # SDK/toolchain/environment belong to each target/profile scope. A
+        # host -> simulator -> host build must not erase the other bindings.
+        # Real source/config/tooling changes still retire every prior scope.
+        context = before["context"]
+        owner_source = digest({
+            "workspace": context["workspace"], "manifest": context["manifest"],
+            "config": context["config"], "guard": context["guard"],
+            "configurationHelper": context["configurationHelper"],
+            "packages": {key: value["digest"] for key, value in before["packages"].items()},
+        })
         third_party_names = set(before["thirdPartyNames"]) | set(previous.get("thirdPartyNames", []) if valid else [])
         if third_party_names & {value["name"] for value in before["packages"].values()}:
             raise GuardError("Local package name collides with recorded third-party cache history")

@@ -33,6 +33,12 @@ and output hashes. The builder declares its tooling files and the SDK/deployment
 library search and DeckCraft resource-manifest environment inputs. Guarded builds
 consolidate `CARGO_BUILD_BUILD_DIR` into the selected target, as the guard requires.
 No environment values are added to builder receipts; the guard records hashes.
+The owner source identity covers workspace sources, configuration files and guard
+code. Each target/profile scope separately binds its full toolchain/environment
+context. The normal host → simulator → host SDK changes preserve the other
+scopes; changing a scope's SDK still invalidates that scope. A real source or
+configuration-file change retires all prior scopes. Existing stamps migrate by
+normal invalidation on the first invocation of the changed guard.
 Artifact lookup uses the package manifest paths returned by locked/offline Cargo
 metadata, including tools outside `crates/`; it does not infer package directories.
 
