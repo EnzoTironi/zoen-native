@@ -1,4 +1,5 @@
 use super::*;
+use sha2::{Digest, Sha256};
 
 struct Directory(std::path::PathBuf);
 impl Directory {
@@ -28,14 +29,18 @@ fn step(id: &str) -> ToolStep {
         is_error: false,
     }
 }
-fn tools<'a>(client: &'a Arc<Client>, journal: &'a Path) -> SpaceTools<'a> {
+fn tools<'a>(fixture: &'a crate::deckcraft::tests::Fixture, journal: &'a Path) -> SpaceTools<'a> {
     SpaceTools {
         selection: None,
-        e: client,
+        e: &fixture.client,
         journal,
-        source: "synthetic-source",
-        space: "synthetic-space".into(),
-        serving: "synthetic-owner",
+        source: &fixture.source,
+        space: fixture
+            .client
+            .item(fixture.base.item_id.clone())
+            .unwrap()
+            .space_id,
+        serving: &fixture.owner,
         names: vec![],
         deckcraft: None,
         deckcraft_items: vec![],
@@ -47,9 +52,9 @@ fn tools<'a>(client: &'a Arc<Client>, journal: &'a Path) -> SpaceTools<'a> {
 fn legacy_steps_remain_readable_and_writes_stay_legacy_until_a_resume_is_reserved() {
     let directory = Directory::new();
     let path = directory.journal();
-    let client = Client::open(":memory:".into(), "en".into()).unwrap();
-    let host = tools(&client, &path);
-    let original = vec![("synthetic-source".to_string(), vec![step("first")])];
+    let fixture = crate::deckcraft::tests::fixture_at(directory.0.clone(), [72; 32]);
+    let host = tools(&fixture, &path);
+    let original = vec![(fixture.source.clone(), vec![step("first")])];
     std::fs::write(&path, serde_json::to_vec(&original).unwrap()).unwrap();
     assert_eq!(host.load(), original);
     assert_eq!(host.done(), vec![step("first")]);
@@ -75,11 +80,14 @@ fn exact_request_budget_survives_reopens_and_step_recording_without_reset() {
     let directory = Directory::new();
     let path = directory.journal();
     let hash = "ab".repeat(32);
+    let mut fixture = crate::deckcraft::tests::fixture_at(directory.0.clone(), [72; 32]);
     for expected in 1..=MAX_TRIES {
-        // Every operation loads from disk. Dropping these clients/hosts simulates the
-        // operational state of a fresh process; no counter is held by SpaceTools.
-        let client = Client::open(":memory:".into(), "en".into()).unwrap();
-        let host = tools(&client, &path);
+        // Reopen both the signed native account/source and journal. No counter
+        // or authority is supplied by an anonymous in-memory Client.
+        drop(fixture.client);
+        fixture.client =
+            canonical_tool_approval_tests::reopen(&fixture.path, fixture.vault.clone());
+        let host = tools(&fixture, &path);
         assert!(host.begin_resume("synthetic-request", &hash).unwrap());
         host.record(step(&format!("step-{expected}")));
         let recovered = JournalState::load(&path).unwrap();
@@ -120,8 +128,8 @@ fn corrupt_or_unsupported_journal_cannot_reset_the_budget_or_be_overwritten_by_r
         let path = directory.journal();
         std::fs::write(&path, corrupt).unwrap();
         assert!(JournalState::begin_resume(&path, "synthetic-request", &"ab".repeat(32), None).is_err());
-        let client = Client::open(":memory:".into(), "en".into()).unwrap();
-        tools(&client, &path).record(step("must-not-replace-corrupt-data"));
+        let fixture = crate::deckcraft::tests::fixture_at(directory.0.clone(), [72; 32]);
+        tools(&fixture, &path).record(step("must-not-replace-corrupt-data"));
         assert_eq!(std::fs::read(&path).unwrap(), corrupt);
         assert!(!path.with_extension("tmp").exists());
     }
@@ -160,6 +168,23 @@ fn prepared_and_completed_metadata_survive_reopen_bound_to_the_same_source_and_r
     let directory = Directory::new();
     let path = directory.journal();
     let hash = "ab".repeat(32);
+    let mut fixture = crate::deckcraft::tests::fixture_at(directory.0.clone(), [72; 32]);
+    let account = fixture.client.account().unwrap();
+    let space = fixture
+        .client
+        .item(fixture.base.item_id.clone())
+        .unwrap()
+        .space_id;
+    let source = fixture
+        .client
+        .timeline(space.clone())
+        .unwrap()
+        .into_iter()
+        .find(|entry| entry.id == fixture.source)
+        .unwrap();
+    let EntryKind::Message { text, .. } = source.kind else {
+        panic!("signed fixture source");
+    };
     let completed = step("completed-read");
     let progress = ToolProgress {
         round: 0,
@@ -170,12 +195,12 @@ fn prepared_and_completed_metadata_survive_reopen_bound_to_the_same_source_and_r
         version: 1,
         policy_sha256: "cd".repeat(32),
         envelope: zoen_agentd::ToolAskEnvelope {
-            agent: "synthetic-agent".into(),
-            device: "synthetic-device".into(),
-            owner: "synthetic-owner".into(),
-            space: "synthetic-space".into(),
-            from: "synthetic-owner".into(),
-            inbound_sha256: "ef".repeat(32),
+            agent: account.identity_id,
+            device: account.device_id,
+            owner: fixture.owner.clone(),
+            space,
+            from: fixture.owner.clone(),
+            inbound_sha256: hex::encode(Sha256::digest(text.as_bytes())),
         },
         call: step("prepared-write").call,
         definition: ToolDef {
@@ -188,23 +213,21 @@ fn prepared_and_completed_metadata_survive_reopen_bound_to_the_same_source_and_r
         round: 1,
         rule: "model:low-risk".into(),
     };
-    assert!(JournalState::begin_resume(
-        &path,
-        "synthetic-request",
-        &hash,
-        Some("synthetic-source")
-    )
-    .unwrap());
+    assert!(
+        JournalState::begin_resume(&path, "synthetic-request", &hash, Some(&fixture.source))
+            .unwrap()
+    );
     JournalState::update(&path, |state| {
         let budget = state.continuations.get_mut("synthetic-request").unwrap();
         budget.progress = Some(progress.clone());
         budget.prepared = Some(prepared.clone());
-        state.steps = vec![("synthetic-source".into(), vec![completed.clone()])];
+        state.steps = vec![(fixture.source.clone(), vec![completed.clone()])];
         Ok(true)
     })
     .unwrap();
-    let client = Client::open(":memory:".into(), "en".into()).unwrap();
-    let host = tools(&client, &path);
+    drop(fixture.client);
+    fixture.client = canonical_tool_approval_tests::reopen(&fixture.path, fixture.vault.clone());
+    let host = tools(&fixture, &path);
     assert_eq!(
         host.recovery_checkpoint("synthetic-request", &hash)
             .unwrap(),
@@ -215,7 +238,7 @@ fn prepared_and_completed_metadata_survive_reopen_bound_to_the_same_source_and_r
         .is_err());
     let mismatched = SpaceTools {
         source: "different-source",
-        ..tools(&client, &path)
+        ..tools(&fixture, &path)
     };
     assert!(mismatched
         .recovery_checkpoint("synthetic-request", &hash)
