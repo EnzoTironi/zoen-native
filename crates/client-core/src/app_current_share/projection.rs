@@ -51,9 +51,7 @@ impl State {
                 .grant
                 .expires_at_ms
                 .is_some_and(|at| at <= event.at_ms)
-            || (context.ordered()
-                && (share.cut.seq.checked_add(1) != Some(event.seq)
-                    || share.cut.hash != event.prev))
+            || (context.ordered() && share.cut.seq >= event.seq)
         {
             return Projection::Refused;
         }
