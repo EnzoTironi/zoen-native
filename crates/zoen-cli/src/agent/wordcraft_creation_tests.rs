@@ -125,7 +125,7 @@ async fn actual_word_create_approve_lost_result_edit_and_cold_reopen(
     assert_eq!(client.items().len(), before, "staging is inert");
     drop(cx);
     drop(client);
-    canonical_tool_approval_tests::signed_owner_resolution(&path, &space, &request, &owner);
+    canonical_tool_approval_tests::signed_owner_resolution(&path, &space, &request, &owner)?;
     client = canonical_tool_approval_tests::reopen(&path, vault.clone());
     let cx = context(&client, Some(worker.clone()), &journal, &space, &starts);
     let host = SpaceTools::new(&client, &cx, &space, &owner, &source);
@@ -167,7 +167,7 @@ async fn actual_word_create_approve_lost_result_edit_and_cold_reopen(
     assert_eq!(client.items().len(), before + 1);
     drop(cx);
     drop(client);
-    canonical_tool_approval_tests::signed_owner_resolution(&path, &space, &edit, &owner);
+    canonical_tool_approval_tests::signed_owner_resolution(&path, &space, &edit, &owner)?;
     client = canonical_tool_approval_tests::reopen(&path, vault.clone());
     let cx = context(&client, Some(worker.clone()), &journal, &space, &starts);
     canonical_tool_approval_tests::handle(&client, &cx, &space, &source).await;

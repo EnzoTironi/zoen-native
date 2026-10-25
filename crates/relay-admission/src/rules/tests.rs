@@ -110,7 +110,8 @@ fn privacy_only_goes_up() -> Result<(), Box<dyn std::error::Error>> {
         seq: 3,
         hash: "h3".into(),
     });
-    let up = |f: &Facts| admit(&env(&a, seen.clone(), EventBody::SpaceEncrypted)?, f);
+    let encrypted = env(&a, seen.clone(), EventBody::SpaceEncrypted)?;
+    let up = |f: &Facts| admit(&encrypted, f);
     let closed = |kind, role| Facts {
         kind: Some(kind),
         privacy: Some(Privacy::Closed),

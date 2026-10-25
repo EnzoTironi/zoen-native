@@ -55,7 +55,8 @@ fn actors(ready_owned: bool) -> R<(Engine, [Engine; 2], String)> {
 }
 
 fn publish(owner: &mut Engine, peers: &mut [Engine; 2]) -> R<()> {
-    let frames = relay_ready_to_peer(owner, &mut peers[0])?;
+    let frames =
+        relay_ready_to_peer(owner, &mut peers[0]).map_err(|error| storage(error.to_string()))?;
     for frame in frames {
         assert_eq!(peers[1].ingest(frame), Ingest::Applied);
     }
@@ -94,7 +95,8 @@ fn post(
 
 fn missing_package(ready_owned: bool) -> R<Fixture> {
     let (mut owner, mut peers, agent_id) = actors(ready_owned)?;
-    let frames = claim_group(&mut owner, SPACE, &mut peers)?;
+    let frames =
+        claim_group(&mut owner, SPACE, &mut peers).map_err(|error| storage(error.to_string()))?;
     for frame in frames {
         for peer in &mut peers {
             assert_eq!(peer.ingest(frame.clone()), Ingest::Applied);

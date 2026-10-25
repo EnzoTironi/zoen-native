@@ -60,7 +60,8 @@ fn insert_legacy(store: &Store, event: &Event, rowid: i64) {
 }
 
 #[test]
-fn enqueue_order_survives_clock_rollback_retry_duplicate_and_reinsert() {
+fn enqueue_order_survives_clock_rollback_retry_duplicate_and_reinsert(
+) -> Result<(), Box<dyn std::error::Error>> {
     let store = Store::in_memory().unwrap();
     let events = [
         event("commit", 300, "Commit"),
@@ -98,10 +99,12 @@ fn enqueue_order_survives_clock_rollback_retry_duplicate_and_reinsert() {
     store.outbox_put(&events[0]).unwrap();
     assert_eq!(ids(&store), ["welcome", "later", "commit"]);
     assert_eq!(store.outbox_get("commit").unwrap(), Some(events[0].clone()));
+    Ok(())
 }
 
 #[test]
-fn migration_preserves_bytes_retry_state_and_order_through_vacuum_and_image() {
+fn migration_preserves_bytes_retry_state_and_order_through_vacuum_and_image(
+) -> Result<(), Box<dyn std::error::Error>> {
     let store = Store::in_memory().unwrap();
     legacy(&store);
     let events = [
@@ -131,10 +134,12 @@ fn migration_preserves_bytes_retry_state_and_order_through_vacuum_and_image() {
         .collect::<rusqlite::Result<Vec<_>>>()
         .unwrap();
     assert_eq!(orders, [4, 900]);
+    Ok(())
 }
 
 #[test]
-fn failed_migration_leaves_legacy_schema_and_original_rows_unchanged() {
+fn failed_migration_leaves_legacy_schema_and_original_rows_unchanged(
+) -> Result<(), Box<dyn std::error::Error>> {
     let store = Store::in_memory().unwrap();
     legacy(&store);
     let e = event("original", 3, "Commit");
@@ -163,10 +168,12 @@ fn failed_migration_leaves_legacy_schema_and_original_rows_unchanged() {
         .unwrap();
     store.upgrade_outbox_order().unwrap();
     assert_eq!(ids(&store), ["original"]);
+    Ok(())
 }
 
 #[test]
-fn exhausted_order_refuses_new_intent_but_duplicate_stays_noop() {
+fn exhausted_order_refuses_new_intent_but_duplicate_stays_noop(
+) -> Result<(), Box<dyn std::error::Error>> {
     let store = Store::in_memory().unwrap();
     let e = event("last", 1, "Commit");
     store.outbox_put(&e).unwrap();
@@ -178,11 +185,12 @@ fn exhausted_order_refuses_new_intent_but_duplicate_stays_noop() {
     assert!(store.outbox_put(&event("overflow", 0, "Welcome")).is_err());
     assert_eq!(store.outbox_get("last").unwrap(), Some(e));
     assert_eq!(ids(&store), ["last"]);
+    Ok(())
 }
 
 #[test]
-fn disk_reopen_and_vacuum_into_keep_named_order() {
-    let directory = std::env::temp_dir().join(types::new_id("outbox-fifo"));
+fn disk_reopen_and_vacuum_into_keep_named_order() -> Result<(), Box<dyn std::error::Error>> {
+    let directory = std::env::temp_dir().join(types::new_id("outbox-fifo")?);
     std::fs::create_dir(&directory).unwrap();
     let path = directory.join("original.sqlite");
     let copy = directory.join("copy.sqlite");
@@ -216,4 +224,5 @@ fn disk_reopen_and_vacuum_into_keep_named_order() {
         );
     }
     std::fs::remove_dir_all(directory).unwrap();
+    Ok(())
 }

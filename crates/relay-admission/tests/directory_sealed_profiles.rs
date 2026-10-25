@@ -17,16 +17,17 @@ fn sealed(who: &Author, version: u64, ciphertext: Vec<u8>) -> SealedProfile {
     }
 }
 #[test]
-fn real_profile_ciphertext_keeps_native_crypto_and_wire_without_host_dtos() {
+fn real_profile_ciphertext_keeps_native_crypto_and_wire_without_host_dtos(
+) -> Result<(), Box<dyn std::error::Error>> {
     let who = author(32);
     let fields = ProfileFields {
         name: "Synthetic Zoen".into(),
         bio: "private fixture".into(),
         photo: None,
     };
-    let key = ProfileKey::generate();
+    let key = ProfileKey::generate()?;
     let version = 9_007_199_254_740_993;
-    let ciphertext = seal_profile(&key, &who.identity, version, &fields);
+    let ciphertext = seal_profile(&key, &who.identity, version, &fields)?;
     let p = sealed(&who, version, ciphertext);
     policy::validate_profile(&who.identity, who.device.as_deref().unwrap(), &p).unwrap();
     let frame = ServerFrame::Res {
@@ -48,15 +49,17 @@ fn real_profile_ciphertext_keeps_native_crypto_and_wire_without_host_dtos() {
     );
     assert!(open_profile(&key, &who.identity, version + 1, &p.ciphertext).is_none());
     assert!(open_profile(
-        &ProfileKey::generate(),
+        &ProfileKey::generate()?,
         &who.identity,
         version,
         &p.ciphertext
     )
     .is_none());
+    Ok(())
 }
 #[test]
-fn upload_identity_device_signature_and_size_are_independent_fences() {
+fn upload_identity_device_signature_and_size_are_independent_fences(
+) -> Result<(), Box<dyn std::error::Error>> {
     let who = author(32);
     let valid = sealed(&who, 1, vec![1]);
     for (profile, reason) in [
@@ -110,9 +113,11 @@ fn upload_identity_device_signature_and_size_are_independent_fences() {
             "profile version out of range"
         );
     }
+    Ok(())
 }
 #[test]
-fn native_agreement_signatures_bind_current_device_identity_key_and_certificate() {
+fn native_agreement_signatures_bind_current_device_identity_key_and_certificate(
+) -> Result<(), Box<dyn std::error::Error>> {
     let who = author(32);
     let public = AgreementKey::from_secret([44; 32]).public_hex();
     let signed = sign_agreement(&who, &public).unwrap();
@@ -156,4 +161,5 @@ fn native_agreement_signatures_bind_current_device_identity_key_and_certificate(
         &invalid
     )
     .is_err());
+    Ok(())
 }
