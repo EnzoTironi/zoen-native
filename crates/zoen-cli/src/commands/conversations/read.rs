@@ -91,7 +91,7 @@ pub(super) async fn read(client: &Client, space: &str, options: Options) -> Resu
         prefix
             + &entries
                 .iter()
-                .map(crate::terminal::line)
+                .map(crate::line)
                 .collect::<Vec<_>>()
                 .join("\n")
     };
