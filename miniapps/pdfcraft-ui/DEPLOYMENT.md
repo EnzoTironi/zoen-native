@@ -36,12 +36,14 @@ in [manifest.rs](../../crates/zoen-agentd/src/manifest.rs). A PDF payload has:
 }
 ```
 
-The designated operator uses its existing publisher and the normal
-`ToolManifest::validate` / `ToolManifest::sign` API. That API signs the protocol's
-domain-separated canonical serialization and returns `SignedManifest` containing
-`manifest`, `publisher` and `signature`. There is no separate `sign-pdfcraft` CLI
-command. This integration does not read publisher private keys, manufacture an
-operator signature, or promote the synthetic test publisher to trusted status.
+The designated operator uses its existing publisher through the shared
+[`app_worker_publish`](../../crates/zoen-agentd/examples/app_worker_publish/README.md)
+entry point. It uses `ToolManifest::validate` / `ToolManifest::sign` and verifies
+the serialized `SignedManifest` with the expected public publisher before atomic,
+no-clobber publication. It binds the actual component bytes, without a helper
+specific to PDF or any other App. Only the command consumes the existing private
+seed internally; neither model nor operator logs should read/copy/print it.
+Synthetic test publishers are never promoted to trusted status.
 
 The existing CLI loader in [deckcraft.rs](../../crates/zoen-cli/src/deckcraft.rs)
 accepts these three operator environment values together:
