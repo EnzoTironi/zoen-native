@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { editorAgentReactFixture } from './editor-agent-react.fixtures.ts';
 import type { TimelineEntry } from './types';
 import type { AgentRequestDto } from './generated/AgentRequestDto';
+import { t } from '../i18n/index.ts';
 
 test('compiled native sheet opens/closes while the same document/controller stays mounted', async () => {
   const f = await editorAgentReactFixture();
@@ -95,6 +96,52 @@ test('remote canonical events refresh the open sheet with inline source replies 
     );
     assert.equal(f.controls.has('markdown:Review the centered paragraph'), false);
     assert.equal(f.controls.has('review:review-current'), false);
+    assert.deepEqual(f.errors, []);
+  } finally {
+    await f.close();
+  }
+});
+
+test('a definitive agent-membership conflict keeps the real prompt editable and needs a fresh explicit submission after Core admission', async () => {
+  const f = await editorAgentReactFixture();
+  const reason = 'Adicione um agente autorizado a esta conversa antes de pedir uma alteração.';
+  try {
+    f.coreConflict(reason);
+    await f.render();
+    await f.act(() => f.controls.get('editor-agent-open')!.onPress());
+    await f.act(() =>
+      f.controls.get('editor-agent-prompt')!.onChangeText('Centralize o primeiro parágrafo'),
+    );
+    await f.act(() => f.controls.get('editor-agent-send')!.onPress());
+    assert.equal(f.controls.get('editor-agent-prompt')!.value, 'Centralize o primeiro parágrafo');
+    assert.equal(f.controls.get('editor-agent-prompt')!.editable, true);
+    assert.equal(f.controls.get('editor-agent-send')!.label, t('miniapps.askAgent'));
+    assert.equal(f.controls.has(`text:${reason}`), true);
+    assert.equal(f.controls.has(`text:${t('miniapps.editRequestSent')}`), false);
+    assert.equal(f.controls.has(`text:${t('miniapps.editRequestUncertain')}`), false);
+    const submissions = () => f.calls.filter(({ op }) => op === 'request_app_edit');
+    assert.equal(submissions().length, 1);
+    assert.equal(submissions()[0]!.mutation_id, 'request-1');
+    await f.act(() => f.controls.get('sheet')!.onDismiss());
+    await f.act(() => f.controls.get('editor-agent-open')!.onPress());
+    await f.act(() =>
+      f.controls.get('editor-agent-prompt')!.onChangeText('Centralize apenas este parágrafo'),
+    );
+    // Core eligibility is an explicit port here; actual membership/authorization
+    // admission is separately enforced and tested by the Core owner.
+    f.coreConflict(null);
+    await f.act(() => f.remote([], []));
+    assert.equal(submissions().length, 1, 'remote eligibility changes cannot resend the prompt');
+    assert.equal(f.controls.get('editor-agent-prompt')!.value, 'Centralize apenas este parágrafo');
+    await f.act(() => f.controls.get('editor-agent-send')!.onPress());
+    assert.equal(submissions().length, 2);
+    assert.equal(submissions()[1]!.mutation_id, 'request-2');
+    assert.equal(submissions()[1]!.text, 'Centralize apenas este parágrafo');
+    assert.equal(f.controls.get('editor-agent-prompt')!.value, '');
+    assert.equal(f.controls.has(`text:${t('miniapps.editRequestSent')}`), true);
+    assert.equal(f.controls.has(`text:${t('miniapps.editRequestUncertain')}`), false);
+    assert.deepEqual(f.counters(), { mounts: 1, unmounts: 0, flushes: 2, presented: true });
+    assert.deepEqual(f.routes, []);
     assert.deepEqual(f.errors, []);
   } finally {
     await f.close();

@@ -60,6 +60,7 @@ export async function editorAgentReactFixture() {
     unmounts = 0,
     ids = 0,
     presented = false;
+  let editConflict: string | null = null;
   let remoteEntries: TimelineEntry[] = [],
     remoteRequests: AgentRequestDto[] = [];
   const document = {
@@ -91,6 +92,7 @@ export async function editorAgentReactFixture() {
           engine_revision: formats.WORDCRAFT_ENGINE_REVISION,
         };
       case 'request_app_edit':
+        if (editConflict) return { entry: null, conflict: editConflict };
         return {
           entry: { id: 'canonical-request', kind: { Message: { text: command.text, card: null } } },
           conflict: null,
@@ -145,7 +147,11 @@ export async function editorAgentReactFixture() {
     'react/compiler-runtime': require('react/compiler-runtime'),
     'react-native': {
       View: children,
-      Text: () => null,
+      Text: (props: Control) =>
+        React.createElement(Capture, {
+          ...props,
+          testID: typeof props.children === 'string' ? `text:${props.children}` : undefined,
+        }),
       ScrollView: children,
       useWindowDimensions: () => ({ width: 402, height: 874 }),
       AppState: { addEventListener: () => ({ remove() {} }) },
@@ -237,6 +243,9 @@ export async function editorAgentReactFixture() {
     snapshot,
     calls,
     routes,
+    coreConflict(reason: string | null) {
+      editConflict = reason;
+    },
     remote(entries: TimelineEntry[], requests: AgentRequestDto[] = []) {
       remoteEntries = entries;
       remoteRequests = requests;
