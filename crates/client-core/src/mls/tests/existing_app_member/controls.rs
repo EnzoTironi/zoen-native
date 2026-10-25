@@ -2,6 +2,7 @@
 use super::*;
 use crate::app_current_share::{AppShareContext, AppShareScope};
 
+mod legacy;
 mod wire;
 
 fn context(f: &LateWord) -> R<AppShareContext> {
@@ -15,7 +16,7 @@ fn context(f: &LateWord) -> R<AppShareContext> {
     })
 }
 
-fn counts(e: &Engine) -> (usize, usize, usize, usize) {
+fn counts(e: &Engine) -> (usize, u64, usize, usize) {
     (
         e.logs[SPACE].events().len(),
         e.outbox_len(),
@@ -151,13 +152,14 @@ fn append_failure_rolls_back_snapshot_capability_and_intent_then_normal_retry_is
     let mut f = late_word(":memory:", ":memory:")?;
     let c = context(&f)?;
     let before = counts(&f.owner);
-    f.owner.store.conn().execute_batch("CREATE TEMP TRIGGER reject_share BEFORE INSERT ON outbox BEGIN SELECT RAISE(ABORT,'injected canonical append failure'); END;")?;
+    f.owner.store.conn().execute_batch("CREATE TEMP TRIGGER reject_share BEFORE INSERT ON outbox BEGIN SELECT RAISE(ABORT,'injected canonical append failure'); END;").map_err(|e| storage(&e.to_string()))?;
     assert!(f.owner.share_app_current(c.clone(), "storage_cut").is_err());
     assert_eq!(counts(&f.owner), before);
     f.owner
         .store
         .conn()
-        .execute_batch("DROP TRIGGER reject_share;")?;
+        .execute_batch("DROP TRIGGER reject_share;")
+        .map_err(|e| storage(&e.to_string()))?;
     let r = f.owner.share_app_current(c, "storage_cut")?;
     assert!(r.applied);
     assert_eq!(f.owner.outbox_len(), 1);
