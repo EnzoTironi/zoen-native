@@ -132,7 +132,7 @@ impl Conn {
         seen: Option<Seen>,
         body: EventBody,
     ) -> anyhow::Result<Sequenced> {
-        let now = now_ms();
+        let now = now_ms()?;
         let e = self
             .author
             .sign_event(space, &types::new_ulid(now)?, now, seen, body)?;
@@ -222,10 +222,12 @@ fn seen(ev: &Sequenced) -> Seen {
     }
 }
 
-pub fn now_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_millis() as i64)
+/// Unix milliseconds for a signed load event, without a fabricated epoch fallback.
+///
+/// # Errors
+/// Refuses pre-epoch clocks and timestamps outside the signed event integer range.
+pub fn now_ms() -> anyhow::Result<i64> {
+    crate::clock::unix_ms(std::time::SystemTime::now())
 }
 
 /// A message to publish, stamped with the time it was scheduled to go out (µs after the
@@ -304,7 +306,7 @@ pub async fn run(conn: Conn, plan: Plan, mut rx: mpsc::Receiver<Publish>) -> any
                     stop_at = Some(Instant::now() + drain);
                     continue;
                 };
-                let now = now_ms();
+                let now = now_ms()?;
                 let e = author.sign_event(
                     &space,
                     &types::new_ulid(now)?,
@@ -334,7 +336,8 @@ pub async fn run(conn: Conn, plan: Plan, mut rx: mpsc::Receiver<Publish>) -> any
             bail!("relay closed the connection")
         };
         let Message::Binary(b) = msg? else { continue };
-        let at_us = start.elapsed().as_micros() as u64;
+        let at_us = u64::try_from(start.elapsed().as_micros())
+            .context("load elapsed time exceeds microsecond range")?;
         match ServerFrame::decode(&b).map_err(|e| anyhow!("undecodable frame: {e}"))? {
             ServerFrame::Event { ev } => {
                 if ev.seq > head.seq {
