@@ -56,6 +56,13 @@ function copyJson<T>(value: T, maximum: number): T {
     throw new Error('The remote MCP data exceeds its limit.');
   return JSON.parse(json) as T;
 }
+/** Capture a host launch's JSON arguments under the same wire limit as tool calls. */
+export function captureRemoteArguments(
+  value: Record<string, unknown>,
+): Readonly<Record<string, unknown>> {
+  if (!record(value)) throw new Error('Invalid remote MCP launch arguments.');
+  return frozen(copyJson(value, MAX_ARGUMENTS));
+}
 /** Keep the fetch implementation's native response; RN's Response cannot wrap a stream. */
 function streamingResponse(response: Response, initial: ReadableStream<Uint8Array>): Response {
   let body = initial;
