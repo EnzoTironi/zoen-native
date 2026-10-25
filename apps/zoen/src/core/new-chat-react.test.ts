@@ -75,3 +75,39 @@ test('non-iOS creation retains its explicit form action', async () => {
     await f.close();
   }
 });
+
+test('group creation failure retains the title and selected participant until an explicit retry', async () => {
+  const f = await newChatFixture('ios', [
+    { id: 'owned-agent', name: 'QA Agent', handle: 'qa-agent', is_me: false },
+  ]);
+  try {
+    await f.choose('group');
+    await f.title('  Shared document  ');
+    await f.act(() => f.control('person').onPress());
+    assert.equal(f.control('person')['aria-checked'], true);
+    await f.act(() => f.control('createHeader').onPress());
+    const command = {
+      op: 'create_group',
+      title: 'Shared document',
+      member_ids: ['owned-agent'],
+    };
+    assert.deepEqual(f.calls, [command]);
+    await f.reject('Temporarily unavailable');
+    assert.equal(f.control('field:chat.groupName').value, '  Shared document  ');
+    assert.equal(f.control('person')['aria-checked'], true);
+    assert.equal(f.control('text:Temporarily unavailable').accessibilityRole, 'alert');
+    assert.equal(f.control('createHeader').disabled, false);
+    assert.equal(f.calls.length, 1);
+    assert.equal(f.routes.length, 0);
+    await f.act(() => f.control('createHeader').onPress());
+    assert.deepEqual(f.calls, [command, command]);
+    await f.resolve('shared-document');
+    assert.deepEqual(f.routes, [
+      'dismiss',
+      { pathname: '/chat/[id]', params: { id: 'shared-document' } },
+    ]);
+    assert.deepEqual(f.errors, []);
+  } finally {
+    await f.close();
+  }
+});
