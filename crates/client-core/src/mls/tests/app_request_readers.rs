@@ -14,31 +14,42 @@ struct Fixture {
     app: AppBinaryDocumentDto,
 }
 
-fn actors() -> R<(Engine, [Engine; 2], String)> {
-    let (mut owner, author, _) = member(":memory:");
-    let (reader, _, _) = member(":memory:");
+fn certified_agent(author: &Author, root: [u8; 32], handle: &str) -> R<Engine> {
     let mut agent = Engine::open(":memory:")?;
-    let root = [94; 32];
     let id = Signer::from_secret(&root).id();
-    let proof = event_log::agent_owner::authorize(&author, &id)
+    let proof = event_log::agent_owner::authorize(author, &id)
         .ok_or_else(|| storage("fixture needs a certified owner"))?;
     agent.create_agent_account(
         "App collaborator",
-        "app_collaborator",
+        handle,
         "http://relay.test",
         root,
         &author.identity,
         proof,
     )?;
-    let profile = agent
-        .identities
-        .get(&id)
-        .cloned()
-        .ok_or_else(|| storage("fixture needs its genuine Agent profile"))?;
-    assert!(event_log::agent_owner::profile_authorized(&profile));
-    owner.store.put_identity(&profile, None)?;
-    owner.identities.insert(id.clone(), profile);
-    owner.identity_order.push(id.clone());
+    Ok(agent)
+}
+
+fn actors(ready_owned: bool) -> R<(Engine, [Engine; 2], String)> {
+    let (mut owner, author, _) = member(":memory:");
+    let reader = if ready_owned {
+        certified_agent(&author, [95; 32], "ready_collaborator")?
+    } else {
+        member(":memory:").0
+    };
+    let agent = certified_agent(&author, [94; 32], "app_collaborator")?;
+    let id = agent.me_id()?;
+    for peer in [&reader, &agent] {
+        let profile = peer
+            .identities
+            .get(&peer.me_id()?)
+            .cloned()
+            .ok_or_else(|| storage("fixture profile"))?;
+        assert!(event_log::agent_owner::profile_authorized(&profile));
+        owner.store.put_identity(&profile, None)?;
+        owner.identity_order.push(profile.id.clone());
+        owner.identities.insert(profile.id.clone(), profile);
+    }
     owner.net.profiles.supported = true;
     Ok((owner, [reader, agent], id))
 }
@@ -80,8 +91,8 @@ fn post(
     owner.request_app_edit(input)
 }
 
-fn missing_package() -> R<Fixture> {
-    let (mut owner, mut peers, agent_id) = actors()?;
+fn missing_package(ready_owned: bool) -> R<Fixture> {
+    let (mut owner, mut peers, agent_id) = actors(ready_owned)?;
     let frames = claim_group(&mut owner, SPACE, &mut peers);
     for frame in frames {
         for peer in &mut peers {
@@ -122,20 +133,29 @@ fn missing_package() -> R<Fixture> {
 
 #[test]
 fn app_request_refuses_owned_role_member_missing_real_mls_keypackage() -> R<()> {
-    let mut f = missing_package()?;
-    let before = (f.owner.store.event_count()?, f.owner.store.outbox()?.len());
-    let result = post(&mut f.owner, SPACE, &f.app, "must_not_publish_old_epoch");
-    assert!(matches!(result, Err(CoreError::Stale { .. })), "{result:?}");
-    assert_eq!(
-        (f.owner.store.event_count()?, f.owner.store.outbox()?.len()),
-        before,
-    );
+    let mut f = missing_package(false)?;
+    for (locale, reason) in [
+        ("en", "Wait for your agent to join this conversation."),
+        ("pt", "Aguarde a entrada do seu agente na conversa."),
+    ] {
+        let _lang = crate::i18n::enter(crate::i18n::Lang::from_tag(locale));
+        let before = (f.owner.store.event_count()?, f.owner.store.outbox()?.len());
+        let result = post(&mut f.owner, SPACE, &f.app, "must_not_publish_old_epoch");
+        assert!(
+            matches!(&result, Err(CoreError::Stale { reason: actual }) if actual == reason),
+            "{result:?}"
+        );
+        assert_eq!(
+            (f.owner.store.event_count()?, f.owner.store.outbox()?.len()),
+            before,
+        );
+    }
     Ok(())
 }
 
 #[test]
 fn app_request_accepts_after_real_agent_welcome_and_retry_survives_removal() -> R<()> {
-    let mut f = missing_package()?;
+    let mut f = missing_package(false)?;
     // Make only the fixture scheduler's existing retry due, not MLS state.
     f.owner
         .net
@@ -182,12 +202,28 @@ fn app_request_accepts_after_real_agent_welcome_and_retry_survives_removal() -> 
 #[test]
 fn non_e2e_app_request_keeps_owned_writer_rule_without_mls_state() -> R<()> {
     for privacy in [Privacy::Closed, Privacy::Public] {
-        let (mut owner, _, agent_id) = actors()?;
+        let (mut owner, _, agent_id) = actors(false)?;
         let space =
             owner.create_synced_space("Non-MLS App", SpaceKind::Group, privacy, &[agent_id])?;
         assert!(owner.mls_status(&space).is_none());
         let app = create(&mut owner, &space, "non_mls_app")?;
         post(&mut owner, &space, &app, "non_mls_request")?;
     }
+    Ok(())
+}
+
+#[test]
+fn one_real_owned_mls_reader_allows_request_while_another_owned_agent_waits() -> R<()> {
+    let mut f = missing_package(true)?;
+    let ready_id = f.peers[0].me_id()?;
+    let (_, _, readers) = f
+        .owner
+        .mls_status(SPACE)
+        .ok_or_else(|| storage("MLS group"))?;
+    assert!(readers.contains(&ready_id));
+    assert!(!readers.contains(&f.agent_id));
+    assert!(f.owner.state.writer(SPACE, &ready_id));
+    assert!(f.owner.state.writer(SPACE, &f.agent_id));
+    post(&mut f.owner, SPACE, &f.app, "one_owned_reader_is_enough")?;
     Ok(())
 }

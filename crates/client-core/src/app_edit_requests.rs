@@ -122,32 +122,39 @@ impl Engine {
         {
             return Err(stale());
         }
-        // A canonical role can precede a usable KeyPackage/Welcome. E2E requests
-        // must wait for an owned writer who is also in the actual MLS group.
-        let mls_readers = self.is_e2e(&input.space_id).then(|| {
-            self.mls_status(&input.space_id)
-                .map_or_else(Vec::new, |(_, _, members)| members)
-        });
-        let has_agent = self
+        let agents: Vec<_> = self
             .space_state(&input.space_id)?
             .members
             .iter()
-            .any(|(id, _)| {
-                self.state.writer(&input.space_id, id)
-                    && mls_readers
-                        .as_ref()
-                        .is_none_or(|members| members.contains(id))
+            .filter_map(|(id, _)| {
+                (self.state.writer(&input.space_id, id)
                     && self.identities.get(id).is_some_and(|profile| {
                         profile.kind == types::IdentityKind::Agent
                             && profile.owner.as_deref() == Some(&input.expected_identity_id)
                             && event_log::agent_owner::profile_authorized(profile)
-                    })
-            });
-        if !has_agent {
+                    }))
+                .then_some(id)
+            })
+            .collect();
+        if agents.is_empty() {
             return Err(CoreError::Stale {
                 reason: t(
                     "Adicione seu agente à conversa antes de pedir uma alteração.",
                     "Add your agent to this conversation before requesting an edit.",
+                ),
+            });
+        }
+        // A canonical role can precede a usable KeyPackage/Welcome. One actual
+        // owned MLS reader is enough; another pending owned agent must not block it.
+        if self.is_e2e(&input.space_id)
+            && !self
+                .mls_status(&input.space_id)
+                .is_some_and(|(_, _, members)| agents.iter().any(|id| members.contains(id)))
+        {
+            return Err(CoreError::Stale {
+                reason: t(
+                    "Aguarde a entrada do seu agente na conversa.",
+                    "Wait for your agent to join this conversation.",
                 ),
             });
         }
