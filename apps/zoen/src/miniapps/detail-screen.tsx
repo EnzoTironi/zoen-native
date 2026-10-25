@@ -233,7 +233,7 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
         />
         {!historical &&
         isBinaryEditorId(spec.id) &&
-        spec.id === 'wordcraft' &&
+        binaryEditorFormat(spec.id).liveReview &&
         document?.observedHead ? (
           <EditorAgentAccess itemId={item.id} spaceId={item.space_id} document={document} />
         ) : null}
