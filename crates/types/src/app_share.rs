@@ -2,6 +2,17 @@
 use crate::{AppDoc, Grant, Seen};
 use serde::{Deserialize, Serialize};
 
+/// Public preimage for the existing binary-App ID factory. This binds the App
+/// namespace to its conversation; it is neither a grant nor file-byte metadata.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AppItemOrigin {
+    pub author: String,
+    pub device: String,
+    pub space: String,
+    pub mutation: String,
+}
+
 /// References authenticated outer log positions; this is not proof that a new
 /// reader decrypted the historical plaintext at those positions.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

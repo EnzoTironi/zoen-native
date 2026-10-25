@@ -67,8 +67,21 @@ fn sealed_intent(f: &LateWord, mut share: AppCurrentShare, id: &str) -> R<(Seque
 #[test]
 fn malformed_or_overprivileged_snapshot_rejects_item_and_grant_together() -> R<()> {
     for case in [
-        "schema", "version", "target", "scope", "trust", "issuer", "registry", "anchor", "cut",
+        "schema",
+        "version",
+        "target",
+        "scope",
+        "trust",
+        "issuer",
+        "registry",
+        "anchor",
+        "cut",
         "epoch",
+        "origin_absent",
+        "origin_space",
+        "origin_device",
+        "origin_author",
+        "origin_mutation",
     ] {
         let mut f = late_word(":memory:", ":memory:")?;
         let mut share = template(&mut f)?;
@@ -84,7 +97,24 @@ fn malformed_or_overprivileged_snapshot_rejects_item_and_grant_together() -> R<(
             "registry" => share.content.resource_uri = "ui://foreign.html".into(),
             "anchor" => share.anchor.hash = "00".repeat(32),
             "cut" => share.cut.hash = "00".repeat(32),
-            _ => share.epoch = share.epoch.map(|epoch| epoch + 1),
+            "epoch" => share.epoch = share.epoch.map(|epoch| epoch + 1),
+            "origin_absent" => share.content.document.as_mut().unwrap().app_origin = None,
+            field => {
+                let proof = share
+                    .content
+                    .document
+                    .as_mut()
+                    .unwrap()
+                    .app_origin
+                    .as_mut()
+                    .unwrap();
+                match field {
+                    "origin_space" => proof.space = "foreign".into(),
+                    "origin_device" => proof.device = "foreign".into(),
+                    "origin_author" => proof.author = "foreign".into(),
+                    _ => proof.mutation = "foreign".into(),
+                }
+            }
         }
         let before = counts(&f.agent);
         let frame = sealed(&f, share, case)?;

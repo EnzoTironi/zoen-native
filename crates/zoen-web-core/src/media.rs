@@ -116,6 +116,7 @@ pub fn seal_file(
         .map(|t| seal_chunk(&file_key, t, &mut uploads));
     Ok(Sealed {
         doc: FileDoc {
+            app_origin: None,
             name: name.into(),
             path: String::new(),
             mime: mime.into(),

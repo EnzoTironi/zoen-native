@@ -378,7 +378,7 @@ impl Engine {
                 }
             }
             let file_key = e.file_key(Some(item))?;
-            let file = e.file_doc(
+            let mut file = e.file_doc(
                 &space,
                 &file_key,
                 format.filename(),
@@ -388,6 +388,11 @@ impl Engine {
                 None,
                 &prior,
             )?;
+            // A save changes the owned bytes, never the same App's namespace.
+            file.app_origin = previous
+                .document
+                .as_ref()
+                .and_then(|f| f.app_origin.clone());
             e.store
                 .set_meta(&format!("file_key:{item}"), &hex::encode(file_key))?;
             let next = AppDoc {

@@ -63,7 +63,7 @@ impl State {
                 || known.kind != ItemKind::App
                 || known.current().number > share.version
                 || (known.current().number == share.version
-                    && known.current().content != ItemContent::App(share.content.clone()))
+                    && !matches!(&known.current().content, ItemContent::App(app) if origin::same_document(app, &share.content)))
                 || self.app_discussion_anchor(&event.space, &share.item)
                     != Some(share.anchor.event.as_str())
                 || known
