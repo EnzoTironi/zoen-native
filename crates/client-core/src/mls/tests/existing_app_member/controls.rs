@@ -154,14 +154,14 @@ fn append_failure_rolls_back_snapshot_capability_and_intent_then_normal_retry_is
     let mut f = late_word(":memory:", ":memory:")?;
     let c = context(&f)?;
     let before = counts(&f.owner);
-    f.owner.store.conn().execute_batch("CREATE TEMP TRIGGER reject_share BEFORE INSERT ON outbox BEGIN SELECT RAISE(ABORT,'injected canonical append failure'); END;").map_err(|e| storage(&e.to_string()))?;
+    f.owner.store.conn().execute_batch("CREATE TEMP TRIGGER reject_share BEFORE INSERT ON outbox BEGIN SELECT RAISE(ABORT,'injected canonical append failure'); END;").map_err(storage)?;
     assert!(f.owner.share_app_current(c.clone(), "storage_cut").is_err());
     assert_eq!(counts(&f.owner), before);
     f.owner
         .store
         .conn()
         .execute_batch("DROP TRIGGER reject_share;")
-        .map_err(|e| storage(&e.to_string()))?;
+        .map_err(storage)?;
     let r = f.owner.share_app_current(c, "storage_cut")?;
     assert!(r.applied);
     assert_eq!(f.owner.outbox_len(), 1);
@@ -173,7 +173,7 @@ fn append_failure_rolls_back_snapshot_capability_and_intent_then_normal_retry_is
 fn retained_successor_before_share_bootstraps_real_floor_then_cold_read_export_history_restore(
 ) -> R<()> {
     let dir = std::env::temp_dir().join(types::new_id("current-share-cold"));
-    std::fs::create_dir_all(&dir).map_err(|e| storage(&e.to_string()))?;
+    std::fs::create_dir_all(&dir).map_err(storage)?;
     let op = dir.join("owner.sqlite").to_string_lossy().into_owned();
     let ap = dir.join("agent.sqlite").to_string_lossy().into_owned();
     let mut f = late_word(&op, &ap)?;
@@ -294,7 +294,7 @@ fn retained_successor_before_share_bootstraps_real_floor_then_cold_read_export_h
     );
     assert_eq!(counts(&owner), before);
     drop((owner, agent));
-    std::fs::remove_dir_all(dir).map_err(|e| storage(&e.to_string()))?;
+    std::fs::remove_dir_all(dir).map_err(storage)?;
     Ok(())
 }
 

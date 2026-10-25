@@ -3,7 +3,7 @@ use super::*;
 fn forget_creation_receipt(f: &LateWord) -> R<()> {
     let a = f.owner.account().ok_or_else(|| storage("owner account"))?;
     let bytes = serde_json::to_vec(&(&a.identity, &a.device, SPACE, Format::Wordcraft.id()))
-        .map_err(|e| storage(&e.to_string()))?;
+        .map_err(storage)?;
     f.owner.store.meta_delete(&format!(
         "app_document_create_receipts:{}",
         event_log::sha256_hex(&bytes)

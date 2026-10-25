@@ -94,7 +94,7 @@ fn foreign_word(f: &mut LateWord, partial: bool) -> R<crate::AppBinaryDocumentDt
 }
 fn continuity(partial: bool) -> R<()> {
     let dir = std::env::temp_dir().join(types::new_id("foreign-origin-continuity"));
-    std::fs::create_dir_all(&dir).map_err(|e| storage(&e.to_string()))?;
+    std::fs::create_dir_all(&dir).map_err(storage)?;
     let op = dir.join("owner.sqlite").to_string_lossy().into_owned();
     let ap = dir.join("agent.sqlite").to_string_lossy().into_owned();
     let mut f = late_word(&op, &ap)?;
@@ -147,7 +147,7 @@ fn continuity(partial: bool) -> R<()> {
     assert_eq!(agent.item(&original.item_id)?.space_id, OTHER);
     assert_eq!(agent.state.grants.len(), grants);
     drop((owner, agent));
-    std::fs::remove_dir_all(dir).map_err(|e| storage(&e.to_string()))?;
+    std::fs::remove_dir_all(dir).map_err(storage)?;
     Ok(())
 }
 #[test]

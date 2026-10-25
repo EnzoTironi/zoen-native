@@ -77,7 +77,7 @@ fn second_append_storage_failure_rolls_back_the_normal_share_and_grant_too() -> 
     let mut f = late_word(":memory:", ":memory:")?;
     let command = input(&f, "atomic_disclosed_send", true)?;
     let before = counts(&f.owner);
-    f.owner.store.conn().execute_batch("CREATE TEMP TRIGGER reject_request BEFORE INSERT ON outbox WHEN NEW.json LIKE '%AppEditRequested%' BEGIN SELECT RAISE(ABORT,'injected second canonical append failure'); END;").map_err(|e| storage(&e.to_string()))?;
+    f.owner.store.conn().execute_batch("CREATE TEMP TRIGGER reject_request BEFORE INSERT ON outbox WHEN NEW.json LIKE '%AppEditRequested%' BEGIN SELECT RAISE(ABORT,'injected second canonical append failure'); END;").map_err(storage)?;
     assert!(f.owner.request_app_edit(command.clone()).is_err());
     assert_eq!(counts(&f.owner), before);
     assert!(f.agent.item_state(&f.original.item_id).is_err());
@@ -85,7 +85,7 @@ fn second_append_storage_failure_rolls_back_the_normal_share_and_grant_too() -> 
         .store
         .conn()
         .execute_batch("DROP TRIGGER reject_request")
-        .map_err(|e| storage(&e.to_string()))?;
+        .map_err(storage)?;
     f.owner.request_app_edit(command)?;
     assert_eq!(f.owner.outbox_len(), 2);
     assert_eq!(f.owner.state.grants.len(), before.3 + 1);
@@ -96,7 +96,7 @@ fn second_append_storage_failure_rolls_back_the_normal_share_and_grant_too() -> 
 fn accepted_share_prefix_then_real_cold_retry_keeps_one_share_and_original_pending_request() -> R<()>
 {
     let dir = std::env::temp_dir().join(types::new_id("disclosed-send-prefix"));
-    std::fs::create_dir_all(&dir).map_err(|e| storage(&e.to_string()))?;
+    std::fs::create_dir_all(&dir).map_err(storage)?;
     let op = dir.join("owner.sqlite").to_string_lossy().into_owned();
     let ap = dir.join("agent.sqlite").to_string_lossy().into_owned();
     let mut f = late_word(&op, &ap)?;
@@ -137,7 +137,7 @@ fn accepted_share_prefix_then_real_cold_retry_keeps_one_share_and_original_pendi
     );
     assert!(f.agent.artifact_request(SPACE, &first.id)?.is_some());
     drop((owner, f.agent));
-    std::fs::remove_dir_all(dir).map_err(|e| storage(&e.to_string()))?;
+    std::fs::remove_dir_all(dir).map_err(storage)?;
     Ok(())
 }
 
@@ -153,7 +153,7 @@ fn omitted_disclosure_keeps_the_existing_reply_payload_and_never_issues_share() 
     };
     assert_eq!(reply.to, f.original_root.id);
     assert!(reply.thread);
-    let wire = serde_json::to_string(&rows[0].event.body).map_err(|e| storage(&e.to_string()))?;
+    let wire = serde_json::to_string(&rows[0].event.body).map_err(storage)?;
     assert!(!wire.contains("share_current"));
     assert!(!wire.contains("AppCurrentShared"));
     Ok(())
