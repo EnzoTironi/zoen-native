@@ -18,6 +18,9 @@
 //! since every simulated person shares the load generator's.
 
 mod client;
+mod clock;
+mod config;
+use config::args;
 mod procfs;
 
 use std::time::Duration;
@@ -28,66 +31,6 @@ use futures_util::{stream, StreamExt, TryStreamExt};
 use hdrhistogram::Histogram;
 use serde_json::{json, Value};
 use tokio::{sync::mpsc, time::Instant};
-
-struct Args {
-    relays: Vec<String>,
-    users: usize,
-    group: usize,
-    rate: f64,
-    seconds: f64,
-    warmup: f64,
-    connect_concurrency: usize,
-    pids: Vec<(String, u32)>,
-    label: String,
-    json: Option<String>,
-    receipts: bool,
-}
-
-fn args() -> anyhow::Result<Args> {
-    let raw: Vec<String> = std::env::args().skip(1).collect();
-    let all = |name: &str| -> Vec<String> {
-        raw.windows(2)
-            .filter(|w| w[0] == name)
-            .map(|w| w[1].clone())
-            .collect()
-    };
-    let one = |name: &str| all(name).pop();
-    let num = |name: &str, default: f64| -> anyhow::Result<f64> {
-        one(name).map_or(Ok(default), |v| {
-            v.parse().with_context(|| format!("{name} {v}"))
-        })
-    };
-    let relays = all("--relay");
-    if relays.is_empty() {
-        bail!(
-            "usage: zoen-load --relay URL [--relay URL…] --users N --group G --rate R --seconds S"
-        );
-    }
-    let pids = all("--pid")
-        .iter()
-        .map(|p| {
-            let (n, v) = p.split_once('=').context("--pid name=pid")?;
-            Ok((n.to_string(), v.parse()?))
-        })
-        .collect::<anyhow::Result<_>>()?;
-    let a = Args {
-        relays,
-        users: num("--users", 100.0)? as usize,
-        group: num("--group", 8.0)? as usize,
-        rate: num("--rate", 100.0)?,
-        seconds: num("--seconds", 20.0)?,
-        warmup: num("--warmup", 5.0)?,
-        connect_concurrency: num("--connect-concurrency", 256.0)? as usize,
-        pids,
-        label: one("--label").unwrap_or_else(|| "run".into()),
-        json: one("--json"),
-        receipts: raw.iter().any(|a| a == "--receipts"),
-    };
-    if a.group < 2 || a.users < a.group {
-        bail!("--group must be at least 2 and no more than --users");
-    }
-    Ok(a)
-}
 
 fn ms(h: &Histogram<u32>, q: f64) -> f64 {
     (h.value_at_quantile(q) as f64 / 1000.0 * 100.0).round() / 100.0
@@ -133,7 +76,11 @@ async fn main() -> anyhow::Result<()> {
                 let c = Conn::open(&relay)
                     .await
                     .with_context(|| format!("person {i}"))?;
-                anyhow::Ok((c, t.elapsed().as_micros() as u64))
+                anyhow::Ok((
+                    c,
+                    u64::try_from(t.elapsed().as_micros())
+                        .context("handshake elapsed time exceeds microsecond range")?,
+                ))
             }
         })
         .buffer_unordered(a.connect_concurrency)
@@ -199,8 +146,10 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // ── catch up, then run ──
-    let start = Instant::now() + Duration::from_millis(500);
-    let measure_from_us = (a.warmup * 1e6) as u64;
+    let start = Instant::now()
+        .checked_add(Duration::from_millis(500))
+        .context("load start deadline is outside the clock range")?;
+    let measure_from_us = a.measure_from_us;
     let mut senders: Vec<(mpsc::Sender<Publish>, usize)> = Vec::new();
     let mut tasks = Vec::new();
     let ready: Vec<(Conn, String, types::Seen, usize)> =
@@ -235,13 +184,14 @@ async fn main() -> anyhow::Result<()> {
 
     tokio::time::sleep_until(start).await;
     eprintln!("running ({})", own_rss());
-    let total_us = ((a.warmup + a.seconds) * 1e6) as u64;
+    let total_us = a.total_us;
     let mut dispatched: u64 = 0;
     let mut expected_deliveries: u64 = 0;
     let mut backlogged: u64 = 0;
     let mut cpu_measure_start = None;
     loop {
-        let now_us = start.elapsed().as_micros() as u64;
+        let now_us = u64::try_from(start.elapsed().as_micros())
+            .context("load elapsed time exceeds microsecond range")?;
         if now_us >= total_us {
             break;
         }
@@ -249,7 +199,9 @@ async fn main() -> anyhow::Result<()> {
             cpu_measure_start = Some((procfs::snapshot(&a.pids), Instant::now()));
         }
         // Message k is due at k/rate, so every k ≤ now·rate is due now.
-        let due_total = (now_us as f64 / 1e6 * a.rate) as u64 + 1;
+        let due_total = ((now_us as f64 / 1e6 * a.rate) as u64)
+            .checked_add(1)
+            .context("load scheduled message count overflow")?;
         while dispatched < due_total {
             let due_us = (dispatched as f64 / a.rate * 1e6) as u64;
             let (tx, n) = &senders[fastrand::usize(..senders.len())];
@@ -265,7 +217,10 @@ async fn main() -> anyhow::Result<()> {
         if cpu_measure_start.is_none() {
             wake_us = wake_us.min(measure_from_us);
         }
-        tokio::time::sleep_until(start + Duration::from_micros(wake_us.min(total_us))).await;
+        let wake = start
+            .checked_add(Duration::from_micros(wake_us.min(total_us)))
+            .context("load wake deadline is outside the clock range")?;
+        tokio::time::sleep_until(wake).await;
     }
     let (cpu_start, measured_at) = cpu_measure_start.context("run shorter than the warm-up")?;
     let measured_secs = measured_at.elapsed().as_secs_f64();
