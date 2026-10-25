@@ -3,6 +3,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { AppState, Text, View } from 'react-native';
 import { useClient } from '../core/provider';
 import type { Command, ItemDetail } from '../core/types';
+import type { AppDocumentDto } from '../core/generated/AppDocumentDto';
 import { documentScope } from '../documents/document-authority';
 import { homeSpacesFor } from '../home/access';
 import { NativeButton } from '../components/primitives';
@@ -129,7 +130,7 @@ function PackageAction({
           flight.current = operation;
           setBusy(true);
           setError(null);
-          const task = Promise.resolve().then(() =>
+          const task = Promise.resolve().then<ItemDetail | AppDocumentDto>(() =>
             action instanceof AppPackageRelease ? action.update() : action.open(),
           );
           void task
