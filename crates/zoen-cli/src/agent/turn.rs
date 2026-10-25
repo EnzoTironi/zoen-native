@@ -115,9 +115,16 @@ async fn checked(
             None => true,
         };
     }
+    let scoped = match e.agent_artifact_request(space, &t.id, &t.author.id) {
+        Ok(scope) => scope.is_some(),
+        Err(_) => return false,
+    };
     let history: Vec<Turn> = before
         .iter()
         .rev()
+        // A scoped App request reads through its bounded native tool. Unrelated
+        // conversation history must not become an implicit artifact read.
+        .filter(|_| !scoped)
         .filter_map(|m| {
             text_of(m).map(|x| Turn {
                 space: space.into(),
@@ -362,6 +369,9 @@ async fn checked(
             );
             true
         }
+        TurnOutcome::Say { text } if scoped => e
+            .agent_artifact_reply(space, &t.id, &t.author.id, &text)
+            .is_ok(),
         TurnOutcome::Say { text } => selected_reply(e, space, &text, &t.id, selection),
         TurnOutcome::ToolAsk { ask } if ask.call.name == image_tools::TOOL => {
             tools.image_stage(&ask.call).is_ok()
@@ -381,6 +391,10 @@ async fn checked(
                 true
             }
         },
+        // A scoped draft stays at the signed source, not another conversation.
+        TurnOutcome::AskOwner { draft, .. } if scoped => e
+            .agent_artifact_reply(space, &t.id, &t.author.id, &draft)
+            .is_ok(),
         TurnOutcome::AskOwner { draft, rule } => selected_owner_note(
             e,
             cx,
@@ -390,6 +404,7 @@ async fn checked(
             &t.id,
             selection,
         ),
+        TurnOutcome::ProposeAgent { .. } if scoped => false,
         TurnOutcome::ProposeAgent { spec, confirmation } => {
             selected_proposal(e, cx, space, t, &spec, confirmation.as_deref(), selection)
         }

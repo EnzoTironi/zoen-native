@@ -1,10 +1,20 @@
-import type { App } from '@modelcontextprotocol/ext-apps';
+import { loadBinaryDocument } from './binary-document-load.ts';
 import {
-  decode64,
-  encode64,
-  hash,
-  CANONICAL_SCENE_CHUNK_BYTES as CHUNK,
-} from './canonical-scene.ts';
+  token,
+  digest,
+  positive,
+  headEqual,
+  record,
+  head,
+  scope,
+  scopeEqual,
+  type Scope,
+  type Head,
+  type DeckcraftBindings,
+} from './deckcraft-document-wire.ts';
+export type { DeckcraftBindings } from './deckcraft-document-wire.ts';
+import type { App } from '@modelcontextprotocol/ext-apps';
+import { encode64, hash, CANONICAL_SCENE_CHUNK_BYTES as CHUNK } from './canonical-scene.ts';
 import {
   binaryEditorFormat,
   binaryExportAllowed,
@@ -13,14 +23,6 @@ import {
 } from './binary-formats.ts';
 import { deckcraftInteractionRefusal, type DeckcraftFeedbackReason } from './deckcraft-feedback.ts';
 
-type Scope = { artifactId: string; actorId: string; actorKind: 'human' | 'agent' };
-type Head = { version: string; sha256: string };
-type Reply = { metadata: string; bytes: Uint8Array };
-export type DeckcraftBindings = {
-  zoenHostRequest: (envelope: string, bytes: Uint8Array) => Promise<Reply>;
-  zoenHostOnChange: (callback?: (status: string) => void) => void;
-  zoenHostRetire: () => void;
-};
 type Options = {
   editor?: BinaryEditorId;
   app: Pick<App, 'callServerTool'>;
@@ -33,46 +35,6 @@ type Options = {
     reason?: DeckcraftFeedbackReason,
   ) => void;
 };
-const token = (v: unknown): v is string =>
-  typeof v === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(v);
-const digest = (v: unknown): v is string => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v);
-const positive = (v: unknown): v is number =>
-  typeof v === 'number' && Number.isSafeInteger(v) && v >= 1 && v <= 0xffffffff;
-const headEqual = (a: Head, b: Head) => a.version === b.version && a.sha256 === b.sha256;
-function record(v: unknown): Record<string, unknown> {
-  if (!v || typeof v !== 'object' || Array.isArray(v))
-    throw new Error('Invalid document response.');
-  return v as Record<string, unknown>;
-}
-function head(v: unknown): Head {
-  const value = record(v);
-  if (
-    typeof value.version !== 'string' ||
-    !/^[1-9][0-9]{0,9}$/.test(value.version) ||
-    !positive(Number(value.version)) ||
-    !digest(value.sha256)
-  )
-    throw new Error('Invalid accepted document head.');
-  return { version: value.version, sha256: value.sha256 };
-}
-function scope(v: unknown, item: string): Scope {
-  const value = record(v);
-  if (
-    value.artifactId !== item ||
-    !token(value.actorId) ||
-    !['human', 'agent'].includes(String(value.actorKind))
-  )
-    throw new Error('Invalid document binding.');
-  return {
-    artifactId: item,
-    actorId: value.actorId,
-    actorKind: value.actorKind as Scope['actorKind'],
-  };
-}
-function scopeEqual(a: Scope, b: Scope) {
-  return a.artifactId === b.artifactId && a.actorId === b.actorId && a.actorKind === b.actorKind;
-}
-
 /** Official MCP tools carry bounded document chunks. Local WASM calls target the same
  * rendered Session; only a durable native-core receipt can advance its accepted head. */
 export class DeckcraftDocument {
@@ -157,34 +119,13 @@ export class DeckcraftDocument {
   open(): Promise<void> {
     return this.serial(async () => {
       if (this.opened) throw new Error('The document is already open.');
-      const read = await this.tool('app_binary_read', {});
-      if (
-        !positive(read.version) ||
-        !positive(read.currentVersion) ||
-        Number(read.currentVersion) < read.version ||
-        !digest(read.sha256) ||
-        !positive(read.bytes) ||
-        read.bytes > binaryEditorFormat(this.options.editor).maxDocumentBytes ||
-        read.chunkBytes !== CHUNK ||
-        !token(read.transferId) ||
-        read.engineRevision !== binaryEditorFormat(this.options.editor).engineRevision
-      )
-        throw new Error('Invalid canonical document.');
-      this.binding = scope(read.scope, this.options.itemId);
-      const bytes = new Uint8Array(read.bytes);
+      const { read, binding, bytes } = await loadBinaryDocument(
+        this.options.editor,
+        this.options.itemId,
+        (name, args) => this.tool(name, args),
+      );
+      this.binding = binding;
       try {
-        for (let index = 0; index < Math.ceil(bytes.length / CHUNK); index++) {
-          const chunk = await this.tool('app_binary_read_chunk', {
-            transferId: read.transferId,
-            index,
-          });
-          if (chunk.index !== index) throw new Error('Invalid document chunk order.');
-          const decoded = decode64(chunk.data);
-          if (decoded.length !== Math.min(CHUNK, bytes.length - index * CHUNK))
-            throw new Error('Invalid document chunk length.');
-          bytes.set(decoded, index * CHUNK);
-        }
-        if (hash(bytes) !== read.sha256) throw new Error('The document hash does not match.');
         await this.engine(
           'open',
           { scope: this.binding, head: { version: String(read.version), sha256: read.sha256 } },
@@ -208,6 +149,67 @@ export class DeckcraftDocument {
         this.state('saved');
       } finally {
         bytes.fill(0);
+      }
+    });
+  }
+  /** Read only the accepted head installed in this exact live Session. */
+  observedHead(): Promise<{ itemId: string; head: Head }> {
+    return this.serial(async () => {
+      if (!this.opened || !this.binding) throw Error('The document is not open.');
+      const status = (await this.engine('status')).metadata;
+      if (this.pending || status.dirty !== false || status.pendingMutationId != null)
+        throw Error('The document has unacknowledged changes.');
+      return { itemId: this.options.itemId, head: head(status.head) };
+    });
+  }
+
+  /** Receive a canonical higher head on this Session, never overwriting a local draft. */
+  refresh(observedVersion?: number): Promise<void> {
+    return this.serial(async () => {
+      if (!this.opened || !this.binding) throw new Error('The document is not open.');
+      if (this.readOnly) throw new Error('This historical document is read-only.');
+      if (observedVersion !== undefined) {
+        if (!positive(observedVersion)) throw new Error('Invalid document version notification.');
+        // Own receipts and stale notifications must not pause newer admitted human input.
+        const accepted = head((await this.engine('status')).metadata.head);
+        if (Number(accepted.version) >= observedVersion) return;
+      }
+      const wasPaused = this.paused;
+      this.paused = true;
+      if (this.timer) clearTimeout(this.timer);
+      this.timer = null;
+      try {
+        // The engine acknowledges only after admitted input/composition has drained.
+        const paused = (await this.engine('freeze', { frozen: true })).metadata;
+        if (!paused.frozen) throw new Error('The editor did not acknowledge pause.');
+        const status = (await this.engine('status')).metadata;
+        if (this.pending || status.dirty || status.pendingMutationId)
+          throw new Error('Preserve the local draft before reviewing the new version.');
+        const loaded = await loadBinaryDocument(
+          this.options.editor,
+          this.options.itemId,
+          (name, args) => this.tool(name, args),
+        );
+        try {
+          if (loaded.read.readOnly === true || !scopeEqual(loaded.binding, this.binding))
+            throw new Error('The document authority changed.');
+          const next = { version: String(loaded.read.version), sha256: String(loaded.read.sha256) };
+          const prior = head(status.head);
+          if (!headEqual(prior, next)) {
+            if (Number(next.version) <= Number(prior.version))
+              throw new Error('The canonical document did not advance.');
+            await this.engine('open', { scope: this.binding, head: next }, loaded.bytes);
+          }
+          this.state('saved');
+        } finally {
+          loaded.bytes.fill(0);
+        }
+      } finally {
+        // An in-flight close/authority retirement must never revive an old owner.
+        if (this.live && !wasPaused) {
+          await this.engine('freeze', { frozen: false });
+          this.paused = false;
+        }
       }
     });
   }
@@ -416,6 +418,20 @@ export async function attachDeckcraftDocument(options: Options & { app: App }) {
   };
   options.app.oncalltool = async ({ name, arguments: input }) => {
     const args = record(input ?? {});
+    if (name === 'document_head') {
+      if (Object.keys(args).length) throw Error('Invalid document head request.');
+      return { content: [], structuredContent: await document.observedHead() };
+    }
+    if (name === 'refresh_document') {
+      if (
+        Object.keys(args).some((key) => key !== 'version') ||
+        (args.version !== undefined && !positive(args.version))
+      )
+        throw new Error('Invalid document version notification.');
+      await document.refresh(args.version === undefined ? undefined : Number(args.version));
+      clearExport();
+      return { content: [] };
+    }
     if (name === 'resume_document') {
       await document.resume();
       return { content: [] };

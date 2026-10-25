@@ -36,7 +36,9 @@ pub use agent_binary_documents::{
 };
 mod app_binary_documents;
 pub use app_binary_documents::AppBinaryDocumentDto;
+mod app_current_share;
 mod app_documents;
+mod app_edit_requests;
 pub use app_documents::AppDocumentDto;
 mod api;
 pub use api::call_turn::CallTurnDto;

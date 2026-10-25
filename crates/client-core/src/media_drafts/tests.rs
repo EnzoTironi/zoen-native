@@ -249,6 +249,7 @@ fn media_contract_received_ordered_fixtures_use_the_same_cursor_as_browser() {
                     attaches: Some(items[index].clone()),
                     media: Some(media),
                     reply: member["reply"].as_str().map(|to| types::ReplyRef {
+                        artifact: None,
                         to: to.into(),
                         thread: false,
                     }),

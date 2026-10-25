@@ -3,11 +3,13 @@ import { useCallback, useRef, useState } from 'react';
 import { router } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 import type { AgentRequestDto } from '../core/generated/AgentRequestDto';
+import type { DecideOutcome } from '../core/generated/DecideOutcome';
 import {
   requestDecisionCommand,
   toolApprovalExpired,
   toolApprovalValid,
   type RequestCardDecision,
+  type DecisionCommand,
 } from '../core/tool-request-decision';
 import { useClient } from '../core/provider';
 import { money } from '../core/presentation';
@@ -31,11 +33,15 @@ export function RequestCard({
   compact = false,
   onResolved,
   disabled = false,
+  embedded = false,
+  onDecision,
 }: {
   request: AgentRequestDto;
   compact?: boolean;
   onResolved?: () => void;
   disabled?: boolean;
+  embedded?: boolean;
+  onDecision?: (command: DecisionCommand) => Promise<DecideOutcome>;
 }) {
   const { store } = useClient();
   const dialogs = useDialogs();
@@ -102,7 +108,7 @@ export function RequestCard({
     setFailure(null);
     setResult(null);
     try {
-      const outcome = await store.request(command);
+      const outcome = await (onDecision ? onDecision(command) : store.request(command));
       setResult(
         outcome.also_resolved
           ? t('agents.alsoResolved', { message: outcome.message, count: outcome.also_resolved })
@@ -118,12 +124,17 @@ export function RequestCard({
       setBusy(false);
     }
   }
+  const IdentityHeader = embedded ? View : Pressable;
   return (
     <Surface>
-      <Pressable
-        accessibilityRole="button"
+      <IdentityHeader
+        accessibilityRole={embedded ? undefined : 'button'}
         accessibilityLabel={t('agents.viewAgentLabel', { name: request.agent.name })}
-        onPress={() => router.push({ pathname: '/agent/[id]', params: { id: request.agent.id } })}
+        onPress={
+          embedded
+            ? undefined
+            : () => router.push({ pathname: '/agent/[id]', params: { id: request.agent.id } })
+        }
         style={{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 44 }}
       >
         <Avatar name={request.agent.name} color={request.agent.tint_hex} agent size={40} />
@@ -141,7 +152,7 @@ export function RequestCard({
             {new Date(Number(request.opened_ms)).toLocaleString(formatLocale)}
           </Text>
         </View>
-      </Pressable>
+      </IdentityHeader>
       <Text
         accessibilityRole="header"
         selectable
@@ -293,7 +304,7 @@ export function RequestCard({
         </Text>
       ) : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-        {!compact && image && pending && request.agent.is_mine ? (
+        {!embedded && !compact && image && pending && request.agent.is_mine ? (
           <NativeButton
             secondary
             label={t('ownerPolicy.title')}
@@ -303,7 +314,7 @@ export function RequestCard({
             }
           />
         ) : null}
-        {compact ? (
+        {compact && !embedded ? (
           <NativeButton
             secondary
             label={t('agents.reviewRequest')}
@@ -311,7 +322,7 @@ export function RequestCard({
             onPress={() => router.push({ pathname: '/request/[id]', params: { id: request.id } })}
           />
         ) : null}
-        {itemId && !itemId.startsWith('future_site_') ? (
+        {!embedded && itemId && !itemId.startsWith('future_site_') ? (
           <NativeButton
             secondary
             label={t('agents.openItem')}

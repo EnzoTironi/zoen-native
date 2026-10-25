@@ -16,6 +16,7 @@ import { MiniappSurfaceControls } from '../native-surfaces/controls';
 import { useHome } from '../home/provider';
 import { HomeCardMenu } from '../home/menus';
 import { useConversationCards } from './conversation-provider';
+import { EditorAgentAccess } from './editor-agent-sheet';
 import type { MiniappDocumentController } from './document-controller';
 
 export function MiniappScreen({ manage = false }: { manage?: boolean }) {
@@ -230,6 +231,12 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
           onDocumentCopied={openCopy}
           onDocumentDiscard={discardDocument}
         />
+        {!historical &&
+        isBinaryEditorId(spec.id) &&
+        binaryEditorFormat(spec.id).liveReview &&
+        document?.observedHead ? (
+          <EditorAgentAccess itemId={item.id} spaceId={item.space_id} document={document} />
+        ) : null}
       </View>
     );
   }

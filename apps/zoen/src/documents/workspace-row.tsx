@@ -1,4 +1,4 @@
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { router } from 'expo-router';
 import { Icon } from '../components/primitives';
 import { t } from '../i18n/index.ts';
@@ -22,6 +22,9 @@ export function WorkspaceItemRow({
   openFolder: (path: string) => void;
 }) {
   const { colors, presentation: p } = useTheme();
+  const { fontScale } = useWindowDimensions();
+  // Keep the compact row at normal text sizes; expanded text sets its own height.
+  const lines = fontScale > 1.2 ? 0 : 2;
   const folder = row.type === 'folder';
   const title = folder ? row.name : row.item.title;
   const detail = folder
@@ -53,6 +56,7 @@ export function WorkspaceItemRow({
         style={{
           width: 44,
           height: 48,
+          flexShrink: 0,
           borderRadius: 12,
           backgroundColor: colors.muted,
           alignItems: 'center',
@@ -68,11 +72,11 @@ export function WorkspaceItemRow({
           color={colors.accent}
         />
       </View>
-      <View style={{ flex: 1, gap: 5 }}>
-        <Text numberOfLines={2} style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>
+      <View style={{ flex: 1, minWidth: 0, gap: 5 }}>
+        <Text numberOfLines={lines} style={{ ...p.typography.title, color: colors.text }}>
           {title}
         </Text>
-        <Text numberOfLines={2} style={{ color: colors.secondary, fontSize: 13 }}>
+        <Text numberOfLines={lines} style={{ ...p.typography.footnote, color: colors.secondary }}>
           {detail}
         </Text>
       </View>
@@ -83,7 +87,13 @@ export function WorkspaceItemRow({
           color={colors.tertiary}
         />
       ) : (
-        <Text style={{ color: colors.tertiary, fontSize: 12, fontVariant: ['tabular-nums'] }}>
+        <Text
+          style={{
+            ...p.typography.caption,
+            color: colors.tertiary,
+            fontVariant: ['tabular-nums'],
+          }}
+        >
           v{row.item.version}
         </Text>
       )}

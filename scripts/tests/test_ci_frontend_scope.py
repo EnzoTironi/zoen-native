@@ -267,17 +267,33 @@ class FrontendScopeTests(unittest.TestCase):
     def test_workflow_keeps_guards_client_scope_and_full_failure_fallback(self):
         workflow = (SOURCE.parents[1] / ".github/workflows/ci.yml").read_text()
         rust = re.search(r"(?ms)^  rust:\n(.*?)(?=^  [a-z]|\Z)", workflow)[1]
+        shards = re.search(r"(?ms)^  rust-tests:\n(.*?)(?=^  [a-z]|\Z)", workflow)[1]
         local = re.search(r"(?ms)^  local-integrity:\n(.*?)(?=^  [a-z]|\Z)", workflow)[1]
-        self.assertIn("!cancelled()", rust)
+        self.assertIn("!cancelled()", shards)
+        self.assertIn("needs.change-scope.result != 'success' ||", shards)
+        self.assertIn("needs.change-scope.outputs.run_rust != 'false'", shards)
+        self.assertIn("always()", rust)
         self.assertIn("needs.change-scope.result != 'success' ||", rust)
         self.assertIn("needs.change-scope.outputs.run_rust != 'false'", rust)
         for guard in ("Shared Cargo source qualification guard", "Observed UI action choice guard",
                       "Expo Core shared-target entrypoint contracts"):
             self.assertIn(guard, local)
             self.assertNotIn(guard, rust)
-        self.assertIn("timeout-minutes: 60", rust)
-        self.assertIn("cargo test --workspace --no-fail-fast", rust)
-        self.assertIn("cargo clippy --workspace --all-targets -- -D warnings", rust)
+        self.assertIn("timeout-minutes: 60", shards)
+        self.assertIn("cargo test --workspace --exclude zoen-cli --no-fail-fast", shards)
+        self.assertIn("python3 scripts/ci-rust-shards.py 0", shards)
+        self.assertIn("python3 scripts/ci-rust-shards.py 1", shards)
+        self.assertIn("python3 scripts/ci-rust-shards.py 2", shards)
+        self.assertIn("cargo clippy --workspace --all-targets -- -D warnings", shards)
+        self.assertIn("fail-fast: false", shards)
+        self.assertIn('run: ${{ matrix.command }}', shards)
+        self.assertIn('needs: [change-scope, rust-tests]', rust)
+        self.assertIn('run: test "$RUST_RESULT" = success', rust)
+        gate = re.search(r'^        run: (.+)$', rust, re.MULTILINE)[1]
+        for result in ("success", "failure", "cancelled", "skipped", ""):
+            run = subprocess.run(['sh', '-c', gate],
+                                 env={**self.env, "RUST_RESULT": result})
+            self.assertEqual(run.returncode == 0, result == "success")
         self.assertNotIn("frontend_only", workflow[workflow.index("  web-e2e:"):])
         self.assertIn("documentation_only != 'true'", workflow[workflow.index("  web-e2e:"):])
 

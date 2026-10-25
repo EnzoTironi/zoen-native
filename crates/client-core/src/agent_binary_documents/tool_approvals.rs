@@ -195,6 +195,8 @@ pub(crate) fn operation(tool: &str) -> String {
         "create_wordcraft" => t("Criar documento", "Create document"),
         "read_wordcraft" => t("Ler documento", "Read document"),
         "wordcraft_text_replace" => t("Substituir texto", "Replace text"),
+        "wordcraft_edit_range" => t("Editar trecho", "Edit range"),
+        "wordcraft_format_range" => t("Formatar trecho", "Format range"),
         "create_deckcraft" => t("Criar apresentação", "Create presentation"),
         "replace_page_block" => t("Substituir bloco da página", "Replace Page block"),
         "read_gridcraft" => t("Ler planilha", "Read spreadsheet"),
@@ -221,6 +223,19 @@ pub(crate) fn review_detail(p: &ToolProposal, title: &str) -> String {
             args["after"]["text"].as_str().unwrap_or_default()
         ),
         "read_deckcraft" | "read_gridcraft" | "read_wordcraft" | "read_photocraft" => heading,
+        "wordcraft_edit_range" | "wordcraft_format_range" => format!(
+            "{}\n{}:{} → {}:{}\n{}",
+            heading,
+            args["range"]["start"]["paragraph"],
+            args["range"]["start"]["offset"],
+            args["range"]["end"]["paragraph"],
+            args["range"]["end"]["offset"],
+            if p.canonical_tool == "wordcraft_format_range" {
+                args["format"].to_string()
+            } else {
+                args["text"].as_str().unwrap_or_default().to_owned()
+            }
+        ),
         "photocraft_transform" => format!(
             "{}\n{}",
             heading,

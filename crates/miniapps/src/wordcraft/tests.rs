@@ -50,7 +50,7 @@ fn real_writer_and_wasip2_exports_have_the_same_closed_profile_without_exposing_
     );
     assert_eq!(
         crate::binary::agent_tools::tools_for(crate::binary::Format::Wordcraft).len(),
-        2
+        4
     );
 }
 #[test]
@@ -78,7 +78,6 @@ fn opaque_parts_macro_metadata_relationship_and_body_changes_are_refused_without
     let xml = std::str::from_utf8(&known["word/document.xml"]).unwrap();
     for altered in [
         xml.replace("WASI real", "<w:hyperlink>WASI real</w:hyperlink>"),
-        xml.replace("<w:r>", "<w:r><w:rPr><w:b/></w:rPr>"),
         xml.replace("WASI real", "WASI &#114;eal"),
         xml.replace("WASI real", "WASI\u{fffe}real"),
         xml.replace("<w:p>", "<w:p private=\"ignored\">"),
@@ -136,4 +135,24 @@ fn central_directory_duplicates_declared_bombs_counts_and_byte_limits_refuse_bef
     ] {
         assert!(!valid_text(text));
     }
+}
+
+#[test]
+fn genuine_rich_word_model_is_accepted_without_exposing_its_content_in_metadata(
+) -> Result<(), &'static str> {
+    use std::sync::Arc;
+    use zoen_word_profile::model::{props::Align, Block, Document as Model};
+    let mut model = Model::from_text("Styled document");
+    let Block::Para(paragraph) = Arc::make_mut(&mut model.body[0]) else {
+        return Err("missing actual paragraph");
+    };
+    paragraph.props.align = Some(Align::Center);
+    paragraph.runs[0].props.bold = Some(true);
+    let bytes = zoen_word_profile::encode(&model)?;
+    let parsed = Document::parse(&bytes)?;
+    assert_eq!(parsed.text, "Styled document");
+    assert_eq!((parsed.paragraphs, parsed.words), (1, 2));
+    assert!(!parsed.metadata("Title").contains("Styled document"));
+    assert_eq!(zoen_word_profile::parse(&bytes)?, model);
+    Ok(())
 }

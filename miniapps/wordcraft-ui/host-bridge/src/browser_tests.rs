@@ -133,9 +133,11 @@ fn actual_manual_model_ack_preserves_undo_and_exact_accepted_export() -> Result<
     Ok(())
 }
 #[test]
-fn rich_model_cannot_be_silently_normalized_and_manual_draft_blocks_agent() -> Result<()> {
+fn opaque_model_cannot_be_silently_normalized_and_manual_draft_blocks_agent() -> Result<()> {
     let (mut b, mut s, bytes) = opened("Original")?;
-    s.doc.core.title = "not in accepted plain profile".into();
+    s.doc
+        .passthrough
+        .insert("customXml/private.xml".into(), b"opaque".to_vec().into());
     let retained = s.doc.clone();
     assert!(b.snapshot(&mut s, mutation(&bytes, "rich")).is_err());
     assert_eq!(s.doc, retained);
@@ -153,7 +155,9 @@ fn rich_model_cannot_be_silently_normalized_and_manual_draft_blocks_agent() -> R
         .err(),
         Some(failure("local_changes"))
     );
+    s.managed_frozen = true;
     assert!(s.run("format.bold", &json!({})).is_err());
+    s.managed_frozen = false;
     assert!(s.run("file.open", &json!({"path":"untrusted"})).is_err());
     assert_eq!(s.doc, retained);
     Ok(())
@@ -224,42 +228,79 @@ fn exact_agent_proposal_visible_document_replay_and_ack_use_one_head() -> Result
 }
 
 #[test]
-fn typed_soft_break_refuses_before_mutation_while_real_paste_paragraphs_stay_supported()
--> Result<()> {
-    let (mut b, mut s, bytes) = opened("Original")?;
-    let original = s.doc.clone();
-    assert!(
-        s.run(
-            "text.insert",
-            &json!({"text":"different\nsemantics","raw":true})
-        )
-        .is_err()
-    );
-    assert_eq!(s.doc, original);
-    assert!(!s.managed_frozen);
-    assert_eq!(b.status(&s)?["dirty"], false);
+fn typed_soft_break_and_pasted_paragraphs_preserve_distinct_rich_models() -> Result<()> {
+    let (mut b, mut s, bytes) = opened("First")?;
+    s.run("caret.end", &json!({}))
+        .map_err(|_| failure("caret"))?;
+    s.run("text.insert", &json!({"text":"\nSecond","raw":true}))
+        .map_err(|_| failure("softbreak"))?;
+    assert_eq!(s.doc.body.len(), 1);
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "First\nSecond");
+    let soft = s.doc.clone();
+    let proposal = b.snapshot(&mut s, mutation(&bytes, "softbreak"))?;
     assert_eq!(
-        b.export(
-            &s,
-            &Export {
-                scope: scope(),
-                head: head("1", &bytes),
-                format: ExportFormat::Docx
-            }
-        )?
-        .bytes,
-        bytes
+        profile::parse(&proposal.bytes)?,
+        soft,
+        "a soft break must not become a new paragraph"
     );
+    let (mut b, mut s, bytes) = opened("First")?;
     s.run("select.all", &json!({"whole":true}))
-        .map_err(|_| failure("fixture_selection"))?;
+        .map_err(|_| failure("select"))?;
     s.run("edit.pasteText", &json!({"text":"First\nSecond"}))
-        .map_err(|_| failure("fixture_paste"))?;
+        .map_err(|_| failure("paste"))?;
     assert_eq!(s.doc.body.len(), 2);
     assert_eq!(s.doc.plain_text(StoryRef::Body), "First\nSecond");
-    let proposal = b.snapshot(&mut s, mutation(&bytes, "paste-paragraphs"))?;
-    assert_eq!(
-        profile::parse(&proposal.bytes)?.plain_text(StoryRef::Body),
-        "First\nSecond"
+    assert!(
+        s.doc != soft,
+        "equal plain text does not make the rich models interchangeable"
     );
+    let proposal = b.snapshot(&mut s, mutation(&bytes, "paragraphs"))?;
+    assert_eq!(profile::parse(&proposal.bytes)?, s.doc);
+    Ok(())
+}
+
+#[path = "browser_rich_tests.rs"]
+mod rich;
+
+#[test]
+fn reviewed_agent_edit_preserves_existing_manual_undo() -> Result<()> {
+    let (mut b, mut s, original) = opened("Original")?;
+    insert(&mut s, "Manual")?;
+    let p = b.snapshot(&mut s, mutation(&original, "human"))?;
+    b.accept(
+        &mut s,
+        &Accept {
+            scope: scope(),
+            mutation_id: "human".into(),
+            head: head("2", &p.bytes),
+        },
+    )?;
+    let proposal = b.execute(
+        &mut s,
+        Command {
+            mutation: Mutation {
+                scope: scope(),
+                base: head("2", &p.bytes),
+                mutation_id: "agent".into(),
+            },
+            action: Action::TextReplace(TextReplace {
+                text: "Agent".into(),
+            }),
+        },
+    )?;
+    b.accept(
+        &mut s,
+        &Accept {
+            scope: scope(),
+            mutation_id: "agent".into(),
+            head: head("3", &proposal.bytes),
+        },
+    )?;
+    s.run("edit.undo", &json!({}))
+        .map_err(|_| failure("agent_replaced_the_undo_history"))?;
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "Manual");
+    s.run("edit.undo", &json!({}))
+        .map_err(|_| failure("manual_history_lost"))?;
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "Original");
     Ok(())
 }

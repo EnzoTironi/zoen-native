@@ -178,3 +178,9 @@ mod touch;
 
 #[path = "browser_pending_tests.rs"]
 mod pending;
+
+#[path = "browser_rich_ui_tests.rs"]
+mod rich;
+
+#[path = "browser_history_controls_tests.rs"]
+mod history_controls;

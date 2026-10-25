@@ -135,7 +135,10 @@ pub(crate) fn event_label(b: &EventBody) -> String {
         EventBody::MessagePosted {
             attaches: Some(_), ..
         } => t("Mensagem com Item", "Message with Item"),
-        EventBody::MessagePosted { .. } => t("Mensagem", "Message"),
+        EventBody::MessagePosted { .. } | EventBody::AppEditRequested { .. } => {
+            t("Mensagem", "Message")
+        }
+        EventBody::AppCurrentShared { .. } => t("App compartilhado", "App shared"),
         EventBody::CallTransportV1 { .. } => t("Conexão da chamada", "Call connection"),
         EventBody::CallV1 { .. } => t("Chamada", "Call"),
         EventBody::ChatPrefsSet { .. } => t("Preferências da conversa", "Chat preferences"),

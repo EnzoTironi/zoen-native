@@ -278,6 +278,7 @@ function renderScreen(
     if (path === './deck-version-selection') return { selectedDeckHead };
     if (path === './state-view') return { MiniappState: 'MiniappState' };
     if (path === './view-host') return { MiniappView: 'MiniappView' };
+    if (path === './editor-agent-sheet') return { EditorAgentAccess: 'EditorAgentAccess' };
     if (path === './binary-formats') return binaryFormats;
     if (path.endsWith('/native-surfaces/controls'))
       return { MiniappSurfaceControls: 'MiniappSurfaceControls' };

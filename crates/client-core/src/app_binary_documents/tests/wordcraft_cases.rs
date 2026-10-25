@@ -190,3 +190,6 @@ fn configured_wordcraft_person_factory_creates_one_standard_card_and_same_host_f
     );
     Ok(())
 }
+
+#[path = "wordcraft_legacy_cases.rs"]
+mod legacy;

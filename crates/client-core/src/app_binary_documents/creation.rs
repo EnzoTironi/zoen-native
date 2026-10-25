@@ -110,7 +110,7 @@ impl Engine {
         }
         self.atomic_agent_action(|e| {
             let file_key = e.file_key(None)?;
-            let file = e.file_doc(
+            let mut file = e.file_doc(
                 space,
                 &file_key,
                 format.filename(),
@@ -120,6 +120,12 @@ impl Engine {
                 None,
                 &HashMap::new(),
             )?;
+            file.app_origin = Some(types::AppItemOrigin {
+                author: me.clone(),
+                device: device.clone(),
+                space: space.into(),
+                mutation: mutation.into(),
+            });
             e.store
                 .set_meta(&format!("file_key:{item}"), &hex::encode(file_key))?;
             e.append(
@@ -194,9 +200,40 @@ impl Engine {
                     item: item.clone(),
                     version: 1,
                     sha256: sha,
+                    source: None,
                 },
             )?;
             e.app_binary_read(&item, Some(1), None)
         })
+    }
+}
+
+impl Engine {
+    pub(crate) fn app_binary_creation_origin(
+        &self,
+        format: Format,
+        space: &str,
+        item: &str,
+        author: &str,
+        device: &str,
+    ) -> R<Option<types::AppItemOrigin>> {
+        let owner =
+            serde_json::to_vec(&(author, device, space, format.id())).map_err(|_| invalid())?;
+        let key = format!("app_document_create_receipts:{}", hash(&owner));
+        Ok(self
+            .binary_receipts(&key)?
+            .into_iter()
+            .find(|receipt| {
+                receipt.item == item
+                    && receipt.version == 1
+                    && creation_item_id_for(format, author, device, space, &receipt.id)
+                        .is_ok_and(|id| id == item)
+            })
+            .map(|receipt| types::AppItemOrigin {
+                author: author.into(),
+                device: device.into(),
+                space: space.into(),
+                mutation: receipt.id,
+            }))
     }
 }

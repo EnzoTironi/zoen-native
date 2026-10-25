@@ -55,7 +55,7 @@
 +                    || runner.input.primary_contact.start(
 +                        Family::Pointer,
 +                        event.pointer_id(),
-+                        event.is_primary(),
++                        event.is_primary() && event.is_trusted(),
 +                    );
 +                if admit {
 +                    if event.pointer_type() == "touch" && button == egui::PointerButton::Primary {
@@ -112,7 +112,7 @@
 +                if event.pointer_type() == "touch" && allow_text_activation {
 +                    focus_canvas_for_primary_touch(runner, event.is_trusted());
 +                }
-+                runner.logic_from_pointer(allow_text_activation);
++                runner.logic_from_pointer(allow_text_activation && event.is_trusted());
  
                  // Make sure we paint the output of the above logic call asap:
                  runner.needs_repaint.repaint_asap();
@@ -159,7 +159,7 @@
 +                admitted = runner.input.primary_contact.start(
 +                    Family::Touch,
 +                    touch.identifier(),
-+                    event.touches().length() == 1,
++                    event.touches().length() == 1 && event.is_trusted(),
 +                );
 +                if admitted {
 +                    focus_canvas_for_primary_touch(runner, event.is_trusted());
@@ -282,7 +282,7 @@
 +            if allow_text_activation {
 +                focus_canvas_for_primary_touch(runner, event.is_trusted());
 +            }
-+            runner.logic_from_pointer(allow_text_activation);
++            runner.logic_from_pointer(allow_text_activation && event.is_trusted());
 +        }
 +        runner.needs_repaint.repaint_asap();
 +        should_stop_propagation &=

@@ -1,0 +1,31 @@
+--- a/crates/engine/src/session.rs
++++ b/crates/engine/src/session.rs
+@@ -1136,6 +1136,28 @@
+         self.relayout();
+     }
+ 
++    /// Adopt a newer canonical revision of this same managed document as one Undo step.
++    /// The embedding host validates scope/head/bytes first; this grants no authority.
++    /// Reuse the normal document reset for transient selection/layout state, retaining
++    /// only the actual bounded history and the managed binding's document generation.
++    pub fn receive_managed_document(&mut self, doc: Document) -> Result<(), CmdError> {
++        if self.managed_binding.is_none() {
++            return Err(CmdError::Disabled("No managed document is bound".into()));
++        }
++        if self.doc == doc {
++            return Ok(());
++        }
++        self.push_undo("Document update", self.doc.clone(), self.sel.clone());
++        let history = std::mem::take(&mut self.history);
++        let evicted = self.undo_evicted;
++        let document_id = self.document_id;
++        self.set_document(doc);
++        self.history = history;
++        self.undo_evicted = evicted;
++        self.document_id = document_id;
++        Ok(())
++    }
++
+     /// A snapshot to put back with [`Session::restore`], for a caller that runs a command and
+     /// may want to take it back without a trace (cheap: the document's blocks are shared).
+     ///

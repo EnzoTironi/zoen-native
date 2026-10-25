@@ -1,4 +1,12 @@
 export const miniappsPtBR = {
+  shareCurrentDisclosure: 'A versão atual será compartilhada nesta conversa.',
+  addOwnAgent: 'Adicionar seu agente',
+  agentUnavailable: 'Você não pode adicionar um agente a esta conversa.',
+  sendEditRequest: 'Enviar',
+  askAgent: 'Pedir à IA',
+  editRequestPlaceholder: 'O que você quer alterar?',
+  editRequestSent: 'Pedido enviado',
+  editRequestUncertain: 'Tente novamente para confirmar este pedido antes de alterá-lo.',
   theAccountHasChangedOpenTheMiniappAgain: 'A conta mudou. Abra o app novamente.',
   timelineUpdates: '%{name} · %{count} atualizações',
   timelineHistory: 'Histórico de versões de %{title}',

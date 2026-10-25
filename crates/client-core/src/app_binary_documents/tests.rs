@@ -4,6 +4,7 @@ use serde_json::{json, Value};
 use std::io::{Cursor, Read, Write};
 use std::sync::{Arc, Mutex};
 use types::Role;
+mod app_edit_request_cases;
 mod gridcraft_cases;
 mod photocraft_cases;
 mod wordcraft_cases;

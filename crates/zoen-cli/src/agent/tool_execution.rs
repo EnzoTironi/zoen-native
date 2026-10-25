@@ -195,6 +195,18 @@ impl SpaceTools<'_> {
     }
     fn current_call(&self, call: &ToolCall) -> Result<String, String> {
         self.check_selection()?;
+        if self
+            .e
+            .agent_artifact_request(&self.space, self.source, self.serving)
+            .map_err(|e| e.to_string())?
+            .is_some()
+            && !self
+                .names
+                .iter()
+                .any(|(definition, _, _)| definition.name == call.name)
+        {
+            return Err("This tool is outside the signed App request".into());
+        }
         if call.name == image_tools::TOOL {
             return self.image_stage(call);
         }

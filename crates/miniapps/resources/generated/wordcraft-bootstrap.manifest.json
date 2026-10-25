@@ -1,7 +1,7 @@
 {
   "resourceUri": "ui://zoen/wordcraft/index.html",
-  "sha256": "d4fb275b01fa760a5f97fb54a071ae0940d6d083b72aee7e1048a338b0e35801",
-  "bytes": 624492,
+  "sha256": "046970bf19ea5e8b6d52d8aefbd2624d9e3ce2573eb6e108755cecf7979fe750",
+  "bytes": 626701,
   "sources": {
     "apps/zoen/node_modules/@modelcontextprotocol/client/dist/cfWorkerProvider-BylNJ1R5.mjs": "eb39ab8996af767751fc34bea128d6b2adaef5a39cd42ec94749a091f76ab268",
     "apps/zoen/node_modules/@modelcontextprotocol/client/dist/chunk-Br0eD_fh.mjs": "d4a000980e7c6a8a2ee04c12d80cf538b11e5040e8487dad7661b09d85894e74",
@@ -163,9 +163,11 @@
     "apps/zoen/node_modules/zod/v4/locales/yo.js": "88b33f6527c1a2faaf159568330cf727c448dc468eac72142a6fb24f8714ac1e",
     "apps/zoen/node_modules/zod/v4/locales/zh-CN.js": "8fc02f2bd4d92f46b24b8d82da0ee95c962fc80c14dd7dd469500e14de08d320",
     "apps/zoen/node_modules/zod/v4/locales/zh-TW.js": "01d9b119e318d8b9f1a8fa720d06424457429425a61d0730984b750e6a5edf7d",
-    "apps/zoen/src/miniapps/binary-formats.ts": "ff8368dbde14718b36ca67f05cc378df2f54e45a461988c1f5a102ed02098263",
+    "apps/zoen/src/miniapps/binary-document-load.ts": "2a085cbd110cb2950811260ffa3ce5d688a183d20a8d42e4a069b0ef174a9610",
+    "apps/zoen/src/miniapps/binary-formats.ts": "1777a11c1c3c8fe678607409032fca88adb33183527a399dfd2c8c323e3afdd5",
     "apps/zoen/src/miniapps/canonical-scene.ts": "e43df63ef2b90e2b60d6e0fc58277964238ead166e8c991894d6e99aa59a1a6e",
-    "apps/zoen/src/miniapps/deckcraft-document.ts": "77b6e882eec71376f1ebc7794ab3555c8e2998b5ad4b9abe32deb77303d74292",
+    "apps/zoen/src/miniapps/deckcraft-document-wire.ts": "939ffb2acd4b2f40ad6fc396aa204c33d137709291dd77347c8c181fc8e06bcf",
+    "apps/zoen/src/miniapps/deckcraft-document.ts": "9cde7b7f6aa54fee25edde4a564a789fda334d7e2a8b0e0cba260a39ea7336e6",
     "apps/zoen/src/miniapps/deckcraft-feedback.ts": "d5f3770a43cf3d1d5b115f5f885e6be89a982f2b3c9178f20536f3d50987c153",
     "apps/zoen/src/miniapps/managed-binary-app.ts": "a4f6dd8e62badfb8ec7b7420a7c6fc4e20ecaa0d8bc4e2477db0eb0ef504eb93",
     "miniapps/wordcraft-ui/src/mcp-app.ts": "8ef490d9527f198c7d1a7b55699b5882c432ce0c2c0d02c27d2eb04fe0a9c38b",

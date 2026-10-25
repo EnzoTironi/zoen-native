@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Source-bound Cargo invocations in an exclusively leased, cooperating cache."""
 
-import argparse
 import fcntl
 import hashlib
 import json
@@ -89,7 +88,8 @@ def snapshot(cargo, manifest, target, sidecar, receipt, env, extra_env, extra_fi
     collisions = {p["name"] for p in local} & ({p["name"] for p in metadata["packages"] if p["source"] is not None} | set(historical_names))
     permitted = set(collateral_names)
     if collisions - permitted or permitted - collisions:
-        raise GuardError("Local/third-party package name collision; explicitly name each collateral package clean")
+        history = " with recorded third-party cache history" if collisions & set(historical_names) else ""
+        raise GuardError(f"Local/third-party package name collision{history}; explicitly name each collateral package clean")
     packages = {}
     for package in local:
         package_manifest = pathlib.Path(package["manifest_path"]).resolve(strict=True)
@@ -205,16 +205,7 @@ def cargo_command(command, cwd, env, lock_fd, launched):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--manifest-path", required=True)
-    parser.add_argument("--target-dir", required=True)
-    parser.add_argument("--receipt", required=True)
-    parser.add_argument("--cargo", default="cargo")
-    parser.add_argument("--input-env", action="append", default=[])
-    parser.add_argument("--input-file", action="append", default=[])
-    parser.add_argument("--adopt-idle-target", action="store_true")
-    parser.add_argument("--allow-collateral-package-clean", action="append", default=[], metavar="NAME", help="Allow normal Cargo cleanup of all versions of this colliding package in the owned target")
-    parser.add_argument("command", nargs=argparse.REMAINDER)
+    parser = _configuration["argument_parser"](__doc__)
     args = parser.parse_args()
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if not command or command[0] not in ("build", "test", "check", "clippy"):
@@ -271,7 +262,16 @@ def main():
         scope = compilation_scope(cargo_args, before["context"]["configuredTargets"])
         result["scope"] = scope
         scope_key = digest(scope)
-        owner_source = digest({"context": before["contextDigest"], "packages": {key: value["digest"] for key, value in before["packages"].items()}})
+        # SDK/toolchain/environment belong to each target/profile scope. A
+        # host -> simulator -> host build must not erase the other bindings.
+        # Real source/config/tooling changes still retire every prior scope.
+        context = before["context"]
+        owner_source = digest({
+            "workspace": context["workspace"], "manifest": context["manifest"],
+            "config": context["config"], "guard": context["guard"],
+            "configurationHelper": context["configurationHelper"],
+            "packages": {key: value["digest"] for key, value in before["packages"].items()},
+        })
         third_party_names = set(before["thirdPartyNames"]) | set(previous.get("thirdPartyNames", []) if valid else [])
         if (third_party_names & {value["name"] for value in before["packages"].values()}) - set(args.allow_collateral_package_clean):
             raise GuardError("Local package name collides with recorded third-party cache history")

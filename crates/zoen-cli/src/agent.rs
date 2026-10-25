@@ -540,3 +540,7 @@ mod wordcraft_creation_tests;
 #[cfg(test)]
 #[path = "agent/wordcraft_worker_tests.rs"]
 mod wordcraft_worker_tests;
+
+#[cfg(test)]
+#[path = "agent/artifact_scope_tests.rs"]
+mod artifact_scope_tests;

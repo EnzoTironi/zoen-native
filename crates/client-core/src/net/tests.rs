@@ -13,6 +13,7 @@ mod incoming_pipeline;
 mod initial_catchup;
 mod media_dependencies;
 mod media_limits;
+mod media_retries;
 mod media_uploads;
 
 #[tokio::test]

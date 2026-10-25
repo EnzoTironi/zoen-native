@@ -27,7 +27,7 @@ class Fixture:
         parent = os.environ.get("CARGO_SOURCE_GUARD_TEST_ROOT")
         if parent:
             pathlib.Path(parent).mkdir(parents=True, exist_ok=True)
-        self.root = pathlib.Path(tempfile.mkdtemp(prefix=test + "-", dir=parent))
+        self.root = pathlib.Path(tempfile.mkdtemp(prefix=test + "-", dir=parent)).resolve()
         self.target = self.root / "target"
         self.vendor = self.root / "vendor" / "guard-dep"
         write(self.vendor / "Cargo.toml", '[package]\nname="guard-dep"\nversion="0.1.0"\nedition="2021"\n')

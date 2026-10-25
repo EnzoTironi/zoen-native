@@ -25,6 +25,18 @@ Session after its earlier proposal is acknowledged. Export reads the explicitly
 accepted head, including when newer pixels remain unsaved. A rejected transform
 restores the entire prior DocState, including Undo, before returning an error.
 
+Live review uses the shared format capability and the existing editor agent
+sheet. The host reads the head installed in the exact guest before requesting an
+agent edit; a newer Core head alone cannot stand in for the visible document.
+Receiving a newer clean canonical revision keeps the same Session/binding and
+records one normal upstream Undo step. Replacement requires an acknowledged
+pause, the same native document identity, no active job and no local/pending
+work. Ordinary human edits cannot enter while frozen. Undo changes the live
+project and becomes a new checkpoint/CAS; it never rewrites an earlier version.
+The incoming accepted bytes remain the export baseline until that Undo save is
+acknowledged. Drafts, pending receipts, stale heads and changed owners refuse
+replacement. No file reload, second history or independent pixel state is used.
+
 The public pause retains FIFO admission and lets queued final input reach the UI
 before deciding whether freezing is safe. Active gestures/composition are still
 refused. A hidden viewport cannot acknowledge a pause while retaining raw input.
@@ -48,8 +60,11 @@ Bounds are 8 MiB source/output, 256 KiB manifest, 128 archive entries, 16 MiB
 engine-decoded payload, 1,024 pixels per side and 1,048,576 canvas pixels. Tile
 coordinates are restricted to -8…8. These are candidate bounds, not measured
 peak iPhone memory. The existing isolated agent executor retains its smaller
-512 KiB document capacity, 256 MiB memory, five-second execution window and
-bounded fuel. Neither browser nor worker widens those existing host budgets.
+512 KiB serialized `.pcraft` container capacity, 256 MiB memory, five-second
+execution window and bounded fuel. The container stores compressed tiles;
+`width × height × channels` is not its byte length. Agent tools inspect the
+accepted document rather than rejecting it from that decoded-size estimate.
+Neither browser nor worker widens those existing host budgets.
 
 The Core validator is deliberately structural and has no engine/UI/decoder
 dependency. It reuses the bounded ZIP32 preflight, accepts only STORE entries,
@@ -103,7 +118,30 @@ configuration is refused. Test qualification URLs are not a live deployment.
 
 ## Evidence and remaining acceptance
 
-Actual native qualification passed 12 bridge/engine cases and six PhotoApp/input
+The command-envelope browser package is recorded in
+[browser-qualification.json](browser-qualification.json), including exact
+JS/WASM/HTML pins and separate Chromium/WebKit receipts. `test/browser-command.mjs`
+exercises the actual rendered Session ABI with synthetic scope/ACK: exact command
+and checkpoint envelopes, retries, rejected ACK/scope/base/action, native-byte
+rotation equality, independent full-pixel rotation, accepted export and a fresh
+renderer reopen. It fails against the prior raw-action package and passes against
+the normal rebuilt package. The MCP/manual consumer remains a separate test.
+
+The managed human Image Rotation menu accepts the upstream parameterless
+availability query (`null`) and click (`{}`) for the five already admitted
+transforms and Undo/Redo. Extra keys, other value types, unknown actions and
+frozen input remain refused. `PHOTO_MENU_ROTATION=1` enables trusted menu-touch
+coverage in `test/managed-browser.mjs`. It verifies one canonical checkpoint,
+compares every exported PNG pixel with an independent rotation and reopens the
+accepted document in a fresh renderer. The same regression fails
+against the prior package. This does not enable the other grey menu features.
+The Rust menu component and Session tests run on the host. Set the upstream
+public `PHOTOCRAFT_LOCALE=en` for their English menu selectors; macOS Auto may
+otherwise draw Portuguese labels. Browser results and the next iPhone
+qualification are distinct evidence. The corrected menu still needs that next
+iPhone app cohort.
+
+Prior Rust host qualification passed 12 bridge/engine cases and six PhotoApp/input
 cases, with all-target pedantic/performance Clippy. Core qualification passed
 1,028 client-core and 53 miniapps tests without skips, including configured real
 resource creation, scoped approvals, retries, lost ACK, cold SQLite reopen,
@@ -117,21 +155,24 @@ scope substitution refusal, arbitrary-command refusal and fresh-component reopen
 Synthetic supplied scope in this component consumer is not a certified model turn.
 
 The browser test runs the genuine MCP bootstrap, renderer, shared session and
-export controller with a clearly synthetic Core read/CAS port. Independent PNG
-checks decode the actual exports. It covers trusted pointer input, same-event
-pause, newer input during delayed ACK, rotation without a document write, export,
-owner retirement and fresh-renderer reopen. Chromium and WebKit each passed the complete consumer journey on the same sealed
-package. Both produced the same accepted native bytes and 495 independently
-decoded new black pixels, preserved the original colored pixels, and reopened v3
-with zero writes. The trusted completed touch focused the real canvas and the
-same-event pause included the stroke. Both runs had no page/console/cleanup
-errors. These are separate browser results, not native iPhone acceptance.
+export controller with a synthetic Core read/CAS port. Chromium and WebKit each
+passed the full manual journey: trusted touches, a same-event pause, newer input
+during delayed ACK, the actual Image Rotation menu, independent full-pixel PNG
+comparison, orientation without an extra document write, owner retirement and a
+fresh renderer reopening v4 with zero writes. The command-envelope and negative
+ABI cases also passed against this package. Browser results do not establish
+iPhone acceptance or a real model/provider turn.
 
 #556 remains open for native iPhone acceptance, the final combined configured
 consumer/native build, measured memory/usability, broader lossless profiles and
 reviewed PNG import. The browser package includes the shared owner-cleanup fix;
 full browser reopen and retirement passed. Do not claim complete upstream editing parity or a live
 service from this integration.
+
+The separate [live-review qualification](live-review-qualification.json) records
+the same-Session refresh/Undo repair, causal old-package failure and current
+Chromium/WebKit proof. Its retained WASI producer and pending iPhone/model-turn
+acceptance are stated separately; it does not replace the earlier evidence.
 
 ## Provenance
 

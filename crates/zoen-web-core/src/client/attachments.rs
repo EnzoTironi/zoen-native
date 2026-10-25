@@ -226,6 +226,7 @@ impl<S: Signer> Client<S> {
                     .resolve_post(&request.space_id, &reference)
                     .ok_or("That message is no longer available.")?;
                 Some(types::ReplyRef {
+                    artifact: None,
                     to: event.hash.clone(),
                     thread: request.thread,
                 })
@@ -370,6 +371,7 @@ impl<S: Signer> Client<S> {
                     .resolve_post(&request.space_id, &reference)
                     .ok_or("That message is no longer available.")?;
                 Some(types::ReplyRef {
+                    artifact: None,
                     to: event.hash.clone(),
                     thread: request.thread,
                 })

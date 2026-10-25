@@ -445,6 +445,7 @@ fn media_contract_received_ordered_fixtures_match_native_projection() {
                     attaches: Some(format!("fixture-{index}")),
                     media: Some(media),
                     reply: member["reply"].as_str().map(|to| types::ReplyRef {
+                        artifact: None,
                         to: to.into(),
                         thread: false,
                     }),

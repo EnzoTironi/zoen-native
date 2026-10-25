@@ -98,6 +98,15 @@ impl BrowserBridge {
         }
         let host = HostBridge::open(request, bytes)?;
         let doc = Arc::new(managed::checked(bytes)?);
+        if self.host.is_some() {
+            // A checked canonical revision is one edit of the same paused canvas.
+            // Upstream retains its bounded Undo history, binding and render revision.
+            s.receive_managed_document((*doc).clone())
+                .map_err(|_| failure("engine_refresh"))?;
+            self.accepted = Some(doc);
+            self.host = Some(host);
+            return self.status(s);
+        }
         let binding = NEXT_BINDING
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |v| v.checked_add(1))
             .map_err(|_| failure("binding_exhausted"))?;
@@ -189,7 +198,12 @@ impl BrowserBridge {
             .host
             .as_mut()
             .ok_or_else(|| failure("not_open"))?
-            .prepare(command.mutation, fingerprint, bytes, &json!(command.action))?;
+            .prepare(
+                command.mutation,
+                fingerprint,
+                bytes,
+                &json!({"kind":"command","action":command.action}),
+            )?;
         self.pending = Some(Entry {
             kind: Kind::Agent,
             id,
@@ -241,5 +255,12 @@ impl BrowserBridge {
 }
 
 #[cfg(test)]
+#[path = "browser_contract_tests.rs"]
+mod contract_tests;
+#[cfg(test)]
 #[path = "browser_rollback_tests.rs"]
 mod rollback_tests;
+
+#[cfg(test)]
+#[path = "browser_refresh_tests.rs"]
+mod refresh_tests;

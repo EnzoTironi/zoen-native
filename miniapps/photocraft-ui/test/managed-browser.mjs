@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createServer } from "node:http";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { resolve, isAbsolute } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { build } from "../../../apps/zoen/node_modules/esbuild/lib/main.js";
 import { findBrowserExecutable } from "../../../tools/miniapp-build/browser-executable.ts";
 import { pauseOnCompletedTouch } from "./input-flush-assertions.mjs";
+import { rotateFromHumanMenu } from "./menu-rotation.mjs";
+import { reviewExternalPhoto } from "./live-review.mjs";
 const editor = "photocraft";
 const [modulePath, wasmPath, htmlPath, seedPath, output, playwrightPath] = process.argv.slice(2);
 if (
@@ -86,28 +87,9 @@ const requests = [],
   errors = [],
   consoleErrors = [],
   cleanupErrors = [];
-const server = createServer((req, res) => {
-  requests.push({ method: req.method, path: req.url });
-  const f = files.get(req.url);
-  if (req.method !== "GET" || !f) {
-    res.writeHead(404);
-    res.end();
-    return;
-  }
-  res.writeHead(200, {
-    "Content-Type": f[1],
-    "Content-Length": f[0].length,
-    "Cache-Control": "no-store",
-  });
-  res.end(f[0]);
-});
 let browser,
   receipt = { status: "FAIL" };
 try {
-  await new Promise((done, fail) => {
-    server.once("error", fail);
-    server.listen(0, "127.0.0.1", done);
-  });
   const { chromium, webkit, devices } = await import(pathToFileURL(playwrightPath).href);
   const isWebkit = process.env.ZOEN_PROBE_WEBKIT === "1";
   browser = await (isWebkit ? webkit : chromium).launch(
@@ -125,6 +107,7 @@ try {
           ],
         },
   );
+  receipt.browser = { name: browser.browserType().name(), version: browser.version() };
   const page = await browser.newPage({
     ...(isWebkit ? devices["iPhone 13"] : {}),
     viewport:
@@ -138,7 +121,24 @@ try {
   page.on("console", (e) => {
     if (e.type() === "error") consoleErrors.push(e.text());
   });
-  await page.goto(`http://127.0.0.1:${server.address().port}/`, { waitUntil: "load" });
+  // Fulfill the public fixture origin in memory: no local server or network service.
+  await page.route("**/*", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    // WebKit also routes the already verified engine's in-memory module URL.
+    if (url.protocol === "blob:") {
+      await route.continue();
+      return;
+    }
+    requests.push({ method: request.method(), path: url.pathname, origin: url.origin });
+    const file = url.origin === "https://photocraft-fixture.invalid" && files.get(url.pathname);
+    if (request.method() !== "GET" || !file) {
+      await route.fulfill({ status: 404, body: "Unknown fixture input" });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: file[1], body: Buffer.from(file[0]), headers: { "Cache-Control": "no-store" } });
+  });
+  await page.goto("https://photocraft-fixture.invalid/", { waitUntil: "load" });
   await page.waitForFunction(() => window.probe?.opened, undefined, { timeout: 25000 });
   assert.equal(await page.evaluate(() => window.probe.writes), 0);
   const formats = ["pcraft", "png"];
@@ -208,33 +208,49 @@ try {
   assert.deepEqual(editedPixels.white, originalPixels.white);
   assert.deepEqual(editedPixels.black, originalPixels.black);
   assert.deepEqual(editedPixels.green, originalPixels.green);
+  const menuRotation =
+    process.env.PHOTO_MENU_ROTATION === "1"
+      ? await rotateFromHumanMenu(page, output, edited, pixels)
+      : undefined;
+  assert.ok(!(process.env.PHOTO_LIVE_REVIEW === "1" && menuRotation), "Run live review and menu suites separately");
+  const liveReview = process.env.PHOTO_LIVE_REVIEW === "1"
+    ? await reviewExternalPhoto(page, output, edited, pixels)
+    : undefined;
+  const finalDocument = liveReview ?? menuRotation ?? edited;
+  const finalPixels = liveReview?.pixels ?? menuRotation?.pixels ?? editedPixels;
   await page.setViewportSize({ width: 844, height: 390 });
   await page.screenshot({ path: resolve(output, "landscape.png") });
   assert.equal(
     await page.evaluate(() => window.probe.writes),
-    2,
-    "rotation must not save a document edit",
+    finalDocument.writes,
+    "viewport rotation must not save a document edit",
   );
   await page.setViewportSize({ width: 390, height: 844 });
   await page.evaluate(() => window.probe.close());
   files.set("/config.json", [
-    Buffer.from(JSON.stringify({ ...config, seed: edited.accepted, version: edited.version })),
+    Buffer.from(
+      JSON.stringify({ ...config, seed: finalDocument.accepted, version: finalDocument.version }),
+    ),
     "application/json",
   ]);
   await page.reload({ waitUntil: "load" });
   await page.waitForFunction(() => window.probe?.opened, undefined, { timeout: 25000 });
   assert.equal(await page.evaluate(() => window.probe.writes), 0);
-  assert.equal(await page.evaluate(() => window.probe.version), 3);
+  assert.equal(await page.evaluate(() => window.probe.version), finalDocument.version);
   for (const format of formats) await page.evaluate((f) => window.probe.share(f), format);
   const reopened = await page.evaluate(() => window.probe.exports);
   for (const file of reopened) {
     const bytes = Buffer.from(file.data, "base64");
     assert.equal(sha(bytes), file.sha256);
     if (file.format === "pcraft")
-      assert.equal(file.data, edited.accepted, "fresh renderer reopens exact accepted bytes");
+      assert.equal(
+        file.data,
+        finalDocument.accepted,
+        "fresh renderer reopens exact accepted bytes",
+      );
     await writeFile(resolve(output, `reopened.${file.format}`), bytes);
   }
-  assert.deepEqual(pixels(resolve(output, "reopened.png")), editedPixels);
+  assert.deepEqual(pixels(resolve(output, "reopened.png")), finalPixels);
   await page.screenshot({ path: resolve(output, "opened.png") });
   await page.evaluate(() => window.probe.retire());
   await assert.rejects(page.evaluate((f) => window.probe.share(f), formats[0]));
@@ -242,6 +258,7 @@ try {
   assert.deepEqual(consoleErrors, []);
   receipt = {
     status: "PASS",
+    browser: receipt.browser,
     editor,
     scope:
       "Actual generated MCP bootstrap + pinned engine + shared session/export, synthetic Core read/CAS port; no device or certified-agent claim.",
@@ -255,7 +272,13 @@ try {
     touchPause,
     editedPixels,
     edited,
-    coldReopen: { version: 3, writes: 0, sha256: sha(Buffer.from(edited.accepted, "base64")) },
+    menuRotation,
+    liveReview,
+    coldReopen: {
+      version: finalDocument.version,
+      writes: 0,
+      sha256: sha(Buffer.from(finalDocument.accepted, "base64")),
+    },
     requests,
     errors,
     consoleErrors,
@@ -269,8 +292,6 @@ try {
   } catch (e) {
     cleanupErrors.push(String(e));
   }
-  server.closeAllConnections();
-  if (server.listening) await new Promise((done) => server.close(done));
   await writeFile(
     resolve(output, "result.json"),
     JSON.stringify({ ...receipt, cleanupErrors }, null, 2) + "\n",

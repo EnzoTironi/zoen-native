@@ -9,34 +9,35 @@ framing is the existing Deck/Grid ABI: little-endian 4-byte metadata length,
 bounded JSON, then raw document bytes. The response has the same framing and
 `{ok, metadata}` or `{ok:false,error}`. No paths, base64, host storage or accounts.
 
-`open` carries the existing `Scope` and `Head`. The single command is
-`{command:"text.replace",params:{text}}`, under the existing `Mutation` envelope.
-It translates to upstream `select.all` and raw `text.insert`; it is not a generic
-command dispatcher. Human and agent callers follow the same proposal boundary.
+`open` carries the existing `Scope` and `Head`. Closed operations support whole-body
+`text.replace`, UTF-8 body `text.edit`, and explicit `range.format` properties.
+They call the upstream Session commands; there is no arbitrary command dispatcher.
 The accepted document stays unchanged until an exact scope/mutation/next-version/
-hash ACK. Retries in the same bridge return the same proposal; the canonical host
-still owns authorization, durable idempotence, CAS, FileDoc and cold recovery.
-The standalone process emits a proposal and cannot commit it. The normal Zoen worker
-resolver recognizes an explicitly configured signed Word component. The reviewed
-creation/agent continuation is documented below; default builds still do not
-advertise a browser App.
+hash ACK. Retries return the same immutable proposal. Core retains authorization,
+review, durable idempotence, CAS, encrypted FileDoc and cold recovery authority.
+The standalone worker emits proposals and cannot commit them.
 
-## Deliberately narrow DOCX profile
+## Bounded full-model DOCX profile
 
-Only plain-text packages produced by this pinned writer are editable. The ZIP is
-bounded to 512 KiB compressed, 32 entries, 1 MiB per entry and 4 MiB total actual
-inflated bytes. Names cannot traverse; duplicate entries are refused. Count and
-declared sizes are checked before inflation; actual reads are bounded too. Text
-is at most 32 KiB UTF-8; LF and tab are supported, other controls are refused.
+The rich successor is tracked in [#583](https://github.com/EnzoTironi/zoen-native/issues/583)
+and [RICH-DOCUMENT-EVIDENCE.md](RICH-DOCUMENT-EVIDENCE.md). Its Session, manual
+checkpoints and worker preserve the actual upstream Document model, including
+supported styles, metadata and paragraph/run properties. It does not rebuild the
+model from flattened text. Existing plain-text-v1 accepted heads remain readable
+and editable on the same canonical item, with immutable old bytes and history.
 
-The upstream DOCX reader is lenient and can retain macros and opaque parts. This
-adapter compares **every uncompressed package part** with the actual writer's
-`Document::from_text` package. Rich formatting, metadata, images, macros, extra
-parts and ignored XML are refused, including benign imports outside this profile.
-Opening never replaces original bytes with a best-effort reserialization.
-After the actual Session edit, plain text is encoded into the same declared
-plain profile; Session editing metadata is not part of this format. Export of an
-accepted head returns its exact original DOCX bytes, including before ACK.
+ZIP bounds remain 512 KiB compressed, 32 entries, 1 MiB per inflated entry and
+4 MiB total actual inflated bytes. Names cannot traverse; duplicate entries are
+refused. Body text remains at most 32 KiB UTF-8. LF and tab are supported; other
+controls are refused. Every original uncompressed package part must match the
+pinned writer, and write/readback must preserve the complete model exactly.
+Opaque parts, external relationships and unsupported/lossy imports are refused.
+Opening never replaces original bytes with best-effort reserialization. Accepted
+DOCX export returns its exact original bytes, including while another draft exists.
+
+The rich source and new package qualification are distinct from the older pinned
+plain-text browser/worker assets. Availability and native acceptance must be read
+from the current package evidence, not inferred from this implementation description.
 
 The manual checkpoint captures an immutable proposal while the actual canvas
 may continue editing. Only its exact receipt advances the accepted baseline;
@@ -167,3 +168,5 @@ refuse PDF without changing the DOCX or pending draft.
 Managed safe-area and first-touch qualification: [VIEWPORT-EVIDENCE.md](VIEWPORT-EVIDENCE.md).
 
 Input-at-close regression and fix: [INPUT-FLUSH-EVIDENCE.md](INPUT-FLUSH-EVIDENCE.md).
+
+Managed touch Undo/Redo and its evidence boundary: [MANAGED-HISTORY-EVIDENCE.md](MANAGED-HISTORY-EVIDENCE.md).
