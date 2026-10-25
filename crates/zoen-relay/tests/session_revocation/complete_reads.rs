@@ -41,8 +41,11 @@ async fn capable(test: &TestRelay, author: &Author) -> Socket {
     ));
     ws
 }
-async fn setup(test: &TestRelay, root: &Signer) -> (Author, Socket, Vec<Author>) {
-    let author = Author::device(root, Signer::generate());
+async fn setup(
+    test: &TestRelay,
+    root: &Signer,
+) -> std::result::Result<(Author, Socket, Vec<Author>), Box<dyn std::error::Error>> {
+    let author = Author::device(root, Signer::generate()?);
     let mut socket = capable(test, &author).await;
     request(
         &mut socket,
@@ -75,7 +78,7 @@ async fn setup(test: &TestRelay, root: &Signer) -> (Author, Socket, Vec<Author>)
     }
     tx.commit().await.unwrap();
     devices.push(late);
-    (author, socket, devices)
+    Ok((author, socket, devices))
 }
 async fn next(socket: &mut Socket, id: u64, request_: Request) -> Page {
     let Reply::CompletePage(page) = request(socket, id, Op::CompleteRead(request_))
@@ -110,10 +113,11 @@ async fn whole(socket: &mut Socket, author: &Author, id: u64) -> Vec<protocol::D
 }
 
 #[tokio::test]
-async fn complete_devices_keeps_one_snapshot_across_late_commit_and_revocation() {
-    let test = TestRelay::new().await;
-    let root = Signer::generate();
-    let (author, mut socket, mut devices) = setup(&test, &root).await;
+async fn complete_devices_keeps_one_snapshot_across_late_commit_and_revocation(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let test = TestRelay::new().await?;
+    let root = Signer::generate()?;
+    let (author, mut socket, mut devices) = setup(&test, &root).await?;
     let late = devices.pop().unwrap();
     let target = devices.last().unwrap();
     // A transaction started before the first page but commits behind its keyset.
@@ -187,14 +191,16 @@ async fn complete_devices_keeps_one_snapshot_across_late_commit_and_revocation()
     drop(socket);
     drop(controller);
     test.close().await;
+    Ok(())
 }
 #[tokio::test]
-async fn snapshot_tokens_are_connection_bound_and_cancel_releases_the_global_slot() {
+async fn snapshot_tokens_are_connection_bound_and_cancel_releases_the_global_slot(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     // This case intentionally exhausts the real process-global capacity. Other
     // test relays retain shared leases, so only this case runs in isolation.
-    let test = TestRelay::exclusive_snapshots().await;
-    let root = Signer::generate();
-    let (author, mut first, _) = setup(&test, &root).await;
+    let test = TestRelay::exclusive_snapshots().await?;
+    let root = Signer::generate()?;
+    let (author, mut first, _) = setup(&test, &root).await?;
     let p = next(&mut first, 20, Request::begin(Kind::Devices)).await;
     assert!(
         request(&mut first, 19, Op::Devices)
@@ -258,12 +264,14 @@ async fn snapshot_tokens_are_connection_bound_and_cancel_releases_the_global_slo
     }
     drop(second);
     test.close().await;
+    Ok(())
 }
 #[tokio::test]
-async fn every_page_rechecks_the_current_requesting_device_after_unlink() {
-    let test = TestRelay::new().await;
-    let root = Signer::generate();
-    let (author, mut reader, devices) = setup(&test, &root).await;
+async fn every_page_rechecks_the_current_requesting_device_after_unlink(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let test = TestRelay::new().await?;
+    let root = Signer::generate()?;
+    let (author, mut reader, devices) = setup(&test, &root).await?;
     let controller_author = &devices[0];
     let mut controller = connect(&test.ws_url, controller_author).await;
     let page = next(&mut reader, 50, Request::begin(Kind::Devices)).await;
@@ -300,12 +308,14 @@ async fn every_page_rechecks_the_current_requesting_device_after_unlink() {
     }
     drop(controller);
     test.close().await;
+    Ok(())
 }
 #[tokio::test]
-async fn negotiated_read_expiry_is_explicit_and_does_not_pin_its_pool_afterward() {
-    let test = TestRelay::new().await;
-    let root = Signer::generate();
-    let (author, mut reader, _) = setup(&test, &root).await;
+async fn negotiated_read_expiry_is_explicit_and_does_not_pin_its_pool_afterward(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let test = TestRelay::new().await?;
+    let root = Signer::generate()?;
+    let (author, mut reader, _) = setup(&test, &root).await?;
     let page = next(&mut reader, 60, Request::begin(Kind::Devices)).await;
     tokio::time::sleep(zoen_relay::read_snapshots::MAX_AGE + Duration::from_millis(50)).await;
     let stale = Request {
@@ -322,14 +332,15 @@ async fn negotiated_read_expiry_is_explicit_and_does_not_pin_its_pool_afterward(
     assert_eq!(current.len(), 257);
     drop(reader);
     test.close().await;
+    Ok(())
 }
 
 #[tokio::test]
 async fn corrupt_empty_device_key_refuses_the_whole_read_instead_of_disappearing_before_the_first_page(
-) {
-    let test = TestRelay::new().await;
-    let root = Signer::generate();
-    let author = Author::device(&root, Signer::generate());
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let test = TestRelay::new().await?;
+    let root = Signer::generate()?;
+    let author = Author::device(&root, Signer::generate()?);
     let mut socket = capable(&test, &author).await;
     request(
         &mut socket,
@@ -362,4 +373,5 @@ async fn corrupt_empty_device_key_refuses_the_whole_read_instead_of_disappearing
     );
     drop(socket);
     test.close().await;
+    Ok(())
 }

@@ -2,7 +2,8 @@
 
 use super::*;
 
-pub(super) fn history_export_remains_only_canonical_events_while_media_draft_is_private() {
+pub(super) fn history_export_remains_only_canonical_events_while_media_draft_is_private(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut f = fixture(":memory:");
     f.scope.space_id = f
         .engine
@@ -47,7 +48,7 @@ pub(super) fn history_export_remains_only_canonical_events_while_media_draft_is_
                 .unwrap_or_else(|| (0, types::GENESIS_PREV.into()));
             let frame = protocol::Sequenced {
                 seq,
-                hash: event_log::chain_hash(env.space(), seq, &prev, &env.wire_hash()),
+                hash: event_log::chain_hash(env.space(), seq, &prev, &env.wire_hash())?,
                 prev,
                 env,
             };
@@ -73,15 +74,16 @@ pub(super) fn history_export_remains_only_canonical_events_while_media_draft_is_
     let after = serde_json::to_string(&f.engine.lock().history_bundle()).unwrap();
     assert_eq!(after, before);
     assert!(!after.contains("Private"));
+    Ok(())
 }
 
 pub(super) fn media_contract_failed_local_metadata_remains_visible_after_revocation_and_cold_recovery(
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for (kind, ids) in [("separate", vec!["a"]), ("grouped", vec!["a", "b"])] {
-        let dir = temp();
+        let dir = temp()?;
         let path = dir.join("refused.sqlite");
         let f = fixture(path.to_str().unwrap());
-        media_contract_confirm_scope(&f);
+        media_contract_confirm_scope(&f)?;
         let draft = save(
             &f,
             "0",
@@ -99,7 +101,7 @@ pub(super) fn media_contract_failed_local_metadata_remains_visible_after_revocat
                 identity: f.scope.expected_identity_id.clone(),
             },
             false,
-        );
+        )?;
         let pending = f.engine.lock().store.outbox().unwrap();
         for row in pending {
             assert!(f
@@ -142,7 +144,7 @@ pub(super) fn media_contract_failed_local_metadata_remains_visible_after_revocat
         media_contract_receive(
             &f,
             types::EventBody::MessagePosted {
-                message: types::new_id("msg"),
+                message: types::new_id("msg")?,
                 text: "unauthorized remote metadata".into(),
                 attaches: Some(item.clone()),
                 media: Some(types::MessageMedia {
@@ -153,7 +155,7 @@ pub(super) fn media_contract_failed_local_metadata_remains_visible_after_revocat
                 forwarded: false,
             },
             true,
-        );
+        )?;
         assert!(!f.engine.timeline(recovered_scope.space_id.clone()).unwrap().iter().any(|entry|matches!(&entry.kind,crate::EntryKind::Message{text,..}if text=="unauthorized remote metadata")));
         // Even a later writer must not publish a new claim against a file that
         // exists only in the failed local recovery overlay.
@@ -172,7 +174,7 @@ pub(super) fn media_contract_failed_local_metadata_remains_visible_after_revocat
                     &f.scope.space_id,
                     &f.scope.expected_identity_id,
                     types::EventBody::MessagePosted {
-                        message: types::new_id("msg"),
+                        message: types::new_id("msg")?,
                         text: "new claim on failed local bytes".into(),
                         attaches: Some(item),
                         media: Some(types::MessageMedia {
@@ -200,4 +202,5 @@ pub(super) fn media_contract_failed_local_metadata_remains_visible_after_revocat
         drop(restored);
         std::fs::remove_dir_all(dir).unwrap();
     }
+    Ok(())
 }

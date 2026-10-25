@@ -1,5 +1,5 @@
 //! Existing client/server frame and request/reply definitions.
-use super::*;
+use super::{DeviceSigned, Envelope, Identity, IdentityId, Role, Sequenced, SpaceId};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Cursor {
@@ -12,7 +12,7 @@ pub struct Cursor {
 pub enum EphemeralKind {
     Typing,
     StoppedTyping,
-    /// The agent (or person) is working: "processing", "building", "in_call"…
+    /// The agent (or person) is working: "processing", "building", `in_call`…
     Status {
         status: String,
     },
@@ -197,6 +197,7 @@ pub enum AgentAction {
 }
 
 impl AgentAction {
+    #[must_use]
     pub fn id(self) -> &'static str {
         match self {
             AgentAction::Pause => "pause",
@@ -205,6 +206,7 @@ impl AgentAction {
         }
     }
 
+    #[must_use]
     pub fn parse(s: &str) -> Option<Self> {
         match s {
             "pause" => Some(AgentAction::Pause),
@@ -236,6 +238,7 @@ pub struct DeviceCertificate {
 
 impl Op {
     /// A stable name for metrics and traces; carries none of the op's data.
+    #[must_use]
     pub fn name(&self) -> &'static str {
         match self {
             Op::Register { .. } => "register",
@@ -301,7 +304,7 @@ pub enum Reply {
     AgreementKeys(Vec<AgreementKeyRecord>),
     SealedProfiles(Vec<SealedProfile>),
     KeyPackages(Vec<KeyPackageRecord>),
-    /// FetchLink: the sealed box, `None` while nobody left one.
+    /// `FetchLink`: the sealed box, `None` while nobody left one.
     Link(Option<Vec<u8>>),
     Devices(Vec<DeviceRecord>),
     CompletePage(crate::complete_reads::Page),
@@ -348,7 +351,7 @@ pub struct InviteCreated {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ErrorCode {
     Other,
-    /// The client's protocol is older than [`MIN_PROTOCOL_VERSION`]: update the app.
+    /// The client's protocol is older than [`crate::MIN_PROTOCOL_VERSION`]: update the app.
     UpgradeRequired,
     /// Login or certificate failed: retrying won't help.
     Unauthorized,
@@ -359,10 +362,12 @@ pub enum ErrorCode {
 }
 
 /// The relay's words for every rate-limit refusal; [`retry_hint`] reads the delay back.
+#[must_use]
 pub fn slow_down(retry: std::time::Duration) -> String {
     format!("slow down, retry in {:.1} s", retry.as_secs_f64().max(0.1))
 }
 
+#[must_use]
 pub fn retry_hint(message: &str) -> Option<std::time::Duration> {
     let secs = message.split("retry in ").nth(1)?.split(' ').next()?;
     let secs: f64 = secs
@@ -420,7 +425,7 @@ pub enum ServerFrame {
     },
     /// One of your devices is running out of single-use MLS key packages (ADR 0026): it
     /// should publish more. Sent at login and after a claim leaves it under
-    /// [`KEY_PACKAGES_LOW`]. Other devices of the identity ignore it.
+    /// [`crate::KEY_PACKAGES_LOW`]. Other devices of the identity ignore it.
     KeyPackagesLow {
         device: String,
         remaining: u32,

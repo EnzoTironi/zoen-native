@@ -45,6 +45,7 @@ pub enum Decision {
 }
 
 impl Decision {
+    #[must_use]
     pub fn acts(&self) -> bool {
         matches!(self, Decision::Act { .. })
     }
@@ -57,22 +58,26 @@ pub struct Budget {
 }
 
 impl Budget {
+    #[must_use]
     pub fn remaining_cents(&self) -> i64 {
         self.limit_cents.saturating_sub(self.spent_cents).max(0)
     }
 
+    #[must_use]
     pub fn fraction(&self) -> f64 {
         if self.limit_cents <= 0 {
             return 1.0;
         }
-        (self.spent_cents as f64 / self.limit_cents as f64).clamp(0.0, 1.0)
+        (display_cents(self.spent_cents) / display_cents(self.limit_cents)).clamp(0.0, 1.0)
     }
 
     /// Alerta aos 80 %.
+    #[must_use]
     pub fn near_limit(&self) -> bool {
         i128::from(self.spent_cents) * 10 >= i128::from(self.limit_cents) * 8
     }
 
+    #[must_use]
     pub fn can_afford(&self, cents: i64) -> bool {
         cents >= 0
             && self.spent_cents >= 0
@@ -81,6 +86,15 @@ impl Budget {
                 .checked_add(cents)
                 .is_some_and(|sum| sum <= self.limit_cents)
     }
+}
+
+// Display only. Each 32-bit component converts exactly, the power-of-two scale is
+// exact, and their sum rounds once to f64. Permission/accounting use integers above.
+fn display_cents(value: i64) -> f64 {
+    let bytes = value.to_be_bytes();
+    let high = i32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+    let low = u32::from_be_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
+    f64::from(high) * 4_294_967_296.0 + f64::from(low)
 }
 
 /// Limites fixos (iguais para todo mundo no v1).
@@ -100,6 +114,7 @@ impl Default for Policy {
 
 /// O avaliador. `ai_cost_cents` é o custo estimado de IA da ação (pré-autorizado
 /// contra o orçamento, como o gateway de modelos fará).
+#[must_use]
 pub fn evaluate(
     level: TrustLevel,
     action: &ActionClass,
@@ -118,7 +133,10 @@ pub fn evaluate(
 
 /// Permission only. Budget accounting remains a separate authority; a runtime
 /// must supply an actual verified grant and its own financial admission.
+#[must_use]
 pub fn evaluate_permission(level: TrustLevel, action: &ActionClass, policy: &Policy) -> Decision {
+    use ActionClass::{External, Money, Reply, Reversible};
+    use TrustLevel::{Act, Autonomous, Listen, Suggest};
     // 1. Linhas vermelhas: sempre pedem, em qualquer nível.
     match action {
         ActionClass::Money { cents } if *cents > policy.money_ceiling_cents => {
@@ -132,28 +150,18 @@ pub fn evaluate_permission(level: TrustLevel, action: &ActionClass, policy: &Pol
     }
 
     // 2. Por nível.
-    use ActionClass::*;
-    use TrustLevel::*;
     match (level, action) {
-        (_, Reply) => Decision::Act { undoable: false },
-
+        (_, Reply) | (Autonomous, External | Money { .. }) => Decision::Act { undoable: false },
         (Listen, _) => Decision::Block(Reason::TrustTooLow { needed: Suggest }),
-
         (Suggest, Reversible) => Decision::Request(Reason::TrustTooLow { needed: Act }),
-        (Suggest, _) => Decision::Request(Reason::LeavesTheSpace),
-
-        (Act, Reversible) | (Autonomous, Reversible) => Decision::Act { undoable: true },
-        (Act, _) => Decision::Request(Reason::LeavesTheSpace),
-
-        (Autonomous, External) => Decision::Act { undoable: false },
-        (Autonomous, Money { .. }) => Decision::Act { undoable: false }, // ≤ teto (linha vermelha já filtrou)
-        (Autonomous, Irreversible) => Decision::Request(Reason::LeavesTheSpace),
-        (Autonomous, _) => Decision::Request(Reason::LeavesTheSpace),
+        (Act | Autonomous, Reversible) => Decision::Act { undoable: true },
+        (Suggest | Act | Autonomous, _) => Decision::Request(Reason::LeavesTheSpace),
     }
 }
 
 /// The kind of action a standing decision ("always approve/deny") covers. Same agent,
 /// same key, same scope → the decision applies without asking again.
+#[must_use]
 pub fn standing_key(action: &ActionClass) -> &'static str {
     match action {
         ActionClass::Reply => "reply",
@@ -168,6 +176,7 @@ pub fn standing_key(action: &ActionClass) -> &'static str {
 
 /// "Always approve" never covers a red line or something that can't be undone: those
 /// keep asking every time. "Always deny" is allowed for anything.
+#[must_use]
 pub fn standing_allow_permitted(action: &ActionClass, policy: &Policy) -> bool {
     match action {
         ActionClass::Money { cents } => *cents <= policy.money_ceiling_cents,
@@ -180,6 +189,7 @@ pub fn standing_allow_permitted(action: &ActionClass, policy: &Policy) -> bool {
 
 /// "A confiança cresce com o histórico": depois de `n` aprovações seguidas, sem
 /// edição, do mesmo tipo de ação, sugerimos subir o nível.
+#[must_use]
 pub fn suggest_promotion(
     history: &[(ActionKindKey, Outcome)],
     kind: ActionKindKey,
@@ -209,6 +219,7 @@ pub enum Outcome {
 }
 
 /// Uma aprovação vale para o conteúdo exato que foi pedido.
+#[must_use]
 pub fn approval_still_valid(requested_hash: &str, current_hash: &str) -> bool {
     requested_hash == current_hash
 }
@@ -228,8 +239,10 @@ mod tests {
         assert!(budget.near_limit());
     }
     use super::*;
-    use ActionClass::*;
-    use TrustLevel::*;
+    use ActionClass::{
+        External, Irreversible, Money, PublicAudience, Reply, Reversible, ThirdPartyData,
+    };
+    use TrustLevel::{Act, Autonomous, Listen, Suggest};
 
     const B: Budget = Budget {
         limit_cents: 1_500,
@@ -382,5 +395,19 @@ mod tests {
     fn approval_is_bound_to_content() {
         assert!(approval_still_valid("abc", "abc"));
         assert!(!approval_still_valid("abc", "abd"));
+    }
+    #[test]
+    fn approximate_display_does_not_authorize_an_unaffordable_integer_amount() {
+        let budget = Budget {
+            limit_cents: i64::MAX,
+            spent_cents: i64::MAX - 1,
+        };
+        assert_eq!(budget.fraction(), 1.0); // Rounded for display, not an authority.
+        assert!(budget.can_afford(1));
+        assert!(!budget.can_afford(2));
+        assert_eq!(display_cents(i64::MIN), -9_223_372_036_854_775_808.0);
+        assert_eq!(display_cents(i64::MAX), 9_223_372_036_854_775_808.0);
+        assert_eq!(display_cents(-1), -1.0);
+        assert_eq!(display_cents(0), 0.0);
     }
 }

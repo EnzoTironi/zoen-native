@@ -11,7 +11,8 @@ use sha2::{Digest, Sha256};
 use std::time::Duration;
 
 #[tokio::test]
-async fn a_connecting_device_does_not_miss_a_low_stock_notice() {
+async fn a_connecting_device_does_not_miss_a_low_stock_notice(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let w = World::new_with(
         "kp_connect",
         Some(std::env::var("ZOEN_NATS_URL").expect("set ZOEN_NATS_URL")),
@@ -32,7 +33,7 @@ async fn a_connecting_device_does_not_miss_a_low_stock_notice() {
         bruno.identity
     );
     assert_eq!(w.count(&sql).await, 32);
-    let mut ana = RawClient::connect(&w.relay_url(), "ana").await;
+    let mut ana = RawClient::connect(&w.relay_url(), "ana").await?;
     for _ in 0..24 {
         ana.request(Op::ClaimKeyPackages {
             ids: vec![bruno.identity.clone()],
@@ -91,4 +92,5 @@ async fn a_connecting_device_does_not_miss_a_low_stock_notice() {
         matches!(notice, Ok(ServerFrame::KeyPackagesLow { device, remaining: 7 }) if Some(&device) == bruno.device.as_ref()),
         "the connecting device missed refill after the concurrent claim"
     );
+    Ok(())
 }

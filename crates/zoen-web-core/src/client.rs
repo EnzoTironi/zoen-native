@@ -40,8 +40,13 @@ const PACKAGES_REQUEST: u64 = 0x8000_0001;
 const PROFILES_REQUEST: u64 = 0x8000_0002;
 
 // The host supplies time explicitly: SystemTime is unavailable in browser WASM.
-fn browser_id(prefix: &str, now: i64) -> String {
-    format!("{prefix}_{}", types::new_ulid(now).to_ascii_lowercase())
+fn browser_id(prefix: &str, now: i64) -> Result<String, String> {
+    Ok(format!(
+        "{prefix}_{}",
+        types::new_ulid(now)
+            .map_err(|error| error.to_string())?
+            .to_ascii_lowercase()
+    ))
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -337,7 +342,7 @@ impl<S: Signer> Client<S> {
             membership_net: membership::Network::default(),
             linking_net: linking::Network::default(),
             history_ready: false,
-            attachment_producer: attachments::Producer::new(),
+            attachment_producer: attachments::Producer::new()?,
             cursor_repair: None,
             repair_now: Duration::ZERO,
         };

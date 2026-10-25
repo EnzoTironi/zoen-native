@@ -139,10 +139,14 @@ impl Engine {
             ToolRequestDecision::RequestReview => return Err(malformed()),
         };
         if r.status != ReqStatus::Pending {
-            if r.resolution.as_ref().and_then(|r| r.tool_decision) == Some(decision) {
+            if let Some(resolution) = r
+                .resolution
+                .as_ref()
+                .filter(|resolution| resolution.tool_decision == Some(decision))
+            {
                 return Ok(DecideOutcome {
                     request: self.request_dto(&r),
-                    message: r.resolution.as_ref().unwrap().message.clone(),
+                    message: resolution.message.clone(),
                     standing_grant_id: None,
                     also_resolved: 0,
                 });

@@ -18,11 +18,11 @@ const LATER: &str = "PRIVATE-RETAINED-NATIVE-LATER-89a";
 mod fixture;
 use fixture::Fixture;
 
-pub(super) async fn run() {
-    Box::pin(managed::run()).await;
-    let mut fixture = Fixture::new().await;
-    fixture.grant("retained-owner-trust").await;
-    let trigger = fixture.message(ORIGINAL).await;
+pub(super) async fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Box::pin(managed::run()).await?;
+    let mut fixture = Fixture::new().await?;
+    fixture.grant("retained-owner-trust").await?;
+    let trigger = fixture.message(ORIGINAL).await?;
     let actor = fixture.world.agents[0].clone();
     let device = actor.device.clone().unwrap();
     for (cut, expected) in [
@@ -69,7 +69,7 @@ pub(super) async fn run() {
         .clear(EventBody::DeviceJoining {
             device: fixture.world.owner.device.clone().unwrap(),
         })
-        .await;
+        .await?;
     fixture.world.runtime.native_cut_resume.notify_one();
     assert_eq!(paused.await.unwrap().unwrap_err(), RuntimeError::Denied);
     assert_eq!(
@@ -179,7 +179,7 @@ pub(super) async fn run() {
     trx.set(&entry_key, &retained_wire);
     trx.commit().await.unwrap();
     println!("retained reply source cut: changed cell and missing real source entry refuse progress PASS");
-    let later_trigger = fixture.message(LATER).await;
+    let later_trigger = fixture.message(LATER).await?;
     assert_ne!(later_trigger, trigger);
     assert_eq!(
         fixture
@@ -217,7 +217,7 @@ pub(super) async fn run() {
         .encrypted(EventBody::GrantRevoked {
             grant: "retained-owner-trust".into(),
         })
-        .await;
+        .await?;
     assert_eq!(
         fixture
             .world
@@ -237,10 +237,10 @@ pub(super) async fn run() {
             .unwrap_err(),
         RuntimeError::Denied
     );
-    fixture.grant("new-owner-trust").await;
+    fixture.grant("new-owner-trust").await?;
     fixture
         .message("A genuinely new request after regrant")
-        .await;
+        .await?;
     assert_eq!(fixture.sync(false).await.unwrap().runs.len(), 1);
     assert_eq!(
         fixture
@@ -271,15 +271,15 @@ pub(super) async fn run() {
     println!("retained reply journey: native revocation and regrant do not renew old intent; no financial hold or model send PASS");
     fixture.finish().await;
 
-    let mut partial = Fixture::new().await;
-    partial.grant("bounded-owner-trust").await;
-    partial.message("Request inside a bounded catch-up").await;
+    let mut partial = Fixture::new().await?;
+    partial.grant("bounded-owner-trust").await?;
+    partial.message("Request inside a bounded catch-up").await?;
     for _ in 0..70 {
         partial
             .clear(EventBody::DeviceJoining {
                 device: partial.world.owner.device.clone().unwrap(),
             })
-            .await;
+            .await?;
     }
     let first = partial.sync(false).await.unwrap();
     assert!(!first.caught_up && first.runs.is_empty() && !first.discovery_complete);
@@ -311,4 +311,5 @@ pub(super) async fn run() {
     assert_eq!(partial.world.http.sends.load(Ordering::SeqCst), 0);
     println!("retained reply journey: bounded partial source creates no run, authenticated discovery resumes once PASS");
     partial.finish().await;
+    Ok(())
 }

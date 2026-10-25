@@ -1,4 +1,4 @@
-//! Editing operations on the original PageSession state.
+//! Editing operations on the original `PageSession` state.
 
 use super::*;
 

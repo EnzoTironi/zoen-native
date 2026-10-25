@@ -40,8 +40,9 @@ fn seed_document(f: &Fixture, markdown: &str) -> crate::pages::PageDto {
 }
 
 #[test]
-fn whole_document_noop_preserves_duplicate_ids_and_unexpressed_metadata() {
-    let (_db, f) = cold_input_fixture(ItemKind::Page);
+fn whole_document_noop_preserves_duplicate_ids_and_unexpressed_metadata(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (_db, f) = cold_input_fixture(ItemKind::Page)?;
     let page = seed_document(
         &f,
         "Title\n=====\n\nSame\n\nSame\n\n![alt](https://example.test/image \"title\")\n",
@@ -90,11 +91,13 @@ fn whole_document_noop_preserves_duplicate_ids_and_unexpressed_metadata() {
         )
         .unwrap();
     assert_eq!(applied.edit.page.blocks, page.blocks);
+    Ok(())
 }
 
 #[test]
-fn whole_document_cold_recovery_sql_failure_and_lost_ack_have_one_private_acceptance() {
-    let (_db, mut f) = cold_input_fixture(ItemKind::Page);
+fn whole_document_cold_recovery_sql_failure_and_lost_ack_have_one_private_acceptance(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (_db, mut f) = cold_input_fixture(ItemKind::Page)?;
     let page = seed_document(&f, "# Before\n\nKeep 😀\n\nRemove\n");
     let events = f.engine.store.event_count().unwrap();
     let outbox = f.engine.store.outbox_len().unwrap();
@@ -182,11 +185,13 @@ fn whole_document_cold_recovery_sql_failure_and_lost_ack_have_one_private_accept
     assert_eq!(f.engine.store.event_count().unwrap(), events);
     assert_eq!(f.engine.store.outbox_len().unwrap(), outbox);
     assert!(f.engine.page_input_load(&scope).unwrap().capture.is_none());
+    Ok(())
 }
 
 #[test]
-fn whole_document_observed_seed_and_merge_preserve_concurrent_unobserved_changes() {
-    let (_db, f) = cold_input_fixture(ItemKind::Page);
+fn whole_document_observed_seed_and_merge_preserve_concurrent_unobserved_changes(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (_db, f) = cold_input_fixture(ItemKind::Page)?;
     let page = seed_document(&f, "# Original\n\nKeep\n");
     let mut changed = page.blocks[1].clone();
     changed.text = "Concurrent text".into();
@@ -256,11 +261,13 @@ fn whole_document_observed_seed_and_merge_preserve_concurrent_unobserved_changes
             .count(),
         1
     );
+    Ok(())
 }
 
 #[test]
-fn native_block_input_does_not_inherit_another_editor_continuation() {
-    let (_db, f) = cold_input_fixture(ItemKind::Page);
+fn native_block_input_does_not_inherit_another_editor_continuation(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (_db, f) = cold_input_fixture(ItemKind::Page)?;
     let page = seed_document(&f, "# Original\n\nOther\n");
     let mut concurrent = page.blocks[1].clone();
     concurrent.text = "Concurrent block change".into();
@@ -323,12 +330,14 @@ fn native_block_input_does_not_inherit_another_editor_continuation() {
             .text,
         "Changed natively"
     );
+    Ok(())
 }
 
 #[test]
-fn whole_document_rejects_wrong_modes_plan_targets_and_foreign_scope_without_writes() {
+fn whole_document_rejects_wrong_modes_plan_targets_and_foreign_scope_without_writes(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for kind in [ItemKind::Page, ItemKind::Plan] {
-        let (_db, f) = cold_input_fixture(kind);
+        let (_db, f) = cold_input_fixture(kind)?;
         let scope = input_scope(&f);
         let context = f.session().read(&f.engine).unwrap().edit_context;
         let input = f.engine.page_input_load(&scope).unwrap();
@@ -377,11 +386,13 @@ fn whole_document_rejects_wrong_modes_plan_targets_and_foreign_scope_without_wri
             assert_eq!(f.cipher(), before);
         }
     }
+    Ok(())
 }
 
 #[test]
-fn whole_document_discard_preserves_page_and_empty_apply_removes_only_observed_blocks() {
-    let (_db, f) = cold_input_fixture(ItemKind::Page);
+fn whole_document_discard_preserves_page_and_empty_apply_removes_only_observed_blocks(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (_db, f) = cold_input_fixture(ItemKind::Page)?;
     let page = seed_document(&f, "# Delete locally\n\nExisting\n");
     let scope = input_scope(&f);
     let opened = open_whole(&f, WRITER_A, &page.edit_context);
@@ -444,4 +455,5 @@ fn whole_document_discard_preserves_page_and_empty_apply_removes_only_observed_b
         )
         .unwrap();
     assert!(applied.edit.page.blocks.is_empty());
+    Ok(())
 }

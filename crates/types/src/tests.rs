@@ -1,24 +1,27 @@
 #[test]
 fn ids_sort_by_creation_and_carry_their_time() {
-    let ids: Vec<String> = (0..2000).map(|_| new_id("sp")).collect();
+    let ids: Vec<String> = (0..2000).map(|_| new_id("sp").unwrap()).collect();
     let mut sorted = ids.clone();
     sorted.sort();
     assert_eq!(ids, sorted, "same-millisecond ids keep creation order");
     assert!(ids.iter().all(|i| i.len() == 29 && i.starts_with("sp_")));
     let t = id_time_ms(&ids[0]).unwrap();
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as i64;
+    let now = i64::try_from(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis(),
+    )
+    .unwrap();
     assert!((now - t).abs() < 5_000);
     assert_eq!(id_time_ms(&format!("sp_{}", "ab".repeat(16))), None);
-    let before = new_ulid(now);
+    let before = new_ulid(now).unwrap();
     assert!(
-        new_ulid(now - 60_000) > before,
+        new_ulid(now - 60_000).unwrap() > before,
         "a clock step back still sorts later"
     );
     assert_eq!(
-        id_time_ms(&new_ulid(1_700_000_000_123)).map(|t| t >= 1_700_000_000_123),
+        id_time_ms(&new_ulid(1_700_000_000_123).unwrap()).map(|t| t >= 1_700_000_000_123),
         Some(true)
     );
 }
@@ -59,17 +62,17 @@ fn plan_total_and_line_ops() {
 
 #[test]
 fn ulids_sort_by_time_and_are_unique() {
-    let a = new_ulid(1_000);
-    let b = new_ulid(2_000);
+    let a = new_ulid(1_000).unwrap();
+    let b = new_ulid(2_000).unwrap();
     assert_eq!(a.len(), 26);
     assert!(a < b);
-    assert_ne!(new_ulid(5), new_ulid(5));
+    assert_ne!(new_ulid(5).unwrap(), new_ulid(5).unwrap());
 }
 
 #[test]
 fn ids_are_unique_and_prefixed() {
-    let a = new_id("sp");
-    let b = new_id("sp");
+    let a = new_id("sp").unwrap();
+    let b = new_id("sp").unwrap();
     assert_ne!(a, b);
     assert!(a.starts_with("sp_"));
     assert_eq!(a.len(), 3 + 26);
@@ -175,4 +178,49 @@ fn legacy_schema1_and_schema2_tool_proposal_bytes_remain_exact_without_review_li
         invalid["review"]["approves"] = true.into();
         assert!(serde_json::from_value::<ToolProposal>(invalid).is_err());
     }
+}
+
+#[test]
+fn voice_waveform_quantization_preserves_each_digit_and_nonfinite_samples() {
+    for digit in 0_u8..=15 {
+        let level = f32::from(digit) / 15.0;
+        let expected = char::from(b"0123456789abcdef"[usize::from(digit)]).to_string();
+        assert_eq!(VoiceMeta::encode(&[level]), expected);
+        let meta = VoiceMeta {
+            levels: expected,
+            ..VoiceMeta::default()
+        };
+        assert!((meta.bars()[0] - level).abs() < f32::EPSILON);
+    }
+    assert_eq!(
+        VoiceMeta::encode(&[f32::NAN, f32::NEG_INFINITY, f32::INFINITY]),
+        "00f"
+    );
+    assert_eq!(VoiceMeta::encode(&[0.499, 0.5, 0.501]), "788");
+    let meta = VoiceMeta {
+        levels: "👋g8".into(),
+        ..VoiceMeta::default()
+    };
+    assert_eq!(meta.bars().len(), 1);
+    assert!((meta.bars()[0] - 8.0 / 15.0).abs() < f32::EPSILON);
+}
+
+#[test]
+fn item_proposal_hash_preserves_legacy_domain_bytes_and_refuses_absent_output() {
+    let mut request: AgentRequest = serde_json::from_str(r#"{"id":"rq_fixed","agent":"agent","title":"Create","detail":"Exact","audience":"Private","action":"Reversible","content_hash":"","item":null,"line":null,"proposal":{"item":"it_fixed","kind":"Note","content":{"Text":{"text":"ação 👋"}},"origin":"reviewed","message":"Created","ai_cost_cents":42}}"#).unwrap();
+    assert_eq!(
+        request.proposal_hash("sp_fixed").as_deref(),
+        Some("490c0593e8c725cada758a45947fa0571e45117232fc074bab4ebc97affcaf7f")
+    );
+    assert_ne!(
+        request.proposal_hash("sp_other"),
+        request.proposal_hash("sp_fixed")
+    );
+    request.proposal.as_mut().unwrap().message.push('!');
+    assert_ne!(
+        request.proposal_hash("sp_fixed").as_deref(),
+        Some("490c0593e8c725cada758a45947fa0571e45117232fc074bab4ebc97affcaf7f")
+    );
+    request.proposal = None;
+    assert_eq!(request.proposal_hash("sp_fixed"), None);
 }

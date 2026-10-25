@@ -102,8 +102,9 @@ def source_contract(sources, library_name="client_core"):
                 metadata[meta_prefix + "INTERFACE_" + owner.upper()] = "callback"
             opening = exported.end() - 1
             body = masked[opening + 1:body_end(masked, opening)]
-            for method in re.finditer(r"(?P<constructor>#\[uniffi::constructor\]\s*)?(?:pub\s+)?(?:async\s+)?fn\s+(\w+)\s*(\([^{}]*?\)[^{};]*?)[{;]", body):
-                kind = "constructor" if method["constructor"] else "method"
+            for method in re.finditer(r"(?P<attributes>(?:#\[[^\]]*\]\s*)*)(?:pub\s+)?(?:async\s+)?fn\s+(\w+)\s*(\([^{}]*?\)[^{};]*?)[{;]", body):
+                constructor = re.search(r"#\[\s*uniffi::constructor\s*\]", method["attributes"])
+                kind = "constructor" if constructor else "method"
                 name = f"{kind}_{owner.lower()}_{method[2]}"
                 symbol = meta_prefix + name.upper()
                 if symbol in metadata:

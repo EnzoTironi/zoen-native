@@ -55,8 +55,11 @@ fn version_three(f: &PageFixture) {
     }
     assert_eq!(page(f).version, 3);
 }
-fn backup(f: &PageFixture, tag: &str) -> (PathBuf, PathBuf) {
-    let directory = std::env::temp_dir().join(types::new_id(tag));
+fn backup(
+    f: &PageFixture,
+    tag: &str,
+) -> std::result::Result<(PathBuf, PathBuf), Box<dyn std::error::Error>> {
+    let directory = std::env::temp_dir().join(types::new_id(tag)?);
     std::fs::create_dir(&directory).unwrap();
     let path = directory.join("state.sqlite");
     f.actor
@@ -66,7 +69,7 @@ fn backup(f: &PageFixture, tag: &str) -> (PathBuf, PathBuf) {
         .conn()
         .execute("VACUUM INTO ?1", [path.to_str().unwrap()])
         .unwrap();
-    (directory, path)
+    Ok((directory, path))
 }
 fn cold(f: &PageFixture, path: &Path, locale: &str) -> std::sync::Arc<Client> {
     let client = Client::open(path.to_str().unwrap().into(), locale.into()).unwrap();
@@ -114,7 +117,7 @@ fn decide_on(client: &Client, f: &PageFixture, request: &AgentRequest) {
 #[tokio::test]
 async fn existing_english_request_remains_in_portuguese_native_command_timeline_after_cold_reopen()
 {
-    let f = fixture();
+    let f = fixture().unwrap();
     version_three(&f);
     let turn = turn(&f);
     let command = command(&turn);
@@ -123,10 +126,10 @@ async fn existing_english_request_remains_in_portuguese_native_command_timeline_
     let english = old_prefix(&f, "Created");
     assert_eq!(request.tool_proposal.as_ref().unwrap().sha256, english);
     assert_ne!(english, old_prefix(&f, "Criado"));
-    let (directory, path) = backup(&f, "page-locale-en-pt");
+    let (directory, path) = backup(&f, "page-locale-en-pt").unwrap();
     let native = cold(&f, &path, "pt-BR");
     assert_eq!(
-        native.lock().state.items[&f.page].versions[0].note,
+        native.lock().state.items[&f.page].versions.initial.note,
         "Criado"
     );
     let dto = assert_request(&native, &f, &request);
@@ -205,10 +208,10 @@ async fn existing_english_request_remains_in_portuguese_native_command_timeline_
 #[test]
 fn pre_fix_portuguese_signed_request_survives_english_refold_and_exact_approval_without_rewriting_it(
 ) {
-    let f = fixture();
+    let f = fixture().unwrap();
     version_three(&f);
     // Save the real signed source/Page journal before the producer fixture opens a request.
-    let (directory, path) = backup(&f, "page-locale-pt-en");
+    let (directory, path) = backup(&f, "page-locale-pt-en").unwrap();
     let turn = turn(&f);
     let mut command = command(&turn);
     let staged = stage(&f, &turn, &command);
@@ -269,20 +272,26 @@ fn pre_fix_portuguese_signed_request_survives_english_refold_and_exact_approval_
 
 #[test]
 fn canonical_prefix_preserves_every_signed_later_note_and_refuses_arbitrary_legacy_labels() {
-    let f = fixture();
+    let f = fixture().unwrap();
     version_three(&f);
     let english = old_prefix(&f, "Created");
     let portuguese = old_prefix(&f, "Criado");
     let unknown = old_prefix(&f, "arbitrary caller-provided label");
     let mut e = f.actor.agent.lock();
     for note in ["Created", "Criado"] {
-        e.state.items.get_mut(&f.page).unwrap().versions[0].note = note.into();
+        e.state
+            .items
+            .get_mut(&f.page)
+            .unwrap()
+            .versions
+            .initial
+            .note = note.into();
         assert_eq!(tools::prefix(&e.state, &f.page, 3).unwrap(), english);
         assert!(tools::prefix_matches(&e.state, &f.page, 3, &english));
         assert!(tools::prefix_matches(&e.state, &f.page, 3, &portuguese));
         assert!(!tools::prefix_matches(&e.state, &f.page, 3, &unknown));
     }
-    e.state.items.get_mut(&f.page).unwrap().versions[1]
+    e.state.items.get_mut(&f.page).unwrap().versions.updates[0]
         .note
         .push_str(" changed after signing");
     assert!(!tools::prefix_matches(&e.state, &f.page, 3, &english));

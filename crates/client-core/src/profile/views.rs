@@ -1,6 +1,9 @@
 //! Readable profile/photo projection and bounded download demand.
 
-use super::*;
+use super::{
+    CoreError, Digest, Engine, Identity, IdentityKind, ProfileDto, ProfileFields,
+    ProfilePhotoBytes, Sha256, Wanted, MAX_PHOTO_BYTES, R,
+};
 
 impl Engine {
     // ── reading ──

@@ -74,7 +74,8 @@ async fn server(
 }
 
 #[tokio::test]
-async fn recovery_ui_retains_confirmed_key_after_upload_failure_and_retry() {
+async fn recovery_ui_retains_confirmed_key_after_upload_failure_and_retry(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (relay, server) = server(vec![
         ("200 OK", "{}"),
         ("503 Service Unavailable", "offline"),
@@ -93,7 +94,7 @@ async fn recovery_ui_retains_confirmed_key_after_upload_failure_and_retry() {
         .store
         .set_meta("relay_name", "test-relay")
         .unwrap();
-    let key = engine.backup_create_recovery_key();
+    let key = engine.backup_create_recovery_key()?;
     assert!(!engine.backup_status().enabled); // Merely showing/confirming a key has no side effect.
     assert!(engine
         .backup_enable_recovery_key(key.clone(), vault.clone())
@@ -117,6 +118,8 @@ async fn recovery_ui_retains_confirmed_key_after_upload_failure_and_retry() {
         let wrong = backup::recovery_keys(&"0".repeat(64)).unwrap();
         assert!(backup::unwrap_key(&wrong, &identity, &wrapped).is_err());
     }
+
+    Ok(())
 }
 
 #[tokio::test]
@@ -143,13 +146,14 @@ async fn recovery_ui_rejects_malformed_keys_before_network() {
 }
 
 #[tokio::test]
-async fn recovery_ui_refuses_password_mode_before_spending_a_guess() {
+async fn recovery_ui_refuses_password_mode_before_spending_a_guess(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     // A canonical public identity is validated before classifying the backup mode.
     let response = r#"{"mode":"passphrase","identity":"d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a","kdf":{},"generation":null}"#;
     let (relay, server) = server(vec![("200 OK", response)]).await;
     let engine = Client::open(":memory:".into(), "pt-BR".into()).unwrap();
     let vault: Arc<dyn SecretVault> = Arc::new(Vault::default());
-    let key = engine.backup_create_recovery_key();
+    let key = engine.backup_create_recovery_key()?;
     let result = engine
         .restore_backup_with_recovery_key(relay, "ana".into(), key, vault)
         .await;
@@ -165,15 +169,18 @@ async fn recovery_ui_refuses_password_mode_before_spending_a_guess() {
         "key-only restore must not send a password OPRF point"
     );
     assert_eq!(start["recovery_only"], true);
+
+    Ok(())
 }
 
 #[tokio::test]
-async fn recovery_ui_rejects_invalid_backup_identity_before_mode_or_key_work() {
+async fn recovery_ui_rejects_invalid_backup_identity_before_mode_or_key_work(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let response = r#"{"mode":"passphrase","identity":"fixture","kdf":{},"generation":null}"#;
     let (relay, server) = server(vec![("200 OK", response)]).await;
     let engine = Client::open(":memory:".into(), "pt-BR".into()).unwrap();
     let vault = Arc::new(Vault::default());
-    let key = engine.backup_create_recovery_key();
+    let key = engine.backup_create_recovery_key()?;
     let result = engine
         .restore_backup_with_recovery_key(relay, "ana".into(), key, vault.clone())
         .await;
@@ -187,4 +194,6 @@ async fn recovery_ui_rejects_invalid_backup_identity_before_mode_or_key_work() {
     let start: serde_json::Value = serde_json::from_slice(&requests[0]).unwrap();
     assert!(start["blinded"].is_null());
     assert_eq!(start["recovery_only"], true);
+
+    Ok(())
 }

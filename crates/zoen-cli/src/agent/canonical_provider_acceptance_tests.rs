@@ -145,7 +145,12 @@ async fn drive(client: &Arc<Client>, cx: &Ctx, space: &str, source: &str) -> boo
 
 /// Only a relay simulation for signed test events. Never copies secret material,
 /// edits event bodies, impersonates an account, or opens a concurrently owned DB.
-fn sequence_and_transfer(path: &Path, from: &str, to: &str, space: &str) {
+fn sequence_and_transfer(
+    path: &Path,
+    from: &str,
+    to: &str,
+    space: &str,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let source = store::Store::open(path.join(from).to_str().unwrap()).unwrap();
     let mut log = event_log::SpaceLog::from_events(space, source.events(space).unwrap()).unwrap();
     for pending in source
@@ -161,7 +166,7 @@ fn sequence_and_transfer(path: &Path, from: &str, to: &str, space: &str) {
         {
             event_log::verify_author(&pending.event).unwrap();
             source
-                .append_event(log.sequence(pending.event.clone()))
+                .append_event(log.sequence(pending.event.clone())?)
                 .unwrap();
         }
         source.outbox_remove(&pending.event.client_id).unwrap();
@@ -192,14 +197,15 @@ fn sequence_and_transfer(path: &Path, from: &str, to: &str, space: &str) {
         .unwrap()
         .verify()
         .unwrap();
+    Ok(())
 }
 async fn approve_as_owner(
     path: &Path,
     vault: Arc<dyn client_core::SecretVault>,
     space: &str,
     request: &client_core::AgentRequestDto,
-) {
-    sequence_and_transfer(path, "agent.sqlite", "owner.sqlite", space);
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    sequence_and_transfer(path, "agent.sqlite", "owner.sqlite", space)?;
     let owner = Client::open(
         path.join("owner.sqlite").to_str().unwrap().into(),
         "en".into(),
@@ -224,7 +230,8 @@ async fn approve_as_owner(
     assert_eq!(first["request"]["status"], "Approved");
     assert_eq!(first["standing_grant_id"], Value::Null);
     drop(owner);
-    sequence_and_transfer(path, "owner.sqlite", "agent.sqlite", space);
+    sequence_and_transfer(path, "owner.sqlite", "agent.sqlite", space)?;
+    Ok(())
 }
 fn private_write(path: &Path, value: &Value) {
     let mut options = std::fs::OpenOptions::new();
@@ -273,7 +280,8 @@ fn mark_once(directory: &Path) -> std::io::Result<()> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "explicit operator-only real Codex+Clef; one attempt, four Clef dispatches, three Codex turns; never ordinary QA"]
-async fn operator_codex_clef_canonical_approval_replay_and_cold_reopen() {
+async fn operator_codex_clef_canonical_approval_replay_and_cold_reopen(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     assert_eq!(std::env::var("ZOEN_TEST_REAL_CODEX").as_deref(), Ok("1"));
     assert_eq!(std::env::var("ZOEN_LIVE_CLEF_QA").as_deref(), Ok("1"));
     assert_eq!(std::env::var("ZOEN_BRAIN").as_deref(), Ok("codex-local"));
@@ -326,7 +334,7 @@ async fn operator_codex_clef_canonical_approval_replay_and_cold_reopen() {
         owner,
         source,
         base,
-    } = crate::deckcraft::tests::fixture_at(profile, [93; 32]);
+    } = crate::deckcraft::tests::fixture_at(profile, [93; 32])?;
     let space = client.item(base.item_id.clone()).unwrap().space_id;
     let expected = Expected {
         item: base.item_id.clone(),
@@ -364,7 +372,7 @@ async fn operator_codex_clef_canonical_approval_replay_and_cold_reopen() {
         approvals.push(json!({"request":request.id,"contentHash":request.tool_approval.as_ref().unwrap().content_hash,"proposal":proposal.tool_proposal}));
         drop(cx);
         drop(client);
-        approve_as_owner(&path, owner_vault.clone(), &space, &request).await;
+        approve_as_owner(&path, owner_vault.clone(), &space, &request).await?;
         client = canonical_tool_approval_tests::reopen(&path, vault.clone());
     }
     let document = client
@@ -432,6 +440,7 @@ async fn operator_codex_clef_canonical_approval_replay_and_cold_reopen() {
     outcome["acceptedReplayAndColdReopen"] = json!(true);
     private_write(&directory.join("outcome.json"), &outcome);
     drop(evidence);
+    Ok(())
 }
 
 #[cfg(test)]

@@ -3,8 +3,8 @@
 use super::*;
 
 pub(super) fn authenticated_wrong_owner_hash_space_and_duplicate_decisions_have_no_effect_on_ingest_or_replay(
-) {
-    let (chat, mut e) = Chat::create();
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (chat, mut e) = Chat::create()?;
     e.agent_create_plan(
         &chat.space,
         &chat.agent,
@@ -28,7 +28,7 @@ pub(super) fn authenticated_wrong_owner_hash_space_and_duplicate_decisions_have_
         },
     )
     .unwrap();
-    let other_space = new_id("sp");
+    let other_space = new_id("sp")?;
     e.append(
         &other_space,
         &chat.owner,
@@ -48,22 +48,22 @@ pub(super) fn authenticated_wrong_owner_hash_space_and_duplicate_decisions_have_
         },
     )
     .unwrap();
-    ingest_signed(&mut e, &chat.space, &stranger, resolution(&r));
+    ingest_signed(&mut e, &chat.space, &stranger, resolution(&r))?;
     let mut wrong_hash = resolution(&r);
     if let EventBody::RequestResolved { content_hash, .. } = &mut wrong_hash {
         *content_hash = "0".repeat(64);
     }
-    ingest_signed(&mut e, &chat.space, &chat.owner, wrong_hash);
-    ingest_signed(&mut e, &other_space, &chat.owner, resolution(&r));
+    ingest_signed(&mut e, &chat.space, &chat.owner, wrong_hash)?;
+    ingest_signed(&mut e, &other_space, &chat.owner, resolution(&r))?;
     assert_eq!(e.state.requests[&id].status, ReqStatus::Pending);
     assert!(e.items().is_empty());
     drop(e);
     let mut e = chat.reopen();
     assert_eq!(e.state.requests[&id].status, ReqStatus::Pending);
     assert!(e.items().is_empty());
-    ingest_signed(&mut e, &chat.space, &chat.owner, resolution(&r));
+    ingest_signed(&mut e, &chat.space, &chat.owner, resolution(&r))?;
     assert_eq!(e.items().len(), 1);
-    ingest_signed(&mut e, &chat.space, &chat.owner, resolution(&r));
+    ingest_signed(&mut e, &chat.space, &chat.owner, resolution(&r))?;
     let mut deny = resolution(&r);
     if let EventBody::RequestResolved {
         approved,
@@ -74,7 +74,7 @@ pub(super) fn authenticated_wrong_owner_hash_space_and_duplicate_decisions_have_
         *approved = false;
         *resolution = None;
     }
-    ingest_signed(&mut e, &chat.space, &chat.owner, deny);
+    ingest_signed(&mut e, &chat.space, &chat.owner, deny)?;
     assert_eq!(e.state.requests[&id].status, ReqStatus::Approved);
     assert_eq!(e.state.resolved_order.len(), 1);
     drop(e);
@@ -83,10 +83,13 @@ pub(super) fn authenticated_wrong_owner_hash_space_and_duplicate_decisions_have_
     assert_eq!(e.state.resolved_order.len(), 1);
     assert_eq!(e.agent_profile(&chat.agent).budget_spent_cents, Some(37));
     assert!(e.verify_all().iter().all(|r| r.valid));
+
+    Ok(())
 }
 
-pub(super) fn changed_proposals_impersonated_requests_and_forged_usage_are_not_projected() {
-    let (chat, mut e) = Chat::create();
+pub(super) fn changed_proposals_impersonated_requests_and_forged_usage_are_not_projected(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (chat, mut e) = Chat::create()?;
     e.agent_create_plan(
         &chat.space,
         &chat.agent,
@@ -98,7 +101,7 @@ pub(super) fn changed_proposals_impersonated_requests_and_forged_usage_are_not_p
     .unwrap();
     let r = e.state.requests[&e.requests()[0].id].clone();
     let mut changed = r.req.clone();
-    changed.id = new_id("rq");
+    changed.id = new_id("rq")?;
     changed.content_hash = changed.proposal_hash(&chat.space).unwrap();
     if let ItemContent::Plan(p) = &mut changed.proposal.as_mut().unwrap().content {
         p.sections[0].lines[0].text = "Unreviewed replacement".into();
@@ -108,9 +111,9 @@ pub(super) fn changed_proposals_impersonated_requests_and_forged_usage_are_not_p
         &chat.space,
         &chat.agent,
         EventBody::RequestOpened { request: changed },
-    );
+    )?;
     let mut impersonated = r.req.clone();
-    impersonated.id = new_id("rq");
+    impersonated.id = new_id("rq")?;
     impersonated.content_hash = impersonated.proposal_hash(&chat.space).unwrap();
     ingest_signed(
         &mut e,
@@ -119,7 +122,7 @@ pub(super) fn changed_proposals_impersonated_requests_and_forged_usage_are_not_p
         EventBody::RequestOpened {
             request: impersonated,
         },
-    );
+    )?;
     ingest_signed(
         &mut e,
         &chat.space,
@@ -129,7 +132,7 @@ pub(super) fn changed_proposals_impersonated_requests_and_forged_usage_are_not_p
             cents: 500,
             what: "forged charge".into(),
         },
-    );
+    )?;
     ingest_signed(
         &mut e,
         &chat.space,
@@ -139,17 +142,20 @@ pub(super) fn changed_proposals_impersonated_requests_and_forged_usage_are_not_p
             cents: -500,
             what: "negative charge".into(),
         },
-    );
+    )?;
     assert_eq!(e.requests().len(), 1);
     assert_eq!(e.agent_profile(&chat.agent).budget_spent_cents, Some(37));
     drop(e);
     let e = chat.reopen();
     assert_eq!(e.requests().len(), 1);
     assert_eq!(e.agent_profile(&chat.agent).budget_spent_cents, Some(37));
+
+    Ok(())
 }
 
-pub(super) fn claiming_an_owner_without_their_signed_grant_cannot_charge_for_a_proposal() {
-    let (chat, mut e) = Chat::create();
+pub(super) fn claiming_an_owner_without_their_signed_grant_cannot_charge_for_a_proposal(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (chat, mut e) = Chat::create()?;
     e.agent_create_plan(
         &chat.space,
         &chat.agent,
@@ -175,25 +181,27 @@ pub(super) fn claiming_an_owner_without_their_signed_grant_cannot_charge_for_a_p
         EventBody::GrantRevoked { grant: trust },
     )
     .unwrap();
-    req.id = new_id("rq");
+    req.id = new_id("rq")?;
     req.content_hash = req.proposal_hash(&chat.space).unwrap();
     ingest_signed(
         &mut e,
         &chat.space,
         &chat.agent,
         EventBody::RequestOpened { request: req },
-    );
+    )?;
     assert_eq!(e.requests().len(), 1);
     assert_eq!(e.agent_profile(&chat.agent).budget_spent_cents, Some(37));
     drop(e);
     let e = chat.reopen();
     assert_eq!(e.requests().len(), 1);
     assert_eq!(e.agent_profile(&chat.agent).budget_spent_cents, Some(37));
+
+    Ok(())
 }
 
 pub(super) fn an_approval_cannot_redirect_its_output_and_later_events_cannot_overwrite_or_edit_it_from_another_space(
-) {
-    let (chat, mut e) = Chat::create();
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (chat, mut e) = Chat::create()?;
     e.agent_create_plan(
         &chat.space,
         &chat.agent,
@@ -210,11 +218,11 @@ pub(super) fn an_approval_cannot_redirect_its_output_and_later_events_cannot_ove
         ..
     } = &mut redirected
     {
-        receipt.created_item = Some(new_id("it"));
+        receipt.created_item = Some(new_id("it")?);
     }
-    ingest_signed(&mut e, &chat.space, &chat.owner, redirected);
+    ingest_signed(&mut e, &chat.space, &chat.owner, redirected)?;
     assert!(e.items().is_empty());
-    ingest_signed(&mut e, &chat.space, &chat.owner, resolution(&r));
+    ingest_signed(&mut e, &chat.space, &chat.owner, resolution(&r))?;
     let p = r.req.proposal.as_ref().unwrap();
     let mut replacement = p.content.clone();
     if let ItemContent::Plan(doc) = &mut replacement {
@@ -230,8 +238,8 @@ pub(super) fn an_approval_cannot_redirect_its_output_and_later_events_cannot_ove
             content: replacement.clone(),
             origin: "overwrite".into(),
         },
-    );
-    let other = new_id("sp");
+    )?;
+    let other = new_id("sp")?;
     e.append(
         &other,
         &chat.owner,
@@ -251,11 +259,13 @@ pub(super) fn an_approval_cannot_redirect_its_output_and_later_events_cannot_ove
             content: replacement,
             note: "wrong Space".into(),
         },
-    );
+    )?;
     assert_eq!(e.item(&p.item).unwrap().title, "Persist this exact plan");
     assert_eq!(e.item(&p.item).unwrap().version, 1);
     drop(e);
     let e = chat.reopen();
     assert_eq!(e.item(&p.item).unwrap().title, "Persist this exact plan");
     assert_eq!(e.item(&p.item).unwrap().version, 1);
+
+    Ok(())
 }

@@ -14,10 +14,10 @@ use tokio_tungstenite::tungstenite::Message;
 
 struct Home(PathBuf);
 impl Home {
-    fn new() -> Self {
-        let path = std::env::temp_dir().join(types::new_id("zoen-host-startup"));
+    fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        let path = std::env::temp_dir().join(types::new_id("zoen-host-startup")?);
         fs::create_dir(&path).unwrap();
-        Self(path)
+        Ok(Self(path))
     }
     fn marker(&self) -> PathBuf {
         self.0.join("agent-ready")
@@ -117,7 +117,7 @@ async fn relay(mode: Mode) -> Relay {
             tokio::spawn(async move {
                 let mut ws = tokio_tungstenite::accept_async(socket).await.unwrap();
                 let Some(Ok(Message::Binary(bytes))) = ws.next().await else {
-                    return;
+                    return Ok(());
                 };
                 let ClientFrame::Hello {
                     identity,
@@ -154,7 +154,7 @@ async fn relay(mode: Mode) -> Relay {
                 .await
                 .unwrap();
                 let Some(Ok(Message::Binary(bytes))) = ws.next().await else {
-                    return;
+                    return Ok(());
                 };
                 let ClientFrame::Auth { sig } = ClientFrame::decode(&bytes).unwrap() else {
                     panic!("Auth");
@@ -253,7 +253,7 @@ async fn relay(mode: Mode) -> Relay {
                                     seq,
                                     &prev,
                                     &env.wire_hash(),
-                                ),
+                                )?,
                                 prev,
                                 env,
                             };
@@ -281,6 +281,7 @@ async fn relay(mode: Mode) -> Relay {
                         break;
                     }
                 }
+                Ok::<(), serde_json::Error>(())
             });
         }
     });
@@ -313,8 +314,9 @@ async fn prepared(
 }
 
 #[test]
-fn stale_marker_reset_is_locked_scoped_and_normal_drop_removes_fresh_marker() {
-    let home = Home::new();
+fn stale_marker_reset_is_locked_scoped_and_normal_drop_removes_fresh_marker(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let home = Home::new()?;
     fs::write(home.marker(), b"stale").unwrap();
     let retained = home.0.join("retained");
     fs::write(&retained, b"untouched").unwrap();
@@ -331,17 +333,20 @@ fn stale_marker_reset_is_locked_scoped_and_normal_drop_removes_fresh_marker() {
     drop(readiness);
     assert!(!home.marker().exists());
     assert_eq!(fs::read(&retained).unwrap(), b"untouched");
+    Ok(())
 }
 
 #[test]
-fn invalid_marker_directory_is_refused_without_broad_cleanup() {
-    let home = Home::new();
+fn invalid_marker_directory_is_refused_without_broad_cleanup(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let home = Home::new()?;
     fs::create_dir(home.marker()).unwrap();
     let retained = home.marker().join("retained");
     fs::write(&retained, b"untouched").unwrap();
     let lock = HostLock::acquire(&home.0).unwrap();
     assert!(Readiness::reset(&home.0, &lock).is_err());
     assert_eq!(fs::read(retained).unwrap(), b"untouched");
+    Ok(())
 }
 
 #[test]
@@ -351,10 +356,11 @@ fn unavailable_timeline_is_an_error_instead_of_a_zero_cursor() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn unsettled_sync_never_reads_agent_state_or_publishes_readiness() {
+async fn unsettled_sync_never_reads_agent_state_or_publishes_readiness(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut relay = relay(Mode::Unsynced).await;
     let citizen = citizen(&relay.url);
-    let home = Home::new();
+    let home = Home::new()?;
     let lock = HostLock::acquire(&home.0).unwrap();
     let readiness = Readiness::reset(&home.0, &lock).unwrap();
     online(&citizen.0).await;
@@ -362,13 +368,15 @@ async fn unsettled_sync_never_reads_agent_state_or_publishes_readiness() {
     assert!(!citizen.0.connection().synced);
     assert!(relay.calls.try_recv().is_err());
     assert!(!home.marker().exists());
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn online_synced_empty_outbox_with_unsettled_mls_never_becomes_ready() {
+async fn online_synced_empty_outbox_with_unsettled_mls_never_becomes_ready(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut relay = relay(Mode::MlsRefused).await;
     let citizen = citizen(&relay.url);
-    let home = Home::new();
+    let home = Home::new()?;
     let lock = HostLock::acquire(&home.0).unwrap();
     let readiness = Readiness::reset(&home.0, &lock).unwrap();
     online(&citizen.0).await;
@@ -393,10 +401,12 @@ async fn online_synced_empty_outbox_with_unsettled_mls_never_becomes_ready() {
     assert!(relay.publications.load(Ordering::SeqCst) > 0);
     assert!(relay.calls.try_recv().is_err());
     assert!(!home.marker().exists());
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn initial_cursor_ack_refusal_cannot_publish_readiness() {
+async fn initial_cursor_ack_refusal_cannot_publish_readiness(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let relay = relay(Mode::AdvanceRefused).await;
     let citizen = citizen(&relay.url);
     let space = citizen
@@ -410,17 +420,19 @@ async fn initial_cursor_ack_refusal_cannot_publish_readiness() {
             "Existing task, never inferred during startup.".into(),
         )
         .unwrap();
-    let home = Home::new();
+    let home = Home::new()?;
     let lock = HostLock::acquire(&home.0).unwrap();
     let readiness = Readiness::reset(&home.0, &lock).unwrap();
     online(&citizen.0).await;
     assert!(prepared(&citizen.0, &readiness).await.is_err());
     assert!(relay.cursors.lock().unwrap().is_empty());
     assert!(!home.marker().exists());
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn readiness_waits_for_all_fresh_cursor_acks_and_preserves_existing_cursor() {
+async fn readiness_waits_for_all_fresh_cursor_acks_and_preserves_existing_cursor(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut relay = relay(Mode::HoldAdvances).await;
     let citizen = citizen(&relay.url);
     let existing = citizen
@@ -443,7 +455,7 @@ async fn readiness_waits_for_all_fresh_cursor_acks_and_preserves_existing_cursor
         .create_group_with("Empty".into(), vec![], PrivacyDto::Closed)
         .unwrap();
     relay.cursors.lock().unwrap().insert(existing.clone(), 77);
-    let home = Home::new();
+    let home = Home::new()?;
     let lock = HostLock::acquire(&home.0).unwrap();
     let readiness = Readiness::reset(&home.0, &lock).unwrap();
     online(&citizen.0).await;
@@ -476,19 +488,22 @@ async fn readiness_waits_for_all_fresh_cursor_acks_and_preserves_existing_cursor
     assert_eq!(cursors, *relay.cursors.lock().unwrap());
     assert!(home.marker().is_file());
     assert!(relay.calls.try_recv().is_err());
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn actual_marker_creation_failure_keeps_startup_failed_after_seed() {
+async fn actual_marker_creation_failure_keeps_startup_failed_after_seed(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let relay = relay(Mode::Normal).await;
     let citizen = citizen(&relay.url);
-    let home = Home::new();
+    let home = Home::new()?;
     let lock = HostLock::acquire(&home.0).unwrap();
     let readiness = Readiness::reset(&home.0, &lock).unwrap();
     fs::create_dir(home.marker()).unwrap(); // Actual OS create_new failure, not an injected policy.
     online(&citizen.0).await;
     assert!(prepared(&citizen.0, &readiness).await.is_err());
     assert!(!home.marker().is_file());
+    Ok(())
 }
 
 mod paged;

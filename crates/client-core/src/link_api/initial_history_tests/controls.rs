@@ -31,13 +31,14 @@ pub(super) async fn cancellation_deadline_and_single_receiver_guard_leave_pendin
     }));
 }
 
-pub(super) fn history_ready_is_a_content_free_authenticated_primary_hint_only_while_pending() {
+pub(super) fn history_ready_is_a_content_free_authenticated_primary_hint_only_while_pending(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let core = Client::open(":memory:".into(), "en-US".into()).unwrap();
     install_link(&core);
     let primary = core.lock().store.meta(META_PRIMARY).unwrap().unwrap();
     let recipient = core.account().unwrap().device_id;
-    let (recipient_secret, recipient_public) = link::key_pair();
-    let (sender_secret, sender_public) = link::key_pair();
+    let (recipient_secret, recipient_public) = link::key_pair()?;
+    let (sender_secret, sender_public) = link::key_pair()?;
     let secret = hex::encode([41; 32]);
     core.lock().add_peer(Peer {
         device: primary.clone(),
@@ -81,4 +82,6 @@ pub(super) fn history_ready_is_a_content_free_authenticated_primary_hint_only_wh
         e.device_message(&primary, &recipient, sealed);
         assert!(!e.take_initial_history_ready());
     }
+
+    Ok(())
 }

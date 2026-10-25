@@ -4,9 +4,9 @@ use super::*;
 pub(in crate::tests::retained::image_tasks) async fn run(
     f: &mut Fixture,
     intent: crate::ImageReviewIntent,
-) -> (String, String, Envelope) {
-    let relay = relay::Relay::start(f).await;
-    Box::pin(binding::genesis(f, &relay)).await;
+) -> std::result::Result<(String, String, Envelope), Box<dyn std::error::Error>> {
+    let relay = relay::Relay::start(f).await?;
+    Box::pin(binding::genesis(f, &relay)).await?;
     let proxy = proxy::Proxy::start(relay.address).await;
     let target = relay.target(f, proxy.address);
     let unavailable = crate::ImageDeliveryTarget::configured(
@@ -28,7 +28,7 @@ pub(in crate::tests::retained::image_tasks) async fn run(
     f.world.runtime.refuse_unproven_image_activation().await;
     assert_eq!(head(f).await, before_activation);
     f.message("I added a message while image review activation was offline.")
-        .await;
+        .await?;
     let before = head(f).await;
     assert_eq!(before.seq, before_activation.seq + 1);
     output::cold(f).await;
@@ -138,5 +138,5 @@ pub(in crate::tests::retained::image_tasks) async fn run(
     f.head = Some(after);
     relay.stop().await;
     println!("native image review: durable original before send, real lost WS Accepted, cold exact-wire recovery and one review/no paid attempt PASS (production gate closed)");
-    original
+    Ok(original)
 }

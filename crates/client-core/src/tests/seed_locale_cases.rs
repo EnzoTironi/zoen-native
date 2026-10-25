@@ -24,8 +24,9 @@ pub(super) fn seed_builds_the_story_and_every_log_verifies() {
     assert_eq!(plan.plan.as_ref().unwrap().total_cents, 138_800);
 }
 
-pub(super) fn demo_receipts_reactions_and_threads_survive_reopen() {
-    let dir = std::env::temp_dir().join(format!("demo-{}", types::new_id("t")));
+pub(super) fn demo_receipts_reactions_and_threads_survive_reopen(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = std::env::temp_dir().join(format!("demo-{}", types::new_id("t")?));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("demo.sqlite").to_string_lossy().to_string();
     for first in [true, false] {
@@ -60,10 +61,13 @@ pub(super) fn demo_receipts_reactions_and_threads_survive_reopen() {
         assert!(e.verify_all().iter().all(|r| r.valid));
     }
     std::fs::remove_dir_all(dir).unwrap();
+
+    Ok(())
 }
 
-pub(super) fn everything_persists_and_reverifies_after_reopen() {
-    let dir = std::env::temp_dir().join(format!("client-test-{}", types::new_id("t")));
+pub(super) fn everything_persists_and_reverifies_after_reopen(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = std::env::temp_dir().join(format!("client-test-{}", types::new_id("t")?));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("client.sqlite").to_string_lossy().to_string();
     let (plan_id, version, events) = {
@@ -108,6 +112,8 @@ pub(super) fn everything_persists_and_reverifies_after_reopen() {
     let s = e.space(zoen_dm.id).unwrap();
     assert!(s.last_preview.contains("Log inválido"));
     let _ = std::fs::remove_dir_all(dir);
+
+    Ok(())
 }
 
 pub(super) fn search_finds_items_and_messages_without_accents() {

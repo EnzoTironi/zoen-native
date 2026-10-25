@@ -4,11 +4,14 @@ mod output;
 mod policy_context;
 mod reference;
 mod review;
-use super::*;
+use super::{
+    direct_writers, DeviceCore, Event, EventBody, FileDoc, ItemContent, ItemKind, NativeError,
+    NativeFrontier, NativeImage, Result, SpaceLog, ToolProposal, MAX_EVENT_BYTES,
+};
 use crate::image_tasks::{self, ImageTaskInput};
 pub use output::PreparedImageTask;
 
-/// Not constructible/deserializable by hosts, models or WebViews. These facts
+/// Not constructible/deserializable by hosts, models or `WebViews`. These facts
 /// still require live runtime source, directory, budget and continuity fences.
 pub struct ImageTaskFacts {
     pub(super) request: String,
@@ -26,27 +29,35 @@ impl std::fmt::Debug for ImageTaskFacts {
     }
 }
 impl ImageTaskFacts {
+    #[must_use]
     pub fn request(&self) -> &str {
         &self.request
     }
+    #[must_use]
     pub fn proposal(&self) -> &ToolProposal {
         &self.proposal
     }
+    #[must_use]
     pub fn content_hash(&self) -> &str {
         &self.content_hash
     }
+    #[must_use]
     pub fn space(&self) -> &str {
         &self.space
     }
+    #[must_use]
     pub fn agent(&self) -> &str {
         &self.agent
     }
+    #[must_use]
     pub fn frontier(&self) -> &NativeFrontier {
         &self.frontier
     }
+    #[must_use]
     pub fn expires_at_ms(&self) -> i64 {
         self.expires_at_ms
     }
+    #[must_use]
     pub fn input(&self) -> &ImageTaskInput {
         &self.input
     }

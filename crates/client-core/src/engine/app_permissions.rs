@@ -1,5 +1,9 @@
 //! Existing app device grants, trust and state projection.
-use super::*;
+use super::{
+    apps, new_id, not_found, now_ms, t, trust_dto, AppMetricDto, AppStateDto, Capability,
+    CoreError, DeviceGrantDto, Engine, EventBody, Grant, GrantScope, GrantState, ItemContent,
+    ItemState, State, TrustLevel, Value, R,
+};
 
 impl Engine {
     // ── MCP Apps: o núcleo é o servidor MCP local dos mini-apps embutidos ──
@@ -17,7 +21,7 @@ impl Engine {
             !g.revoked
                 && Some(g.grant.grantor.as_str()) == me
                 && g.grant.grantee.as_deref() == Some(grantee.as_str())
-                && g.grant.expires_at_ms.map(|e| e > now).unwrap_or(true)
+                && g.grant.expires_at_ms.is_none_or(|e| e > now)
                 && matches!(g.grant.capability, Capability::Device { .. })
         })
     }
@@ -60,7 +64,7 @@ impl Engine {
         }
         let me = self.me_id()?;
         let grant = Grant {
-            id: new_id("gr"),
+            id: new_id("gr")?,
             grantor: me.clone(),
             grantee: Some(format!("app:{item}")),
             scope: GrantScope::Item(item.into()),
@@ -114,7 +118,7 @@ impl Engine {
             .grants
             .iter()
             .rev()
-            .filter(|g| !g.revoked && g.grant.expires_at_ms.map(|e| e > now).unwrap_or(true))
+            .filter(|g| !g.revoked && g.grant.expires_at_ms.is_none_or(|e| e > now))
             .filter_map(|g| {
                 let Capability::Device {
                     capability,
@@ -135,8 +139,7 @@ impl Engine {
                     item_id: item.clone(),
                     item_title: doc.title.clone(),
                     app_name: apps::spec(&doc.app)
-                        .map(|s| s.name.to_string())
-                        .unwrap_or_else(|| doc.app.clone()),
+                        .map_or_else(|| doc.app.clone(), |s| s.name.to_string()),
                     space_title: self
                         .state
                         .spaces

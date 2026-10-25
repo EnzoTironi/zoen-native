@@ -44,6 +44,7 @@ pub enum CallSignal {
 }
 
 impl CallSignal {
+    #[must_use]
     pub fn call_id(&self) -> &str {
         match self {
             Self::Invite { call_id, .. }
@@ -75,12 +76,14 @@ pub struct CallRecord {
 }
 
 impl CallRecord {
+    #[must_use]
     pub fn ringing_at(&self, now_ms: i64) -> bool {
         !self.terminal()
             && self.accepted_device.is_none()
             && now_ms >= self.invited_at_ms
             && now_ms < self.expires_at_ms
     }
+    #[must_use]
     pub fn terminal(&self) -> bool {
         self.invalidated || self.end_reason.is_some()
     }

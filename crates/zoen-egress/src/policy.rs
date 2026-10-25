@@ -24,6 +24,7 @@ fn default_ports() -> Vec<u16> {
 }
 
 impl EgressRule {
+    #[must_use]
     pub fn host(host: &str) -> Self {
         EgressRule {
             host: host.to_ascii_lowercase(),
@@ -32,6 +33,7 @@ impl EgressRule {
         }
     }
 
+    #[must_use]
     pub fn matches(&self, host: &str, port: u16, method: &str) -> bool {
         host_matches(&self.host, host)
             && self.ports.contains(&port)
@@ -40,6 +42,9 @@ impl EgressRule {
     }
 
     /// Rejects IP literals, bare wildcards and empty hosts.
+    ///
+    /// # Errors
+    /// Rejects invalid domain patterns, IP literals and empty port sets.
     pub fn validate(&self) -> Result<(), String> {
         let h = self.host.strip_prefix("*.").unwrap_or(&self.host);
         if h.is_empty() || h.contains('*') || !h.contains('.') {
@@ -63,18 +68,21 @@ pub struct SecretBinding {
 }
 
 impl SecretBinding {
+    #[must_use]
     pub fn allows(&self, host: &str) -> bool {
         self.hosts.iter().any(|p| host_matches(p, host))
     }
 }
 
 /// What code and models see instead of a secret.
+#[must_use]
 pub fn placeholder(name: &str) -> String {
     format!("{PLACEHOLDER_PREFIX}{name}")
 }
 pub const PLACEHOLDER_PREFIX: &str = "zoen-secret://";
 
 /// `pattern` is a host or `*.domain`; comparison ignores case and a trailing dot.
+#[must_use]
 pub fn host_matches(pattern: &str, host: &str) -> bool {
     let host = host.trim_end_matches('.').to_ascii_lowercase();
     let pattern = pattern.trim_end_matches('.').to_ascii_lowercase();
@@ -87,6 +95,7 @@ pub fn host_matches(pattern: &str, host: &str) -> bool {
 /// Addresses no sandbox may reach, even through an allowlisted name: loopback, private,
 /// link-local (cloud metadata lives at 169.254.169.254), carrier-grade NAT, multicast and
 /// unspecified, in IPv4 and IPv6 (including IPv4-mapped).
+#[must_use]
 pub fn is_forbidden(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => forbidden_v4(v4),

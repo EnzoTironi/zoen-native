@@ -21,7 +21,7 @@ pub async fn exercise(
     outsider: &Author,
     site: &str,
     restored: &Receipt,
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let read = query(author, site, None);
     let history = service.inspect(&read, NOW).await.unwrap();
     assert_eq!(history.head.as_ref(), Some(&restored.head));
@@ -34,11 +34,11 @@ pub async fn exercise(
         Err(Error::Unauthorized)
     );
     let empty = service
-        .inspect(&query(author, &types::new_secret_id("site"), None), NOW)
+        .inspect(&query(author, &types::new_secret_id("site")?, None), NOW)
         .await
         .unwrap();
     assert!(empty.head.is_none() && empty.receipts.is_empty());
-    let mut alternate = request(author, site, Some(restored.head.clone()), FIRST, 1);
+    let mut alternate = request(author, site, Some(restored.head.clone()), FIRST, 1)?;
     alternate.mutation.public_origin = "https://another.example.test".into();
     sign(author, &mut alternate);
     assert_eq!(
@@ -49,10 +49,10 @@ pub async fn exercise(
         service.inspect(&read, NOW).await.unwrap().head,
         Some(restored.head.clone())
     );
-    let paginated = types::new_secret_id("site");
+    let paginated = types::new_secret_id("site")?;
     let mut previous = None;
     for _ in 0..102 {
-        let change = request(author, &paginated, previous, FIRST, 1);
+        let change = request(author, &paginated, previous, FIRST, 1)?;
         previous = Some(service.apply(&change, Some(FIRST), NOW).await.unwrap().head);
     }
     let first = service
@@ -71,4 +71,5 @@ pub async fn exercise(
         first.receipts.last().unwrap().previous_head.as_ref(),
         Some(&second.receipts[0].head)
     );
+    Ok(())
 }

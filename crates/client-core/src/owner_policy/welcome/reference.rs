@@ -1,6 +1,6 @@
 //! Existing link.asked metadata associates one signed outbox original with its
 //! canonical confirmation. It is not a second membership or financial journal.
-use super::*;
+use super::{denied, invalid, Deserialize, Engine, Event, EventBody, Seen, Serialize, R};
 
 const MAX_BYTES: usize = 16_384;
 

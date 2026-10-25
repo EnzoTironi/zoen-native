@@ -8,7 +8,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use types::*;
+use types::{ActionClass, AgentRequest, Capability, EventBody, IdentityKind, ToolProposal};
 
 mod review;
 

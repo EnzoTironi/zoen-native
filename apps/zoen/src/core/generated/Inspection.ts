@@ -3,6 +3,6 @@ import type { Receipt } from "./Receipt";
 
 export type Inspection = { site_id: string, head: string | null, active: boolean, 
 /**
- * Newest first, at most 100; historical order follows previous_head links.
+ * Newest first, at most 100; historical order follows `previous_head` links.
  */
 receipts: Array<Receipt>, next_before: string | null, };

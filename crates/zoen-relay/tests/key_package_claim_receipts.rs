@@ -23,10 +23,10 @@ struct Database {
     name: String,
 }
 impl Database {
-    async fn new() -> Self {
+    async fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
         let admin =
             std::env::var("ZOEN_TEST_PG").expect("set ZOEN_TEST_PG for receipt transaction tests");
-        let name = format!("zoen_claim_{}", &Signer::generate().id()[..16]);
+        let name = format!("zoen_claim_{}", &Signer::generate()?.id()[..16]);
         let mut connection = PgConnection::connect(&admin).await.unwrap();
         sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {name}")))
             .execute(&mut connection)
@@ -35,7 +35,7 @@ impl Database {
         let base = admin.rsplit_once('/').unwrap().0;
         let pool = PgPool::connect(&format!("{base}/{name}")).await.unwrap();
         sqlx::migrate!("./migrations").run(&pool).await.unwrap();
-        Self { pool, admin, name }
+        Ok(Self { pool, admin, name })
     }
     async fn finish(self) {
         self.pool.close().await;
@@ -48,9 +48,12 @@ impl Database {
         .await
         .unwrap();
     }
-    async fn person(&self, handle: &str) -> Author {
-        let root = Signer::generate();
-        let author = Author::device(&root, Signer::generate());
+    async fn person(
+        &self,
+        handle: &str,
+    ) -> std::result::Result<Author, Box<dyn std::error::Error>> {
+        let root = Signer::generate()?;
+        let author = Author::device(&root, Signer::generate()?);
         let profile = Identity {
             owner_proof: None,
             id: root.id(),
@@ -74,14 +77,17 @@ impl Database {
         .await
         .unwrap();
         tx.commit().await.unwrap();
-        author
+        Ok(author)
     }
-    async fn publish(&self, author: &Author) {
+    async fn publish(
+        &self,
+        author: &Author,
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut connection = rusqlite::Connection::open_in_memory().unwrap();
         mls::migrate(&mut connection).unwrap();
         let device = mls::Device::new(
             &connection,
-            Signer::generate().secret(),
+            Signer::generate()?.secret(),
             &author.identity,
             author.key.secret(),
             author.cert.as_deref().unwrap(),
@@ -105,6 +111,7 @@ impl Database {
         )
         .await
         .unwrap());
+        Ok(())
     }
     async fn stock(&self, target: &Author) -> i64 {
         sqlx::query_scalar(
@@ -135,12 +142,13 @@ async fn claim(
 }
 
 #[tokio::test]
-async fn concurrent_retries_use_one_transactional_receipt() {
-    let d = Database::new().await;
-    let actor = d.person("ana").await;
-    let target = d.person("bruno").await;
-    d.publish(&target).await;
-    let operation = types::new_ulid(now());
+async fn concurrent_retries_use_one_transactional_receipt(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let d = Database::new().await?;
+    let actor = d.person("ana").await?;
+    let target = d.person("bruno").await?;
+    d.publish(&target).await?;
+    let operation = types::new_ulid(now())?;
     let (first, second) = tokio::join!(
         claim(&d.pool, &actor, &target, &operation),
         claim(&d.pool, &actor, &target, &operation)
@@ -149,15 +157,17 @@ async fn concurrent_retries_use_one_transactional_receipt() {
     assert_eq!(first.len(), 1);
     assert_eq!(d.stock(&target).await, 3);
     d.finish().await;
+    Ok(())
 }
 
 #[tokio::test]
-async fn receipt_capacity_preserves_replay_and_rolls_back_new_consumption() {
-    let d = Database::new().await;
-    let actor = d.person("ana").await;
-    let target = d.person("bruno").await;
-    d.publish(&target).await;
-    let operation = types::new_ulid(now());
+async fn receipt_capacity_preserves_replay_and_rolls_back_new_consumption(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let d = Database::new().await?;
+    let actor = d.person("ana").await?;
+    let target = d.person("bruno").await?;
+    d.publish(&target).await?;
+    let operation = types::new_ulid(now())?;
     let original = claim(&d.pool, &actor, &target, &operation).await;
     let empty = ServerFrame::Res {
         id: 0,
@@ -171,7 +181,7 @@ async fn receipt_capacity_preserves_replay_and_rolls_back_new_consumption() {
         .bind(&actor.identity).bind(actor.device.as_deref().unwrap()).bind(vec![target.identity.clone()])
         .bind(&empty).bind(now() + KEY_PACKAGE_CLAIM_TTL_MS).bind(MAX_RECEIPTS - 1).execute(&d.pool).await.unwrap();
     assert_eq!(claim(&d.pool, &actor, &target, &operation).await, original);
-    let next = types::new_ulid(now());
+    let next = types::new_ulid(now())?;
     let error = key_package_claims::claim(
         &d.pool,
         &actor.identity,
@@ -210,15 +220,17 @@ async fn receipt_capacity_preserves_replay_and_rolls_back_new_consumption() {
         "byte-cap rejection after DELETE must roll back consumption"
     );
     d.finish().await;
+    Ok(())
 }
 
 #[tokio::test]
-async fn indexed_cleanup_deletes_at_most_a_batch_and_retains_live_receipts() {
-    let d = Database::new().await;
-    let actor = d.person("ana").await;
-    let target = d.person("bruno").await;
-    d.publish(&target).await;
-    let operation = types::new_ulid(now());
+async fn indexed_cleanup_deletes_at_most_a_batch_and_retains_live_receipts(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let d = Database::new().await?;
+    let actor = d.person("ana").await?;
+    let target = d.person("bruno").await?;
+    d.publish(&target).await?;
+    let operation = types::new_ulid(now())?;
     let original = claim(&d.pool, &actor, &target, &operation).await;
     let empty = ServerFrame::Res {
         id: 0,
@@ -243,4 +255,5 @@ async fn indexed_cleanup_deletes_at_most_a_batch_and_retains_live_receipts() {
     assert_eq!(claim(&d.pool, &actor, &target, &operation).await, original);
     assert_eq!(d.stock(&target).await, 3);
     d.finish().await;
+    Ok(())
 }

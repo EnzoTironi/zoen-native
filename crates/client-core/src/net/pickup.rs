@@ -1,6 +1,9 @@
 //! Cancelable immutable pairing-mailbox transport under one deadline.
 
-use super::*;
+use super::{
+    auth_message, recv, send, ws_url, ClientFrame, Duration, Op, PickupError, Reply, ServerFrame,
+    StreamExt, CAPABILITIES, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION,
+};
 
 /// Waits for a link box as a device with no account yet (ADR 0045): it signs in as itself
 /// (its device key as identity, self-certified), which lets it fetch and nothing else.
@@ -57,7 +60,10 @@ pub(super) async fn fetch_link_attempt(
         &mut sink,
         &ClientFrame::Hello {
             protocol: PROTOCOL_VERSION,
-            capabilities: CAPABILITIES.iter().map(|c| c.to_string()).collect(),
+            capabilities: CAPABILITIES
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect(),
             identity: me.clone(),
             device: me.clone(),
             cert: key

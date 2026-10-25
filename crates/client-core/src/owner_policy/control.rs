@@ -1,5 +1,8 @@
 //! Dedicated non-model controls, extracted only from confirmed signed MLS events.
-use super::*;
+use super::{
+    denied, invalid, Client, CoreError, Engine, EventBody, IdentityKind, OwnerPolicyScope,
+    OwnerPolicyStatus, Privacy, SpaceKind, R,
+};
 use types::{owner_budget::SignedOwnerPolicy, Event, OwnerPolicyOutcome};
 
 /// Minted from the actual Core log; never from a prompt, model or IPC argument.
@@ -12,21 +15,27 @@ pub struct OwnerPolicySubmission {
     digest: String,
 }
 impl OwnerPolicySubmission {
+    #[must_use]
     pub fn sequence(&self) -> u64 {
         self.sequence
     }
+    #[must_use]
     pub fn source(&self) -> &str {
         &self.source
     }
+    #[must_use]
     pub fn space(&self) -> &str {
         &self.space
     }
+    #[must_use]
     pub fn agent(&self) -> &str {
         &self.agent
     }
+    #[must_use]
     pub fn signed(&self) -> &SignedOwnerPolicy {
         &self.signed
     }
+    #[must_use]
     pub fn digest(&self) -> &str {
         &self.digest
     }
@@ -245,7 +254,7 @@ impl Engine {
     ) -> R<bool> {
         let pending = self.store.outbox()?;
         Ok(pending.iter().map(|entry| &entry.event)
-            .chain(self.logs.get(submission.space()).into_iter().flat_map(|log| log.events()))
+            .chain(self.logs.get(submission.space()).into_iter().flat_map(event_log::SpaceLog::events))
             .any(|event| {
                 matches!(&event.body, EventBody::OwnerPolicyReported { source, policy_digest, outcome: previous }
                     if event.space == submission.space() && event.author == submission.agent()

@@ -64,6 +64,7 @@ fn project(input: impl Read, space: &str) -> Result<Projection, Rejected> {
             || entry.env.space() != space
             || entry.prev != previous
             || event_log::chain_hash(space, entry.seq, &entry.prev, &entry.env.wire_hash())
+                .map_err(|_| Rejected::Chain)?
                 != entry.hash
         {
             return Err(Rejected::Chain);
@@ -103,16 +104,15 @@ fn main() -> std::process::ExitCode {
         return std::process::ExitCode::FAILURE;
     };
     match project(io::stdin().lock(), space) {
-        Ok(result) => match serde_json::to_string(&result) {
-            Ok(json) => {
+        Ok(result) => {
+            if let Ok(json) = serde_json::to_string(&result) {
                 println!("{json}");
                 std::process::ExitCode::SUCCESS
-            }
-            Err(_) => {
+            } else {
                 eprintln!("metadata rejected: output");
                 std::process::ExitCode::FAILURE
             }
-        },
+        }
         Err(reason) => {
             eprintln!("metadata rejected: {reason:?}");
             std::process::ExitCode::FAILURE

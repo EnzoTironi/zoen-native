@@ -58,8 +58,9 @@ pub(in crate::tests) struct ReviewedJourney {
     original_bytes: Vec<u8>,
 }
 
-pub(in crate::tests) async fn review() -> ReviewedJourney {
-    let mut f = Fixture::with_managed_output().await;
+pub(in crate::tests) async fn review(
+) -> std::result::Result<ReviewedJourney, Box<dyn std::error::Error>> {
+    let mut f = Fixture::with_managed_output().await?;
     let original_bytes = png();
     assert!(original_bytes.len() > 4 * 1024 * 1024);
     let provider = provider::Provider::start(&original_bytes).await;
@@ -90,9 +91,9 @@ pub(in crate::tests) async fn review() -> ReviewedJourney {
             expires_at_ms: None,
         },
     })
-    .await;
+    .await?;
     f.message("Create one sky image after my explicit review.")
-        .await;
+        .await?;
     let source = f
         .log
         .read(&f.space, f.head.as_ref().unwrap().seq, 1)
@@ -154,7 +155,7 @@ pub(in crate::tests) async fn review() -> ReviewedJourney {
             },
         },
     };
-    let (request, approval_hash, _) = delivery::review(&mut f, review_intent).await;
+    let (request, approval_hash, _) = delivery::review(&mut f, review_intent).await?;
     f.encrypted(EventBody::RequestResolved {
         request: request.clone(),
         approved: true,
@@ -167,7 +168,7 @@ pub(in crate::tests) async fn review() -> ReviewedJourney {
             tool_decision: Some(ToolDecision::ApproveOnce),
         }),
     })
-    .await;
+    .await?;
     let before_runs = f.world.runtime.pending_reply_runs(64).await.unwrap();
     let refreshed = f
         .world
@@ -185,17 +186,19 @@ pub(in crate::tests) async fn review() -> ReviewedJourney {
         before_runs,
         "applying the real owner review must not discover an unrelated chat run"
     );
-    ReviewedJourney {
+    Ok(ReviewedJourney {
         fixture: f,
         request,
         actor,
         price,
         provider,
         original_bytes,
-    }
+    })
 }
 
-pub(in crate::tests) async fn prepare(reviewed: ReviewedJourney) -> PreparedJourney {
+pub(in crate::tests) async fn prepare(
+    reviewed: ReviewedJourney,
+) -> std::result::Result<PreparedJourney, Box<dyn std::error::Error>> {
     let ReviewedJourney {
         mut fixture,
         request,
@@ -269,7 +272,7 @@ pub(in crate::tests) async fn prepare(reviewed: ReviewedJourney) -> PreparedJour
     assert_eq!(provider.sends.load(Ordering::SeqCst), 1);
     fixture
         .message("The conversation continued while image output activation was offline.")
-        .await;
+        .await?;
     output::cold(&mut fixture).await;
     fixture
         .world
@@ -340,16 +343,18 @@ pub(in crate::tests) async fn prepare(reviewed: ReviewedJourney) -> PreparedJour
             .await,
         1
     );
-    PreparedJourney {
+    Ok(PreparedJourney {
         fixture,
         run,
         output,
         provider,
         model,
-    }
+    })
 }
 
-pub(in crate::tests) async fn deliver(prepared: PreparedJourney) {
+pub(in crate::tests) async fn deliver(
+    prepared: PreparedJourney,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let PreparedJourney {
         mut fixture,
         run,
@@ -357,7 +362,7 @@ pub(in crate::tests) async fn deliver(prepared: PreparedJourney) {
         provider,
         model,
     } = prepared;
-    delivery::run(&mut fixture, &run, &output).await;
+    delivery::run(&mut fixture, &run, &output).await?;
     assert_eq!(provider.sends.load(Ordering::SeqCst), 1);
     assert_eq!(
         fixture.world.balance().await,
@@ -384,4 +389,5 @@ pub(in crate::tests) async fn deliver(prepared: PreparedJourney) {
     drop(provider);
     fixture.finish().await;
     println!("native image journey: signed review, real MLS task, shared bill, canonical blob PUT, original relay publication and lost ACK cold recovery PASS (actual unpaid loopback HTTP gateway; production output gate closed)");
+    Ok(())
 }

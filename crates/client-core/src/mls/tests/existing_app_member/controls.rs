@@ -107,9 +107,9 @@ fn observed_owner_device_membership_head_and_capability_gate_disclosure_without_
     );
     assert!(f.owner.share_app_current(c, "stale").is_err());
     assert_eq!(counts(&f.owner), pending);
-    publish(&mut f.owner, &mut f.agent, &mut f.blobs);
+    publish(&mut f.owner, &mut f.agent, &mut f.blobs)?;
     revoke(&mut f)?;
-    publish(&mut f.owner, &mut f.agent, &mut f.blobs);
+    publish(&mut f.owner, &mut f.agent, &mut f.blobs)?;
     let revoked = counts(&f.owner);
     assert!(context(&f).is_err());
     assert_eq!(counts(&f.owner), revoked);
@@ -127,10 +127,10 @@ fn signed_receipt_retry_after_revocation_never_reissues_capability_or_overwrites
         first.entry.id
     );
     assert_eq!(counts(&f.owner), pending);
-    let frames = publish(&mut f.owner, &mut f.agent, &mut f.blobs);
+    let frames = publish(&mut f.owner, &mut f.agent, &mut f.blobs)?;
     receive_wanted(&mut f.agent, &f.blobs)?;
     revoke(&mut f)?;
-    publish(&mut f.owner, &mut f.agent, &mut f.blobs);
+    publish(&mut f.owner, &mut f.agent, &mut f.blobs)?;
     assert!(!f.agent.app_trust_available(&f.original.item_id));
     let before = counts(&f.owner);
     assert_eq!(
@@ -175,14 +175,14 @@ fn append_failure_rolls_back_snapshot_capability_and_intent_then_normal_retry_is
 #[test]
 fn retained_successor_before_share_bootstraps_real_floor_then_cold_read_export_history_restore(
 ) -> R<()> {
-    let dir = std::env::temp_dir().join(types::new_id("current-share-cold"));
+    let dir = std::env::temp_dir().join(types::new_id("current-share-cold")?);
     std::fs::create_dir_all(&dir).map_err(storage)?;
     let op = dir.join("owner.sqlite").to_string_lossy().into_owned();
     let ap = dir.join("agent.sqlite").to_string_lossy().into_owned();
     let mut f = late_word(&op, &ap)?;
     let base = f.original.clone();
     let v3 = save(&mut f, &base, wordcraft::EMPTY, "retained_successor")?;
-    let frames = publish(&mut f.owner, &mut f.agent, &mut f.blobs);
+    let frames = publish(&mut f.owner, &mut f.agent, &mut f.blobs)?;
     assert!(frames.iter().any(|frame| f.agent.logs[SPACE]
         .events()
         .iter()
@@ -194,7 +194,7 @@ fn retained_successor_before_share_bootstraps_real_floor_then_cold_read_export_h
     );
     assert_eq!(context(&f)?.version, 3);
     let (c, first) = receipt(&mut f, "share_real_three")?;
-    let shared = publish(&mut f.owner, &mut f.agent, &mut f.blobs);
+    let shared = publish(&mut f.owner, &mut f.agent, &mut f.blobs)?;
     receive_wanted(&mut f.agent, &f.blobs)?;
     for e in [&f.owner, &f.agent] {
         assert_eq!(
@@ -233,14 +233,14 @@ fn retained_successor_before_share_bootstraps_real_floor_then_cold_read_export_h
     }
     assert_eq!(counts(&f.agent), no_write);
     let v4 = save(&mut f, &v3, EDITED, "ordinary_four")?;
-    publish(&mut f.owner, &mut f.agent, &mut f.blobs);
+    publish(&mut f.owner, &mut f.agent, &mut f.blobs)?;
     receive_wanted(&mut f.agent, &f.blobs)?;
     // Same ordinary restore consumer extends the absolute number, never len()+1.
     let restored = f
         .owner
         .restore_version(&base.item_id, 3, "normal known version restore")?;
     assert_eq!(restored.version, 5);
-    publish(&mut f.owner, &mut f.agent, &mut f.blobs);
+    publish(&mut f.owner, &mut f.agent, &mut f.blobs)?;
     assert_eq!(f.agent.item(&base.item_id)?.version, 5);
     assert_eq!(
         f.agent
@@ -307,7 +307,7 @@ fn canonical_removal_and_writer_downgrade_refuse_new_sharing_but_target_removal_
     for case in ["target", "writer"] {
         let mut f = late_word(":memory:", ":memory:")?;
         let (c, first) = receipt(&mut f, "before_membership_change")?;
-        publish(&mut f.owner, &mut f.agent, &mut f.blobs);
+        publish(&mut f.owner, &mut f.agent, &mut f.blobs)?;
         let author = f
             .owner
             .net
@@ -324,7 +324,7 @@ fn canonical_removal_and_writer_downgrade_refuse_new_sharing_but_target_removal_
                 role: types::Role::Reader,
             }
         };
-        ingest_signed(&mut f.owner, &author, SPACE, body);
+        ingest_signed(&mut f.owner, &author, SPACE, body).map_err(storage)?;
         let before = counts(&f.owner);
         assert!(context(&f).is_err());
         if case == "target" {
@@ -347,7 +347,7 @@ fn canonical_removal_and_writer_downgrade_refuse_new_sharing_but_target_removal_
 fn shared_anchor_supports_the_same_scoped_agent_read_and_mutation_authority() -> R<()> {
     let mut f = late_word(":memory:", ":memory:")?;
     receipt(&mut f, "explicit_share_for_request")?;
-    publish(&mut f.owner, &mut f.agent, &mut f.blobs);
+    publish(&mut f.owner, &mut f.agent, &mut f.blobs)?;
     receive_wanted(&mut f.agent, &f.blobs)?;
     let me = f.owner.me_id()?;
     let text = "Review only this shared Word";
@@ -362,7 +362,7 @@ fn shared_anchor_supports_the_same_scoped_agent_read_and_mutation_authority() ->
         SPACE,
         &me,
         EventBody::AppEditRequested {
-            message: types::new_id("m"),
+            message: types::new_id("m")?,
             text: text.into(),
             reply: types::ReplyRef {
                 to: f.original_root.id.clone(),
@@ -371,7 +371,7 @@ fn shared_anchor_supports_the_same_scoped_agent_read_and_mutation_authority() ->
             },
         },
     )?;
-    publish(&mut f.owner, &mut f.agent, &mut f.blobs);
+    publish(&mut f.owner, &mut f.agent, &mut f.blobs)?;
     let source = f.agent.logs[SPACE]
         .events()
         .iter()

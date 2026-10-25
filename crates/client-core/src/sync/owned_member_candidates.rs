@@ -108,7 +108,7 @@ impl Engine {
                         id,
                         role,
                         self.logs.get(space).and_then(event_log::SpaceLog::head),
-                    )),
+                    ))?,
                 })
             })
             .collect()

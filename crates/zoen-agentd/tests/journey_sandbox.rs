@@ -53,7 +53,8 @@ fn python() -> ToolManifest {
 }
 
 #[tokio::test]
-async fn only_the_tool_that_needs_a_computer_gets_one_and_only_after_ana_says_yes() {
+async fn only_the_tool_that_needs_a_computer_gets_one_and_only_after_ana_says_yes(
+) -> Result<(), Box<dyn std::error::Error>> {
     let router = Router::new(vec![publisher().verifying_key()]);
     let provider = Arc::new(FakeProvider::new());
     let (ana, agent) = ("ana".to_string(), "ana-agent".to_string());
@@ -116,7 +117,7 @@ async fn only_the_tool_that_needs_a_computer_gets_one_and_only_after_ana_says_ye
     );
 
     // She approves: the Grant routes it to a microVM spec. Still nothing started (lazy).
-    let grant = Router::grant_for(&ana, &agent, &p.manifest, Some(NOW + 3_600_000));
+    let grant = Router::grant_for(&ana, &agent, &p.manifest, Some(NOW + 3_600_000))?;
     let Route::Run {
         tier: Tier::MicroVm,
         spec: Some(spec),
@@ -196,6 +197,7 @@ async fn only_the_tool_that_needs_a_computer_gets_one_and_only_after_ana_says_ye
         Err(SessionError::Finished)
     ));
     assert_eq!(budget.lock().unwrap().microvm_secs_used, 2);
+    Ok(())
 }
 
 #[tokio::test]

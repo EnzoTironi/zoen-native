@@ -1,5 +1,9 @@
 //! Receiver installation: validate shared keys, then persist their exact bytes.
-use super::*;
+use super::{
+    enroll_delivery, enroll_prepare, http_base, invalid, link, secret32, t, AccountDto, Arc,
+    Client, CoreError, ExpectedIdentity, IdentityBox, Peer, Pending, SecretVault, Signer,
+    VAULT_AGREEMENT, VAULT_DEVICE, VAULT_IDENTITY, VAULT_PEERS,
+};
 use event_log::profile::{ProfileFields, ProfileKey};
 use zeroize::Zeroizing;
 

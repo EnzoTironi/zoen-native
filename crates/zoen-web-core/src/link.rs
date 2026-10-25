@@ -36,7 +36,7 @@ pub fn create_link(device: &str, relay: &str) -> Result<PendingLink, String> {
     event_log::parse_device_key(device).ok_or("invalid device public key")?;
     let mut secret = Zeroizing::new([0u8; 32]);
     getrandom::getrandom(secret.as_mut()).map_err(|e| e.to_string())?;
-    let (private, public) = device_link::key_pair();
+    let (private, public) = device_link::key_pair().map_err(|error| error.to_string())?;
     let code = device_link::LinkCode {
         device: device.into(),
         hpke: public,

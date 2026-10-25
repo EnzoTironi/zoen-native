@@ -8,7 +8,7 @@ export type PlanPageDto = { item_id: string, space_id: string, source: PlanPageR
  */
 version: number, 
 /**
- * Presentation is available; LocalPendingLegacy does not imply confirmed content.
+ * Presentation is available; `LocalPendingLegacy` does not imply confirmed content.
  */
 ready: boolean, 
 /**
@@ -17,10 +17,10 @@ ready: boolean,
  */
 legacy_edit_admitted: boolean, unsaved: boolean, input_pending: boolean, input_revision: string, pending_sync: boolean, save_error: string | null, 
 /**
- * Admitted PlanDoc binding. LocalPendingLegacy and DocumentSession share it.
+ * Admitted `PlanDoc` binding. `LocalPendingLegacy` and `DocumentSession` share it.
  * A pure relay confirmation does not change it, and a private session draft does
  * not move it. Title, budget, summary, section, text, cents, completion, and line
- * order of that PlanDoc do.
+ * order of that `PlanDoc` do.
  */
 content_hash: string, 
 /**

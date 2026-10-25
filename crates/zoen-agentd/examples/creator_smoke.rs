@@ -12,14 +12,14 @@ use zoen_agentd::citizen::{BrainOut, ModelBrain};
 use zoen_agentd::{approve_agent, creator_definition, Brain, Turn, TurnContext};
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let Some(brain) = ModelBrain::workers_ai_from_env() else {
         eprintln!("set CLOUDFLARE_WORKERS_AI_TOKEN and CLOUDFLARE_ACCOUNT_ID");
         std::process::exit(2);
     };
     println!("model: {}", brain.model());
-    let root = Signer::generate();
-    let owner_dev = Author::device(&root, Signer::generate());
+    let root = Signer::generate()?;
+    let owner_dev = Author::device(&root, Signer::generate()?);
     let owner = Identity {
         id: root.id(),
         kind: IdentityKind::Person,
@@ -165,4 +165,5 @@ async fn main() {
             std::process::exit(1)
         }
     }
+    Ok(())
 }

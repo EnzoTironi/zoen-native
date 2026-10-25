@@ -26,7 +26,10 @@ fn owner_decide(
     result
 }
 
-fn signed_trust(fixture: &Fixture, level: TrustLevel) {
+fn signed_trust(
+    fixture: &Fixture,
+    level: TrustLevel,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut engine = fixture.agent.lock();
     let agent = engine.me_id().unwrap();
     engine
@@ -35,7 +38,7 @@ fn signed_trust(fixture: &Fixture, level: TrustLevel) {
             &fixture.owner,
             EventBody::GrantIssued {
                 grant: Grant {
-                    id: types::new_id("synthetic_tool_trust"),
+                    id: types::new_id("synthetic_tool_trust")?,
                     grantor: fixture.owner.clone(),
                     grantee: Some(agent),
                     scope: GrantScope::Space(fixture.space.clone()),
@@ -45,6 +48,8 @@ fn signed_trust(fixture: &Fixture, level: TrustLevel) {
             },
         )
         .unwrap();
+
+    Ok(())
 }
 
 fn input(fixture: &Fixture, turn: &AgentBinaryTurn, tool: &str) -> AgentToolApprovalInput {
@@ -140,25 +145,29 @@ fn assert_v1(fixture: &Fixture) {
 
 #[test]
 fn canonical_request_is_deduplicated_and_generic_or_wrong_owner_decisions_never_authorize() {
-    admission::canonical_request_is_deduplicated_and_generic_or_wrong_owner_decisions_never_authorize()
+    admission::canonical_request_is_deduplicated_and_generic_or_wrong_owner_decisions_never_authorize().unwrap()
 }
 
 #[test]
 fn denial_and_cancellation_are_terminal_idempotent_without_tools_files_or_standing_grants() {
-    decisions::denial_and_cancellation_are_terminal_idempotent_without_tools_files_or_standing_grants()
+    decisions::denial_and_cancellation_are_terminal_idempotent_without_tools_files_or_standing_grants().unwrap()
 }
 
 #[test]
 fn mutation_of_frozen_arguments_or_source_cannot_replace_the_reviewed_intent() {
-    admission::mutation_of_frozen_arguments_or_source_cannot_replace_the_reviewed_intent()
+    admission::mutation_of_frozen_arguments_or_source_cannot_replace_the_reviewed_intent().unwrap()
 }
 
 #[test]
 fn changed_head_and_revoked_grants_or_device_refuse_before_execution() {
-    admission::changed_head_and_revoked_grants_or_device_refuse_before_execution()
+    admission::changed_head_and_revoked_grants_or_device_refuse_before_execution().unwrap()
 }
 
-pub(crate) fn append_at(fixture: &Fixture, request: AgentRequest, at: i64) {
+pub(crate) fn append_at(
+    fixture: &Fixture,
+    request: AgentRequest,
+    at: i64,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut engine = fixture.agent.lock();
     let mut log = event_log::SpaceLog::from_events(
         &fixture.space,
@@ -168,61 +177,66 @@ pub(crate) fn append_at(fixture: &Fixture, request: AgentRequest, at: i64) {
     let author = engine.author_for(&request.agent).unwrap();
     let signed = author.sign_event(
         &fixture.space,
-        &types::new_ulid(at),
+        &types::new_ulid(at)?,
         at,
         log.head(),
         EventBody::RequestOpened { request },
-    );
-    let event = log.sequence(signed).clone();
+    )?;
+    let event = log.sequence(signed)?.clone();
     let frame = protocol::Sequenced {
         seq: event.seq,
         prev: event.prev.clone(),
         hash: event.hash.clone(),
-        env: protocol::Envelope::plain(&event),
+        env: protocol::Envelope::plain(&event)?,
     };
     assert_eq!(engine.ingest(frame), crate::sync::Ingest::Applied);
+
+    Ok(())
 }
 
 #[test]
 fn expired_signed_request_never_approves_and_can_be_cancelled_without_a_clock_sleep() {
     decisions::expired_signed_request_never_approves_and_can_be_cancelled_without_a_clock_sleep()
+        .unwrap()
 }
 
 #[test]
 fn accepted_receipt_replays_once_and_wrong_mutation_or_intent_never_write() {
-    recovery::accepted_receipt_replays_once_and_wrong_mutation_or_intent_never_write()
+    recovery::accepted_receipt_replays_once_and_wrong_mutation_or_intent_never_write().unwrap()
 }
 
 #[test]
 fn signed_grant_block_cannot_be_overridden_by_an_owner_approval_request() {
-    decisions::signed_grant_block_cannot_be_overridden_by_an_owner_approval_request()
+    decisions::signed_grant_block_cannot_be_overridden_by_an_owner_approval_request().unwrap()
 }
 
 #[test]
 fn canonical_approval_and_accepted_document_survive_a_cold_unlocked_reopen() {
-    recovery::canonical_approval_and_accepted_document_survive_a_cold_unlocked_reopen()
+    recovery::canonical_approval_and_accepted_document_survive_a_cold_unlocked_reopen().unwrap()
 }
 
 #[test]
 fn read_only_approval_cannot_authorize_a_result_probe_or_save_even_with_its_exact_intent() {
     recovery::read_only_approval_cannot_authorize_a_result_probe_or_save_even_with_its_exact_intent(
     )
+    .unwrap()
 }
 
 #[test]
 fn raw_worker_turn_cannot_bypass_a_later_signed_core_block_at_result_or_save_boundary() {
     admission::raw_worker_turn_cannot_bypass_a_later_signed_core_block_at_result_or_save_boundary()
+        .unwrap()
 }
 
 #[test]
 fn completed_read_then_accepted_write_recovers_context_without_relaxing_read_cas_or_authorizing_new_effects(
 ) {
-    recovery::completed_read_then_accepted_write_recovers_context_without_relaxing_read_cas_or_authorizing_new_effects()
+    recovery::completed_read_then_accepted_write_recovers_context_without_relaxing_read_cas_or_authorizing_new_effects().unwrap()
 }
 
 #[test]
 fn generic_standing_decision_never_resolves_or_labels_a_pending_tool_request() {
-    decisions::generic_standing_decision_never_resolves_or_labels_a_pending_tool_request()
+    decisions::generic_standing_decision_never_resolves_or_labels_a_pending_tool_request().unwrap()
 }
 
 #[path = "json_order_tests.rs"]

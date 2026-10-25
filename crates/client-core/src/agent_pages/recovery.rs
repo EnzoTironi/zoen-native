@@ -1,5 +1,5 @@
 //! Completed context is rederived from published Pages and linked receipts.
-use super::*;
+use super::{approvals, invalid, stale, AgentPageResult, AgentPageSnapshot, Client, R};
 use crate::{agent_page_tools as tools, engine::ReqStatus};
 use serde_json::Value;
 
@@ -85,8 +85,7 @@ impl Client {
                                 && p.task_sha256 == proposal.task_sha256
                                 && p.step as usize == index
                                 && serde_json::from_str::<Value>(&p.continuation_json)
-                                    .ok()
-                                    .is_some_and(|held| held["call"] == *call)
+                                    .is_ok_and(|held| held["call"] == *call)
                         })
                         .ok_or_else(stale)?;
                     let (_, signed) = e.tool_resolution(&prior.req.id, &prior.req.content_hash)?;

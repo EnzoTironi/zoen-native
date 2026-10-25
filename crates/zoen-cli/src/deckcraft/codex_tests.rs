@@ -2,12 +2,13 @@ use super::*;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires explicit local Codex ChatGPT login and operator-signed real WASI worker"]
-async fn operator_codex_brain_edits_through_runtime_gate_and_survives_cold_reopen() {
+async fn operator_codex_brain_edits_through_runtime_gate_and_survives_cold_reopen(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     assert_eq!(std::env::var("ZOEN_TEST_REAL_CODEX").as_deref(), Ok("1"));
     let worker = configured()
         .unwrap()
         .expect("explicit operator-signed worker required");
-    let f = fixture();
+    let f = fixture()?;
     let steps = crate::agent::exercise_codex_deckcraft(
         &f.client,
         worker.clone(),
@@ -59,4 +60,5 @@ async fn operator_codex_brain_edits_through_runtime_gate_and_survives_cold_reope
     drop(cold);
     std::fs::remove_dir_all(path).unwrap();
     eprintln!("actual Codex ChatGPT model + Runtime/Gate + production signed worker + canonical receipt + cold SQLite: PASS; two tool steps, exactly version2, exact replay unchanged");
+    Ok(())
 }

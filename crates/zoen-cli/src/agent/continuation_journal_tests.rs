@@ -3,10 +3,10 @@ use sha2::{Digest, Sha256};
 
 struct Directory(std::path::PathBuf);
 impl Directory {
-    fn new() -> Self {
-        let path = std::env::temp_dir().join(types::new_id("continuation-journal"));
+    fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        let path = std::env::temp_dir().join(types::new_id("continuation-journal")?);
         std::fs::create_dir(&path).unwrap();
-        Self(path)
+        Ok(Self(path))
     }
     fn journal(&self) -> std::path::PathBuf {
         self.0.join("agent-tool-steps.json")
@@ -49,10 +49,11 @@ fn tools<'a>(fixture: &'a crate::deckcraft::tests::Fixture, journal: &'a Path) -
 }
 
 #[test]
-fn legacy_steps_remain_readable_and_writes_stay_legacy_until_a_resume_is_reserved() {
-    let directory = Directory::new();
+fn legacy_steps_remain_readable_and_writes_stay_legacy_until_a_resume_is_reserved(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let directory = Directory::new()?;
     let path = directory.journal();
-    let fixture = crate::deckcraft::tests::fixture_at(directory.0.clone(), [72; 32]);
+    let fixture = crate::deckcraft::tests::fixture_at(directory.0.clone(), [72; 32])?;
     let host = tools(&fixture, &path);
     let original = vec![(fixture.source.clone(), vec![step("first")])];
     std::fs::write(&path, serde_json::to_vec(&original).unwrap()).unwrap();
@@ -73,14 +74,16 @@ fn legacy_steps_remain_readable_and_writes_stay_legacy_until_a_resume_is_reserve
         1
     );
     assert_eq!(host.done(), vec![step("first"), step("second")]);
+    Ok(())
 }
 
 #[test]
-fn exact_request_budget_survives_reopens_and_step_recording_without_reset() {
-    let directory = Directory::new();
+fn exact_request_budget_survives_reopens_and_step_recording_without_reset(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let directory = Directory::new()?;
     let path = directory.journal();
     let hash = "ab".repeat(32);
-    let mut fixture = crate::deckcraft::tests::fixture_at(directory.0.clone(), [72; 32]);
+    let mut fixture = crate::deckcraft::tests::fixture_at(directory.0.clone(), [72; 32])?;
     for expected in 1..=MAX_TRIES {
         // Reopen both the signed native account/source and journal. No counter
         // or authority is supplied by an anonymous in-memory Client.
@@ -113,10 +116,12 @@ fn exact_request_budget_survives_reopens_and_step_recording_without_reset() {
         JournalState::load(&path).unwrap().continuations["synthetic-request"].attempts,
         MAX_TRIES
     );
+    Ok(())
 }
 
 #[test]
-fn corrupt_or_unsupported_journal_cannot_reset_the_budget_or_be_overwritten_by_recording() {
+fn corrupt_or_unsupported_journal_cannot_reset_the_budget_or_be_overwritten_by_recording(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for corrupt in [
         b"not-json".as_slice(),
         br#"{"version":2,"steps":[],"continuations":{}}"#,
@@ -124,20 +129,22 @@ fn corrupt_or_unsupported_journal_cannot_reset_the_budget_or_be_overwritten_by_r
         br#"{"version":1,"steps":[],"continuations":{},"unknown":true}"#,
         br#"{"version":1,"steps":[],"continuations":{"synthetic-request":{"content_hash":"abababababababababababababababababababababababababababababababab","attempts":0}}}"#,
     ] {
-        let directory = Directory::new();
+        let directory = Directory::new()?;
         let path = directory.journal();
         std::fs::write(&path, corrupt).unwrap();
         assert!(JournalState::begin_resume(&path, "synthetic-request", &"ab".repeat(32), None).is_err());
-        let fixture = crate::deckcraft::tests::fixture_at(directory.0.clone(), [72; 32]);
+        let fixture = crate::deckcraft::tests::fixture_at(directory.0.clone(), [72; 32])?;
         tools(&fixture, &path).record(step("must-not-replace-corrupt-data"));
         assert_eq!(std::fs::read(&path).unwrap(), corrupt);
         assert!(!path.with_extension("tmp").exists());
     }
+    Ok(())
 }
 
 #[test]
-fn failed_atomic_reservation_and_leftover_temporary_file_never_admit_a_resume() {
-    let directory = Directory::new();
+fn failed_atomic_reservation_and_leftover_temporary_file_never_admit_a_resume(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let directory = Directory::new()?;
     let path = directory.journal();
     let hash = "ab".repeat(32);
     assert!(JournalState::begin_resume(&path, "synthetic-request", &hash, None).unwrap());
@@ -161,14 +168,16 @@ fn failed_atomic_reservation_and_leftover_temporary_file_never_admit_a_resume() 
         JournalState::load(&path).unwrap().continuations["synthetic-request"].attempts,
         1
     );
+    Ok(())
 }
 
 #[test]
-fn prepared_and_completed_metadata_survive_reopen_bound_to_the_same_source_and_request_hash() {
-    let directory = Directory::new();
+fn prepared_and_completed_metadata_survive_reopen_bound_to_the_same_source_and_request_hash(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let directory = Directory::new()?;
     let path = directory.journal();
     let hash = "ab".repeat(32);
-    let mut fixture = crate::deckcraft::tests::fixture_at(directory.0.clone(), [72; 32]);
+    let mut fixture = crate::deckcraft::tests::fixture_at(directory.0.clone(), [72; 32])?;
     let account = fixture.client.account().unwrap();
     let space = fixture
         .client
@@ -255,4 +264,5 @@ fn prepared_and_completed_metadata_survive_reopen_bound_to_the_same_source_and_r
         Some(prepared)
     );
     assert_eq!(host.done(), vec![completed, step("separate-cached-step")]);
+    Ok(())
 }

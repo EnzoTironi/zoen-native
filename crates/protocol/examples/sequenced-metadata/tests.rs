@@ -2,7 +2,7 @@ use super::*;
 use event_log::{Author, Signer};
 use protocol::{Envelope, Sealed};
 
-fn entry(kind: SealedKind) -> Sequenced {
+fn entry(kind: SealedKind) -> Result<Sequenced, Box<dyn std::error::Error>> {
     let root = Signer::from_secret(&[11; 32]);
     let device = Signer::from_secret(&[12; 32]);
     let author = Author::device(&root, device);
@@ -13,13 +13,13 @@ fn entry(kind: SealedKind) -> Sequenced {
         1,
         None,
         Sealed::new(kind, 1, b"private-ciphertext".to_vec()),
-    );
-    Sequenced {
+    )?;
+    Ok(Sequenced {
         seq: 0,
         prev: types::GENESIS_PREV.into(),
-        hash: event_log::chain_hash("space", 0, types::GENESIS_PREV, &env.wire_hash()),
+        hash: event_log::chain_hash("space", 0, types::GENESIS_PREV, &env.wire_hash())?,
         env,
-    }
+    })
 }
 
 fn wire(entry: &Sequenced) -> String {
@@ -27,8 +27,9 @@ fn wire(entry: &Sequenced) -> String {
 }
 
 #[test]
-fn actual_welcome_and_pruned_stub_expose_only_closed_metadata() {
-    let mut entry = entry(SealedKind::Welcome);
+fn actual_welcome_and_pruned_stub_expose_only_closed_metadata(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut entry = entry(SealedKind::Welcome)?;
     for pruned in [false, true] {
         if pruned {
             entry.env = entry.env.pruned().expect("actual signed pruning stub");
@@ -52,19 +53,22 @@ fn actual_welcome_and_pruned_stub_expose_only_closed_metadata() {
             )))
         );
     }
+    Ok(())
 }
 
 #[test]
-fn unknown_sealed_kind_is_not_inferred_to_be_a_welcome() {
-    let e = entry(SealedKind::Unspecified);
+fn unknown_sealed_kind_is_not_inferred_to_be_a_welcome() -> Result<(), Box<dyn std::error::Error>> {
+    let e = entry(SealedKind::Unspecified)?;
     assert_eq!(
         project(wire(&e).as_bytes(), "space").unwrap().rows[0].kind,
         "sealed_unknown"
     );
+    Ok(())
 }
 
 #[test]
-fn malformed_partial_empty_and_oversized_inputs_are_closed() {
+fn malformed_partial_empty_and_oversized_inputs_are_closed(
+) -> Result<(), Box<dyn std::error::Error>> {
     for input in ["", "00", "00\n", "not-hex\n"] {
         assert!(project(input.as_bytes(), "space").is_err());
     }
@@ -72,7 +76,7 @@ fn malformed_partial_empty_and_oversized_inputs_are_closed() {
         project(vec![b'a'; MAX_WIRE_BYTES * 2 + 2].as_slice(), "space").err(),
         Some(Rejected::Bounds)
     );
-    let original = wire(&entry(SealedKind::Welcome));
+    let original = wire(&entry(SealedKind::Welcome)?);
     assert_eq!(
         project(original.trim_end().as_bytes(), "space").err(),
         Some(Rejected::Truncated)
@@ -81,11 +85,13 @@ fn malformed_partial_empty_and_oversized_inputs_are_closed() {
         project(original.as_bytes(), "other-space").err(),
         Some(Rejected::Chain)
     );
+    Ok(())
 }
 
 #[test]
-fn row_overflow_duplicates_and_chain_or_signature_corruption_are_refused() {
-    let original = entry(SealedKind::Welcome);
+fn row_overflow_duplicates_and_chain_or_signature_corruption_are_refused(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let original = entry(SealedKind::Welcome)?;
     let mut previous = types::GENESIS_PREV.to_owned();
     let mut input = String::new();
     for seq in 0..=MAX_ROWS {
@@ -99,9 +105,9 @@ fn row_overflow_duplicates_and_chain_or_signature_corruption_are_refused() {
             );
         }
         let mut e = original.clone();
-        e.seq = seq as u64;
+        e.seq = u64::try_from(seq)?;
         e.prev = previous;
-        e.hash = event_log::chain_hash("space", e.seq, &e.prev, &e.env.wire_hash());
+        e.hash = event_log::chain_hash("space", e.seq, &e.prev, &e.env.wire_hash())?;
         previous = e.hash.clone();
         input.push_str(&wire(&e));
     }
@@ -121,15 +127,17 @@ fn row_overflow_duplicates_and_chain_or_signature_corruption_are_refused() {
     );
     bad = original;
     bad.env.sig = "00".repeat(64);
-    bad.hash = event_log::chain_hash("space", bad.seq, &bad.prev, &bad.env.wire_hash());
+    bad.hash = event_log::chain_hash("space", bad.seq, &bad.prev, &bad.env.wire_hash())?;
     assert_eq!(
         project(wire(&bad).as_bytes(), "space").err(),
         Some(Rejected::Signature)
     );
+    Ok(())
 }
 
 #[test]
-fn total_byte_cap_rejects_a_valid_chain_below_the_row_and_wire_caps() {
+fn total_byte_cap_rejects_a_valid_chain_below_the_row_and_wire_caps(
+) -> Result<(), Box<dyn std::error::Error>> {
     let author = Author::root(Signer::from_secret(&[13; 32]));
     let mut previous = types::GENESIS_PREV.to_owned();
     let mut input = String::new();
@@ -141,10 +149,10 @@ fn total_byte_cap_rejects_a_valid_chain_below_the_row_and_wire_caps() {
             1,
             None,
             Sealed::new(SealedKind::Application, 1, vec![b'x'; 90_000]),
-        );
+        )?;
         let entry = Sequenced {
             seq,
-            hash: event_log::chain_hash("space", seq, &previous, &env.wire_hash()),
+            hash: event_log::chain_hash("space", seq, &previous, &env.wire_hash())?,
             prev: previous,
             env,
         };
@@ -152,9 +160,10 @@ fn total_byte_cap_rejects_a_valid_chain_below_the_row_and_wire_caps() {
         previous = entry.hash.clone();
         input.push_str(&wire(&entry));
     }
-    assert!(input.len() as u64 > MAX_INPUT_BYTES);
+    assert!(u64::try_from(input.len())? > MAX_INPUT_BYTES);
     assert_eq!(
         project(input.as_bytes(), "space").err(),
         Some(Rejected::Bounds)
     );
+    Ok(())
 }

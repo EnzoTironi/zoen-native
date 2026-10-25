@@ -2,8 +2,8 @@
 //! production recording/merge behavior without pretending the sketch is exact.
 use super::*;
 
-fn first_week_counts(people: [&str; 3], expected_slots: [u8; 3]) -> [u32; 2] {
-    let analytics = Analytics::with_key([0; 32], "");
+fn first_week_counts(people: [&str; 3], expected_slots: [u8; 3]) -> anyhow::Result<[u32; 2]> {
+    let analytics = Analytics::with_key([0; 32], "")?;
     for (person, slot) in people.iter().zip(expected_slots) {
         assert_eq!(analytics.peer_bit(person), 1u64 << slot);
     }
@@ -31,7 +31,7 @@ fn first_week_counts(people: [&str; 3], expected_slots: [u8; 3]) -> [u32; 2] {
         });
     }
     analytics.with(|pending| pending.merge(retained));
-    analytics.with(|pending| {
+    Ok(analytics.with(|pending| {
         // Calls may straddle midnight; the report ORs peer bits over all days.
         // Aggregate that same way instead of depending on one wall-clock bucket.
         let account = |who: &str| {
@@ -60,34 +60,37 @@ fn first_week_counts(people: [&str; 3], expected_slots: [u8; 3]) -> [u32; 2] {
         assert_eq!(pending.spaces.values().map(|s| s.messages).sum::<i32>(), 5);
         assert_eq!(pending.spaces.values().map(|s| s.members).max(), Some(3));
         [ana_peers.count_ones(), carla_peers.count_ones()]
-    })
+    }))
 }
 
 #[test]
-fn distinct_slots_keep_both_qualifying_senders() {
+fn distinct_slots_keep_both_qualifying_senders() -> anyhow::Result<()> {
     assert_eq!(
-        first_week_counts(["peer-0", "peer-1", "peer-2"], [38, 16, 42]),
+        first_week_counts(["peer-0", "peer-1", "peer-2"], [38, 16, 42])?,
         [2, 2]
     );
+    Ok(())
 }
 
 #[test]
-fn one_collision_hides_only_one_qualifying_sender() {
+fn one_collision_hides_only_one_qualifying_sender() -> anyhow::Result<()> {
     // Bruno=Carla hides Ana's second recipient; Ana=Bruno hides Carla's.
     assert_eq!(
-        first_week_counts(["peer-1", "peer-0", "peer-61"], [16, 38, 38]),
+        first_week_counts(["peer-1", "peer-0", "peer-61"], [16, 38, 38])?,
         [1, 2]
     );
     assert_eq!(
-        first_week_counts(["peer-0", "peer-61", "peer-1"], [38, 38, 16]),
+        first_week_counts(["peer-0", "peer-61", "peer-1"], [38, 38, 16])?,
         [2, 1]
     );
+    Ok(())
 }
 
 #[test]
-fn two_collisions_can_hide_both_qualifying_senders() {
+fn two_collisions_can_hide_both_qualifying_senders() -> anyhow::Result<()> {
     assert_eq!(
-        first_week_counts(["peer-0", "peer-61", "peer-64"], [38, 38, 38]),
+        first_week_counts(["peer-0", "peer-61", "peer-64"], [38, 38, 38])?,
         [1, 1]
     );
+    Ok(())
 }

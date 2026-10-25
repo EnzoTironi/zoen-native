@@ -5,8 +5,9 @@ use super::{
 use std::{future::Future, task::Poll, time::Duration};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn original_budget_waits_for_an_ack_after_initial_ready_before_exporting() {
-    let fixture = Fixture::new().await;
+async fn original_budget_waits_for_an_ack_after_initial_ready_before_exporting(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let fixture = Fixture::new().await?;
     fixture.hold_top_up().await;
     assert!(tokio::time::Instant::now() < fixture.deadline);
     let output = fixture.directory.join("export");
@@ -40,11 +41,13 @@ async fn original_budget_waits_for_an_ack_after_initial_ready_before_exporting()
         std::fs::read(output.join("page.md")).unwrap(),
         MARKDOWN.as_bytes()
     );
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn an_ack_after_the_original_deadline_cannot_write_or_restart_export() {
-    let fixture = Fixture::new().await;
+async fn an_ack_after_the_original_deadline_cannot_write_or_restart_export(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let fixture = Fixture::new().await?;
     fixture.hold_top_up().await;
     let output = fixture.directory.join("late");
     let deadline = tokio::time::Instant::now() + Duration::from_millis(120);
@@ -68,11 +71,13 @@ async fn an_ack_after_the_original_deadline_cannot_write_or_restart_export() {
         !output.exists(),
         "a later ACK cannot resume a failed export"
     );
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn no_ack_keeps_mls_guard_and_writes_zero_files() {
-    let fixture = Fixture::new().await;
+async fn no_ack_keeps_mls_guard_and_writes_zero_files(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let fixture = Fixture::new().await?;
     fixture.hold_top_up().await;
     let output = fixture.directory.join("missing-ack");
     let deadline = tokio::time::Instant::now() + Duration::from_millis(120);
@@ -92,11 +97,13 @@ async fn no_ack_keeps_mls_guard_and_writes_zero_files() {
     assert!(result.is_err());
     assert!(!output.exists());
     assert!(fixture.client.wait_until_settled(0).await.is_err());
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn an_expired_original_budget_cannot_admit_even_an_already_ready_client() {
-    let fixture = Fixture::new().await;
+async fn an_expired_original_budget_cannot_admit_even_an_already_ready_client(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let fixture = Fixture::new().await?;
     fixture.client.wait_until_settled(0).await.unwrap();
     let output = fixture.directory.join("expired");
     let result = export_all(
@@ -110,11 +117,13 @@ async fn an_expired_original_budget_cannot_admit_even_an_already_ready_client() 
     .await;
     assert!(result.is_err());
     assert!(!output.exists());
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn explicit_offline_export_remains_a_separate_cached_snapshot() {
-    let fixture = Fixture::new().await;
+async fn explicit_offline_export_remains_a_separate_cached_snapshot(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let fixture = Fixture::new().await?;
     fixture.hold_top_up().await;
     let output = fixture.directory.join("cache");
     let result = export_all(
@@ -139,4 +148,5 @@ async fn explicit_offline_export_remains_a_separate_cached_snapshot() {
         fixture.client.wait_until_settled(0).await.is_err(),
         "offline export never grants MLS readiness"
     );
+    Ok(())
 }

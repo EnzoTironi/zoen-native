@@ -1,5 +1,8 @@
 //! Explicit private account management, independent of any image Request.
-use super::*;
+use super::{
+    denied, Client, Engine, IdentityKind, OwnerPolicyInquiry, OwnerPolicyOptionsStatus,
+    OwnerPolicyScope, Privacy, SpaceKind, R,
+};
 use types::owner_policy_context::OwnerPolicyInquiryPurpose;
 
 impl Engine {
@@ -42,7 +45,7 @@ impl Engine {
         self.queue_owner_policy_inquiry(
             scope,
             OwnerPolicyInquiry {
-                id: types::new_id("account_policy_inquiry"),
+                id: types::new_id("account_policy_inquiry")?,
                 owner: scope.expected_identity_id.clone(),
                 agent: scope.agent_id.clone(),
                 space: scope.space_id.clone(),

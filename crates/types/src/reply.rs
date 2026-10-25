@@ -28,6 +28,7 @@ pub struct ArtifactRequest {
 }
 
 impl ArtifactRequest {
+    #[must_use]
     pub fn is_well_formed(&self) -> bool {
         let token = |s: &str| {
             !s.is_empty()

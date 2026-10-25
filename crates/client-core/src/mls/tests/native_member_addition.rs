@@ -24,7 +24,7 @@ fn reviewed_native_addition_waits_for_new_members_key_package(
         std::slice::from_ref(&target),
     );
     let space = "native-reviewed-add-mls";
-    for frame in claim_group(&mut owner, space, &mut []) {
+    for frame in claim_group(&mut owner, space, &mut []).map_err(storage)? {
         assert_eq!(peer.ingest(frame), Ingest::Applied);
     }
     owner.store.set_synced(space)?;
@@ -49,7 +49,7 @@ fn reviewed_native_addition_waits_for_new_members_key_package(
         EventBody::MemberAdded { identity, role: Role::Member } if identity == &target)
         })
         .ok_or("missing signed MemberAdded")?;
-    let frame = ordered(&owner, Envelope::plain(&pending.event));
+    let frame = ordered(&owner, Envelope::plain(&pending.event)?).map_err(storage)?;
     assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
     assert_eq!(peer.ingest(frame), Ingest::Applied);
     let waiting = owner.space_member_context(space, &target, &account.identity, &account.device)?;
@@ -101,7 +101,7 @@ fn reviewed_native_addition_waits_for_new_members_key_package(
     let records = claimed_records(std::slice::from_mut(&mut peer), &targets);
     assert_eq!(records.len(), 1);
     owner.mls_claimed(space, &operation, Ok(records));
-    relay_ready_to_peer(&mut owner, &mut peer);
+    relay_ready_to_peer(&mut owner, &mut peer).map_err(storage)?;
     assert!(peer.device()?.has_group(space));
     let ready = owner.space_member_context(space, &target, &account.identity, &account.device)?;
     assert_eq!(ready.state, crate::MemberActionState::Active);
@@ -146,7 +146,8 @@ fn confirmed_non_e2e_members_are_ready_without_an_mls_group(
                 kind: SpaceKind::Group,
                 privacy,
             },
-        );
+        )
+        .map_err(storage)?;
         owner.store.set_synced(space)?;
         owner.net.synced.insert(space.into());
         let account = owner.net.account.clone().ok_or("missing account")?;
@@ -169,7 +170,7 @@ fn confirmed_non_e2e_members_are_ready_without_an_mls_group(
             EventBody::MemberAdded { identity, role: Role::Member } if identity == &target)
             })
             .ok_or("missing member intent")?;
-        let frame = ordered(&owner, Envelope::plain(&pending.event));
+        let frame = ordered(&owner, Envelope::plain(&pending.event)?).map_err(storage)?;
         assert_eq!(owner.ingest(frame), Ingest::Confirmed);
         let confirmed =
             owner.space_member_context(space, &target, &account.identity, &account.device)?;

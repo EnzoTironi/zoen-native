@@ -1,20 +1,22 @@
 use super::*;
 
-pub(super) async fn run() {
-    Box::pin(native_grant_expires_after_admission()).await;
-    Box::pin(expired_permit()).await;
-    Box::pin(unknown_admission_never_resends()).await;
-    Box::pin(provider_reply_loss_and_late_bill()).await;
-    Box::pin(continuity_is_still_closed()).await;
+pub(super) async fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Box::pin(native_grant_expires_after_admission()).await?;
+    Box::pin(expired_permit()).await?;
+    Box::pin(unknown_admission_never_resends()).await?;
+    Box::pin(provider_reply_loss_and_late_bill()).await?;
+    Box::pin(continuity_is_still_closed()).await?;
+    Ok(())
 }
 
-async fn native_grant_expires_after_admission() {
-    let mut fixture = Fixture::new().await;
+async fn native_grant_expires_after_admission(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = Fixture::new().await?;
     let expiry = fixture.world.runtime.finance.reply_clock().await.unwrap() + 3000;
     fixture
         .grant_until("short-native-grant", Some(expiry))
-        .await;
-    fixture.message(ORIGINAL).await;
+        .await?;
+    fixture.message(ORIGINAL).await?;
     let run = fixture.sync(false).await.unwrap().runs.remove(0);
     let runtime = fixture.world.runtime.clone();
     runtime.fault.store(24, Ordering::SeqCst);
@@ -53,10 +55,11 @@ async fn native_grant_expires_after_admission() {
     cleaner.finance.pool.close().await;
     fixture.finish().await;
     println!("native admission deadline cut: actual native grant expires after FDB admission, SQL clock refuses witness and provider send PASS");
+    Ok(())
 }
 
-async fn expired_permit() {
-    let (fixture, run) = original().await;
+async fn expired_permit() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (fixture, run) = original().await?;
     let runtime = fixture.world.runtime.clone();
     runtime.fault.store(25, Ordering::SeqCst);
     let paid = start(&runtime, &run);
@@ -85,11 +88,12 @@ async fn expired_permit() {
     );
     fixture.finish().await;
     println!("native admission deadline cut: actual finite permit consumption expires, admitted obligation remains nonrefundable PASS");
+    Ok(())
 }
 
-async fn unknown_admission_never_resends() {
+async fn unknown_admission_never_resends() -> std::result::Result<(), Box<dyn std::error::Error>> {
     for fault in [1, 2, 3, 23] {
-        let (fixture, run) = original().await;
+        let (fixture, run) = original().await?;
         let runtime = fixture.world.runtime.clone();
         runtime.fault.store(fault, Ordering::SeqCst);
         assert!(runtime.run_model(&run.run).await.is_err());
@@ -128,10 +132,12 @@ async fn unknown_admission_never_resends() {
         fixture.finish().await;
     }
     println!("native admission ACK cuts: consumed claim, known FDB admission and rolled-back or suppressed SQL guard never reconstruct a send PASS");
+    Ok(())
 }
 
-async fn provider_reply_loss_and_late_bill() {
-    let (fixture, run) = original().await;
+async fn provider_reply_loss_and_late_bill() -> std::result::Result<(), Box<dyn std::error::Error>>
+{
+    let (fixture, run) = original().await?;
     fixture.world.http.lost.store(true, Ordering::SeqCst);
     assert_eq!(
         fixture
@@ -167,7 +173,7 @@ async fn provider_reply_loss_and_late_bill() {
     fixture.finish().await;
     println!("native provider ACK cut: actual HTTP acknowledgement is lost, absent usage retains hold and cold retry cannot resend PASS");
 
-    let (mut fixture, run) = original().await;
+    let (mut fixture, run) = original().await?;
     let runtime = fixture.world.runtime.clone();
     fixture.world.http.paused.store(true, Ordering::SeqCst);
     let paid = start(&runtime, &run);
@@ -176,7 +182,7 @@ async fn provider_reply_loss_and_late_bill() {
         .encrypted(EventBody::GrantRevoked {
             grant: "admitted-owner-trust".into(),
         })
-        .await;
+        .await?;
     assert_eq!(
         runtime.cancel_model(&run.run).await.unwrap(),
         ModelCancellation::Requested
@@ -204,10 +210,11 @@ async fn provider_reply_loss_and_late_bill() {
     );
     fixture.finish().await;
     println!("native late evidence journey: actual revocation commits during HTTP, original incurred bill settles without repeat or output progress PASS");
+    Ok(())
 }
 
-async fn continuity_is_still_closed() {
-    let (fixture, run) = original().await;
+async fn continuity_is_still_closed() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (fixture, run) = original().await?;
     let mut cfg = config(
         &fixture.world.db_url,
         &fixture.world.config_namespace,
@@ -248,4 +255,5 @@ async fn continuity_is_still_closed() {
     reopened.finance.pool.close().await;
     fixture.finish().await;
     println!("native continuity journey: matching source/deployment and real custody after reopen still authorize neither send nor refund PASS");
+    Ok(())
 }

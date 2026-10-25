@@ -9,7 +9,7 @@ pub(super) async fn run(
     config: &config::Config,
     space: &str,
     provider: &Provider,
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     assert!(owner
         .requests()
         .iter()
@@ -34,7 +34,7 @@ pub(super) async fn run(
     std::fs::write(path, serde_json::to_vec(&updated).unwrap()).unwrap();
     let config = config::Config::read(path).unwrap();
     assert_ne!(config.image_price.digest().unwrap(), old_profile);
-    let mut host = Host::start(w, path).await;
+    let mut host = Host::start(w, path).await?;
     let sends = provider.sends.load(Ordering::SeqCst);
     let attempts = w.count("SELECT count(*) FROM runtime_attempts").await;
     let policies = w.count("SELECT count(*) FROM runtime_policies").await;
@@ -118,7 +118,7 @@ pub(super) async fn run(
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
     drop(host);
-    let mut cold = Host::start(w, path).await;
+    let mut cold = Host::start(w, path).await?;
     let again = owner.request_account_policy_options(scope.clone()).unwrap();
     let current = options(owner, &scope, &again.source, &mut cold).await;
     assert_eq!(current.current_enabled, Some(false));
@@ -152,6 +152,7 @@ pub(super) async fn run(
         .all(|request| request.status != RequestStatus::Pending));
     drop(cold);
     println!("account budget product: no pending Request -> paused private typed inquiry -> actual quote/latest policy -> explicit signed disable -> exact Runtime Installed -> cold disabled current-context read, no model/provider/financial effects PASS");
+    Ok(())
 }
 pub(super) async fn options(
     owner: &Client,

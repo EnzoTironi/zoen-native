@@ -157,11 +157,12 @@ async fn maintenance_barrier(
 
 #[tokio::test(flavor = "current_thread")]
 async fn malformed_wire_and_rejected_signature_do_not_poison_following_messages_or_readable_receipts(
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("ws://{}", listener.local_addr().unwrap());
-    let directory = Directory(std::env::temp_dir().join(types::new_id("incoming-pipeline")));
+    let directory =
+        Directory(std::env::temp_dir().join(types::new_id("incoming-pipeline").unwrap()));
     std::fs::create_dir(&directory.0).unwrap();
     let path = directory.0.join("reader.sqlite");
     let root = Signer::from_secret(&[83; 32]);
@@ -212,9 +213,9 @@ async fn malformed_wire_and_rejected_signature_do_not_poison_following_messages_
         ),
     ] {
         let frame = sequence(
-            Envelope::plain(&owner.sign_event(SPACE, id, AT, head.clone(), body)),
+            Envelope::plain(&owner.sign_event(SPACE, id, AT, head.clone(), body)?)?,
             &mut head,
-        );
+        )?;
         assert_eq!(engine.ingest(frame), Ingest::Applied);
     }
     let mut valid = Vec::new();
@@ -233,9 +234,9 @@ async fn malformed_wire_and_rejected_signature_do_not_poison_following_messages_
                     media: None,
                     forwarded: false,
                 },
-            )),
+            )?)?,
             &mut head,
-        ));
+        )?);
     }
     let mut rejected = valid[0].clone();
     let replacement = if rejected.env.sig.starts_with('0') {
@@ -382,4 +383,5 @@ async fn malformed_wire_and_rejected_signature_do_not_poison_following_messages_
     assert_eq!(history(&reopened, &peer.identity), expected);
     assert_eq!(reopened.delivered_to_announce(SPACE), Some(3));
     assert_eq!(reopened.read_up_to(SPACE), None);
+    Ok(())
 }

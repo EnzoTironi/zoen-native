@@ -2,11 +2,12 @@
 use super::*;
 
 #[tokio::test]
-async fn lost_fetch_response_can_retry_the_same_enrolled_pairing_on_another_connection() {
-    let test = TestRelay::new().await;
-    let root = Signer::generate();
-    let sponsor = Author::device(&root, Signer::generate());
-    let next = Author::device(&root, Signer::generate());
+async fn lost_fetch_response_can_retry_the_same_enrolled_pairing_on_another_connection(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let test = TestRelay::new().await?;
+    let root = Signer::generate()?;
+    let sponsor = Author::device(&root, Signer::generate()?);
+    let next = Author::device(&root, Signer::generate()?);
     let pending = Author::device(&next.key, next.key.clone());
     let mut controller = connect(&test.ws_url, &sponsor).await;
     request(
@@ -18,7 +19,7 @@ async fn lost_fetch_response_can_retry_the_same_enrolled_pairing_on_another_conn
     )
     .await
     .unwrap();
-    let id = Signer::generate().id();
+    let id = Signer::generate()?.id();
     request(&mut controller, 2, link_op(&next, &id))
         .await
         .unwrap();
@@ -84,7 +85,7 @@ async fn lost_fetch_response_can_retry_the_same_enrolled_pairing_on_another_conn
         created, after,
         "fetch or reconnect extended publication TTL"
     );
-    let third = Author::device(&root, Signer::generate());
+    let third = Author::device(&root, Signer::generate()?);
     assert!(request(&mut controller, 3, link_op(&third, &id))
         .await
         .is_err());
@@ -96,13 +97,15 @@ async fn lost_fetch_response_can_retry_the_same_enrolled_pairing_on_another_conn
     let _ = retry.close(None).await;
     let _ = controller.close(None).await;
     test.close().await;
+    Ok(())
 }
 
 #[tokio::test]
-async fn repeated_history_fetch_never_renews_expiry_or_creates_an_enrollment() {
-    let test = TestRelay::new().await;
-    let root = Signer::generate();
-    let sponsor = Author::device(&root, Signer::generate());
+async fn repeated_history_fetch_never_renews_expiry_or_creates_an_enrollment(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let test = TestRelay::new().await?;
+    let root = Signer::generate()?;
+    let sponsor = Author::device(&root, Signer::generate()?);
     let mut controller = connect(&test.ws_url, &sponsor).await;
     request(
         &mut controller,
@@ -113,7 +116,7 @@ async fn repeated_history_fetch_never_renews_expiry_or_creates_an_enrollment() {
     )
     .await
     .unwrap();
-    let id = Signer::generate().id();
+    let id = Signer::generate()?.id();
     request(
         &mut controller,
         2,
@@ -171,7 +174,7 @@ async fn repeated_history_fetch_never_renews_expiry_or_creates_an_enrollment() {
             .unwrap(),
         Reply::Link(None)
     );
-    let unknown = Signer::generate().id();
+    let unknown = Signer::generate()?.id();
     assert_eq!(
         request(&mut controller, 6, Op::FetchLink { id: unknown })
             .await
@@ -197,4 +200,5 @@ async fn repeated_history_fetch_never_renews_expiry_or_creates_an_enrollment() {
     );
     let _ = controller.close(None).await;
     test.close().await;
+    Ok(())
 }

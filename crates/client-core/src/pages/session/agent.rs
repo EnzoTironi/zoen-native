@@ -1,4 +1,4 @@
-//! One native command on the existing PageSession and encrypted journal.
+//! One native command on the existing `PageSession` and encrypted journal.
 use super::*;
 use crate::{
     agent_page_tools::{self as tools, ReplaceBlock},
@@ -253,7 +253,12 @@ impl Engine {
                 prefix_sha256: tools::prefix(&self.state, item, version)
                     .map_err(|reason| invalid(&reason))?,
                 content_sha256: page.content_hash(),
-                title: match &it.versions[version as usize - 1].content {
+                title: match &version
+                    .checked_sub(1)
+                    .and_then(|index| it.versions.get(index as usize))
+                    .ok_or_else(stale)?
+                    .content
+                {
                     ItemContent::Page(p) => p.title.clone(),
                     _ => return Err(stale()),
                 },
@@ -319,7 +324,7 @@ impl Engine {
             .pages
             .sessions
             .lock()
-            .unwrap_or_else(|p| p.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .remove(item);
         let mut session = cached.map_or_else(|| PageSession::open(self, item), Ok)?;
         let result = self.atomic_agent_action(|engine| {
@@ -414,7 +419,7 @@ impl Engine {
             self.pages
                 .sessions
                 .lock()
-                .unwrap_or_else(|p| p.into_inner())
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .insert(item.clone(), session);
         }
         result

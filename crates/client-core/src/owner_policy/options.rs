@@ -3,7 +3,10 @@ mod account;
 mod control;
 mod index;
 mod prepare;
-use super::*;
+use super::{
+    denied, invalid, Client, CoreError, Deserialize, Engine, EventBody, IdentityKind,
+    OwnerPeriodPolicy, OwnerPolicyReview, OwnerPolicyScope, Privacy, Serialize, SpaceKind, R,
+};
 pub use control::{OwnerPolicyInquiryControl, OwnerPolicyInquiryCounts, OwnerPolicyInquiryScan};
 use types::owner_policy_context::{
     OwnerPolicyInquiry, OwnerPolicyOptions, SignedOwnerPolicyInquiry, CONTEXT_TTL_MS,
@@ -149,7 +152,7 @@ impl Engine {
             .and_then(|proposal| self.image_generation_review(proposal))
             .ok_or_else(denied)?;
         let inquiry = OwnerPolicyInquiry {
-            id: types::new_id("policy_inquiry"),
+            id: types::new_id("policy_inquiry")?,
             owner: scope.expected_identity_id.clone(),
             agent: scope.agent_id.clone(),
             space: scope.space_id.clone(),
@@ -310,7 +313,7 @@ impl Engine {
                 })
             })
             .transpose()?;
-        let refused = self.logs.get(&scope.space_id).into_iter().flat_map(|log| log.events()).any(|event| {
+        let refused = self.logs.get(&scope.space_id).into_iter().flat_map(event_log::SpaceLog::events).any(|event| {
             matches!(&event.body, EventBody::OwnerPolicyOptionsRefused { source: target, inquiry_digest }
                 if target == source && inquiry_digest == &digest && event.author == scope.agent_id
                 && event.seq > 0 && event.sealed_wire.is_some() && event.device.is_some() && event.cert.is_some()

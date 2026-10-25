@@ -29,7 +29,7 @@ impl<S: Signer> Client<S> {
         let mut downloads = Vec::new();
         let mut mutated = false;
         let result = match command {
-            Command::NewMutationId {} => json!(browser_id("client_edit", now)),
+            Command::NewMutationId {} => json!(browser_id("client_edit", now)?),
             Command::PageParseMarkdown { markdown } => json!(Page::from_markdown(&markdown)
                 .map_err(error)?
                 .blocks()
@@ -238,7 +238,7 @@ impl<S: Signer> Client<S> {
                             .ok_or("Seção indisponível.")?
                             .lines
                             .push(types::PlanLine {
-                                id: browser_id("ln", now),
+                                id: browser_id("ln", now)?,
                                 text,
                                 cost_cents: cost,
                                 done: false,

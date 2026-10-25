@@ -9,18 +9,20 @@ fn current_chunk(f: &Fixture) -> types::ChunkRef {
     file.chunks[0].clone()
 }
 
-fn remove_reader(f: &mut Fixture) {
+fn remove_reader(f: &mut Fixture) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let identity = f.reader.account().unwrap().identity_id;
     f.sender
         .remove_member(f.space.clone(), identity.clone())
         .unwrap();
-    f.catch_up();
+    f.catch_up()?;
     assert!(!f.reader.lock().is_member(&f.space, &identity));
+    Ok(())
 }
 
 #[test]
-fn revoked_current_file_is_not_background_download_authority() {
-    let mut f = Fixture::new();
+fn revoked_current_file_is_not_background_download_authority(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
     let chunk = current_chunk(&f);
     assert!(f
         .reader
@@ -28,7 +30,7 @@ fn revoked_current_file_is_not_background_download_authority() {
         .wanted_media()
         .iter()
         .any(|w| w.blob == chunk.blob));
-    remove_reader(&mut f);
+    remove_reader(&mut f)?;
     assert!(
         !f.reader
             .lock()
@@ -37,13 +39,15 @@ fn revoked_current_file_is_not_background_download_authority() {
             .any(|w| w.space == f.space),
         "a synced but revoked chat must not retain background download authority"
     );
+    Ok(())
 }
 
 /// S06-inspired own-protocol contract: revocation while a real fetch is pending
 /// must prevent late completion from creating a cached plaintext resource.
 #[tokio::test]
-async fn revoked_current_file_response_does_not_cache_or_block_an_authorized_chat() {
-    let mut f = Fixture::new();
+async fn revoked_current_file_response_does_not_cache_or_block_an_authorized_chat(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
     let chunk = current_chunk(&f);
     let mut server = BlobServer::start(f.uploads(), chunk.blob.clone(), false);
     let (reader, item) = (f.reader.clone(), f.item.clone());
@@ -56,7 +60,7 @@ async fn revoked_current_file_response_does_not_cache_or_block_an_authorized_cha
     let kick = Arc::new(tokio::sync::Notify::new());
     let task = worker(&f.reader, &server, kick.clone());
     until(|| server.requests.lock().unwrap().contains(&chunk.blob)).await;
-    remove_reader(&mut f);
+    remove_reader(&mut f)?;
     assert!(matches!(
         waiting.await.unwrap(),
         Err(CoreError::Forbidden { .. })
@@ -95,13 +99,13 @@ async fn revoked_current_file_response_does_not_cache_or_block_an_authorized_cha
         .into_iter()
         .filter(|p| p.event.space == marker_space)
     {
-        let event = relay.sequence(pending.event);
+        let event = relay.sequence(pending.event)?;
         assert!(matches!(
             f.reader.lock().ingest(Sequenced {
                 seq: event.seq,
                 prev: event.prev.clone(),
                 hash: event.hash.clone(),
-                env: Envelope::plain(event),
+                env: Envelope::plain(event)?,
             }),
             Ingest::Applied
         ));
@@ -141,4 +145,5 @@ async fn revoked_current_file_response_does_not_cache_or_block_an_authorized_cha
     task.abort();
     let _ = task.await;
     server.stop().expect("owned HTTP fixture must terminate");
+    Ok(())
 }

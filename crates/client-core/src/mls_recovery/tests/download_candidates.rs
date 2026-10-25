@@ -4,8 +4,8 @@ use super::*;
 fn an_absent_recovery_recipient_key_can_arrive_after_classification(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let space = "late-recipient-key";
-    let staged = staged_recovery(":memory:", space);
-    let mut engine = missing_receiver(&staged, space);
+    let staged = staged_recovery(":memory:", space)?;
+    let mut engine = missing_receiver(&staged, space)?;
     engine.store.conn().execute(
         "DELETE FROM peer_agreement_keys WHERE identity = ?1",
         [&staged.peer.identity],
@@ -26,20 +26,24 @@ fn an_absent_recovery_recipient_key_can_arrive_after_classification(
     Ok(())
 }
 
-fn missing_receiver(staged: &StagedRecovery, space: &str) -> Engine {
-    let mut engine = restored_receiver(staged);
+fn missing_receiver(
+    staged: &StagedRecovery,
+    space: &str,
+) -> Result<Engine, Box<dyn std::error::Error>> {
+    let mut engine = restored_receiver(staged)?;
     engine.net.synced.insert(space.into());
     assert!(engine.wanted_recovery_contexts().is_empty());
     assert!(!engine.mls_recovery_pass().unwrap());
     assert_eq!(engine.wanted_recovery_contexts().len(), 1);
-    engine
+    Ok(engine)
 }
 
 #[test]
-fn failed_download_keeps_candidate_until_valid_bytes_arrive() {
+fn failed_download_keeps_candidate_until_valid_bytes_arrive(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let space = "download-retry";
-    let staged = staged_recovery(":memory:", space);
-    let mut engine = missing_receiver(&staged, space);
+    let staged = staged_recovery(":memory:", space)?;
+    let mut engine = missing_receiver(&staged, space)?;
     let reference = engine.wanted_recovery_contexts().remove(0);
     assert!(!engine.recovery_context_arrived(&reference, b"invalid bytes"));
     assert!(!engine.mls_recovery_pass().unwrap());
@@ -52,13 +56,16 @@ fn failed_download_keeps_candidate_until_valid_bytes_arrive() {
     assert!(engine.wanted_recovery_contexts().is_empty());
     assert!(engine.mls_recovery_pass().unwrap());
     assert!(engine.device().unwrap().recovery_pending(space));
+
+    Ok(())
 }
 
 #[test]
-fn changed_context_rejects_old_candidate_and_inflight_response() {
+fn changed_context_rejects_old_candidate_and_inflight_response(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let space = "download-context-change";
-    let staged = staged_recovery(":memory:", space);
-    let mut engine = missing_receiver(&staged, space);
+    let staged = staged_recovery(":memory:", space)?;
+    let mut engine = missing_receiver(&staged, space)?;
     let original = engine.wanted_recovery_contexts().remove(0);
     // Exercise every signed-reference field, including a same-blob change.
     for changed in [
@@ -99,13 +106,16 @@ fn changed_context_rejects_old_candidate_and_inflight_response() {
             .recovery_downloads
             .insert(space.into(), original.clone());
     }
+
+    Ok(())
 }
 
 #[test]
-fn ready_group_rejects_stale_candidate_and_inflight_response() {
+fn ready_group_rejects_stale_candidate_and_inflight_response(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let space = "download-ready-change";
-    let staged = staged_recovery(":memory:", space);
-    let mut engine = missing_receiver(&staged, space);
+    let staged = staged_recovery(":memory:", space)?;
+    let mut engine = missing_receiver(&staged, space)?;
     let reference = engine.wanted_recovery_contexts().remove(0);
     engine.create_mls_group(space).unwrap();
     assert_eq!(
@@ -120,13 +130,16 @@ fn ready_group_rejects_stale_candidate_and_inflight_response() {
         .recovery_blob(space, &reference.blob)
         .unwrap()
         .is_none());
+
+    Ok(())
 }
 
 #[test]
-fn removed_membership_rejects_stale_candidate_and_inflight_response() {
+fn removed_membership_rejects_stale_candidate_and_inflight_response(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let space = "download-member-change";
-    let staged = staged_recovery(":memory:", space);
-    let mut engine = missing_receiver(&staged, space);
+    let staged = staged_recovery(":memory:", space)?;
+    let mut engine = missing_receiver(&staged, space)?;
     let reference = engine.wanted_recovery_contexts().remove(0);
     let me = engine.me.clone().unwrap();
     engine
@@ -144,4 +157,6 @@ fn removed_membership_rejects_stale_candidate_and_inflight_response() {
         .recovery_blob(space, &reference.blob)
         .unwrap()
         .is_none());
+
+    Ok(())
 }

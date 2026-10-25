@@ -34,6 +34,7 @@ pub struct LiveViewKey {
 impl LiveViewKey {
     /// A new key (first launch).
     #[uniffi::constructor]
+    #[must_use]
     pub fn generate() -> Self {
         LiveViewKey {
             key: DeviceKey::generate(),
@@ -48,10 +49,12 @@ impl LiveViewKey {
         })
     }
 
+    #[must_use]
     pub fn secret(&self) -> Vec<u8> {
         self.key.secret().to_vec()
     }
 
+    #[must_use]
     pub fn public_key(&self) -> Vec<u8> {
         self.key.public().to_vec()
     }

@@ -52,7 +52,7 @@ impl Engine {
                 reason: crate::i18n::t("anexo não encontrado", "attachment not found"),
             });
         };
-        let (key, sealed) = seal(&plain);
+        let (key, sealed) = seal(&plain)?;
         let blob = hex::encode(Sha256::digest(&sealed));
         let key = hex::encode(key);
         self.store
@@ -158,9 +158,12 @@ impl Engine {
 mod tests {
     use super::*;
 
-    fn wanted(bytes: &[u8], profile: bool) -> (Wanted, Vec<u8>) {
-        let (key, sealed) = seal(bytes);
-        (
+    fn wanted(
+        bytes: &[u8],
+        profile: bool,
+    ) -> std::result::Result<(Wanted, Vec<u8>), Box<dyn std::error::Error>> {
+        let (key, sealed) = seal(bytes)?;
+        Ok((
             Wanted {
                 plain: hex::encode(Sha256::digest(bytes)),
                 blob: hex::encode(Sha256::digest(&sealed)),
@@ -171,7 +174,7 @@ mod tests {
                 maximum_sealed_bytes: None,
             },
             sealed,
-        )
+        ))
     }
 
     #[test]
@@ -180,7 +183,7 @@ mod tests {
         let cap = event_log::profile::MAX_PHOTO_BYTES;
         for size in [0, cap, cap + 1] {
             let bytes = vec![29; size];
-            let (mut request, sealed) = wanted(&bytes, true);
+            let (mut request, sealed) = wanted(&bytes, true).unwrap();
             request.maximum_sealed_bytes = Some(u64::MAX);
             assert_eq!(request.sealed_limit(), cap as u64 + 40);
             let accepted = engine.media_arrived(&request, &sealed);
@@ -194,11 +197,11 @@ mod tests {
                 accepted
             );
         }
-        let (request, mut sealed) = wanted(b"valid following profile", true);
+        let (request, mut sealed) = wanted(b"valid following profile", true).unwrap();
         *sealed.last_mut().unwrap() ^= 1;
         assert!(!engine.media_arrived(&request, &sealed));
         assert!(engine.media(&request.plain).unwrap().is_none());
-        let (request, sealed) = wanted(b"valid following profile", true);
+        let (request, sealed) = wanted(b"valid following profile", true).unwrap();
         assert!(engine.media_arrived(&request, &sealed));
         assert_eq!(
             engine.media(&request.plain).unwrap(),
@@ -251,7 +254,7 @@ mod tests {
                 assert!(actual.is_empty(), "invalid declared size {declared}");
             }
         }
-        let (request, _) = wanted(b"legacy reference", false);
+        let (request, _) = wanted(b"legacy reference", false).unwrap();
         assert_eq!(
             request.sealed_limit(),
             crate::universal::MAX_MEDIA_BYTES as u64 + 40
@@ -267,7 +270,7 @@ mod tests {
 
     #[test]
     fn seal_opens_with_its_key_only() {
-        let (key, sealed) = seal(b"a photo");
+        let (key, sealed) = seal(b"a photo").unwrap();
         assert_eq!(open(&key, &sealed).as_deref(), Some(&b"a photo"[..]));
         let mut other = key;
         other[0] ^= 1;
@@ -275,7 +278,7 @@ mod tests {
         let mut tampered = sealed.clone();
         *tampered.last_mut().unwrap() ^= 1;
         assert!(open(&key, &tampered).is_none());
-        let (_, again) = seal(b"a photo");
+        let (_, again) = seal(b"a photo").unwrap();
         assert_ne!(sealed, again, "a fresh key and nonce every time");
     }
 }

@@ -9,83 +9,6 @@ mod admission;
 
 const EXACT: &str = "Reservation: cafe\u{301} 👩🏽‍💻\r\nkeep NEL\u{85}and paragraph\u{2029}bytes";
 
-#[test]
-fn legacy_line_addition_refuses_negative_cost_without_publishing_zero() {
-    let mut fixture = Fixture::new();
-    let before = storage(&fixture);
-    for cents in [-1, -1_025, i64::MIN] {
-        assert!(matches!(
-            {
-                let observed_hash = fixture
-                    .engine
-                    .plan_page(&fixture.item)
-                    .unwrap()
-                    .content_hash;
-                fixture
-                    .engine
-                    .add_plan_line(&fixture.item, 0, "Credit", cents, &observed_hash)
-            },
-            Err(CoreError::Invalid { .. })
-        ));
-        assert_eq!(storage(&fixture), before);
-        assert_eq!(fixture.engine.item(&fixture.item).unwrap().version, 1);
-    }
-    for cents in [0, 1_025] {
-        let outcome = {
-            let observed_hash = fixture
-                .engine
-                .plan_page(&fixture.item)
-                .unwrap()
-                .content_hash;
-            fixture
-                .engine
-                .add_plan_line(&fixture.item, 0, "Exact cost", cents, &observed_hash)
-        }
-        .unwrap();
-        let plan = outcome.item.plan.unwrap();
-        let added = plan.sections[0].lines.last().unwrap();
-        assert_eq!(added.text, "Exact cost");
-        assert_eq!(added.cost_cents, cents);
-        assert_eq!(plan.sections[0].lines[1].cost_cents, -7);
-    }
-}
-
-#[test]
-fn legacy_line_addition_refuses_an_unrepresentable_total_before_writing() {
-    let mut fixture = Fixture::new();
-    let before = storage(&fixture);
-    assert!(matches!(
-        {
-            let observed_hash = fixture
-                .engine
-                .plan_page(&fixture.item)
-                .unwrap()
-                .content_hash;
-            fixture
-                .engine
-                .add_plan_line(&fixture.item, 0, "Too much", i64::MAX, &observed_hash)
-        },
-        Err(CoreError::Invalid { .. })
-    ));
-    assert_eq!(storage(&fixture), before);
-    let outcome = {
-        let observed_hash = fixture
-            .engine
-            .plan_page(&fixture.item)
-            .unwrap()
-            .content_hash;
-        fixture.engine.add_plan_line(
-            &fixture.item,
-            0,
-            "Exact upper total",
-            i64::MAX - 193,
-            &observed_hash,
-        )
-    }
-    .unwrap();
-    assert_eq!(outcome.item.plan.unwrap().total_cents, i64::MAX);
-}
-
 fn storage(fixture: &Fixture) -> Vec<(String, Vec<String>)> {
     let connection = fixture.engine.store.conn();
     let tables: Vec<String> = connection
@@ -137,12 +60,17 @@ fn storage(fixture: &Fixture) -> Vec<(String, Vec<String>)> {
         .collect()
 }
 
-fn promote(fixture: &mut Fixture, document: &PlanDocument) {
+fn promote(
+    fixture: &mut Fixture,
+    document: &PlanDocument,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let content = page(fixture.fold().manifest().unwrap(), document);
-    fixture.ordered(fixture.version(ItemContent::Page(content)));
+    fixture.ordered(fixture.version(ItemContent::Page(content)))?;
+
+    Ok(())
 }
 
-fn canonical(fixture: &mut Fixture) -> PlanDoc {
+fn canonical(fixture: &mut Fixture) -> std::result::Result<PlanDoc, Box<dyn std::error::Error>> {
     let mut document = edited(
         fixture.fold().document.as_ref().unwrap(),
         LinePatch {
@@ -158,16 +86,16 @@ fn canonical(fixture: &mut Fixture) -> PlanDoc {
         .apply(PlanCommand::SetSummary("The current shared summary".into()))
         .unwrap();
     let expected = document.view().unwrap().to_plan_doc();
-    promote(fixture, &document);
-    expected
+    promote(fixture, &document)?;
+    Ok(expected)
 }
 
 #[test]
 fn generic_item_history_preserves_the_canonical_plan_cutover_gate() {
-    let mut fixture = Fixture::new();
+    let mut fixture = Fixture::new().unwrap();
     let legacy = fixture.engine.item_at(&fixture.item, 1).unwrap();
     assert_eq!(legacy.plan.unwrap().total_cents, 193);
-    canonical(&mut fixture);
+    canonical(&mut fixture).unwrap();
     let before = storage(&fixture);
     for version in [1, 2] {
         assert!(matches!(
@@ -185,7 +113,7 @@ fn generic_item_history_preserves_the_canonical_plan_cutover_gate() {
     );
 }
 
-fn owned_agent(fixture: &mut Fixture) -> String {
+fn owned_agent(fixture: &mut Fixture) -> std::result::Result<String, Box<dyn std::error::Error>> {
     let mut identity = fixture.engine.identities[&fixture.owner].clone();
     identity.kind = IdentityKind::Agent;
     identity.name = "Owned agent".into();
@@ -195,37 +123,41 @@ fn owned_agent(fixture: &mut Fixture) -> String {
     fixture.ordered(EventBody::MemberAdded {
         identity: agent.clone(),
         role: Role::Member,
-    });
+    })?;
     fixture.ordered(EventBody::GrantIssued {
         grant: Grant {
-            id: new_id("trust"),
+            id: new_id("trust")?,
             grantor: fixture.owner.clone(),
             grantee: Some(agent.clone()),
             scope: GrantScope::Space(fixture.space.clone()),
             capability: Capability::Trust(TrustLevel::Act),
             expires_at_ms: None,
         },
-    });
-    agent
+    })?;
+    Ok(agent)
 }
 
 #[test]
 fn current_readers_use_the_shared_plan_and_retain_refused_legacy_history() {
-    let mut fixture = Fixture::new();
-    let expected = canonical(&mut fixture);
+    let mut fixture = Fixture::new().unwrap();
+    let expected = canonical(&mut fixture).unwrap();
     let writer = add_identity(&mut fixture.engine, "Later writer");
-    fixture.ordered(EventBody::MemberAdded {
-        identity: writer.clone(),
-        role: Role::Member,
-    });
-    let late = fixture.ordered_as(
-        &writer,
-        fixture.version(ItemContent::Plan(PlanDoc {
-            title: "Refused old title".into(),
-            summary: "Refused old summary".into(),
-            ..original()
-        })),
-    );
+    fixture
+        .ordered(EventBody::MemberAdded {
+            identity: writer.clone(),
+            role: Role::Member,
+        })
+        .unwrap();
+    let late = fixture
+        .ordered_as(
+            &writer,
+            fixture.version(ItemContent::Plan(PlanDoc {
+                title: "Refused old title".into(),
+                summary: "Refused old summary".into(),
+                ..original()
+            })),
+        )
+        .unwrap();
     assert_eq!(
         fixture.fold().slots.last().unwrap().content,
         Some(ItemContent::Plan(PlanDoc {
@@ -300,14 +232,18 @@ fn current_readers_use_the_shared_plan_and_retain_refused_legacy_history() {
 #[test]
 fn legacy_writers_refuse_before_mutating_after_cutover_or_while_it_is_pending() {
     for pending in [false, true] {
-        let mut fixture = Fixture::new();
+        let mut fixture = Fixture::new().unwrap();
         let document = fixture.fold().document.unwrap();
         let content = page(fixture.fold().manifest().unwrap(), &document);
         if pending {
             fixture.queue(fixture.version(ItemContent::Page(content)));
         } else {
-            fixture.ordered(fixture.version(ItemContent::Page(content)));
-            fixture.ordered(fixture.version(ItemContent::Plan(original())));
+            fixture
+                .ordered(fixture.version(ItemContent::Page(content)))
+                .unwrap();
+            fixture
+                .ordered(fixture.version(ItemContent::Plan(original())))
+                .unwrap();
         }
         let before = storage(&fixture);
         let line = original().sections[0].lines[0].id.clone();
@@ -369,7 +305,7 @@ fn legacy_writers_refuse_before_mutating_after_cutover_or_while_it_is_pending() 
 
 #[test]
 fn existing_offline_legacy_previews_keep_their_exact_bytes() {
-    let mut fixture = Fixture::new();
+    let mut fixture = Fixture::new().unwrap();
     let mut pending = original();
     pending.summary = EXACT.into();
     fixture.queue(fixture.version(ItemContent::Plan(pending.clone())));
@@ -384,7 +320,7 @@ fn existing_offline_legacy_previews_keep_their_exact_bytes() {
             .as_bytes(),
         EXACT.as_bytes()
     );
-    let item = new_id("pending-creation");
+    let item = new_id("pending-creation").unwrap();
     fixture.queue(EventBody::ItemCreated {
         item: item.clone(),
         kind: ItemKind::Plan,
@@ -413,8 +349,8 @@ fn existing_offline_legacy_previews_keep_their_exact_bytes() {
 
 #[test]
 fn private_plan_drafts_never_enter_cards_search_or_approval_reads() {
-    let mut fixture = Fixture::new();
-    canonical(&mut fixture);
+    let mut fixture = Fixture::new().unwrap();
+    canonical(&mut fixture).unwrap();
     let mut session = PageSession::open(&fixture.engine, &fixture.item).unwrap();
     let read = session.read(&fixture.engine).unwrap();
     let DocumentView::Plan { blocks } = &read.view else {
@@ -488,8 +424,8 @@ fn private_plan_drafts_never_enter_cards_search_or_approval_reads() {
 
 #[test]
 fn approval_reads_keep_first_duplicate_id_and_exact_text_cents_semantics() {
-    let mut fixture = Fixture::new();
-    let agent = owned_agent(&mut fixture);
+    let mut fixture = Fixture::new().unwrap();
+    let agent = owned_agent(&mut fixture).unwrap();
     let line = original().sections[0].lines[0].id.clone();
     let request = fixture
         .engine
@@ -511,7 +447,7 @@ fn approval_reads_keep_first_duplicate_id_and_exact_text_cents_semantics() {
             ..Default::default()
         },
     );
-    promote(&mut fixture, &document);
+    promote(&mut fixture, &document).unwrap();
     assert_eq!(
         fixture
             .engine
@@ -545,7 +481,7 @@ fn approval_reads_keep_first_duplicate_id_and_exact_text_cents_semantics() {
             ..Default::default()
         },
     );
-    promote(&mut fixture, &document);
+    promote(&mut fixture, &document).unwrap();
     assert_eq!(
         fixture
             .engine
@@ -575,8 +511,8 @@ fn approval_reads_keep_first_duplicate_id_and_exact_text_cents_semantics() {
 
 #[test]
 fn poll_plan_effect_refuses_before_closing_or_posting_into_a_canonical_plan() {
-    let mut fixture = Fixture::new();
-    let agent = owned_agent(&mut fixture);
+    let mut fixture = Fixture::new().unwrap();
+    let agent = owned_agent(&mut fixture).unwrap();
     let poll = fixture
         .engine
         .agent_create_app(
@@ -594,7 +530,7 @@ fn poll_plan_effect_refuses_before_closing_or_posting_into_a_canonical_plan() {
         .engine
         .app_call_tool(&poll.id, "poll_vote", r#"{"option":"o1"}"#, false)
         .unwrap();
-    canonical(&mut fixture);
+    canonical(&mut fixture).unwrap();
     let before = storage(&fixture);
     assert!(fixture
         .engine
@@ -603,112 +539,4 @@ fn poll_plan_effect_refuses_before_closing_or_posting_into_a_canonical_plan() {
     assert_eq!(storage(&fixture), before);
 }
 
-#[test]
-fn total_overflow_is_unavailable_and_minimum_legacy_cents_stay_readable() {
-    let mut fixture = Fixture::new();
-    let mut original = original();
-    original.sections[0].lines[0].cost_cents = i64::MAX;
-    original.sections[0].lines[1].cost_cents = 1;
-    fixture.ordered(fixture.version(ItemContent::Plan(original.clone())));
-    let before = storage(&fixture);
-    let card = fixture.engine.card(&fixture.item).unwrap();
-    assert_eq!(card.total_cents, None);
-    assert_eq!(card.line_count, 2);
-    assert!(fixture.engine.item(&fixture.item).is_err());
-    assert_eq!(storage(&fixture), before);
-    let document = fixture.fold().document.unwrap();
-    promote(&mut fixture, &document);
-    assert_eq!(
-        fixture.engine.card(&fixture.item).unwrap().total_cents,
-        None
-    );
-    assert!(fixture.engine.item(&fixture.item).is_err());
-    let mut legacy = Fixture::new();
-    original.sections[0].lines[0].cost_cents = i64::MIN;
-    original.sections[0].lines[1].cost_cents = 0;
-    legacy.ordered(legacy.version(ItemContent::Plan(original)));
-    assert_eq!(
-        legacy
-            .engine
-            .item(&legacy.item)
-            .unwrap()
-            .plan
-            .unwrap()
-            .total_cents,
-        i64::MIN
-    );
-    assert_eq!(
-        legacy.engine.card(&legacy.item).unwrap().total_cents,
-        Some(i64::MIN)
-    );
-    assert_eq!(legacy.engine.search("Hotel").len(), 1);
-    assert_eq!(
-        crate::i18n::money_in(crate::i18n::Lang::En, i64::MIN),
-        "−R$ 92,233,720,368,547,758.08"
-    );
-}
-
-#[test]
-fn credits_cancel_intermediate_overflow_independently_of_row_order() {
-    for (costs, total) in [
-        ([i64::MAX, 1, -1], i64::MAX),
-        ([-1, 1, i64::MAX], i64::MAX),
-        ([i64::MIN, -1, 1], i64::MIN),
-        ([1, -1, i64::MIN], i64::MIN),
-    ] {
-        let mut fixture = Fixture::new();
-        let mut legacy = original();
-        let template = legacy.sections[0].lines[0].clone();
-        legacy.sections[0].lines = costs
-            .iter()
-            .enumerate()
-            .map(|(index, cost)| PlanLine {
-                id: format!("cancel-credit-{index}"),
-                text: format!("Exact credit row {index}"),
-                cost_cents: *cost,
-                ..template.clone()
-            })
-            .collect();
-        fixture.ordered(fixture.version(ItemContent::Plan(legacy)));
-        let document = fixture.fold().document.unwrap();
-        assert_eq!(
-            document.view().unwrap().total,
-            documents::plan::TotalCents::Cents(total)
-        );
-        let before = storage(&fixture);
-        let card = fixture.engine.card(&fixture.item).unwrap();
-        assert_eq!(card.total_cents, Some(total));
-        assert_eq!(card.line_count, 3);
-        let item = fixture.engine.item(&fixture.item).unwrap();
-        assert_eq!(item.plan.as_ref().unwrap().total_cents, total);
-        assert_eq!(
-            item.plan.unwrap().sections[0]
-                .lines
-                .iter()
-                .map(|line| line.cost_cents)
-                .collect::<Vec<_>>(),
-            costs
-        );
-        assert_eq!(storage(&fixture), before);
-        promote(&mut fixture, &document);
-        assert_eq!(
-            fixture.engine.card(&fixture.item).unwrap().total_cents,
-            Some(total)
-        );
-        assert_eq!(
-            fixture
-                .engine
-                .item(&fixture.item)
-                .unwrap()
-                .plan
-                .unwrap()
-                .total_cents,
-            total
-        );
-        fixture.engine.reload().unwrap();
-        assert_eq!(
-            fixture.engine.card(&fixture.item).unwrap().total_cents,
-            Some(total)
-        );
-    }
-}
+mod limits_cases;

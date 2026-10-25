@@ -153,7 +153,9 @@ impl State {
         let mut expected = prior.req.clone();
         expected.id = request.id.clone();
         expected.content_hash = request.content_hash.clone();
-        let expected_proposal = expected.tool_proposal.as_mut().unwrap();
+        let Some(expected_proposal) = expected.tool_proposal.as_mut() else {
+            return false;
+        };
         expected_proposal.expires_at_ms = p.expires_at_ms;
         expected_proposal.review = Some(lineage.clone());
         expected == *request
@@ -276,12 +278,7 @@ impl Engine {
         })
     }
 
-    pub(crate) fn tool_review_dto(&self, r: &RequestState) -> ToolReviewDto {
-        let p = r
-            .req
-            .tool_proposal
-            .as_ref()
-            .expect("tool review DTO requires a proposal");
+    pub(crate) fn tool_review_dto(&self, r: &RequestState, p: &ToolProposal) -> ToolReviewDto {
         let state = if let Some(intent) = &r.review {
             if intent.successor.is_some() {
                 ToolReviewState::Superseded

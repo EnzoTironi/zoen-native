@@ -3,10 +3,11 @@ use super::*;
 use crate::agent_binary_documents::source_scope_tests::scope;
 
 #[test]
-fn scoped_approved_steps_keep_original_source_and_require_a_new_exact_decision() {
-    let mut f = fixture();
-    scope(&mut f, |_| {});
-    signed_trust(&f, TrustLevel::Suggest);
+fn scoped_approved_steps_keep_original_source_and_require_a_new_exact_decision(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = fixture()?;
+    scope(&mut f, |_| {})?;
+    signed_trust(&f, TrustLevel::Suggest)?;
     let mut previous_call = None;
     for step in 0..2 {
         let t = turn(&f);
@@ -50,4 +51,6 @@ fn scoped_approved_steps_keep_original_source_and_require_a_new_exact_decision()
         .agent
         .agent_binary_turn(&f.base.item_id, &f.source, &f.owner, None, None)
         .is_ok());
+
+    Ok(())
 }

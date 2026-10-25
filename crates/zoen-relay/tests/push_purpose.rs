@@ -7,9 +7,10 @@ use types::{Identity, IdentityKind};
 use zoen_relay::{db, push};
 
 #[tokio::test]
-async fn legacy_migration_and_purpose_refresh_clear_transfer_and_revocation() {
+async fn legacy_migration_and_purpose_refresh_clear_transfer_and_revocation(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let admin = std::env::var("ZOEN_TEST_PG").expect("set ZOEN_TEST_PG for push purpose tests");
-    let name = format!("zoen_push_{}", &Signer::generate().id()[..16]);
+    let name = format!("zoen_push_{}", &Signer::generate()?.id()[..16]);
     let mut connection = PgConnection::connect(&admin).await.unwrap();
     sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {name}")))
         .execute(&mut connection)
@@ -33,9 +34,10 @@ async fn legacy_migration_and_purpose_refresh_clear_transfer_and_revocation() {
     if let Err(error) = result {
         std::panic::resume_unwind(error);
     }
+    Ok(())
 }
 
-async fn exercise(pool: &PgPool) {
+async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::Error>> {
     sqlx::raw_sql(include_str!("../migrations/0029_push_tokens.sql"))
         .execute(pool)
         .await
@@ -57,9 +59,9 @@ async fn exercise(pool: &PgPool) {
         .unwrap();
     sqlx::migrate!("./migrations").run(pool).await.unwrap();
 
-    let root = Signer::generate();
-    let first = Author::device(&root, Signer::generate());
-    let second = Author::device(&root, Signer::generate());
+    let root = Signer::generate()?;
+    let first = Author::device(&root, Signer::generate()?);
+    let second = Author::device(&root, Signer::generate()?);
     let identity = Identity {
         id: root.id(),
         kind: IdentityKind::Person,
@@ -179,6 +181,7 @@ async fn exercise(pool: &PgPool) {
             .await
             .is_err()
     );
+    Ok(())
 }
 
 fn tokens(targets: Vec<push::Target>) -> Vec<String> {

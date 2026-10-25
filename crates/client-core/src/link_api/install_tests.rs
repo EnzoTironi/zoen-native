@@ -41,11 +41,11 @@ struct Material {
     boxed: IdentityBox,
 }
 impl Material {
-    fn new() -> Self {
+    fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
         let identity = Signer::from_secret(&[81; 32]);
         let device = Signer::from_secret(&[82; 32]);
-        let (hpke_secret, hpke_public) = link::key_pair();
-        let (_, primary) = link::key_pair();
+        let (hpke_secret, hpke_public) = link::key_pair()?;
+        let (_, primary) = link::key_pair()?;
         let pending = Pending {
             device_secret: hex::encode(device.secret()),
             hpke_secret: hex::encode(hpke_secret),
@@ -71,11 +71,11 @@ impl Material {
             profile_seen_version: 1,
             profile_fields: hex::encode(fields.to_bytes()),
         };
-        Self {
+        Ok(Self {
             pending,
             device,
             boxed,
-        }
+        })
     }
     fn vault(&self) -> Arc<Vault> {
         let vault = Arc::new(Vault::default());
@@ -97,10 +97,10 @@ impl Material {
 }
 struct Directory(PathBuf);
 impl Directory {
-    fn new() -> Self {
-        let path = std::env::temp_dir().join(types::new_id("zoen-link-install"));
+    fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        let path = std::env::temp_dir().join(types::new_id("zoen-link-install")?);
         std::fs::create_dir(&path).unwrap();
-        Self(path)
+        Ok(Self(path))
     }
     fn open(&self) -> Arc<Client> {
         Client::open(
@@ -131,11 +131,12 @@ fn assert_not_installed(client: &Client) {
 }
 
 #[test]
-fn each_rejected_or_ambiguous_vault_write_keeps_keys_retryable_across_cold_reopen() {
+fn each_rejected_or_ambiguous_vault_write_keeps_keys_retryable_across_cold_reopen(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for accept_failure in [false, true] {
         for fail_at in 1..=4 {
-            let directory = Directory::new();
-            let material = Material::new();
+            let directory = Directory::new().unwrap();
+            let material = Material::new()?;
             let vault = material.vault();
             let pending = vault.load(link::VAULT_PENDING.into()).unwrap();
             vault.fail_at.store(fail_at, Ordering::SeqCst);
@@ -190,10 +191,13 @@ fn each_rejected_or_ambiguous_vault_write_keeps_keys_retryable_across_cold_reope
             );
         }
     }
+
+    Ok(())
 }
 
 #[test]
-fn missing_or_invalid_incoming_agreement_and_profile_keys_never_generate_replacement_authority() {
+fn missing_or_invalid_incoming_agreement_and_profile_keys_never_generate_replacement_authority(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for (agreement, profile, version) in [
         ("".to_owned(), hex::encode([84; 32]), 1),
         ("not-hex".into(), hex::encode([84; 32]), 1),
@@ -203,7 +207,7 @@ fn missing_or_invalid_incoming_agreement_and_profile_keys_never_generate_replace
         (hex::encode([83; 32]), "invalid".into(), 1),
         (hex::encode([83; 32]), hex::encode([84; 32]), 0),
     ] {
-        let mut material = Material::new();
+        let mut material = Material::new()?;
         material.boxed.agreement_secret = agreement;
         material.boxed.profile_key = profile;
         material.boxed.profile_key_version = version;
@@ -216,12 +220,15 @@ fn missing_or_invalid_incoming_agreement_and_profile_keys_never_generate_replace
         assert_eq!(*vault.rows.lock().unwrap(), before);
         assert_not_installed(&client);
     }
+
+    Ok(())
 }
 
 #[test]
-fn retained_foreign_vault_material_is_not_overwritten_by_a_new_link() {
+fn retained_foreign_vault_material_is_not_overwritten_by_a_new_link(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for key in [VAULT_IDENTITY, VAULT_DEVICE, VAULT_AGREEMENT] {
-        let material = Material::new();
+        let material = Material::new()?;
         let vault = material.vault();
         vault.rows.lock().unwrap().insert(key.into(), vec![99; 32]);
         let before = vault.rows.lock().unwrap().clone();
@@ -231,11 +238,14 @@ fn retained_foreign_vault_material_is_not_overwritten_by_a_new_link() {
         assert_eq!(vault.writes.load(Ordering::SeqCst), 0);
         assert_not_installed(&client);
     }
+
+    Ok(())
 }
 
 #[test]
-fn profile_storage_failure_rolls_back_before_any_vault_write_and_the_same_link_can_retry() {
-    let material = Material::new();
+fn profile_storage_failure_rolls_back_before_any_vault_write_and_the_same_link_can_retry(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let material = Material::new()?;
     let vault = material.vault();
     let client = Client::open(":memory:".into(), "en".into()).unwrap();
     client.lock().store.conn().execute_batch(
@@ -256,11 +266,14 @@ fn profile_storage_failure_rolls_back_before_any_vault_write_and_the_same_link_c
     let account = material.install(&client, vault.clone()).unwrap();
     assert_eq!(account.device_id, material.device.id());
     assert_eq!(vault.load(VAULT_AGREEMENT.into()).unwrap(), vec![83; 32]);
+
+    Ok(())
 }
 
 #[test]
-fn deleting_pending_and_capturing_the_install_receipt_keep_the_same_engine_guard() {
-    let material = Material::new();
+fn deleting_pending_and_capturing_the_install_receipt_keep_the_same_engine_guard(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let material = Material::new()?;
     let vault = material.vault();
     let client = Client::open(":memory:".into(), "en".into()).unwrap();
     let weak = Arc::downgrade(&client);
@@ -277,4 +290,6 @@ fn deleting_pending_and_capturing_the_install_receipt_keep_the_same_engine_guard
     let account = material.install(&client, vault).unwrap();
     assert_eq!(account.identity_id, Signer::from_secret(&[81; 32]).id());
     assert_eq!(account.device_id, material.device.id());
+
+    Ok(())
 }

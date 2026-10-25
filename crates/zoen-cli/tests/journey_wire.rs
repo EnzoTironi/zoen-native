@@ -16,14 +16,15 @@ fn head(ev: &protocol::Sequenced) -> Option<Seen> {
 }
 
 #[tokio::test]
-async fn an_event_from_a_newer_client_survives_the_relay_and_an_older_peer() {
+async fn an_event_from_a_newer_client_survives_the_relay_and_an_older_peer(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let w = World::new("newer").await;
     w.init("bruno", "Bruno");
     let bruno = w.id_of("bruno").await;
 
-    let mut nova = RawClient::connect(&w.relay_url(), "nova").await;
+    let mut nova = RawClient::connect(&w.relay_url(), "nova").await?;
     let me = nova.identity();
-    let space = types::new_id("sp");
+    let space = types::new_id("sp")?;
     let created = nova
         .publish_body(
             &space,
@@ -66,7 +67,7 @@ async fn an_event_from_a_newer_client_survives_the_relay_and_an_older_peer() {
     let mut future = SignedContent {
         v: 3,
         space: space.clone(),
-        client_id: types::new_ulid(now_ms()),
+        client_id: types::new_ulid(now_ms())?,
         author: me,
         device: nova.author.device.clone(),
         at_ms: now_ms(),
@@ -107,13 +108,15 @@ async fn an_event_from_a_newer_client_survives_the_relay_and_an_older_peer() {
         "Bruno's reply is sequenced on top of the event he can't read"
     );
     assert!(!w.zoen("bruno", &["verify"]).contains("BROKEN"));
+    Ok(())
 }
 
 #[tokio::test]
-async fn the_relay_refuses_events_signed_on_a_history_it_doesnt_have() {
+async fn the_relay_refuses_events_signed_on_a_history_it_doesnt_have(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let w = World::new("causal").await;
-    let mut m = RawClient::connect(&w.relay_url(), "mallory").await;
-    let space = types::new_id("sp");
+    let mut m = RawClient::connect(&w.relay_url(), "mallory").await?;
+    let space = types::new_id("sp")?;
     let created = m
         .publish_body(
             &space,
@@ -205,15 +208,17 @@ async fn the_relay_refuses_events_signed_on_a_history_it_doesnt_have() {
         .await
         .is_ok());
     assert_eq!(w.events_in(&space).await.len(), 2);
+    Ok(())
 }
 
 #[tokio::test]
-async fn an_outdated_client_is_told_to_upgrade() {
+async fn an_outdated_client_is_told_to_upgrade(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let w = World::new("upgrade").await;
     // Protocol 2 cannot verify sealed v4 entries; protocol 3 sponsors cannot enroll
     // linked devices. Both need an explicit upgrade before authentication.
     for protocol in [2, 3] {
-        match hello_only(&w.relay_url(), protocol).await {
+        match hello_only(&w.relay_url(), protocol).await? {
             ServerFrame::Error { code, message } => {
                 assert_eq!(code, ErrorCode::UpgradeRequired);
                 assert!(message.contains("too old"), "{message}");
@@ -223,7 +228,7 @@ async fn an_outdated_client_is_told_to_upgrade() {
     }
     assert!(
         matches!(
-            hello_only(&w.relay_url(), PROTOCOL_VERSION + 1).await,
+            hello_only(&w.relay_url(), PROTOCOL_VERSION + 1).await?,
             ServerFrame::Challenge {
                 protocol: PROTOCOL_VERSION,
                 ..
@@ -231,4 +236,5 @@ async fn an_outdated_client_is_told_to_upgrade() {
         ),
         "a newer client talks down to this relay's version"
     );
+    Ok(())
 }

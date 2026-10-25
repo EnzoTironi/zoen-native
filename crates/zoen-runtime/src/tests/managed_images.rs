@@ -7,8 +7,10 @@ use std::path::PathBuf;
 
 pub(super) struct Directory(pub(super) PathBuf);
 impl Directory {
-    pub(super) fn new() -> Self {
-        Self(std::env::temp_dir().join(types::new_id("managed-image-anchor")))
+    pub(super) fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        Ok(Self(
+            std::env::temp_dir().join(types::new_id("managed-image-anchor")?),
+        ))
     }
 }
 impl Drop for Directory {
@@ -22,7 +24,7 @@ pub(super) async fn replacement_anchor_refused(
     actor: &Author,
     agent: &Identity,
     owner: &Identity,
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut contender = world.reopen().await;
     Arc::get_mut(&mut contender).unwrap().native = Some(native::testing::custody(
         &world.config_namespace,
@@ -35,7 +37,7 @@ pub(super) async fn replacement_anchor_refused(
         Ok(contender) => contender,
         Err(_) => panic!("bootstrap contender unexpectedly shared"),
     };
-    let replacement = Directory::new();
+    let replacement = Directory::new()?;
     let result = contender
         .initialize_managed_image_continuity(
             &replacement.0,
@@ -49,6 +51,7 @@ pub(super) async fn replacement_anchor_refused(
         "even genesis cannot be adopted into a second anchor directory"
     );
     println!("managed image genesis: existing actual SQL/FDB genesis refuses a second independent anchor before attempts or capsules PASS");
+    Ok(())
 }
 
 pub(super) async fn assert_dispatch_checkpoint(

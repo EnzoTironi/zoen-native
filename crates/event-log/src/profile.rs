@@ -16,7 +16,7 @@ use prost::Message;
 use sha2::{Digest, Sha256};
 use x25519_dalek::{PublicKey, StaticSecret};
 
-use crate::{device_cert_message, verify_sig, Author};
+use crate::{crypto::random, device_cert_message, verify_sig, Author, CryptoError};
 
 const PROFILE_INFO: &[u8] = b"zoen-profile-v1";
 const SHARE_INFO: &[u8] = b"zoen-profile-key-share-v1";
@@ -25,12 +25,6 @@ const UPLOAD_DOMAIN: &[u8] = b"zoen-profile-upload-v1\0";
 const NONCE: usize = 24;
 /// Biggest profile ciphertext a relay accepts (fields are short; the photo is a blob).
 pub const MAX_CIPHERTEXT: usize = 8 * 1024;
-
-fn random<const N: usize>() -> [u8; N] {
-    let mut b = [0u8; N];
-    getrandom::getrandom(&mut b).expect("system randomness");
-    b
-}
 
 /// The fields a profile carries, as the protobuf the author encrypts. Unknown fields
 /// from newer clients are dropped on re-encode, so only the owner ever re-encodes.
@@ -64,6 +58,7 @@ pub struct ProfilePhoto {
 pub const MAX_PHOTO_BYTES: usize = 5 * 1024 * 1024;
 
 impl ProfilePhoto {
+    #[must_use]
     pub fn valid(&self) -> bool {
         [&self.sha256, &self.blob, &self.key].iter().all(|value| {
             value.len() == 64
@@ -76,11 +71,12 @@ impl ProfilePhoto {
         )
     }
 
+    #[must_use]
     pub fn seal(bytes: &[u8], mime: &str) -> Option<(Self, Vec<u8>)> {
         if bytes.is_empty() || bytes.len() > MAX_PHOTO_BYTES {
             return None;
         }
-        let (key, sealed) = crate::media::seal(bytes);
+        let (key, sealed) = crate::media::seal(bytes).ok()?;
         let photo = Self {
             sha256: hex::encode(Sha256::digest(bytes)),
             blob: hex::encode(Sha256::digest(&sealed)),
@@ -91,6 +87,7 @@ impl ProfilePhoto {
     }
 
     /// Both hashes are checked; no caller can relabel someone else's blob.
+    #[must_use]
     pub fn open(&self, sealed: &[u8]) -> Option<Vec<u8>> {
         if !self.valid()
             || sealed.len() > MAX_PHOTO_BYTES + 40
@@ -107,10 +104,12 @@ impl ProfilePhoto {
 }
 
 impl ProfileFields {
+    #[must_use]
     pub fn to_bytes(&self) -> Vec<u8> {
         self.encode_to_vec()
     }
 
+    #[must_use]
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         Self::decode(bytes).ok()
     }
@@ -126,24 +125,27 @@ impl std::fmt::Debug for ProfileKey {
 }
 
 impl ProfileKey {
-    pub fn generate() -> Self {
-        Self(random())
+    /// # Errors
+    /// Refuses unavailable system entropy without constructing a profile key.
+    pub fn generate() -> Result<Self, CryptoError> {
+        Ok(Self(random()?))
     }
 
     pub fn from_hex(s: &str) -> Option<Self> {
         hex::decode(s).ok()?.try_into().ok().map(Self)
     }
 
+    #[must_use]
     pub fn to_hex(&self) -> String {
         hex::encode(self.0)
     }
 
-    fn cipher(&self) -> XChaCha20Poly1305 {
+    fn cipher(&self) -> Result<XChaCha20Poly1305, CryptoError> {
         let mut k = [0u8; 32];
         Hkdf::<Sha256>::new(None, &self.0)
             .expand(PROFILE_INFO, &mut k)
-            .expect("32 bytes");
-        XChaCha20Poly1305::new_from_slice(&k).expect("32-byte key")
+            .map_err(|_| CryptoError::KeyDerivation)?;
+        Ok(XChaCha20Poly1305::new(&k.into()))
     }
 }
 
@@ -158,15 +160,18 @@ fn profile_aad(identity: &str, version: u64) -> Vec<u8> {
 }
 
 /// `nonce ‖ ciphertext+tag`.
+///
+/// # Errors
+/// Refuses entropy, key derivation or authenticated encryption failure.
 pub fn seal_profile(
     key: &ProfileKey,
     identity: &str,
     version: u64,
     fields: &ProfileFields,
-) -> Vec<u8> {
-    let nonce = random::<NONCE>();
+) -> Result<Vec<u8>, CryptoError> {
+    let nonce = random::<NONCE>()?;
     let ct = key
-        .cipher()
+        .cipher()?
         .encrypt(
             &XNonce::from(nonce),
             Payload {
@@ -174,10 +179,11 @@ pub fn seal_profile(
                 aad: &profile_aad(identity, version),
             },
         )
-        .expect("encrypt");
-    [nonce.as_slice(), &ct].concat()
+        .map_err(|_| CryptoError::Encryption)?;
+    Ok([nonce.as_slice(), &ct].concat())
 }
 
+#[must_use]
 pub fn open_profile(
     key: &ProfileKey,
     identity: &str,
@@ -190,6 +196,7 @@ pub fn open_profile(
     let nonce: [u8; NONCE] = sealed[..NONCE].try_into().ok()?;
     let plain = key
         .cipher()
+        .ok()?
         .decrypt(
             &XNonce::from(nonce),
             Payload {
@@ -224,6 +231,7 @@ fn verify_as(identity: &str, msg: &[u8], s: &DeviceSigned) -> bool {
 }
 
 /// Canonical bytes for a certified external device signer to authorize an upload.
+#[must_use]
 pub fn upload_message(identity: &str, version: u64, ciphertext: &[u8]) -> Vec<u8> {
     let mut m = UPLOAD_DOMAIN.to_vec();
     m.extend_from_slice(identity.as_bytes());
@@ -234,6 +242,7 @@ pub fn upload_message(identity: &str, version: u64, ciphertext: &[u8]) -> Vec<u8
 }
 
 /// Signs a profile upload; `None` for an author without a certified device.
+#[must_use]
 pub fn sign_upload(author: &Author, version: u64, ciphertext: &[u8]) -> Option<DeviceSigned> {
     sign_as(
         author,
@@ -241,6 +250,7 @@ pub fn sign_upload(author: &Author, version: u64, ciphertext: &[u8]) -> Option<D
     )
 }
 
+#[must_use]
 pub fn verify_upload(identity: &str, version: u64, ciphertext: &[u8], s: &DeviceSigned) -> bool {
     verify_as(identity, &upload_message(identity, version, ciphertext), s)
 }
@@ -250,24 +260,30 @@ pub fn verify_upload(identity: &str, version: u64, ciphertext: &[u8], s: &Device
 pub struct AgreementKey(StaticSecret);
 
 impl AgreementKey {
-    pub fn generate() -> Self {
-        Self(StaticSecret::from(random::<32>()))
+    /// # Errors
+    /// Refuses unavailable system entropy without constructing an agreement key.
+    pub fn generate() -> Result<Self, CryptoError> {
+        Ok(Self(StaticSecret::from(random::<32>()?)))
     }
 
+    #[must_use]
     pub fn from_secret(secret: [u8; 32]) -> Self {
         Self(StaticSecret::from(secret))
     }
 
+    #[must_use]
     pub fn secret(&self) -> [u8; 32] {
         self.0.to_bytes()
     }
 
+    #[must_use]
     pub fn public_hex(&self) -> String {
         hex::encode(PublicKey::from(&self.0).as_bytes())
     }
 }
 
 /// Canonical bytes for a certified external device signer to publish its agreement key.
+#[must_use]
 pub fn agreement_message(identity: &str, public: &str) -> Vec<u8> {
     [
         AGREEMENT_DOMAIN,
@@ -279,10 +295,12 @@ pub fn agreement_message(identity: &str, public: &str) -> Vec<u8> {
 }
 
 /// Publishes `public` as `author`'s agreement key.
+#[must_use]
 pub fn sign_agreement(author: &Author, public: &str) -> Option<DeviceSigned> {
     sign_as(author, &agreement_message(&author.identity, public))
 }
 
+#[must_use]
 pub fn verify_agreement(identity: &str, public: &str, s: &DeviceSigned) -> bool {
     public.len() == 64 && verify_as(identity, &agreement_message(identity, public), s)
 }
@@ -299,16 +317,17 @@ fn share_key(
     ephemeral: &[u8; 32],
     recipient: &[u8; 32],
     context: &[u8],
-) -> XChaCha20Poly1305 {
+) -> Option<XChaCha20Poly1305> {
     let salt = [ephemeral.as_slice(), recipient].concat();
     let mut k = [0u8; 32];
     Hkdf::<Sha256>::new(Some(&salt), shared)
         .expand_multi_info(&[SHARE_INFO, b"\0", context], &mut k)
-        .expect("32 bytes");
-    XChaCha20Poly1305::new_from_slice(&k).expect("32-byte key")
+        .ok()?;
+    Some(XChaCha20Poly1305::new(&k.into()))
 }
 
 /// `context` names sender, recipient and Space, so a share can't be replayed elsewhere.
+#[must_use]
 pub fn share_context(space: &str, sender: &str, recipient: &str) -> Vec<u8> {
     [
         space.as_bytes(),
@@ -321,6 +340,7 @@ pub fn share_context(space: &str, sender: &str, recipient: &str) -> Vec<u8> {
 }
 
 /// Seals `(key, version)` to `recipient_public` (hex X25519).
+#[must_use]
 pub fn seal_share(
     key: &ProfileKey,
     version: u64,
@@ -328,15 +348,15 @@ pub fn seal_share(
     context: &[u8],
 ) -> Option<SealedShare> {
     let recipient: [u8; 32] = hex::decode(recipient_public).ok()?.try_into().ok()?;
-    let eph = StaticSecret::from(random::<32>());
+    let eph = StaticSecret::from(random::<32>().ok()?);
     let eph_pub = PublicKey::from(&eph).to_bytes();
     let shared = eph.diffie_hellman(&PublicKey::from(recipient));
     if !shared.was_contributory() {
         return None;
     }
-    let nonce = random::<NONCE>();
+    let nonce = random::<NONCE>().ok()?;
     let msg = [key.0.as_slice(), &version.to_be_bytes()].concat();
-    let ct = share_key(shared.as_bytes(), &eph_pub, &recipient, context)
+    let ct = share_key(shared.as_bytes(), &eph_pub, &recipient, context)?
         .encrypt(&XNonce::from(nonce), msg.as_slice())
         .ok()?;
     Some(SealedShare {
@@ -346,6 +366,7 @@ pub fn seal_share(
 }
 
 /// Opens a share sealed to `me`: the sender's profile key and the version it unlocks.
+#[must_use]
 pub fn open_share(
     me: &AgreementKey,
     share: &SealedShare,
@@ -359,7 +380,7 @@ pub fn open_share(
     let shared = me.0.diffie_hellman(&PublicKey::from(eph));
     let recipient = PublicKey::from(&me.0).to_bytes();
     let nonce: [u8; NONCE] = sealed[..NONCE].try_into().ok()?;
-    let plain = share_key(shared.as_bytes(), &eph, &recipient, context)
+    let plain = share_key(shared.as_bytes(), &eph, &recipient, context)?
         .decrypt(&XNonce::from(nonce), &sealed[NONCE..])
         .ok()?;
     if plain.len() != 40 {
@@ -390,10 +411,10 @@ mod tests {
 
     #[test]
     fn a_profile_opens_only_with_its_key_identity_and_version() {
-        let key = ProfileKey::generate();
-        let sealed = seal_profile(&key, "ana", 3, &fields());
+        let key = ProfileKey::generate().unwrap();
+        let sealed = seal_profile(&key, "ana", 3, &fields()).unwrap();
         assert_eq!(open_profile(&key, "ana", 3, &sealed), Some(fields()));
-        assert!(open_profile(&ProfileKey::generate(), "ana", 3, &sealed).is_none());
+        assert!(open_profile(&ProfileKey::generate().unwrap(), "ana", 3, &sealed).is_none());
         assert!(
             open_profile(&key, "bruno", 3, &sealed).is_none(),
             "swapped between people"
@@ -410,9 +431,9 @@ mod tests {
 
     #[test]
     fn a_share_opens_only_for_its_recipient_and_context() {
-        let key = ProfileKey::generate();
-        let bruno = AgreementKey::generate();
-        let carla = AgreementKey::generate();
+        let key = ProfileKey::generate().unwrap();
+        let bruno = AgreementKey::generate().unwrap();
+        let carla = AgreementKey::generate().unwrap();
         let ctx = share_context("sp1", "ana", "bruno");
         let share = seal_share(&key, 7, &bruno.public_hex(), &ctx).unwrap();
         assert_eq!(open_share(&bruno, &share, &ctx), Some((key, 7)));
@@ -422,32 +443,38 @@ mod tests {
             "replayed in another Space"
         );
         assert!(
-            seal_share(&ProfileKey::generate(), 1, &"00".repeat(32), &ctx).is_none(),
+            seal_share(&ProfileKey::generate().unwrap(), 1, &"00".repeat(32), &ctx).is_none(),
             "low-order key"
         );
     }
 
     #[test]
     fn uploads_and_agreement_keys_are_signed_by_a_certified_device() {
-        let root = Signer::generate();
-        let ana = Author::device(&root, Signer::generate());
-        let ct = seal_profile(&ProfileKey::generate(), &ana.identity, 1, &fields());
+        let root = Signer::generate().unwrap();
+        let ana = Author::device(&root, Signer::generate().unwrap());
+        let ct = seal_profile(
+            &ProfileKey::generate().unwrap(),
+            &ana.identity,
+            1,
+            &fields(),
+        )
+        .unwrap();
         let s = sign_upload(&ana, 1, &ct).unwrap();
         assert!(verify_upload(&ana.identity, 1, &ct, &s));
         assert!(!verify_upload(&ana.identity, 2, &ct, &s));
-        let mallory = Author::device(&Signer::generate(), Signer::generate());
+        let mallory = Author::device(&Signer::generate().unwrap(), Signer::generate().unwrap());
         let forged = DeviceSigned {
             cert: mallory.cert.clone().unwrap(),
             ..sign_upload(&mallory, 1, &ct).unwrap()
         };
         assert!(!verify_upload(&ana.identity, 1, &ct, &forged));
 
-        let ak = AgreementKey::generate();
+        let ak = AgreementKey::generate().unwrap();
         let s = sign_agreement(&ana, &ak.public_hex()).unwrap();
         assert!(verify_agreement(&ana.identity, &ak.public_hex(), &s));
         assert!(!verify_agreement(
             &ana.identity,
-            &AgreementKey::generate().public_hex(),
+            &AgreementKey::generate().unwrap().public_hex(),
             &s
         ));
     }

@@ -77,7 +77,7 @@ impl Client {
         }
         let operation = shared::operation(&p.canonical_tool);
         let mut request = AgentRequest {
-            id: types::new_id("rq"),
+            id: types::new_id("rq")?,
             agent: actor.clone(),
             title: operation.clone(),
             detail: format!("{operation}: {title}"),

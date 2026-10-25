@@ -343,7 +343,9 @@ fn seal_v2(key: &[u8; 32], aad: &[u8], plain: &[u8]) -> R<String> {
     let encoded = super::seal(key, aad, plain)?;
     Ok(format!(
         "v2:{}",
-        encoded.strip_prefix("v1:").expect("legacy seal prefix")
+        encoded
+            .strip_prefix("v1:")
+            .ok_or_else(|| invalid("Unexpected local draft encryption format"))?
     ))
 }
 
@@ -512,5 +514,5 @@ pub(crate) fn open_v3(key: &[u8; 32], aad: &[u8], encoded: &str, tag: &[u8]) -> 
     domain.extend(b"\0input-journal.v3\0");
     domain.extend(tag);
     crate::local_sealed::open(key, &domain, &format!("v1:{body}"), MAX_JOURNAL_BYTES)
-        .map_err(|_| super::storage_error())
+        .map_err(|()| super::storage_error())
 }

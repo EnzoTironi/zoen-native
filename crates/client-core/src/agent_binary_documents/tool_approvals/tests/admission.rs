@@ -3,9 +3,9 @@
 use super::*;
 
 pub(super) fn canonical_request_is_deduplicated_and_generic_or_wrong_owner_decisions_never_authorize(
-) {
-    let fixture = fixture();
-    signed_trust(&fixture, TrustLevel::Suggest);
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    signed_trust(&fixture, TrustLevel::Suggest)?;
     let request = stage(&fixture, "deckcraft_slide_notes");
     assert_eq!(request.status, RequestStatus::Pending);
     assert!(!request.can_always_approve);
@@ -98,11 +98,14 @@ pub(super) fn canonical_request_is_deduplicated_and_generic_or_wrong_owner_decis
     assert_eq!(admission.turn().document().version, 1);
     assert_eq!(counts(&fixture), before);
     assert_v1(&fixture);
+
+    Ok(())
 }
 
-pub(super) fn mutation_of_frozen_arguments_or_source_cannot_replace_the_reviewed_intent() {
-    let fixture = fixture();
-    signed_trust(&fixture, TrustLevel::Suggest);
+pub(super) fn mutation_of_frozen_arguments_or_source_cannot_replace_the_reviewed_intent(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    signed_trust(&fixture, TrustLevel::Suggest)?;
     let original_turn = turn(&fixture);
     let request = stage(&fixture, "deckcraft_slide_notes");
     let before = counts(&fixture);
@@ -164,9 +167,12 @@ pub(super) fn mutation_of_frozen_arguments_or_source_cannot_replace_the_reviewed
         .status,
         RequestStatus::Cancelled
     );
+
+    Ok(())
 }
 
-pub(super) fn changed_head_and_revoked_grants_or_device_refuse_before_execution() {
+pub(super) fn changed_head_and_revoked_grants_or_device_refuse_before_execution(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for failure in [
         "head",
         "app-grant",
@@ -174,8 +180,8 @@ pub(super) fn changed_head_and_revoked_grants_or_device_refuse_before_execution(
         "served-writer",
         "trust-block",
     ] {
-        let fixture = fixture();
-        signed_trust(&fixture, TrustLevel::Suggest);
+        let fixture = fixture()?;
+        signed_trust(&fixture, TrustLevel::Suggest)?;
         let request = stage(&fixture, "deckcraft_slide_notes");
         owner_decide(
             &fixture,
@@ -248,7 +254,7 @@ pub(super) fn changed_head_and_revoked_grants_or_device_refuse_before_execution(
                     )
                     .unwrap();
             }
-            "trust-block" => signed_trust(&fixture, TrustLevel::Listen),
+            "trust-block" => signed_trust(&fixture, TrustLevel::Listen)?,
             _ => unreachable!(),
         }
         let before = counts(&fixture);
@@ -286,11 +292,13 @@ pub(super) fn changed_head_and_revoked_grants_or_device_refuse_before_execution(
             if failure == "head" { 2 } else { 1 }
         );
     }
+    Ok(())
 }
 
-pub(super) fn raw_worker_turn_cannot_bypass_a_later_signed_core_block_at_result_or_save_boundary() {
-    let fixture = fixture();
-    signed_trust(&fixture, TrustLevel::Suggest);
+pub(super) fn raw_worker_turn_cannot_bypass_a_later_signed_core_block_at_result_or_save_boundary(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    signed_trust(&fixture, TrustLevel::Suggest)?;
     let raw_turn = turn(&fixture);
     let hash = "aa".repeat(32);
     assert!(fixture
@@ -298,7 +306,7 @@ pub(super) fn raw_worker_turn_cannot_bypass_a_later_signed_core_block_at_result_
         .agent_binary_result(&raw_turn, "synthetic-raw-write", &hash)
         .unwrap()
         .is_none());
-    signed_trust(&fixture, TrustLevel::Listen);
+    signed_trust(&fixture, TrustLevel::Listen)?;
     let before = counts(&fixture);
     assert!(fixture
         .agent
@@ -317,4 +325,6 @@ pub(super) fn raw_worker_turn_cannot_bypass_a_later_signed_core_block_at_result_
     fixture.agent.agent_binary_finish_read(&raw_turn).unwrap();
     assert_eq!(counts(&fixture), before);
     assert_v1(&fixture);
+
+    Ok(())
 }

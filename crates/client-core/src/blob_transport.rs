@@ -21,12 +21,15 @@ pub struct BlobUploadReceipt {
     bytes: u64,
 }
 impl BlobUploadReceipt {
+    #[must_use]
     pub fn blob(&self) -> &str {
         &self.blob
     }
+    #[must_use]
     pub fn device(&self) -> &str {
         &self.device
     }
+    #[must_use]
     pub fn bytes(&self) -> u64 {
         self.bytes
     }

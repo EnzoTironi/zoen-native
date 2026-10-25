@@ -7,14 +7,15 @@ fn constraint(error: sqlx::Error) {
     );
 }
 
-pub(super) async fn run() {
-    Box::pin(gate_without_attempt()).await;
-    Box::pin(gate_after_reservation_and_claim()).await;
-    Box::pin(admitted_sql_obligation_cannot_gate()).await;
+pub(super) async fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Box::pin(gate_without_attempt()).await?;
+    Box::pin(gate_after_reservation_and_claim()).await?;
+    Box::pin(admitted_sql_obligation_cannot_gate()).await?;
+    Ok(())
 }
 
-async fn gate_without_attempt() {
-    let (fixture, run) = original().await;
+async fn gate_without_attempt() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (fixture, run) = original().await?;
     let runtime = fixture.world.runtime.clone();
     let step = runtime.verified_step(&run.run).await.unwrap();
     let original = binding(&runtime, &step);
@@ -44,7 +45,7 @@ async fn gate_without_attempt() {
         );
     }
     constraint(sqlx::query("INSERT INTO runtime_predispatch_closures(attempt,owner,period_start,binding_digest) VALUES($1,$2,$3,$4)")
-        .bind(new_id("no-original-period")).bind(&original.context.owner).bind(original.period_start + 1)
+        .bind(new_id("no-original-period")?).bind(&original.context.owner).bind(original.period_start + 1)
         .bind(original.digest().unwrap()).execute(&runtime.finance.pool).await.unwrap_err());
     assert_eq!(
         fixture
@@ -63,10 +64,11 @@ async fn gate_without_attempt() {
     assert_zero_send(&fixture).await;
     fixture.finish().await;
     println!("native SQL gate journey: raw insertion after pre-reservation closure and closure update/delete/truncate are refused, original period never fabricated PASS");
+    Ok(())
 }
 
-async fn gate_after_reservation_and_claim() {
-    let (fixture, run) = original().await;
+async fn gate_after_reservation_and_claim() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (fixture, run) = original().await?;
     let runtime = fixture.world.runtime.clone();
     let step = runtime.verified_step(&run.run).await.unwrap();
     let original = binding(&runtime, &step);
@@ -108,10 +110,12 @@ async fn gate_after_reservation_and_claim() {
     assert_one_release(&fixture).await;
     fixture.finish().await;
     println!("native SQL gate journey: claimed but proved-unsent attempt releases once; raw new claim, witness and settlement after closure are refused PASS");
+    Ok(())
 }
 
-async fn admitted_sql_obligation_cannot_gate() {
-    let (fixture, run) = original().await;
+async fn admitted_sql_obligation_cannot_gate() -> std::result::Result<(), Box<dyn std::error::Error>>
+{
+    let (fixture, run) = original().await?;
     let runtime = fixture.world.runtime.clone();
     let step = runtime.verified_step(&run.run).await.unwrap();
     let original = binding(&runtime, &step);
@@ -138,4 +142,5 @@ async fn admitted_sql_obligation_cannot_gate() {
     );
     fixture.finish().await;
     println!("native SQL gate journey: an actual known admitted and settled obligation cannot receive a predispatch closure PASS");
+    Ok(())
 }

@@ -1,5 +1,8 @@
 //! Conversation and agent-control application operations.
-use super::*;
+use super::{
+    account_vault, definition_target, encode, invalid, timeline_page, Arc, Client, Command,
+    CoreError, SecretVault,
+};
 
 impl Client {
     pub(super) async fn dispatch_client(
@@ -7,27 +10,30 @@ impl Client {
         command: Command,
         vault: Option<Arc<dyn SecretVault>>,
     ) -> Result<String, CoreError> {
-        use Command::*;
+        use Command::{
+            AddAdmin, AddMember, AddMemberReviewed, AgentDefinitionDismiss, AgentDefinitionPreview,
+            AgentDefinitionRead, AgentDefinitionReconcile, AgentDefinitionUpdate,
+            AgentEnrollmentApprove, AgentEnrollmentDismiss, AgentEnrollmentPreview,
+            AgentEnrollmentStatus, AgentStatus, AppCurrentShareContext, CallHistory, ControlAgent,
+            CreateAgentInvite, CreateCommunity, CreateGroup, CreateInvite, DeleteMessage,
+            EditMessage, EncryptChat, FindAccountPolicyOptions, FindMemberCandidates,
+            FindOwnerPolicyOptions, FindOwnerPolicySubmission, FindPeople, ForwardMessage,
+            InviteCall, JoinInvite, LeaveSpace, MarkRead, Message, MessageDraft, NewMutationId,
+            OpenAgentLink, OwnerPolicyOptions, OwnerPolicyStatus, PageBlockMarkdown,
+            PageParseMarkdown, PrepareOwnerPolicy, PreviewInvite, ProviderSignIn, React,
+            RecoverFailedMediaDraft, RemoveMember, RemoveMemberReviewed,
+            RequestAccountPolicyOptions, RequestAppEdit, RequestOwnerPolicyOptions, RespondCall,
+            ReviewOwnerPolicy, RevokeAgentInvite, SaveMessageDraft, SendMessage, SendMessageDraft,
+            SetChatMuted, SetChatPrefs, SetTyping, ShareAppCurrent, Snapshot, SpaceMemberContext,
+            StartDirect, StartOwnerPolicyDirect, SubmitOwnerPolicy, Thread, Timeline,
+            UniversalSearch,
+        };
         match command {
             AppCurrentShareContext { scope } => encode(&self.app_current_share_context(scope)?),
             ShareAppCurrent {
                 context,
                 mutation_id,
-            } => {
-                use crate::app_current_share::AppShareResult;
-                let result = match self.share_app_current(context, &mutation_id) {
-                    Ok(receipt) => AppShareResult {
-                        receipt: Some(receipt),
-                        conflict: None,
-                    },
-                    Err(CoreError::Stale { reason }) => AppShareResult {
-                        receipt: None,
-                        conflict: Some(reason),
-                    },
-                    Err(error) => return Err(error),
-                };
-                encode(&result)
-            }
+            } => self.share_app_current_bridge(context, &mutation_id),
             StartOwnerPolicyDirect {
                 expected_identity_id,
                 expected_device_id,
@@ -93,7 +99,7 @@ impl Client {
                     .provider_sign_in(relay_url, proof_token, name, account_vault(&vault)?)
                     .await?,
             ),
-            NewMutationId {} => encode(&types::new_id("client_edit")),
+            NewMutationId {} => encode(&types::new_id("client_edit")?),
             PageParseMarkdown { markdown } => {
                 encode(&crate::pages::parse_editor_markdown(&markdown)?)
             }

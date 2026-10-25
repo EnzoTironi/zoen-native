@@ -13,10 +13,10 @@ const DEADLINE: &str = r#"{"event":"zoen_sync_wait_deadline","version":1,"timeou
 
 struct Directory(PathBuf);
 impl Directory {
-    fn new() -> Self {
-        let path = std::env::temp_dir().join(types::new_id("safe-sync-diagnostics"));
+    fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        let path = std::env::temp_dir().join(types::new_id("safe-sync-diagnostics")?);
         std::fs::create_dir(&path).unwrap();
-        Self(path)
+        Ok(Self(path))
     }
     fn records(&self) -> Vec<serde_json::Value> {
         std::fs::read_dir(&self.0)
@@ -98,8 +98,9 @@ fn malformed_oversized_overflow_and_extra_line_statuses_become_closed_unparsed()
 }
 
 #[test]
-fn successful_world_capture_writes_nothing_until_the_failure_path() {
-    let dir = Directory::new();
+fn successful_world_capture_writes_nothing_until_the_failure_path(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = Directory::new()?;
     {
         let diagnostics = JourneyDiagnostics::at(Some(dir.0.clone()));
         diagnostics.observe(
@@ -156,11 +157,13 @@ fn successful_world_capture_writes_nothing_until_the_failure_path() {
             0o600
         );
     }
+    Ok(())
 }
 
 #[test]
-fn dropped_successful_capture_leaves_no_artifact() {
-    let dir = Directory::new();
+fn dropped_successful_capture_leaves_no_artifact(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = Directory::new()?;
     let diagnostics = JourneyDiagnostics::at(Some(dir.0.clone()));
     diagnostics.observe(
         &["sync"],
@@ -172,11 +175,13 @@ fn dropped_successful_capture_leaves_no_artifact() {
     );
     drop(diagnostics);
     assert!(dir.records().is_empty());
+    Ok(())
 }
 
 #[test]
-fn deadline_records_require_exact_shape_consistent_short_circuit_and_original_time() {
-    let dir = Directory::new();
+fn deadline_records_require_exact_shape_consistent_short_circuit_and_original_time(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = Directory::new()?;
     let diagnostics = JourneyDiagnostics::at(Some(dir.0.clone()));
     let cases = [
         DEADLINE.replace("\"mls_ready\":false", "\"mls_ready\":true"),
@@ -203,11 +208,13 @@ fn deadline_records_require_exact_shape_consistent_short_circuit_and_original_ti
     assert_eq!(records.len(), 1);
     assert_eq!(records[0]["rejected_deadlines"], cases.len());
     assert!(!records[0].to_string().contains("canary"));
+    Ok(())
 }
 
 #[test]
-fn diagnostic_record_bounds_are_explicit_and_keep_the_last_observations() {
-    let dir = Directory::new();
+fn diagnostic_record_bounds_are_explicit_and_keep_the_last_observations(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = Directory::new()?;
     let diagnostics = JourneyDiagnostics::at(Some(dir.0.clone()));
     for _ in 0..20 {
         diagnostics.observe(&[], &output(b"", DEADLINE.as_bytes(), false));
@@ -220,11 +227,13 @@ fn diagnostic_record_bounds_are_explicit_and_keep_the_last_observations() {
         .find(|v| v["event"] == "zoen_journey_sync_diagnostics")
         .unwrap();
     assert_eq!(summary["discarded_deadlines"], 4);
+    Ok(())
 }
 
 #[test]
-fn existing_output_and_symlink_targets_are_never_overwritten() {
-    let dir = Directory::new();
+fn existing_output_and_symlink_targets_are_never_overwritten(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = Directory::new()?;
     let file = dir.0.join("existing.json");
     std::fs::write(&file, b"existing-private-canary").unwrap();
     assert!(write_new_record(&file, b"{}").is_err());
@@ -237,11 +246,13 @@ fn existing_output_and_symlink_targets_are_never_overwritten() {
         assert!(write_new_record(&link, b"{}").is_err());
         assert_eq!(std::fs::read(&file).unwrap(), b"existing-private-canary");
     }
+    Ok(())
 }
 
 #[test]
-fn disabled_missing_and_symlink_directories_cannot_mask_the_original_failure() {
-    let dir = Directory::new();
+fn disabled_missing_and_symlink_directories_cannot_mask_the_original_failure(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let dir = Directory::new()?;
     for target in [None, Some(dir.0.join("missing"))] {
         let diagnostics = JourneyDiagnostics::at(target);
         diagnostics.observe(
@@ -254,13 +265,14 @@ fn disabled_missing_and_symlink_directories_cannot_mask_the_original_failure() {
     #[cfg(unix)]
     {
         let link = dir.0.join("directory-link");
-        let target = Directory::new();
+        let target = Directory::new()?;
         std::os::unix::fs::symlink(&target.0, &link).unwrap();
         let diagnostics = JourneyDiagnostics::at(Some(link));
         diagnostics.observe(&[], &output(b"", DEADLINE.as_bytes(), false));
         diagnostics.publish_failure();
         assert!(target.records().is_empty());
     }
+    Ok(())
 }
 
 #[test]

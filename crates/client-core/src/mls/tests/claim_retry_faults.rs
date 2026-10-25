@@ -1,7 +1,9 @@
 //! A failed membership read cannot consume the work that makes queued Pages sendable.
 use super::*;
 
-fn queued_pages() -> (Engine, Engine, String, Vec<(String, String)>) {
+type QueuedPages = (Engine, Engine, String, Vec<(String, String)>);
+
+fn queued_pages() -> std::result::Result<QueuedPages, Box<dyn std::error::Error>> {
     let mut owner = Engine::open(":memory:").unwrap();
     owner
         .create_account("Ana", "ana", "http://relay.test")
@@ -11,7 +13,7 @@ fn queued_pages() -> (Engine, Engine, String, Vec<(String, String)>) {
     peer.create_account("Bruno", "bruno", "http://relay.test")
         .unwrap();
     let space = "owed-read-recovery".to_string();
-    for frame in claim_group(&mut owner, &space, std::slice::from_mut(&mut peer)) {
+    for frame in claim_group(&mut owner, &space, std::slice::from_mut(&mut peer))? {
         assert_eq!(peer.ingest(frame), Ingest::Applied);
     }
     let pages = [
@@ -29,12 +31,13 @@ fn queued_pages() -> (Engine, Engine, String, Vec<(String, String)>) {
     .collect();
     assert!(owner.owed(&space).unwrap().is_some());
     assert!(owner.outbox_envelopes().is_empty());
-    (owner, peer, space, pages)
+    Ok((owner, peer, space, pages))
 }
 
 #[test]
-fn transient_owed_read_failure_retries_without_losing_original_pages() {
-    let (mut owner, mut peer, space, pages) = queued_pages();
+fn transient_owed_read_failure_retries_without_losing_original_pages(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut owner, mut peer, space, pages) = queued_pages()?;
     let original: Vec<_> = owner
         .store
         .outbox()
@@ -99,7 +102,7 @@ fn transient_owed_read_failure_retries_without_losing_original_pages() {
     assert_eq!(claimed_space, space);
     let records = claimed_records(std::slice::from_mut(&mut peer), &targets);
     owner.mls_claimed(&space, &operation, Ok(records));
-    let published = relay_ready_to_peer(&mut owner, &mut peer);
+    let published = relay_ready_to_peer(&mut owner, &mut peer)?;
     for (id, markdown) in pages {
         assert_eq!(peer.page_markdown(&id).unwrap(), markdown);
         let original = original
@@ -119,11 +122,14 @@ fn transient_owed_read_failure_retries_without_losing_original_pages() {
     assert_eq!(owner.net.mls.retry_at.len(), 0);
     owner.logs[&space].verify().unwrap();
     peer.logs[&space].verify().unwrap();
+
+    Ok(())
 }
 
 #[test]
-fn scoped_owed_storage_failure_keeps_other_chat_publishable_and_recovers() {
-    let (mut owner, mut first_peer, first_space, pages) = queued_pages();
+fn scoped_owed_storage_failure_keeps_other_chat_publishable_and_recovers(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut owner, mut first_peer, first_space, pages) = queued_pages()?;
     let first_group = owner.mls_status(&first_space);
     let mut second_peer = Engine::open(":memory:").unwrap();
     second_peer
@@ -134,7 +140,7 @@ fn scoped_owed_storage_failure_keeps_other_chat_publishable_and_recovers() {
         &mut owner,
         second_space,
         std::slice::from_mut(&mut second_peer),
-    ) {
+    )? {
         assert_eq!(second_peer.ingest(frame), Ingest::Applied);
     }
     let independent = owner
@@ -183,7 +189,7 @@ fn scoped_owed_storage_failure_keeps_other_chat_publishable_and_recovers() {
                 second_space,
                 "failed group's pages escaped before repair"
             );
-            let frame = ordered(&owner, env);
+            let frame = ordered(&owner, env)?;
             assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
             assert_eq!(second_peer.ingest(frame), Ingest::Applied);
         }
@@ -218,7 +224,7 @@ fn scoped_owed_storage_failure_keeps_other_chat_publishable_and_recovers() {
     assert_eq!(space, first_space);
     let records = claimed_records(std::slice::from_mut(&mut first_peer), &targets);
     owner.mls_claimed(&first_space, &operation, Ok(records));
-    let published = relay_ready_to_peer(&mut owner, &mut first_peer);
+    let published = relay_ready_to_peer(&mut owner, &mut first_peer)?;
     for (id, markdown) in pages {
         assert_eq!(first_peer.page_markdown(&id).unwrap(), markdown);
         let original = retained
@@ -238,4 +244,6 @@ fn scoped_owed_storage_failure_keeps_other_chat_publishable_and_recovers() {
     for space in [first_space.as_str(), second_space] {
         owner.logs[space].verify().unwrap();
     }
+
+    Ok(())
 }

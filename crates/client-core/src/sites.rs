@@ -1,4 +1,4 @@
-//! Sites are ordinary encrypted FileDoc versions. Draft UI text never enters a
+//! Sites are ordinary encrypted `FileDoc` versions. Draft UI text never enters a
 //! publication: review and explicit preparation re-read verified saved bytes.
 use crate::{
     engine::{Engine, R},

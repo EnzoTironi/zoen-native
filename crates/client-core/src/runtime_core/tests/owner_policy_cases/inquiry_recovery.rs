@@ -11,7 +11,7 @@ fn queue_at(
     f.owner.queue_owner_policy_inquiry(
         scope,
         OwnerPolicyInquiry {
-            id: types::new_id("account_inquiry"),
+            id: types::new_id("account_inquiry")?,
             owner: scope.expected_identity_id.clone(),
             agent: scope.agent_id.clone(),
             space: scope.space_id.clone(),
@@ -270,8 +270,8 @@ fn inquiry_counter_overflow_fails_atomically_without_another_original() -> TestR
 
 #[test]
 fn image_inquiry_ack_recovery_also_retains_latest_producer_after_clock_rollback() -> TestResult {
-    let (mut f, request, hash, envelope) = super::super::image_review_cases::pending();
-    let frame = ordered(&f.owner, envelope);
+    let (mut f, request, hash, envelope) = super::super::image_review_cases::pending().unwrap();
+    let frame = ordered(&f.owner, envelope)?;
     assert_eq!(f.owner.ingest(frame.clone()), Ingest::Applied);
     f.core.ingest(vec![frame])?;
     f.owner.set_registered(true)?;
@@ -285,7 +285,7 @@ fn image_inquiry_ack_recovery_also_retains_latest_producer_after_clock_rollback(
     };
     let at = crate::engine::now_ms();
     let inquiry = |at_ms| OwnerPolicyInquiry {
-        id: types::new_id("image_inquiry"),
+        id: types::new_id("image_inquiry").unwrap(),
         owner: scope.expected_identity_id.clone(),
         agent: scope.agent_id.clone(),
         space: scope.space_id.clone(),

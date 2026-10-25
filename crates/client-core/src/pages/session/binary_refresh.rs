@@ -1,4 +1,4 @@
-//! Binary refresh operations on the original PageSession state.
+//! Binary refresh operations on the original `PageSession` state.
 
 use super::*;
 

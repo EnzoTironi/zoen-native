@@ -1,4 +1,4 @@
-//! Tipos expostos ao Swift (UniFFI). São "visões" da projeção, nunca a fonte da verdade.
+//! Tipos expostos ao Swift (`UniFFI`). São "visões" da projeção, nunca a fonte da verdade.
 
 mod agents;
 mod apps;
@@ -410,7 +410,7 @@ pub struct AgentActivityDto {
     pub space_id: String,
     pub space_title: String,
     pub at_ms: i64,
-    /// Custo de IA registrado logo depois desta ação (UsageRecorded), se houver.
+    /// Custo de IA registrado logo depois desta ação (`UsageRecorded`), se houver.
     pub cost_cents: Option<i64>,
 }
 

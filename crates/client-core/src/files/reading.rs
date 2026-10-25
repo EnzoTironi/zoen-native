@@ -1,6 +1,12 @@
 //! Reading operations on the original Engine state.
 
-use super::*;
+#[cfg(test)]
+use super::FILE_VERSION_HISTORY_PROBES;
+
+use super::{
+    invalid, invalid_file, validate_chunk, validate_file, ChunkRef, CoreError, Digest, Engine,
+    FileDoc, FileDto, ItemContent, Sha256, MAX_CHUNK, MAX_FILE_BYTES, MAX_THUMBNAIL_BYTES, R,
+};
 
 impl Engine {
     /// The file's bytes at `version` (latest when `None`), if every chunk is here.
@@ -28,7 +34,7 @@ impl Engine {
                 FILE_VERSION_HISTORY_PROBES.with(|count| count.set(count.get() + 1));
                 v.number == n
             }),
-            None => it.versions.last(),
+            None => Some(it.versions.current()),
         };
         let Some(f) = v.and_then(|v| v.content.owned_file()) else {
             return Err(invalid(

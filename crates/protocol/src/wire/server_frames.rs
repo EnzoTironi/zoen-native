@@ -1,6 +1,17 @@
-use super::*;
+use super::{
+    agreement_from, agreement_to, bad, envelope_from, envelope_to, ephemeral_kind, ephemeral_to,
+    pb_res, pb_server_frame, profile_from, profile_to, role_from, role_to, sealed_profile_from,
+    sealed_profile_to, AgentStateRecord, DecodeError, DeviceRecord, ErrorCode, InviteCreated,
+    InvitePreview, KeyPackageRecord, Message, PbAccepted, PbAgentCursor, PbAgentState,
+    PbAgreementKeys, PbCallTurnReply, PbChallenge, PbClock, PbDevice, PbDeviceMessage, PbDevices,
+    PbEmpty, PbError, PbErrorCode, PbInviteCreated, PbInvitePreview, PbKeyPackage, PbKeyPackages,
+    PbKeyPackagesLow, PbLinkBox, PbPresence, PbProfileChanged, PbProfiles, PbReady, PbRejected,
+    PbRes, PbRuntimeBindingProof, PbSealedProfiles, PbSequenced, PbServerFrame, Reply, Sequenced,
+    ServerFrame,
+};
 
 impl ServerFrame {
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         use pb_server_frame::F;
         let f = match self {
@@ -26,84 +37,7 @@ impl ServerFrame {
             }),
             ServerFrame::Res { id, result } => F::Res(PbRes {
                 id: *id,
-                r: Some(match result {
-                    Err(e) => pb_res::R::Err(e.clone()),
-                    Ok(Reply::Registered(p)) => pb_res::R::Registered(profile_to(p)),
-                    Ok(Reply::Profiles(ps)) => pb_res::R::Profiles(PbProfiles {
-                        profiles: ps.iter().map(profile_to).collect(),
-                    }),
-                    Ok(Reply::Invite(i)) => pb_res::R::Invite(PbInviteCreated {
-                        code: i.code.clone(),
-                        expires_at_ms: i.expires_at_ms,
-                    }),
-                    Ok(Reply::Preview(p)) => pb_res::R::Preview(PbInvitePreview {
-                        space: p.space.clone(),
-                        role: role_to(p.role),
-                        title: p.title.clone(),
-                        members: p.members,
-                        inviter: p.inviter.as_ref().map(profile_to),
-                        kind: p.kind.clone(),
-                        agent: p.agent.as_deref().map(profile_to).map(Box::new),
-                    }),
-                    Ok(Reply::CompletePage(page)) => pb_res::R::CompletePage(page.clone()),
-                    Ok(Reply::Done) => pb_res::R::Done(PbEmpty {}),
-                    Ok(Reply::RuntimeBinding(p)) => {
-                        pb_res::R::RuntimeBinding(PbRuntimeBindingProof {
-                            cell: p.cell.clone(),
-                            tag: p.tag.clone(),
-                        })
-                    }
-                    Ok(Reply::CallTurn(c)) => pb_res::R::CallTurn(PbCallTurnReply {
-                        urls: c.urls.clone(),
-                        username: c.username.clone(),
-                        credential: c.credential.clone(),
-                        expires_at_ms: c.expires_at_ms,
-                    }),
-                    Ok(Reply::AgreementKeys(ks)) => pb_res::R::AgreementKeys(PbAgreementKeys {
-                        keys: ks.iter().map(agreement_to).collect(),
-                    }),
-                    Ok(Reply::SealedProfiles(ps)) => pb_res::R::SealedProfiles(PbSealedProfiles {
-                        profiles: ps.iter().map(sealed_profile_to).collect(),
-                    }),
-                    Ok(Reply::KeyPackages(ks)) => pb_res::R::KeyPackages(PbKeyPackages {
-                        packages: ks
-                            .iter()
-                            .map(|k| PbKeyPackage {
-                                identity: k.identity.clone(),
-                                device: k.device.clone(),
-                                data: k.data.clone(),
-                            })
-                            .collect(),
-                    }),
-                    Ok(Reply::Link(sealed)) => pb_res::R::Link(PbLinkBox {
-                        id: String::new(),
-                        sealed: sealed.clone().unwrap_or_default(),
-                        device: None,
-                    }),
-                    Ok(Reply::AgentState(a)) => pb_res::R::AgentState(PbAgentState {
-                        status: a.status.clone(),
-                        kind: a.kind.clone(),
-                        definition_version: a.definition_version,
-                        definition: a.definition.clone(),
-                        cursors: a
-                            .cursors
-                            .iter()
-                            .map(|(space, seq)| PbAgentCursor {
-                                space: space.clone(),
-                                seq: *seq,
-                            })
-                            .collect(),
-                    }),
-                    Ok(Reply::Devices(ds)) => pb_res::R::Devices(PbDevices {
-                        devices: ds
-                            .iter()
-                            .map(|d| PbDevice {
-                                device: d.device.clone(),
-                                revoked: d.revoked,
-                            })
-                            .collect(),
-                    }),
-                }),
+                r: Some(result_to(result)),
             }),
             ServerFrame::Event { ev } => F::Event(PbSequenced {
                 seq: ev.seq,
@@ -174,6 +108,9 @@ impl ServerFrame {
         PbServerFrame { f: Some(f) }.encode_to_vec()
     }
 
+    /// # Errors
+    /// Rejects malformed protobuf, missing variants or fields, and invalid
+    /// profile, binding proof, TURN credential or complete-read data.
     pub fn decode(bytes: &[u8]) -> Result<Self, DecodeError> {
         use pb_server_frame::F;
         let pb = PbServerFrame::decode(bytes).map_err(|e| DecodeError(e.to_string()))?;
@@ -191,102 +128,7 @@ impl ServerFrame {
             },
             F::Res(r) => ServerFrame::Res {
                 id: r.id,
-                result: match r.r.ok_or_else(|| bad("empty result"))? {
-                    pb_res::R::Err(e) => Err(e),
-                    pb_res::R::Registered(p) => Ok(Reply::Registered(profile_from(p)?)),
-                    pb_res::R::Profiles(ps) => Ok(Reply::Profiles(
-                        ps.profiles
-                            .into_iter()
-                            .map(profile_from)
-                            .collect::<Result<_, _>>()?,
-                    )),
-                    pb_res::R::Invite(i) => Ok(Reply::Invite(InviteCreated {
-                        code: i.code,
-                        expires_at_ms: i.expires_at_ms,
-                    })),
-                    pb_res::R::Preview(p) => Ok(Reply::Preview(InvitePreview {
-                        space: p.space,
-                        role: role_from(p.role)?,
-                        title: p.title,
-                        members: p.members,
-                        inviter: p.inviter.map(profile_from).transpose()?,
-                        kind: if p.kind.is_empty() {
-                            "space".into()
-                        } else {
-                            p.kind
-                        },
-                        agent: p.agent.map(|a| profile_from(*a)).transpose()?.map(Box::new),
-                    })),
-                    pb_res::R::Done(_) => Ok(Reply::Done),
-                    pb_res::R::RuntimeBinding(p) => {
-                        if !crate::runtime_binding::valid_namespace(&p.cell) || p.tag.len() != 32 {
-                            return Err(bad("runtime binding proof"));
-                        }
-                        Ok(Reply::RuntimeBinding(crate::runtime_binding::Proof {
-                            cell: p.cell,
-                            tag: p.tag,
-                        }))
-                    }
-                    pb_res::R::CallTurn(c) => {
-                        let credentials = crate::turn::TurnCredentials {
-                            urls: c.urls,
-                            username: c.username,
-                            credential: c.credential,
-                            expires_at_ms: c.expires_at_ms,
-                        };
-                        if !credentials.valid() {
-                            return Err(bad("invalid TURN credentials"));
-                        }
-                        Ok(Reply::CallTurn(credentials))
-                    }
-                    pb_res::R::AgreementKeys(ks) => Ok(Reply::AgreementKeys(
-                        ks.keys
-                            .into_iter()
-                            .map(agreement_from)
-                            .collect::<Result<_, _>>()?,
-                    )),
-                    pb_res::R::SealedProfiles(ps) => Ok(Reply::SealedProfiles(
-                        ps.profiles
-                            .into_iter()
-                            .map(sealed_profile_from)
-                            .collect::<Result<_, _>>()?,
-                    )),
-                    pb_res::R::KeyPackages(ks) => Ok(Reply::KeyPackages(
-                        ks.packages
-                            .into_iter()
-                            .map(|k| KeyPackageRecord {
-                                identity: k.identity,
-                                device: k.device,
-                                data: k.data,
-                            })
-                            .collect(),
-                    )),
-                    pb_res::R::Link(b) => {
-                        Ok(Reply::Link((!b.sealed.is_empty()).then_some(b.sealed)))
-                    }
-                    pb_res::R::AgentState(a) => Ok(Reply::AgentState(AgentStateRecord {
-                        status: a.status,
-                        kind: a.kind,
-                        definition_version: a.definition_version,
-                        definition: a.definition,
-                        cursors: a.cursors.into_iter().map(|c| (c.space, c.seq)).collect(),
-                    })),
-                    pb_res::R::CompletePage(page) => {
-                        if !page.valid() {
-                            return Err(bad("complete read page"));
-                        }
-                        Ok(Reply::CompletePage(page))
-                    }
-                    pb_res::R::Devices(ds) => Ok(Reply::Devices(
-                        ds.devices
-                            .into_iter()
-                            .map(|d| DeviceRecord {
-                                device: d.device,
-                                revoked: d.revoked,
-                            })
-                            .collect(),
-                    )),
-                },
+                result: result_from(r.r.ok_or_else(|| bad("empty result"))?)?,
             },
             F::Event(s) => ServerFrame::Event {
                 ev: Sequenced {
@@ -346,4 +188,194 @@ impl ServerFrame {
             },
         })
     }
+}
+
+fn result_to(result: &Result<Reply, String>) -> pb_res::R {
+    match result {
+        Err(e) => pb_res::R::Err(e.clone()),
+        Ok(Reply::Registered(p)) => pb_res::R::Registered(profile_to(p)),
+        Ok(Reply::Profiles(ps)) => pb_res::R::Profiles(PbProfiles {
+            profiles: ps.iter().map(profile_to).collect(),
+        }),
+        Ok(Reply::Invite(i)) => pb_res::R::Invite(PbInviteCreated {
+            code: i.code.clone(),
+            expires_at_ms: i.expires_at_ms,
+        }),
+        Ok(Reply::Preview(p)) => pb_res::R::Preview(PbInvitePreview {
+            space: p.space.clone(),
+            role: role_to(p.role),
+            title: p.title.clone(),
+            members: p.members,
+            inviter: p.inviter.as_ref().map(profile_to),
+            kind: p.kind.clone(),
+            agent: p.agent.as_deref().map(profile_to).map(Box::new),
+        }),
+        Ok(Reply::CompletePage(page)) => pb_res::R::CompletePage(page.clone()),
+        Ok(Reply::Done) => pb_res::R::Done(PbEmpty {}),
+        Ok(Reply::RuntimeBinding(p)) => pb_res::R::RuntimeBinding(PbRuntimeBindingProof {
+            cell: p.cell.clone(),
+            tag: p.tag.clone(),
+        }),
+        Ok(Reply::CallTurn(c)) => pb_res::R::CallTurn(PbCallTurnReply {
+            urls: c.urls.clone(),
+            username: c.username.clone(),
+            credential: c.credential.clone(),
+            expires_at_ms: c.expires_at_ms,
+        }),
+        Ok(Reply::AgreementKeys(ks)) => pb_res::R::AgreementKeys(PbAgreementKeys {
+            keys: ks.iter().map(agreement_to).collect(),
+        }),
+        Ok(Reply::SealedProfiles(ps)) => pb_res::R::SealedProfiles(PbSealedProfiles {
+            profiles: ps.iter().map(sealed_profile_to).collect(),
+        }),
+        Ok(Reply::KeyPackages(ks)) => pb_res::R::KeyPackages(PbKeyPackages {
+            packages: ks
+                .iter()
+                .map(|k| PbKeyPackage {
+                    identity: k.identity.clone(),
+                    device: k.device.clone(),
+                    data: k.data.clone(),
+                })
+                .collect(),
+        }),
+        Ok(Reply::Link(sealed)) => pb_res::R::Link(PbLinkBox {
+            id: String::new(),
+            sealed: sealed.clone().unwrap_or_default(),
+            device: None,
+        }),
+        Ok(Reply::AgentState(a)) => pb_res::R::AgentState(agent_state_to(a)),
+        Ok(Reply::Devices(ds)) => pb_res::R::Devices(PbDevices {
+            devices: ds
+                .iter()
+                .map(|d| PbDevice {
+                    device: d.device.clone(),
+                    revoked: d.revoked,
+                })
+                .collect(),
+        }),
+    }
+}
+
+fn agent_state_to(a: &AgentStateRecord) -> PbAgentState {
+    PbAgentState {
+        status: a.status.clone(),
+        kind: a.kind.clone(),
+        definition_version: a.definition_version,
+        definition: a.definition.clone(),
+        cursors: a
+            .cursors
+            .iter()
+            .map(|(space, seq)| PbAgentCursor {
+                space: space.clone(),
+                seq: *seq,
+            })
+            .collect(),
+    }
+}
+
+fn result_from(result: pb_res::R) -> Result<Result<Reply, String>, DecodeError> {
+    Ok(match result {
+        pb_res::R::Err(e) => Err(e),
+        pb_res::R::Registered(p) => Ok(Reply::Registered(profile_from(p)?)),
+        pb_res::R::Profiles(ps) => Ok(Reply::Profiles(
+            ps.profiles
+                .into_iter()
+                .map(profile_from)
+                .collect::<Result<_, _>>()?,
+        )),
+        pb_res::R::Invite(i) => Ok(Reply::Invite(InviteCreated {
+            code: i.code,
+            expires_at_ms: i.expires_at_ms,
+        })),
+        pb_res::R::Preview(p) => Ok(Reply::Preview(preview_from(p)?)),
+        pb_res::R::Done(_) => Ok(Reply::Done),
+        pb_res::R::RuntimeBinding(p) => Ok(Reply::RuntimeBinding(runtime_binding_from(p)?)),
+        pb_res::R::CallTurn(c) => Ok(Reply::CallTurn(turn_credentials_from(c)?)),
+        pb_res::R::AgreementKeys(ks) => Ok(Reply::AgreementKeys(
+            ks.keys
+                .into_iter()
+                .map(agreement_from)
+                .collect::<Result<_, _>>()?,
+        )),
+        pb_res::R::SealedProfiles(ps) => Ok(Reply::SealedProfiles(
+            ps.profiles
+                .into_iter()
+                .map(sealed_profile_from)
+                .collect::<Result<_, _>>()?,
+        )),
+        pb_res::R::KeyPackages(ks) => Ok(Reply::KeyPackages(
+            ks.packages
+                .into_iter()
+                .map(|k| KeyPackageRecord {
+                    identity: k.identity,
+                    device: k.device,
+                    data: k.data,
+                })
+                .collect(),
+        )),
+        pb_res::R::Link(b) => Ok(Reply::Link((!b.sealed.is_empty()).then_some(b.sealed))),
+        pb_res::R::AgentState(a) => Ok(Reply::AgentState(AgentStateRecord {
+            status: a.status,
+            kind: a.kind,
+            definition_version: a.definition_version,
+            definition: a.definition,
+            cursors: a.cursors.into_iter().map(|c| (c.space, c.seq)).collect(),
+        })),
+        pb_res::R::CompletePage(page) => {
+            if !page.valid() {
+                return Err(bad("complete read page"));
+            }
+            Ok(Reply::CompletePage(page))
+        }
+        pb_res::R::Devices(ds) => Ok(Reply::Devices(
+            ds.devices
+                .into_iter()
+                .map(|d| DeviceRecord {
+                    device: d.device,
+                    revoked: d.revoked,
+                })
+                .collect(),
+        )),
+    })
+}
+
+fn preview_from(p: PbInvitePreview) -> Result<InvitePreview, DecodeError> {
+    Ok(InvitePreview {
+        space: p.space,
+        role: role_from(p.role)?,
+        title: p.title,
+        members: p.members,
+        inviter: p.inviter.map(profile_from).transpose()?,
+        kind: if p.kind.is_empty() {
+            "space".into()
+        } else {
+            p.kind
+        },
+        agent: p.agent.map(|a| profile_from(*a)).transpose()?.map(Box::new),
+    })
+}
+
+fn runtime_binding_from(
+    p: PbRuntimeBindingProof,
+) -> Result<crate::runtime_binding::Proof, DecodeError> {
+    if !crate::runtime_binding::valid_namespace(&p.cell) || p.tag.len() != 32 {
+        return Err(bad("runtime binding proof"));
+    }
+    Ok(crate::runtime_binding::Proof {
+        cell: p.cell,
+        tag: p.tag,
+    })
+}
+
+fn turn_credentials_from(c: PbCallTurnReply) -> Result<crate::turn::TurnCredentials, DecodeError> {
+    let credentials = crate::turn::TurnCredentials {
+        urls: c.urls,
+        username: c.username,
+        credential: c.credential,
+        expires_at_ms: c.expires_at_ms,
+    };
+    if !credentials.valid() {
+        return Err(bad("invalid TURN credentials"));
+    }
+    Ok(credentials)
 }

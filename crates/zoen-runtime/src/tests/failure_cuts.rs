@@ -1,8 +1,9 @@
 use super::*;
 
-pub(super) async fn other_namespace_cannot_refund_dispatched_hold() {
-    let w = World::new().await;
-    let step = Arc::new(w.step(0).await);
+pub(super) async fn other_namespace_cannot_refund_dispatched_hold(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let w = World::new().await?;
+    let step = Arc::new(w.step(0).await?);
     w.http.paused.store(true, Ordering::SeqCst);
     let runtime = w.runtime.clone();
     let retained = step.clone();
@@ -10,7 +11,7 @@ pub(super) async fn other_namespace_cannot_refund_dispatched_hold() {
     w.http.wait().await;
     assert_eq!(w.balance().await.held_units, 13);
 
-    let other_namespace = types::new_id("other_authority");
+    let other_namespace = types::new_id("other_authority")?;
     let other = RuntimeAuthority::open(config(&w.db_url, &other_namespace, &w.http.base)).await;
     let rejected = match other {
         Err(error) => {
@@ -65,10 +66,12 @@ pub(super) async fn other_namespace_cannot_refund_dispatched_hold() {
         }
     );
     assert_eq!(sends, 1);
+    Ok(())
 }
 
-pub(super) async fn expired_policy_cannot_finish_admission() {
-    let mut w = World::new().await;
+pub(super) async fn expired_policy_cannot_finish_admission(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut w = World::new().await?;
     let now: i64 =
         sqlx::query_scalar("SELECT floor(extract(epoch FROM clock_timestamp()) * 1000)::BIGINT")
             .fetch_one(&w.runtime.finance.pool)
@@ -80,7 +83,7 @@ pub(super) async fn expired_policy_cannot_finish_admission() {
     policy.expires_at_ms = now + 2500;
     w.signed = event_log::owner_budget::sign(&w.owner, policy).unwrap();
     w.policy_digest = w.runtime.install_policy(w.signed.clone()).await.unwrap();
-    let step = w.step(0).await;
+    let step = w.step(0).await?;
     let binding = w.binding(&step);
     w.runtime
         .execution
@@ -121,11 +124,13 @@ pub(super) async fn expired_policy_cannot_finish_admission() {
     assert!(w.runtime.complete_verified(&step).await.is_err());
     assert_eq!(w.http.sends.load(Ordering::SeqCst), 0);
     w.finish().await;
+    Ok(())
 }
 
-pub(super) async fn delayed_permit_use_cannot_send() {
-    let w = World::new().await;
-    let step = w.step(0).await;
+pub(super) async fn delayed_permit_use_cannot_send(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let w = World::new().await?;
+    let step = w.step(0).await?;
     let binding = w.binding(&step);
     w.runtime
         .execution
@@ -155,11 +160,13 @@ pub(super) async fn delayed_permit_use_cannot_send() {
     assert!(w.runtime.complete_verified(&step).await.is_err());
     assert_eq!(w.http.sends.load(Ordering::SeqCst), 0);
     w.finish().await;
+    Ok(())
 }
 
-pub(super) async fn reservation_ack_lost_reuses_one_hold() {
-    let w = World::new().await;
-    let step = w.step(0).await;
+pub(super) async fn reservation_ack_lost_reuses_one_hold(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let w = World::new().await?;
+    let step = w.step(0).await?;
     w.runtime.fault.store(4, Ordering::SeqCst);
     assert!(w.runtime.complete_verified(&step).await.is_err());
     assert_eq!(
@@ -182,11 +189,13 @@ pub(super) async fn reservation_ack_lost_reuses_one_hold() {
     assert_eq!(w.http.sends.load(Ordering::SeqCst), 1);
     reopened.finance.pool.close().await;
     w.finish().await;
+    Ok(())
 }
 
-pub(super) async fn claim_ack_lost_never_recreates_claim() {
-    let w = World::new().await;
-    let step = w.step(0).await;
+pub(super) async fn claim_ack_lost_never_recreates_claim(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let w = World::new().await?;
+    let step = w.step(0).await?;
     w.runtime.fault.store(1, Ordering::SeqCst);
     assert!(w.runtime.complete_verified(&step).await.is_err());
     let reopened = w.reopen().await;
@@ -229,12 +238,14 @@ pub(super) async fn claim_ack_lost_never_recreates_claim() {
     assert_eq!(w.balance().await.held_units, 0);
     reopened.finance.pool.close().await;
     w.finish().await;
+    Ok(())
 }
 
-pub(super) async fn admission_and_guard_reply_losses_keep_hold() {
+pub(super) async fn admission_and_guard_reply_losses_keep_hold(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for fault in [2, 3] {
-        let w = World::new().await;
-        let step = w.step(0).await;
+        let w = World::new().await?;
+        let step = w.step(0).await?;
         w.runtime.fault.store(fault, Ordering::SeqCst);
         assert!(w.runtime.complete_verified(&step).await.is_err());
         assert!(
@@ -272,12 +283,14 @@ pub(super) async fn admission_and_guard_reply_losses_keep_hold() {
         reopened.finance.pool.close().await;
         w.finish().await;
     }
+    Ok(())
 }
 
-pub(super) async fn admission_tombstone_race_and_old_worker() {
-    let w = World::new().await;
+pub(super) async fn admission_tombstone_race_and_old_worker(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let w = World::new().await?;
     for _ in 0..12 {
-        let step = w.step(0).await;
+        let step = w.step(0).await?;
         let binding = w.binding(&step);
         w.runtime
             .execution
@@ -335,12 +348,14 @@ pub(super) async fn admission_tombstone_race_and_old_worker() {
     }
     assert_eq!(w.http.sends.load(Ordering::SeqCst), 0);
     w.finish().await;
+    Ok(())
 }
 
-pub(super) async fn both_admission_closure_orderings() {
+pub(super) async fn both_admission_closure_orderings(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for closure_first in [true, false] {
-        let w = World::new().await;
-        let step = w.step(0).await;
+        let w = World::new().await?;
+        let step = w.step(0).await?;
         let binding = w.binding(&step);
         w.runtime
             .execution
@@ -404,11 +419,13 @@ pub(super) async fn both_admission_closure_orderings() {
         assert_eq!(w.http.sends.load(Ordering::SeqCst), 0);
         w.finish().await;
     }
+    Ok(())
 }
 
-pub(super) async fn revocation_does_not_hold_http_lock() {
-    let w = World::new().await;
-    let step = Arc::new(w.step(0).await);
+pub(super) async fn revocation_does_not_hold_http_lock(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let w = World::new().await?;
+    let step = Arc::new(w.step(0).await?);
     w.http.paused.store(true, Ordering::SeqCst);
     let (runtime, task_step) = (w.runtime.clone(), step.clone());
     let call = tokio::spawn(async move { runtime.complete_verified(&task_step).await });
@@ -433,11 +450,13 @@ pub(super) async fn revocation_does_not_hold_http_lock() {
     assert!(w.runtime.complete_verified(&step).await.is_err());
     assert_eq!(w.http.sends.load(Ordering::SeqCst), 1);
     w.finish().await;
+    Ok(())
 }
 
-pub(super) async fn takeover_retains_late_bill_but_denies_progress() {
-    let w = World::new().await;
-    let step = Arc::new(w.step(0).await);
+pub(super) async fn takeover_retains_late_bill_but_denies_progress(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let w = World::new().await?;
+    let step = Arc::new(w.step(0).await?);
     w.http.paused.store(true, Ordering::SeqCst);
     let (runtime, task_step) = (w.runtime.clone(), step.clone());
     let call = tokio::spawn(async move { runtime.complete_verified(&task_step).await });
@@ -465,12 +484,14 @@ pub(super) async fn takeover_retains_late_bill_but_denies_progress() {
     );
     assert_eq!(w.http.sends.load(Ordering::SeqCst), 1);
     w.finish().await;
+    Ok(())
 }
 
-pub(super) async fn cancellation_and_lost_http_never_repeat() {
+pub(super) async fn cancellation_and_lost_http_never_repeat(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for lost in [false, true] {
-        let w = World::new().await;
-        let step = Arc::new(w.step(0).await);
+        let w = World::new().await?;
+        let step = Arc::new(w.step(0).await?);
         w.http.paused.store(!lost, Ordering::SeqCst);
         w.http.lost.store(lost, Ordering::SeqCst);
         let (runtime, task_step) = (w.runtime.clone(), step.clone());
@@ -490,4 +511,5 @@ pub(super) async fn cancellation_and_lost_http_never_repeat() {
         reopened.finance.pool.close().await;
         w.finish().await;
     }
+    Ok(())
 }
