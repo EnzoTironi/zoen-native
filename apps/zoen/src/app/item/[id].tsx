@@ -16,6 +16,8 @@ import { PageBlocks } from '../../documents/page-blocks';
 import { clearPlanUndo, rememberPlanUndo, usePlanUndo } from '../../documents/plan-undo';
 import { FileAttachment } from '../../media/MediaAttachment';
 import { MiniappState } from '../../miniapps/state-view';
+import { AppPackageAction } from '../../miniapps/package-action';
+import { isAppPackage } from '../../miniapps/package-intent';
 
 export default function Item() {
   const { id, history } = useLocalSearchParams<{ id: string; history?: string }>();
@@ -308,6 +310,8 @@ export default function Item() {
                 onPress={() => router.push({ pathname: '/miniapp/[id]', params: { id } })}
               />
             </>
+          ) : isAppPackage(item) ? (
+            <AppPackageAction item={item} />
           ) : item.file?.mime === 'text/html' ? (
             <NativeButton
               label={t('sites.openVersion', { version: item.version })}
