@@ -11,6 +11,7 @@ export type EditorAgentPort = Readonly<{
   flush: () => Promise<void>;
   head: () => Promise<EditorAgentHead>;
   requests: () => Promise<AgentRequestDto[]>;
+  replies: (sourceId: string) => Promise<TimelineEntry[]>;
   send: (
     text: string,
     head: EditorAgentHead,
@@ -31,6 +32,7 @@ export type EditorAgentState = Readonly<{
   error: string | null;
   sent: TimelineEntry | null;
   requests: readonly AgentRequestDto[];
+  replies: readonly TimelineEntry[];
 }>;
 
 /** One mounted document owns this overlay. Closing it never retires the editor. */
@@ -44,6 +46,7 @@ export class EditorAgentSession {
     error: null,
     sent: null,
     requests: [],
+    replies: [],
   };
   private listeners = new Set<() => void>();
   private generation = 0;
@@ -105,6 +108,7 @@ export class EditorAgentSession {
       uncertain: false,
       sent: null,
       requests: [],
+      replies: [],
       error: null,
     });
   };
@@ -122,8 +126,13 @@ export class EditorAgentSession {
     const work = (async () => {
       try {
         this.check(ticket);
-        const requests = await this.port.requests();
+        const source = this.state.sent?.id;
+        const [requests, replies] = await Promise.all([
+          this.port.requests(),
+          source ? this.port.replies(source) : Promise.resolve([]),
+        ]);
         this.check(ticket);
+        if (source !== this.state.sent?.id) this.refreshAgain = true;
         this.update({
           requests: requests.filter(
             (request) =>
@@ -133,6 +142,17 @@ export class EditorAgentSession {
               request.tool_approval?.artifact_id === this.item &&
               toolApprovalValid(request.tool_approval),
           ),
+          ...(source === this.state.sent?.id
+            ? {
+                replies: replies.filter(
+                  (entry) =>
+                    entry.reply_to?.id === source &&
+                    entry.author.kind === 'Agent' &&
+                    !entry.deleted &&
+                    'Message' in entry.kind,
+                ),
+              }
+            : {}),
           error: null,
         });
       } catch (error) {
@@ -188,7 +208,7 @@ export class EditorAgentSession {
       }
       if (!result.entry || result.conflict !== null) throw Error('editor_agent_invalid_result');
       this.attempt = null;
-      this.update({ draft: '', uncertain: false, sent: result.entry });
+      this.update({ draft: '', uncertain: false, sent: result.entry, replies: [] });
       if (this.state.visible) void this.refresh();
     } catch (error) {
       if (!this.retired && this.port.scope() === this.owner)

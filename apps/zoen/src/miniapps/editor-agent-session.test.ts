@@ -46,6 +46,7 @@ function fixture() {
       return { version: 2, sha256: 'cd'.repeat(32) };
     },
     requests: async () => [request(), request('other'), request('app', 'other')],
+    replies: async (_sourceId: string) => [] as TimelineEntry[],
     send: async (...args: Parameters<EditorAgentPort['send']>) => {
       calls.push(['send', ...args]);
       return { entry: entry as TimelineEntry | null, conflict: null as string | null };

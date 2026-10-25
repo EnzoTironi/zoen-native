@@ -67,6 +67,17 @@ export function editorAgentPort(
       check();
       return value;
     },
+    replies: async (sourceId) => {
+      check();
+      const page = await store.driver.request({
+        op: 'timeline',
+        space_id: spaceId,
+        before: null,
+        limit: 200,
+      });
+      check();
+      return page.entries.filter((entry) => entry.reply_to?.id === sourceId);
+    },
     send: async (text, head, mutation_id) => {
       const scope = check();
       const result = await store.request({

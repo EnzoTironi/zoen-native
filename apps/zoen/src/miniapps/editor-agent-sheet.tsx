@@ -1,10 +1,11 @@
 import * as Crypto from 'expo-crypto';
 import { BottomSheet, Host, RNHostView } from '@expo/ui';
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
-import { AppState, ScrollView, Text, View } from 'react-native';
+import { AppState, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RequestCard } from '../agents/request-card';
 import { IconButton, Loading, NativeButton } from '../components/primitives';
+import { MessageMarkdown } from '../components/message-markdown';
 import { ComposerTextField } from '../components/composer-text-field';
 import { useClient } from '../core/provider';
 import { t } from '../i18n';
@@ -27,6 +28,7 @@ export function EditorAgentAccess({
   const { store } = useClient();
   const { scheme, colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const chrome = useAppSheetCloseButton();
   const owner = editorAgentScope(store, spaceId);
   const session = useMemo(
@@ -153,6 +155,31 @@ export function EditorAgentAccess({
                   {t('miniapps.editRequestSent')}
                 </Text>
               ) : null}
+              {state.sent && 'Message' in state.sent.kind ? (
+                <MessageMarkdown
+                  text={state.sent.kind.Message.text}
+                  color={colors.secondary}
+                  fontSize={16}
+                  maxWidth={Math.max(180, width - 40)}
+                  selectable
+                />
+              ) : null}
+              {state.replies.map((entry) =>
+                'Message' in entry.kind ? (
+                  <View key={entry.id} style={{ gap: 6 }}>
+                    <Text style={{ color: colors.secondary, fontWeight: '600' }}>
+                      {entry.author.name}
+                    </Text>
+                    <MessageMarkdown
+                      text={entry.kind.Message.text}
+                      color={colors.text}
+                      fontSize={17}
+                      maxWidth={Math.max(180, width - 40)}
+                      selectable
+                    />
+                  </View>
+                ) : null,
+              )}
               {state.loading ? <Loading /> : null}
               {state.requests.map((request) => (
                 <RequestCard

@@ -74,6 +74,8 @@ export async function editorAgentReactFixture() {
         return snapshot;
       case 'requests':
         return [];
+      case 'timeline':
+        return { entries: [], before: null, has_more: false };
       case 'app_binary_read':
         return {
           item_id: itemId,
@@ -86,7 +88,10 @@ export async function editorAgentReactFixture() {
           engine_revision: formats.WORDCRAFT_ENGINE_REVISION,
         };
       case 'request_app_edit':
-        return { entry: { id: 'canonical-request' }, conflict: null };
+        return {
+          entry: { id: 'canonical-request', kind: { Message: { text: command.text, card: null } } },
+          conflict: null,
+        };
       default:
         throw Error(`Unexpected operation ${command.op}`);
     }
@@ -139,6 +144,7 @@ export async function editorAgentReactFixture() {
       View: children,
       Text: () => null,
       ScrollView: children,
+      useWindowDimensions: () => ({ width: 402, height: 874 }),
       AppState: { addEventListener: () => ({ remove() {} }) },
     },
     '@expo/ui': { Host: children, RNHostView: children, BottomSheet: Sheet },
@@ -162,6 +168,7 @@ export async function editorAgentReactFixture() {
       Surface: children,
     },
     '../components/composer-text-field': { ComposerTextField: Capture },
+    '../components/message-markdown': { MessageMarkdown: Capture },
     '../agents/request-card': { RequestCard: Capture },
     './app-sheet-context': {
       useAppSheetCloseButton: () => ({ top: 48, right: 12, width: 44, height: 44 }),

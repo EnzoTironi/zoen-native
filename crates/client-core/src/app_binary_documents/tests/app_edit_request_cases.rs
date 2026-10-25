@@ -68,8 +68,9 @@ fn request_is_one_signed_thread_reply_to_exact_card_head_without_document_or_gra
         base.sha256
     );
     let after = counts(&f);
-    // One normal event/outbox admission; no document/media/secret/grant side channel.
-    assert_eq!(after[0], before[0] + 1);
+    // One durable encrypted outbox admission; relay-confirmed events are separate.
+    assert_eq!(after[0], before[0]);
+    assert_eq!(after[4], before[4] + 1);
     assert_eq!(&after[1..4], &before[1..4]);
     Ok(())
 }
@@ -124,9 +125,9 @@ fn retry_keeps_original_receipt_after_a_later_document_head_and_after_cold_unloc
             .lock()
             .store
             .conn()
-            .query_row("SELECT count(*) FROM events", [], |row| row
+            .query_row("SELECT count(*) FROM outbox", [], |row| row
                 .get::<_, i64>(0))?,
-        before[0]
+        before[4]
     );
     drop(client);
     std::fs::remove_dir_all(dir)?;
