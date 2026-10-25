@@ -3,9 +3,9 @@ use super::*;
 use tokio::sync::Semaphore;
 
 #[cfg(test)]
-pub(super) mod testing;
-#[cfg(test)]
 mod recovery;
+#[cfg(test)]
+pub(super) mod testing;
 
 /// Subjects are `zoen.<cell>.to.<sha256("zoen-subject-v1" ‖ identity)[..16] hex>`: NATS sees a
 /// pseudonym, never an identity, and a cell never hears another cell. Presence is the same
