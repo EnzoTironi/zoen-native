@@ -15,6 +15,7 @@ import { useClient } from '../../core/provider';
 import { EmptyState } from '../../components/primitives';
 import { useMemberActions } from '../../communities/use-member-actions';
 import { MemberActionsSheet } from '../../communities/member-actions-sheet';
+import { MemberAdditionSheet } from '../../communities/member-addition-sheet';
 import { useTheme } from '../../theme';
 
 export default function Space() {
@@ -222,6 +223,15 @@ export default function Space() {
         </ProfileSection>
         {chat.members.length ? (
           <ProfileSection title={t('chat.participantCount', { count: chat.members.length })}>
+            {members.additionState?.canManage ? (
+              <ProfileInfoRow
+                testID="member-addition-open"
+                label={t('community.add')}
+                onPress={() =>
+                  members.addition.open(members.addition.ticket(members.additionState))
+                }
+              />
+            ) : null}
             {chat.members.map((person) => (
               <Pressable
                 key={person.id}
@@ -323,7 +333,10 @@ export default function Space() {
         </Text>
       </ScrollView>
       {chat.kind !== 'Direct' && members.available ? (
-        <MemberActionsSheet session={members.session} state={members.state} />
+        <>
+          <MemberActionsSheet session={members.session} state={members.state} />
+          <MemberAdditionSheet session={members.addition} state={members.additionState} />
+        </>
       ) : null}
     </>
   );

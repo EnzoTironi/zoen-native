@@ -93,3 +93,41 @@ test('actual Expo focus and foreground hooks retire selected intent and require 
     await f.close();
   }
 });
+
+test('actual member hook owns addition review across background, blur and account epoch retirement', async () => {
+  const f = await memberHookReactFixture();
+  try {
+    await f.render();
+    assert.equal(f.current().additionState.canManage, true);
+    await f.act(() =>
+      f.current().addition.open(f.current().addition.ticket(f.current().additionState)),
+    );
+    assert.equal(f.current().additionState.results.length, 1);
+    const old = f.current().addition.ticket();
+    assert.ok(old);
+    const answer = deferred<boolean>();
+    let action: Promise<void> | undefined;
+    await f.act(() => {
+      action = f.current().addition.select(peer, () => answer.promise, old);
+    });
+    await f.act(() => f.foreground('background'));
+    await f.act(() => f.foreground('active'));
+    await f.reopen();
+    await f.act(async () => {
+      answer.resolve(true);
+      await action;
+    });
+    assert.equal(f.calls.filter((c) => c.op === 'add_member_reviewed').length, 0);
+    assert.equal(f.current().additionState.open, false);
+    assert.notEqual(f.current().additionState.scope, old.scope);
+    assert.equal(f.current().additionState.canManage, true);
+    await f.act(() => f.current().addition.open());
+    assert.equal(f.current().additionState.open, true);
+    await f.act(() => f.focus(false));
+    await f.act(() => f.focus(true));
+    assert.equal(f.current().additionState.open, false);
+    assert.deepEqual(f.errors, []);
+  } finally {
+    await f.close();
+  }
+});

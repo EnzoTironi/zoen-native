@@ -16,6 +16,7 @@ mod catchup_projection;
 mod claim_retry_faults;
 mod cold_recovery;
 mod existing_app_member;
+mod native_member_addition;
 mod outbox_cases;
 mod prefix_admission_cases;
 mod prefix_settlement_cases;

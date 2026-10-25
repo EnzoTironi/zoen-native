@@ -22,6 +22,11 @@ pub struct SpaceMemberContext {
     pub role: Option<String>,
     pub state: MemberActionState,
     pub can_remove: bool,
+    pub can_manage_members: bool,
+    pub can_add: bool,
+    /// Known profile for an absent participant; never a membership receipt.
+    pub candidate: Option<Persona>,
+    pub addition_failed: bool,
     /// Permanent failure of an exact local intent on the current membership cut.
     pub removal_failed: bool,
     /// A derived review fingerprint, not a stored grant or a mutation receipt.

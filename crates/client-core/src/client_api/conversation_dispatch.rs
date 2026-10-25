@@ -310,6 +310,34 @@ impl Client {
                 space_id,
                 identity_id,
             } => encode(&self.add_member(space_id, identity_id)?),
+            FindMemberCandidates {
+                space_id,
+                query,
+                expected_identity_id,
+                expected_device_id,
+            } => encode(
+                &self
+                    .find_member_candidates(
+                        &space_id,
+                        &query,
+                        &expected_identity_id,
+                        &expected_device_id,
+                    )
+                    .await?,
+            ),
+            AddMemberReviewed {
+                space_id,
+                identity_id,
+                expected_identity_id,
+                expected_device_id,
+                observed_revision,
+            } => encode(&self.lock().add_member_reviewed(
+                &space_id,
+                &identity_id,
+                &expected_identity_id,
+                &expected_device_id,
+                &observed_revision,
+            )?),
             AddAdmin {
                 space_id,
                 identity_id,

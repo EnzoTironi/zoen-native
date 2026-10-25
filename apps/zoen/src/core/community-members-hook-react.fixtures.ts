@@ -8,6 +8,7 @@ import { ClientStore } from './store.ts';
 import { Driver, draftSession } from './store.fixtures.ts';
 import { context, peer } from './community-members.fixtures.ts';
 import * as flow from '../communities/member-actions.ts';
+import * as addition from '../communities/member-addition.ts';
 import * as port from '../communities/member-context-port.ts';
 import * as ownership from './account-scope.ts';
 import type { SpaceMemberContext } from './generated/SpaceMemberContext';
@@ -25,6 +26,8 @@ const compiled = transformSync(readFileSync(file, 'utf8'), {
 }).code as string;
 type Controller = {
   session: flow.MemberActionsSession;
+  addition: addition.MemberAdditionSession;
+  additionState: addition.MemberAdditionState;
   available: boolean;
   state: flow.MemberActionsState;
 };
@@ -51,10 +54,29 @@ export async function memberHookReactFixture() {
     calls.push(structuredClone(command));
     if (command.op === 'snapshot') return structuredClone(snapshot);
     if (command.op === 'space_member_context') {
+      if (command.identity_id === snapshot.account!.identity_id)
+        return {
+          ...value(),
+          member_id: command.identity_id,
+          member: { ...value().member!, id: command.identity_id },
+        };
       const pending = nextRead;
       nextRead = null;
       return pending ?? value();
     }
+    if (command.op === 'find_member_candidates')
+      return [
+        {
+          ...value(),
+          state: 'Removed',
+          can_add: true,
+          member: null,
+          role: null,
+          candidate: value().member,
+        },
+      ];
+    if (command.op === 'add_member_reviewed')
+      return { ...value(), can_add: false, state: 'Updating' };
     if (command.op === 'remove_member_reviewed')
       return { ...value(), state: 'Removing', can_remove: false };
     throw Error(`Unexpected member operation ${command.op}`);
@@ -126,6 +148,7 @@ export async function memberHookReactFixture() {
     },
     '../core/account-scope': ownership,
     './member-actions': flow,
+    './member-addition': addition,
     './member-context-port': port,
   };
   const module = { exports: {} as { useMemberActions(space: string): Controller } };

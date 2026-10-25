@@ -271,6 +271,19 @@ pub(super) enum Command {
         space_id: String,
         identity_id: String,
     },
+    FindMemberCandidates {
+        space_id: String,
+        query: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+    },
+    AddMemberReviewed {
+        space_id: String,
+        identity_id: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+        observed_revision: String,
+    },
     AddAdmin {
         space_id: String,
         identity_id: String,
