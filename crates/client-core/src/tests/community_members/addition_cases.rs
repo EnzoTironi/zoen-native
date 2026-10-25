@@ -92,7 +92,8 @@ fn stale_actor_target_and_device_never_enqueue() -> TestResult<()> {
         f.ordered(EventBody::MemberAdded {
             identity: f.identity.clone(),
             role,
-        })?;
+        })
+        .map_err(storage)?;
         let counts = f.counts()?;
         assert!(add(&f, &id, &before.revision).is_err());
         assert_eq!(f.counts()?, counts);
@@ -116,10 +117,12 @@ fn stale_actor_target_and_device_never_enqueue() -> TestResult<()> {
     f.ordered(EventBody::MemberAdded {
         identity: id.clone(),
         role: Role::Member,
-    })?;
+    })
+    .map_err(storage)?;
     f.ordered(EventBody::MemberRemoved {
         identity: id.clone(),
-    })?;
+    })
+    .map_err(storage)?;
     assert!(read(&f, &id)?.can_add);
     let counts = f.counts()?;
     assert!(add(&f, &id, &current.revision).is_err());
@@ -153,7 +156,7 @@ fn rejected_addition_remains_absent_and_requires_explicit_fresh_review() -> Test
 
 #[tokio::test]
 async fn json_dispatch_and_cold_reopen_preserve_the_exact_single_intent() -> TestResult<()> {
-    let dir = std::env::temp_dir().join(types::new_id("native-add-member"));
+    let dir = std::env::temp_dir().join(types::new_id("native-add-member")?);
     std::fs::create_dir(&dir)?;
     let f = Fixture::at(
         dir.join("core.sqlite").to_string_lossy().into_owned(),
@@ -216,7 +219,8 @@ async fn lookup_rechecks_real_owner_and_role_before_installing_any_profile() -> 
             f.ordered(EventBody::MemberAdded {
                 identity: f.identity.clone(),
                 role: Role::Member,
-            })?;
+            })
+            .map_err(storage)?;
         }
         tx.send(vec![profile])
             .map_err(|_| "missing lookup waiter")?;

@@ -28,7 +28,7 @@ fn sealed_intent(f: &LateWord, mut share: AppCurrentShare, id: &str) -> R<(Seque
         .as_ref()
         .ok_or_else(|| storage("owner signer"))?;
     share.mutation = id.into();
-    share.grant.id = types::new_id("gr");
+    share.grant.id = types::new_id("gr")?;
     let e = author.sign_event(
         SPACE,
         id,
@@ -37,7 +37,7 @@ fn sealed_intent(f: &LateWord, mut share: AppCurrentShare, id: &str) -> R<(Seque
         EventBody::AppCurrentShared {
             share: Box::new(share),
         },
-    );
+    )?;
     let data = f
         .owner
         .device()?
@@ -59,8 +59,9 @@ fn sealed_intent(f: &LateWord, mut share: AppCurrentShare, id: &str) -> R<(Seque
             e.at_ms,
             e.seen.as_ref(),
             event_log::content::Sealed::new(SealedKind::Application, SUITE_ID, data),
-        ),
-    );
+        )?,
+    )
+    .map_err(storage)?;
     Ok((frame, e))
 }
 
@@ -175,7 +176,7 @@ fn retained_readable_successor_refuses_stale_floor_and_its_grant_atomically() ->
             content: ItemContent::App(app),
             note: "real retained event".into(),
         },
-    );
+    )?;
     let data = f
         .owner
         .device()?
@@ -197,8 +198,9 @@ fn retained_readable_successor_refuses_stale_floor_and_its_grant_atomically() ->
             event.at_ms,
             event.seen.as_ref(),
             event_log::content::Sealed::new(SealedKind::Application, SUITE_ID, data),
-        ),
-    );
+        )?,
+    )
+    .map_err(storage)?;
     assert_eq!(f.agent.ingest(frame), Ingest::Applied);
     assert!(matches!(
         f.agent.logs[SPACE].events().last().map(|e| &e.body),
@@ -223,7 +225,7 @@ fn canonical_share_then_save_with_reordered_delivery_converges_without_lost_succ
     f.owner.mls_seal_outbox()?;
     let envelopes = f.owner.outbox_envelopes();
     assert_eq!(envelopes.len(), 1);
-    let first = ordered(&f.owner, envelopes[0].clone());
+    let first = ordered(&f.owner, envelopes[0].clone()).map_err(storage)?;
     assert_eq!(f.owner.ingest(first.clone()), Ingest::Confirmed);
     let base = f.original.clone();
     let v3 = save(&mut f, &base, wordcraft::EMPTY, "ordered_three")?;
@@ -234,7 +236,7 @@ fn canonical_share_then_save_with_reordered_delivery_converges_without_lost_succ
     f.owner.mls_seal_outbox()?;
     let envelopes = f.owner.outbox_envelopes();
     assert_eq!(envelopes.len(), 1);
-    let next = ordered(&f.owner, envelopes[0].clone());
+    let next = ordered(&f.owner, envelopes[0].clone()).map_err(storage)?;
     assert_eq!(f.owner.ingest(next.clone()), Ingest::Confirmed);
     assert_eq!(
         f.agent.ingest(next.clone()),
@@ -270,10 +272,10 @@ fn canonical_share_then_save_with_reordered_delivery_converges_without_lost_succ
 fn a_new_delivery_of_old_snapshot_after_revocation_cannot_revive_the_known_app() -> R<()> {
     let mut f = late_word(":memory:", ":memory:")?;
     let mut share = template(&mut f)?;
-    publish(&mut f.owner, &mut f.agent, &mut f.blobs);
+    publish(&mut f.owner, &mut f.agent, &mut f.blobs)?;
     receive_wanted(&mut f.agent, &f.blobs)?;
     revoke(&mut f)?;
-    publish(&mut f.owner, &mut f.agent, &mut f.blobs);
+    publish(&mut f.owner, &mut f.agent, &mut f.blobs)?;
     share.cut = seen(&f.agent, SPACE).ok_or_else(|| storage("revoked cut"))?;
     let before = counts(&f.agent);
     let frame = sealed(&f, share, "not_a_revocation_bypass")?;
@@ -300,7 +302,7 @@ fn a_real_known_item_from_another_conversation_cannot_be_rebound_or_granted() ->
         &base64::engine::general_purpose::STANDARD.encode(wordcraft::EMPTY),
         "foreign_word",
     )?;
-    publish(&mut f.owner, &mut f.agent, &mut f.blobs);
+    publish(&mut f.owner, &mut f.agent, &mut f.blobs)?;
     receive_wanted(&mut f.agent, &f.blobs)?;
     assert_eq!(f.agent.item(&foreign.item_id)?.space_id, other);
     let mut share = template(&mut f)?;

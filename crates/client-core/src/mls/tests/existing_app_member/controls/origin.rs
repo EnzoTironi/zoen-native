@@ -25,7 +25,7 @@ fn legacy_creator_receipt_shares_only_current_bytes_and_prior_share_preserves_pu
         .app_origin
         .is_none());
     receipt(&mut f, "legacy_current_only")?;
-    publish(&mut f.owner, &mut f.agent, &mut f.blobs);
+    publish(&mut f.owner, &mut f.agent, &mut f.blobs)?;
     receive_wanted(&mut f.agent, &f.blobs)?;
     assert_eq!(
         f.agent
@@ -74,7 +74,7 @@ fn fanout(
     second: &mut Engine,
     blobs: &mut HashMap<String, Vec<u8>>,
 ) {
-    let frames = publish(sender, first, blobs);
+    let frames = publish(sender, first, blobs)?;
     for frame in frames {
         assert_eq!(second.ingest(frame), Ingest::Applied);
     }
@@ -106,7 +106,7 @@ fn genuine_non_creator_writer_reuses_new_app_proof_without_creators_local_receip
     for peer in &mut peers {
         peer.put_profiles(profiles.clone())?;
     }
-    for frame in claim_group(&mut owner, space, &mut peers) {
+    for frame in claim_group(&mut owner, space, &mut peers).map_err(storage)? {
         for peer in &mut peers {
             assert_eq!(peer.ingest(frame.clone()), Ingest::Applied);
         }

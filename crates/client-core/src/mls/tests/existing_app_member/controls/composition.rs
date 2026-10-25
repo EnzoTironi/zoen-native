@@ -26,7 +26,7 @@ fn one_disclosed_send_publishes_share_before_scoped_request_with_no_extra_retry_
     let pending = counts(&f.owner);
     assert_eq!(f.owner.request_app_edit(command.clone())?.id, first.id);
     assert_eq!(counts(&f.owner), pending);
-    let frames = publish(&mut f.owner, &mut f.agent, &mut f.blobs);
+    let frames = publish(&mut f.owner, &mut f.agent, &mut f.blobs)?;
     receive_wanted(&mut f.agent, &f.blobs)?;
     let bodies: Vec<_> = frames
         .iter()
@@ -95,7 +95,7 @@ fn second_append_storage_failure_rolls_back_the_normal_share_and_grant_too() -> 
 #[test]
 fn accepted_share_prefix_then_real_cold_retry_keeps_one_share_and_original_pending_request() -> R<()>
 {
-    let dir = std::env::temp_dir().join(types::new_id("disclosed-send-prefix"));
+    let dir = std::env::temp_dir().join(types::new_id("disclosed-send-prefix")?);
     std::fs::create_dir_all(&dir).map_err(storage)?;
     let op = dir.join("owner.sqlite").to_string_lossy().into_owned();
     let ap = dir.join("agent.sqlite").to_string_lossy().into_owned();
@@ -105,7 +105,7 @@ fn accepted_share_prefix_then_real_cold_retry_keeps_one_share_and_original_pendi
     f.owner.mls_seal_outbox()?;
     let envelopes = f.owner.outbox_envelopes();
     assert_eq!(envelopes.len(), 2);
-    let frame = ordered(&f.owner, envelopes[0].clone());
+    let frame = ordered(&f.owner, envelopes[0].clone()).map_err(storage)?;
     assert_eq!(f.owner.ingest(frame.clone()), Ingest::Confirmed);
     assert_eq!(f.agent.ingest(frame), Ingest::Applied);
     assert_eq!(f.owner.outbox_len(), 1);
@@ -116,7 +116,7 @@ fn accepted_share_prefix_then_real_cold_retry_keeps_one_share_and_original_pendi
     let before = counts(&owner);
     assert_eq!(owner.request_app_edit(command)?.id, first.id);
     assert_eq!(counts(&owner), before);
-    publish(&mut owner, &mut f.agent, &mut f.blobs);
+    publish(&mut owner, &mut f.agent, &mut f.blobs)?;
     receive_wanted(&mut f.agent, &f.blobs)?;
     assert_eq!(owner.outbox_len(), 0);
     assert_eq!(
@@ -211,7 +211,7 @@ fn scoped_owned_picker_is_read_only_for_member_and_direct_without_making_direct_
         Privacy::Closed,
         std::slice::from_ref(&id),
     )?;
-    publish(&mut f.owner, &mut f.agent, &mut f.blobs);
+    publish(&mut f.owner, &mut f.agent, &mut f.blobs)?;
     let before = (f.owner.store.event_count()?, f.owner.outbox_len());
     let found = f
         .owner

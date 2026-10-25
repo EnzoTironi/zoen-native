@@ -4,7 +4,7 @@ use crate::Delivery;
 
 #[test]
 fn terminal_share_failure_survives_cold_and_needs_a_fresh_explicit_request() -> R<()> {
-    let dir = std::env::temp_dir().join(types::new_id("share-request-failure"));
+    let dir = std::env::temp_dir().join(types::new_id("share-request-failure")?);
     std::fs::create_dir_all(&dir).map_err(storage)?;
     let op = dir.join("owner.sqlite").to_string_lossy().into_owned();
     let ap = dir.join("agent.sqlite").to_string_lossy().into_owned();
@@ -58,7 +58,7 @@ fn terminal_share_failure_survives_cold_and_needs_a_fresh_explicit_request() -> 
     assert!(offered
         .iter()
         .all(|entry| entry.client_id() != first.id && entry.client_id() != share.client_id));
-    publish(&mut f.owner, &mut f.agent, &mut f.blobs);
+    publish(&mut f.owner, &mut f.agent, &mut f.blobs)?;
     assert!(f.agent.logs[SPACE]
         .events()
         .iter()
@@ -66,7 +66,7 @@ fn terminal_share_failure_survives_cold_and_needs_a_fresh_explicit_request() -> 
     let fresh = composition::input(&f, "fresh_reviewed_consent", true)?;
     let next = f.owner.request_app_edit(fresh)?;
     assert_ne!(next.id, first.id);
-    publish(&mut f.owner, &mut f.agent, &mut f.blobs);
+    publish(&mut f.owner, &mut f.agent, &mut f.blobs)?;
     receive_wanted(&mut f.agent, &f.blobs)?;
     let request = f
         .agent

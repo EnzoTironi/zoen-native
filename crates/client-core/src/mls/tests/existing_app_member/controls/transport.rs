@@ -7,13 +7,13 @@ fn broadcast(
     newcomer: &mut Engine,
     blobs: &mut HashMap<String, Vec<u8>>,
 ) {
-    for frame in publish(owner, reader, blobs) {
+    for frame in publish(owner, reader, blobs)? {
         assert_eq!(newcomer.ingest(frame), Ingest::Applied);
     }
 }
 
 fn changed_audience_before_sealing(already_sealed: bool) -> R<()> {
-    let dir = std::env::temp_dir().join(types::new_id("share-audience-cold"));
+    let dir = std::env::temp_dir().join(types::new_id("share-audience-cold")?);
     std::fs::create_dir_all(&dir).map_err(storage)?;
     let path = dir.join("owner.sqlite").to_string_lossy().into_owned();
     let (mut owner, author, owner_secret) = member(&path);
@@ -26,7 +26,9 @@ fn changed_audience_before_sealing(already_sealed: bool) -> R<()> {
     for e in [&mut owner, &mut reader, &mut newcomer] {
         e.put_profiles(profiles.clone())?;
     }
-    for frame in claim_group(&mut owner, SPACE, std::slice::from_mut(&mut reader)) {
+    for frame in
+        claim_group(&mut owner, SPACE, std::slice::from_mut(&mut reader)).map_err(storage)?
+    {
         assert_eq!(reader.ingest(frame.clone()), Ingest::Applied);
         assert_eq!(newcomer.ingest(frame), Ingest::Applied);
     }
@@ -88,7 +90,7 @@ fn changed_audience_before_sealing(already_sealed: bool) -> R<()> {
         .events()
         .last()
         .ok_or_else(|| storage("member added"))?;
-    let frame = ordered(&reader, Envelope::plain(added));
+    let frame = ordered(&reader, Envelope::plain(added)?).map_err(storage)?;
     assert_eq!(reader.ingest(frame.clone()), Ingest::Applied);
     assert_eq!(newcomer.ingest(frame), Ingest::Applied);
     let id = newcomer.me_id()?;
@@ -110,7 +112,7 @@ fn changed_audience_before_sealing(already_sealed: bool) -> R<()> {
             break;
         }
         for env in handshakes {
-            let frame = ordered(&owner, env);
+            let frame = ordered(&owner, env).map_err(storage)?;
             assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
             assert_eq!(reader.ingest(frame.clone()), Ingest::Applied);
             assert_eq!(newcomer.ingest(frame), Ingest::Applied);
@@ -129,7 +131,7 @@ fn changed_audience_before_sealing(already_sealed: bool) -> R<()> {
         .into_iter()
         .find(|e| e.client_id() == original.client_id);
     if let Some(env) = offer {
-        let frame = ordered(&owner, env);
+        let frame = ordered(&owner, env).map_err(storage)?;
         assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
         assert_eq!(reader.ingest(frame.clone()), Ingest::Applied);
         assert_eq!(newcomer.ingest(frame), Ingest::Applied);

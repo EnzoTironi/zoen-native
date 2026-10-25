@@ -8,7 +8,7 @@ fn fanout(
     second: &mut Engine,
     blobs: &mut HashMap<String, Vec<u8>>,
 ) {
-    for frame in publish(sender, first, blobs) {
+    for frame in publish(sender, first, blobs)? {
         assert_eq!(second.ingest(frame), Ingest::Applied);
     }
 }
@@ -22,7 +22,7 @@ enum Change {
     Epoch,
 }
 fn exercise(change: Change) -> R<()> {
-    let dir = std::env::temp_dir().join(types::new_id("active-group-share"));
+    let dir = std::env::temp_dir().join(types::new_id("active-group-share")?);
     std::fs::create_dir_all(&dir).map_err(storage)?;
     let op = dir.join("owner.sqlite").to_string_lossy().into_owned();
     let ap = dir.join("agent.sqlite").to_string_lossy().into_owned();
@@ -48,7 +48,7 @@ fn exercise(change: Change) -> R<()> {
     for e in [&mut owner, &mut human, &mut agent] {
         e.put_profiles(profiles.clone())?;
     }
-    for frame in claim_group(&mut owner, ROOM, std::slice::from_mut(&mut human)) {
+    for frame in claim_group(&mut owner, ROOM, std::slice::from_mut(&mut human)).map_err(storage)? {
         assert_eq!(human.ingest(frame.clone()), Ingest::Applied);
         assert_eq!(agent.ingest(frame), Ingest::Applied);
     }
@@ -88,7 +88,7 @@ fn exercise(change: Change) -> R<()> {
         .events()
         .last()
         .ok_or_else(|| storage("MemberAdded"))?;
-    let added = ordered(&human, Envelope::plain(e));
+    let added = ordered(&human, Envelope::plain(e)?).map_err(storage)?;
     assert_eq!(human.ingest(added.clone()), Ingest::Applied);
     assert_eq!(agent.ingest(added), Ingest::Applied);
     let records = claimed_records(
@@ -180,7 +180,7 @@ fn exercise(change: Change) -> R<()> {
                 .into_iter()
                 .find(|e| e.client_id() == id)
                 .ok_or_else(|| storage("actual sealed revocation"))?;
-            let frame = ordered(&owner, env);
+            let frame = ordered(&owner, env).map_err(storage)?;
             assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
             assert_eq!(human.ingest(frame.clone()), Ingest::Applied);
             assert_eq!(agent.ingest(frame), Ingest::Applied);
@@ -188,7 +188,7 @@ fn exercise(change: Change) -> R<()> {
         Change::Membership => {
             owner.remove_member(ROOM, &human_id)?;
             let row = owner.store.outbox()?.into_iter().find(|r| matches!(&r.event.body, EventBody::MemberRemoved { identity } if identity == &human_id)).ok_or_else(|| storage("normal member removal"))?;
-            let frame = ordered(&owner, Envelope::plain(&row.event));
+            let frame = ordered(&owner, Envelope::plain(&row.event)?).map_err(storage)?;
             assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
             assert_eq!(human.ingest(frame.clone()), Ingest::Applied);
             assert_eq!(agent.ingest(frame), Ingest::Applied);
@@ -239,7 +239,7 @@ fn exercise(change: Change) -> R<()> {
         }
     }
     for env in publications {
-        let frame = ordered(&owner, env);
+        let frame = ordered(&owner, env).map_err(storage)?;
         assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
         assert_eq!(human.ingest(frame.clone()), Ingest::Applied);
         assert_eq!(agent.ingest(frame), Ingest::Applied);

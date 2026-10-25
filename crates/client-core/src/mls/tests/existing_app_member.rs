@@ -27,9 +27,9 @@ fn publish(
     owner: &mut Engine,
     agent: &mut Engine,
     blobs: &mut HashMap<String, Vec<u8>>,
-) -> Vec<Sequenced> {
+) -> R<Vec<Sequenced>> {
     blobs.extend(owner.pending_uploads(100));
-    relay_ready_to_peer(owner, agent)
+    relay_ready_to_peer(owner, agent).map_err(storage)
 }
 
 fn receive_wanted(agent: &mut Engine, blobs: &HashMap<String, Vec<u8>>) -> R<()> {
@@ -78,7 +78,7 @@ fn late_word_mode(owner_path: &str, agent_path: &str, legacy: bool) -> R<LateWor
     agent.store.put_identity(&profile, None)?;
     agent.identities.insert(profile.id.clone(), profile.clone());
     agent.identity_order.push(profile.id);
-    for frame in claim_group(&mut owner, SPACE, &mut []) {
+    for frame in claim_group(&mut owner, SPACE, &mut []).map_err(storage)? {
         assert_eq!(agent.ingest(frame), Ingest::Applied);
     }
     let mut blobs = HashMap::new();
@@ -118,7 +118,7 @@ fn late_word_mode(owner_path: &str, agent_path: &str, legacy: bool) -> R<LateWor
             row.event.at_ms,
             row.event.seen.clone(),
             body,
-        );
+        )?;
         // outbox_put is intentionally insert-only. Install these re-signed old
         // producer bytes in this private, not-yet-published row without changing
         // its FIFO position or any canonical/MLS state.
@@ -145,7 +145,7 @@ fn late_word_mode(owner_path: &str, agent_path: &str, legacy: bool) -> R<LateWor
         &event_log::sha256_hex(b"real pre-join Word save"),
     )?;
     assert_eq!(original.version, 2);
-    let before_join = publish(&mut owner, &mut agent, &mut blobs);
+    let before_join = publish(&mut owner, &mut agent, &mut blobs)?;
     assert!(before_join
         .iter()
         .any(|frame| { frame.env.sealed_kind() == Some(SealedKind::Application) }));
@@ -163,7 +163,7 @@ fn late_word_mode(owner_path: &str, agent_path: &str, legacy: bool) -> R<LateWor
         .events()
         .last()
         .ok_or_else(|| storage("fixture needs MemberAdded"))?;
-    let frame = ordered(&agent, Envelope::plain(added));
+    let frame = ordered(&agent, Envelope::plain(added)?).map_err(storage)?;
     assert_eq!(agent.ingest(frame), Ingest::Applied);
     let records = claimed_records(
         std::slice::from_mut(&mut agent),
@@ -174,7 +174,7 @@ fn late_word_mode(owner_path: &str, agent_path: &str, legacy: bool) -> R<LateWor
         .ok_or_else(|| storage("fixture needs the claimed Agent KeyPackage"))?
         .data;
     owner.commit_now(SPACE, std::slice::from_ref(package), &Default::default())?;
-    publish(&mut owner, &mut agent, &mut blobs);
+    publish(&mut owner, &mut agent, &mut blobs)?;
     assert_eq!(owner.mls_status(SPACE), agent.mls_status(SPACE));
     assert!(owner.ready_epoch(SPACE).is_some());
     assert!(agent.ready_epoch(SPACE).is_some());
@@ -189,7 +189,7 @@ fn late_word_mode(owner_path: &str, agent_path: &str, legacy: bool) -> R<LateWor
         &base64::engine::general_purpose::STANDARD.encode(wordcraft::EMPTY),
         "after_join",
     )?;
-    publish(&mut owner, &mut agent, &mut blobs);
+    publish(&mut owner, &mut agent, &mut blobs)?;
     receive_wanted(&mut agent, &blobs)?;
     let readable = agent.app_binary_read(&control.item_id, Some(1), Some(&control.sha256))?;
     assert_eq!(readable.item_id, control.item_id);
@@ -233,7 +233,7 @@ fn late_certified_agent_existing_word_requires_current_state_bootstrap() -> R<()
     })?;
     let receipt = owner.share_app_current(context, "explicit_current_share")?;
     assert!(receipt.applied);
-    publish(&mut owner, &mut agent, &mut blobs);
+    publish(&mut owner, &mut agent, &mut blobs)?;
     receive_wanted(&mut agent, &blobs)?;
     let shared_v2 = agent.app_binary_read(&original.item_id, Some(2), Some(&original.sha256))?;
     assert_eq!(shared_v2.data_base64, original.data_base64);
@@ -265,7 +265,7 @@ fn late_certified_agent_existing_word_requires_current_state_bootstrap() -> R<()
         &event_log::sha256_hex(b"real post-join Word save"),
     )?;
     assert_eq!(updated.version, 3);
-    let saved = publish(&mut owner, &mut agent, &mut blobs);
+    let saved = publish(&mut owner, &mut agent, &mut blobs)?;
     let decoded = saved.iter().any(|frame| {
         agent.logs[SPACE].events().iter().any(|event| {
             event.hash == frame.hash
