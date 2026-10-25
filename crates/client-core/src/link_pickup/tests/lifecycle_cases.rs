@@ -8,7 +8,7 @@ pub(super) async fn retire_before_first_worker_poll_never_constructs_transport(
     let observed = constructed.clone();
     let mut waiter = control
         .begin_with_factory(
-            || Ok(pending("http://127.0.0.1:1".into())?),
+            || pending("http://127.0.0.1:1".into()),
             budget(),
             move |_, _, _, _| {
                 Box::new(move || {
@@ -36,12 +36,7 @@ pub(super) async fn production_pickup_retired_before_first_poll_opens_no_tcp_con
     let control = PickupControl::default();
     let mut waiter = control
         .begin(
-            || {
-                Ok(pending(format!(
-                    "http://{}",
-                    listener.local_addr().unwrap()
-                ))?)
-            },
+            || pending(format!("http://{}", listener.local_addr().unwrap())),
             budget(),
             i18n::Lang::En,
         )
@@ -94,7 +89,7 @@ pub(super) async fn finished_worker_keeps_admission_occupied_until_consumer_reti
     let control = PickupControl::default();
     let mut waiter = control
         .begin_with_factory(
-            || Ok(pending("http://127.0.0.1:1".into())?),
+            || pending("http://127.0.0.1:1".into()),
             budget(),
             |_, _, _, _| Box::new(|| Box::pin(async { Ok(vec![4, 5, 6]) })),
         )
@@ -117,7 +112,7 @@ pub(super) async fn finished_worker_keeps_admission_occupied_until_consumer_reti
         .begin_with_factory(
             || {
                 writes.fetch_add(1, Ordering::SeqCst);
-                Ok(pending("http://127.0.0.1:1".into())?)
+                pending("http://127.0.0.1:1".into())
             },
             budget(),
             |_, _, _, _| Box::new(|| Box::pin(std::future::pending())),
@@ -206,7 +201,7 @@ pub(super) async fn abort_and_waiter_drop_do_not_fake_worker_drain(
     let inner_gate = gate.clone();
     let waiter = control
         .begin_with_factory(
-            || Ok(pending("http://127.0.0.1:1".into())?),
+            || pending("http://127.0.0.1:1".into()),
             budget(),
             move |_, _, _, _| {
                 Box::new(move || {
@@ -260,7 +255,7 @@ pub(super) async fn worker_panic_wakes_typed_waiter_and_retires_after_both_drops
     let control = PickupControl::default();
     let mut waiter = control
         .begin_with_factory(
-            || Ok(pending("http://127.0.0.1:1".into())?),
+            || pending("http://127.0.0.1:1".into()),
             budget(),
             |_, _, _, _| Box::new(|| panic!("owned test worker panic")),
         )
@@ -279,7 +274,7 @@ pub(super) async fn accepted_install_finishes_before_terminal_retire_returns(
     let control = PickupControl::default();
     let mut waiter = control
         .begin_with_factory(
-            || Ok(pending("http://127.0.0.1:1".into())?),
+            || pending("http://127.0.0.1:1".into()),
             budget(),
             |_, _, _, _| Box::new(|| Box::pin(async { Ok(vec![1]) })),
         )
@@ -328,7 +323,7 @@ pub(super) async fn panicking_install_fails_closed_without_forgetting_live_owner
     let control = PickupControl::default();
     let mut waiter = control
         .begin_with_factory(
-            || Ok(pending("http://127.0.0.1:1".into())?),
+            || pending("http://127.0.0.1:1".into()),
             budget(),
             |_, _, _, _| Box::new(|| Box::pin(async { Ok(vec![1]) })),
         )

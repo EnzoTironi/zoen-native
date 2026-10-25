@@ -331,8 +331,8 @@ pub(super) fn pruned_frame(
             vec![7, 7, 7, 7],
         ),
     )?;
-    Ok(ordered(
+    ordered(
         engine,
         sealed.pruned().expect("a sealed event leaves a stub"),
-    )?)
+    )
 }

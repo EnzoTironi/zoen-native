@@ -25,7 +25,7 @@ pub(super) fn media_contract_recovery_only_file_refuses_revert_command(
 
 pub(super) fn media_contract_recovery_only_file_refuses_signed_projection_and_ingest(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    Ok(for operation in ["legacy", "version", "revert"] {
+    for operation in ["legacy", "version", "revert"] {
         let dir = temp()?;
         let path = dir.join("recovery-authority.sqlite");
         let (f, item) = media_contract_recovered_writer_at(path.to_str().unwrap())?;
@@ -101,7 +101,8 @@ pub(super) fn media_contract_recovery_only_file_refuses_signed_projection_and_in
         );
         drop(reopened);
         std::fs::remove_dir_all(dir).unwrap();
-    })
+    }
+    Ok(())
 }
 
 pub(super) fn media_contract_recovery_bytes_can_be_explicitly_copied_to_a_fresh_file(

@@ -302,7 +302,7 @@ pub(super) fn media_contract_receive(
 
 pub(super) fn media_contract_recovered_writer(
 ) -> std::result::Result<(Fixture, String), Box<dyn std::error::Error>> {
-    Ok(media_contract_recovered_writer_at(":memory:")?)
+    media_contract_recovered_writer_at(":memory:")
 }
 
 pub(super) fn media_contract_recovered_writer_at(

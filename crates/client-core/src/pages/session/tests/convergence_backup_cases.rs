@@ -4,7 +4,7 @@ use super::*;
 
 pub(super) fn blob_publication_and_two_first_writers_converge_without_cas(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    Ok(for shorter_first in [false, true] {
+    for shorter_first in [false, true] {
         let mut receiver = Fixture::new()?;
         let mut shorter = receiver.peer()?;
         let mut short_session = shorter.session();
@@ -126,12 +126,13 @@ pub(super) fn blob_publication_and_two_first_writers_converge_without_cas(
         assert!(blocks(&short_accept.current)
             .iter()
             .any(|b| b.plain_text().len() == 55_000));
-    })
+    }
+    Ok(())
 }
 
 pub(super) fn backup_export_excludes_actual_page_and_plan_private_journals_without_mutating_source(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    Ok(for kind in [ItemKind::Page, ItemKind::Plan] {
+    for kind in [ItemKind::Page, ItemKind::Plan] {
         let (f, _, _, private) = private_document_backup_source(kind)?;
         let ciphertext = f.cipher().unwrap();
         let head = f.engine.logs[&f.space]
@@ -166,12 +167,13 @@ pub(super) fn backup_export_excludes_actual_page_and_plan_private_journals_witho
                 .map(|head| (head.seq, head.hash)),
             head
         );
-    })
+    }
+    Ok(())
 }
 
 pub(super) fn backup_restore_strips_authentic_old_device_page_and_plan_journals_before_edit_admission(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    Ok(for kind in [ItemKind::Page, ItemKind::Plan] {
+    for kind in [ItemKind::Page, ItemKind::Plan] {
         let (f, header, canonical, private) = private_document_backup_source(kind)?;
         let ciphertext = f.cipher().unwrap();
         let row = row_id(&f.engine, f.engine.item_state(&f.item).unwrap()).unwrap();
@@ -238,5 +240,6 @@ pub(super) fn backup_restore_strips_authentic_old_device_page_and_plan_journals_
         let mut original_session = f.session();
         assert_eq!(original_session.read(&f.engine).unwrap().view, private);
         assert_eq!(f.cipher().as_deref(), Some(ciphertext.as_str()));
-    })
+    }
+    Ok(())
 }

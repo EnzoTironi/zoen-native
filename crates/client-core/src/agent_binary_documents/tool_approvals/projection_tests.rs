@@ -43,7 +43,7 @@ fn canonical_decision_projection(
     assert!(receipt.tool_decision.is_some());
     let synthetic_source = format!("{}:result", event.client_id);
 
-    Ok(for reload in [false, true] {
+    for reload in [false, true] {
         if reload {
             fixture.agent.lock().reload().unwrap();
         }
@@ -115,7 +115,8 @@ fn canonical_decision_projection(
             engine.state.requests[&request.id].resolution.as_ref(),
             Some(receipt)
         );
-    })
+    }
+    Ok(())
 }
 
 #[test]

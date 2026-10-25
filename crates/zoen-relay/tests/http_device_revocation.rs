@@ -120,7 +120,7 @@ impl TestRelay {
         blobs: Arc<dyn object_store::ObjectStore>,
         limit_spec: &str,
     ) -> std::result::Result<Self, Box<dyn std::error::Error>> {
-        Ok(Self::configured_log(blobs, limit_spec, Arc::new(UnusedLog::default())).await?)
+        Self::configured_log(blobs, limit_spec, Arc::new(UnusedLog::default())).await
     }
 
     async fn configured_log(

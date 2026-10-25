@@ -78,7 +78,7 @@ pub(super) fn lost_reply_empty_diff_undo_and_redo_continue_own_branch(
 
 pub(super) fn continuation_does_not_replace_unseen_remote_fields_or_blocks(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    Ok(for remote_first in [false, true] {
+    for remote_first in [false, true] {
         let mut f = Fixture::new()?;
         let mut s = f.session();
         let read = s.read(&f.engine).unwrap();
@@ -154,7 +154,8 @@ pub(super) fn continuation_does_not_replace_unseen_remote_fields_or_blocks(
                 ..
             }
         ));
-    })
+    }
+    Ok(())
 }
 
 pub(super) fn continuation_removes_own_new_block_without_reusing_history(

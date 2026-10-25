@@ -115,7 +115,7 @@ impl Fixture {
     }
 
     fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
-        Ok(Self::at(":memory:")?)
+        Self::at(":memory:")
     }
 
     fn signed_as(
@@ -138,14 +138,14 @@ impl Fixture {
         body: EventBody,
     ) -> std::result::Result<Event, Box<dyn std::error::Error>> {
         let event = self.signed_as(actor, body)?;
-        Ok(deliver(&mut self.engine, &event, Ingest::Applied)?)
+        deliver(&mut self.engine, &event, Ingest::Applied)
     }
 
     fn ordered(
         &mut self,
         body: EventBody,
     ) -> std::result::Result<Event, Box<dyn std::error::Error>> {
-        Ok(self.ordered_as(&self.owner.clone(), body)?)
+        self.ordered_as(&self.owner.clone(), body)
     }
 
     fn version(&self, content: ItemContent) -> EventBody {

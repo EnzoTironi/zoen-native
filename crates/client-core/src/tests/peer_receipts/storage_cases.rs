@@ -4,7 +4,7 @@ use super::*;
 
 pub(super) fn sql_insert_and_update_failures_leave_disk_and_published_ticks_unchanged_then_retry(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    Ok(for operation in ["INSERT", "UPDATE"] {
+    for operation in ["INSERT", "UPDATE"] {
         let (_db, e, c) = fixture()?;
         let expected = if operation == "UPDATE" {
             assert!(e.lock().receipt(&c.space, &c.peer, c.voice.seq, 0).unwrap());
@@ -45,12 +45,13 @@ pub(super) fn sql_insert_and_update_failures_leave_disk_and_published_ticks_unch
                 format!("{:020}", c.voice.seq + 5)
             )]
         );
-    })
+    }
+    Ok(())
 }
 
 pub(super) fn reload_preserves_watermarks_and_wipe_or_erase_device_clears_only_its_database(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    Ok(for through_public_api in [false, true] {
+    for through_public_api in [false, true] {
         let (db, e, c) = fixture()?;
         let (_other_db, other, other_c) = fixture()?;
         assert!(e.lock().receipt(&c.space, &c.peer, 0, c.voice.seq).unwrap());
@@ -99,7 +100,8 @@ pub(super) fn reload_preserves_watermarks_and_wipe_or_erase_device_clears_only_i
         assert!(snapshot(&e).memory.is_empty());
         assert!(e.spaces().is_empty());
         assert_delivery(&other, &other_c, Delivery::Delivered);
-    })
+    }
+    Ok(())
 }
 
 pub(super) fn device_peer_receipts_are_excluded_from_backup_without_changing_the_live_store(

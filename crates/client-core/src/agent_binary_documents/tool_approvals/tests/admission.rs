@@ -173,130 +173,126 @@ pub(super) fn mutation_of_frozen_arguments_or_source_cannot_replace_the_reviewed
 
 pub(super) fn changed_head_and_revoked_grants_or_device_refuse_before_execution(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    Ok(
-        for failure in [
-            "head",
-            "app-grant",
-            "device",
-            "served-writer",
-            "trust-block",
-        ] {
-            let fixture = fixture()?;
-            signed_trust(&fixture, TrustLevel::Suggest)?;
-            let request = stage(&fixture, "deckcraft_slide_notes");
-            owner_decide(
-                &fixture,
-                &request.id,
-                observed(&request),
-                ToolRequestDecision::ApproveOnce,
-            )
+    for failure in [
+        "head",
+        "app-grant",
+        "device",
+        "served-writer",
+        "trust-block",
+    ] {
+        let fixture = fixture()?;
+        signed_trust(&fixture, TrustLevel::Suggest)?;
+        let request = stage(&fixture, "deckcraft_slide_notes");
+        owner_decide(
+            &fixture,
+            &request.id,
+            observed(&request),
+            ToolRequestDecision::ApproveOnce,
+        )
+        .unwrap();
+        let admitted = fixture
+            .agent
+            .approved_tool_turn(&request.id, WORKER)
             .unwrap();
-            let admitted = fixture
+        let (mutation, intent) = intent(admitted.proposal());
+        match failure {
+            "head" => {
+                fixture
+                    .agent
+                    .app_binary_save(
+                        fixture.base.item_id.clone(),
+                        1,
+                        fixture.base.sha256.clone(),
+                        STANDARD.encode(CHANGED),
+                        "synthetic-independent-edit".into(),
+                        "66".repeat(32),
+                    )
+                    .unwrap();
+            }
+            "app-grant" => {
+                let mut engine = fixture.agent.lock();
+                let grant = engine
+                    .state
+                    .grants
+                    .iter()
+                    .rev()
+                    .find(|grant| {
+                        grant.grant.scope == GrantScope::Item(fixture.base.item_id.clone())
+                            && matches!(grant.grant.capability, Capability::Trust(TrustLevel::Act))
+                    })
+                    .unwrap()
+                    .grant
+                    .clone();
+                engine
+                    .append(
+                        &fixture.space,
+                        &grant.grantor,
+                        EventBody::GrantRevoked { grant: grant.id },
+                    )
+                    .unwrap();
+            }
+            "device" => {
+                let device = fixture.agent.account().unwrap().device_id;
+                fixture
+                    .agent
+                    .lock()
+                    .store
+                    .set_meta("devices.revoked", &json!([device]).to_string())
+                    .unwrap();
+            }
+            "served-writer" => {
+                let mut engine = fixture.agent.lock();
+                let agent = engine.me_id().unwrap();
+                engine
+                    .append(
+                        &fixture.space,
+                        &agent,
+                        EventBody::MemberAdded {
+                            identity: fixture.owner.clone(),
+                            role: Role::Reader,
+                        },
+                    )
+                    .unwrap();
+            }
+            "trust-block" => signed_trust(&fixture, TrustLevel::Listen)?,
+            _ => unreachable!(),
+        }
+        let before = counts(&fixture);
+        assert!(
+            fixture
                 .agent
                 .approved_tool_turn(&request.id, WORKER)
-                .unwrap();
-            let (mutation, intent) = intent(admitted.proposal());
-            match failure {
-                "head" => {
-                    fixture
-                        .agent
-                        .app_binary_save(
-                            fixture.base.item_id.clone(),
-                            1,
-                            fixture.base.sha256.clone(),
-                            STANDARD.encode(CHANGED),
-                            "synthetic-independent-edit".into(),
-                            "66".repeat(32),
-                        )
-                        .unwrap();
-                }
-                "app-grant" => {
-                    let mut engine = fixture.agent.lock();
-                    let grant = engine
-                        .state
-                        .grants
-                        .iter()
-                        .rev()
-                        .find(|grant| {
-                            grant.grant.scope == GrantScope::Item(fixture.base.item_id.clone())
-                                && matches!(
-                                    grant.grant.capability,
-                                    Capability::Trust(TrustLevel::Act)
-                                )
-                        })
-                        .unwrap()
-                        .grant
-                        .clone();
-                    engine
-                        .append(
-                            &fixture.space,
-                            &grant.grantor,
-                            EventBody::GrantRevoked { grant: grant.id },
-                        )
-                        .unwrap();
-                }
-                "device" => {
-                    let device = fixture.agent.account().unwrap().device_id;
-                    fixture
-                        .agent
-                        .lock()
-                        .store
-                        .set_meta("devices.revoked", &json!([device]).to_string())
-                        .unwrap();
-                }
-                "served-writer" => {
-                    let mut engine = fixture.agent.lock();
-                    let agent = engine.me_id().unwrap();
-                    engine
-                        .append(
-                            &fixture.space,
-                            &agent,
-                            EventBody::MemberAdded {
-                                identity: fixture.owner.clone(),
-                                role: Role::Reader,
-                            },
-                        )
-                        .unwrap();
-                }
-                "trust-block" => signed_trust(&fixture, TrustLevel::Listen)?,
-                _ => unreachable!(),
-            }
-            let before = counts(&fixture);
-            assert!(
-                fixture
-                    .agent
-                    .approved_tool_turn(&request.id, WORKER)
-                    .is_err(),
-                "{failure}"
-            );
-            assert!(
-                fixture
-                    .agent
-                    .agent_binary_result(admitted.turn(), &mutation, &intent)
-                    .is_err(),
-                "{failure}"
-            );
-            assert!(
-                fixture
-                    .agent
-                    .agent_binary_save(
-                        admitted.turn(),
-                        &mutation,
-                        &intent,
-                        &STANDARD.encode(CHANGED)
-                    )
-                    .is_err(),
-                "{failure}"
-            );
-            assert_eq!(counts(&fixture), before, "{failure}");
-            assert_eq!(
-                fixture.agent.lock().state.items[&fixture.base.item_id]
-                    .current()
-                    .number,
-                if failure == "head" { 2 } else { 1 }
-            );
-        },
-    )
+                .is_err(),
+            "{failure}"
+        );
+        assert!(
+            fixture
+                .agent
+                .agent_binary_result(admitted.turn(), &mutation, &intent)
+                .is_err(),
+            "{failure}"
+        );
+        assert!(
+            fixture
+                .agent
+                .agent_binary_save(
+                    admitted.turn(),
+                    &mutation,
+                    &intent,
+                    &STANDARD.encode(CHANGED)
+                )
+                .is_err(),
+            "{failure}"
+        );
+        assert_eq!(counts(&fixture), before, "{failure}");
+        assert_eq!(
+            fixture.agent.lock().state.items[&fixture.base.item_id]
+                .current()
+                .number,
+            if failure == "head" { 2 } else { 1 }
+        );
+    }
+    Ok(())
 }
 
 pub(super) fn raw_worker_turn_cannot_bypass_a_later_signed_core_block_at_result_or_save_boundary(

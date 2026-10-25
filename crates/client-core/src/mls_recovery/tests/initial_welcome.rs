@@ -140,9 +140,10 @@ fn initial_welcome_beats_recovery(
     assert!(peer.timeline(space).unwrap().iter().any(|e| matches!(&e.kind, crate::dto::EntryKind::Message { text, .. } if text == "original live direct seed")),
         "initial Welcome must remain usable after early recovery context; recovered_before_welcome={recovered_before_welcome}");
     drop(peer);
-    Ok(if cold_reopen {
+    if cold_reopen {
         for suffix in ["", "-wal", "-shm"] {
             let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
         }
-    })
+    };
+    Ok(())
 }

@@ -371,7 +371,7 @@ pub(super) fn immediate_cold_reopen_after_sync_stop(
 
 pub(super) fn immediate_cold_reopen_after_implicit_sync_drop(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    Ok(for sample in 0..32 {
+    for sample in 0..32 {
         let path = std::env::temp_dir().join(types::new_id("implicit-net-drop")?);
         let path = path.to_string_lossy().to_string();
         let core = Client::open(path.clone(), "en".into()).unwrap();
@@ -401,7 +401,8 @@ pub(super) fn immediate_cold_reopen_after_implicit_sync_drop(
         );
         drop(reopened);
         std::fs::remove_file(path).unwrap();
-    })
+    }
+    Ok(())
 }
 
 pub(super) async fn immediate_cold_reopen_inside_an_unrelated_runtime(

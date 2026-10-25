@@ -125,10 +125,10 @@ impl Fixture {
             inner.seen.as_ref(),
             Sealed::new(SealedKind::Application, SUITE_ID, ciphertext),
         );
-        Ok(sequence(
+        sequence(
             &mut self.log,
             Envelope::new(content, sig, self.author.cert.clone(), None).unwrap(),
-        )?)
+        )
     }
 
     fn assert_tail(&self) {

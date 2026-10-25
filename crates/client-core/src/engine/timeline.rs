@@ -57,7 +57,7 @@ impl Engine {
         let unread = s
             .entries
             .iter()
-            .filter(|e| e.author != me && read_seq.map_or(true, |r| e.seq > r))
+            .filter(|e| e.author != me && read_seq.is_none_or(|r| e.seq > r))
             .filter(|e| matches!(e.body, EntryBody::Message { .. }))
             .count() as u32;
         let pending = self

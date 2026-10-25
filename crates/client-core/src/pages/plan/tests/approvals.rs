@@ -97,13 +97,12 @@ fn canonical(
     Ok(result)
 }
 
+type MissingBlob = (PageContent, Vec<u8>, crate::media::Wanted, Vec<u8>, PlanDoc);
+
 fn missing_blob(
     fixture: &Fixture,
     patch: LinePatch,
-) -> std::result::Result<
-    (PageContent, Vec<u8>, crate::media::Wanted, Vec<u8>, PlanDoc),
-    Box<dyn std::error::Error>,
-> {
+) -> std::result::Result<MissingBlob, Box<dyn std::error::Error>> {
     let fold = fixture.fold();
     let document = edited(fold.document.as_ref().unwrap(), patch);
     let result = document.view().unwrap().to_plan_doc();

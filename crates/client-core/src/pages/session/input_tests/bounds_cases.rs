@@ -4,7 +4,7 @@ use super::*;
 
 pub(super) fn input_limits_foreign_scope_and_authenticated_journal_migration_fail_closed(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    Ok(for kind in [ItemKind::Page, ItemKind::Plan] {
+    for kind in [ItemKind::Page, ItemKind::Plan] {
         let (_db, mut f) = cold_input_fixture(kind)?;
         let mut session = f.session();
         queued(
@@ -245,5 +245,6 @@ pub(super) fn input_limits_foreign_scope_and_authenticated_journal_migration_fai
             .page_input_checkpoint(&scope, WRITER_A, accepted.current.revision, 8, &valid)
             .is_err());
         assert_eq!(f.cipher(), cipher);
-    })
+    }
+    Ok(())
 }

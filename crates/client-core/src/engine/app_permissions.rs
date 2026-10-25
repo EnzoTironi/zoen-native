@@ -21,7 +21,7 @@ impl Engine {
             !g.revoked
                 && Some(g.grant.grantor.as_str()) == me
                 && g.grant.grantee.as_deref() == Some(grantee.as_str())
-                && g.grant.expires_at_ms.map_or(true, |e| e > now)
+                && g.grant.expires_at_ms.is_none_or(|e| e > now)
                 && matches!(g.grant.capability, Capability::Device { .. })
         })
     }
@@ -118,7 +118,7 @@ impl Engine {
             .grants
             .iter()
             .rev()
-            .filter(|g| !g.revoked && g.grant.expires_at_ms.map_or(true, |e| e > now))
+            .filter(|g| !g.revoked && g.grant.expires_at_ms.is_none_or(|e| e > now))
             .filter_map(|g| {
                 let Capability::Device {
                     capability,

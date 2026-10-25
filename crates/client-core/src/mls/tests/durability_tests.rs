@@ -58,10 +58,12 @@ fn closed_space(
     Ok(())
 }
 
+type EncryptedPair = (Engine, [u8; 32], Engine, [u8; 32]);
+
 fn encrypted_pair(
     database: &Database,
     space: &str,
-) -> std::result::Result<(Engine, [u8; 32], Engine, [u8; 32]), Box<dyn std::error::Error>> {
+) -> std::result::Result<EncryptedPair, Box<dyn std::error::Error>> {
     let (mut owner, _, owner_secret) = member(&database.path("owner.sqlite"));
     let (mut peer, _, peer_secret) = member(&database.path("peer.sqlite"));
     let initial = claim_group(&mut owner, space, std::slice::from_mut(&mut peer))?;

@@ -44,7 +44,7 @@ fn held(
     let (send, receive) = oneshot::channel();
     let waiter = control
         .begin_with_factory(
-            || Ok(pending("http://127.0.0.1:1".into())?),
+            || pending("http://127.0.0.1:1".into()),
             budget(),
             move |key, _, _, _| {
                 Box::new(move || {

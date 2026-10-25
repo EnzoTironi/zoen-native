@@ -286,7 +286,7 @@ fn message(
     seen: &Seen,
     text: &str,
 ) -> std::result::Result<Envelope, Box<dyn std::error::Error>> {
-    Ok(signed(
+    signed(
         author,
         space,
         Some(seen.clone()),
@@ -298,7 +298,7 @@ fn message(
             media: None,
             forwarded: false,
         },
-    )?)
+    )
 }
 async fn current(db: &Database, root: &Subspace, space: &str) -> Lease {
     db.run(|trx, _| async move {

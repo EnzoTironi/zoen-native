@@ -131,7 +131,7 @@ pub(super) fn lossless_input_rejects_malformed_ranges_without_replacing_recovery
 
 pub(super) fn page_and_plan_input_cold_reopen_preserve_exact_capture_and_private_journal(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    Ok(for kind in [ItemKind::Page, ItemKind::Plan] {
+    for kind in [ItemKind::Page, ItemKind::Plan] {
         let (_db, mut f) = cold_input_fixture(kind)?;
         let mut session = f.session();
         let pending = queued(
@@ -183,7 +183,8 @@ pub(super) fn page_and_plan_input_cold_reopen_preserve_exact_capture_and_private
         assert_eq!(f.session().read(&f.engine).unwrap().view, private);
         assert_input_metadata(&f, &ack.current);
         assert!(f.cipher().unwrap().starts_with("v3:"));
-    })
+    }
+    Ok(())
 }
 
 pub(super) fn input_cas_sequence_and_reacquire_replay_exact_acceptance_without_replacing_newer_input(

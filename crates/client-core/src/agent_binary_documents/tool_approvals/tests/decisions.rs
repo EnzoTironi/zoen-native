@@ -4,39 +4,37 @@ use super::*;
 
 pub(super) fn denial_and_cancellation_are_terminal_idempotent_without_tools_files_or_standing_grants(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    Ok(
-        for (decision, status) in [
-            (ToolRequestDecision::Deny, RequestStatus::Denied),
-            (ToolRequestDecision::Cancel, RequestStatus::Cancelled),
-        ] {
-            let fixture = fixture()?;
-            let request = stage(&fixture, "read_deckcraft");
-            let before = counts(&fixture);
-            let outcome =
-                owner_decide(&fixture, &request.id, observed(&request), decision).unwrap();
-            assert_eq!(outcome.request.status, status);
-            assert!(outcome.standing_grant_id.is_none());
-            let after = counts(&fixture);
-            assert_eq!(after[1..4], before[1..4]);
-            assert_eq!(
-                owner_decide(&fixture, &request.id, observed(&request), decision).unwrap(),
-                outcome
-            );
-            assert!(owner_decide(
-                &fixture,
-                &request.id,
-                observed(&request),
-                ToolRequestDecision::ApproveOnce
-            )
+    for (decision, status) in [
+        (ToolRequestDecision::Deny, RequestStatus::Denied),
+        (ToolRequestDecision::Cancel, RequestStatus::Cancelled),
+    ] {
+        let fixture = fixture()?;
+        let request = stage(&fixture, "read_deckcraft");
+        let before = counts(&fixture);
+        let outcome = owner_decide(&fixture, &request.id, observed(&request), decision).unwrap();
+        assert_eq!(outcome.request.status, status);
+        assert!(outcome.standing_grant_id.is_none());
+        let after = counts(&fixture);
+        assert_eq!(after[1..4], before[1..4]);
+        assert_eq!(
+            owner_decide(&fixture, &request.id, observed(&request), decision).unwrap(),
+            outcome
+        );
+        assert!(owner_decide(
+            &fixture,
+            &request.id,
+            observed(&request),
+            ToolRequestDecision::ApproveOnce
+        )
+        .is_err());
+        assert!(fixture
+            .agent
+            .approved_tool_turn(&request.id, WORKER)
             .is_err());
-            assert!(fixture
-                .agent
-                .approved_tool_turn(&request.id, WORKER)
-                .is_err());
-            assert_eq!(counts(&fixture), after);
-            assert_v1(&fixture);
-        },
-    )
+        assert_eq!(counts(&fixture), after);
+        assert_v1(&fixture);
+    }
+    Ok(())
 }
 
 pub(super) fn expired_signed_request_never_approves_and_can_be_cancelled_without_a_clock_sleep(

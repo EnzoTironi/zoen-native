@@ -82,110 +82,106 @@ pub(super) fn failed_media_recovery_rejects_pending_confirmed_foreign_scope_and_
 
 pub(super) fn failed_media_recovery_revalidates_actual_signed_outbox_device_and_complete_group(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    Ok(
-        for case in [
-            "signature",
-            "device",
-            "certified_other_device",
-            "missing_member",
-            "duplicate_index",
-            "partial_confirmation",
-        ] {
-            let f = fixture(":memory:");
-            let sent = refused(&f, &["a", "b"], "grouped")?;
-            {
-                let engine = f.engine.lock();
-                let mut event = engine
-                    .store
-                    .outbox_get(&sent.entries[1].id)
-                    .unwrap()
-                    .unwrap();
-                match case {
-                    "signature" => event.sig = "00".repeat(64),
-                    "device" => event.device = Some("different-device".into()),
-                    "certified_other_device" => {
-                        let secret: [u8; 32] = f
-                            .vault
-                            .load(crate::sync::VAULT_IDENTITY.into())
-                            .unwrap()
-                            .try_into()
-                            .unwrap();
-                        let other = event_log::Author::device(
-                            &event_log::Signer::from_secret(&secret),
-                            event_log::Signer::generate()?,
-                        );
-                        event = other.sign_event(
+    for case in [
+        "signature",
+        "device",
+        "certified_other_device",
+        "missing_member",
+        "duplicate_index",
+        "partial_confirmation",
+    ] {
+        let f = fixture(":memory:");
+        let sent = refused(&f, &["a", "b"], "grouped")?;
+        {
+            let engine = f.engine.lock();
+            let mut event = engine
+                .store
+                .outbox_get(&sent.entries[1].id)
+                .unwrap()
+                .unwrap();
+            match case {
+                "signature" => event.sig = "00".repeat(64),
+                "device" => event.device = Some("different-device".into()),
+                "certified_other_device" => {
+                    let secret: [u8; 32] = f
+                        .vault
+                        .load(crate::sync::VAULT_IDENTITY.into())
+                        .unwrap()
+                        .try_into()
+                        .unwrap();
+                    let other = event_log::Author::device(
+                        &event_log::Signer::from_secret(&secret),
+                        event_log::Signer::generate()?,
+                    );
+                    event = other.sign_event(
+                        &event.space,
+                        &event.client_id,
+                        event.at_ms,
+                        event.seen.clone(),
+                        event.body.clone(),
+                    )?;
+                    assert!(event_log::verify_author(&event).is_ok());
+                    assert_eq!(event.author, f.scope.expected_identity_id);
+                    assert_ne!(
+                        event.device.as_deref(),
+                        Some(f.scope.expected_device_id.as_str())
+                    );
+                }
+                "missing_member" => {
+                    engine.store.outbox_remove(&event.client_id).unwrap();
+                }
+                "duplicate_index" => {
+                    if let types::EventBody::MessagePosted {
+                        media: Some(media), ..
+                    } = &mut event.body
+                    {
+                        media.group.as_mut().unwrap().index = 0;
+                    }
+                    event = engine
+                        .author_for(&f.scope.expected_identity_id)
+                        .unwrap()
+                        .sign_event(
                             &event.space,
                             &event.client_id,
                             event.at_ms,
                             event.seen.clone(),
                             event.body.clone(),
                         )?;
-                        assert!(event_log::verify_author(&event).is_ok());
-                        assert_eq!(event.author, f.scope.expected_identity_id);
-                        assert_ne!(
-                            event.device.as_deref(),
-                            Some(f.scope.expected_device_id.as_str())
-                        );
-                    }
-                    "missing_member" => {
-                        engine.store.outbox_remove(&event.client_id).unwrap();
-                    }
-                    "duplicate_index" => {
-                        if let types::EventBody::MessagePosted {
-                            media: Some(media), ..
-                        } = &mut event.body
-                        {
-                            media.group.as_mut().unwrap().index = 0;
-                        }
-                        event = engine
-                            .author_for(&f.scope.expected_identity_id)
-                            .unwrap()
-                            .sign_event(
-                                &event.space,
-                                &event.client_id,
-                                event.at_ms,
-                                event.seen.clone(),
-                                event.body.clone(),
-                            )?;
-                    }
-                    "partial_confirmation" => {}
-                    _ => unreachable!(),
                 }
-                if [
-                    "signature",
-                    "device",
-                    "certified_other_device",
-                    "duplicate_index",
-                ]
-                .contains(&case)
-                {
-                    engine
-                        .store
-                        .conn()
-                        .execute(
-                            "UPDATE outbox SET json=?2 WHERE client_id=?1",
-                            rusqlite::params![
-                                event.client_id,
-                                serde_json::to_string(&event).unwrap()
-                            ],
-                        )
-                        .unwrap();
-                }
+                "partial_confirmation" => {}
+                _ => unreachable!(),
             }
-            if case == "partial_confirmation" {
-                let pending = f.engine.lock().store.outbox().unwrap();
-                for row in pending.into_iter().take(2) {
-                    confirm_failed_id(&f, &row.event.client_id)?;
-                }
+            if [
+                "signature",
+                "device",
+                "certified_other_device",
+                "duplicate_index",
+            ]
+            .contains(&case)
+            {
+                engine
+                    .store
+                    .conn()
+                    .execute(
+                        "UPDATE outbox SET json=?2 WHERE client_id=?1",
+                        rusqlite::params![event.client_id, serde_json::to_string(&event).unwrap()],
+                    )
+                    .unwrap();
             }
-            let before = public_state(&f);
-            let private = rows(&f);
-            assert!(recover(&f, &sent.entries[1].id).is_err(), "{case}");
-            assert_eq!(rows(&f), private, "{case}");
-            assert_eq!(public_state(&f), before, "{case}");
-        },
-    )
+        }
+        if case == "partial_confirmation" {
+            let pending = f.engine.lock().store.outbox().unwrap();
+            for row in pending.into_iter().take(2) {
+                confirm_failed_id(&f, &row.event.client_id)?;
+            }
+        }
+        let before = public_state(&f);
+        let private = rows(&f);
+        assert!(recover(&f, &sent.entries[1].id).is_err(), "{case}");
+        assert_eq!(rows(&f), private, "{case}");
+        assert_eq!(public_state(&f), before, "{case}");
+    }
+    Ok(())
 }
 
 pub(super) fn failed_media_recovery_missing_corrupt_chunks_and_private_storage_failure_rollback_every_copy(

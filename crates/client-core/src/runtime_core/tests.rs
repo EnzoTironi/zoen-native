@@ -38,7 +38,7 @@ impl Fixture {
     }
 
     fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
-        Ok(Self::new_in(SPACE)?)
+        Self::new_in(SPACE)
     }
 
     fn new_in(space_id: &str) -> std::result::Result<Self, Box<dyn std::error::Error>> {
@@ -222,7 +222,7 @@ impl Fixture {
     }
 
     fn message(&mut self, text: &str) -> std::result::Result<String, Box<dyn std::error::Error>> {
-        Ok(self.encrypted(
+        self.encrypted(
             EventBody::MessagePosted {
                 message: new_id("message")?,
                 text: text.into(),
@@ -232,7 +232,7 @@ impl Fixture {
                 forwarded: false,
             },
             300,
-        )?)
+        )
     }
 }
 

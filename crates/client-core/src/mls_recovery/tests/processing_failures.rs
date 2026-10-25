@@ -81,18 +81,17 @@ pub(super) fn peer_external_commit_storage_failure_keeps_the_cursor_epoch_and_co
         peer.device().unwrap().checkpoint(space).unwrap(),
         recovered.device().unwrap().checkpoint(space).unwrap()
     );
-    Ok(
-        for (sender, recipient) in [(&recovered, &peer), (&peer, &recovered)] {
-            let sender = sender.device().unwrap();
-            let data = sender
-                .seal(space, b"readable after the identical retry")
-                .unwrap();
-            assert!(matches!(
-                recipient.device().unwrap().open(space, &data, &recipient.roster(space), sender.leaf()).unwrap(),
-                ::mls::Opened::Application { plaintext, .. } if plaintext == b"readable after the identical retry"
-            ));
-        },
-    )
+    for (sender, recipient) in [(&recovered, &peer), (&peer, &recovered)] {
+        let sender = sender.device().unwrap();
+        let data = sender
+            .seal(space, b"readable after the identical retry")
+            .unwrap();
+        assert!(matches!(
+            recipient.device().unwrap().open(space, &data, &recipient.roster(space), sender.leaf()).unwrap(),
+            ::mls::Opened::Application { plaintext, .. } if plaintext == b"readable after the identical retry"
+        ));
+    }
+    Ok(())
 }
 
 pub(super) fn peer_application_processing_failure_keeps_the_same_frame_readable_on_retry(

@@ -59,46 +59,45 @@ pub(super) fn a_pending_claim_settles_through_a_pruned_stub(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (mut engine, author, _) = member(":memory:");
     let peer = Author::root(Signer::generate()?);
-    Ok(
-        for (space, mismatch) in [("prefix-pruned-match", false), ("prefix-pruned-fork", true)] {
-            start_space(&mut engine, &author, space)?;
-            add_member(&mut engine, &author, space, &peer)?;
-            let frame = pruned_frame(&engine, &author, space)?;
-            let claimed = if mismatch {
-                "11".repeat(32)
-            } else {
-                frame.hash.clone()
-            };
-            let mut stored = BTreeMap::new();
-            stored.insert(
-                device_key(&peer),
-                PendingPrefix {
-                    seq: frame.seq,
-                    hash: claimed,
-                    epoch: 1,
-                    digest: "ab".repeat(32),
-                },
-            );
-            engine
-                .store
-                .set_meta(
-                    &pending_prefix_meta(space),
-                    &serde_json::to_string(&stored).unwrap(),
-                )
-                .unwrap();
-            assert!(matches!(
-                engine.ingest(frame),
-                Ingest::Applied | Ingest::Confirmed
-            ));
-            assert!(pending(&engine, space).is_empty());
-            if mismatch {
-                assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
-            } else {
-                assert_eq!(integrity(&engine, space), None);
-                assert_eq!(engine.store.meta(&fork_meta(space)).unwrap(), None);
-            }
-        },
-    )
+    for (space, mismatch) in [("prefix-pruned-match", false), ("prefix-pruned-fork", true)] {
+        start_space(&mut engine, &author, space)?;
+        add_member(&mut engine, &author, space, &peer)?;
+        let frame = pruned_frame(&engine, &author, space)?;
+        let claimed = if mismatch {
+            "11".repeat(32)
+        } else {
+            frame.hash.clone()
+        };
+        let mut stored = BTreeMap::new();
+        stored.insert(
+            device_key(&peer),
+            PendingPrefix {
+                seq: frame.seq,
+                hash: claimed,
+                epoch: 1,
+                digest: "ab".repeat(32),
+            },
+        );
+        engine
+            .store
+            .set_meta(
+                &pending_prefix_meta(space),
+                &serde_json::to_string(&stored).unwrap(),
+            )
+            .unwrap();
+        assert!(matches!(
+            engine.ingest(frame),
+            Ingest::Applied | Ingest::Confirmed
+        ));
+        assert!(pending(&engine, space).is_empty());
+        if mismatch {
+            assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
+        } else {
+            assert_eq!(integrity(&engine, space), None);
+            assert_eq!(engine.store.meta(&fork_meta(space)).unwrap(), None);
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn concurrent_sealed_siblings_send_until_a_member_proves_a_fork(

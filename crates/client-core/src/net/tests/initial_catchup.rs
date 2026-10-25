@@ -158,13 +158,12 @@ async fn healthy_pongs_without_first_sync_done_cannot_retain_pending_outbox_fore
     Ok(())
 }
 
+type PendingEngine = (Engine, [u8; 32], Author, Option<Seen>, Sequenced);
+
 fn pending_engine(
     url: &str,
     path: &str,
-) -> std::result::Result<
-    (Engine, [u8; 32], Author, Option<Seen>, Sequenced),
-    Box<dyn std::error::Error>,
-> {
+) -> std::result::Result<PendingEngine, Box<dyn std::error::Error>> {
     let mut engine = Engine::open(path).unwrap();
     let (_, secret, _) = engine.create_account("Owner", "owner", url).unwrap();
     engine.set_registered(true).unwrap();

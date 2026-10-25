@@ -1,9 +1,9 @@
 //! A failed membership read cannot consume the work that makes queued Pages sendable.
 use super::*;
 
-fn queued_pages(
-) -> std::result::Result<(Engine, Engine, String, Vec<(String, String)>), Box<dyn std::error::Error>>
-{
+type QueuedPages = (Engine, Engine, String, Vec<(String, String)>);
+
+fn queued_pages() -> std::result::Result<QueuedPages, Box<dyn std::error::Error>> {
     let mut owner = Engine::open(":memory:").unwrap();
     owner
         .create_account("Ana", "ana", "http://relay.test")

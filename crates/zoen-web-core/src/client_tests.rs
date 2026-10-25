@@ -90,7 +90,7 @@ pub(super) fn clear(
     now: i64,
 ) -> std::result::Result<Vec<u8>, Box<dyn std::error::Error>> {
     let event = author.sign_event(log.space(), &types::new_ulid(now)?, now, log.head(), body)?;
-    Ok(sequence(log, Envelope::plain(&event)?)?)
+    sequence(log, Envelope::plain(&event)?)
 }
 
 fn sealed(
@@ -107,10 +107,10 @@ fn sealed(
         log.head().as_ref(),
         Sealed::new(kind, SUITE_ID, data),
     );
-    Ok(sequence(
+    sequence(
         log,
         Envelope::new(content, sig, author.cert.clone(), None).unwrap(),
-    )?)
+    )
 }
 
 #[test]
@@ -139,10 +139,9 @@ fn native_forwarded_voice_is_one_destination_only_message_after_receive_and_save
     Ok(())
 }
 
-fn web_fixture() -> std::result::Result<
-    (Client<HostSigner>, Author, Author, SpaceLog, String),
-    Box<dyn std::error::Error>,
-> {
+type WebFixture = (Client<HostSigner>, Author, Author, SpaceLog, String);
+
+fn web_fixture() -> std::result::Result<WebFixture, Box<dyn std::error::Error>> {
     let identity = NativeSigner::from_secret(&[41; 32]);
     let host = HostSigner(NativeSigner::from_secret(&[42; 32]));
     let author = Author::device(&identity, NativeSigner::from_secret(&[43; 32]));

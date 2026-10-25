@@ -70,7 +70,7 @@ pub(super) fn plan_refresh_reuses_verified_payload_and_rechecks_after_reload(
 
 pub(super) fn pending_legacy_and_remote_cutover_never_expand_seed(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    Ok(for undo in [false, true] {
+    for undo in [false, true] {
         let mut f = Fixture::new()?;
         let mut s = f.session();
         let read = s.read(&f.engine).unwrap();
@@ -150,7 +150,8 @@ pub(super) fn pending_legacy_and_remote_cutover_never_expand_seed(
             .plan_timeline(&f.item)
             .unwrap()
             .accepts_prefix(&original_manifest));
-    })
+    }
+    Ok(())
 }
 
 pub(super) fn late_legacy_versions_never_ack_or_change_canonical_shadow(
@@ -216,89 +217,88 @@ pub(super) fn late_legacy_versions_never_ack_or_change_canonical_shadow(
 
 pub(super) fn reader_removed_actor_and_key_loss_refuse_mutation_but_keep_saved_read(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    Ok(
-        for mode in [
-            "reader",
-            "reader-unchanged",
-            "removed",
-            "key-loss",
-            "pending-grant",
-        ] {
-            let mut f = Fixture::new()?;
-            let mut s = f.session();
-            let read = s.read(&f.engine).unwrap();
-            let edit = text_edit(&read, "private intent remains");
-            apply(&f, &mut s, &read, "accepted", std::slice::from_ref(&edit)).unwrap();
-            if mode == "reader-unchanged" {
-                let undo = apply(&f, &mut s, &read, "local-undo", &[]).unwrap();
-                assert_eq!(undo.current.content_hash, read.content_hash);
-                assert_eq!(
-                    plan_doc(&s.live).unwrap().semantic_hash().unwrap(),
-                    plan_doc(&s.shadow).unwrap().semantic_hash().unwrap()
-                );
-                assert!(journal(&s).has_draft);
-                assert!(journal(&s).commit.is_none());
-            }
-            let author = f.owner.clone();
-            let admin = if mode == "pending-grant" {
-                let admin = identity(&mut f.engine, "Admin");
-                f.ordered(EventBody::MemberAdded {
-                    identity: admin.clone(),
-                    role: Role::Owner,
-                })?;
-                Some(admin)
-            } else {
-                None
-            };
-            match mode {
-                "reader" | "reader-unchanged" | "pending-grant" => {
-                    f.ordered(EventBody::MemberAdded {
-                        identity: author.clone(),
-                        role: Role::Reader,
-                    })?;
-                }
-                "removed" => {
-                    f.ordered(EventBody::MemberRemoved {
-                        identity: author.clone(),
-                    })?;
-                }
-                "key-loss" => {
-                    f.engine.signers.remove(&author);
-                }
-                _ => unreachable!(),
-            }
-            if mode == "pending-grant" {
-                // A different authenticated owner can queue an optimistic regrant; that
-                // projection still must not create ordered authority for this editor.
-                let writer = f.engine.author_for(admin.as_ref().unwrap()).unwrap();
-                f.engine
-                    .append_synced(
-                        &f.space,
-                        &writer,
-                        1_800_000_000_000,
-                        EventBody::MemberAdded {
-                            identity: author.clone(),
-                            role: Role::Member,
-                        },
-                    )
-                    .unwrap();
-            }
-            let readonly = s.read(&f.engine).unwrap();
-            assert!(!readonly.can_edit);
-            assert!(readonly.edit_context.is_empty());
-            if mode == "reader-unchanged" {
-                assert_eq!(readonly.view, read.view);
-            } else {
-                assert!(blocks(&readonly)
-                    .iter()
-                    .any(|b| b.plain_text() == "private intent remains"));
-            }
-            let before = exact(&f, &s);
-            assert!(apply(&f, &mut s, &read, "accepted", std::slice::from_ref(&edit)).is_err());
-            assert!(apply(&f, &mut s, &read, "new", &[edit]).is_err());
-            assert!(s.commit(&mut f.engine, "forbidden").is_err());
-            no_change(&f, &s, &before);
+    for mode in [
+        "reader",
+        "reader-unchanged",
+        "removed",
+        "key-loss",
+        "pending-grant",
+    ] {
+        let mut f = Fixture::new()?;
+        let mut s = f.session();
+        let read = s.read(&f.engine).unwrap();
+        let edit = text_edit(&read, "private intent remains");
+        apply(&f, &mut s, &read, "accepted", std::slice::from_ref(&edit)).unwrap();
+        if mode == "reader-unchanged" {
+            let undo = apply(&f, &mut s, &read, "local-undo", &[]).unwrap();
+            assert_eq!(undo.current.content_hash, read.content_hash);
+            assert_eq!(
+                plan_doc(&s.live).unwrap().semantic_hash().unwrap(),
+                plan_doc(&s.shadow).unwrap().semantic_hash().unwrap()
+            );
             assert!(journal(&s).has_draft);
-        },
-    )
+            assert!(journal(&s).commit.is_none());
+        }
+        let author = f.owner.clone();
+        let admin = if mode == "pending-grant" {
+            let admin = identity(&mut f.engine, "Admin");
+            f.ordered(EventBody::MemberAdded {
+                identity: admin.clone(),
+                role: Role::Owner,
+            })?;
+            Some(admin)
+        } else {
+            None
+        };
+        match mode {
+            "reader" | "reader-unchanged" | "pending-grant" => {
+                f.ordered(EventBody::MemberAdded {
+                    identity: author.clone(),
+                    role: Role::Reader,
+                })?;
+            }
+            "removed" => {
+                f.ordered(EventBody::MemberRemoved {
+                    identity: author.clone(),
+                })?;
+            }
+            "key-loss" => {
+                f.engine.signers.remove(&author);
+            }
+            _ => unreachable!(),
+        }
+        if mode == "pending-grant" {
+            // A different authenticated owner can queue an optimistic regrant; that
+            // projection still must not create ordered authority for this editor.
+            let writer = f.engine.author_for(admin.as_ref().unwrap()).unwrap();
+            f.engine
+                .append_synced(
+                    &f.space,
+                    &writer,
+                    1_800_000_000_000,
+                    EventBody::MemberAdded {
+                        identity: author.clone(),
+                        role: Role::Member,
+                    },
+                )
+                .unwrap();
+        }
+        let readonly = s.read(&f.engine).unwrap();
+        assert!(!readonly.can_edit);
+        assert!(readonly.edit_context.is_empty());
+        if mode == "reader-unchanged" {
+            assert_eq!(readonly.view, read.view);
+        } else {
+            assert!(blocks(&readonly)
+                .iter()
+                .any(|b| b.plain_text() == "private intent remains"));
+        }
+        let before = exact(&f, &s);
+        assert!(apply(&f, &mut s, &read, "accepted", std::slice::from_ref(&edit)).is_err());
+        assert!(apply(&f, &mut s, &read, "new", &[edit]).is_err());
+        assert!(s.commit(&mut f.engine, "forbidden").is_err());
+        no_change(&f, &s, &before);
+        assert!(journal(&s).has_draft);
+    }
+    Ok(())
 }

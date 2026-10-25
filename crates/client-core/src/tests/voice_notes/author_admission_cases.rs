@@ -100,7 +100,7 @@ pub(super) fn only_writers_can_send_voice_notes() {
 
 pub(super) fn voice_versions_and_reverts_are_author_only_locally_and_on_replay(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    Ok(for legacy in [false, true] {
+    for legacy in [false, true] {
         for hidden in [false, true] {
             let e = seeded();
             let space = find_space(&e, "Paraty com a Marina");
@@ -185,5 +185,6 @@ pub(super) fn voice_versions_and_reverts_are_author_only_locally_and_on_replay(
             engine.restore_version(&item, 1, "Owner revert").unwrap();
             assert_eq!(engine.file_bytes(&item, None).unwrap(), Some(vec![7; 900]));
         }
-    })
+    }
+    Ok(())
 }

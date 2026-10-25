@@ -4,14 +4,10 @@ use super::*;
 
 impl Fixture {
     pub(super) fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
-        Ok(Self::at(":memory:")?)
+        Self::at(":memory:")
     }
     pub(super) fn at(path: &str) -> std::result::Result<Self, Box<dyn std::error::Error>> {
-        Ok(Self::with_ids(
-            path,
-            new_id("plan-space")?,
-            new_id("plan-item")?,
-        )?)
+        Self::with_ids(path, new_id("plan-space")?, new_id("plan-item")?)
     }
     pub(super) fn with_ids(
         path: &str,
@@ -79,7 +75,7 @@ impl Fixture {
         body: EventBody,
     ) -> std::result::Result<Event, Box<dyn std::error::Error>> {
         let event = self.signed_as(&self.owner, body)?;
-        Ok(deliver(&mut self.engine, &event, Ingest::Applied)?)
+        deliver(&mut self.engine, &event, Ingest::Applied)
     }
     pub(super) fn queue(&mut self, body: EventBody) -> Event {
         let author = self.engine.author_for(&self.owner).unwrap();
@@ -118,7 +114,7 @@ impl Fixture {
         let revision = doc.revision().unwrap();
         doc.apply_from(&revision, &order_doc(&doc), &[edit])
             .unwrap();
-        Ok(self.ordered(self.version(ItemContent::Page(self.page(&doc))))?)
+        self.ordered(self.version(ItemContent::Page(self.page(&doc))))
     }
     pub(super) fn pending(&self, reference: &CommitRef) -> Event {
         let client_id = match reference {

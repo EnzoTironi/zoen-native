@@ -336,7 +336,7 @@ pub(super) fn spawning_on_an_actual_closed_runtime_cannot_deadlock_completion_un
         // pickup gate. A parent process deadline contains the old deadlock.
         let mut waiter = control
             .begin_with_factory(
-                || Ok(pending("http://127.0.0.1:1".into())?),
+                || pending("http://127.0.0.1:1".into()),
                 budget(),
                 move |_, _, _, _| {
                     Box::new(move || {

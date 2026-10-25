@@ -4,7 +4,7 @@ use super::*;
 
 pub(super) fn input_discard_guards_and_publication_ack_preserve_private_document_and_future_capture(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    Ok(for kind in [ItemKind::Page, ItemKind::Plan] {
+    for kind in [ItemKind::Page, ItemKind::Plan] {
         let (_db, mut f) = cold_input_fixture(kind)?;
         let mut session = f.session();
         let pending = queued(
@@ -141,12 +141,13 @@ pub(super) fn input_discard_guards_and_publication_ack_preserve_private_document
         assert_eq!(replay.current, b.current);
         assert_eq!(f.cipher(), cipher);
         assert_eq!(journal_without_input(&f), after_ack);
-    })
+    }
+    Ok(())
 }
 
 pub(super) fn plan_input_metadata_survives_pending_legacy_without_admitting_empty_release(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    Ok(for captured in [false, true] {
+    for captured in [false, true] {
         let (_db, mut f) = cold_input_fixture(ItemKind::Plan)?;
         // A confirmed legacy Plan with no applied CRDT draft can still hold
         // private native input; checkpointing must not change has_draft.
@@ -219,5 +220,6 @@ pub(super) fn plan_input_metadata_survives_pending_legacy_without_admitting_empt
             .page_input_release_empty(&scope, WRITER_A, 0, "no-pending-authority")
             .is_err());
         assert!(f.cipher().is_none());
-    })
+    }
+    Ok(())
 }

@@ -299,7 +299,7 @@ mod tests {
         author: &Author,
         space: &str,
     ) -> std::result::Result<Sequenced, Box<dyn std::error::Error>> {
-        Ok(place(
+        place(
             author,
             space,
             "created",
@@ -310,7 +310,7 @@ mod tests {
                 kind: SpaceKind::Group,
                 privacy: Privacy::Closed,
             },
-        )?)
+        )
     }
 
     fn seen_of(ev: &Sequenced) -> Seen {

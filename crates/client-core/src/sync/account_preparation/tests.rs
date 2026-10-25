@@ -82,9 +82,11 @@ fn key_preparation_failure_preserves_all_local_rows_and_cold_reopen() -> TestRes
         let before = snapshot(&engine)?;
         let me = engine.me.clone();
         let result = engine.create_account_as_with_keys(
-            "New person",
-            "new_person",
-            "https://relay.example",
+            super::super::account::AccountDetails {
+                name: "New person",
+                handle: "new_person",
+                relay_url: "https://relay.example",
+            },
             Signer::from_secret(&[71; 32]),
             None,
             false,
@@ -116,9 +118,11 @@ fn replacement_install_failure_rolls_back_wipe_and_partial_account() -> TestResu
     let before = snapshot(&engine)?;
     engine.store.conn().execute_batch("CREATE TEMP TRIGGER reject_account_install BEFORE INSERT ON meta WHEN NEW.key='account' BEGIN SELECT RAISE(ABORT, 'controlled account install failure'); END;")?;
     let result = engine.create_account_as_with_keys(
-        "New person",
-        "new_person",
-        "https://relay.example",
+        super::super::account::AccountDetails {
+            name: "New person",
+            handle: "new_person",
+            relay_url: "https://relay.example",
+        },
         Signer::from_secret(&[72; 32]),
         None,
         false,
@@ -146,9 +150,11 @@ fn account_validation_precedes_key_preparation_and_keeps_existing_account() -> T
     for (name, handle) in [("", "new_person"), ("New person", "?")] {
         let before = snapshot(&engine)?;
         let result = engine.create_account_as_with_keys(
-            name,
-            handle,
-            "https://relay.example",
+            super::super::account::AccountDetails {
+                name: name,
+                handle: handle,
+                relay_url: "https://relay.example",
+            },
             Signer::from_secret(&[73; 32]),
             None,
             false,
@@ -166,9 +172,11 @@ fn account_validation_precedes_key_preparation_and_keeps_existing_account() -> T
     let before = snapshot(&engine)?;
     let account = engine.account().cloned();
     let result = engine.create_account_as_with_keys(
-        "Other",
-        "other_person",
-        "https://relay.example",
+        super::super::account::AccountDetails {
+            name: "Other",
+            handle: "other_person",
+            relay_url: "https://relay.example",
+        },
         Signer::from_secret(&[74; 32]),
         None,
         false,
@@ -201,9 +209,11 @@ fn successful_replacement_uses_prepared_keys_and_survives_reopen() -> TestResult
         .ok_or("prepared personal agent")?
         .id();
     let (_, device, agreement) = engine.create_account_as_with_keys(
-        "New",
-        "new_person",
-        "https://relay.example",
+        super::super::account::AccountDetails {
+            name: "New",
+            handle: "new_person",
+            relay_url: "https://relay.example",
+        },
         root.clone(),
         None,
         false,

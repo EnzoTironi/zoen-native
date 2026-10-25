@@ -35,7 +35,7 @@ pub(crate) struct Fixture {
     pub(crate) base: AppBinaryDocumentDto,
 }
 pub(crate) fn fixture() -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
-    Ok(fixture_with_privacy(Privacy::Closed)?)
+    fixture_with_privacy(Privacy::Closed)
 }
 pub(crate) fn fixture_with_privacy(
     privacy: Privacy,

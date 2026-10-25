@@ -43,13 +43,14 @@ pub(super) fn unknown_foreign_removed_and_inaccessible_receipts_never_write(
         },
     )?;
     let before = snapshot(&e);
-    Ok(for peer in [&c.peer, &c.me] {
+    for peer in [&c.peer, &c.me] {
         assert!(!e
             .lock()
             .receipt(&c.space, peer, u64::MAX, u64::MAX)
             .unwrap());
         assert_eq!(snapshot(&e), before);
-    })
+    }
+    Ok(())
 }
 
 pub(super) fn early_receipts_survive_sync_boundaries_until_membership_and_foreign_pairs_stay_bounded(
@@ -208,7 +209,7 @@ pub(super) fn pending_membership_cannot_admit_a_new_peer_or_suppress_a_confirmed
 
 pub(super) fn confirmed_removal_discards_new_and_deferred_marks_so_rejoin_cannot_authorize_them(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    Ok(for remove_reader in [false, true] {
+    for remove_reader in [false, true] {
         let (_db, e, c) = fixture()?;
         membership(
             &e,
@@ -278,5 +279,6 @@ pub(super) fn confirmed_removal_discards_new_and_deferred_marks_so_rejoin_cannot
             .unwrap());
         assert_eq!(snapshot(&e).rows[0].2, format!("{:020}", 12));
         assert_eq!(snapshot(&e).rows[0].3, format!("{:020}", 11));
-    })
+    }
+    Ok(())
 }

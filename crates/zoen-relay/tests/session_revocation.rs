@@ -321,11 +321,11 @@ struct TestRelay {
 
 impl TestRelay {
     async fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
-        Ok(Self::with_snapshot_test_lease(snapshot_test_lease::shared().await).await?)
+        Self::with_snapshot_test_lease(snapshot_test_lease::shared().await).await
     }
 
     async fn exclusive_snapshots() -> std::result::Result<Self, Box<dyn std::error::Error>> {
-        Ok(Self::with_snapshot_test_lease(snapshot_test_lease::exclusive().await).await?)
+        Self::with_snapshot_test_lease(snapshot_test_lease::exclusive().await).await
     }
 
     async fn with_snapshot_test_lease(

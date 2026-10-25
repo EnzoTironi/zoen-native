@@ -5,6 +5,12 @@ use super::{
     IdentityId, IdentityKind, PreparedAccount, Privacy, Role, Signer, SpaceKind, R,
 };
 
+pub(super) struct AccountDetails<'a> {
+    pub(super) name: &'a str,
+    pub(super) handle: &'a str,
+    pub(super) relay_url: &'a str,
+}
+
 impl Engine {
     // ── account ──
 
@@ -97,9 +103,11 @@ impl Engine {
     ) -> R<([u8; 32], [u8; 32], [u8; 32])> {
         let personal_agent = agent.is_none();
         self.create_account_as_with_keys(
-            name,
-            handle,
-            relay_url,
+            AccountDetails {
+                name: name,
+                handle: handle,
+                relay_url: relay_url,
+            },
             root,
             agent,
             provider_signup,
@@ -109,15 +117,18 @@ impl Engine {
 
     pub(super) fn create_account_as_with_keys(
         &mut self,
-        name: &str,
-        handle: &str,
-        relay_url: &str,
+        details: AccountDetails<'_>,
         root: Signer,
         agent: Option<(String, types::AgentOwnerProof)>,
         provider_signup: bool,
         prepare: impl FnOnce()
             -> Result<super::account_preparation::AccountKeys, event_log::CryptoError>,
     ) -> R<([u8; 32], [u8; 32], [u8; 32])> {
+        let AccountDetails {
+            name,
+            handle,
+            relay_url,
+        } = details;
         if self.net.account.is_some() {
             return Err(CoreError::Invalid {
                 reason: t(
