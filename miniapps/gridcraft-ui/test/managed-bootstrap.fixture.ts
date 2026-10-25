@@ -17,6 +17,10 @@ export async function startProbe(config: {
   html: string;
   seed: string;
   version?: number;
+  host?: {
+    theme?: "light" | "dark";
+    safeAreaInsets?: { top: number; right: number; bottom: number; left: number };
+  };
   runtime: NonNullable<VerifiedMiniappResource["manifest"]["runtimePackage"]>;
 }) {
   initializeLocalization("en");
@@ -92,10 +96,10 @@ export async function startProbe(config: {
     check,
     id: () => `probe-${++ids}`,
     context: () => ({
-      theme: "light",
+      theme: config.host?.theme ?? "light",
       displayMode: "fullscreen",
       containerDimensions: { width: window.innerWidth, height: window.innerHeight },
-      safeAreaInsets: { top: 0, right: 0, bottom: 0, left: 0 },
+      safeAreaInsets: config.host?.safeAreaInsets ?? { top: 0, right: 0, bottom: 0, left: 0 },
     }),
     send: (message) => frame.contentWindow?.postMessage(message, "*"),
     disposeFrame: () => {
