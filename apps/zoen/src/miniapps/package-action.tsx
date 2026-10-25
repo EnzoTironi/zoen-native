@@ -21,9 +21,10 @@ export function AppPackageAction({
   target?: ItemDetail;
   onUpdated?: () => void;
 }) {
-  const { store } = useClient();
-  const scope = documentScope(store.getSnapshot(), store.sessionEpoch);
-  const account = store.getSnapshot().snapshot?.account;
+  const client = useClient();
+  const { store } = client;
+  const scope = documentScope(client, store.sessionEpoch);
+  const account = client.snapshot?.account;
   if (!isAppPackage(item) || !item.file || !scope || !account) return null;
   if (target && (!target.app || target.space_id !== item.space_id)) return null;
   return (

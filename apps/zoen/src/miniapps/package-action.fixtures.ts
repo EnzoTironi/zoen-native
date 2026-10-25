@@ -1,47 +1,35 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
-import { build } from 'esbuild';
 import * as React from 'react';
 import { createReactTestRoot } from '../core/react-test-root.fixtures.ts';
 import { deferred } from '../core/store.fixtures.ts';
 import type { Command, ItemDetail } from '../core/types.ts';
+import { documentScope } from '../documents/document-authority.ts';
+import { homeSpacesFor } from '../home/access.ts';
 import type { AppPackageAction } from './package-action';
+import { AppPackageIntent, isAppPackage } from './package-intent.ts';
+import { AppPackageRelease } from './package-release.ts';
 
 const require = createRequire(import.meta.url);
-const portNames = new Set([
-  'react',
-  'react/jsx-runtime',
-  'expo-router',
-  'expo-crypto',
-  'react-native',
-  '../core/provider',
-  '../components/primitives',
-  '../theme',
-  '../i18n/index',
-  '../i18n/index.ts',
-]);
-const compiled = await build({
-  entryPoints: [new URL('./package-action.tsx', import.meta.url).pathname],
-  bundle: true,
-  platform: 'node',
-  format: 'cjs',
-  jsx: 'automatic',
-  write: false,
-  plugins: [
-    {
-      name: 'native-core-ports',
-      setup(builder) {
-        builder.onResolve({ filter: /./ }, ({ path }) =>
-          portNames.has(path) ? { path, external: true } : undefined,
-        );
-      },
-    },
-  ],
-});
+const { transformSync } = require('@babel/core');
+const sourcePath = new URL('./package-action.tsx', import.meta.url);
+const compiled = transformSync(readFileSync(sourcePath, 'utf8'), {
+  filename: sourcePath.pathname,
+  configFile: false,
+  babelrc: false,
+  presets: [['babel-preset-expo', { jsxRuntime: 'automatic' }]],
+  plugins: [['babel-plugin-react-compiler', { target: '19' }]],
+  caller: { name: 'metro', platform: 'ios', isDev: false, supportsStaticESM: false },
+}).code;
 
 /** Real React component/lifecycle; Core acceptance and native controls remain explicit ports. */
-export function packageActionFixture(mime = 'text/html;profile=mcp-app', update = false) {
+export function packageActionFixture(
+  mime = 'text/html;profile=mcp-app',
+  update = false,
+  initialPhase = 'ready',
+) {
   const root = createReactTestRoot();
   const install = deferred<void>();
   let accepted: ItemDetail | null = null,
@@ -51,10 +39,10 @@ export function packageActionFixture(mime = 'text/html;profile=mcp-app', update 
   let updated = 0;
   let epoch = 1,
     focused = true;
-  const owner = { identity_id: 'owner', device_id: 'device', unlocked: true, setup_pending: false };
+  let owner = { identity_id: 'owner', device_id: 'device', unlocked: true, setup_pending: false };
   const members = [{ id: 'owner' }];
-  const state = {
-    phase: 'ready',
+  let state = {
+    phase: initialPhase,
     mode: 'account',
     erasePending: false,
     snapshot: { account: owner, me: { id: 'owner' }, conversations: [{ id: 'space', members }] },
@@ -64,6 +52,18 @@ export function packageActionFixture(mime = 'text/html;profile=mcp-app', update 
   const buttons = new Map<string, { onPress(): void; disabled?: boolean }>();
   const commands: Command[] = [],
     routes: unknown[] = [];
+  const publish = () => {
+    state = {
+      ...state,
+      snapshot: {
+        ...state.snapshot,
+        account: owner,
+        me: { id: owner.identity_id },
+        conversations: [{ id: 'space', members }],
+      },
+    };
+    changed.forEach((listener) => listener());
+  };
   const file = {
     id: 'file',
     kind_id: 'file',
@@ -148,10 +148,24 @@ export function packageActionFixture(mime = 'text/html;profile=mcp-app', update 
         React.createElement(React.Fragment, null, children),
       Text: () => null,
     },
-    '../core/provider': { useClient: () => ({ store }) },
+    '../core/provider': {
+      useClient: () => ({
+        store,
+        ...React.useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot),
+      }),
+    },
+    '../documents/document-authority': { documentScope },
+    '../home/access': { homeSpacesFor },
+    './package-intent': { AppPackageIntent, isAppPackage },
+    './package-release': { AppPackageRelease },
     '../components/primitives': {
       NativeButton: (props: { testID: string; onPress(): void }) => {
-        buttons.set(props.testID, props);
+        React.useLayoutEffect(() => {
+          buttons.set(props.testID, props);
+          return () => {
+            if (buttons.get(props.testID) === props) buttons.delete(props.testID);
+          };
+        }, [props]);
         return null;
       },
     },
@@ -160,7 +174,7 @@ export function packageActionFixture(mime = 'text/html;profile=mcp-app', update 
     '../i18n/index.ts': { t: (key: string) => key },
   };
   const module = { exports: {} as { AppPackageAction: typeof AppPackageAction } };
-  runInNewContext(compiled.outputFiles[0]!.text, {
+  runInNewContext(compiled, {
     module,
     exports: module.exports,
     require: (name: string) => (Object.hasOwn(ports, name) ? ports[name] : require(name)),
@@ -222,8 +236,33 @@ export function packageActionFixture(mime = 'text/html;profile=mcp-app', update 
     async changeOwner() {
       await root.act(() => {
         epoch++;
-        owner.identity_id = 'new-owner';
-        changed.forEach((f) => f());
+        owner = { ...owner, identity_id: 'new-owner' };
+        members.splice(0, members.length, { id: owner.identity_id });
+        publish();
+      });
+    },
+    async changeDevice() {
+      await root.act(() => {
+        owner = { ...owner, device_id: 'new-device' };
+        publish();
+      });
+    },
+    async advanceSession() {
+      await root.act(() => {
+        epoch++;
+        publish();
+      });
+    },
+    async phase(phase: string) {
+      await root.act(() => {
+        state = { ...state, phase };
+        publish();
+      });
+    },
+    async unlocked(unlocked: boolean) {
+      await root.act(() => {
+        owner = { ...owner, unlocked };
+        publish();
       });
     },
     async blur() {
