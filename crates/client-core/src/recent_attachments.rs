@@ -268,7 +268,7 @@ impl Engine {
             }
         };
         let next_cursor = if has_more {
-            let row = rows.last().expect("nonzero limit");
+            let row = rows.last().ok_or_else(invalid)?;
             Some(
                 serde_json::to_string(&Cursor {
                     scope: scope.clone(),

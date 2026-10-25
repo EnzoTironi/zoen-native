@@ -12,29 +12,29 @@ use types::{Identity, IdentityKind};
 // An ephemeral in-flight fence, not an offline rename queue. Re-entrant calls are
 // refused so two acknowledgements cannot overwrite each other out of order.
 static CHANGING: OnceLock<Mutex<HashSet<usize>>> = OnceLock::new();
-struct InFlight(usize);
-impl InFlight {
-    fn begin(core: &Client) -> Result<Self, CoreError> {
-        let key = Arc::as_ptr(&core.inner) as usize;
-        if !CHANGING
-            .get_or_init(Mutex::default)
+struct InFlight<'a> {
+    registry: &'static Mutex<HashSet<usize>>,
+    core: &'a Client,
+}
+impl<'a> InFlight<'a> {
+    fn begin(core: &'a Client) -> Result<Self, CoreError> {
+        let registry = CHANGING.get_or_init(Mutex::default);
+        if !registry
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .insert(key)
+            .insert(Arc::as_ptr(&core.inner) as usize)
         {
             return Err(invalid("A username change is already in progress."));
         }
-        Ok(Self(key))
+        Ok(Self { registry, core })
     }
 }
-impl Drop for InFlight {
+impl Drop for InFlight<'_> {
     fn drop(&mut self) {
-        CHANGING
-            .get()
-            .unwrap()
+        self.registry
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .remove(&self.0);
+            .remove(&(Arc::as_ptr(&self.core.inner) as usize));
     }
 }
 struct Change {
@@ -135,6 +135,24 @@ impl Client {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn handle_fence_retains_its_owner_and_releases_exactly_that_owner(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let core = Client::open(":memory:".into(), "en".into())?;
+        let other = Client::open(":memory:".into(), "en".into())?;
+        let first = InFlight::begin(&core)?;
+        assert!(InFlight::begin(&core).is_err());
+        let foreign = InFlight::begin(&other)?;
+        drop(first);
+        let second = InFlight::begin(&core)?;
+        assert!(InFlight::begin(&other).is_err());
+        drop(second);
+        drop(foreign);
+        let _after = InFlight::begin(&core)?;
+        Ok(())
+    }
+
     fn engine() -> Engine {
         let mut engine = Engine::open(":memory:").unwrap();
         engine

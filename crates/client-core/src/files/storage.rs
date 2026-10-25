@@ -246,7 +246,7 @@ impl Engine {
         doc.voice = Some(meta);
         self.store
             .set_meta(&format!("file_key:{item}"), &hex::encode(key))?;
-        self.append(
+        let appended = self.append(
             space,
             &me,
             EventBody::ItemCreated {
@@ -258,6 +258,13 @@ impl Engine {
         )?;
         self.index_dirty = true;
         let s = self.space_state(space)?;
-        Ok(self.entry_dto(s.entries.last().expect("just appended")))
+        let entry = s
+            .entries
+            .iter()
+            .find(|entry| entry.id() == appended.client_id)
+            .ok_or_else(|| CoreError::Storage {
+                message: "The appended message is missing from its projection.".into(),
+            })?;
+        Ok(self.entry_dto(entry))
     }
 }
