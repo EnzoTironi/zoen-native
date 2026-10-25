@@ -124,6 +124,11 @@ try {
   await page.route("**/*", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
+    // WebKit also routes the already verified engine's in-memory module URL.
+    if (url.protocol === "blob:") {
+      await route.continue();
+      return;
+    }
     requests.push({ method: request.method(), path: url.pathname, origin: url.origin });
     const file = url.origin === "https://photocraft-fixture.invalid" && files.get(url.pathname);
     if (request.method() !== "GET" || !file) {
