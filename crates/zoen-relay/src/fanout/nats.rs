@@ -2,6 +2,11 @@ use super::outbound::{self, Outbound};
 use super::*;
 use tokio::sync::Semaphore;
 
+#[cfg(test)]
+pub(super) mod testing;
+#[cfg(test)]
+mod recovery;
+
 /// Subjects are `zoen.<cell>.to.<sha256("zoen-subject-v1" ‖ identity)[..16] hex>`: NATS sees a
 /// pseudonym, never an identity, and a cell never hears another cell. Presence is the same
 /// subscription answering a ping: "no responders" means nobody else has that identity online.
@@ -15,6 +20,8 @@ pub struct NatsBus {
     out: mpsc::Sender<Outbound>,
     outbound_bytes: Arc<Semaphore>,
     stats: Arc<Counters>,
+    #[cfg(test)]
+    publisher_control: Arc<testing::PublisherControl>,
 }
 
 #[derive(Default)]
@@ -41,13 +48,19 @@ impl NatsBus {
         let prefix = format!("zoen.{}.to", subject_token(cell));
         let stats = Arc::new(Counters::default());
         let (out, rx) = mpsc::channel(OUTBOUND_QUEUE);
-        tokio::spawn(publisher(
+        #[cfg(test)]
+        let publisher_control = Arc::new(testing::PublisherControl::default());
+        let _publisher = tokio::spawn(publisher(
             client.clone(),
             prefix.clone(),
             node.to_string(),
             rx,
             stats.clone(),
+            #[cfg(test)]
+            publisher_control.clone(),
         ));
+        #[cfg(test)]
+        publisher_control.own(_publisher.abort_handle());
         Ok(Self {
             client,
             node: node.to_string(),
@@ -58,6 +71,8 @@ impl NatsBus {
             out,
             outbound_bytes: Arc::new(Semaphore::new(outbound::MAX_BYTES)),
             stats,
+            #[cfg(test)]
+            publisher_control,
         })
     }
 
@@ -163,6 +178,8 @@ impl Bus for NatsBus {
             crate::telemetry::current_context_headers,
         ) {
             self.stats.dropped.fetch_add(1, Relaxed);
+            #[cfg(test)]
+            self.publisher_control.refused(frame);
         }
     }
 
@@ -206,6 +223,11 @@ impl Bus for NatsBus {
             outbound_bytes: (outbound::MAX_BYTES - self.outbound_bytes.available_permits()) as u64,
         }
     }
+
+    #[cfg(test)]
+    fn publisher_probe(&self) -> Option<testing::PublisherProbe> {
+        Some(testing::PublisherProbe::new(self))
+    }
 }
 
 /// Reads W3C trace context out of a bus message's headers.
@@ -227,6 +249,7 @@ async fn publisher(
     node: String,
     mut rx: mpsc::Receiver<Outbound>,
     stats: Arc<Counters>,
+    #[cfg(test)] publisher_control: Arc<testing::PublisherControl>,
 ) {
     while let Some(Outbound {
         to,
@@ -235,6 +258,8 @@ async fn publisher(
         credits,
     }) = rx.recv().await
     {
+        #[cfg(test)]
+        publisher_control.before_publish().await;
         for id in to {
             let mut h = HeaderMap::new();
             h.insert(ORIGIN, node.as_str());
