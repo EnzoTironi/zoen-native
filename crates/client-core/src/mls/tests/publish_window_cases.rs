@@ -35,7 +35,7 @@ pub(super) fn publish_window_keeps_a_reordered_burst_decryptable(
     ::mls::migrate(&mut peer_conn).unwrap();
     let peer = Device::new(
         &peer_conn,
-        state_key(&peer_author.key.secret()),
+        state_key(&peer_author.key.secret())?,
         &peer_author.identity,
         peer_author.key.secret(),
         peer_author.cert.as_deref().unwrap(),
@@ -196,7 +196,7 @@ pub(super) fn publish_window_lets_the_next_space_through(
     ::mls::migrate(&mut peer_conn).unwrap();
     let peer = Device::new(
         &peer_conn,
-        state_key(&peer_author.key.secret()),
+        state_key(&peer_author.key.secret())?,
         &peer_author.identity,
         peer_author.key.secret(),
         peer_author.cert.as_deref().unwrap(),

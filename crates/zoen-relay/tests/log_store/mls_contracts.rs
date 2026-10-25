@@ -121,12 +121,18 @@ pub(super) async fn one_commit_per_epoch_and_each_welcome_follows_its_commit(
             c
         })
         .collect();
-    let device = |i: usize| {
+    let device = |i: usize| -> Result<_, Box<dyn std::error::Error>> {
         let (a, secret) = (&people[i], people[i].key.secret());
         let cert = a.cert.as_deref().unwrap();
-        Device::new(&dbs[i], state_key(&secret), &a.identity, secret, cert).unwrap()
+        Ok(Device::new(
+            &dbs[i],
+            state_key(&secret)?,
+            &a.identity,
+            secret,
+            cert,
+        )?)
     };
-    let (d_ana, d_bruno, d_carla) = (device(0), device(1), device(2));
+    let (d_ana, d_bruno, d_carla) = (device(0)?, device(1)?, device(2)?);
     let space = types::new_id("sp")?;
     let handshake = |a: &Author,
                      kind,

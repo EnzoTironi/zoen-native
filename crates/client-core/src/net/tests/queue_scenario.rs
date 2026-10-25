@@ -39,7 +39,7 @@ pub(super) async fn queued_messages_round_trip(
     let peer_secret = peer_author.key.secret();
     let peer = Device::new(
         &peer_store,
-        state_key(&peer_secret),
+        state_key(&peer_secret)?,
         &peer_author.identity,
         peer_secret,
         peer_author.cert.as_deref().unwrap(),
@@ -48,7 +48,7 @@ pub(super) async fn queued_messages_round_trip(
     let packages = peer.key_packages(1, false).unwrap();
     let adding = Device::new(
         engine.store.conn(),
-        state_key(&device_secret),
+        state_key(&device_secret)?,
         &author.identity,
         device_secret,
         author.cert.as_deref().unwrap(),
