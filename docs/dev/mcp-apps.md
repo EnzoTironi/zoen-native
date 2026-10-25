@@ -63,6 +63,28 @@ calls, checkpoint ownership and saving continue through the same live official
 Excalidraw MCP connection. The generic host has no timing workaround or launch
 data replay on layout changes.
 
+## Host-owned external release bindings
+
+The remote session consumer also accepts an immutable host-owned release binding:
+provider identity, exact HTTPS endpoint, release, launch tool, UI resource URI,
+SHA-256, UTF-8 byte count, CSP origins and requested permissions. It copies and
+freezes that configuration when the session starts. A guest URL, model output or
+resource descriptor cannot register a release or expand the binding.
+
+Discovery selects the bound launch tool rather than the first advertised App.
+Resource bytes and policy must match before HTML is returned or any bound-session
+tool executes. Resource drift is retained as a refusal for the session, not
+retried with a newly discovered version. Unsupported CSP fields and browser
+permissions fail closed. Existing lifetime, visibility, response and argument
+limits still apply; a requested browser permission remains a request, not consent.
+
+The existing Excalidraw proof viewer uses this same resolver through its legacy
+registration. That registration has no immutable remote release pin and remains
+explicitly distinct from canonical Item storage. The generic consumer tests use
+the real MCP SDK with controlled HTTP responses; they do not prove a deployed
+package, native UI, canonical persistence or independent editor updates. Dynamic
+package admission and the full external-App journey remain open under #180.
+
 ## Native viewport and embedded renderer contract
 
 The host resizes the actual native frame for the keyboard and sends current

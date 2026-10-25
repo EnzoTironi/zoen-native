@@ -6,14 +6,12 @@ import {
   type Tool,
 } from '@modelcontextprotocol/client';
 import { sha256 } from '@noble/hashes/sha2.js';
+import { parseRemoteResourcePolicy, type RemoteResourceCsp } from './remote-policy.ts';
+import { resolveRemoteApp, sameRemotePolicy, type RemoteAppSelection } from './remote-binding.ts';
 
-export type RemoteServerId = 'excalidraw';
-export type RemoteResourceCsp = Readonly<{
-  connectDomains: readonly string[];
-  resourceDomains: readonly string[];
-  frameDomains: readonly string[];
-  baseUriDomains: readonly string[];
-}>;
+export { parseRemoteResourcePolicy } from './remote-policy.ts';
+export type { RemoteResourceCsp } from './remote-policy.ts';
+export type { RemoteAppBinding, RemoteServerId } from './remote-binding.ts';
 export type RemoteAppResource = Readonly<{
   html: string;
   mimeType: 'text/html;profile=mcp-app';
@@ -24,15 +22,18 @@ export type RemoteAppResource = Readonly<{
   bytes: number;
 }>;
 export type RemoteMcpDescriptor = Readonly<{
-  server: Readonly<{ id: RemoteServerId; name: string; endpoint: string; protocolVersion: string }>;
+  server: Readonly<{
+    id: string;
+    name: string;
+    endpoint: string;
+    protocolVersion: string;
+    release?: string;
+  }>;
   tools: readonly Tool[];
   appTools: readonly Tool[];
   mainToolName: string;
   resourceUri: string;
 }>;
-const REGISTRY = Object.freeze({
-  excalidraw: Object.freeze({ endpoint: 'https://mcp.excalidraw.com/mcp', name: 'Excalidraw' }),
-});
 const MIME = 'text/html;profile=mcp-app' as const;
 const MAX_RESPONSE = 12 * 1024 * 1024;
 const MAX_HTML = 8 * 1024 * 1024;
@@ -131,60 +132,6 @@ function resourceUri(tool: Tool): string | null {
     throw new Error('The remote tool does not reference an MCP App resource.');
   return value;
 }
-/** Standard resource CSP is a request for access, never an implicit grant. */
-export function parseRemoteResourcePolicy(
-  meta: unknown,
-): Pick<RemoteAppResource, 'csp' | 'permissions'> {
-  const ui = record(meta) && record(meta.ui) ? meta.ui : {};
-  if (ui.csp !== undefined && !record(ui.csp)) throw new Error('Invalid MCP App CSP.');
-  const input = record(ui.csp) ? ui.csp : {};
-  const domains = (key: string): readonly string[] => {
-    const values = input[key];
-    if (values === undefined) return Object.freeze([]);
-    if (!Array.isArray(values) || values.length > 20) throw new Error('Invalid MCP App origins.');
-    return Object.freeze([
-      ...new Set(
-        values.map((value) => {
-          if (typeof value !== 'string' || value.length > 2048)
-            throw new Error('Invalid MCP App origin.');
-          const url = new URL(value);
-          if (
-            url.protocol !== 'https:' ||
-            url.username ||
-            url.password ||
-            url.search ||
-            url.hash ||
-            url.pathname !== '/' ||
-            url.hostname.includes('*') ||
-            !url.hostname.includes('.') ||
-            /^(?:\d+\.){3}\d+$/.test(url.hostname) ||
-            url.hostname.endsWith('.localhost')
-          )
-            throw new Error('The MCP App origin must be an exact public HTTPS origin.');
-          return url.origin;
-        }),
-      ),
-    ]);
-  };
-  if (ui.permissions !== undefined && !record(ui.permissions))
-    throw new Error('Invalid MCP App permissions.');
-  const permissions: Record<string, Record<string, never>> = {};
-  for (const name of ['camera', 'microphone', 'geolocation', 'clipboardWrite']) {
-    const value = record(ui.permissions) ? ui.permissions[name] : undefined;
-    if (value === undefined) continue;
-    if (!record(value) || Object.keys(value).length) throw new Error('Invalid MCP App permission.');
-    permissions[name] = {};
-  }
-  return frozen({
-    csp: {
-      connectDomains: domains('connectDomains'),
-      resourceDomains: domains('resourceDomains'),
-      frameDomains: domains('frameDomains'),
-      baseUriDomains: domains('baseUriDomains'),
-    },
-    permissions,
-  });
-}
 
 export class RemoteMcpSession {
   private readonly client: Client;
@@ -198,19 +145,17 @@ export class RemoteMcpSession {
   private closeTask: Promise<void> | null = null;
   private readonly declared = new Map<string, Tool>();
   private readonly endpoint: URL;
-  private readonly serverId: RemoteServerId;
+  private readonly registration: ReturnType<typeof resolveRemoteApp>;
   private readonly assertActive: () => void;
 
   constructor(
-    serverId: RemoteServerId,
+    server: RemoteAppSelection,
     assertActive: () => void,
     options: { fetch?: FetchLike } = {},
   ) {
-    this.serverId = serverId;
+    this.registration = resolveRemoteApp(server);
     this.assertActive = assertActive;
-    const server = REGISTRY[serverId];
-    if (!server) throw new Error('This remote MCP server is not registered.');
-    this.endpoint = new URL(server.endpoint);
+    this.endpoint = new URL(this.registration.endpoint);
     this.client = new Client(
       { name: 'zoen', version: '0.1.0' },
       {
@@ -345,12 +290,23 @@ export class RemoteMcpSession {
         resourceUri(tool);
         this.declared.set(tool.name, tool);
       }
-      const main = tools.find((tool) => resourceUri(tool) && visibility(tool).includes('model'));
-      if (!main) throw new Error('This MCP server does not expose an interactive MCP App.');
+      const binding = this.registration.binding;
+      const main = tools.find((tool) =>
+        binding
+          ? tool.name === binding.launchTool
+          : resourceUri(tool) && visibility(tool).includes('model'),
+      );
+      if (!main || !visibility(main).includes('model') || !resourceUri(main))
+        throw new Error('This MCP server does not expose the selected interactive MCP App.');
+      if (binding && resourceUri(main) !== binding.resource.uri)
+        throw new Error('The remote MCP App release resource changed.');
       const descriptor = frozen({
         server: {
-          id: this.serverId,
-          name: this.client.getServerVersion()?.name ?? REGISTRY[this.serverId].name,
+          id: this.registration.id,
+          name: binding
+            ? this.registration.name
+            : (this.client.getServerVersion()?.name ?? this.registration.name),
+          ...(binding ? { release: binding.release } : {}),
           endpoint: this.endpoint.href,
           protocolVersion: this.client.getNegotiatedProtocolVersion() ?? '',
         },
@@ -389,14 +345,23 @@ export class RemoteMcpSession {
     const bytes = encoder.encode(entry.text);
     if (bytes.length > MAX_HTML) throw new Error('The MCP App HTML exceeds its limit.');
     const policy = parseRemoteResourcePolicy(entry._meta);
-    return frozen({
+    const resource: RemoteAppResource = {
       html: entry.text,
       mimeType: MIME,
       resourceUri: entry.uri,
       ...policy,
       bytes: bytes.length,
       sha256: Array.from(sha256(bytes), (byte) => byte.toString(16).padStart(2, '0')).join(''),
-    });
+    };
+    const expected = this.registration.binding?.resource;
+    if (
+      expected &&
+      (resource.sha256 !== expected.sha256 ||
+        resource.bytes !== expected.bytes ||
+        !sameRemotePolicy(resource, expected))
+    )
+      throw new Error('The remote MCP App release bytes or policy changed.');
+    return frozen(resource);
   }
   async call(
     name: string,
@@ -406,6 +371,9 @@ export class RemoteMcpSession {
     this.check();
     const argumentsCopy = copyJson(args, MAX_ARGUMENTS);
     const descriptor = await this.connect();
+    this.check();
+    // A configured release cannot execute tools around failed resource admission.
+    if (this.registration.binding) await this.readApp();
     this.check();
     const tool = this.declared.get(name);
     if (
@@ -440,9 +408,9 @@ export class RemoteMcpSession {
   }
 }
 export function createRemoteMcpSession(
-  serverId: RemoteServerId,
+  server: RemoteAppSelection,
   assertActive: () => void,
   options: { fetch?: FetchLike } = {},
 ) {
-  return new RemoteMcpSession(serverId, assertActive, options);
+  return new RemoteMcpSession(server, assertActive, options);
 }
