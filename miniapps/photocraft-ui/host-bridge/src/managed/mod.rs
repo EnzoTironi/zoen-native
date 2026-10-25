@@ -147,7 +147,12 @@ impl HostBridge {
             command.action,
         )
         .map_err(|_| failure("engine_command_refused"))?;
-        self.prepare(command.mutation, fingerprint, bytes, &json!(command.action))
+        self.prepare(
+            command.mutation,
+            fingerprint,
+            bytes,
+            &json!({"kind":"command","action":command.action}),
+        )
     }
     /// # Errors
     /// Only the exact retained proposal at its next version can advance accepted bytes.

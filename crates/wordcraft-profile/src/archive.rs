@@ -1,5 +1,8 @@
 //! Closed ZIP32 central-directory preflight, before zip3 deduplicates file names.
-use crate::{Result, failure};
+type Result<T> = std::result::Result<T, &'static str>;
+fn failure(code: &'static str) -> &'static str {
+    code
+}
 use std::collections::BTreeSet;
 
 fn short(bytes: &[u8], offset: usize) -> Result<u16> {
@@ -15,6 +18,9 @@ fn long(bytes: &[u8], offset: usize) -> Result<u32> {
     Ok(u32::from_le_bytes([field[0], field[1], field[2], field[3]]))
 }
 
+/// Validate bounded ZIP32 records before either codec can inflate/deduplicate them.
+/// # Errors
+/// Refuses malformed/duplicate parts, unsupported ZIP records and expansion limits.
 pub fn preflight(
     bytes: &[u8],
     max_parts: usize,

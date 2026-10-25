@@ -164,6 +164,16 @@ pub(super) enum Command {
         expected_revision: String,
         expected_message_revision: String,
     },
+    RequestAppEdit {
+        expected_identity_id: String,
+        expected_device_id: String,
+        space_id: String,
+        item_id: String,
+        expected_version: u32,
+        expected_sha256: String,
+        text: String,
+        mutation_id: String,
+    },
     SendMessage {
         space_id: String,
         text: String,

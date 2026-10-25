@@ -31,10 +31,16 @@ fn reviewed_word_read_cannot_replace_its_stable_source_step_with_a_write() {
         .expect("finish approved read");
     let turn = turn(&f);
     let before = counts(&f);
-    assert!(f
-        .agent
-        .stage_tool_approval(&turn, input(&f, &turn, "wordcraft_text_replace"))
-        .is_err());
+    for tool in [
+        "wordcraft_text_replace",
+        "wordcraft_edit_range",
+        "wordcraft_format_range",
+    ] {
+        assert!(f
+            .agent
+            .stage_tool_approval(&turn, input(&f, &turn, tool))
+            .is_err());
+    }
     assert_eq!(counts(&f), before);
     assert_eq!(current(&f).version, 1);
 }
@@ -88,6 +94,8 @@ fn binary_approval_refuses_cross_format_tools_without_creating_requests() {
     for (f, tool) in [
         (word_fixture(), "deckcraft_slide_notes"),
         (fixture(), "wordcraft_text_replace"),
+        (fixture(), "wordcraft_edit_range"),
+        (fixture(), "wordcraft_format_range"),
     ] {
         signed_trust(&f, TrustLevel::Act);
         let t = turn(&f);
@@ -101,55 +109,61 @@ fn binary_approval_refuses_cross_format_tools_without_creating_requests() {
 }
 #[test]
 fn word_approved_turn_cannot_outlive_current_app_grant() {
-    let f = word_fixture();
-    signed_trust(&f, TrustLevel::Act);
-    let request = stage(&f, "wordcraft_text_replace");
-    owner_decide(
-        &f,
-        &request.id,
-        observed(&request),
-        ToolRequestDecision::ApproveOnce,
-    )
-    .expect("approve");
-    let permit = f
-        .agent
-        .approved_tool_turn(&request.id, WORKER)
-        .expect("permit");
-    let (_, action) = parsed(permit.proposal()).expect("parsed");
-    let intent = command_intent(permit.proposal(), action.as_ref()).expect("intent");
-    {
-        let mut engine = f.agent.lock();
-        let grant = engine
-            .state
-            .grants
-            .iter()
-            .rev()
-            .find(|grant| {
-                grant.grant.scope == GrantScope::Item(f.base.item_id.clone())
-                    && matches!(grant.grant.capability, Capability::Trust(TrustLevel::Act))
-            })
-            .expect("original item Act grant")
-            .grant
-            .clone();
-        engine
-            .append(
-                &f.space,
-                &grant.grantor,
-                EventBody::GrantRevoked { grant: grant.id },
-            )
-            .expect("revoke original app grant");
-    }
-    let before = counts(&f);
-    assert!(f
-        .agent
-        .agent_binary_save(
-            permit.turn(),
-            &format!("wordcmd_{intent}"),
-            &intent,
-            &STANDARD.encode(WORD_EDITED)
+    for tool in [
+        "wordcraft_text_replace",
+        "wordcraft_edit_range",
+        "wordcraft_format_range",
+    ] {
+        let f = word_fixture();
+        signed_trust(&f, TrustLevel::Act);
+        let request = stage(&f, tool);
+        owner_decide(
+            &f,
+            &request.id,
+            observed(&request),
+            ToolRequestDecision::ApproveOnce,
         )
-        .is_err());
-    assert!(f.agent.approved_tool_turn(&request.id, WORKER).is_err());
-    assert_eq!(counts(&f), before);
-    assert_eq!(current(&f).version, 1);
+        .expect("approve");
+        let permit = f
+            .agent
+            .approved_tool_turn(&request.id, WORKER)
+            .expect("permit");
+        let (_, action) = parsed(permit.proposal()).expect("parsed");
+        let intent = command_intent(permit.proposal(), action.as_ref()).expect("intent");
+        {
+            let mut engine = f.agent.lock();
+            let grant = engine
+                .state
+                .grants
+                .iter()
+                .rev()
+                .find(|grant| {
+                    grant.grant.scope == GrantScope::Item(f.base.item_id.clone())
+                        && matches!(grant.grant.capability, Capability::Trust(TrustLevel::Act))
+                })
+                .expect("original item Act grant")
+                .grant
+                .clone();
+            engine
+                .append(
+                    &f.space,
+                    &grant.grantor,
+                    EventBody::GrantRevoked { grant: grant.id },
+                )
+                .expect("revoke original app grant");
+        }
+        let before = counts(&f);
+        assert!(f
+            .agent
+            .agent_binary_save(
+                permit.turn(),
+                &format!("wordcmd_{intent}"),
+                &intent,
+                &STANDARD.encode(WORD_EDITED)
+            )
+            .is_err());
+        assert!(f.agent.approved_tool_turn(&request.id, WORKER).is_err());
+        assert_eq!(counts(&f), before);
+        assert_eq!(current(&f).version, 1);
+    }
 }

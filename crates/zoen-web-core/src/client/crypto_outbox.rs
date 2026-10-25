@@ -117,7 +117,11 @@ impl<S: Signer> Client<S> {
                     .resolve_post(space, &to)
                     .map(|event| event.hash.clone())
                     .unwrap_or(to);
-                Some(types::ReplyRef { to, thread })
+                Some(types::ReplyRef {
+                    artifact: None,
+                    to,
+                    thread,
+                })
             }
             None => None,
         };

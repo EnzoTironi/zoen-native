@@ -38,6 +38,7 @@ export async function pauseOnCompletedTouch(page, x, y) {
   assert.deepEqual(observed.events, [{ trusted: true, remaining: 0 }]);
   assert.equal(observed.status.frozen, true);
   assert.equal(observed.status.dirty, true, "pause must include the final real stroke");
+  assert.equal(observed.activeElement, "CANVAS", "completed trusted tap must focus the actual canvas");
   await child.evaluate(async () => {
     const engine = await window.__zoenRuntime.load();
     await engine.zoenHostRequest(

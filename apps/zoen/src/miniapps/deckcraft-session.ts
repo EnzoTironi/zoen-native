@@ -4,6 +4,7 @@ import type { CoreDriver } from '../core/types';
 import type { VerifiedMiniappResource } from './sandbox';
 import { createNativeCanonicalBinaryHost } from './canonical-binary-native.ts';
 import { canonicalBinaryTools } from './canonical-binary.ts';
+import { head, record } from './deckcraft-document-wire.ts';
 import { MiniappSession } from './protocol.ts';
 import { frameAuthority } from './lifetime.ts';
 import type { MiniappDocumentController } from './document-controller';
@@ -234,6 +235,46 @@ export function createDeckcraftSession(options: Options) {
     close: options.close,
   });
   const controller: MiniappDocumentController = {
+    observedHead:
+      editor === 'wordcraft' && !selected
+        ? () => {
+            try {
+              lifetime.check();
+              if (!opened || retiring) throw Error(t(`${messages}.saveFailed`));
+            } catch (failure) {
+              return Promise.reject(failure);
+            }
+            // A read of the installed Session shares ordering, never frame blocking.
+            const operation = tail
+              .catch(() => {})
+              .then(async () => {
+                lifetime.check();
+                if (!opened || retiring) throw Error(t(`${messages}.saveFailed`));
+                const response = await current.callAppTool('document_head', {});
+                lifetime.check();
+                if (retiring || response.isError) throw Error(t(`${messages}.saveFailed`));
+                const value = record(response.structuredContent);
+                const installed = record(value.head);
+                if (
+                  Object.keys(value).sort().join(',') !== 'head,itemId' ||
+                  value.itemId !== options.itemId ||
+                  Object.keys(installed).sort().join(',') !== 'sha256,version'
+                )
+                  throw Error(t(`${messages}.saveFailed`));
+                const accepted = head(installed);
+                return Object.freeze({
+                  itemId: options.itemId,
+                  version: Number(accepted.version),
+                  sha256: accepted.sha256,
+                });
+              });
+            tail = operation.then(
+              () => {},
+              () => {},
+            );
+            return operation;
+          }
+        : undefined,
     flush: (intent) => {
       try {
         lifetime.check();
@@ -378,9 +419,52 @@ export function createDeckcraftSession(options: Options) {
     tail = operation;
     return operation;
   };
+  const refresh = (observedVersion?: number): Promise<void> => {
+    try {
+      lifetime.check();
+    } catch (failure) {
+      return Promise.reject(failure);
+    }
+    // Higher-head Undo is qualified for Word; other editors retain their current lifecycle.
+    if (editor !== 'wordcraft' || selected || !opened || retiring) return Promise.resolve();
+    // A canonical notification is observational, not a user-requested pause.
+    // Core publishes our save before its ACK reaches the guest. Blocking the
+    // frame here can blur live input while the guest is waiting to recognize
+    // that own head. The guest serializes refresh with saves and freezes only
+    // when it actually needs to review a higher head; failures still fence recovery.
+    const operation = tail
+      .catch(() => {})
+      .then(async () => {
+        lifetime.check();
+        if (retiring) return;
+        const response = await current.callAppTool(
+          'refresh_document',
+          observedVersion === undefined ? {} : { version: observedVersion },
+        );
+        lifetime.check();
+        if (response.isError) throw new Error(t(`${messages}.saveFailed`));
+        if (!recoveryRequired) {
+          phase = 'saved';
+          error = null;
+          reason = null;
+        }
+      })
+      .catch((failure: unknown) => {
+        // A local draft/pending receipt remains in the same Session for explicit recovery.
+        recoveryRequired = true;
+        if (live) error = t(`${messages}.saveFailed`);
+        throw failure;
+      })
+      .finally(() => {
+        publish();
+      });
+    tail = operation;
+    return operation;
+  };
   publish();
   return {
     controller,
+    refresh,
     get opened() {
       return opened;
     },

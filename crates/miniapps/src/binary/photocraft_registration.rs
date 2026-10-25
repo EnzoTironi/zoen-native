@@ -22,8 +22,8 @@ const PINS: RuntimePins = RuntimePins {
     module_bytes: 158764,
     module_sha: "b2e2968f4dc9b55be26c9da07ea5c23d5a03612d658ede1058d4c38388455ac8",
     wasm_file: "photocraft_bg.wasm",
-    wasm_bytes: 32678407,
-    wasm_sha: "bed1355070c47ad7cd16e8ef88b0862b7d1adc27ca22515f26f37275e706700d",
+    wasm_bytes: 32678777,
+    wasm_sha: "83a01d6b8089253b6d04b439ee7bcd83be7ab8c35eb885a17b898d9a6786d218",
 };
 pub fn valid_resource(html: &str, manifest: &str) -> bool {
     resource::valid_resource(Format::Photocraft, &PINS, html, manifest)
