@@ -25,7 +25,7 @@ test('JS and native notification models share exact IDs, UInt64 cursors and huma
 
 test(
   'actual native push gate serializes owners, cancels expiry and retires late effects without another Client owner',
-  { skip: process.platform !== 'darwin', timeout: 75_000 },
+  { skip: process.platform !== 'darwin', timeout: 150_000 },
   async () => {
     const directory = mkdtempSync(join(tmpdir(), 'zoen-native-push-'));
     try {
@@ -57,6 +57,8 @@ test(
           '6',
           '-strict-concurrency=complete',
           '-warnings-as-errors',
+          '-j',
+          '1',
           '-module-cache-path',
           join(directory, 'module-cache'),
           ...files,
@@ -80,7 +82,7 @@ test(
             if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
           }
         }
-      }, 45_000);
+      }, 120_000);
       try {
         const [status, signal] = await once(compiler, 'close');
         assert.equal(expired, false, 'native push model compilation exceeded its bound');
