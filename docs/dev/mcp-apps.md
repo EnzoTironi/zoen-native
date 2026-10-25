@@ -85,6 +85,29 @@ the real MCP SDK with controlled HTTP responses; they do not prove a deployed
 package, native UI, canonical persistence or independent editor updates. Dynamic
 package admission and the full external-App journey remain open under #180.
 
+`RemoteAppScreen` accepts a trusted host-code `launch` configuration containing
+that binding and explicit launch arguments. This is the same screen, button,
+session, sandboxed frame and official AppBridge used by the existing
+`/connected-app/excalidraw` route. Configuration and arguments are captured at
+opening; replacement retires the previous session. Remote tools require explicit
+confirmation, including tools whose provider advertises `readOnlyHint`. The
+Excalidraw checkpoint exceptions remain specific to its legacy connection.
+
+This host-code entry point is deliberately not a URL-based installation path.
+The route still resolves only its existing Excalidraw registration. No remote
+configuration, document or credential is inferred from a link or guest metadata.
+Compiled-screen tests exercise real React, Expo focus, Store, MCP SDK and AppBridge
+with controlled HTTP/native-frame ports; they do not certify native pixels or
+provider durability.
+
+Canonical admission needs a core contract change: `AppSpecDto` currently exposes
+only a static App id/resource/tool list, and `read_app_resource` resolves bundled
+resources. `app_document_scope` admits the Excalidraw format specifically. An
+external canonical launch must resolve an admitted immutable release and its
+artifact-scoped authority from core, then use the existing authorized document
+read/save/version commands. A frontend launch configuration cannot substitute for
+that admission, grant access to a chat, or create a second document store.
+
 ## Native viewport and embedded renderer contract
 
 The host resizes the actual native frame for the keyboard and sends current

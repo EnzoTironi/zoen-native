@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import type { FetchLike, Tool } from '@modelcontextprotocol/client';
+import type { CallToolResult, FetchLike, Tool } from '@modelcontextprotocol/client';
 import type { RemoteAppSelection } from './remote-binding.ts';
 import { createRemoteMcpSession } from './remote-session.ts';
 
@@ -29,6 +29,7 @@ export function fixture(
     toolList?: Tool[];
     readWait?: Promise<void>;
     callWait?: Promise<void>;
+    toolResult?: CallToolResult;
     auth?: boolean;
     sse?: boolean;
   } = {},
@@ -99,7 +100,9 @@ export function fixture(
     }
     if (request.method === 'tools/call') {
       await options.callWait;
-      return result({ content: [{ type: 'text', text: 'Synthetic result' }] });
+      return result(
+        options.toolResult ?? { content: [{ type: 'text', text: 'Synthetic result' }] },
+      );
     }
     throw new Error(`Unexpected synthetic RPC ${request.method}`);
   };
@@ -112,6 +115,7 @@ export function fixture(
   );
   return {
     session,
+    fetcher,
     requests,
     retireOwner: () => {
       active = false;
