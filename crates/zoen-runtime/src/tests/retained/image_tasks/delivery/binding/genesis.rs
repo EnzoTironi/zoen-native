@@ -45,7 +45,7 @@ pub(in crate::tests::retained::image_tasks::delivery) async fn run(
         now,
         Some(&before),
         protocol::Sealed::new(protocol::SealedKind::Application, 1, vec![1, 2, 3]),
-    );
+    )?;
     let result = transport
         .publish_managed(&envelope, expected(f, 62, &sql))
         .await;

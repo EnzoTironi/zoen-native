@@ -57,7 +57,7 @@ async fn stalled_operation_revocation(
                     kind: types::SpaceKind::Group,
                     privacy: types::Privacy::Closed,
                 },
-            )?),
+            )?)?,
         }
     } else {
         ClientFrame::Sync {

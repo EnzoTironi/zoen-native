@@ -135,7 +135,7 @@ async fn revoke_live_sockets(
         .await;
     publishing
         .send_if_open(&ClientFrame::Publish {
-            env: Envelope::plain(&attempt),
+            env: Envelope::plain(&attempt)?,
         })
         .await;
     controller

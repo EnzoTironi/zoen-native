@@ -224,7 +224,7 @@ impl Fixture {
             self.head.clone(),
             body,
         )?;
-        self.append(Envelope::plain(&event)).await;
+        self.append(Envelope::plain(&event)?).await;
         Ok(())
     }
 
@@ -241,7 +241,7 @@ impl Fixture {
             now,
             self.head.as_ref(),
             Sealed::new(kind, SUITE_ID, data),
-        );
+        )?;
         self.append(envelope).await;
         Ok(())
     }
@@ -274,7 +274,7 @@ impl Fixture {
             now,
             self.head.as_ref(),
             Sealed::new(SealedKind::Application, SUITE_ID, bytes),
-        );
+        )?;
         Ok(self.append(envelope).await.hash)
     }
 

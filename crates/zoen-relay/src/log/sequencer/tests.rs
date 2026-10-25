@@ -71,7 +71,7 @@ fn envelope(
         0,
         None,
         body,
-    )?))
+    )?)?)
 }
 
 fn reason(r: Result<Sequencing, Reject>) -> String {

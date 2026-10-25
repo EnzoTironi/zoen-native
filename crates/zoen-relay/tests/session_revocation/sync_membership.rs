@@ -34,7 +34,7 @@ impl History {
             seen,
             body,
         )?;
-        let env = Envelope::plain(&event);
+        let env = Envelope::plain(&event)?;
         let hash = event_log::chain_hash(SPACE, seq, &prev, &env.wire_hash())?;
         rows.push(Sequenced {
             seq,

@@ -368,7 +368,7 @@ impl RawClient {
                 forwarded: false,
             },
         )?;
-        Ok(self.publish(Envelope::plain(&e)).await)
+        Ok(self.publish(Envelope::plain(&e)?).await)
     }
 
     pub async fn publish_as(

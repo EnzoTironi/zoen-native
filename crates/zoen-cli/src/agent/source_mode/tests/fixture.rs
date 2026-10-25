@@ -97,7 +97,7 @@ impl Fixture {
                     seq: event.seq,
                     prev: event.prev.clone(),
                     hash: event.hash.clone(),
-                    env: protocol::Envelope::plain(event),
+                    env: protocol::Envelope::plain(event)?,
                 }),
                 client_core::Ingest::Applied
             );
@@ -173,7 +173,7 @@ impl Fixture {
                     seq: event.seq,
                     prev: event.prev.clone(),
                     hash: event.hash.clone(),
-                    env: protocol::Envelope::plain(&event),
+                    env: protocol::Envelope::plain(&event)?,
                 }),
                 client_core::Ingest::Confirmed
             );
@@ -293,7 +293,7 @@ impl Fixture {
                 seq: event.seq,
                 prev: event.prev.clone(),
                 hash: event.hash.clone(),
-                env: protocol::Envelope::plain(event),
+                env: protocol::Envelope::plain(event)?,
             })
             .collect();
         drop(db);

@@ -285,7 +285,7 @@ mod tests {
             .map(|ev| ev.hash.clone())
             .unwrap_or_else(|| GENESIS_PREV.to_string());
         let env =
-            Envelope::plain(&author.sign_event(space, client, 1_700_000_000_000, seen, body)?);
+            Envelope::plain(&author.sign_event(space, client, 1_700_000_000_000, seen, body)?)?;
         let hash = chain_hash(space, seq, &prev_hash, &env.wire_hash())?;
         Ok(Sequenced {
             seq,
@@ -418,7 +418,7 @@ mod tests {
                 hash: "12".repeat(32),
             }),
             message("b"),
-        )?);
+        )?)?;
         let pending = vec![Pending {
             env: rejected,
             target_known: true,

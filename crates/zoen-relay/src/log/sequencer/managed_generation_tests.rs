@@ -53,7 +53,7 @@ impl Case {
             1,
             None,
             protocol::Sealed::new(protocol::SealedKind::Application, 1, vec![3; 32]),
-        );
+        )?;
         let deployment = Deployment {
             namespace: "managed-queue".into(),
             witness: "11".repeat(32),

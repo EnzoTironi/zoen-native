@@ -29,7 +29,7 @@ pub(super) async fn end_to_end_spaces_hold_ciphertext_on_every_relay(
             now_ms(),
             Some(seen),
             data,
-        ))
+        )?)
     };
     for _ in 0..3 {
         assert!(matches!(
@@ -139,7 +139,7 @@ pub(super) async fn one_commit_per_epoch_and_each_welcome_follows_its_commit(
                 now_ms(),
                 Some(seen),
                 data,
-            ))
+            )?)
         };
     let at = |ev: &Sequenced| Seen {
         seq: ev.seq,
@@ -190,7 +190,7 @@ pub(super) async fn one_commit_per_epoch_and_each_welcome_follows_its_commit(
                 1,
                 Some(head),
                 sealed,
-            ))
+            )?)
         };
     assert_eq!(
         refused(

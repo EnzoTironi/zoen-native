@@ -55,7 +55,7 @@ fn sign(
         now_ms(),
         seen,
         body,
-    )?))
+    )?)?)
 }
 
 fn message(i: usize) -> EventBody {

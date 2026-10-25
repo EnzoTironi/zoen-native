@@ -2,7 +2,7 @@ use super::*;
 use event_log::{Author, Signer};
 use protocol::{Envelope, Sealed, SealedKind};
 
-fn envelope(client: &str) -> (Deployment, Envelope) {
+fn envelope(client: &str) -> Result<(Deployment, Envelope), Box<dyn std::error::Error>> {
     let identity = Signer::from_secret(&[91; 32]);
     let actor = Author::device(&identity, Signer::from_secret(&[92; 32]));
     let mut configured = deployment();
@@ -15,8 +15,8 @@ fn envelope(client: &str) -> (Deployment, Envelope) {
         1,
         None,
         Sealed::new(SealedKind::Application, 1, vec![1, 2, 3]),
-    );
-    (configured, envelope)
+    )?;
+    Ok((configured, envelope))
 }
 
 fn commit(writer: &mut AnchorWriter, digest: &str) -> Result<Checkpoint, AnchorError> {
@@ -32,7 +32,7 @@ fn commit(writer: &mut AnchorWriter, digest: &str) -> Result<Checkpoint, AnchorE
 #[test]
 fn original_publish_is_consumed_once_even_after_restart_and_new_checkpoint() -> TestResult {
     let home = Home::new()?;
-    let (configured, envelope) = envelope("original");
+    let (configured, envelope) = envelope("original")?;
     let mut writer = AnchorWriter::create(&home.0, configured.clone())?;
     let digest = publish_digest(&configured.namespace, &envelope)?;
     let checkpoint = commit(&mut writer, &digest)?;
@@ -71,8 +71,8 @@ fn original_publish_is_consumed_once_even_after_restart_and_new_checkpoint() -> 
 #[test]
 fn checkpoint_authorizes_exact_original_wire_only() -> TestResult {
     let home = Home::new()?;
-    let (configured, original) = envelope("original");
-    let (_, other) = envelope("other");
+    let (configured, original) = envelope("original")?;
+    let (_, other) = envelope("other")?;
     let mut writer = AnchorWriter::create(&home.0, configured.clone())?;
     let genesis = writer.reader().checkpoint()?;
     assert_eq!(
@@ -106,7 +106,7 @@ fn checkpoint_authorizes_exact_original_wire_only() -> TestResult {
 #[test]
 fn unrelated_progress_preserves_pending_permit_but_retirement_drains_it() -> TestResult {
     let home = Home::new()?;
-    let (configured, envelope) = envelope("original");
+    let (configured, envelope) = envelope("original")?;
     let mut writer = AnchorWriter::create(&home.0, configured.clone())?;
     let checkpoint = commit(
         &mut writer,
@@ -140,7 +140,7 @@ fn unrelated_progress_preserves_pending_permit_but_retirement_drains_it() -> Tes
 #[test]
 fn partial_consumption_is_retained_and_cannot_be_reissued() -> TestResult {
     let home = Home::new()?;
-    let (configured, envelope) = envelope("original");
+    let (configured, envelope) = envelope("original")?;
     let mut writer = AnchorWriter::create(&home.0, configured.clone())?;
     let digest = publish_digest(&configured.namespace, &envelope)?;
     let checkpoint = commit(&mut writer, &digest)?;
@@ -162,7 +162,7 @@ fn partial_consumption_is_retained_and_cannot_be_reissued() -> TestResult {
 #[test]
 fn historical_commit_cannot_be_erased_by_observing_both_databases_before() -> TestResult {
     let home = Home::new()?;
-    let (configured, envelope) = envelope("original");
+    let (configured, envelope) = envelope("original")?;
     let mut writer = AnchorWriter::create(&home.0, configured.clone())?;
     let before = writer.reader().checkpoint()?;
     let prepared = writer.prepare(

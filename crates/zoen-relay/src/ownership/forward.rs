@@ -489,7 +489,7 @@ mod tests {
                 kind: types::SpaceKind::Group,
                 privacy: types::Privacy::Closed,
             },
-        )?);
+        )?)?;
         for size in [
             4_000,
             crate::log::admission::MAX_MEMBERS as usize,

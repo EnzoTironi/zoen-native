@@ -278,7 +278,7 @@ fn signed(
         0,
         seen,
         body,
-    )?))
+    )?)?)
 }
 fn message(
     author: &Author,

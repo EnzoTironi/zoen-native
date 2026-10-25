@@ -98,13 +98,16 @@ impl<S: Signer> Client<S> {
         if plain.len() > 64 << 20 {
             return Err("Histórico grande demais para este navegador.".into());
         }
-        let key = zeroize::Zeroizing::new(device_link::random::<32>());
-        let transfer = hex::encode(device_link::random::<32>());
+        let key = zeroize::Zeroizing::new(
+            device_link::random::<32>().map_err(|error| error.to_string())?,
+        );
+        let transfer = hex::encode(device_link::random::<32>().map_err(|error| error.to_string())?);
         let chunks = plain
             .chunks(1 << 20)
             .enumerate()
             .map(|(index, part)| device_link::seal_chunk(&key, index as u32, part))
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| error.to_string())?;
         let manifest = device_link::HistoryBox {
             transfer: transfer.clone(),
             key: hex::encode(key.as_ref()),

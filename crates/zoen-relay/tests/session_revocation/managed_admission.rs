@@ -26,7 +26,7 @@ fn envelope(
             media: None,
             forwarded: false,
         },
-    )?))
+    )?)?)
 }
 
 #[tokio::test]

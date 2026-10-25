@@ -58,7 +58,7 @@ async fn main() -> anyhow::Result<()> {
                 privacy: Privacy::Closed,
             },
         )?;
-        let Ok(Sequencing::New { ev, .. }) = log.append(&Envelope::plain(&created), true).await
+        let Ok(Sequencing::New { ev, .. }) = log.append(&Envelope::plain(&created)?, true).await
         else {
             anyhow::bail!("genesis refused");
         };
@@ -88,7 +88,7 @@ async fn main() -> anyhow::Result<()> {
                 forwarded: false,
             },
         )?;
-        queues[i % writers].push(Envelope::plain(&e));
+        queues[i % writers].push(Envelope::plain(&e)?);
     }
 
     let started = Instant::now();

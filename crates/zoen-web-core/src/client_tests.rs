@@ -90,7 +90,7 @@ pub(super) fn clear(
     now: i64,
 ) -> std::result::Result<Vec<u8>, Box<dyn std::error::Error>> {
     let event = author.sign_event(log.space(), &types::new_ulid(now)?, now, log.head(), body)?;
-    Ok(sequence(log, Envelope::plain(&event))?)
+    Ok(sequence(log, Envelope::plain(&event)?)?)
 }
 
 fn sealed(

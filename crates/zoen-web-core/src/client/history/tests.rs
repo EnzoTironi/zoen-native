@@ -25,7 +25,7 @@ fn fixture() -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
     let identity = NativeSigner::from_secret(&[41; 32]);
     let device = NativeSigner::from_secret(&[42; 32]);
     let author = Author::device(&identity, NativeSigner::from_secret(&[43; 32]));
-    let (private, public) = device_link::key_pair();
+    let (private, public) = device_link::key_pair()?;
     let account = LinkedAccount {
         identity: identity.id(),
         device: device.id(),
@@ -175,7 +175,7 @@ fn native_history_resumes_verifies_before_import_and_persists_before_cleanup(
         .chunks(plain.len() / 2 + 1)
         .enumerate()
         .map(|(n, chunk)| device_link::seal_chunk(&key, n as u32, chunk))
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>, _>>()?;
     let manifest = HistoryBox {
         transfer: "ab".repeat(32),
         key: hex::encode(key),
