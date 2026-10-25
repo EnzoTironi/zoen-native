@@ -364,3 +364,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod integrity_tests;
