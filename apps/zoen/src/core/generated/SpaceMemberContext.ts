@@ -4,8 +4,11 @@ import type { Persona } from "./Persona";
 
 export type SpaceMemberContext = { identity_id: string, device_id: string, space_id: string, space_title: string, member_id: string, member: Persona | null, role: string | null, state: MemberActionState, can_remove: boolean, can_manage_members: boolean, can_add: boolean, 
 /**
- * Confirmed role plus this device's actual E2E group roster. For a
- * non-E2E conversation the confirmed role suffices; no history is implied.
+ * Verified Agent owner proof for this observed local actor, not is_mine UI.
+ */
+owned_agent: boolean, 
+/**
+ * Current member and actual MLS reader when encrypted; never online status.
  */
 delivery_ready: boolean, 
 /**
