@@ -291,7 +291,7 @@ pub(crate) fn editor_blocks_markdown(blocks: &[PageBlockDto]) -> R<String> {
             .collect::<R<Vec<_>>>()?,
     )
     .map_err(doc_err)?;
-    Ok(page.canonical_markdown().map_err(doc_err)?)
+    page.canonical_markdown().map_err(doc_err)
 }
 
 fn rand_u64() -> R<u64> {

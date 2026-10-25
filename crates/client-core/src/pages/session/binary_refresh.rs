@@ -218,7 +218,7 @@ impl PageSession {
                 "the page is still arriving",
             ));
         }
-        Ok(self.binary()?.to_markdown().map_err(doc_err)?)
+        self.binary()?.to_markdown().map_err(doc_err)
     }
 
     pub(in crate::pages) fn binary_text(&mut self, engine: &Engine) -> R<String> {
