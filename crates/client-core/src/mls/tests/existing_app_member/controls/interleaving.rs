@@ -7,10 +7,11 @@ fn fanout(
     first: &mut Engine,
     second: &mut Engine,
     blobs: &mut HashMap<String, Vec<u8>>,
-) {
+) -> R<()> {
     for frame in publish(sender, first, blobs)? {
         assert_eq!(second.ingest(frame), Ingest::Applied);
     }
+    Ok(())
 }
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Change {
@@ -59,7 +60,7 @@ fn exercise(change: Change) -> R<()> {
     );
     owner.commit_now(ROOM, &[records[0].data.clone()], &Default::default())?;
     let mut blobs = HashMap::new();
-    fanout(&mut owner, &mut human, &mut agent, &mut blobs);
+    fanout(&mut owner, &mut human, &mut agent, &mut blobs)?;
     let initial = owner.app_binary_create_format(
         Format::Wordcraft,
         ROOM,
@@ -75,7 +76,7 @@ fn exercise(change: Change) -> R<()> {
         "active_word_two",
         &event_log::sha256_hex(b"active word two"),
     )?;
-    fanout(&mut owner, &mut human, &mut agent, &mut blobs);
+    fanout(&mut owner, &mut human, &mut agent, &mut blobs)?;
     receive_wanted(&mut human, &blobs)?;
     assert!(agent.item_state(&app.item_id).is_err());
     let aa = agent
@@ -96,7 +97,7 @@ fn exercise(change: Change) -> R<()> {
         std::slice::from_ref(&agent_id),
     );
     owner.commit_now(ROOM, &[records[0].data.clone()], &Default::default())?;
-    fanout(&mut owner, &mut human, &mut agent, &mut blobs);
+    fanout(&mut owner, &mut human, &mut agent, &mut blobs)?;
     assert!(agent.item_state(&app.item_id).is_err());
     let account = owner.account().ok_or_else(|| storage("owner account"))?;
     let input = AppEditRequestInput {
@@ -135,7 +136,7 @@ fn exercise(change: Change) -> R<()> {
     match change {
         Change::Text => {
             human.send_message(ROOM, "A harmless message while the App remains open")?;
-            fanout(&mut human, &mut owner, &mut agent, &mut blobs);
+            fanout(&mut human, &mut owner, &mut agent, &mut blobs)?;
         }
         Change::OtherShare => {
             let other = human.app_binary_create_format(
@@ -145,7 +146,7 @@ fn exercise(change: Change) -> R<()> {
                 &base64::engine::general_purpose::STANDARD.encode(wordcraft::EMPTY),
                 "other_actual_app",
             )?;
-            fanout(&mut human, &mut owner, &mut agent, &mut blobs);
+            fanout(&mut human, &mut owner, &mut agent, &mut blobs)?;
             let a = human
                 .account()
                 .ok_or_else(|| storage("other sharer account"))?;
@@ -157,7 +158,7 @@ fn exercise(change: Change) -> R<()> {
                 target_id: agent_id.clone(),
             })?;
             assert!(human.share_app_current(c, "other_explicit_share")?.applied);
-            fanout(&mut human, &mut owner, &mut agent, &mut blobs);
+            fanout(&mut human, &mut owner, &mut agent, &mut blobs)?;
         }
         Change::Head => {
             let next = human.app_binary_save(
@@ -169,7 +170,7 @@ fn exercise(change: Change) -> R<()> {
                 &event_log::sha256_hex(b"changed head"),
             )?;
             assert_eq!(next.version, 3);
-            fanout(&mut human, &mut owner, &mut agent, &mut blobs);
+            fanout(&mut human, &mut owner, &mut agent, &mut blobs)?;
         }
         Change::Revocation => {
             owner.revoke_app_device(&original_permission)?;
@@ -228,7 +229,7 @@ fn exercise(change: Change) -> R<()> {
                 .collect();
             human.agreement_keys_arrived(records, &asked);
             human.commit_now(ROOM, &[], &Default::default())?;
-            fanout(&mut human, &mut owner, &mut agent, &mut blobs);
+            fanout(&mut human, &mut owner, &mut agent, &mut blobs)?;
             assert!(
                 human
                     .mls_status(ROOM)

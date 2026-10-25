@@ -6,10 +6,11 @@ fn broadcast(
     reader: &mut Engine,
     newcomer: &mut Engine,
     blobs: &mut HashMap<String, Vec<u8>>,
-) {
+) -> R<()> {
     for frame in publish(owner, reader, blobs)? {
         assert_eq!(newcomer.ingest(frame), Ingest::Applied);
     }
+    Ok(())
 }
 
 fn changed_audience_before_sealing(already_sealed: bool) -> R<()> {
@@ -39,7 +40,7 @@ fn changed_audience_before_sealing(already_sealed: bool) -> R<()> {
     );
     owner.commit_now(SPACE, &[records[0].data.clone()], &Default::default())?;
     let mut blobs = HashMap::new();
-    broadcast(&mut owner, &mut reader, &mut newcomer, &mut blobs);
+    broadcast(&mut owner, &mut reader, &mut newcomer, &mut blobs)?;
     let app = owner.app_binary_create_format(
         Format::Wordcraft,
         SPACE,
@@ -47,7 +48,7 @@ fn changed_audience_before_sealing(already_sealed: bool) -> R<()> {
         &base64::engine::general_purpose::STANDARD.encode(EDITED),
         "transport_before_join",
     )?;
-    broadcast(&mut owner, &mut reader, &mut newcomer, &mut blobs);
+    broadcast(&mut owner, &mut reader, &mut newcomer, &mut blobs)?;
     assert!(newcomer.item_state(&app.item_id).is_err());
     let account = owner.account().ok_or_else(|| storage("owner account"))?;
     let context = owner.app_current_share_context(AppShareScope {
@@ -186,7 +187,7 @@ fn changed_audience_before_sealing(already_sealed: bool) -> R<()> {
     let next = owner.share_app_current(fresh, "new_explicit_audience_review")?;
     assert!(next.applied);
     assert_ne!(next.entry.id, original.client_id);
-    broadcast(&mut owner, &mut reader, &mut newcomer, &mut blobs);
+    broadcast(&mut owner, &mut reader, &mut newcomer, &mut blobs)?;
     receive_wanted(&mut newcomer, &blobs)?;
     let document = newcomer.app_binary_read(&app.item_id, Some(app.version), Some(&app.sha256))?;
     assert_eq!(

@@ -73,11 +73,12 @@ fn fanout(
     first: &mut Engine,
     second: &mut Engine,
     blobs: &mut HashMap<String, Vec<u8>>,
-) {
+) -> R<()> {
     let frames = publish(sender, first, blobs)?;
     for frame in frames {
         assert_eq!(second.ingest(frame), Ingest::Applied);
     }
+    Ok(())
 }
 #[test]
 fn genuine_non_creator_writer_reuses_new_app_proof_without_creators_local_receipt() -> R<()> {
@@ -120,7 +121,7 @@ fn genuine_non_creator_writer_reuses_new_app_proof_without_creators_local_receip
     )?;
     let [mut writer, mut agent] = peers;
     let mut blobs = HashMap::new();
-    fanout(&mut owner, &mut writer, &mut agent, &mut blobs);
+    fanout(&mut owner, &mut writer, &mut agent, &mut blobs)?;
     let created = owner.app_binary_create_format(
         Format::Wordcraft,
         space,
@@ -128,7 +129,7 @@ fn genuine_non_creator_writer_reuses_new_app_proof_without_creators_local_receip
         &base64::engine::general_purpose::STANDARD.encode(wordcraft::EMPTY),
         "new_origin",
     )?;
-    fanout(&mut owner, &mut writer, &mut agent, &mut blobs);
+    fanout(&mut owner, &mut writer, &mut agent, &mut blobs)?;
     receive_wanted(&mut writer, &blobs)?;
     receive_wanted(&mut agent, &blobs)?;
     let a = owner.account().ok_or_else(|| storage("creator account"))?;
@@ -159,7 +160,7 @@ fn genuine_non_creator_writer_reuses_new_app_proof_without_creators_local_receip
         "writer_save",
         &event_log::sha256_hex(b"writer save"),
     )?;
-    fanout(&mut writer, &mut owner, &mut agent, &mut blobs);
+    fanout(&mut writer, &mut owner, &mut agent, &mut blobs)?;
     receive_wanted(&mut agent, &blobs)?;
     assert_eq!(
         writer
@@ -181,7 +182,7 @@ fn genuine_non_creator_writer_reuses_new_app_proof_without_creators_local_receip
         target_id: agent_id.clone(),
     })?;
     assert!(writer.share_app_current(c, "non_creator_share")?.applied);
-    fanout(&mut writer, &mut owner, &mut agent, &mut blobs);
+    fanout(&mut writer, &mut owner, &mut agent, &mut blobs)?;
     assert_eq!(
         agent
             .app_binary_read(&created.item_id, Some(2), Some(&updated.sha256))?
