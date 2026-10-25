@@ -104,9 +104,9 @@ impl Engine {
         let personal_agent = agent.is_none();
         self.create_account_as_with_keys(
             AccountDetails {
-                name: name,
-                handle: handle,
-                relay_url: relay_url,
+                name,
+                handle,
+                relay_url,
             },
             root,
             agent,

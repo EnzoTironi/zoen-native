@@ -151,8 +151,8 @@ fn account_validation_precedes_key_preparation_and_keeps_existing_account() -> T
         let before = snapshot(&engine)?;
         let result = engine.create_account_as_with_keys(
             super::super::account::AccountDetails {
-                name: name,
-                handle: handle,
+                name,
+                handle,
                 relay_url: "https://relay.example",
             },
             Signer::from_secret(&[73; 32]),
