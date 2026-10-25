@@ -31,7 +31,7 @@ pub(crate) struct Fixture {
 pub(crate) fn fixture() -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
     let path = std::env::temp_dir().join(types::new_id("deckcraft-worker-test")?);
     std::fs::create_dir_all(&path).unwrap();
-    Ok(fixture_at(path, [72; 32])?)
+    fixture_at(path, [72; 32])
 }
 #[path = "deckcraft/fixture.rs"]
 mod fixture_construction;

@@ -309,16 +309,15 @@ impl Fixture {
         &mut self,
         text: &str,
     ) -> std::result::Result<String, Box<dyn std::error::Error>> {
-        Ok(self
-            .encrypted(EventBody::MessagePosted {
-                message: new_id("message")?,
-                text: text.into(),
-                attaches: None,
-                reply: None,
-                media: None,
-                forwarded: false,
-            })
-            .await?)
+        self.encrypted(EventBody::MessagePosted {
+            message: new_id("message")?,
+            text: text.into(),
+            attaches: None,
+            reply: None,
+            media: None,
+            forwarded: false,
+        })
+        .await
     }
 
     pub(super) async fn sync(&self, second: bool) -> Result<ReplySync, RuntimeError> {

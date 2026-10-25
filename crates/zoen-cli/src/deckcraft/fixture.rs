@@ -6,7 +6,7 @@ pub(crate) fn fixture_at(
     path: std::path::PathBuf,
     root: [u8; 32],
 ) -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
-    Ok(fixture_with_privacy_at(path, root, types::Privacy::Closed)?)
+    fixture_with_privacy_at(path, root, types::Privacy::Closed)
 }
 pub(crate) fn fixture_with_privacy_at(
     path: std::path::PathBuf,
