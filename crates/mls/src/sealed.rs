@@ -123,3 +123,6 @@ impl Codec for SealedCodec {
         Ok(serde_json::from_slice(&plain)?)
     }
 }
+
+#[cfg(test)]
+mod tests;
