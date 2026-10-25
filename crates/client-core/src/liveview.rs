@@ -20,6 +20,10 @@ fn bad(reason: &str) -> CoreError {
     }
 }
 
+fn live_error(error: zoen_liveview::Error) -> CoreError {
+    bad(&error.to_string())
+}
+
 fn arr32(b: &[u8], what: &str) -> Result<[u8; 32], CoreError> {
     b.try_into().map_err(|_| bad(what))
 }
@@ -34,11 +38,10 @@ pub struct LiveViewKey {
 impl LiveViewKey {
     /// A new key (first launch).
     #[uniffi::constructor]
-    #[must_use]
-    pub fn generate() -> Self {
-        LiveViewKey {
-            key: DeviceKey::generate(),
-        }
+    pub fn generate() -> Result<Self, CoreError> {
+        Ok(LiveViewKey {
+            key: DeviceKey::generate().map_err(live_error)?,
+        })
     }
 
     /// The key kept in the keychain.
@@ -69,10 +72,13 @@ impl LiveViewKey {
             .as_slice()
             .try_into()
             .map_err(|_| bad("live view session"))?;
-        let keys = self.key.accept(&Offer {
-            vm_pub: arr32(&vm_pub, "live view offer")?,
-            session,
-        });
+        let keys = self
+            .key
+            .accept(&Offer {
+                vm_pub: arr32(&vm_pub, "live view offer")?,
+                session,
+            })
+            .map_err(live_error)?;
         Ok(std::sync::Arc::new(LiveViewSession {
             frames: Mutex::new(keys.opener(Direction::Frames)),
             input: Mutex::new(keys.sealer(Direction::Input)),
@@ -88,9 +94,13 @@ pub struct LiveViewSession {
 }
 
 impl LiveViewSession {
-    fn seal(&self, ev: &InputEvent) -> Vec<u8> {
-        let json = serde_json::to_vec(ev).expect("input events serialize");
-        self.input.lock().expect("live view input").seal(&json)
+    fn seal(&self, ev: &InputEvent) -> Result<Vec<u8>, CoreError> {
+        let json = serde_json::to_vec(ev).map_err(|_| bad("live view input serialization"))?;
+        self.input
+            .lock()
+            .map_err(|_| bad("live view input lock poisoned"))?
+            .seal(&json)
+            .map_err(live_error)
     }
 }
 
@@ -100,30 +110,34 @@ impl LiveViewSession {
     pub fn open_frame(&self, sealed: Vec<u8>) -> Result<Vec<u8>, CoreError> {
         self.frames
             .lock()
-            .expect("live view frames")
+            .map_err(|_| bad("live view frames lock poisoned"))?
             .open(&sealed)
             .map_err(|e| bad(&e.to_string()))
     }
 
     /// The number of the last frame shown (drops anything not newer).
-    pub fn last_frame(&self) -> u64 {
-        self.frames.lock().expect("live view frames").last_seq()
+    pub fn last_frame(&self) -> Result<u64, CoreError> {
+        Ok(self
+            .frames
+            .lock()
+            .map_err(|_| bad("live view frames lock poisoned"))?
+            .last_seq())
     }
 
-    pub fn seal_text(&self, text: String) -> Vec<u8> {
+    pub fn seal_text(&self, text: String) -> Result<Vec<u8>, CoreError> {
         self.seal(&InputEvent::Text { text })
     }
 
-    pub fn seal_click(&self, x: f64, y: f64) -> Vec<u8> {
+    pub fn seal_click(&self, x: f64, y: f64) -> Result<Vec<u8>, CoreError> {
         self.seal(&InputEvent::Click { x, y })
     }
 
-    pub fn seal_key(&self, key: String) -> Vec<u8> {
+    pub fn seal_key(&self, key: String) -> Result<Vec<u8>, CoreError> {
         self.seal(&InputEvent::Key { key })
     }
 
     /// The owner is finished: the agent may continue.
-    pub fn seal_done(&self) -> Vec<u8> {
+    pub fn seal_done(&self) -> Result<Vec<u8>, CoreError> {
         self.seal(&InputEvent::Done)
     }
 }
@@ -158,7 +172,8 @@ pub struct LiveViewDemoVm {
 impl LiveViewDemoVm {
     #[uniffi::constructor]
     pub fn start(device_pub: Vec<u8>) -> Result<Self, CoreError> {
-        let (offer, keys) = zoen_liveview::vm_start(&arr32(&device_pub, "device key")?);
+        let (offer, keys) =
+            zoen_liveview::vm_start(&arr32(&device_pub, "device key")?).map_err(live_error)?;
         Ok(LiveViewDemoVm {
             vm_pub: offer.vm_pub,
             session: offer.session,
@@ -175,21 +190,26 @@ impl LiveViewDemoVm {
         self.session.to_vec()
     }
 
-    pub fn seal_frame(&self, jpeg: Vec<u8>) -> Vec<u8> {
-        self.frames.lock().expect("demo frames").seal(&jpeg)
+    pub fn seal_frame(&self, jpeg: Vec<u8>) -> Result<Vec<u8>, CoreError> {
+        self.frames
+            .lock()
+            .map_err(|_| bad("live view frames lock poisoned"))?
+            .seal(&jpeg)
+            .map_err(live_error)
     }
 
     pub fn open_input(&self, sealed: Vec<u8>) -> Result<LiveViewInput, CoreError> {
         let pt = self
             .input
             .lock()
-            .expect("demo input")
+            .map_err(|_| bad("live view input lock poisoned"))?
             .open(&sealed)
             .map_err(|e| bad(&e.to_string()))?;
         let ev: InputEvent = serde_json::from_slice(&pt).map_err(|_| bad("live view input"))?;
         Ok(match ev {
             InputEvent::Text { text } => LiveViewInput::Text {
-                chars: text.chars().count() as u32,
+                chars: u32::try_from(text.chars().count())
+                    .map_err(|_| bad("live view input too long"))?,
             },
             InputEvent::Click { x, y } => LiveViewInput::Click { x, y },
             InputEvent::Key { key } => LiveViewInput::Key { key },
