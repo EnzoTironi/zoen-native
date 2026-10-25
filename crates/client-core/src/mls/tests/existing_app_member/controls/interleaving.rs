@@ -202,9 +202,20 @@ fn exercise(change: Change) -> R<()> {
             // signed agreement records; no private key or group state is copied.
             let mut records = Vec::new();
             for peer in [&mut owner, &mut agent] {
-                let (public, signed) = peer
-                    .agreement_to_publish()
-                    .ok_or_else(|| storage("genuine public agreement record"))?;
+                let public = peer
+                    .net
+                    .profiles
+                    .agreement
+                    .as_ref()
+                    .ok_or_else(|| storage("genuine account agreement key"))?
+                    .public_hex();
+                let signer = peer
+                    .net
+                    .author
+                    .as_ref()
+                    .ok_or_else(|| storage("genuine account author"))?;
+                let signed = event_log::profile::sign_agreement(signer, &public)
+                    .ok_or_else(|| storage("genuine public agreement signature"))?;
                 records.push(protocol::AgreementKeyRecord {
                     identity: peer.me_id()?,
                     public,
