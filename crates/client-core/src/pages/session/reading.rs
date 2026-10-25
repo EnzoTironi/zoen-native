@@ -95,8 +95,8 @@ impl PageSession {
                     DocumentView::BinaryPage {
                         blocks: doc.blocks(),
                     },
-                    doc.content_hash(),
-                    !doc.editor_content_eq(shadow)
+                    doc.content_hash().map_err(doc_err)?,
+                    !doc.editor_content_eq(shadow).map_err(doc_err)?
                         || matches!(self.blocked, Some(SessionBlock::DraftLocked(_)))
                         || (journal.has_draft && save_error.is_some()),
                 )

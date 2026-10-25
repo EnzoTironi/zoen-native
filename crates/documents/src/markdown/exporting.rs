@@ -1,9 +1,9 @@
 //! Canonical and source-preserving Markdown rendering.
-use crate::{Block, Kind, Run};
+use crate::{Block, DocError, Kind, Run};
 
 // ───────────────────────────── export ─────────────────────────────
 
-pub(crate) fn export(lead: &str, blocks: &[Block], canonical: bool) -> String {
+pub(crate) fn export(lead: &str, blocks: &[Block], canonical: bool) -> Result<String, DocError> {
     let mut s = String::from(if canonical { "" } else { lead });
     for (i, b) in blocks.iter().enumerate() {
         // A block that wasn't in the source next to its neighbour (a new one, or one after
@@ -16,7 +16,7 @@ pub(crate) fn export(lead: &str, blocks: &[Block], canonical: bool) -> String {
                 s.push('\n');
             }
         }
-        if !canonical && !b.src.is_empty() && b.fingerprint() == b.fp {
+        if !canonical && !b.src.is_empty() && b.fingerprint()? == b.fp {
             s.push_str(&b.src);
             s.push_str(&b.tail);
             continue;
@@ -36,7 +36,7 @@ pub(crate) fn export(lead: &str, blocks: &[Block], canonical: bool) -> String {
             }
         }
     }
-    s
+    Ok(s)
 }
 
 fn bullet_prefix(kind: &Kind) -> String {

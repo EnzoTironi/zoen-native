@@ -44,7 +44,10 @@ impl<S: Signer> Client<S> {
                 )
             }));
         }
-        let hash = read.shadow.content_hash();
+        let hash = read
+            .shadow
+            .content_hash()
+            .map_err(|error| error.to_string())?;
         if hash != observed {
             return Err(t(
                 "Esta versão mudou; abra a prévia novamente.",
@@ -56,7 +59,7 @@ impl<S: Signer> Client<S> {
         };
         Ok(
             json!({ "item_id":id, "space_id":space, "version":version, "title":content.title,
-            "content_hash":hash, "markdown":read.shadow.to_markdown() }),
+            "content_hash":hash, "markdown":read.shadow.to_markdown().map_err(|error| error.to_string())? }),
         )
     }
 }

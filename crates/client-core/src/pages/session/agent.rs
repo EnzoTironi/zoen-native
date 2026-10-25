@@ -118,7 +118,7 @@ impl PageSession {
                 || journal.commit.is_some()
                 || journal.input.binding.is_some()
                 || journal.input.capture.is_some()
-                || !live.editor_content_eq(shadow)
+                || !live.editor_content_eq(shadow).map_err(doc_err)?
                 // A reverted/no-op human draft can have equal semantic content
                 // but still contain private Loro operations. Never publish those.
                 || live.version() != shadow.version())
@@ -135,7 +135,7 @@ impl PageSession {
             version,
             prefix_sha256: tools::prefix(&engine.state, &it.id, version)
                 .map_err(|reason| invalid(&reason))?,
-            content_sha256: shadow.content_hash(),
+            content_sha256: shadow.content_hash().map_err(doc_err)?,
             title: match &it.current().content {
                 ItemContent::Page(p) => p.title.clone(),
                 _ => return Err(stale()),
@@ -252,7 +252,7 @@ impl Engine {
                 version,
                 prefix_sha256: tools::prefix(&self.state, item, version)
                     .map_err(|reason| invalid(&reason))?,
-                content_sha256: page.content_hash(),
+                content_sha256: page.content_hash().map_err(doc_err)?,
                 title: match &version
                     .checked_sub(1)
                     .and_then(|index| it.versions.get(index as usize))

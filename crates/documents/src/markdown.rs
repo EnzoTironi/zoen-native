@@ -9,7 +9,7 @@
 use comrak::nodes::{AstNode, ListType, NodeValue};
 use comrak::{parse_document, Arena, Options};
 
-use crate::{Attrs, Block, Kind, Run};
+use crate::{Attrs, Block, DocError, Kind, Run};
 
 mod exporting;
 pub(crate) use exporting::{export, inline_md};
@@ -41,7 +41,7 @@ pub(crate) struct Imported {
     pub blocks: Vec<Block>,
 }
 
-pub(crate) fn import(md: &str) -> Imported {
+pub(crate) fn import(md: &str) -> Result<Imported, DocError> {
     let arena = Arena::new();
     let root = parse_document(&arena, md, &options());
     let lines: Vec<&str> = md.split_inclusive('\n').collect();
@@ -73,7 +73,7 @@ pub(crate) fn import(md: &str) -> Imported {
             i += 1;
         }
         if i < first {
-            raw_before.push(raw_block(&lines, i, first - 1));
+            raw_before.push(raw_block(&lines, i, first - 1)?);
         }
     }
     out.extend(raw_before);
@@ -89,28 +89,28 @@ pub(crate) fn import(md: &str) -> Imported {
             tail.push_str(lines[j - 1]);
             j += 1;
         }
-        let mut b = Block::new(u.kind.clone(), u.runs.clone());
+        let mut b = Block::new(u.kind.clone(), u.runs.clone())?;
         b.lead = u.lead.clone();
         b.src = src;
         b.tail = tail;
-        b.fp = b.fingerprint();
+        b.fp = b.fingerprint()?;
         out.push(b);
         if j < next {
-            let r = raw_block(&lines, j, next - 1);
+            let r = raw_block(&lines, j, next - 1)?;
             out.push(r);
         }
     }
-    Imported {
+    Ok(Imported {
         lead: page_lead,
         blocks: out,
-    }
+    })
 }
 
 fn is_blank(l: &str) -> bool {
     l.trim().is_empty()
 }
 
-fn raw_block(lines: &[&str], from: usize, mut to: usize) -> Block {
+fn raw_block(lines: &[&str], from: usize, mut to: usize) -> Result<Block, DocError> {
     let mut tail = String::new();
     let mut tail_lines = Vec::new();
     while to > from && is_blank(lines[to - 1]) {
@@ -121,11 +121,11 @@ fn raw_block(lines: &[&str], from: usize, mut to: usize) -> Block {
         tail.push_str(l);
     }
     let src: String = lines[from - 1..to].concat();
-    let mut b = Block::new(Kind::Raw, vec![Run::plain(&block_text(&src))]);
+    let mut b = Block::new(Kind::Raw, vec![Run::plain(&block_text(&src))])?;
     b.src = src;
     b.tail = tail;
-    b.fp = b.fingerprint();
-    b
+    b.fp = b.fingerprint()?;
+    Ok(b)
 }
 
 /// Source text as a block's text: line breaks inside a block are U+2028, so one block is

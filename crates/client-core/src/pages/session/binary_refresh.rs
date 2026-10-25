@@ -28,7 +28,7 @@ impl PageSession {
                 // Authenticate the current journal before reusing memory. A clean
                 // no-op still takes the acknowledgement path below exactly once.
                 if loaded == current.as_ref()
-                    && (!loaded.has_draft || !live.editor_content_eq(shadow))
+                    && (!loaded.has_draft || !live.editor_content_eq(shadow).map_err(doc_err)?)
                 {
                     return Ok(());
                 }
@@ -97,7 +97,7 @@ impl PageSession {
         // The stronger exact-source semantic fence belongs only to the new Plan tag.
         if blocked.is_none()
             && journal.has_draft
-            && live.editor_content_eq(&shadow)
+            && live.editor_content_eq(&shadow).map_err(doc_err)?
             && self.write_author(engine).is_ok()
         {
             let acknowledged = journal.commit.as_ref().is_some_and(|id| {
@@ -217,13 +217,13 @@ impl PageSession {
                 "the page is still arriving",
             ));
         }
-        Ok(self.binary()?.to_markdown())
+        Ok(self.binary()?.to_markdown().map_err(doc_err)?)
     }
 
     pub(in crate::pages) fn binary_text(&mut self, engine: &Engine) -> R<String> {
         self.refresh(engine)?;
         let document = self.binary()?;
-        let hash = document.content_hash();
+        let hash = document.content_hash().map_err(doc_err)?;
         if let Some((cached_hash, text)) = &self.text {
             if cached_hash == &hash {
                 return Ok(text.clone());
