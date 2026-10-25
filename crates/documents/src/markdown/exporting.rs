@@ -431,9 +431,8 @@ fn fmt_segments(segs: &[(String, CharFmt)], line_start: bool) -> String {
             .collect();
         // Keep the open delimiters that are still wanted (outermost first), close the rest.
         let keep = open.iter().take_while(|d| want.contains(d)).count();
-        while open.len() > keep {
-            let d = open.pop().unwrap();
-            close_delim(&mut out, d);
+        for delimiter in open.drain(keep..).rev() {
+            close_delim(&mut out, delimiter);
         }
         let new: Vec<&'static str> = want.iter().filter(|d| !open.contains(d)).copied().collect();
         // Opening delimiters can't be followed by whitespace: emit it first.
