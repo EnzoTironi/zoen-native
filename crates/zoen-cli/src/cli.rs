@@ -10,9 +10,10 @@ pub(crate) fn usage() -> ! {
          encrypt CHAT                     make a relay-readable chat end-to-end, for good\n\
          add CHAT @HANDLE [--admin]       bring someone in (an admin can add and remove too)\n\
          remove CHAT @HANDLE              take someone out (end-to-end: they read nothing after)\n\
-         keys CHAT                        an end-to-end chat's group: epoch, digest, members\n\
+         keys CHAT [--json]               public MLS epoch/digest/member/device IDs\n\
+         members CHAT [--json]            current public identity IDs and roles\n\
          send CHAT TEXT [--offline]      CHAT = @handle, title or space id\n\
-         read CHAT [--older]              --older: ask your other device for an older page\n\
+         read CHAT [--json] [--peek] [--older]   --peek omits the read watermark; no --older\n\
          agent-keys | agent-init --name N --handle H --owner ID --proof JSON --definition FILE\n\
          agent-host [--for SECS] [--source ID]   source requires --for; no cursor advancement\n\
          agent-inspect [--timeout MS]     read this agent's projected cursors/requests (no execution)\n\

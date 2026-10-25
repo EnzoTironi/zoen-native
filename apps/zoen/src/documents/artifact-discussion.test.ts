@@ -40,6 +40,7 @@ test('actual artifact discussion opens one canonical thread for rapid taps, and 
   const f = fixture();
   const button = f.button(f.render());
   assert.equal(button.props.label, 'documents.discussionCount:2');
+  assert.equal(button.props.wrapLabel, true);
   button.props.onPress();
   button.props.onPress();
   assert.equal(f.pushes.length, 1, 'two taps must not stack duplicate thread screens');
@@ -101,10 +102,12 @@ test('discussion loading, unavailable root and explicit retry do not navigate or
   let tree = f.render();
   assert.equal(f.button(tree).props.disabled, true);
   assert.equal(f.button(tree).props.label, 'documents.loadingDiscussion');
+  assert.equal(f.button(tree).props.wrapLabel, true);
   f.button(tree).props.onPress();
   f.error('Read unavailable');
   tree = f.render();
   assert.equal(f.button(tree).props.label, 'documents.retryDiscussion');
+  assert.equal(f.button(tree).props.wrapLabel, true);
   f.button(tree).props.onPress();
   assert.equal(f.retries(), 1);
   f.error(null);

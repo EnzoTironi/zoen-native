@@ -11,7 +11,8 @@ import * as port from '../miniapps/editor-agent-port.ts';
 import * as formats from '../miniapps/binary-formats.ts';
 import * as heads from '../miniapps/deck-version-selection.ts';
 import { t } from '../i18n/index.ts';
-import type { ItemDetail } from './types';
+import type { ItemDetail, TimelineEntry } from './types';
+import type { AgentRequestDto } from './generated/AgentRequestDto';
 
 const require = createRequire(import.meta.url),
   { transformSync } = require('@babel/core');
@@ -59,6 +60,9 @@ export async function editorAgentReactFixture() {
     unmounts = 0,
     ids = 0,
     presented = false;
+  let editConflict: string | null = null;
+  let remoteEntries: TimelineEntry[] = [],
+    remoteRequests: AgentRequestDto[] = [];
   const document = {
     observedHead: async () => ({ itemId, version: 1, sha256: 'ab'.repeat(32) }),
     flush: async (options?: unknown) => {
@@ -73,9 +77,9 @@ export async function editorAgentReactFixture() {
       case 'snapshot':
         return snapshot;
       case 'requests':
-        return [];
+        return remoteRequests;
       case 'timeline':
-        return { entries: [], before: null, has_more: false };
+        return { entries: remoteEntries, before: null, has_more: false };
       case 'app_binary_read':
         return {
           item_id: itemId,
@@ -88,6 +92,7 @@ export async function editorAgentReactFixture() {
           engine_revision: formats.WORDCRAFT_ENGINE_REVISION,
         };
       case 'request_app_edit':
+        if (editConflict) return { entry: null, conflict: editConflict };
         return {
           entry: { id: 'canonical-request', kind: { Message: { text: command.text, card: null } } },
           conflict: null,
@@ -142,7 +147,11 @@ export async function editorAgentReactFixture() {
     'react/compiler-runtime': require('react/compiler-runtime'),
     'react-native': {
       View: children,
-      Text: () => null,
+      Text: (props: Control) =>
+        React.createElement(Capture, {
+          ...props,
+          testID: typeof props.children === 'string' ? `text:${props.children}` : undefined,
+        }),
       ScrollView: children,
       useWindowDimensions: () => ({ width: 402, height: 874 }),
       AppState: { addEventListener: () => ({ remove() {} }) },
@@ -168,8 +177,14 @@ export async function editorAgentReactFixture() {
       Surface: children,
     },
     '../components/composer-text-field': { ComposerTextField: Capture },
-    '../components/message-markdown': { MessageMarkdown: Capture },
-    '../agents/request-card': { RequestCard: Capture },
+    '../components/message-markdown': {
+      MessageMarkdown: (props: Control) =>
+        React.createElement(Capture, { ...props, testID: `markdown:${props.text}` }),
+    },
+    '../agents/request-card': {
+      RequestCard: (props: Control) =>
+        React.createElement(Capture, { ...props, testID: `review:${props.request.id}` }),
+    },
     './app-sheet-context': {
       useAppSheetCloseButton: () => ({ top: 48, right: 12, width: 44, height: 44 }),
     },
@@ -228,6 +243,14 @@ export async function editorAgentReactFixture() {
     snapshot,
     calls,
     routes,
+    coreConflict(reason: string | null) {
+      editConflict = reason;
+    },
+    remote(entries: TimelineEntry[], requests: AgentRequestDto[] = []) {
+      remoteEntries = entries;
+      remoteRequests = requests;
+      driver.changed?.({ kind: 'change', spaceIds: [space] });
+    },
     errors: root.errors,
     controls,
     render: () => root.render(React.createElement(screen.MiniappScreen)),

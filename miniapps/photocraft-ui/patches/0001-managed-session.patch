@@ -11,10 +11,9 @@ index 0ee0573..ba1bec4 100644
          // Params are named fields: anything but an object (or null, meaning none) is a caller
          // mistake, not "use every default".
 diff --git a/crates/engine/src/lib.rs b/crates/engine/src/lib.rs
-index ba75569..416648c 100644
 --- a/crates/engine/src/lib.rs
 +++ b/crates/engine/src/lib.rs
-@@ -436,8 +436,14 @@ pub struct CopiedStyle {
+@@ -436,8 +436,14 @@
  /// or fill layer) is known only when they run.
  pub const PRECHECKED: &[&str] = &["layer.new.layer", "layer.new.group", "layer.new.groupFromLayers", "layer.new.layerFromBackground"];
  
@@ -29,7 +28,7 @@ index ba75569..416648c 100644
      docs: Vec<DocState>,
      active: Option<usize>,
      pub tools: ToolState,
-@@ -743,6 +749,9 @@ impl Session {
+@@ -743,6 +749,9 @@
  
      /// [`Self::disabled_reason`] for a call with `params`.
      pub fn disabled_reason_with(&self, id: &str, params: &Value) -> Option<String> {
@@ -39,15 +38,39 @@ index ba75569..416648c 100644
          let Some(s) = commands::find(id) else { return Some(format!("unknown command `{id}`")) };
          self.precondition(s, &channel_cmds::inject_target(self, id, params.clone())).err().or_else(|| self.job_conflict(id, s.journal))
      }
-@@ -788,6 +797,7 @@ impl Session {
+@@ -786,8 +795,31 @@
+         Some(r)
+     }
  
++    /// Receive a checked canonical version on this same paused managed document.
++    /// The host owns scope/head/CAS validation. This only records a normal history step.
++    pub fn receive_managed_document(&mut self, doc: Document) -> Result<()> {
++        if self.managed_binding.is_none() || !self.managed_frozen || self.active_job().is_some()
++            || self.active().is_none_or(|state| state.doc.id != doc.id)
++        {
++            return Err(EngineError::Other("managed refresh is unavailable".into()));
++        }
++        if self.active().is_some_and(|state| *state.doc == doc) { return Ok(()); }
++        // Canonical bytes are a complete edit, never coalesced with a human brush
++        // or restricted to an old color-channel/transform gesture.
++        self.coalesce_request = None;
++        self.color_restrict = None;
++        self.sampler_map = None;
++        self.edit_inner("Document update", |current, _active| { *current = doc; Ok(()) })
++    }
++
      /// Apply an undoable edit to the active document.
      pub fn edit<R>(&mut self, label: &str, f: impl FnOnce(&mut Document, &mut Option<LayerId>) -> Result<R>) -> Result<R> {
 +        if self.managed_frozen { return Err(EngineError::Other("managed canvas is paused".into())); }
++        self.edit_inner(label, f)
++    }
++
++    // Shared implementation; only the checked managed receiver may enter while paused.
++    fn edit_inner<R>(&mut self, label: &str, f: impl FnOnce(&mut Document, &mut Option<LayerId>) -> Result<R>) -> Result<R> {
          // Every mutation path (linked-file refresh, transform, place) re-renders smart objects
          // through this entry; the requesting session's authority must reach those renders.
          let _authorization = crate::jobs::render_authorization_scope(self.authorize);
-@@ -920,6 +930,7 @@ impl Session {
+@@ -920,6 +952,7 @@
      }
  
      pub fn undo(&mut self) -> bool {
@@ -55,7 +78,7 @@ index ba75569..416648c 100644
          // A background job is computing from the current state: it must not move under it.
          if self.active_job().is_some() {
              return false;
-@@ -946,6 +957,7 @@ impl Session {
+@@ -946,6 +979,7 @@
      }
  
      pub fn redo(&mut self) -> bool {

@@ -122,7 +122,7 @@ test('queued and in-flight head reads cannot return after their owner retires', 
   await assert.rejects(observe());
 });
 
-test('observed head is absent outside editable Word and unopened Word never calls the guest', async () => {
+test('observed head is absent outside capable editable formats and unopened editors never calls the guest', async () => {
   for (const editor of ['deckcraft', 'gridcraft', 'photocraft', 'wordcraft'] as BinaryEditorId[]) {
     for (const historical of [false, true]) {
       let calls = 0;
@@ -150,7 +150,7 @@ test('observed head is absent outside editable Word and unopened Word never call
         share: async () => {},
         onState: () => {},
       });
-      if (editor === 'wordcraft' && !historical) {
+      if (format.liveReview && !historical) {
         assert.ok(session.controller.observedHead);
         await assert.rejects(session.controller.observedHead());
       } else assert.equal(session.controller.observedHead, undefined);

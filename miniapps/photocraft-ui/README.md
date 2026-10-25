@@ -25,6 +25,18 @@ Session after its earlier proposal is acknowledged. Export reads the explicitly
 accepted head, including when newer pixels remain unsaved. A rejected transform
 restores the entire prior DocState, including Undo, before returning an error.
 
+Live review uses the shared format capability and the existing editor agent
+sheet. The host reads the head installed in the exact guest before requesting an
+agent edit; a newer Core head alone cannot stand in for the visible document.
+Receiving a newer clean canonical revision keeps the same Session/binding and
+records one normal upstream Undo step. Replacement requires an acknowledged
+pause, the same native document identity, no active job and no local/pending
+work. Ordinary human edits cannot enter while frozen. Undo changes the live
+project and becomes a new checkpoint/CAS; it never rewrites an earlier version.
+The incoming accepted bytes remain the export baseline until that Undo save is
+acknowledged. Drafts, pending receipts, stale heads and changed owners refuse
+replacement. No file reload, second history or independent pixel state is used.
+
 The public pause retains FIFO admission and lets queued final input reach the UI
 before deciding whether freezing is safe. Active gestures/composition are still
 refused. A hidden viewport cannot acknowledge a pause while retaining raw input.
@@ -153,6 +165,11 @@ consumer/native build, measured memory/usability, broader lossless profiles and
 reviewed PNG import. The browser package includes the shared owner-cleanup fix;
 full browser reopen and retirement passed. Do not claim complete upstream editing parity or a live
 service from this integration.
+
+The separate [live-review qualification](live-review-qualification.json) records
+the same-Session refresh/Undo repair, causal old-package failure and current
+Chromium/WebKit proof. Its retained WASI producer and pending iPhone/model-turn
+acceptance are stated separately; it does not replace the earlier evidence.
 
 ## Provenance
 

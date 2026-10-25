@@ -2,8 +2,10 @@
 //! the hard rules look for. Hand-rolled scanners (no regex dependency in the core).
 
 /// Replaces emails, phone numbers, card-like numbers, CPF and API-key-looking tokens.
+#[must_use]
 pub fn redact(text: &str) -> String {
-    text.split_inclusive(|c: char| c.is_whitespace())
+    let redacted = text
+        .split_inclusive(|c: char| c.is_whitespace())
         .map(|chunk| {
             let (word, ws) = split_trailing_ws(chunk);
             let core = word.trim_matches(|c: char| ",.;:!?()[]{}<>\"'".contains(c));
@@ -11,62 +13,50 @@ pub fn redact(text: &str) -> String {
             match replacement {
                 // Emails keep their domain: "where does this go" is the exfiltration signal,
                 // the mailbox name is the personal part.
-                Some("[email]") => format!(
+                Some(Token::Email(domain)) => format!(
                     "{}{}",
-                    word.replacen(
-                        core,
-                        &format!("[user]@{}", core.split_once('@').map(|x| x.1).unwrap_or("")),
-                        1
-                    ),
+                    word.replacen(core, &format!("[user]@{domain}"), 1),
                     ws
                 ),
-                Some(tag) => format!("{}{}", word.replacen(core, tag, 1), ws),
+                Some(Token::Secret) => format!("{}{}", word.replacen(core, "[secret]", 1), ws),
                 None => chunk.to_string(),
             }
         })
-        .collect::<String>()
-        .pipe(redact_digit_runs)
+        .collect::<String>();
+    redact_digit_runs(&redacted)
 }
-
-trait Pipe: Sized {
-    fn pipe<F: FnOnce(Self) -> Self>(self, f: F) -> Self {
-        f(self)
-    }
-}
-impl Pipe for String {}
 
 fn split_trailing_ws(s: &str) -> (&str, &str) {
     let i = s.trim_end().len();
     (&s[..i], &s[i..])
 }
 
-fn classify_token(t: &str) -> Option<&'static str> {
-    if t.is_empty() {
-        return None;
-    }
-    if is_email(t) {
-        return Some("[email]");
-    } // replaced below, keeping the domain
-    if looks_like_secret(t) {
-        return Some("[secret]");
-    }
-    None
+enum Token<'a> {
+    Email(&'a str),
+    Secret,
 }
 
-fn is_email(t: &str) -> bool {
-    let Some((user, host)) = t.split_once('@') else {
-        return false;
-    };
-    !user.is_empty()
+fn classify_token(t: &str) -> Option<Token<'_>> {
+    if let Some(domain) = email_domain(t) {
+        return Some(Token::Email(domain));
+    }
+    looks_like_secret(t).then_some(Token::Secret)
+}
+
+fn email_domain(t: &str) -> Option<&str> {
+    let (user, host) = t.split_once('@')?;
+    (!user.is_empty()
         && host.contains('.')
         && !host.starts_with('.')
         && !host.ends_with('.')
         && host
             .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-'))
+    .then_some(host)
 }
 
 /// sk-…, ghp_…, AKIA…, xoxb-…, long base64/hex blobs.
+#[must_use]
 pub fn looks_like_secret(t: &str) -> bool {
     let prefixes = [
         "sk-",
@@ -92,6 +82,7 @@ pub fn looks_like_secret(t: &str) -> bool {
 }
 
 /// Text that contains a credential (hard rule, no model call).
+#[must_use]
 pub fn contains_secret(text: &str) -> bool {
     text.contains("BEGIN PRIVATE KEY")
         || text.contains("BEGIN RSA PRIVATE KEY")
@@ -103,13 +94,13 @@ pub fn contains_secret(text: &str) -> bool {
 
 /// Runs of 9+ digits (allowing spaces, dots, dashes, parentheses, a leading +): phones,
 /// card numbers, CPF. Card numbers that pass Luhn become [card].
-fn redact_digit_runs(s: String) -> String {
+fn redact_digit_runs(s: &str) -> String {
     let chars: Vec<char> = s.chars().collect();
     let mut out = String::with_capacity(s.len());
     let mut i = 0;
     while i < chars.len() {
         if chars[i].is_ascii_digit()
-            || (chars[i] == '+' && chars.get(i + 1).is_some_and(|c| c.is_ascii_digit()))
+            || (chars[i] == '+' && chars.get(i + 1).is_some_and(char::is_ascii_digit))
         {
             let start = i;
             let mut j = i;
@@ -157,24 +148,35 @@ fn redact_digit_runs(s: String) -> String {
     out
 }
 
+/// Validates a nonempty ASCII digit sequence. Formatting belongs to the caller.
+/// Keep only the remainder so input length cannot overflow the checksum sum.
+#[must_use]
 pub fn luhn(digits: &str) -> bool {
-    let mut sum = 0;
-    for (i, c) in digits.chars().rev().enumerate() {
-        let mut d = c.to_digit(10).unwrap_or(0);
+    if digits.is_empty() {
+        return false;
+    }
+    let mut sum = 0_u8;
+    for (i, byte) in digits.bytes().rev().enumerate() {
+        if !byte.is_ascii_digit() {
+            return false;
+        }
+        let mut digit = byte - b'0';
         if i % 2 == 1 {
-            d *= 2;
-            if d > 9 {
-                d -= 9;
+            digit *= 2;
+            if digit > 9 {
+                digit -= 9;
             }
         }
-        sum += d;
+        // Both terms are at most nine; this addition cannot overflow u8.
+        sum = (sum + digit) % 10;
     }
-    sum % 10 == 0
+    sum == 0
 }
 
 /// Card number anywhere in the text (hard rule for outbound messages).
+#[must_use]
 pub fn contains_card(text: &str) -> bool {
-    redact_digit_runs(text.to_string()).contains("[card]")
+    redact_digit_runs(text).contains("[card]")
 }
 
 #[cfg(test)]
@@ -195,5 +197,53 @@ mod tests {
     fn leaves_ordinary_text_alone() {
         let s = "8:15 Marina · Hayes Valley, 9.5 mi, 1,100 ft";
         assert_eq!(redact(s), s);
+    }
+
+    #[test]
+    fn luhn_requires_nonempty_ascii_digits_without_substituting_zero() {
+        for invalid in [
+            "",
+            "x",
+            "0x",
+            "4242 4242 4242 4242",
+            "４２４２",
+            "٤٢٤٢",
+            "0\0",
+        ] {
+            assert!(!luhn(invalid), "invalid checksum input: {invalid:?}");
+        }
+        assert!(luhn("0"));
+        assert!(luhn("4242424242424242"));
+        assert!(!luhn("4242424242424243"));
+    }
+
+    #[test]
+    fn luhn_keeps_only_the_checksum_remainder_for_long_inputs() {
+        let valid = "4242424242424242".repeat(4096);
+        assert!(luhn(&valid));
+        let mut invalid = valid;
+        invalid.pop();
+        invalid.push('3');
+        assert!(!luhn(&invalid));
+    }
+
+    #[test]
+    fn redaction_preserves_unicode_punctuation_whitespace_and_exact_domain() {
+        assert_eq!(
+            redact("Olá, (ç@sub.example.org),\tana@example.com!\r\n"),
+            "Olá, ([user]@sub.example.org),\t[user]@example.com!\r\n",
+        );
+        for invalid in [
+            "@example.org",
+            "a@.example.org",
+            "a@example.",
+            "a@exämple.org",
+        ] {
+            assert_eq!(redact(invalid), invalid);
+        }
+        assert_eq!(
+            redact("card 4242 4242 4242 4242, CPF 123.456.789-09"),
+            "card [card], CPF [cpf]"
+        );
     }
 }
