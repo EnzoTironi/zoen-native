@@ -1,7 +1,7 @@
 //! Verify the existing factory's public App-ID preimage, not original plaintext
 //! or historical bytes. No receipt key, seed hash or old file key is disclosed.
 use super::*;
-use types::AppItemOrigin;
+use types::{AppItemOrigin, ItemContent};
 fn proof_valid(
     proof: &AppItemOrigin,
     app: &AppDoc,

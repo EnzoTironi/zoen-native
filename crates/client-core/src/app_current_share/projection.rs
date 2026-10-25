@@ -29,7 +29,7 @@ impl State {
         context: &BeforeEvent,
     ) -> Projection {
         if !context.app_share_refs_valid()
-            || share.schema != 1
+            || share.schema != 2
             || !token(&share.item)
             || !token(&share.mutation)
             || !token(&share.grant.id)

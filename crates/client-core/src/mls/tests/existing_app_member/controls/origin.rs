@@ -52,7 +52,7 @@ fn legacy_creator_receipt_shares_only_current_bytes_and_prior_share_preserves_pu
 }
 #[test]
 fn legacy_without_receipt_or_public_proof_is_explicitly_unavailable_without_writes() -> R<()> {
-    let mut f = late_word_mode(":memory:", ":memory:", true)?;
+    let f = late_word_mode(":memory:", ":memory:", true)?;
     forget_creation_receipt(&f)?;
     let before = counts(&f.owner);
     let result = context(&f);

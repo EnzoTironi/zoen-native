@@ -68,6 +68,7 @@ fn sealed_intent(f: &LateWord, mut share: AppCurrentShare, id: &str) -> R<(Seque
 fn malformed_or_overprivileged_snapshot_rejects_item_and_grant_together() -> R<()> {
     for case in [
         "schema",
+        "schema_one",
         "version",
         "target",
         "scope",
@@ -87,6 +88,7 @@ fn malformed_or_overprivileged_snapshot_rejects_item_and_grant_together() -> R<(
         let mut share = template(&mut f)?;
         match case {
             "schema" => share.schema = 0,
+            "schema_one" => share.schema = 1,
             "version" => share.version = 0,
             "target" => share.target = "not_a_member".into(),
             "scope" => share.grant.scope = types::GrantScope::Space(SPACE.into()),
