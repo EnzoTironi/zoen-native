@@ -41,6 +41,7 @@ use messages::{
     owner_note, selected_owner_note, selected_proposal, selected_reply, tell_owner, text_of,
     turn_note,
 };
+pub(crate) mod controls;
 mod image_ipc;
 mod image_tools;
 mod journal;
@@ -233,7 +234,7 @@ pub async fn host(
             .map_err(|_| "agent_host_source_readiness_unavailable")?;
     }
     let _image_worker = (!scoped).then(|| image_tools::start(e, &cx));
-    let _owner_controls = (!scoped).then(|| owner_policy::start(e, &cx));
+    let _owner_controls = (!scoped).then(|| owner_policy::start(e, &cx.me, &cx.device));
     let mut known: BTreeSet<String> = cursors.keys().cloned().collect();
     say(format_args!("agent @{} hosting", acct.handle));
 

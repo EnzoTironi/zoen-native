@@ -12,7 +12,7 @@ fn encoded() -> Vec<u8> {
 
 #[test]
 fn only_enrollment_and_host_share_the_lifetime_lock() {
-    for name in [REQUEST, WAIT, CANCEL, "agent-host"] {
+    for name in [REQUEST, WAIT, CANCEL, "agent-host", "agent-controls"] {
         assert!(requires_home_lock(name));
     }
     for name in ["agent-init", "agent-keys", "status", "agent-enroll"] {
