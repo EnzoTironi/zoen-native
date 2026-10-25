@@ -43,6 +43,9 @@ fn receive_wanted(agent: &mut Engine, blobs: &HashMap<String, Vec<u8>>) -> R<()>
 }
 
 fn late_word(owner_path: &str, agent_path: &str) -> R<LateWord> {
+    late_word_mode(owner_path, agent_path, false)
+}
+fn late_word_mode(owner_path: &str, agent_path: &str, legacy: bool) -> R<LateWord> {
     let (mut owner, author, owner_secret) = member(owner_path);
     let mut agent = Engine::open(agent_path)?;
     let root = [93; 32];
@@ -86,6 +89,52 @@ fn late_word(owner_path: &str, agent_path: &str) -> R<LateWord> {
         &base64::engine::general_purpose::STANDARD.encode(wordcraft::EMPTY),
         "before_join",
     )?;
+    if legacy {
+        // Reproduce the old canonical producer bytes with a genuine signature
+        // before sealing/publication; no Item or MLS state is fabricated.
+        let row = owner
+            .store
+            .outbox()?
+            .into_iter()
+            .find(|r| {
+                matches!(&r.event.body,
+            EventBody::ItemCreated { item, .. } if item == &created.item_id)
+            })
+            .ok_or_else(|| storage("original App creation intent"))?;
+        let mut body = row.event.body.clone();
+        if let EventBody::ItemCreated {
+            content: ItemContent::App(app),
+            ..
+        } = &mut body
+        {
+            app.document
+                .as_mut()
+                .ok_or_else(|| storage("owned document"))?
+                .app_origin = None;
+        }
+        let old = author.sign_event(
+            SPACE,
+            &row.event.client_id,
+            row.event.at_ms,
+            row.event.seen.clone(),
+            body,
+        );
+        // outbox_put is intentionally insert-only. Install these re-signed old
+        // producer bytes in this private, not-yet-published row without changing
+        // its FIFO position or any canonical/MLS state.
+        owner
+            .store
+            .conn()
+            .execute(
+                "UPDATE outbox SET json=?1 WHERE client_id=?2",
+                rusqlite::params![
+                    serde_json::to_string(&old).map_err(|e| storage(&e.to_string()))?,
+                    old.client_id
+                ],
+            )
+            .map_err(|e| storage(&e.to_string()))?;
+        owner.reproject_approval_overlay()?;
+    }
     let original_root = owner
         .item_discussion(SPACE, &created.item_id)?
         .root

@@ -3,6 +3,7 @@ use crate::{engine::*, i18n::t, Client, CoreError, TimelineEntry};
 use serde::{Deserialize, Serialize};
 use types::{AppCurrentShare, AppDoc, AppShareRef, Event, EventBody};
 
+mod origin;
 mod producer;
 mod projection;
 
@@ -74,12 +75,16 @@ pub(crate) fn readable_head(prefix: &[Event], event: &Event) -> Option<SharedVer
             item,
             content: types::ItemContent::App(app),
             note,
-        } if item == &share.item && app == &share.content => (note.clone(), false),
+        } if item == &share.item && origin::same_document(app, &share.content) => {
+            (note.clone(), false)
+        }
         EventBody::ItemCreated {
             item,
             content: types::ItemContent::App(app),
             ..
-        } if item == &share.item && app == &share.content => (t("Criado", "Created"), false),
+        } if item == &share.item && origin::same_document(app, &share.content) => {
+            (t("Criado", "Created"), false)
+        }
         EventBody::ItemReverted { item, note, .. } if item == &share.item => (note.clone(), true),
         _ => return None,
     };
@@ -180,6 +185,7 @@ pub(crate) fn references_valid(prefix: &[Event], event: &Event) -> bool {
         if kind == event_log::content::SealedKind::Application.name())
     };
     event.seen.as_ref() == Some(&share.cut)
+        && origin::valid(&share.content, &share.creation, &event.space, &share.item)
         && current_prefix(prefix, share)
         && prefix
             .last()

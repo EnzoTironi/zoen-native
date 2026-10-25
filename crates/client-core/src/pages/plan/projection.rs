@@ -148,12 +148,9 @@ impl<'a> PlanReplay<'a> {
         let mut positions: HashMap<(SpaceId, ItemId), Vec<usize>> = HashMap::new();
         for (space, log) in self.logs {
             for (index, event) in log.events().iter().enumerate() {
-                let origin = match &event.body {
-                    EventBody::ItemCreated { item, .. } => Some(item),
-                    EventBody::AppCurrentShared { share } => Some(&share.item),
-                    _ => None,
-                };
-                if let Some(item) = origin {
+                // A snapshot is not an origin merely because it was retained.
+                // Its namespace proof is checked by the sharing projector.
+                if let EventBody::ItemCreated { item, .. } = &event.body {
                     origins
                         .entry(item.clone())
                         .or_default()

@@ -2,6 +2,7 @@
 //! only the reviewed producer. No fabricated MLS state or imported past keys.
 use super::*;
 use types::AppCurrentShare;
+mod continuity;
 
 pub(super) fn template(f: &mut LateWord) -> R<AppCurrentShare> {
     receipt(f, "template")?;
@@ -16,7 +17,10 @@ pub(super) fn template(f: &mut LateWord) -> R<AppCurrentShare> {
         .ok_or_else(|| storage("actual pending canonical share"))
 }
 
-fn sealed(f: &LateWord, mut share: AppCurrentShare, id: &str) -> R<Sequenced> {
+fn sealed(f: &LateWord, share: AppCurrentShare, id: &str) -> R<Sequenced> {
+    sealed_intent(f, share, id).map(|(frame, _)| frame)
+}
+fn sealed_intent(f: &LateWord, mut share: AppCurrentShare, id: &str) -> R<(Sequenced, Event)> {
     let author = f
         .owner
         .net
@@ -46,7 +50,7 @@ fn sealed(f: &LateWord, mut share: AppCurrentShare, id: &str) -> R<Sequenced> {
             .encode(),
         )
         .map_err(|e| storage(&e.to_string()))?;
-    Ok(ordered(
+    let frame = ordered(
         &f.agent,
         Envelope::sealed(
             author,
@@ -56,19 +60,35 @@ fn sealed(f: &LateWord, mut share: AppCurrentShare, id: &str) -> R<Sequenced> {
             e.seen.as_ref(),
             event_log::content::Sealed::new(SealedKind::Application, SUITE_ID, data),
         ),
-    ))
+    );
+    Ok((frame, e))
 }
 
 #[test]
 fn malformed_or_overprivileged_snapshot_rejects_item_and_grant_together() -> R<()> {
     for case in [
-        "schema", "version", "target", "scope", "trust", "issuer", "registry", "anchor", "cut",
+        "schema",
+        "schema_one",
+        "version",
+        "target",
+        "scope",
+        "trust",
+        "issuer",
+        "registry",
+        "anchor",
+        "cut",
         "epoch",
+        "origin_absent",
+        "origin_space",
+        "origin_device",
+        "origin_author",
+        "origin_mutation",
     ] {
         let mut f = late_word(":memory:", ":memory:")?;
         let mut share = template(&mut f)?;
         match case {
             "schema" => share.schema = 0,
+            "schema_one" => share.schema = 1,
             "version" => share.version = 0,
             "target" => share.target = "not_a_member".into(),
             "scope" => share.grant.scope = types::GrantScope::Space(SPACE.into()),
@@ -79,7 +99,24 @@ fn malformed_or_overprivileged_snapshot_rejects_item_and_grant_together() -> R<(
             "registry" => share.content.resource_uri = "ui://foreign.html".into(),
             "anchor" => share.anchor.hash = "00".repeat(32),
             "cut" => share.cut.hash = "00".repeat(32),
-            _ => share.epoch = share.epoch.map(|epoch| epoch + 1),
+            "epoch" => share.epoch = share.epoch.map(|epoch| epoch + 1),
+            "origin_absent" => share.content.document.as_mut().unwrap().app_origin = None,
+            field => {
+                let proof = share
+                    .content
+                    .document
+                    .as_mut()
+                    .unwrap()
+                    .app_origin
+                    .as_mut()
+                    .unwrap();
+                match field {
+                    "origin_space" => proof.space = "foreign".into(),
+                    "origin_device" => proof.device = "foreign".into(),
+                    "origin_author" => proof.author = "foreign".into(),
+                    _ => proof.mutation = "foreign".into(),
+                }
+            }
         }
         let before = counts(&f.agent);
         let frame = sealed(&f, share, case)?;

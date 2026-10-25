@@ -99,13 +99,16 @@ impl Engine {
             .state
             .app_trust_baseline(&scope.item_id)
             .ok_or_else(refused)?;
+        let mut content = content.clone();
+        let origin = self.app_share_origin(&scope.item_id, &scope.space_id, &creation)?;
+        content.document.as_mut().ok_or_else(refused)?.app_origin = Some(origin);
         Ok(AppCurrentShare {
-            schema: 1,
+            schema: 2,
             item: scope.item_id.clone(),
             target: scope.target_id.clone(),
             mutation: String::new(),
             version: current.number,
-            content: content.clone(),
+            content,
             creation,
             head,
             anchor,
