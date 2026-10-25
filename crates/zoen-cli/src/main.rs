@@ -225,6 +225,8 @@ async fn main() {
         usage();
     }
     let cmd = cli.args.remove(0);
+    agent::controls::preflight(&cmd, &std::env::args().skip(1).collect::<Vec<_>>(), &home)
+        .unwrap_or_else(|error| die(error));
     let agent_source = if cmd == "agent-host" {
         agent::Source::parse(&std::env::args().skip(1).collect::<Vec<_>>())
             .unwrap_or_else(|error| die(error))
@@ -256,7 +258,7 @@ async fn main() {
     } else {
         None
     };
-    let agent_readiness = if cmd == "agent-host" {
+    let agent_readiness = if matches!(cmd.as_str(), "agent-host" | agent::controls::COMMAND) {
         Some(
             agent::Readiness::reset(
                 &home,
@@ -534,8 +536,9 @@ async fn main() {
     }
 
     match cmd.as_str() {
-        "agent-host" => {
-            if let Err(error) = agent::host(
+        "agent-host" | agent::controls::COMMAND => {
+            if let Err(error) = agent::controls::dispatch(
+                &cmd,
                 &e,
                 &home,
                 agent_readiness.as_ref().expect("agent-host readiness"),

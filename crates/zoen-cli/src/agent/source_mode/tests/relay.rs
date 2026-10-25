@@ -26,6 +26,8 @@ impl SecretVault for Vault {
 #[derive(Clone, Copy)]
 pub(super) enum Mode {
     Normal,
+    Paused,
+    Revoked,
     CursorAck,
     Unsynced,
     InvalidStatus,
@@ -225,7 +227,7 @@ pub(super) async fn relay(mode: Mode) -> Relay {
                         } => {
                             seen.lock().unwrap().push("agent_state");
                             let result = Ok(Reply::AgentState(AgentStateRecord {
-                                status: if matches!(mode, Mode::InvalidStatus) { "future-status" } else { "active" }.into(),
+                                status: match mode { Mode::InvalidStatus => "future-status", Mode::Paused => "paused", Mode::Revoked => "revoked", _ => "active" }.into(),
                                 kind: if matches!(mode, Mode::InvalidKind) { "future-kind" } else if matches!(mode, Mode::DefinitionKindMismatch) { "Creator" } else { "User" }.into(),
                                 definition_version: if matches!(mode, Mode::DefinitionVersionMismatch) { 3 } else { 2 },
                                 definition: br#"{"version":2,"kind":"user","persona":"Synthetic source fixture","rules":[],"state":{},"model_tier":"cheap"}"#.to_vec(),
