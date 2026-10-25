@@ -62,6 +62,7 @@ fn addition_is_only_member_once_and_pending_is_not_joined() -> TestResult<()> {
         let joined = read(&f, &id)?;
         assert_eq!(joined.state, MemberActionState::Active);
         assert_eq!(joined.role.as_deref(), Some("member"));
+        assert!(joined.delivery_ready);
         assert!(!joined.can_add);
         assert!(add(&f, &id, &review.revision).is_err());
         let e = f.client.lock();

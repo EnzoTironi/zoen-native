@@ -13,6 +13,7 @@ export function additionContext(): SpaceMemberContext {
     member: null,
     can_remove: false,
     can_add: true,
+    delivery_ready: false,
     candidate: { ...current.member!, kind: 'Agent' },
   };
 }

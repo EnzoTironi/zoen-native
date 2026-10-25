@@ -131,3 +131,59 @@ test('actual member hook owns addition review across background, blur and accoun
     await f.close();
   }
 });
+
+test('Driver.change and foreground reconcile confirmed member delivery readiness without another add', async () => {
+  const f = await memberHookReactFixture();
+  try {
+    f.snapshot.conversations[0]!.members = f.snapshot.conversations[0]!.members.filter(
+      (person) => person.id !== peer,
+    );
+    f.memberState({
+      state: 'Removed',
+      can_add: true,
+      delivery_ready: false,
+      member: null,
+      role: null,
+      candidate: f.value().member,
+    });
+    await f.render();
+    await f.act(() => f.current().addition.open());
+    await f.act(() =>
+      f.current().addition.select(peer, async () => true, f.current().addition.ticket()),
+    );
+    assert.equal(f.current().additionState.selected?.state, 'Updating');
+    const writes = () => f.calls.filter((c) => c.op === 'add_member_reviewed').length;
+    assert.equal(writes(), 1);
+    await f.act(() => {
+      f.memberState({
+        state: 'Active',
+        can_add: false,
+        delivery_ready: false,
+        revision: '2'.repeat(64),
+      });
+      f.canonicalChange();
+    });
+    assert.equal(f.current().additionState.selected?.state, 'Active');
+    assert.equal(f.current().additionState.selected?.delivery_ready, false);
+    assert.equal(writes(), 1);
+    await f.act(() => {
+      f.memberState({
+        state: 'Active',
+        can_add: false,
+        delivery_ready: true,
+        revision: '3'.repeat(64),
+      });
+      f.canonicalChange();
+    });
+    assert.equal(f.current().additionState.selected?.delivery_ready, true);
+    assert.equal(writes(), 1);
+    await f.act(() => f.foreground('background'));
+    await f.act(() => f.foreground('active'));
+    await f.act(() => f.current().addition.open());
+    assert.equal(f.current().additionState.results[0]?.delivery_ready, true);
+    assert.equal(writes(), 1);
+    assert.deepEqual(f.errors, []);
+  } finally {
+    await f.close();
+  }
+});

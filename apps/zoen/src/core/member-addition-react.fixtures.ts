@@ -31,6 +31,7 @@ export async function memberAdditionReactFixture() {
   const routes: unknown[] = [],
     confirmations: unknown[] = [];
   let sheet: Sheet | null = null;
+  const texts = new Map<object, string>();
   let answer: (options: unknown) => Promise<boolean> = async () => true;
   const useCapture = (id: string, props: Action) => {
     React.useLayoutEffect(() => {
@@ -67,7 +68,19 @@ export async function memberAdditionReactFixture() {
     },
     'react-native': {
       View: children,
-      Text: () => null,
+      Text: ({ children }: { children?: React.ReactNode }) => {
+        const token = React.useRef({}).current;
+        const text = React.Children.toArray(children)
+          .filter((child) => typeof child === 'string')
+          .join(' ');
+        React.useLayoutEffect(() => {
+          texts.set(token, text);
+          return () => {
+            texts.delete(token);
+          };
+        }, [token, text]);
+        return null;
+      },
       Pressable: (props: Action & { testID: string; children?: React.ReactNode }) => {
         useCapture(props.testID, props);
         return children(props);
@@ -118,6 +131,7 @@ export async function memberAdditionReactFixture() {
     ...f,
     routes,
     confirmations,
+    text: () => [...texts.values()].join(' '),
     render: () => root.render(React.createElement(Surface)),
     act: root.act,
     errors: root.errors,

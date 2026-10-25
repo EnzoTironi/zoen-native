@@ -105,6 +105,11 @@ impl Engine {
         };
         let person =
             (target_role.is_some() || projected(member).is_some()).then(|| self.persona(member));
+        let delivery_ready = target_role.is_some()
+            && (!self.is_e2e(space)
+                || self
+                    .mls_status(space)
+                    .is_some_and(|(_, _, members)| members.iter().any(|id| id == member)));
         let can_manage_members = matches!(actor_role, Role::Owner | Role::Admin)
             && matches!(projected(identity), Some(Role::Owner | Role::Admin));
         let candidate = (target_role.is_none() && self.identities.contains_key(member))
@@ -170,6 +175,7 @@ impl Engine {
             member_cut.map(|event| &event.hash),
             failure,
             addition_failure,
+            delivery_ready,
             candidate
                 .as_ref()
                 .map(|p| (&p.name, &p.handle, &p.kind, &p.owner_id)),
@@ -194,6 +200,7 @@ impl Engine {
             can_remove,
             can_manage_members,
             can_add,
+            delivery_ready,
             candidate,
             addition_failed: addition_failure.is_some(),
             removal_failed: failure.is_some(),

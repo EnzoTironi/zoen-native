@@ -107,3 +107,47 @@ test('real failed join keeps the typed search and selected profile for explicit 
     await f.close();
   }
 });
+
+test('confirmed association says Connecting until observed MLS delivery readiness, then Added without resending', async () => {
+  const f = await memberAdditionReactFixture();
+  try {
+    await f.render();
+    await f.open();
+    await f.press(`member-add-${peer}`);
+    assert.match(f.text(), /community.adding/);
+    await f.act(async () => {
+      f.value({
+        ...additionContext(),
+        state: 'Active',
+        can_add: false,
+        delivery_ready: false,
+        member: additionContext().candidate,
+        role: 'member',
+        revision: '2'.repeat(64),
+      });
+      await f.session.refresh();
+    });
+    assert.match(f.text(), /community.connecting/);
+    assert.doesNotMatch(f.text(), /community.added|community.alreadyMember/);
+    assert.equal(f.control(`member-add-${peer}`).disabled, true);
+    await f.act(async () => {
+      f.value({
+        ...additionContext(),
+        state: 'Active',
+        can_add: false,
+        delivery_ready: true,
+        member: additionContext().candidate,
+        role: 'member',
+        revision: '3'.repeat(64),
+      });
+      await f.session.refresh();
+    });
+    assert.match(f.text(), /community.added/);
+    assert.doesNotMatch(f.text(), /community.connecting/);
+    assert.equal(f.writes.length, 1);
+    assert.deepEqual(f.errors, []);
+  } finally {
+    await f.act(() => f.session.retire());
+    await f.close();
+  }
+});

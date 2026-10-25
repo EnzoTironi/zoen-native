@@ -43,6 +43,7 @@ export async function memberHookReactFixture() {
   room.members.push(context().member!);
   const calls: any[] = [];
   let nextRead: Promise<SpaceMemberContext> | null = null;
+  let candidateState: SpaceMemberContext | null = null;
   const value = () => ({
     ...context(),
     space_id: room.id,
@@ -62,21 +63,26 @@ export async function memberHookReactFixture() {
         };
       const pending = nextRead;
       nextRead = null;
-      return pending ?? value();
+      return pending ?? candidateState ?? value();
     }
     if (command.op === 'find_member_candidates')
-      return [
-        {
-          ...value(),
-          state: 'Removed',
-          can_add: true,
-          member: null,
-          role: null,
-          candidate: value().member,
-        },
-      ];
-    if (command.op === 'add_member_reviewed')
-      return { ...value(), can_add: false, state: 'Updating' };
+      return candidateState
+        ? [candidateState]
+        : [
+            {
+              ...value(),
+              state: 'Removed',
+              can_add: true,
+              delivery_ready: false,
+              member: null,
+              role: null,
+              candidate: value().member,
+            },
+          ];
+    if (command.op === 'add_member_reviewed') {
+      candidateState = { ...value(), can_add: false, delivery_ready: false, state: 'Updating' };
+      return candidateState;
+    }
     if (command.op === 'remove_member_reviewed')
       return { ...value(), state: 'Removing', can_remove: false };
     throw Error(`Unexpected member operation ${command.op}`);
@@ -186,6 +192,12 @@ export async function memberHookReactFixture() {
         controller?.session.open(peer);
       }),
     value,
+    memberState(next: Partial<SpaceMemberContext>) {
+      candidateState = { ...value(), ...next };
+    },
+    canonicalChange() {
+      driver.changed?.({ kind: 'change', spaceIds: [room.id] });
+    },
     read(pending: Promise<SpaceMemberContext>) {
       nextRead = pending;
     },

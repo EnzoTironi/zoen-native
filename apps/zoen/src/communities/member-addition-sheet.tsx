@@ -85,7 +85,13 @@ export function MemberAdditionSheet({
             !selected.addition_failed &&
             (selected.state === 'Updating' || selected.state === 'Active') ? (
               <Text accessibilityLiveRegion="polite" style={{ color: p.list.secondary }}>
-                {t(selected.state === 'Active' ? 'community.added' : 'community.adding')}
+                {t(
+                  selected.state === 'Active'
+                    ? selected.delivery_ready
+                      ? 'community.added'
+                      : 'community.connecting'
+                    : 'community.adding',
+                )}
               </Text>
             ) : null}
             {state.phase === 'ready' && state.canManage && state.results.length === 0 ? (
@@ -151,7 +157,9 @@ export function MemberAdditionSheet({
                     </View>
                     {item.state === 'Active' ? (
                       <Text style={{ ...p.typography.footnote, color: p.list.secondary }}>
-                        {t('community.alreadyMember')}
+                        {t(
+                          item.delivery_ready ? 'community.alreadyMember' : 'community.connecting',
+                        )}
                       </Text>
                     ) : null}
                   </Pressable>

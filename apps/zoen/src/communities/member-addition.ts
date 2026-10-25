@@ -35,6 +35,7 @@ function validate(c: SpaceMemberContext, space: string, owner: AccountScope, id?
     !/^[a-f0-9]{64}$/.test(c.revision) ||
     typeof c.can_manage_members !== 'boolean' ||
     typeof c.can_add !== 'boolean' ||
+    typeof c.delivery_ready !== 'boolean' ||
     typeof c.addition_failed !== 'boolean' ||
     !['Active', 'Updating', 'Removing', 'Removed'].includes(c.state) ||
     (c.candidate !== null && c.candidate.id !== c.member_id) ||
