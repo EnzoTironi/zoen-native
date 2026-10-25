@@ -194,6 +194,8 @@ impl Engine {
             can_remove,
             can_manage_members,
             can_add,
+            owned_agent: self.verified_owned_agent(member, identity),
+            delivery_ready: self.owned_agent_delivery_ready(space, member, identity),
             candidate,
             addition_failed: addition_failure.is_some(),
             removal_failed: failure.is_some(),

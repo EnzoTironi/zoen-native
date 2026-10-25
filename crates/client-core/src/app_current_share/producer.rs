@@ -122,6 +122,63 @@ impl Engine {
         })
     }
 
+    /// Resume a genuine prefix receipt before constructing any fresh snapshot.
+    /// The outer request savepoint contains both this normal share and the reply.
+    pub(crate) fn share_request_current(
+        &mut self,
+        scope: AppShareScope,
+        version: u32,
+        sha256: &str,
+        mutation: &str,
+    ) -> R<()> {
+        self.share_owner(&scope)?;
+        if self.app_trust(&scope.item_id) < TrustLevel::Act
+            || !self.app_trust_available(&scope.item_id)
+        {
+            return Err(refused());
+        }
+        let mut events = self
+            .logs
+            .get(&scope.space_id)
+            .map_or_else(Vec::new, |log| log.events().to_vec());
+        events.extend(
+            self.store
+                .outbox()?
+                .into_iter()
+                .filter(|r| r.event.space == scope.space_id)
+                .map(|r| r.event),
+        );
+        for event in events {
+            let EventBody::AppCurrentShared { share } = &event.body else {
+                continue;
+            };
+            if event.author != scope.expected_identity_id || share.mutation != mutation {
+                continue;
+            }
+            if share.item != scope.item_id
+                || share.target != scope.target_id
+                || share.version != version
+                || share
+                    .content
+                    .document
+                    .as_ref()
+                    .is_none_or(|file| file.sha256 != sha256)
+                || !self.share_receipt(&event, share).applied
+            {
+                return Err(refused());
+            }
+            return Ok(());
+        }
+        let context = self.app_current_share_context(scope)?;
+        if context.version != version || context.sha256 != sha256 {
+            return Err(refused());
+        }
+        if !self.share_app_current(context, mutation)?.applied {
+            return Err(refused());
+        }
+        Ok(())
+    }
+
     pub(crate) fn app_current_share_context(&self, scope: AppShareScope) -> R<AppShareContext> {
         let snapshot = self.share_snapshot(&scope)?;
         let file = snapshot.content.document.as_ref().ok_or_else(refused)?;

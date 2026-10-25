@@ -237,6 +237,7 @@ mod account;
 mod ingestion;
 mod member_controls;
 mod outbox;
+mod owned_member_candidates;
 mod prepared_account;
 mod profiles;
 mod receipts;

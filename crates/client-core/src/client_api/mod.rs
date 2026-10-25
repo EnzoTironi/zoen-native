@@ -4,6 +4,7 @@
 //! operations, never private keys, database paths, or arbitrary native execution.
 //! Every mutation below goes through the same engine methods as the native apps.
 
+mod app_edit_dispatch;
 mod command;
 mod content_dispatch;
 mod conversation_dispatch;

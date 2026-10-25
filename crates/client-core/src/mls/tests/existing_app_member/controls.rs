@@ -2,6 +2,7 @@
 use super::*;
 use crate::app_current_share::{AppShareContext, AppShareScope};
 
+mod composition;
 mod legacy;
 mod wire;
 

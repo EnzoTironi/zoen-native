@@ -180,6 +180,9 @@ pub(super) enum Command {
         expected_sha256: String,
         text: String,
         mutation_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "client-types", ts(optional))]
+        share_current: Option<bool>,
     },
     SendMessage {
         space_id: String,
@@ -283,6 +286,9 @@ pub(super) enum Command {
         query: String,
         expected_identity_id: String,
         expected_device_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "client-types", ts(optional))]
+        owned_agents_only: Option<bool>,
     },
     AddMemberReviewed {
         space_id: String,
