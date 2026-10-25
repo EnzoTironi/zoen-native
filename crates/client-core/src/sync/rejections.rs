@@ -66,6 +66,9 @@ impl Engine {
     /// refused File fails its exact referencing media messages; a refused group
     /// member also fails its matching group, so newer Space heads can progress.
     pub(super) fn refuse_outbox_media_dependents(&self, rejected: &Event, reason: &str) -> R<()> {
+        if matches!(rejected.body, EventBody::AppCurrentShared { .. }) {
+            return self.refuse_app_share_dependents(rejected, reason);
+        }
         let candidate = matches!(
             &rejected.body,
             EventBody::MessagePosted { media: Some(_), .. }

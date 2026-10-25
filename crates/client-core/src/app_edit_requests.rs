@@ -110,6 +110,7 @@ impl Engine {
                 || !reference.thread
                 || reference.to != root.id
                 || reference.artifact.as_ref() != Some(&binding)
+                || self.net.failed.contains_key(&entry.client_id)
             {
                 return Err(stale());
             }

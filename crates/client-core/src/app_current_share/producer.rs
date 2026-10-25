@@ -25,7 +25,7 @@ impl Engine {
                 .store
                 .outbox()?
                 .iter()
-                .any(|row| row.event.space == scope.space_id)
+                .any(|row| !row.failed && row.event.space == scope.space_id)
             || self.app_trust(&scope.item_id) < TrustLevel::Act
             || !self.app_trust_available(&scope.item_id)
         {

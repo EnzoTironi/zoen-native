@@ -1,7 +1,7 @@
 //! One disclosed send, using the same outbox/savepoint and canonical receipts.
 use super::*;
 use crate::app_edit_requests::AppEditRequestInput;
-fn input(f: &LateWord, id: &str, share: bool) -> R<AppEditRequestInput> {
+pub(super) fn input(f: &LateWord, id: &str, share: bool) -> R<AppEditRequestInput> {
     let account = f.owner.account().ok_or_else(|| storage("owner account"))?;
     Ok(AppEditRequestInput {
         expected_identity_id: account.identity.clone(),
