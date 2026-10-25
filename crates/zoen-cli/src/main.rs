@@ -262,7 +262,9 @@ async fn main() {
         Some(
             agent::Readiness::reset(
                 &home,
-                agent_host_lock.as_ref().expect("agent-host home lock"),
+                agent_host_lock
+                    .as_ref()
+                    .unwrap_or_else(|| die("agent_host_lock_unavailable")),
             )
             .unwrap_or_else(|error| die(error)),
         )
@@ -541,7 +543,9 @@ async fn main() {
                 &cmd,
                 &e,
                 &home,
-                agent_readiness.as_ref().expect("agent-host readiness"),
+                agent_readiness
+                    .as_ref()
+                    .unwrap_or_else(|| die("agent_host_readiness_unavailable")),
                 for_secs,
                 agent_source,
             )

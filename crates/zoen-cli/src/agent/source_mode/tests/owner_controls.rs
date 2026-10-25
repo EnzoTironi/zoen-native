@@ -31,6 +31,7 @@ async fn active_controls_host_keeps_an_actual_approved_source_and_content_untouc
     let request = stage_review(&f, &base.item_id, &f.source, true);
     f.approve(&request).await?;
     assert!(f.client.approved_tool_sources(&f.space).contains(&f.source));
+    assert!(server.uploads.lock().unwrap().is_empty());
     let before = f.client.timeline(f.space.clone())?;
     let before_request = f.client.requests();
     server.calls.lock().unwrap().clear();
@@ -45,6 +46,9 @@ async fn active_controls_host_keeps_an_actual_approved_source_and_content_untouc
 
     assert!(f.path.join("agent-ready").exists());
     assert!(server.calls.lock().unwrap().contains(&"agent_state"));
+    // Normal sync can transfer the ciphertext queued during fixture creation;
+    // that transport must not execute the approved request or change its App.
+    assert!(!server.uploads.lock().unwrap().is_empty());
     assert!(f.client.approved_tool_sources(&f.space).contains(&f.source));
     // The stopped and connected client may present delivery differently. Its
     // complete durable timeline and the pending approval must remain unchanged.
@@ -67,8 +71,8 @@ async fn active_controls_host_keeps_an_actual_approved_source_and_content_untouc
         serde_json::to_value(before_request)?
     );
     assert_eq!(
-        f.client.app_binary_read(base.item_id, None, None)?.version,
-        base.version
+        f.client.app_binary_read(base.item_id.clone(), None, None)?,
+        base
     );
     content_stayed_idle(&server, &f);
     Ok(())
