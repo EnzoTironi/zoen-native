@@ -74,13 +74,14 @@ function Discussion({
         <Text accessibilityRole="alert" style={{ color: colors.danger }}>
           {error}
         </Text>
-        <NativeButton secondary label={t('documents.retryDiscussion')} onPress={retry} />
+        <NativeButton secondary wrapLabel label={t('documents.retryDiscussion')} onPress={retry} />
       </View>
     );
   if (data && !data.root) return null;
   return (
     <NativeButton
       secondary
+      wrapLabel
       disabled={!data?.root || !activation}
       label={
         !data
