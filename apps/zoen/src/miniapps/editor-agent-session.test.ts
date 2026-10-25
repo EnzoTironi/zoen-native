@@ -196,3 +196,41 @@ test('late reads cannot overwrite a new sheet activation or a retired account', 
   f.session.retire();
   assert.deepEqual(f.session.getSnapshot().requests, []);
 });
+test('only canonical agent replies to the current source are shown and retirement clears them', async () => {
+  const f = fixture();
+  f.port.replies = async (sourceId) =>
+    [
+      { id: 'reply', reply_to: { id: sourceId }, author: { kind: 'Agent' }, kind: { Message: {} } },
+      {
+        id: 'lateral',
+        reply_to: { id: 'other' },
+        author: { kind: 'Agent' },
+        kind: { Message: {} },
+      },
+      {
+        id: 'person',
+        reply_to: { id: sourceId },
+        author: { kind: 'Person' },
+        kind: { Message: {} },
+      },
+      {
+        id: 'deleted',
+        reply_to: { id: sourceId },
+        author: { kind: 'Agent' },
+        kind: { Message: {} },
+        deleted: true,
+      },
+      { id: 'update', reply_to: { id: sourceId }, author: { kind: 'Agent' }, kind: { System: {} } },
+    ] as TimelineEntry[];
+  f.session.open();
+  f.session.setDraft('Please edit');
+  await f.session.send();
+  await tick();
+  await f.session.refresh();
+  assert.deepEqual(
+    f.session.getSnapshot().replies.map(({ id }) => id),
+    ['reply'],
+  );
+  f.session.retire();
+  assert.deepEqual(f.session.getSnapshot().replies, []);
+});
