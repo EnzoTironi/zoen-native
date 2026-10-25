@@ -130,7 +130,7 @@ try {
       await route.fulfill({ status: 404, body: "Unknown fixture input" });
       return;
     }
-    await route.fulfill({ status: 200, contentType: file[1], body: file[0], headers: { "Cache-Control": "no-store" } });
+    await route.fulfill({ status: 200, contentType: file[1], body: Buffer.from(file[0]), headers: { "Cache-Control": "no-store" } });
   });
   await page.goto("https://photocraft-fixture.invalid/", { waitUntil: "load" });
   await page.waitForFunction(() => window.probe?.opened, undefined, { timeout: 25000 });
