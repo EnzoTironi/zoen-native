@@ -22,6 +22,14 @@ pub struct SpaceMemberContext {
     pub role: Option<String>,
     pub state: MemberActionState,
     pub can_remove: bool,
+    pub can_manage_members: bool,
+    pub can_add: bool,
+    /// Confirmed role plus this device's actual E2E group roster. For a
+    /// non-E2E conversation the confirmed role suffices; no history is implied.
+    pub delivery_ready: bool,
+    /// Known profile for an absent participant; never a membership receipt.
+    pub candidate: Option<Persona>,
+    pub addition_failed: bool,
     /// Permanent failure of an exact local intent on the current membership cut.
     pub removal_failed: bool,
     /// A derived review fingerprint, not a stored grant or a mutation receipt.

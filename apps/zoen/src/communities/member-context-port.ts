@@ -37,3 +37,40 @@ export function createMemberActionsPort(store: ClientStore, space: string): Memb
     },
   };
 }
+
+export interface MemberAdditionPort extends Pick<MemberActionsPort, 'scope' | 'read'> {
+  find(query: string, owner: AccountScope): Promise<SpaceMemberContext[]>;
+  add(context: SpaceMemberContext, owner: AccountScope): Promise<SpaceMemberContext>;
+}
+export function createMemberAdditionPort(store: ClientStore, space: string): MemberAdditionPort {
+  const shared = createMemberActionsPort(store, space);
+  const check = (owner: AccountScope) => {
+    if (accountScopeKey(owner) !== accountScopeKey(shared.scope()))
+      throw Error('Member addition account changed');
+  };
+  return {
+    scope: shared.scope,
+    read: shared.read,
+    find: (query, owner) => {
+      check(owner);
+      return store.driver.request({
+        op: 'find_member_candidates',
+        space_id: space,
+        query,
+        expected_identity_id: owner.identity,
+        expected_device_id: owner.device,
+      });
+    },
+    add: (context, owner) => {
+      check(owner);
+      return store.request({
+        op: 'add_member_reviewed',
+        space_id: space,
+        identity_id: context.member_id,
+        expected_identity_id: owner.identity,
+        expected_device_id: owner.device,
+        observed_revision: context.revision,
+      });
+    },
+  };
+}

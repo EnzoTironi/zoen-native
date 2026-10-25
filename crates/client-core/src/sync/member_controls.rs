@@ -105,6 +105,39 @@ impl Engine {
         };
         let person =
             (target_role.is_some() || projected(member).is_some()).then(|| self.persona(member));
+        let delivery_ready = target_role.is_some()
+            && (!self.is_e2e(space)
+                || self
+                    .mls_status(space)
+                    .is_some_and(|(_, _, members)| members.iter().any(|id| id == member)));
+        let can_manage_members = matches!(actor_role, Role::Owner | Role::Admin)
+            && matches!(projected(identity), Some(Role::Owner | Role::Admin));
+        let candidate = (target_role.is_none() && self.identities.contains_key(member))
+            .then(|| self.persona(member));
+        let can_add = can_manage_members
+            && state == MemberActionState::Removed
+            && projected(member).is_none()
+            && member != identity
+            && candidate.is_some();
+        let addition_failure = if state == MemberActionState::Removed {
+            pending.iter().rev().find(|row| {
+                let event = &row.event;
+                if !row.failed || event.space != space || event.author != identity
+                    || event.device.as_deref() != Some(device)
+                    || !matches!(&event.body, EventBody::MemberAdded { identity: target, role: Role::Member } if target == member)
+                { return false; }
+                let (Some(log), Some(seen), Some(actor)) =
+                    (self.logs.get(space), event.seen.as_ref(), actor_cut)
+                else { return false; };
+                event_log::verify_author(event).is_ok()
+                    && !log.events().iter().any(|e| e.client_id == event.client_id)
+                    && log.events().iter().any(|e| e.seq == seen.seq && e.hash == seen.hash)
+                    && actor.seq <= seen.seq
+                    && member_cut.is_none_or(|target| target.seq <= seen.seq)
+            }).map(|row| row.event.client_id.as_str())
+        } else {
+            None
+        };
         let can_remove = state == MemberActionState::Active
             && member != identity
             && super::spaces::may_remove_member(Some(actor_role), target_role)
@@ -141,6 +174,11 @@ impl Engine {
             actor_cut.map(|event| &event.hash),
             member_cut.map(|event| &event.hash),
             failure,
+            addition_failure,
+            delivery_ready,
+            candidate
+                .as_ref()
+                .map(|p| (&p.name, &p.handle, &p.kind, &p.owner_id)),
             state,
             person.as_ref().map(|person| (&person.name, &person.handle)),
         ))
@@ -160,6 +198,11 @@ impl Engine {
             role: target_role.map(role_name),
             state,
             can_remove,
+            can_manage_members,
+            can_add,
+            delivery_ready,
+            candidate,
+            addition_failed: addition_failure.is_some(),
             removal_failed: failure.is_some(),
             revision: format!("{:x}", Sha256::digest(review)),
         })
@@ -181,5 +224,48 @@ impl Engine {
         }
         self.remove_member(space, member)?;
         self.space_member_context(space, member, identity, device)
+    }
+}
+
+impl Engine {
+    /// Current native actor and membership cut remain guarded through the normal enqueue.
+    pub(crate) fn add_member_reviewed(
+        &mut self,
+        space: &str,
+        member: &str,
+        identity: &str,
+        device: &str,
+        revision: &str,
+    ) -> R<SpaceMemberContext> {
+        let current = self.space_member_context(space, member, identity, device)?;
+        if !current.can_add || current.revision != revision {
+            return Err(changed());
+        }
+        self.add_member(space, member, Role::Member)?;
+        self.space_member_context(space, member, identity, device)
+    }
+    pub(crate) fn member_candidates(
+        &self,
+        space: &str,
+        query: &str,
+        identity: &str,
+        device: &str,
+    ) -> R<Vec<SpaceMemberContext>> {
+        let actor = self.space_member_context(space, identity, identity, device)?;
+        if !actor.can_manage_members {
+            return Err(changed());
+        }
+        let query = query.trim().trim_start_matches('@').to_lowercase();
+        self.personas()
+            .iter()
+            .filter(|p| {
+                p.id != identity
+                    && (query.is_empty()
+                        || p.name.to_lowercase().contains(&query)
+                        || p.handle.to_lowercase().contains(&query))
+            })
+            .take(100)
+            .map(|p| self.space_member_context(space, &p.id, identity, device))
+            .collect()
     }
 }
