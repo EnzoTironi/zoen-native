@@ -189,6 +189,11 @@ fn higher_head_refuses_drafts_pending_receipts_authority_and_foreign_document_wi
             head: head("2", &pending.bytes),
         },
     )?;
+    assert!(
+        bridge.open(&mut session, open("3", &next), &next).is_err(),
+        "canonical replacement requires acknowledged pause"
+    );
+    assert_eq!(bytes(&session)?, draft);
     bridge.freeze(&mut session, true)?;
     let steps = session
         .active()

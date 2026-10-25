@@ -98,6 +98,15 @@ impl BrowserBridge {
         }
         let host = HostBridge::open(request, bytes)?;
         let doc = Arc::new(managed::checked(bytes)?);
+        if self.host.is_some() {
+            // A checked canonical revision is one edit of the same paused canvas.
+            // Upstream retains its bounded Undo history, binding and render revision.
+            s.receive_managed_document((*doc).clone())
+                .map_err(|_| failure("engine_refresh"))?;
+            self.accepted = Some(doc);
+            self.host = Some(host);
+            return self.status(s);
+        }
         let binding = NEXT_BINDING
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |v| v.checked_add(1))
             .map_err(|_| failure("binding_exhausted"))?;
