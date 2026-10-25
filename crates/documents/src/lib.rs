@@ -613,3 +613,6 @@ fn canonical_spans(runs: &[Run]) -> Vec<Span> {
     }
     merged
 }
+
+#[cfg(test)]
+mod hash_compatibility_tests;
