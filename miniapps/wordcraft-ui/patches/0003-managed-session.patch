@@ -121,41 +121,37 @@ index c7f687a..73bb9c0 100644
                  chrome::status_bar(self, ui);
 diff --git a/crates/ui-egui/src/managed_history.rs b/crates/ui-egui/src/managed_history.rs
 new file mode 100644
-index 0000000..61fccbf
+index 0000000..7629da4
 --- /dev/null
 +++ b/crates/ui-egui/src/managed_history.rs
-@@ -0,0 +1,32 @@
+@@ -0,0 +1,28 @@
 +//! Minimal touch history controls for an embedded document; Session owns all history.
 +use crate::{WordApp, icons, theme::Tokens, widgets};
-+use egui::{Frame, Margin, Rect, Sense, TopBottomPanel, WidgetInfo, WidgetType, vec2};
++use egui::{Frame, Margin, Panel, Rect, Sense, WidgetInfo, WidgetType, vec2};
 +use serde_json::json;
 +
 +pub(crate) fn show(app: &mut WordApp, ui: &mut egui::Ui) {
 +    let t = Tokens::get(ui.ctx());
-+    TopBottomPanel::top("zoen_managed_history")
-+        .exact_height(52.0)
-+        .frame(Frame::NONE.fill(t.ribbon).inner_margin(Margin::symmetric(6, 4)))
-+        .show_inside(ui, |ui| {
-+            ui.horizontal(|ui| {
-+                for (id, label, available) in [("edit.undo", tl!("Undo"), app.session.can_undo()), ("edit.redo", tl!("Redo"), app.session.can_redo())]
-+                {
-+                    let enabled = app.has_document() && available && widgets::enabled(app, id);
-+                    ui.add_enabled_ui(enabled, |ui| {
-+                        let (rect, response) = ui.allocate_exact_size(vec2(44.0, 44.0), Sense::click());
-+                        response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, label.to_string()));
-+                        widgets::bg(ui, rect, &response, false, &t);
-+                        let color = if enabled { t.icon } else { t.text_disabled };
-+                        icons::paint(ui.painter(), Rect::from_center_size(rect.center(), vec2(22.0, 22.0)), widgets::command_icon(id), color, color);
-+                        if response.on_hover_text(label).clicked() && enabled {
-+                            match app.run(id, json!({})) {
-+                                Ok(_) => app.canvas.want_focus = true,
-+                                Err(reason) => app.status(reason),
-+                            }
++    Panel::top("zoen_managed_history").exact_size(52.0).frame(Frame::NONE.fill(t.ribbon).inner_margin(Margin::symmetric(6, 4))).show(ui, |ui| {
++        ui.horizontal(|ui| {
++            for (id, label, available) in [("edit.undo", tl!("Undo"), app.session.can_undo()), ("edit.redo", tl!("Redo"), app.session.can_redo())] {
++                let enabled = app.has_document() && available && widgets::enabled(app, id);
++                ui.add_enabled_ui(enabled, |ui| {
++                    let (rect, response) = ui.allocate_exact_size(vec2(44.0, 44.0), Sense::click());
++                    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, label.to_string()));
++                    widgets::bg(ui, rect, &response, false, &t);
++                    let color = if enabled { t.icon } else { t.text_disabled };
++                    icons::paint(ui.painter(), Rect::from_center_size(rect.center(), vec2(22.0, 22.0)), widgets::command_icon(id), color, color);
++                    if response.on_hover_text(label).clicked() && enabled {
++                        match app.run(id, json!({})) {
++                            Ok(_) => app.canvas.want_focus = true,
++                            Err(reason) => app.status(reason),
 +                        }
-+                    });
-+                }
-+            });
++                    }
++                });
++            }
 +        });
++    });
 +}
 diff --git a/crates/ui-egui/src/widgets.rs b/crates/ui-egui/src/widgets.rs
 index f27f5c0..fb164a8 100644
