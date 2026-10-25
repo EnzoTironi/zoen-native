@@ -166,6 +166,11 @@ reviewed PNG import. The browser package includes the shared owner-cleanup fix;
 full browser reopen and retirement passed. Do not claim complete upstream editing parity or a live
 service from this integration.
 
+The separate [live-review qualification](live-review-qualification.json) records
+the same-Session refresh/Undo repair, causal old-package failure and current
+Chromium/WebKit proof. Its retained WASI producer and pending iPhone/model-turn
+acceptance are stated separately; it does not replace the earlier evidence.
+
 ## Provenance
 
 Source is MIT OR Apache-2.0; trademarks are separately reserved. Retain upstream
