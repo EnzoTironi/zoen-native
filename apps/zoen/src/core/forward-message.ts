@@ -1,5 +1,6 @@
-import type { TimelineEntry } from './types';
-import { messageCanInteract } from './message-presentation.ts';
+import type { ForwardReview as CanonicalReview } from './generated/ForwardReview';
+import type { ForwardScope } from './generated/ForwardScope';
+import type { ForwardSource } from './generated/ForwardSource';
 import { homeOwnerKey, type HomeOwner } from '../home/preferences.ts';
 
 export type ForwardMessageScope = Readonly<{
@@ -13,9 +14,26 @@ export type ForwardMessagePort = {
   spaces(): ReadonlySet<string>;
   epoch?(): number;
   writable?(targetId: string): boolean;
-  message(spaceId: string, messageId: string): Promise<TimelineEntry>;
-  forward(spaceId: string, messageId: string, targetId: string): Promise<unknown>;
+  status(source: ForwardSource): Promise<CanonicalReview | null>;
+  review(scope: ForwardScope): Promise<CanonicalReview>;
+  confirm(
+    scope: ForwardScope,
+    operationId: string,
+    sourceRevision: string,
+  ): Promise<CanonicalReview>;
+  dismiss(
+    scope: ForwardScope,
+    operationId: string,
+    acceptedMessageId: string | null,
+  ): Promise<void>;
 };
+export type ForwardMessageReview = Readonly<{
+  targetId: CanonicalReview['target_space'];
+  message: CanonicalReview['message'];
+  operationId: CanonicalReview['operation_id'];
+  sourceRevision: CanonicalReview['source_revision'];
+  acceptedMessageId: CanonicalReview['accepted_message_id'];
+}>;
 export type ForwardMessageCallbacks = {
   busy(value: boolean): void;
   error(reason: unknown | null): void;
@@ -28,34 +46,19 @@ export class ForwardMessageUnavailable extends Error {
   }
 }
 export class ForwardMessageChanged extends ForwardMessageUnavailable {}
-export type ForwardMessageReview = Readonly<{ targetId: string; message: TimelineEntry }>;
-function contentKey(message: TimelineEntry) {
-  // Delivery, reactions and read counters do not change the content being sent.
-  return JSON.stringify([
-    message.id,
-    message.author?.id,
-    message.kind,
-    message.voice,
-    message.media,
-    message.forwarded,
-    message.deleted,
-  ]);
-}
+type Attempt = { epoch: number; targetId: string | null };
 
-type Attempt = { epoch: number; targetId: string };
-
-/** A focus owns navigation, not the delivery of an already accepted forward. */
+/** UI focus owns presentation only. The Core owns operation IDs, snapshots and
+ * accepted receipts; transport failures never create another forwarding intent. */
 export class ForwardMessageSession {
-  private readonly scope: ForwardMessageScope | null;
-  private readonly port: ForwardMessagePort;
-  private readonly callbacks: ForwardMessageCallbacks;
   private focused = false;
   private disposed = false;
   private epoch = 0;
   private attempt: Attempt | null = null;
-  private review: ForwardMessageReview | null = null;
-  private reviewKey: string | null = null;
-
+  private selected: ForwardMessageReview | null = null;
+  private readonly scope: ForwardMessageScope | null;
+  private readonly port: ForwardMessagePort;
+  private readonly callbacks: ForwardMessageCallbacks;
   constructor(
     scope: ForwardMessageScope | null,
     port: ForwardMessagePort,
@@ -65,47 +68,75 @@ export class ForwardMessageSession {
     this.port = port;
     this.callbacks = callbacks;
   }
-  private available(targetId: string) {
+  private available(targetId: string | null = null) {
     const scope = this.scope;
-    if (
-      !scope ||
-      this.disposed ||
-      !this.focused ||
-      homeOwnerKey(this.port.owner()) !== homeOwnerKey(scope.owner) ||
-      (scope.sessionEpoch !== undefined && this.port.epoch?.() !== scope.sessionEpoch) ||
-      this.port.writable?.(targetId) === false
-    )
-      return false;
-    const spaces = this.port.spaces();
-    return spaces.has(scope.spaceId) && spaces.has(targetId);
+    return Boolean(
+      scope &&
+      !this.disposed &&
+      this.focused &&
+      homeOwnerKey(this.port.owner()) === homeOwnerKey(scope.owner) &&
+      (scope.sessionEpoch === undefined || this.port.epoch?.() === scope.sessionEpoch) &&
+      this.port.spaces().has(scope.spaceId) &&
+      (targetId === null ||
+        (this.port.spaces().has(targetId) && this.port.writable?.(targetId) !== false)),
+    );
+  }
+  private source(): ForwardSource {
+    if (!this.scope) throw new ForwardMessageUnavailable();
+    return {
+      expected_identity_id: this.scope.owner.identityId,
+      expected_device_id: this.scope.owner.deviceId,
+      source_space: this.scope.spaceId,
+      message_id: this.scope.messageId,
+    };
+  }
+  private target(target_space: string): ForwardScope {
+    return { ...this.source(), target_space };
   }
   private current(attempt: Attempt) {
     return (
       this.attempt === attempt && this.epoch === attempt.epoch && this.available(attempt.targetId)
     );
   }
-  focus() {
+  private project(value: CanonicalReview | null) {
+    this.selected =
+      value &&
+      Object.freeze({
+        targetId: value.target_space,
+        message: value.message,
+        operationId: value.operation_id,
+        sourceRevision: value.source_revision,
+        acceptedMessageId: value.accepted_message_id,
+      });
+    this.callbacks.reviewed?.(this.selected);
+  }
+  async focus() {
     this.disposed = false;
     this.focused = true;
     ++this.epoch;
     this.attempt = null;
-    this.cancelReview();
-    this.callbacks.busy(false);
+    this.project(null);
     this.callbacks.error(null);
+    this.callbacks.busy(false);
+    await this.recover();
   }
   blur() {
     this.focused = false;
     ++this.epoch;
     this.attempt = null;
-    this.cancelReview();
+    this.selected = null;
+    this.callbacks.reviewed?.(null);
+    // Never dismiss the Core record here: a confirmation may already be signed.
   }
   dispose() {
     this.blur();
     this.disposed = true;
   }
-  /** Release invalid presentation at the access-change event, not on late completion. */
   refresh() {
-    if (this.review && !this.available(this.review.targetId)) this.cancelReview();
+    if (!this.available()) {
+      this.selected = null;
+      this.callbacks.reviewed?.(null);
+    }
     if (!this.attempt || this.current(this.attempt)) return;
     ++this.epoch;
     this.attempt = null;
@@ -114,70 +145,94 @@ export class ForwardMessageSession {
       this.callbacks.error(null);
     }
   }
-  cancelReview() {
-    this.review = null;
-    this.reviewKey = null;
-    this.callbacks.reviewed?.(null);
+  private async run(targetId: string | null, action: (attempt: Attempt) => Promise<void>) {
+    if (this.attempt || !this.available(targetId)) return;
+    const attempt = { epoch: this.epoch, targetId };
+    this.attempt = attempt;
+    this.callbacks.busy(true);
+    this.callbacks.error(null);
+    try {
+      await action(attempt);
+    } catch (reason) {
+      if (this.current(attempt)) this.callbacks.error(reason);
+    } finally {
+      const publish = this.current(attempt);
+      if (this.attempt === attempt) this.attempt = null;
+      if (publish) this.callbacks.busy(false);
+    }
+  }
+  async recover() {
+    await this.run(null, async (attempt) => {
+      const value = await this.port.status(this.source());
+      if (this.current(attempt)) this.project(value);
+    });
   }
   async prepare(targetId: string) {
-    if (this.attempt || !this.available(targetId) || !this.scope) return;
-    this.cancelReview();
-    const attempt = { epoch: this.epoch, targetId };
-    this.attempt = attempt;
-    this.callbacks.busy(true);
-    this.callbacks.error(null);
-    try {
-      const message = await this.port.message(this.scope.spaceId, this.scope.messageId);
+    await this.run(targetId, async (attempt) => {
+      // A retained operation, including an unknown acceptance, wins over any
+      // new destination selection. Reading it never publishes another message.
+      const retained = await this.port.status(this.source());
       if (!this.current(attempt)) return;
-      if (message.id !== this.scope.messageId || !messageCanInteract(message))
-        throw new ForwardMessageUnavailable();
-      // Keep the reviewed projection independent of mutable snapshot objects.
-      this.review = Object.freeze({
-        targetId,
-        message: JSON.parse(JSON.stringify(message)) as TimelineEntry,
-      });
-      this.reviewKey = contentKey(message);
-      this.callbacks.reviewed?.(this.review);
-    } catch (reason) {
-      if (this.current(attempt)) this.callbacks.error(reason);
-    } finally {
-      const publish = this.current(attempt);
-      if (this.attempt === attempt) this.attempt = null;
-      if (publish) this.callbacks.busy(false);
-    }
+      const value = retained ?? (await this.port.review(this.target(targetId)));
+      if (this.current(attempt)) this.project(value);
+    });
   }
   async confirm(review: ForwardMessageReview) {
-    if (review !== this.review || !this.available(review.targetId)) return;
-    await this.send(review.targetId, this.reviewKey);
+    if (review !== this.selected || review.acceptedMessageId !== null) return;
+    await this.run(review.targetId, async (attempt) => {
+      try {
+        const value = await this.port.confirm(
+          this.target(review.targetId),
+          review.operationId,
+          review.sourceRevision,
+        );
+        if (!this.current(attempt)) return;
+        this.project(value);
+        if (value.accepted_message_id !== null) {
+          // Only this live, observed confirmation can ACK its exact output.
+          // A failed cleanup never turns accepted into retryable/unsent.
+          try {
+            await this.port.dismiss(
+              this.target(value.target_space),
+              value.operation_id,
+              value.accepted_message_id,
+            );
+          } catch {
+            /* Core retains recovery if cleanup was not accepted. */
+          }
+          if (this.current(attempt)) this.callbacks.sent(value.target_space);
+        }
+      } catch (reason) {
+        if (!this.current(attempt)) return;
+        // Reconcile exact operation first. An unreadable status retains its
+        // frozen review; neither failure permits a fresh operation or auto-send.
+        const retained = await this.port.status(this.source());
+        if (!this.current(attempt)) return;
+        if (retained) this.project(retained);
+        if (retained?.accepted_message_id) this.callbacks.sent(retained.target_space);
+        else throw reason;
+      }
+    });
   }
-  async send(targetId: string, reviewedKey: string | null = null): Promise<void> {
-    if (this.attempt || !this.available(targetId) || !this.scope) return;
-    const scope = this.scope;
-    const attempt = { epoch: this.epoch, targetId };
-    this.attempt = attempt;
-    this.callbacks.busy(true);
-    this.callbacks.error(null);
-    try {
-      // Rendered timeline entries may have changed while the picker was open.
-      const message = await this.port.message(scope.spaceId, scope.messageId);
-      if (!this.current(attempt)) return;
-      if (message.id !== scope.messageId || !messageCanInteract(message))
-        throw new ForwardMessageUnavailable();
-      if (reviewedKey !== null && contentKey(message) !== reviewedKey) {
-        this.cancelReview();
-        throw new ForwardMessageChanged();
+  async cancelReview() {
+    const review = this.selected;
+    if (!review) return;
+    await this.run(null, async (attempt) => {
+      try {
+        await this.port.dismiss(
+          this.target(review.targetId),
+          review.operationId,
+          review.acceptedMessageId,
+        );
+        if (!this.current(attempt)) return;
+        this.project(null);
+      } catch (reason) {
+        if (!this.current(attempt)) return;
+        const retained = await this.port.status(this.source());
+        if (this.current(attempt)) this.project(retained);
+        if (retained?.accepted_message_id) return;
+        throw reason;
       }
-      await this.port.forward(scope.spaceId, scope.messageId, targetId);
-      if (this.current(attempt)) {
-        this.cancelReview();
-        this.callbacks.sent(targetId);
-      }
-    } catch (reason) {
-      if (this.current(attempt)) this.callbacks.error(reason);
-    } finally {
-      const publish = this.current(attempt);
-      if (this.attempt === attempt) this.attempt = null;
-      if (publish) this.callbacks.busy(false);
-    }
+    });
   }
 }
