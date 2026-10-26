@@ -177,15 +177,7 @@ jobs:
 
       - name: Postgres, FoundationDB and NATS
         run: |
-          # Registries rate-limit shared runners: try two mirrors of the same image, with backoff.
-          pg=""
-          for attempt in 1 2 3; do
-            for img in public.ecr.aws/docker/library/postgres:17-alpine mirror.gcr.io/library/postgres:17-alpine; do
-              docker pull -q "$img" && { pg="$img"; break 2; }
-            done
-            sleep $((attempt * 15))
-          done
-          test -n "$pg"
+          pg="$(scripts/ci-pull-postgres.sh)"
           docker run -d --name pg -p 5432:5432 \
             -e POSTGRES_USER=zoen -e POSTGRES_HOST_AUTH_METHOD=trust \
             "$pg" -c max_connections=300
@@ -299,14 +291,7 @@ jobs:
 
       - name: Postgres and FoundationDB
         run: |
-          pg=""
-          for attempt in 1 2 3; do
-            for img in public.ecr.aws/docker/library/postgres:17-alpine mirror.gcr.io/library/postgres:17-alpine; do
-              docker pull -q "$img" && { pg="$img"; break 2; }
-            done
-            sleep $((attempt * 15))
-          done
-          test -n "$pg"
+          pg="$(scripts/ci-pull-postgres.sh)"
           docker run -d --name pg -p 5432:5432 -e POSTGRES_USER=zoen -e POSTGRES_HOST_AUTH_METHOD=trust "$pg"
           scripts/fdb.sh up
           eval "$(scripts/fdb.sh env)"
