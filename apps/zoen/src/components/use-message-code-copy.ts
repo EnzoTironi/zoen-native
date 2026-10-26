@@ -1,5 +1,6 @@
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import * as Clipboard from 'expo-clipboard';
+import * as Haptics from 'expo-haptics';
 import { t } from '../i18n/index.ts';
 import { useDialogs } from './dialogs';
 
@@ -23,7 +24,8 @@ export function useMessageCodeCopy(source: string, identity?: string) {
     } catch {
       // A rejected or refused write gets the same feedback.
     }
-    if (lifetime.current === owner)
-      await dialogs.inform(t(copied ? 'chat.codeCopied' : 'chat.copyCodeFailed'), '');
+    if (lifetime.current !== owner) return;
+    if (copied) void Haptics.selectionAsync().catch(() => {});
+    else await dialogs.inform(t('chat.copyCodeFailed'), '');
   };
 }

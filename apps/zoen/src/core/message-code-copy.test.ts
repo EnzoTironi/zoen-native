@@ -20,6 +20,7 @@ const ports = new Set([
   '../EnrichedMarkdownNativeComponent',
   '../EnrichedMarkdownTextNativeComponent',
   'expo-clipboard',
+  'expo-haptics',
   '../theme',
   '../i18n/index.ts',
   './dialogs',
@@ -69,6 +70,8 @@ test('compiled message copies native code and retires old callbacks and feedback
   const root = createReactTestRoot(),
     copies: string[] = [],
     notices: string[] = [];
+  let haptics = 0;
+  const hapticPending = deferred<void>();
   let result: Promise<boolean> = Promise.resolve(true),
     props: any;
   const module = { exports: {} as any };
@@ -108,12 +111,20 @@ test('compiled message copies native code and retires old callbacks and feedback
             return result;
           },
         };
+      if (name === 'expo-haptics')
+        return {
+          selectionAsync: () => {
+            haptics++;
+            return hapticPending.promise;
+          },
+        };
       if (name === '../theme') return { useTheme: () => ({ colors: {}, scheme: 'light' }) };
       if (name === '../i18n/index.ts') return { t: (key: string) => key };
       if (name === './dialogs')
         return {
           useDialogs: () => ({
-            inform: async (title: string) => {
+            inform: async (title: string, message: string) => {
+              assert.equal(message, '');
               notices.push(title);
             },
           }),
@@ -141,7 +152,8 @@ test('compiled message copies native code and retires old callbacks and feedback
       await result;
     });
     assert.deepEqual(copies, ['  A\n']);
-    assert.deepEqual(notices, ['chat.codeCopied']);
+    assert.deepEqual(notices, []);
+    assert.equal(haptics, 1); // The haptic promise remains pending without opening a modal.
     result = Promise.resolve(false);
     await root.act(async () => {
       props.onCodeBlockPress({ nativeEvent: { code: 'B', language: '' } });
@@ -165,7 +177,8 @@ test('compiled message copies native code and retires old callbacks and feedback
       pending.resolve(false);
       await pending.promise;
     });
-    assert.equal(notices.length, 3);
+    assert.equal(notices.length, 2);
+    assert.equal(haptics, 1);
     await root.act(() => old({ nativeEvent: { code: 'stale', language: '' } }));
     assert.deepEqual(copies, ['  A\n', 'B', '', 'pending']);
     const previousIdentity = props.onCodeBlockPress;
@@ -185,7 +198,8 @@ test('compiled message copies native code and retires old callbacks and feedback
     });
     await root.act(() => beforeUnmount({ nativeEvent: { code: 'unmounted', language: '' } }));
     assert.equal(copies.length, 5);
-    assert.equal(notices.length, 3);
+    assert.equal(notices.length, 2);
+    assert.equal(haptics, 1);
     assert.deepEqual(root.errors, []);
   } finally {
     await root.close();

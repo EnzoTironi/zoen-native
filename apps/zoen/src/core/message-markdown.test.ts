@@ -73,6 +73,7 @@ const nativePorts = new Set([
   'react-native-enriched-markdown',
   '../theme',
   'expo-clipboard',
+  'expo-haptics',
   '../i18n/index.ts',
 ]);
 const compiled = await build({
@@ -179,6 +180,7 @@ function fixture(
             },
           },
         };
+      if (name === 'expo-haptics') return { selectionAsync: async () => {} };
       if (name === 'expo-clipboard')
         return {
           setStringAsync: (text: string) => {
