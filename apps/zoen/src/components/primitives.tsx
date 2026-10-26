@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { useTheme } from '../theme';
 import { contrastingInk } from '../theme/telegram';
+import { FullWidthButtonLabel } from './native-button-label';
 
 export function Icon({
   name,
@@ -72,6 +73,7 @@ export function IconButton({
 export function NativeButton({
   label,
   wrapLabel = false,
+  fullWidth = false,
   onPress,
   disabled = false,
   secondary = false,
@@ -86,12 +88,15 @@ export function NativeButton({
   testID?: string;
   /** Constrain long content labels to the parent while allowing native height to grow. */
   wrapLabel?: boolean;
+  /** Expand the styled native label itself; opt-in for full-width action regions. */
+  fullWidth?: boolean;
 }) {
   const { presentation: p, scheme } = useTheme();
+  const constrained = wrapLabel || fullWidth;
   return (
     <Host
-      matchContents={wrapLabel ? { vertical: true } : true}
-      style={wrapLabel ? { alignSelf: 'stretch' } : undefined}
+      matchContents={constrained ? { vertical: true } : true}
+      style={constrained ? { alignSelf: 'stretch' } : undefined}
       colorScheme={scheme}
       seedColor={destructive ? p.destructive : p.accent}
     >
@@ -101,9 +106,13 @@ export function NativeButton({
         onPress={onPress}
         disabled={disabled}
         variant={secondary ? 'outlined' : 'filled'}
-        style={wrapLabel ? { width: '100%' } : undefined}
+        style={constrained ? { width: '100%' } : undefined}
       >
-        {wrapLabel ? <NativeText textStyle={{ textAlign: 'center' }}>{label}</NativeText> : null}
+        {fullWidth ? (
+          <FullWidthButtonLabel label={label} />
+        ) : wrapLabel ? (
+          <NativeText textStyle={{ textAlign: 'center' }}>{label}</NativeText>
+        ) : null}
       </Button>
     </Host>
   );

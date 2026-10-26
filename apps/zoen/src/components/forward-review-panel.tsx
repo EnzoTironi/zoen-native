@@ -143,7 +143,7 @@ export function ForwardReviewPanel({
                   <NativeButton
                     testID="forward-message-cancel"
                     label={t('common.cancel')}
-                    wrapLabel
+                    fullWidth
                     secondary
                     disabled={busy}
                     onPress={onCancel}
@@ -153,7 +153,7 @@ export function ForwardReviewPanel({
                   <NativeButton
                     testID="forward-message-send"
                     label={t(accepted ? 'chat.forwardAgain' : 'chat.send')}
-                    wrapLabel
+                    fullWidth
                     disabled={busy || (!accepted && !canSend)}
                     onPress={onSend}
                   />

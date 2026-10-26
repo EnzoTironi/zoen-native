@@ -34,6 +34,7 @@ function fixture() {
     'react-native': { View: children, Text: () => null, TextInput: Input },
     'expo-symbols': {},
     'expo-image': {},
+    './native-button-label': { FullWidthButtonLabel: () => null },
     '@expo/ui': {},
     '../i18n/index.ts': { t: (key: string) => key },
     '../theme': { useTheme: () => ({ presentation: telegram.telegramPresentation('day') }) },
