@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import { DefinitionSession } from '../agent-definition/session.ts';
+import { navigationGlassAppearance } from '../components/navigation-appearance.ts';
 import { telegramPresentation } from '../theme/telegram.ts';
 import { t } from '../i18n/index.ts';
 import type { AgentDefinitionDto } from './generated/AgentDefinitionDto.ts';
@@ -174,7 +175,10 @@ async function fixture() {
     'expo-image': { Image: 'Image' },
     '../theme/telegram': {},
   });
-  const settings = load(settingsCode, { 'expo-router': { Stack: { Screen: 'Screen' } } });
+  const settings = load(settingsCode, {
+    'expo-router': { Stack: { Screen: 'Screen' } },
+    './navigation-appearance': { navigationGlassAppearance },
+  });
   const view = load(viewCode, {
     '../components/primitives': primitives,
     '../components/settings-screen': settings,
