@@ -21,6 +21,23 @@ type Options = {
   editing: boolean;
 };
 
+function timelineMetrics(native: Options['list']['current'], rows: number) {
+  try {
+    if (!native) return null;
+    const tail = rows ? native.getLayout(rows - 1) : undefined;
+    return {
+      firstItemOffset: native.getFirstItemOffset(),
+      childHeight: native.getChildContainerDimensions().height,
+      windowHeight: native.getWindowSize().height,
+      lastRowY: tail?.y ?? null,
+      lastRowHeight: tail?.height ?? null,
+    };
+  } catch {
+    // The SDK can have a bound scroll view before its first row layout.
+    return null;
+  }
+}
+
 /** The same bound UIKit observer used by search, extended only in QA builds to
  * observe the closed→search→restored path. It never changes scrolling or insets. */
 export function useChatNativeMetrics(options: Options) {
@@ -56,29 +73,13 @@ export function useChatNativeMetrics(options: Options) {
       current: () => AppState.currentState === 'active' && latest.current.current(),
       context: () => {
         const o = latest.current;
-        let list = null;
-        try {
-          const native = o.list.current;
-          if (native) {
-            const tail = o.rows ? native.getLayout(o.rows - 1) : undefined;
-            list = {
-              firstItemOffset: native.getFirstItemOffset(),
-              childHeight: native.getChildContainerDimensions().height,
-              windowHeight: native.getWindowSize().height,
-              lastRowY: tail?.y ?? null,
-              lastRowHeight: tail?.height ?? null,
-            };
-          }
-        } catch {
-          /* SDK layout is not yet available; native geometry is still recorded. */
-        }
         return {
           searchActive: o.searchActive,
           reply: o.reply,
           editing: o.editing,
           keyboardHeight: o.keyboard.height.value,
           keyboardProgress: o.keyboard.progress.value,
-          list,
+          list: timelineMetrics(o.list.current, o.rows),
         };
       },
       emit: (record) => console.info(`[ZoenRestore] ${JSON.stringify(record)}`),
@@ -94,6 +95,18 @@ export function useChatNativeMetrics(options: Options) {
     const packet = await native.sampleScroll(reveal.nativeBinding);
     return ref.current === native ? packet : null;
   }, [reveal]);
+  const onComposerLayout = useCallback(
+    (height: number) => {
+      if (observation?.composerLayout(height)) void observation.sample(read);
+    },
+    [observation, read],
+  );
+  const onInsetRequested = useCallback(
+    (inset: { top: number; bottom: number }) => {
+      if (observation?.insetRequested(inset)) void observation.sample(read);
+    },
+    [observation, read],
+  );
   useLayoutEffect(() => {
     void observation?.sample(read);
   }, [observation, read, searchActive, options.reply, options.editing]);
@@ -109,5 +122,10 @@ export function useChatNativeMetrics(options: Options) {
     }),
     [focused, searchActive, observation, reveal],
   );
-  return { navigationMetrics, observe: navigationMetricsAvailable ? read : undefined };
+  return {
+    navigationMetrics,
+    observe: navigationMetricsAvailable ? read : undefined,
+    onComposerLayout,
+    onInsetRequested,
+  };
 }

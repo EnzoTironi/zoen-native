@@ -123,6 +123,7 @@ test('actual non-QA hook keeps search-only binding without QA lifecycle/native c
   const reveal = new ConversationReveal('private');
   let searching = false,
     binding = 'unset';
+  let metrics: ReturnType<typeof useChatNativeMetrics> | undefined;
   function Surface() {
     const m = hook({
       reveal,
@@ -137,18 +138,122 @@ test('actual non-QA hook keeps search-only binding without QA lifecycle/native c
     });
     React.useLayoutEffect(() => {
       binding = m.navigationMetrics.binding;
+      metrics = m;
     });
     return null;
   }
   try {
     await root.render(React.createElement(Surface));
     assert.equal(binding, '');
+    metrics!.navigationMetrics.ref.current = {
+      sampleScroll: async () => assert.fail('non-QA layout callbacks must never read UIKit'),
+    };
+    await root.act(() => {
+      metrics!.onComposerLayout(279.333);
+      metrics!.onInsetRequested({ top: 0, bottom: 581.333 });
+    });
     searching = true;
     await root.render(React.createElement(Surface));
     assert.equal(binding, reveal.nativeBinding);
     searching = false;
     await root.render(React.createElement(Surface));
     assert.equal(binding, '');
+    assert.deepEqual(root.errors, []);
+  } finally {
+    await root.close();
+  }
+});
+
+test('Compiler hook correlates layout intent with a fresh native sample without polling or crossing retirement', async () => {
+  const root = createReactTestRoot(),
+    records: string[] = [];
+  let focused = true,
+    current = true,
+    reads = 0;
+  const hook = chatNativeMetricsModule({
+    qa: true,
+    native: true,
+    appState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
+    useFocusEffect(callback) {
+      const active = focused;
+      React.useEffect(() => (active ? callback() : undefined), [callback, active]);
+    },
+    emit: (record) => records.push(record),
+  }).useChatNativeMetrics;
+  const reveal = new ConversationReveal('private');
+  let metrics: ReturnType<typeof useChatNativeMetrics> | undefined;
+  function Surface() {
+    const value = hook({
+      reveal,
+      focused,
+      searchActive: false,
+      current: () => current && focused,
+      list: {
+        current: {
+          getLayout: () => ({ y: 850, height: 50 }),
+          getFirstItemOffset: () => 10,
+          getChildContainerDimensions: () => ({ height: 900 }),
+          getWindowSize: () => ({ height: 600 }),
+        } as any,
+      },
+      rows: 1,
+      keyboard: { height: { value: 302 }, progress: { value: 1 } } as any,
+      reply: true,
+      editing: false,
+    });
+    React.useLayoutEffect(() => {
+      metrics = value;
+    });
+    return null;
+  }
+  try {
+    await root.render(React.createElement(Surface));
+    metrics!.navigationMetrics.ref.current = {
+      sampleScroll: async (binding) => ({
+        binding,
+        sequence: String(++reads),
+        geometry: {
+          contentOffset: { y: 420.667 },
+          contentSize: { height: 900 },
+          layoutMeasurement: { height: 600 },
+          contentInset: { top: 0, bottom: 393.333 },
+        },
+      }),
+    };
+    await root.act(() => {
+      metrics!.onComposerLayout(279.333);
+      metrics!.onInsetRequested({ top: 0, bottom: 581.333 });
+    });
+    assert.equal(reads, 2);
+    assert.equal(records.length, 1, 'the read preceding the second layout intent is retired');
+    const sample = JSON.parse(records[0]!.slice('[ZoenRestore] '.length));
+    assert.deepEqual(sample.composer, { height: 279.333 });
+    assert.deepEqual(sample.requestedInset, { top: 0, bottom: 581.333 });
+    assert.equal(
+      sample.native.contentInset.bottom,
+      393.333,
+      'do not invent native acknowledgement',
+    );
+    assert.equal(sample.list.lastRowHeight, 50);
+    await root.act(() => {
+      metrics!.onComposerLayout(279.333);
+      metrics!.onComposerLayout(NaN);
+      metrics!.onInsetRequested({ top: 0, bottom: 581.333 });
+      metrics!.onInsetRequested({ top: -1, bottom: 581.333 });
+    });
+    assert.equal(reads, 2, 'duplicates and invalid layout cannot poll UIKit');
+    current = false;
+    await root.act(() => metrics!.onComposerLayout(300));
+    assert.equal(reads, 2, 'synchronous owner guard refuses a stale measurement');
+    current = true;
+    const old = metrics!;
+    focused = false;
+    await root.render(React.createElement(Surface));
+    await root.act(() => {
+      old.onComposerLayout(300);
+      old.onInsetRequested({ top: 0, bottom: 600 });
+    });
+    assert.equal(reads, 2, 'retired callbacks do not open another native read');
     assert.deepEqual(root.errors, []);
   } finally {
     await root.close();
