@@ -4,14 +4,12 @@ import { Text } from 'react-native';
 import { Field, NativeButton, Surface } from '../components/primitives';
 import { t, locale, formatLocale } from '../i18n/index.ts';
 import { useTheme } from '../theme';
+import type { OwnerPolicyContext } from '../core/generated/OwnerPolicyContext';
+import { validContext } from '../owner-policy/values';
 import { policyAmount } from './owner-policy-presentation';
 import { policyAmountInput, policyDraft, type PolicyAmountDraft } from './owner-policy-amounts';
 
-export type OwnerPolicyFormContext = Readonly<{
-  currency: string;
-  scale: number;
-  reservation_units: string;
-}>;
+export type OwnerPolicyFormContext = Readonly<OwnerPolicyContext>;
 
 /** Mount with the current options digest as key; a replaced quote retires this draft. */
 export function OwnerPolicyForm({
@@ -35,9 +33,18 @@ export function OwnerPolicyForm({
     policyAmountInput(initial.max_attempt_units, context.scale, locale),
   );
   const [enabled, setEnabled] = useState(initial.enabled);
+  const authenticated = validContext(context);
+  // Off reviews the authenticated policy, keeping any unsubmitted text for On.
+  // Only an explicit, validated absence has zero limits; malformed data stays blocked.
+  const disabledLimit = authenticated ? (context.current_limit_units ?? '0') : '';
+  const disabledAttempt = authenticated ? (context.current_max_attempt_units ?? '0') : '';
+  const displayedLimit = enabled ? limit : policyAmountInput(disabledLimit, context.scale, locale);
+  const displayedAttempt = enabled
+    ? attempt
+    : policyAmountInput(disabledAttempt, context.scale, locale);
   const value = policyDraft(
-    limit,
-    attempt,
+    displayedLimit,
+    displayedAttempt,
     enabled,
     context.scale,
     context.reservation_units,
@@ -49,8 +56,8 @@ export function OwnerPolicyForm({
     context.scale,
     formatLocale,
   );
-  const available = active && !busy && !!hold;
-  const showError = limit.trim() && attempt.trim() && value.error;
+  const available = active && !busy && !!hold && authenticated;
+  const showError = enabled && limit.trim() && attempt.trim() && value.error;
   return (
     <Surface>
       <Text selectable style={{ color: colors.secondary, lineHeight: 22 }}>
@@ -61,9 +68,9 @@ export function OwnerPolicyForm({
           field: t('ownerPolicy.monthlyLimit'),
           currency: context.currency,
         })}
-        value={limit}
+        value={displayedLimit}
         onChangeText={setLimit}
-        editable={available}
+        editable={available && enabled}
         keyboardType="decimal-pad"
         autoCorrect={false}
       />
@@ -72,9 +79,9 @@ export function OwnerPolicyForm({
           field: t('ownerPolicy.perAttempt'),
           currency: context.currency,
         })}
-        value={attempt}
+        value={displayedAttempt}
         onChangeText={setAttempt}
-        editable={available}
+        editable={available && enabled}
         keyboardType="decimal-pad"
         autoCorrect={false}
       />

@@ -69,7 +69,7 @@ pub(super) async fn run(
     );
     assert_eq!(context.current_limit_units.as_deref(), Some("100"));
     assert!(context.current_policy_digest.is_some());
-    assert_eq!(w.count("SELECT count(*) FROM runtime_policies").await, 1);
+    assert_eq!(w.count("SELECT count(*) FROM runtime_policies").await, 2);
     assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 0);
     assert_eq!(provider.sends.load(Ordering::SeqCst), 0);
     let review = owner
@@ -84,7 +84,7 @@ pub(super) async fn run(
         .unwrap();
     let canonical: zoen_runtime::OwnerPeriodPolicy =
         serde_json::from_str(&review.canonical_policy_json).unwrap();
-    assert_eq!(canonical.version, 2);
+    assert_eq!(canonical.version, 3);
     assert_eq!(canonical.previous_digest, context.current_policy_digest);
     assert!(owner
         .submit_owner_policy(
@@ -93,7 +93,7 @@ pub(super) async fn run(
             "0".repeat(64)
         )
         .is_err());
-    assert_eq!(w.count("SELECT count(*) FROM runtime_policies").await, 1);
+    assert_eq!(w.count("SELECT count(*) FROM runtime_policies").await, 2);
     let submission = owner
         .submit_owner_policy(
             scope.clone(),
@@ -126,7 +126,7 @@ pub(super) async fn run(
         );
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    assert_eq!(w.count("SELECT count(*) FROM runtime_policies").await, 2);
+    assert_eq!(w.count("SELECT count(*) FROM runtime_policies").await, 3);
     assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 0);
     assert_eq!(provider.sends.load(Ordering::SeqCst), 0);
     assert_eq!(

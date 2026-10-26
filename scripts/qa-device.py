@@ -5,6 +5,8 @@ import re
 import subprocess
 import sys
 
+from qa_device_candidate import CandidateError, candidate_command
+
 
 BLOCKED = {"fill", "type"}
 USAGE = "Usage: python3 scripts/qa-device.py <verb> [arguments/options]"
@@ -17,7 +19,12 @@ def main(argv=None):
         print("Put the command verb first; leading options are refused before dispatch.",
               file=sys.stderr)
         return 2
-    if arguments[0] in BLOCKED:
+    try:
+        candidate = candidate_command(arguments)
+    except CandidateError as failure:
+        print(f"QA command refused before dispatch: {failure}", file=sys.stderr)
+        return 2
+    if arguments[0] in BLOCKED and candidate is None:
         print(
             "QA command refused before dispatch: fill and type are disabled. "
             "The installed iOS driver's clear/repair path can tap Send while "
@@ -32,7 +39,7 @@ def main(argv=None):
     try:
         # Inherit cwd, environment and standard streams. Keep arguments literal;
         # neither selectors nor text are interpreted by a shell.
-        return subprocess.run(["agent-device", *arguments], check=False).returncode
+        return subprocess.run([*(candidate or ["agent-device"]), *arguments], check=False).returncode
     except FileNotFoundError:
         print("agent-device was not found on PATH; no command was dispatched.",
               file=sys.stderr)

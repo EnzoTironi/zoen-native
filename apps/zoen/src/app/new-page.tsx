@@ -3,18 +3,26 @@ import { useState } from 'react';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useClient } from '../core/provider';
-import { Field, NativeButton } from '../components/primitives';
+import { Field, NativeButton, Loading } from '../components/primitives';
 import { useTheme } from '../theme';
 import { pickMarkdown } from '../documents/markdown-files';
 import { useDirtyEditor } from '../documents/use-dirty-editor';
+import {
+  pageCreationScope,
+  usePageCreationDestination,
+} from '../documents/use-page-creation-destination';
 
 export default function NewPage() {
   const { space: initial } = useLocalSearchParams<{ space?: string }>();
+  const client = useClient();
+  return <NewPageForm key={pageCreationScope(client.store, client)} initial={initial ?? ''} />;
+}
+function NewPageForm({ initial }: { initial: string }) {
   const { snapshot, store } = useClient();
   const { colors } = useTheme();
-  const [space, setSpace] = useState(initial ?? '');
+  const access = usePageCreationDestination(initial);
+  const { space, busy } = access;
   const [title, setTitle] = useState('');
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [imported, setImported] = useState<{ path: string; markdown: string } | null>(null);
   const finish = useDirtyEditor(!!title.trim() || imported !== null, busy);
@@ -69,18 +77,22 @@ export default function NewPage() {
         }
         disabled={busy}
         onPress={() => {
-          setBusy(true);
+          const operation = access.begin('picker');
+          if (!operation) return;
           setError(null);
           void pickMarkdown()
             .then((file) => {
-              if (file) setImported(file);
+              if (file && operation.current()) setImported(file);
             })
-            .catch((reason: unknown) =>
-              setError(
-                reason instanceof Error ? reason.message : t('documents.thisFileCouldNotBeOpened'),
-              ),
-            )
-            .finally(() => setBusy(false));
+            .catch((reason: unknown) => {
+              if (operation.current())
+                setError(
+                  reason instanceof Error
+                    ? reason.message
+                    : t('documents.thisFileCouldNotBeOpened'),
+                );
+            })
+            .finally(operation.finish);
         }}
       />
       <View style={{ gap: 10 }}>
@@ -92,7 +104,9 @@ export default function NewPage() {
             key={chat.id}
             accessibilityRole="radio"
             aria-checked={space === chat.id}
-            onPress={() => setSpace(chat.id)}
+            onPress={() => {
+              if (access.choose(chat.id)) setError(null);
+            }}
             style={{
               padding: 18,
               borderRadius: 18,
@@ -106,13 +120,22 @@ export default function NewPage() {
           </Pressable>
         ))}
       </View>
+      {access.checking ? <Loading /> : null}
+      {access.unavailable && !error ? (
+        <Text accessibilityRole="alert" style={{ color: colors.secondary }}>
+          {t('documents.pageDestinationUnavailable')}
+        </Text>
+      ) : null}
+      {access.failed ? (
+        <NativeButton secondary label={t('documents.tryAgain')} onPress={access.retry} />
+      ) : null}
       {error ? (
         <Text accessibilityRole="alert" selectable style={{ color: colors.danger }}>
           {error}
         </Text>
       ) : null}
       <NativeButton
-        disabled={busy || !space || (!imported && !title.trim())}
+        disabled={busy || !access.allowed || !space || (!imported && !title.trim())}
         label={
           busy
             ? t('documents.saving')
@@ -121,7 +144,9 @@ export default function NewPage() {
               : t('documents.createPage')
         }
         onPress={() => {
-          setBusy(true);
+          if (!imported && !title.trim()) return;
+          const operation = access.begin('create');
+          if (!operation) return;
           setError(null);
           void store
             .request(
@@ -135,17 +160,21 @@ export default function NewPage() {
                 : { op: 'page_create', space_id: space, title: title.trim() },
             )
             .then((item) => {
+              if (!operation.current()) return;
               finish();
               router.replace({ pathname: '/page/[id]', params: { id: item.id } });
             })
-            .catch((failure: unknown) =>
-              setError(
-                failure instanceof Error
-                  ? failure.message
-                  : t('documents.thePageCouldNotBeCreated'),
-              ),
-            )
-            .finally(() => setBusy(false));
+            .catch((failure: unknown) => {
+              if (operation.current()) {
+                setError(
+                  failure instanceof Error
+                    ? failure.message
+                    : t('documents.thePageCouldNotBeCreated'),
+                );
+                access.retry();
+              }
+            })
+            .finally(operation.finish);
         }}
       />
     </ScrollView>

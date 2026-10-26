@@ -5,11 +5,11 @@ use client_core::owner_policy::OwnerPolicyScope;
 pub(super) async fn run(
     w: &World,
     path: &Path,
-    owner: &Client,
+    owner: Arc<Client>,
     config: &config::Config,
     space: &str,
     provider: &Provider,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(Arc<Client>, String), Box<dyn std::error::Error>> {
     assert_eq!(w.count("SELECT count(*) FROM runtime_policies").await, 0);
     assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 0);
     assert_eq!(provider.sends.load(Ordering::SeqCst), 0);
@@ -23,7 +23,7 @@ pub(super) async fn run(
     };
     let pending = owner.request_account_policy_options(scope.clone())?;
     let mut host = Host::start(w, path).await?;
-    let first = account_controls::options(owner, &scope, &pending.source, &mut host).await;
+    let first = account_controls::options(&owner, &scope, &pending.source, &mut host).await;
     assert_eq!(first.image_profile_digest, config.image_price.digest()?);
     assert_eq!(first.current_policy_digest, None);
     assert_eq!(first.current_enabled, None);
@@ -32,7 +32,7 @@ pub(super) async fn run(
     let mut cold = Host::start(w, path).await?;
     let next = owner.request_account_policy_options(scope.clone())?;
     assert_ne!(next.source, pending.source);
-    let current = account_controls::options(owner, &scope, &next.source, &mut cold).await;
+    let current = account_controls::options(&owner, &scope, &next.source, &mut cold).await;
     assert_eq!(current.image_profile_digest, first.image_profile_digest);
     assert_eq!(current.current_policy_digest, None);
     assert_eq!(current.current_enabled, None);
@@ -49,5 +49,5 @@ pub(super) async fn run(
     assert!(owner.requests().is_empty());
     drop(cold);
     println!("first account context: real citizen/IPC/native MLS/directory/finance plus cold read, no prior image/policy/Request or provider/financial effects PASS");
-    Ok(())
+    first_account_disable::run(w, path, owner, config, space, provider).await
 }

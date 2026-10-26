@@ -5,6 +5,7 @@ import { runInNewContext } from 'node:vm';
 import { createRequire } from 'node:module';
 import { build } from 'esbuild';
 import { telegramPresentation } from '../theme/telegram.ts';
+import { navigationGlassAppearance } from '../components/navigation-appearance.ts';
 import { t } from '../i18n/index.ts';
 import {
   EnrollmentSession,
@@ -169,6 +170,7 @@ function settingsScroll(tree: Element) {
     require: (name: string) => {
       if (name === 'react-native') return { ScrollView: 'ScrollView' };
       if (name === 'expo-router') return { Stack: { Screen: 'Screen' } };
+      if (name === './navigation-appearance') return { navigationGlassAppearance };
       if (name === '../theme')
         return { useTheme: () => ({ presentation: telegramPresentation('night') }) };
       if (name === 'react/jsx-runtime')

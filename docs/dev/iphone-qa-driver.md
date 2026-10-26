@@ -7,17 +7,50 @@ python3 scripts/qa-device.py snapshot -i --session <authorized-session>
 python3 scripts/qa-device.py screenshot --session <authorized-session>
 ```
 
-The wrapper refuses **all `fill` and `type` commands**, including empty and
+The default wrapper refuses **all `fill` and `type` commands**, including empty and
 nonempty text, before starting `agent-device`. Leading options are refused too;
 put session/platform options after the verb. Other commands retain their literal
 arguments, environment, working directory, streams and exit status. This does
 not authorize any device, account, navigation or content action by itself.
 
-For now, text changes require normal, verified selection/editing within an
+Without the qualified private driver below, text changes require normal, verified selection/editing within an
 explicitly authorized scope, or leave the new draft intact. Do not bypass this
 guard through the raw CLI, batch/replay, MCP or another interface. A command
 acknowledgment or an empty field does not prove that a draft was safely cleared:
 inspect the actual resulting conversation and preserve unexpected messages.
+
+## Qualified private driver
+
+The external MIT candidate at exact clean commit
+`ca3075064f7ba38b2cf452996556aa4b8b9db5cc` removes geometric caret taps and requires
+observed target/focus/empty readback before replacement. Fixture696 passed all ten
+isolated UIKit scenarios; fixture699 passed normal CLI empty fill, Unicode and
+multiline replacement, and append, with exact resulting values and Send=0.
+These are Simulator/tool proofs, not physical-device or whole-product acceptance.
+The official0.21.31 version alone is insufficient; its unmodified clear is unsafe.
+
+An explicitly scoped QA case may select this checkout through the same wrapper:
+
+```sh
+export ZOEN_QA_DRIVER_ROOT=<absolute-qualified-checkout>
+export ZOEN_QA_NODE_BIN=<absolute-node-executable>
+export AGENT_DEVICE_HOME=<private-config-directory>
+export AGENT_DEVICE_STATE_DIR=<private-daemon-directory>
+export AGENT_DEVICE_IOS_RUNNER_DERIVED_PATH=<private-derived-data-directory>
+export AGENT_DEVICE_IOS_BUNDLE_ID=dev.agentdevice.zoenqa.v699
+export AGENT_DEVICE_IOS_RUNNER_TEST_BUNDLE_ID=dev.agentdevice.zoenqa.v699.uitests
+python3 scripts/qa-device.py snapshot -i --session <authorized-session>
+```
+
+Config, daemon and build directories must be distinct absolute paths. Other
+connection configs are refused. Every command verifies the exact clean checkout;
+an invalid candidate never falls back to the installed driver. Nothing installs
+or upgrades the global CLI. Start with a fresh empty daemon directory: the wrapper
+records its source and refuses an unknown existing daemon profile, even if it
+reports the same upstream version. Keep session/device/target selection explicit and
+verify resulting text and conversation state; approval of this tool does not
+authorize a particular edit, Send, account or device action. Preserve the earlier
+693 failures and CORE687 extra message; neither needs cleanup or replay.
 
 This is an operational guard against an observed automation defect, **not a
 sandbox or security boundary**. The raw CLI still exists. The wrapper does not

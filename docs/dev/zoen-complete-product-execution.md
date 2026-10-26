@@ -1,9 +1,33 @@
 ## Execução atual — 20 de outubro de 2026
 
-A meta foi ativada novamente nesta conversa. O próximo marco é **Zoen iOS pronto
+O próximo marco é **Zoen iOS pronto
 para lançamento**, com jornadas completas contra os serviços reais. As outras
 plataformas permanecem no escopo final, em fases posteriores; não dividem agora
 o trabalho de refinamento e validação manual.
+
+### Prioridade de consolidação — 26 de outubro de 2026
+
+Após a revisão de rumo com Enzo, concluir e integrar os lotes existentes antes de
+abrir novas capacidades. A prioridade imediata é fechar gestão de papéis e
+revogação ([#181](https://github.com/EnzoTironi/zoen-native/issues/181)), preservar
+criação offline e concluir criação/recuperação de Páginas no aplicativo
+([#179](https://github.com/EnzoTironi/zoen-native/issues/179)). Os comentários
+ancorados permanecem preservados, com implementação incompleta, até essas
+dependências estarem resolvidas. Desenvolvimento e QA internos de ArtCraft
+continuam parados; os editores seguem como Apps MCP externos.
+
+O próximo resultado integrado reúne duas pessoas, uma conversa e um artefato:
+criar, editar por pessoa e agente, aprovar, receber a alteração e recuperar o
+mesmo documento após reinício, com autoria e permissões efetivas. Em seguida,
+conversa/mídia e criação/Apps avançam em duas frentes de produto, com QA por lote
+e uma integração comum. O marco de lançamento abaixo mantém todos os seus
+critérios; esta sequência não reduz as capacidades aprovadas.
+
+Os testes nativos recentes são de simulador. A validação em iPhone físico,
+distribuição e backend público ainda exigem suas próprias provas. Trabalho local
+qualificado não conta como publicado ou mergeado. A conectividade voltou e o
+PR621 foi mergeado normalmente; o lote de mensageria627 aguarda checks. Os demais
+lotes seguem separados, com estados atuais registrados no issue170.
 
 | Lote                          | Entrega observável                                                                                                                                                                                                  | Critério de saída                                                                                                                                                                                                                                                               |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -29,15 +53,20 @@ com uma mesma capa nativa e navegação para todos os motores. O fluxo completo 
 gerar, verificar, registrar e atualizar um novo programa por agente ainda precisa
 de seu próprio aceite; criar uma instância do catálogo não equivale a essa prova.
 
-A ordem é de entrega; trabalho independente do núcleo/backend pode avançar em
-paralelo. Cada lote fecha front, núcleo e backend da mesma jornada. Subagentes
-trabalham com escopos isolados e um responsável por fonte, dispositivos e serviços.
+A execução segue a [ordem de engenharia do AGENTS.md](../../AGENTS.md#engenharia):
+questionar requisitos, eliminar partes dispensáveis, simplificar, acelerar e
+automatizar. A solução deve concretizar a visão completa com uma estrutura
+reutilizável e uma única autoridade de estado. As 30 jornadas, capacidades de
+criação e critérios de lançamento permanecem no escopo aprovado.
 
-Implementar um lote coerente, revisar e validar em conjunto. Repetir build ou a
-suíte ampla quando uma mudança/falha justificar; não repetir tudo após ajustes de
-documentação. Preservar testes de contratos, durabilidade e permissões. Uma falha
-de ferramenta ou de ambiente é registrada separadamente, enquanto o trabalho
-independente continua. Uma prova não executada permanece pendente.
+Cada lote fecha front, núcleo e backend da mesma jornada e usa um issue, um
+responsável e um registro final conciso de mudança, testes e limitações. Frentes
+independentes avançam em paralelo. Implementação, checks adequados, QA por lote
+e revisão/merge formam o caminho de entrega; decisões rotineiras já autorizadas
+prosseguem sem novas rodadas de ACK. Repetir build ou suíte ampla exige mudança,
+falha ou dúvida material. Preservar testes de autorização, durabilidade e
+recuperação; registrar falhas de ferramenta separadamente e manter pendente a
+prova ainda não executada.
 
 **Marco iOS aceito** exige as jornadas iOS aplicáveis e as capacidades de criação
 previstas, front e backend completos, provedores/configuração reais, build
