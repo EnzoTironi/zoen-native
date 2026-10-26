@@ -6,7 +6,7 @@ import {
   foregroundStyle,
   frame,
 } from '@expo/ui/swift-ui/modifiers';
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { t } from '../i18n';
 import { useTheme } from '../theme';
@@ -21,6 +21,8 @@ import {
 import { SettingsScreen } from './settings-screen';
 import { SkyLayer } from './sky-background';
 import { ThemeColorPicker } from './theme-color-picker';
+import { ThemeChatPreview } from './theme-chat-preview';
+import { ThemePresetList } from './theme-preset-list';
 import { THEME_PROFILES, isDarkTheme } from '../theme/catalog';
 
 const accentColors = [
@@ -272,13 +274,12 @@ export function ThemeSettings() {
     setCustomization,
     preferenceError,
   } = useTheme();
-  const [editing, setEditing] = useState<ThemeProfile>(profile);
+  const editing = profile;
   const settings = customizations[editing];
   const preview = telegramPresentation(editing, settings);
   const sky = resolveSkyTheme(editing, new Date(2026, 0, 1), settings).sky;
   const update = (patch: Partial<ThemeCustomization>) => setCustomization(editing, patch);
   function select(profile: ThemeProfile) {
-    setEditing(profile);
     setPreference(profile);
   }
   return (
@@ -287,12 +288,9 @@ export function ThemeSettings() {
       testID="theme-settings-screen"
       onTouchStart={THEME_INPUT_PROBE ? () => reportThemeInput('screen-touch-start') : undefined}
     >
+      <ThemeChatPreview />
       <Block>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 6 }}
-        >
+        <ThemePresetList profile={profile}>
           {THEME_PROFILES.map((theme) => (
             <Preview
               key={theme}
@@ -301,41 +299,8 @@ export function ThemeSettings() {
               onPress={() => select(theme)}
             />
           ))}
-        </ScrollView>
+        </ThemePresetList>
       </Block>
-      <View style={{ minHeight: 176, borderRadius: 10, overflow: 'hidden', padding: 12, gap: 10 }}>
-        <SkyLayer sky={sky} />
-        <View
-          style={{
-            alignSelf: 'flex-start',
-            maxWidth: '84%',
-            padding: 11,
-            borderRadius: 16,
-            backgroundColor: preview.chat.incoming.fill,
-          }}
-        >
-          <Text style={{ color: preview.chat.incoming.text, fontSize: settings.textSize }}>
-            {t('settings.themePreviewReceived')}
-          </Text>
-        </View>
-        <View
-          style={{
-            alignSelf: 'flex-end',
-            maxWidth: '84%',
-            padding: 11,
-            borderRadius: 16,
-            backgroundColor: preview.chat.outgoing.fill,
-            experimental_backgroundImage:
-              preview.chat.outgoing.fillColors.length > 1
-                ? `linear-gradient(to bottom, ${preview.chat.outgoing.fillColors.join(', ')})`
-                : undefined,
-          }}
-        >
-          <Text style={{ color: preview.chat.outgoing.text, fontSize: settings.textSize }}>
-            {t('settings.themePreviewOwn')}
-          </Text>
-        </View>
-      </View>
       <Block>
         <Toggle
           label={t('settings.themeAutomatic')}
