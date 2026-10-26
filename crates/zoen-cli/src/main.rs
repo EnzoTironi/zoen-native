@@ -184,8 +184,8 @@ fn new_block_id() -> String {
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() {
-    let mut cli = Cli {
-        args: std::env::args().skip(1).collect(),
+    let Some(mut cli) = Cli::from_args(std::env::args().skip(1).collect()) else {
+        return;
     };
     let home = cli
         .flag("--home")
