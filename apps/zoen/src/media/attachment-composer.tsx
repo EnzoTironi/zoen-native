@@ -42,6 +42,7 @@ function scopeAvailable(
   );
 }
 export type AttachmentComposerField = {
+  mutationId: string;
   scope: AttachmentDraftScope;
   targetFrozen: boolean;
   value: string;
@@ -316,6 +317,7 @@ function useVolatileAttachmentComposer({
   const field: AttachmentComposerField | undefined =
     selected && state && visible
       ? {
+          mutationId: selected.mutationId,
           scope: state.scope,
           targetFrozen: state.targetFrozen,
           value: selected.caption,

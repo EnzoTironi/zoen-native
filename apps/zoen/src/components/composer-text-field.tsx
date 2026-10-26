@@ -26,6 +26,16 @@ export function ComposerTextField({
   ...props
 }: TextInputProps & { inputRef?: Ref<TextInputInstance>; context: string }) {
   const field = useRef<TextInputInstance | null>(null);
+  const owner = useMemo(() => ({ context }), [context]);
+  const committed = useRef<{ owner: object; props: TextInputProps } | null>(null);
+  useLayoutEffect(() => {
+    const active = { owner, props };
+    committed.current = active;
+    return () => {
+      if (committed.current === active) committed.current = null;
+    };
+  });
+  const events = () => (committed.current?.owner === owner ? committed.current.props : null);
   const [width, setWidth] = useState(0);
   const [tag, setTag] = useState<number | null>(null);
   useAttachmentKeyboardField(tag, context, props.accessibilityLabel ?? '', props.placeholder ?? '');
@@ -96,10 +106,35 @@ export function ComposerTextField({
     },
     [setTag],
   );
+  // Typing keeps the last proven height until the same editor's new fit lands.
+  // Another target, width or font must establish its own geometry.
+  const retainedHeight =
+    fitted &&
+    fitted.snapshot.context === snapshot.context &&
+    fitted.snapshot.tag === snapshot.tag &&
+    fitted.snapshot.width === snapshot.width &&
+    fitted.snapshot.fontSize === snapshot.fontSize
+      ? fitted.height
+      : undefined;
   return (
     <TextInput
       {...props}
       ref={ref}
+      onChangeText={(text) => {
+        const active = events();
+        if (active?.editable !== false) active?.onChangeText?.(text);
+      }}
+      onChange={(event) => {
+        const active = events();
+        if (active?.editable !== false) active?.onChange?.(event);
+      }}
+      onSelectionChange={(event) => events()?.onSelectionChange?.(event)}
+      onFocus={(event) => events()?.onFocus?.(event)}
+      onBlur={(event) => events()?.onBlur?.(event)}
+      onSubmitEditing={(event) => {
+        const active = events();
+        if (active?.editable !== false) active?.onSubmitEditing?.(event);
+      }}
       onLayout={(event) => {
         setWidth(event.nativeEvent.layout.width);
         props.onLayout?.(event);
@@ -121,7 +156,7 @@ export function ComposerTextField({
                 ? process.env.EXPO_OS === 'ios'
                   ? 40
                   : 52
-                : undefined,
+                : retainedHeight,
         },
       ]}
     />

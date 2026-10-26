@@ -159,7 +159,12 @@ export function MessageComposer({
     const field = (
       <ComposerTextField
         inputRef={inputRef}
-        context={`${spaceId}:${threadRootId ?? ''}:${search ? 'search' : files ? `caption:${files.position}` : editing ? 'edit' : 'normal'}`}
+        context={JSON.stringify([
+          spaceId,
+          threadRootId ?? null,
+          search ? 'search' : files ? 'caption' : editing ? 'edit' : 'normal',
+          files?.mutationId ?? (editing ? (context?.entry?.id ?? null) : null),
+        ])}
         testID="message-input"
         accessibilityLabel={
           search

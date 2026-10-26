@@ -194,6 +194,7 @@ export function fixture(
   };
   const calls: string[] = [];
   const file = {
+    mutationId: 'selected-asset',
     scope,
     targetFrozen: false,
     value: '',

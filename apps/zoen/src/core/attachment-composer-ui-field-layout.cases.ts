@@ -236,11 +236,16 @@ test('compiled field preserves its actual native owner while input-mode, caption
   assert.equal(find(tree, byId('message-input')).props.ref, first.props.ref);
   assert.equal(inputRef.current, f.nativeField);
   const cases = [
-    { files: f.file, patch: {}, context: 'space::caption:1', value: '' },
+    {
+      files: f.file,
+      patch: {},
+      context: JSON.stringify(['space', null, 'caption', f.file.mutationId]),
+      value: '',
+    },
     {
       files: undefined,
       patch: { editing: true, value: 'Edited draft' },
-      context: 'space::edit',
+      context: JSON.stringify(['space', null, 'edit', null]),
       value: 'Edited draft',
     },
     {
@@ -259,10 +264,15 @@ test('compiled field preserves its actual native owner while input-mode, caption
         },
         value: 'term',
       },
-      context: 'space::search',
+      context: JSON.stringify(['space', null, 'search', null]),
       value: 'term',
     },
-    { files: undefined, patch: {}, context: 'space::normal', value: 'My unsent normal text' },
+    {
+      files: undefined,
+      patch: {},
+      context: JSON.stringify(['space', null, 'normal', null]),
+      value: 'My unsent normal text',
+    },
   ];
   for (const current of cases) {
     tree = f.render(current.files, { inputRef, ...current.patch });
@@ -280,7 +290,7 @@ test('compiled field preserves its actual native owner while input-mode, caption
     assert.ok(
       f.keyboardFields.some(([tag, context]) => tag === 101 && context === current.context),
     );
-    if (current.context.endsWith('search'))
+    if (JSON.parse(current.context)[2] === 'search')
       assert.equal(parentOf(tree, find(tree, byId('composer-input-mode'))).props.active, false);
   }
   const providerFor = (patch: Record<string, unknown>) =>
