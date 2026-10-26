@@ -2,6 +2,7 @@
 use super::*;
 type TestResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 mod addition_cases;
+mod role_cases;
 mod support;
 use support::Fixture;
 use types::{EventBody, Role, SpaceKind};

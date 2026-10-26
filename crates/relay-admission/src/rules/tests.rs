@@ -1,6 +1,7 @@
 use super::*;
 use event_log::{Author, Signer};
 use types::Seen;
+mod role_controls;
 
 fn env(
     author: &Author,
