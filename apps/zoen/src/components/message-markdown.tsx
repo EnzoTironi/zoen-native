@@ -4,6 +4,7 @@ import { EnrichedMarkdownText, type MarkdownStyle } from 'react-native-enriched-
 import { messageMarkdownLink, messageMarkdownMayLoadMedia } from '../core/message-markdown';
 import { useTheme } from '../theme';
 import { useLinkLaunch } from './use-link-launch';
+import { useMessageCodeCopy } from './use-message-code-copy';
 
 export type MessageMarkdownProps = {
   text: string;
@@ -27,6 +28,7 @@ export const MessageMarkdown = memo(function MessageMarkdown({
 }: MessageMarkdownProps) {
   const { colors, scheme } = useTheme();
   const launchLink = useLinkLaunch(text);
+  const copyCode = useMessageCodeCopy(text, testID);
   const markdownStyle = useMemo<MarkdownStyle>(() => {
     const body = { color, fontSize, lineHeight: Math.ceil(fontSize * 1.3) };
     const heading = (extra: number) => ({
@@ -142,6 +144,9 @@ export const MessageMarkdown = memo(function MessageMarkdown({
       enableBlockContextMenu={selectable}
       enableTaskListItemToggle={false}
       streamingAnimation={false}
+      onCodeBlockPress={({ code }) => {
+        void copyCode(code);
+      }}
       onLinkPress={({ url }) => {
         const target = messageMarkdownLink(url);
         if (target) void launchLink(target);
