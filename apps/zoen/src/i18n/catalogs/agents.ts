@@ -54,6 +54,9 @@ export const agents = defineFeature(
     askAgainNextTime: 'Ask again next time',
     yourAgent: 'Your agent',
     checkingStatus: 'Checking status…',
+    lifecycleReconciling:
+      'Checking whether the change was applied. Refreshing will not send it again.',
+    lifecycleRefresh: 'Refresh status',
     pauseAgent: 'Pause agent',
     resumeAgent: 'Resume agent',
     shareAgent: 'Share agent',
@@ -185,6 +188,9 @@ export const agents = defineFeature(
     askAgainNextTime: 'Pedir de novo da próxima vez',
     yourAgent: 'Seu agente',
     checkingStatus: 'Consultando estado…',
+    lifecycleReconciling:
+      'Verificando se a alteração foi aplicada. Atualizar não a envia novamente.',
+    lifecycleRefresh: 'Atualizar estado',
     pauseAgent: 'Pausar agente',
     resumeAgent: 'Retomar agente',
     shareAgent: 'Compartilhar agente',
