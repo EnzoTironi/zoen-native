@@ -353,8 +353,8 @@ impl State {
                 if let Some(s) = self.spaces.get_mut(&e.space) {
                     s.entries.push(entry(EntryBody::System {
                         text: t(
-                            "Nova revisão solicitada. A aprovação anterior não foi renovada.",
-                            "New review requested. The previous approval was not renewed.",
+                            "Nova revisão solicitada. A ação ainda precisa ser aprovada.",
+                            "New review requested. The action still requires approval.",
                         ),
                     }));
                 }

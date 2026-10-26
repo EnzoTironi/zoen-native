@@ -10,12 +10,14 @@ export function ToolReviewRecovery({
   requestId,
   onResolved,
   disabled = false,
+  onExpiry,
 }: {
   requestId: string;
   onResolved?: () => void;
   disabled?: boolean;
+  onExpiry?: () => void;
 }) {
-  const { state, session } = useToolReview(requestId);
+  const { state, session } = useToolReview(requestId, onExpiry);
   const { colors } = useTheme();
   const review = state.request?.tool_approval?.review;
   const ticket = disabled ? null : session.ticket(state);

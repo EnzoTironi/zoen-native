@@ -11,6 +11,7 @@ import { createLocalization } from '../i18n/runtime.ts';
 import { reviewRenewal } from '../i18n/catalogs/review-renewal.ts';
 import { imageToolReviewValid } from './image-tool-review.ts';
 import { imageReview } from '../i18n/catalogs/image-review.ts';
+import * as decision from './tool-request-decision.ts';
 
 const files = {
   view: '../agents/tool-review-recovery.tsx',
@@ -29,25 +30,52 @@ const compiled = new Map(
           : new URL(path, import.meta.url),
         'utf8',
       );
-      const transformed =
-        name === 'view'
-          ? transformSync(source, {
-              filename: fileURLToPath(new URL(path, import.meta.url)),
-              configFile: false,
-              babelrc: false,
-              presets: [require.resolve('babel-preset-expo')],
-              caller: {
-                name: 'metro',
-                platform: 'ios',
-                engine: 'hermes',
-                isDev: false,
-                supportsReactCompiler: true,
-              },
-            }).code
-          : source;
-      if (name === 'view') assert.match(transformed, /react\/compiler-runtime/);
+      const useCompiler = name === 'view' || name === 'card' || name === 'hook';
+      const diagnostics: string[] = [];
+      const transformed = useCompiler
+        ? transformSync(source, {
+            filename: fileURLToPath(new URL(path, import.meta.url)),
+            configFile: false,
+            babelrc: false,
+            presets: [require.resolve('babel-preset-expo')],
+            plugins: [
+              [
+                'babel-plugin-react-compiler',
+                {
+                  target: '19',
+                  logger: {
+                    logEvent(
+                      _file: unknown,
+                      event: { kind: string; detail?: { options?: { reason?: string } } },
+                    ) {
+                      if (event.kind === 'CompileError' || event.kind === 'CompileDiagnostic')
+                        diagnostics.push(event.detail?.options?.reason ?? event.kind);
+                    },
+                  },
+                },
+              ],
+            ],
+            caller: {
+              name: 'metro',
+              platform: 'ios',
+              engine: 'hermes',
+              isDev: false,
+              supportsStaticESM: false,
+            },
+          }).code
+        : source;
+      // RequestCard already falls back on b260 because its existing async
+      // decision handler uses try/finally. Exercise that normal output without
+      // hiding additional diagnostics or changing unrelated decision behavior.
+      assert.deepEqual(
+        diagnostics,
+        name === 'card'
+          ? ["(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"]
+          : [],
+      );
+      if (name === 'view' || name === 'hook') assert.match(transformed, /react\/compiler-runtime/);
       const result = await build({
-        stdin: { contents: transformed, loader: name === 'view' ? 'js' : 'tsx' },
+        stdin: { contents: transformed, loader: useCompiler ? 'js' : 'tsx' },
         bundle: true,
         format: 'cjs',
         platform: 'node',
@@ -90,7 +118,7 @@ export function fixture(locale: 'en' | 'pt-BR' = 'en') {
   let now = Date.now();
   let nextTimer = 0;
   const timers = new Map<number, { at: number; fn: () => void }>();
-  const compilerCaches: unknown[][] = [];
+  const compilerCaches = new Map<keyof typeof files, unknown[][]>();
   let cacheCursor = 0,
     stateCursor = 0;
   let resultMessage: string | null = null;
@@ -182,7 +210,9 @@ export function fixture(locale: 'en' | 'pt-BR' = 'en') {
       if (path === 'react/compiler-runtime')
         return {
           c(size: number) {
-            return (compilerCaches[cacheCursor++] ??= Array(size).fill(
+            let caches = compilerCaches.get(name);
+            if (!caches) compilerCaches.set(name, (caches = []));
+            return (caches[cacheCursor++] ??= Array(size).fill(
               Symbol.for('react.memo_cache_sentinel'),
             ));
           },
@@ -257,8 +287,11 @@ export function fixture(locale: 'en' | 'pt-BR' = 'en') {
       if (path.endsWith('/image-tool-review')) return { imageToolReviewValid };
       if (path.endsWith('/tool-request-decision'))
         return {
-          toolApprovalExpired: (tool: any) => Number(tool.expires_ms) <= now,
-          toolApprovalValid: () => true,
+          ...decision,
+          toolApprovalExpired: (tool: Parameters<typeof decision.toolApprovalExpired>[0]) =>
+            decision.toolApprovalExpired(tool, now),
+          requestDecisionCommand: (...args: Parameters<typeof decision.requestDecisionCommand>) =>
+            decision.requestDecisionCommand(args[0], args[1], now),
         };
       if (path.endsWith('/ZoenCoreModule')) return { sitePreviewVersion: 2 };
       if (path.endsWith('/account-scope.ts')) return ownership;
@@ -332,6 +365,7 @@ export function fixture(locale: 'en' | 'pt-BR' = 'en') {
       });
     },
     card: (request: any, result: string | null = null) => {
+      cacheCursor = 0;
       stateCursor = 0;
       resultMessage = result;
       return load('card').RequestCard({ request });

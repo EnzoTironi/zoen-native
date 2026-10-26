@@ -1,6 +1,7 @@
 //! One authenticated source turn and its existing continuation/receipt decisions.
 
 use super::*;
+use client_core::RequestStatus;
 
 /// A deferred turn has performed no admission, journal reservation or effect.
 /// It is scheduling, not an unknown provider/executor result or a retry attempt.
@@ -169,9 +170,15 @@ async fn checked(
                 e.tool_review_pending_intent(&dto.id),
             )));
         }
-        if let Some(category) = trace::Stop::request_status(dto.status) {
-            stop(category);
-            return true;
+        // Only an authenticated owner intent may move a pending/expired call
+        // into preparation. It still cannot reach continuation or execution.
+        let prepare_pending = matches!(dto.status, RequestStatus::Pending | RequestStatus::Stale)
+            && e.tool_review_pending_intent(&dto.id).is_some();
+        if !prepare_pending {
+            if let Some(category) = trace::Stop::request_status(dto.status) {
+                stop(category);
+                return true;
+            }
         }
         let Some(proposal) = &request.tool_proposal else {
             stop(trace::Stop::InvalidContinuation);
@@ -215,6 +222,12 @@ async fn checked(
                     selection,
                 );
             }
+        }
+        // Preparation is not approval, including when a receipt was reconciled
+        // or the intent changed during the read-only synchronization preflight.
+        if let Some(category) = trace::Stop::request_status(dto.status) {
+            stop(category);
+            return true;
         }
         let checkpoint = match tools.recovery_checkpoint(&request.id, &request.content_hash) {
             Ok(checkpoint) => checkpoint,

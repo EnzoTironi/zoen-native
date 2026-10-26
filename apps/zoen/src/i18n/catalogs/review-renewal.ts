@@ -3,12 +3,12 @@ import { defineFeature } from '../catalog.ts';
 export const reviewRenewal = defineFeature(
   {
     expired:
-      'The approval period ended. Requesting a new review only asks the agent to prepare it; you must approve the new request separately.',
+      'This review period ended. Requesting a new review only asks the agent to prepare it; you must approve the new request separately.',
     historicalApproval:
       'Previous decision: approved once. This is not confirmation that the action ran.',
     renew: 'Request a new review',
     requested:
-      'New review requested. Wait for a new request from the agent; the previous approval remains expired.',
+      'New review requested. Wait for a new request from the agent; the previous request remains expired.',
     superseded: 'A new request is ready. Its approval is separate from the previous one.',
     open: 'Open the new request',
     reconcile: 'The result needs reconciliation. Do not repeat an action whose result is unknown.',
@@ -21,12 +21,12 @@ export const reviewRenewal = defineFeature(
   },
   {
     expired:
-      'O prazo da aprovação terminou. Solicitar nova revisão apenas pede ao agente que a prepare; você precisa aprovar o novo pedido separadamente.',
+      'O prazo desta revisão terminou. Solicitar nova revisão apenas pede ao agente que a prepare; você precisa aprovar o novo pedido separadamente.',
     historicalApproval:
       'Decisão anterior: aprovado uma vez. Isso não confirma que a ação foi executada.',
     renew: 'Solicitar nova revisão',
     requested:
-      'Nova revisão solicitada. Aguarde um novo pedido do agente; a aprovação anterior continua expirada.',
+      'Nova revisão solicitada. Aguarde um novo pedido do agente; o pedido anterior continua expirado.',
     superseded: 'Um novo pedido está pronto. Sua aprovação é separada da anterior.',
     open: 'Abrir o novo pedido',
     reconcile:

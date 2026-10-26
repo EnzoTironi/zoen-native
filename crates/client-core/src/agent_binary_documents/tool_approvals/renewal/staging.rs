@@ -55,8 +55,18 @@ impl Client {
         if intent.id != owner_intent || e.me_id()? != r.req.agent {
             return Err(denied());
         }
-        // Existing authority is checked before even revealing acceptance metadata.
-        e.tool_resolution(predecessor, &r.req.content_hash)?;
+        // Preparation of an unresolved request cannot borrow an approval. The
+        // approved path keeps its existing resolution/confirmation checks; the
+        // pending path validates its frozen proposal without authorizing IO.
+        if r.status == ReqStatus::Approved {
+            e.tool_resolution(predecessor, &r.req.content_hash)?;
+        } else if !review_predecessor(&r)
+            || r.req.tool_proposal_hash(&r.space).as_deref() != Some(r.req.content_hash.as_str())
+            || parsed(old).is_err()
+            || !e.tool_non_blocked(&r.req)
+        {
+            return Err(denied());
+        }
         let (device, owner, space, source) = if old.schema == 5 {
             e.site_proposal_authority(old)?
         } else if old.schema == 3 {
