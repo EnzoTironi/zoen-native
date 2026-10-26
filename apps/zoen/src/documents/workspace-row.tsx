@@ -1,9 +1,13 @@
 import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { router } from 'expo-router';
-import { Icon } from '../components/primitives';
+import { Icon, IconButton } from '../components/primitives';
 import { t } from '../i18n/index.ts';
 import { useTheme } from '../theme';
 import { workspaceKind, type WorkspaceRow } from './workspace-index';
+import { useClient } from '../core/provider';
+import { accountScope, accountScopeKey } from '../core/account-scope';
+import { homeSpacesFor } from '../home/access';
+import { isOwnedAppResource } from '../miniapps/canonical-resource';
 
 const symbols = {
   pages: { ios: 'doc.text', android: 'description', web: 'description' },
@@ -21,6 +25,8 @@ export function WorkspaceItemRow({
   row: WorkspaceRow;
   openFolder: (path: string) => void;
 }) {
+  const state = useClient();
+  const owner = accountScopeKey(accountScope(state.store, state));
   const { colors, presentation: p } = useTheme();
   const { fontScale } = useWindowDimensions();
   // Keep the compact row at normal text sizes; expanded text sets its own height.
@@ -30,73 +36,96 @@ export function WorkspaceItemRow({
   const detail = folder
     ? t('workspace.folderCount', { count: row.count })
     : [row.item.space_title, row.item.kind_label, row.item.path].filter(Boolean).join(' · ');
+  const managed =
+    !folder && row.item.app && isOwnedAppResource(row.item.app.resource_uri) ? row.item : null;
+  const details = () => {
+    if (
+      !managed ||
+      !owner ||
+      accountScopeKey(accountScope(state.store)) !== owner ||
+      !homeSpacesFor(state.store.getSnapshot()).has(managed.space_id)
+    )
+      return;
+    router.push({ pathname: '/miniapp/[id]/manage', params: { id: managed.id } });
+  };
   return (
-    <Pressable
-      testID={`workspace-${row.key}`}
-      accessibilityRole="button"
-      accessibilityLabel={`${title}, ${detail}`}
-      onPress={() =>
-        folder
-          ? openFolder(row.path)
-          : router.push({ pathname: '/item/[id]', params: { id: row.item.id } })
-      }
-      style={({ pressed }) => ({
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 14,
-        paddingVertical: 14,
-        paddingHorizontal: 8,
-        minHeight: 76,
-        borderRadius: 14,
-        borderCurve: 'continuous',
-        backgroundColor: pressed ? p.list.highlighted : 'transparent',
-      })}
-    >
-      <View
-        style={{
-          width: 44,
-          height: 48,
-          flexShrink: 0,
-          borderRadius: 12,
-          backgroundColor: colors.muted,
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+      <Pressable
+        testID={`workspace-${row.key}`}
+        accessibilityRole="button"
+        accessibilityLabel={`${title}, ${detail}`}
+        onPress={() =>
+          folder
+            ? openFolder(row.path)
+            : router.push({ pathname: '/item/[id]', params: { id: row.item.id } })
+        }
+        style={({ pressed }) => ({
+          flexDirection: 'row',
           alignItems: 'center',
-          justifyContent: 'center',
-        }}
+          gap: 14,
+          paddingVertical: 14,
+          paddingHorizontal: 8,
+          minHeight: 76,
+          borderRadius: 14,
+          borderCurve: 'continuous',
+          flex: 1,
+          backgroundColor: pressed ? p.list.highlighted : 'transparent',
+        })}
       >
-        <Icon
-          name={
-            folder
-              ? { ios: 'folder.fill', android: 'folder', web: 'folder' }
-              : symbols[workspaceKind(row.item)]
-          }
-          color={colors.accent}
-        />
-      </View>
-      <View style={{ flex: 1, minWidth: 0, gap: 5 }}>
-        <Text numberOfLines={lines} style={{ ...p.typography.title, color: colors.text }}>
-          {title}
-        </Text>
-        <Text numberOfLines={lines} style={{ ...p.typography.footnote, color: colors.secondary }}>
-          {detail}
-        </Text>
-      </View>
-      {folder ? (
-        <Icon
-          name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
-          size={16}
-          color={colors.tertiary}
-        />
-      ) : (
-        <Text
+        <View
           style={{
-            ...p.typography.caption,
-            color: colors.tertiary,
-            fontVariant: ['tabular-nums'],
+            width: 44,
+            height: 48,
+            flexShrink: 0,
+            borderRadius: 12,
+            backgroundColor: colors.muted,
+            alignItems: 'center',
+            justifyContent: 'center',
           }}
         >
-          v{row.item.version}
-        </Text>
-      )}
-    </Pressable>
+          <Icon
+            name={
+              folder
+                ? { ios: 'folder.fill', android: 'folder', web: 'folder' }
+                : symbols[workspaceKind(row.item)]
+            }
+            color={colors.accent}
+          />
+        </View>
+        <View style={{ flex: 1, minWidth: 0, gap: 5 }}>
+          <Text numberOfLines={lines} style={{ ...p.typography.title, color: colors.text }}>
+            {title}
+          </Text>
+          <Text numberOfLines={lines} style={{ ...p.typography.footnote, color: colors.secondary }}>
+            {detail}
+          </Text>
+        </View>
+        {folder ? (
+          <Icon
+            name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
+            size={16}
+            color={colors.tertiary}
+          />
+        ) : (
+          <Text
+            style={{
+              ...p.typography.caption,
+              color: colors.tertiary,
+              fontVariant: ['tabular-nums'],
+            }}
+          >
+            v{row.item.version}
+          </Text>
+        )}
+      </Pressable>
+      {managed && owner ? (
+        <IconButton
+          testID={`workspace-app-details:${managed.id}`}
+          name={{ ios: 'info.circle', android: 'info', web: 'info' }}
+          label={`${t('common.details')}: ${title}`}
+          onPress={details}
+        />
+      ) : null}
+    </View>
   );
 }
