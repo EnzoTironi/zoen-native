@@ -220,6 +220,14 @@ impl Engine {
                 }
             }
             let Some(mut env) = self.outgoing_envelope_with(&event, &mut ready) else {
+                if ready
+                    .get(&event.space)
+                    .copied()
+                    .flatten()
+                    .is_some_and(|epoch| self.unreadable_current_sealed_copy(&event, epoch))
+                {
+                    blocked.insert(event.space.clone());
+                }
                 continue;
             };
             if let Some(bytes) = env.recovery() {

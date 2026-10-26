@@ -35,6 +35,10 @@ impl Engine {
         Some((epoch, env))
     }
 
+    pub(crate) fn unreadable_current_sealed_copy(&self, e: &Event, epoch: u64) -> bool {
+        self.sealed_epoch(e) == Some(epoch) && self.sealed_copy(e).is_none()
+    }
+
     /// Seals every queued message whose group is ready and that has no copy for the
     /// group's current epoch. `true` when something new can go out.
     pub fn mls_seal_outbox(&mut self) -> R<bool> {
@@ -93,6 +97,9 @@ impl Engine {
                 continue;
             }
             if self.sealed_epoch_of(&h.client_id) == Some(epoch) {
+                if self.unreadable_current_sealed_copy(&e, epoch) {
+                    blocked.insert(e.space.clone());
+                }
                 continue;
             }
             if !must_seal(&e.body) {
