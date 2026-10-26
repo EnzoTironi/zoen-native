@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { AgentControlSession, type AgentControlPort } from './agent-control-session.ts';
-import { accountScopeKey, type AccountScope } from '../core/account-scope.ts';
+import { AgentControlSession, type AgentControlPort } from '../agents/agent-control-session.ts';
+import { accountScopeKey, type AccountScope } from './account-scope.ts';
 
 const first: AccountScope = { identity: 'a', device: 'd', relay: 'r', epoch: 1 };
 const second: AccountScope = { ...first, epoch: 2 };

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createAgentControlPort } from './agent-control-port.ts';
-import type { ClientStore } from '../core/store.ts';
+import { createAgentControlPort } from '../agents/agent-control-port.ts';
+import type { ClientStore } from './store.ts';
 
 function fixture() {
   let epoch = 1;
