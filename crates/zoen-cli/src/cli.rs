@@ -1,7 +1,7 @@
 //! Original argument parser/help; flags retain their existing behavior.
-pub(crate) fn usage() -> ! {
-    eprintln!(
-        "usage: zoen [--home DIR] <command>\n\n\
+mod help;
+
+const USAGE: &str = "usage: zoen [--home DIR] <command>\n\n\
          init --name NAME --handle HANDLE [--relay URL]\n\
          whoami | status | chats | verify\n\
          people QUERY\n\
@@ -54,8 +54,10 @@ pub(crate) fn usage() -> ! {
          file version ITEM FILE [--thumb PNG]\n\
          versions ITEM | restore ITEM N      ITEM = id (prefix ok), path or title\n\
          backup on (--password P | --recovery-key) | backup now | backup off | backup status\n\
-         recover @HANDLE (--password P | --recovery-key KEY) [--relay URL]   a new device from a backup"
-    );
+         recover @HANDLE (--password P | --recovery-key KEY) [--relay URL]   a new device from a backup";
+
+pub(crate) fn usage() -> ! {
+    eprintln!("{USAGE}");
     std::process::exit(2)
 }
 
@@ -64,6 +66,16 @@ pub(crate) struct Cli {
 }
 
 impl Cli {
+    /// Handle explicit help before resolving or opening any account home.
+    pub(crate) fn from_args(args: Vec<String>) -> Option<Self> {
+        if help::requested(&args) {
+            println!("{USAGE}");
+            None
+        } else {
+            Some(Self { args })
+        }
+    }
+
     pub(crate) fn flag(&mut self, name: &str) -> Option<String> {
         let i = self.args.iter().position(|a| a == name)?;
         let v = self.args.get(i + 1).cloned();
@@ -78,5 +90,24 @@ impl Cli {
             }
             None => false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{usage, Cli};
+
+    #[test]
+    fn ordinary_operands_reach_the_existing_parser_unchanged() {
+        let args: Vec<String> = ["--home", "temporary", "--offline", "send", "chat", "--help"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        let mut cli = Cli::from_args(args.clone()).expect("opaque message is not help");
+        assert_eq!(cli.args, args);
+        assert_eq!(cli.flag("--home").as_deref(), Some("temporary"));
+        assert!(cli.switch("--offline"));
+        assert_eq!(cli.args, ["send", "chat", "--help"]);
+        let _original_usage: fn() -> ! = usage;
     }
 }

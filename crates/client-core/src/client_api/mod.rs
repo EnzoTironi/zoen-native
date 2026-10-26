@@ -76,6 +76,7 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
     crate::owner_policy::OwnerPolicyOptionsStatus::export_all(&config)?;
     crate::owner_policy::OwnerPolicyStatus::export_all(&config)?;
     crate::agent_sites::SiteToolReview::export_all(&config)?;
+    crate::agent_scenes::SceneToolReview::export_all(&config)?;
     crate::sites::SiteSource::export_all(&config)?;
     crate::sites::SiteReview::export_all(&config)?;
     crate::sites::SitePrepared::export_all(&config)?;

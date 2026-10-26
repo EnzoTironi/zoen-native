@@ -146,6 +146,7 @@ export function EditorAgentAccess({
               >
                 <EditorAgentContent
                   session={session}
+                  drawingReview={document.drawingReview}
                   state={state}
                   ticket={ticket}
                   itemId={itemId}

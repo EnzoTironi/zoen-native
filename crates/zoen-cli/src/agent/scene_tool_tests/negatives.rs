@@ -6,7 +6,7 @@ use types::{Capability, EventBody, GrantScope};
 
 type R<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-async fn held() -> R<(Fixture, types::AgentRequest)> {
+pub(super) async fn held() -> R<(Fixture, types::AgentRequest)> {
     let f = fixture().await?;
     let journal = f.path.join("negative-scene-steps.json");
     let cx = context(&f.client, &journal, &f.item, Arc::new(AtomicUsize::new(0)));

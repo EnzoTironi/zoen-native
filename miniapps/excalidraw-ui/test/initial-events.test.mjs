@@ -15,6 +15,7 @@ export const FONT_FAMILY={Excalifont:5};
 export const CaptureUpdateAction={NEVER:'never'};
 export const convertToExcalidrawElements=(items)=>items;
 export const restore=(value)=>value;
+export const exportToCanvas=()=>{throw Error("Unexpected readonly review export in initial-events fixture");};
 export const serializeAsJSON=(elements,appState)=>JSON.stringify({type:"excalidraw",version:2,elements,appState});
 export async function exportToSvg({elements}){
  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');

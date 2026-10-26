@@ -33,6 +33,7 @@ for (const file of [
   "src/canonical-canvas.tsx",
   "src/canonical-serialize.ts",
   "src/canonical-application.ts",
+  "src/canonical-review.ts",
   "src/host-safe-area.ts",
   "src/host-touch.css",
   "src/canonical-saves.ts",

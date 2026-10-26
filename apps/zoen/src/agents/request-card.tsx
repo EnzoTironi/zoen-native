@@ -16,6 +16,9 @@ import { money } from '../core/presentation';
 import { Avatar, NativeButton, Surface } from '../components/primitives';
 import { useDialogs } from '../components/dialogs';
 import { ToolReviewRecovery } from './tool-review-recovery';
+import { DrawingToolReview } from './drawing-tool-review';
+import type { DrawingReviewPort } from '../miniapps/drawing-review-types';
+import { accountScope, accountScopeKey } from '../core/account-scope.ts';
 import { SiteToolReview } from './site-tool-review';
 import { siteScope, siteAuthority } from '../sites/source';
 import { useTheme } from '../theme';
@@ -35,6 +38,7 @@ export function RequestCard({
   disabled = false,
   embedded = false,
   onDecision,
+  drawingReview,
 }: {
   request: AgentRequestDto;
   compact?: boolean;
@@ -42,8 +46,10 @@ export function RequestCard({
   disabled?: boolean;
   embedded?: boolean;
   onDecision?: (command: DecisionCommand) => Promise<DecideOutcome>;
+  drawingReview?: DrawingReviewPort;
 }) {
-  const { store } = useClient();
+  const client = useClient();
+  const { store } = client;
   const dialogs = useDialogs();
   const { colors } = useTheme();
   const [busy, setBusy] = useState(false);
@@ -52,6 +58,20 @@ export function RequestCard({
   const deciding = useRef(false);
   const tool = request.tool_approval;
   const siteNeedsReview = tool?.preview_kind === 'site';
+  const drawingNeedsReview =
+    tool?.preview_kind === 'scene' || tool?.canonical_tool === 'replace_scene';
+  const drawingOwner = accountScopeKey(accountScope(store, client));
+  const drawingKey = `${request.id}:${tool?.content_hash ?? ''}:${drawingOwner}:${drawingReview?.key ?? ''}`;
+  const drawingLease = useRef<string | null>(null);
+  const [reviewedDrawing, setReviewedDrawing] = useState<string | null>(null);
+  const drawingReviewed = !!drawingOwner && !!drawingReview && reviewedDrawing === drawingKey;
+  const drawingReady = useCallback(
+    (ready: boolean) => {
+      drawingLease.current = ready ? drawingKey : null;
+      setReviewedDrawing(drawingLease.current);
+    },
+    [drawingKey],
+  );
   const siteContext = siteNeedsReview ? siteScope(store, request.space_id) : null;
   const siteOwner = siteContext && siteAuthority(store, siteContext);
   const siteReviewKey = `${request.id}:${tool?.content_hash ?? ''}:${siteOwner ?? 'unavailable'}`;
@@ -79,7 +99,13 @@ export function RequestCard({
     if (
       !canDecide ||
       deciding.current ||
-      (decision === 'ApproveOnce' && siteNeedsReview && !siteReviewed)
+      (decision === 'ApproveOnce' &&
+        ((siteNeedsReview && !siteReviewed) ||
+          (drawingNeedsReview &&
+            (!drawingReviewed ||
+              drawingLease.current !== drawingKey ||
+              accountScopeKey(accountScope(store)) !== drawingOwner ||
+              !drawingReview?.getSnapshot()))))
     )
       return;
     const command = requestDecisionCommand(request, decision);
@@ -160,13 +186,15 @@ export function RequestCard({
       >
         {request.title}
       </Text>
-      <Text
-        selectable
-        numberOfLines={compact ? 4 : undefined}
-        style={{ color: colors.secondary, fontSize: 16, lineHeight: 24 }}
-      >
-        {image?.prompt ?? request.detail}
-      </Text>
+      {!drawingNeedsReview ? (
+        <Text
+          selectable
+          numberOfLines={compact ? 4 : undefined}
+          style={{ color: colors.secondary, fontSize: 16, lineHeight: 24 }}
+        >
+          {image?.prompt ?? request.detail}
+        </Text>
+      ) : null}
       {image ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {[
@@ -222,6 +250,16 @@ export function RequestCard({
           contentHash={tool.content_hash}
           spaceId={request.space_id}
           onReady={siteReady}
+        />
+      ) : null}
+      {drawingNeedsReview && drawingReview && !compact && pending && tool && toolValid ? (
+        <DrawingToolReview
+          key={`${request.id}:${tool.content_hash}:${drawingReview.key}`}
+          port={drawingReview}
+          requestId={request.id}
+          contentHash={tool.content_hash}
+          spaceId={request.space_id}
+          onReady={drawingReady}
         />
       ) : null}
       {!compact ? (
@@ -327,7 +365,12 @@ export function RequestCard({
             secondary
             label={t('agents.openItem')}
             disabled={busy}
-            onPress={() => router.push({ pathname: '/item/[id]', params: { id: itemId } })}
+            onPress={() =>
+              router.push({
+                pathname: drawingNeedsReview ? '/miniapp/[id]' : '/item/[id]',
+                params: { id: itemId },
+              })
+            }
           />
         ) : null}
         {pending ? (
@@ -357,6 +400,7 @@ export function RequestCard({
                 request.status === 'Stale' ||
                 toolExpired ||
                 (siteNeedsReview && (!siteReviewed || compact)) ||
+                (drawingNeedsReview && (!drawingReviewed || compact)) ||
                 (imageRequest && !image)
               }
               onPress={() => {

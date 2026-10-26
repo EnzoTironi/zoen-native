@@ -46,7 +46,7 @@ impl Engine {
                 version: p.version,
                 operation: crate::agent_binary_documents::tool_approvals::operation(&p.canonical_tool),
                 expires_ms: p.expires_at_ms,
-                preview_kind: (p.schema==5).then(||"site".into()),
+                preview_kind: if p.schema==5 { Some("site".into()) } else if p.schema==6 && p.canonical_tool=="replace_scene" { Some("scene".into()) } else { None },
                 review: Some(self.tool_review_dto(r, p)),
                 canonical_tool: Some(p.canonical_tool.clone()),
                 image: self.image_generation_review(p),

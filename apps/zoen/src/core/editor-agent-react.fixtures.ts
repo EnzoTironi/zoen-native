@@ -14,6 +14,10 @@ import * as memberFlow from '../communities/member-actions.ts';
 import * as additionFlow from '../communities/member-addition.ts';
 import * as memberPort from '../communities/member-context-port.ts';
 import * as ownership from './account-scope.ts';
+import * as decisions from './tool-request-decision.ts';
+import * as sourceScope from '../sites/source.ts';
+import { drawingReviewPort } from '../miniapps/drawing-review-port.ts';
+import { drawingReview, drawingReply } from './drawing-review.fixtures.ts';
 import * as enrollmentFlow from '../agent-enrollment/session.ts';
 import * as enrollmentPort from '../agent-enrollment/core-port.ts';
 import * as admission from '../miniapps/editor-agent-admission.ts';
@@ -44,7 +48,7 @@ function compile(path: string) {
 /** Real compiled screen/sheet + React/Store + real session/port; native controls
  * and Core are explicit ports, not a claim of iPhone presentation or AI execution. */
 export async function editorAgentReactFixture(
-  options: { ownedScene?: boolean; ready?: boolean } = {},
+  options: { ownedScene?: boolean; ready?: boolean; visualReview?: boolean } = {},
 ) {
   const root = createReactTestRoot(),
     driver = new Driver(),
@@ -84,7 +88,7 @@ export async function editorAgentReactFixture(
   const resourceUri = `ui://zoen/package/file/1/${'ef'.repeat(32)}`;
   let sceneVersion = 1,
     sceneSha = 'ab'.repeat(32);
-  const document: MiniappDocumentController = {
+  let document: MiniappDocumentController = {
     ...(options.ownedScene
       ? {
           agentDocument: { kind: 'owned-scene', resourceUri } as const,
@@ -105,6 +109,10 @@ export async function editorAgentReactFixture(
       flushes++;
     },
   };
+  let previewAllowed = true;
+  let renderGate: Promise<void> | null = null;
+  const review = drawingReview(space, itemId);
+  if (options.visualReview) sceneSha = review.before_sha256;
   driver.opening = async () => snapshot;
   driver.operation = async (command) => {
     calls.push(structuredClone(command));
@@ -118,6 +126,17 @@ export async function editorAgentReactFixture(
         return { entries: remoteEntries, before: null, has_more: false };
       case 'thread':
         return remoteEntries;
+      case 'scene_tool_review':
+        assert.equal(command.input.expected_resource_uri, resourceUri);
+        if (!previewAllowed) throw Error('The reviewed drawing changed.');
+        return {
+          ...review,
+          request_id: command.input.request_id,
+          content_hash: command.input.expected_hash,
+        };
+      case 'decide_tool_request':
+        if (!previewAllowed) throw Error('The reviewed drawing changed.');
+        return { message: 'Approved', also_resolved: 0 };
       case 'app_document_read_pinned':
         assert.equal(command.expected_resource_uri, resourceUri);
         return {
@@ -159,6 +178,24 @@ export async function editorAgentReactFixture(
   const store = new ClientStore(driver);
   await store.open('account');
   calls.length = 0;
+  const previewPort = options.visualReview
+    ? drawingReviewPort({
+        store,
+        pin: { itemId, resourceUri, appId: 'excalidraw' },
+        spaceId: space,
+        key: 'focused-frame',
+        id: () => `preview-${++ids}`,
+        check: () => {},
+        call: async (_name, args) => {
+          if (renderGate) await renderGate;
+          return drawingReply(args);
+        },
+      })
+    : null;
+  if (previewPort) {
+    previewPort.observe({ zoen: { sceneSave: { itemId, ready: true, reviewPreview: 1 } } });
+    document = { ...document, drawingReview: previewPort };
+  }
   const children = ({ children }: { children: React.ReactNode }) => children;
   const visibility = React.createContext(true);
   const appListeners = new Set<(state: string) => void>();
@@ -290,6 +327,7 @@ export async function editorAgentReactFixture(
       NativeButton: Capture,
       Field: Capture,
       Icon: () => null,
+      Avatar: () => null,
       Loading: () => null,
       Surface: children,
     },
@@ -320,6 +358,14 @@ export async function editorAgentReactFixture(
     '../profile/profile-header': { ProfileHeader: () => null },
     '../profile/profile-section': { ProfileSection: children },
     '../core/account-scope': ownership,
+    '../core/account-scope.ts': ownership,
+    '../core/tool-request-decision': decisions,
+    '../core/presentation': { money: () => '' },
+    '../core/image-tool-review': { imageToolReviewValid: () => false },
+    '../sites/source': sourceScope,
+    './site-tool-review': { SiteToolReview: () => null },
+    './tool-review-recovery': { ToolReviewRecovery: () => null },
+    'expo-image': { Image: Capture },
     './member-actions': memberFlow,
     './member-addition': additionFlow,
     './member-context-port': memberPort,
@@ -370,6 +416,15 @@ export async function editorAgentReactFixture(
     '../agent-enrollment/use-agent-enrollment.ts',
     {},
   );
+  if (options.visualReview) {
+    common['./drawing-tool-review'] = load('../agents/drawing-tool-review.tsx', {});
+    common['../agents/request-card'] = load('../agents/request-card.tsx', {
+      'expo-router': {
+        ...common['expo-router'],
+        router: { push: (...args: any[]) => routes.push(args) },
+      },
+    });
+  }
   common['./editor-agent-content'] = load('../miniapps/editor-agent-content.tsx', {});
   common['./editor-agent-enrollment'] = load('../miniapps/editor-agent-enrollment.tsx', {});
   const sheet = load('../miniapps/editor-agent-sheet.tsx', {});
@@ -403,6 +458,13 @@ export async function editorAgentReactFixture(
   });
   return {
     store,
+    review,
+    previewAllowed(value: boolean) {
+      previewAllowed = value;
+    },
+    holdPreview(gate: Promise<void> | null) {
+      renderGate = gate;
+    },
     sceneReady(ready: boolean, version = sceneVersion, sha256 = sceneSha) {
       sceneVersion = version;
       sceneSha = sha256;
@@ -454,6 +516,7 @@ export async function editorAgentReactFixture(
     sheets: () => sheetMounts,
     close: async () => {
       await root.close();
+      previewPort?.dispose();
       await store.close({ force: true });
     },
   };
