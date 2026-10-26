@@ -423,8 +423,9 @@ export function useMediaComposerController({
     );
   }
   async function sendEdited(owner: VoiceReviewOwner, captured: VoiceSendable) {
-    if (!media || busyNow.current || !voiceIsActive() || !controlIsCurrent(voiceControl))
-      throw new Error(t('media.voiceRecordingUnavailable'));
+    // Like raw Send, lifecycle retirement cancels quietly without consuming the draft.
+    if (!voiceIsActive() || !controlIsCurrent(voiceControl)) return;
+    if (!media || busyNow.current) throw new Error(t('media.voiceRecordingUnavailable'));
     if (clipNow.current?.owner !== owner || hasPendingVoiceTrim(trimNow.current, owner.session))
       throw new Error(t('media.voiceRecordingUnavailable'));
     busyNow.current = true;
@@ -433,12 +434,8 @@ export function useMediaComposerController({
     setFailure(null);
     try {
       await stop();
-      if (
-        !voiceIsActive() ||
-        !controlIsCurrent(voiceControl) ||
-        clipNow.current?.owner !== owner ||
-        hasPendingVoiceTrim(trimNow.current, owner.session)
-      )
+      if (!voiceIsActive() || !controlIsCurrent(voiceControl)) return;
+      if (clipNow.current?.owner !== owner || hasPendingVoiceTrim(trimNow.current, owner.session))
         throw new Error(t('media.voiceRecordingUnavailable'));
       const durable = durableOwners.current.get(owner);
       if (durable) await durable.send(captured);
