@@ -1,65 +1,34 @@
 {
-  "checkpoint": "v85",
-  "commit": "7245d02aa4d4230f504c0aedcde2bef16a67d112",
-  "configuration": "signed Release ARM64",
+  "checkpoint": "701",
+  "commit": "e58f24942794616c7044af849f7a9af667d02c70",
+  "coreCommit": "5659c6caaab5ff27b43eef8c598732fda0a9db4f",
+  "frontendQualificationCommit": "c5748bf4346ba7f57760c158869e94ebbbef9ae7",
+  "configuration": "Release arm64 iOS Simulator; normal Xcode signature, no Metro",
+  "deviceUdid": "E439FAD5-4E39-4224-ABFD-215D0ECCFC68",
+  "archivePath": "/Users/enzotironi/.codex/builds/zoen-messenger-budget-consumer-v701/attempt-01/sealed/Zoen.app",
+  "executableSha256": "911e96a865711e1a2739ab7bbcf6578dd7e57898ab1411e22f8c21a418e481bc",
+  "bundleSha256": "623d093b90078273cb5346f6086f5e0a759cedde147367ec4bed459655b7d650",
   "preservingInstall": true,
-  "inputs": 839,
-  "sourceSha256": "9101e92963c880a0fb70e2fda8164c17a48ee44da50af3e88cd80105bb851320",
-  "bundleSha256": "002f520906148ed3062044977a363e2a38b8454f051ce00c36fd9a8838802aae",
-  "bundleBytes": 6784644,
-  "executableSha256": "c5418d45fc45bcfbf5b743c1c2c4852330c01865ea6c4fc83ae2d7a3f2efd542",
-  "appTreeSha256": "a1b2e6cc21a5c381c7ecb66956f6495f941bdb79a67d3769f0b0bcd28a0166ac",
-  "appTreeAlgorithm": "sha256 of sorted path/bytes/sha256 records encoded as compact JSON with sorted keys",
-  "appBytes": 175786540,
-  "archivePath": "/private/tmp/zoen-iphone-artifacts/v85/Zoen.app",
-  "installedExecutableVerified": true,
-  "installedJavascriptVerified": true,
+  "installedFilesVerified": 426,
   "strictSignatureVerified": true,
-  "buildVerification": "/private/tmp/zoen-pdf-edit-journal-qa-v85/accepted-artifact-verification.json",
-  "device": "isolated iPhone18 Pro / iOS27 simulator",
-  "deviceUdid": "388CA707-A103-4845-B5FE-BAA9526D3D57",
-  "status": "BOUNDED PASS private PDF capture after process death, Keep without publication and explicit Save/cold exactly one v3; full parity remains open.",
-  "runtimeAcceptance": "Existing History download QA1018v63b PDF starts at v2. Controlled kill after synchronous encrypted capture and before canonical save recovers the same black ink stroke. Keep returns to chat with exactly v1/v2; a second cold then explicit Save produces one Anotações event Enviando → Enviada. Third cold shows exactly v1/v2/v3, the same stroke and no private recovery choice. /private/tmp/zoen-pdf-edit-journal-qa-v85/native-acceptance.json",
+  "physicalDeviceAccepted": false,
   "fullAppParityAccepted": false,
-  "installedPublicVerification": "/private/tmp/zoen-pdf-edit-journal-qa-v85/isolated-v85-verify-after.json",
+  "sourceRelabeled": false,
+  "status": "PARTIAL: native budget702 readonly interoperability passed; Page creation701 stopped before Create because title input identification failed.",
+  "buildVerification": "/Users/enzotironi/.codex/builds/zoen-messenger-budget-consumer-v701/handoff.json",
+  "installedVerification": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/core701/upgrade-receipt.json",
+  "runtimeAcceptance": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/core701/receipt.json",
   "latestRetainedQa": {
-    "case": "CORE637",
-    "cohort": 632,
-    "sourceCommit": "08a2d126a267f1b025ec8723f9bfa8e7b7e8a044",
-    "configuration": "ad-hoc signed Release arm64 iOS Simulator; actual CFBundleVersion1; no Metro",
-    "deviceUdid": "E439FAD5-4E39-4224-ABFD-215D0ECCFC68",
-    "physicalDeviceAccepted": false,
-    "executableSha256": "4273f1f766e907cec4dacddc61db188fd61cc504da93f34088a1520aac979b96",
-    "bundleSha256": "c31bf210368f4b4076ed9f3f3ceabb61b5b5f358675d9d28f1b245a322041925",
-    "installedFilesVerified": 426,
-    "strictSignatureVerified": true,
-    "normalPreservingInstall": true,
-    "installAttempts": 1,
-    "scope": "Normal published HTML File -> one canonical App -> real Excalidraw rectangle -> save -> close/reopen -> app-only cold relaunch -> independent public CLI scene/pin/version readback. Identity, selected Night preference and exact unsent Article draft retained; no global data-integrity claim.",
-    "appItem": "it_mcp_a0b28ff30381add2df9d2a1dc1a381266c3875ea11dce80f98d98a372e70d2c0",
-    "resourceUri": "ui://zoen/package/it_01m5tr57mdxm1bd1s0dwj4wkdd/1/504923690c679748e87876339ea138eb1c6de81c069a803919b154607319e89e",
-    "documentVersion": 2,
-    "documentBytes": 654,
-    "documentSha256": "1a4ccba938bab2eb716e751e357caf0d8118eb4721bb7ebd7197ecf8c5c24618",
-    "journey": {
-      "path": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/core637-external-app-journey.json",
-      "sha256": "4e47cab265f302700e87dba424f41e993312b35e3788f96f7569adbff7038212"
-    },
-    "canonicalProof": {
-      "path": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/core637/canonical-scene-proof.json",
-      "sha256": "1dc1559d8574366a360321e3dc8c1773ea4cf8f9bb5d57bfedb9d85da738f1d0"
-    },
-    "upgradeReceipt": {
-      "path": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/core637/upgrade-receipt.json",
-      "sha256": "5856f49a8c49eb3afe06762a1ed095aa98530c582dfb7e55b9c416e008dd0cf4"
-    },
-    "publication": "https://github.com/EnzoTironi/zoen-native/issues/180#issuecomment-6405560386",
-    "pending": [
-      "Independent renderer update/rejection",
-      "Suggest approval and live refresh from later634/635",
-      "Sharing/rekey/revocation and mixed versions",
-      "Physical-device and full-product acceptance"
-    ],
-    "historicalEvidence": "All preexisting v85/v92 and later receipts retain their original source and scope."
-  }
+    "case": "UI701 settings review",
+    "scope": "Readonly You/Appearance/General/Notifications walkthrough; no theme, account or policy mutation.",
+    "receipt": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/ui701-settings-review/receipt.json",
+    "finding": "Appearance preview text overlaps the native title after scroll; shared settings header correction awaits native validation."
+  },
+  "pending": [
+    "Page creation/reopen and Reader/Member/import/foreground/Direct destination cases",
+    "Membership703 correction, fresh Core/UniFFI and native qualification",
+    "Unexpected PDF navigation has no qualified root cause; preserve observation without speculative patch",
+    "Physical iPhone, public backend/provider and whole-product acceptance"
+  ],
+  "historicalEvidence": "Earlier v85/CORE637 and later scoped receipts retain their original source and scope. This current-artifact pointer replaces their old latest labels; original record is preserved at0b869f98:apps/zoen/acceptance/parts/artifacts/current-iphone-artifact.json. No earlier journey is requalified on701."
 }

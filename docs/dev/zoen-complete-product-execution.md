@@ -5,6 +5,29 @@ para lançamento**, com jornadas completas contra os serviços reais. As outras
 plataformas permanecem no escopo final, em fases posteriores; não dividem agora
 o trabalho de refinamento e validação manual.
 
+### Prioridade de consolidação — 26 de outubro de 2026
+
+Após a revisão de rumo com Enzo, concluir e integrar os lotes existentes antes de
+abrir novas capacidades. A prioridade imediata é fechar gestão de papéis e
+revogação ([#181](https://github.com/EnzoTironi/zoen-native/issues/181)), preservar
+criação offline e concluir criação/recuperação de Páginas no aplicativo
+([#179](https://github.com/EnzoTironi/zoen-native/issues/179)). Os comentários
+ancorados permanecem preservados, com implementação incompleta, até essas
+dependências estarem resolvidas. Desenvolvimento e QA internos de ArtCraft
+continuam parados; os editores seguem como Apps MCP externos.
+
+O próximo resultado integrado reúne duas pessoas, uma conversa e um artefato:
+criar, editar por pessoa e agente, aprovar, receber a alteração e recuperar o
+mesmo documento após reinício, com autoria e permissões efetivas. Em seguida,
+conversa/mídia e criação/Apps avançam em duas frentes de produto, com QA por lote
+e uma integração comum. O marco de lançamento abaixo mantém todos os seus
+critérios; esta sequência não reduz as capacidades aprovadas.
+
+Os testes nativos recentes são de simulador. A validação em iPhone físico,
+distribuição e backend público ainda exigem suas próprias provas. Trabalho local
+qualificado não conta como publicado ou mergeado; a publicação pendente deve
+retomar pelo fluxo normal quando a conectividade com GitHub permitir.
+
 | Lote                          | Entrega observável                                                                                                                                                                                                  | Critério de saída                                                                                                                                                                                                                                                               |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1. Conversa e mídia no iPhone | Timeline contínua; teclado e carrossel sincronizados; respostas/threads/reação/menu; busca no compositor; fotos e vídeo sem recorte involuntário; voz compacta e edição; anexos com aprovação explícita.            | Selecionar, revisar, cancelar, reiniciar, recuperar e enviar no app real; destinatário independente recebe conteúdo e contexto corretos. Rolagem, gestos e acessibilidade preservam a conversa.                                                                                 |

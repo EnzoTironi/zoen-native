@@ -1,11 +1,27 @@
 # Roadmap status: the complete Zoen product
 
-Current execution, 20 October 2026: **finish iOS first**, using React Native/Expo,
+Current execution, 26 October 2026: **finish iOS first**, using React Native/Expo,
 the shared Rust core and the real backend. The active sequence and release gates
 are maintained in the [complete-product goal](dev/zoen-complete-product-goal.md#execução-atual--20-de-outubro-de-2026)
 and [acceptance manifest](../apps/zoen/acceptance.json). Web/Android follow the iOS
-release gate; desktop follows later. Signal guides reliability and messaging UX;
-Notion/ChatGPT Space guide collaborative creation. The older checkpoint sections
+release gate; desktop follows later. Telegram iOS guides UI and interactions;
+Signal guides reliability; Notion/ChatGPT Space guide collaborative creation.
+Enzo approved consolidating existing work before new capabilities: membership
+and revocation, offline creation, then native Page creation/recovery. Anchored
+comments wait for those dependencies. Internal ArtCraft work stays stopped;
+editors are external independently released MCP Apps.
+
+The installed Simulator artifact is701, with partial acceptance; membership703
+is under qualification and is not installed. The maintained
+[execution plan](../apps/zoen/acceptance/parts/scope/execution-plan.json) and
+[current iPhone artifact](../apps/zoen/acceptance/parts/artifacts/current-iphone-artifact.json)
+separate local source/build evidence, native observations and pending acceptance.
+Physical iPhone and public-backend release remain open. GitHub publication awaits
+connectivity and fresh remote-state checks; local work is not a completed merge.
+
+## Historical checkpoints
+
+The older checkpoint sections
 below retain their original dates, artifacts and limits; their native-client,
 PR and billion-user descriptions do not define the current execution plan.
 
