@@ -345,6 +345,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
                   groupChat={chat.kind !== 'Direct'}
                   item={items.find((item) => item.id === messageCard(entry)?.item_id)}
                   highlighted={entry.id === selectedSearchId}
+                  revealQuery={searchState.query}
                   onRevealLayout={entry.id === selectedSearchId ? onSearchContentLayout : undefined}
                   disabled={searchState.active}
                   reactionPending={actions.busy}

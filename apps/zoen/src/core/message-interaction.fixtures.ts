@@ -196,6 +196,7 @@ export function albumMetadata(delivery: TimelineEntry['delivery']) {
       MessageContextSource: 'ContextSource',
       MessageContextControl: 'ContextControl',
     },
+    './conversation-reveal-content-view': { useConversationRevealAnchor: () => null },
     './message-receipt': { MessageReceipt: 'Receipt', messageDeliveryLabel: () => delivery },
     './primitives': { Icon: 'Icon' },
   };

@@ -21,6 +21,8 @@ export type ConversationRevealItem = Readonly<{
   windowHeight: number;
   topObstruction: number;
   bottomAligned: boolean;
+  anchor?: Readonly<{ y: number; height: number }>;
+  anchorPending?: boolean;
 }>;
 
 /** FlashList's physical viewport and row layout exclude native keyboard insets.
@@ -59,19 +61,33 @@ export function conversationRevealOffset(
   const visibleTop = Math.max(0, item.topObstruction);
   const visibleBottom = viewport - bottom;
   if (visibleBottom <= visibleTop) return null;
+  if (item.height > visibleBottom - visibleTop && item.anchorPending) return null;
+  const target = revealTarget(item, visibleBottom - visibleTop);
   const alignment = item.bottomAligned
     ? Math.max(0, item.windowHeight - item.childHeight - item.firstItemOffset)
     : 0;
-  const rowTop = item.y + item.firstItemOffset + alignment;
+  const rowTop = target.y + item.firstItemOffset + alignment;
   const current = geometry.contentOffset.y;
   const min = -top;
   const max = Math.max(min, content - viewport + bottom);
   const clamp = (offset: number) => Math.min(max, Math.max(min, offset));
   // Searching an already visible message must not reset a short chat to its
   // closed-keyboard origin. Leave the user's native offset alone.
-  if (rowTop - current >= visibleTop && rowTop + item.height - current <= visibleBottom)
+  if (rowTop - current >= visibleTop && rowTop + target.height - current <= visibleBottom)
     return clamp(current);
   return clamp(rowTop - visibleTop);
+}
+
+function revealTarget(item: ConversationRevealItem, available: number) {
+  const anchor = item.anchor;
+  return item.height > available &&
+    anchor &&
+    [anchor.y, anchor.height].every(Number.isFinite) &&
+    anchor.height > 0 &&
+    anchor.y >= item.y &&
+    anchor.y + anchor.height <= item.y + item.height + 0.5
+    ? anchor
+    : item;
 }
 
 function conversationRevealVisible(
@@ -80,16 +96,18 @@ function conversationRevealVisible(
 ): boolean {
   const top = Math.max(0, item.topObstruction);
   const bottom = geometry.layoutMeasurement.height - geometry.contentInset.bottom;
+  if (item.height > bottom - top && item.anchorPending) return false;
+  const target = revealTarget(item, bottom - top);
   const alignment = item.bottomAligned
     ? Math.max(0, item.windowHeight - item.childHeight - item.firstItemOffset)
     : 0;
-  const start = item.y + item.firstItemOffset + alignment - geometry.contentOffset.y;
+  const start = target.y + item.firstItemOffset + alignment - geometry.contentOffset.y;
   if (bottom <= top) return false;
   // A message taller than the usable viewport reveals its beginning. A normal
   // row must actually fit; equality with a clamped scroll limit proves neither.
-  return item.height > bottom - top
+  return target.height > bottom - top
     ? Math.abs(start - top) <= 0.5
-    : start >= top - 0.5 && start + item.height <= bottom + 0.5;
+    : start >= top - 0.5 && start + target.height <= bottom + 0.5;
 }
 
 type RevealPort = Readonly<{
@@ -198,6 +216,7 @@ export class ConversationReveal {
     this.schedule();
   };
   onItemLayout = () => {
+    this.resumeSettledTarget();
     this.invalidateObservation();
     this.trace('item-layout');
     this.schedule();
@@ -486,6 +505,9 @@ export class ConversationReveal {
         item.windowHeight,
         item.topObstruction,
         item.bottomAligned,
+        item.anchor?.y,
+        item.anchor?.height,
+        item.anchorPending,
         geometry.contentSize.height,
         geometry.layoutMeasurement.height,
         geometry.contentInset.top ?? 0,

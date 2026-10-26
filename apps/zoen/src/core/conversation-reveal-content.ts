@@ -4,6 +4,8 @@ export type ConversationContentLayout = Readonly<{
   y: number;
   width: number;
   height: number;
+  anchor?: Readonly<{ y: number; width: number; height: number }>;
+  anchorPending?: boolean;
 }>;
 type RowLayout = Readonly<{
   y: number;
@@ -19,7 +21,7 @@ type RowLayout = Readonly<{
 export function conversationRevealContent(
   row: RowLayout,
   content: ConversationContentLayout | null,
-): Pick<ConversationRevealItem, 'y' | 'height' | 'measured'> {
+): Pick<ConversationRevealItem, 'y' | 'height' | 'measured' | 'anchor' | 'anchorPending'> {
   if (
     !content ||
     ![content.y, content.width, content.height, row.width, row.height].every(Number.isFinite) ||
@@ -34,5 +36,15 @@ export function conversationRevealContent(
     y: row.y + content.y,
     height: content.height,
     measured: row.isHeightMeasured === true && row.isWidthMeasured === true,
+    ...(content.anchorPending ? { anchorPending: true } : {}),
+    ...(content.anchor &&
+    [content.anchor.y, content.anchor.width, content.anchor.height].every(Number.isFinite) &&
+    content.anchor.y >= 0 &&
+    content.anchor.height > 0 &&
+    content.anchor.width > 0 &&
+    content.anchor.width <= content.width + 0.5 &&
+    content.anchor.y + content.anchor.height <= content.height + 0.5
+      ? { anchor: { y: row.y + content.y + content.anchor.y, height: content.anchor.height } }
+      : {}),
   };
 }
