@@ -2,9 +2,7 @@
   "updatedOn": "2026-10-26",
   "status": "ACTIVE",
   "currentMilestone": "ios-conversation-and-media",
-  "currentManualValidationPlatforms": [
-    "ios"
-  ],
+  "currentManualValidationPlatforms": ["ios"],
   "currentEnvironment": "Local production-like composition with the real Rust services; final release still requires the compatible public backend and real providers.",
   "milestones": [
     {
