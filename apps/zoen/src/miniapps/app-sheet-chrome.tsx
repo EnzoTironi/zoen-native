@@ -14,8 +14,8 @@ export function AppSheetChrome({ children }: { children: ReactNode }) {
   const navigation = useNavigation('/');
   const route = useRoute();
   const path = usePathname();
-  // Nested Details and tool screens own their native Back and header actions.
-  const showClose = /^\/miniapp\/[^/]+\/?$/.test(path);
+  // Canvas and management share close; nested tool screens keep native Back.
+  const showClose = /^\/miniapp\/[^/]+(?:\/manage)?\/?$/.test(path);
   const insets = useSafeAreaInsets();
   const active = useRef<Scope | null>(null);
   const [scope, setScope] = useState<Scope | null>(null);
