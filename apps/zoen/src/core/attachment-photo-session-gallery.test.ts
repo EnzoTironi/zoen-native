@@ -308,10 +308,8 @@ test('Back restores the gallery entry screen across page changes and resets orig
   f.session.preview('ph://a');
   f.session.preview('ph://b');
   f.session.back();
-  assert.equal(f.session.getSnapshot().screen, 'selected');
-  assert.equal(f.session.getSnapshot().previewId, 'ph://b');
-  f.session.back();
   assert.equal(f.session.getSnapshot().screen, 'grid');
+  assert.equal(f.session.getSnapshot().previewId, null);
   f.session.preview('ph://a');
   f.session.back();
   assert.equal(f.session.getSnapshot().screen, 'grid');

@@ -245,6 +245,8 @@ function renderScreen(
     if (path === './navigation-container') return { navigationMetricsAvailable: false };
     if (path === './use-chat-native-metrics')
       return { useChatNativeMetrics: () => ({ navigationMetrics: {}, observe: undefined }) };
+    if (path === './use-conversation-rail')
+      return { useConversationRail: () => ({ visibleHeight: { value: 0 } }) };
     if (path.endsWith('/core/conversation-reveal')) return { ConversationReveal: LayoutPort };
     if (path.endsWith('/core/conversation-reveal-content')) return { conversationRevealContent };
     if (path.endsWith('/core/live-activity')) return { chatActivityLabel: () => '' };

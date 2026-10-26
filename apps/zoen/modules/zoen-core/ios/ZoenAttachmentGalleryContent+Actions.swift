@@ -26,9 +26,8 @@ import UIKit
   }
   func imageFrame()->CGRect {
     let size=items.first(where:{$0.id==previewId})?.resolvedDimensions ?? CGSize(width:1,height:1)
-    let scale=min(root.bounds.width/max(1,size.width),root.bounds.height/max(1,size.height))
-    let fit=CGSize(width:size.width*scale,height:size.height*scale)
-    return CGRect(x:root.bounds.midX-fit.width/2,y:root.bounds.midY-fit.height/2,width:fit.width,height:fit.height)
+    let viewport=ZoenAttachmentGalleryLayout.mediaFrame(size:root.bounds.size,keyboardHeight:keyboardHeight)
+    return ZoenAttachmentGalleryLayout.aspectFit(dimensions:size,viewport:viewport)
   }
   func animateHero(image:UIImage,from:CGRect,to:CGRect,entering:Bool,ticket:UUID,completion:@escaping()->Void) {
     guard from.width>0,from.height>0,to.width>0,to.height>0 else{completion();return}
@@ -75,7 +74,11 @@ import UIKit
   func toggleControls() {
     guard !retired,!busy,!hasKeyboardFocus else{return}
     controlsHidden.toggle()
-    for page in pages.values {page.updateVideoPresentation(visible:!controlsHidden,safeArea:safe,captionFrame:conversationCaption.isHidden ? .zero:conversationCaption.frame)}
+    let footer = source == "conversation" ? (conversationCaption.isHidden ? CGRect.zero:conversationCaption.frame) : captionPanel.frame
+    for page in pages.values {
+      page.updateVideoPresentation(visible:!controlsHidden,safeArea:safe,
+        captionFrame:footer.isEmpty ? .zero:page.convert(footer,from:root))
+    }
     UIView.animate(withDuration:UIAccessibility.isReduceMotionEnabled ? 0 : 0.2,delay:0,
       options:[.beginFromCurrentState,.curveLinear],animations:{[weak self] in
         guard let self else{return}; for v in [toolbar,captionPanel,counter,check,recipient,recipientArrow,strip,conversationCaption,position] {v.alpha = controlsHidden ? 0 : 1}
@@ -122,14 +125,14 @@ import UIKit
     if recognizer === dismissal {
       if source == "conversation", !conversationCaption.isHidden,
         conversationCaption.frame.contains(dismissal.location(in:root)) {return false}
-      if source == "conversation" {
-        var hit=root.hitTest(dismissal.location(in:root),with:nil)
-        while let view=hit,view !== root {if view is UIControl{return false};hit=view.superview}
-      }
+      let point=dismissal.location(in:root)
+      if let page=pages[previewId],page.ownsControls(at:page.convert(point,from:root)) {return false}
+      var hit=root.hitTest(point,with:nil)
+      while let view=hit,view !== root {if view is UIControl{return false};hit=view.superview}
       let v=dismissal.velocity(in:root)
-      return !selectedMode && abs(v.y)>abs(v.x) && pages[previewId]?.isZoomed != true
+      return abs(v.y)>abs(v.x) && pages[previewId]?.isZoomed != true
     }
-    return selectedMode && canReorder && selected.count>1
+    return recognizer === reorder && railVisible && canReorder && selected.count>1
   }
   @objc func dismissPan(_ gesture:UIPanGestureRecognizer) {
     guard !retired,!busy else{return}
@@ -159,29 +162,25 @@ import UIKit
       })
   }
   @objc func reorderGesture(_ recognizer:UILongPressGestureRecognizer) {
-    let point=recognizer.location(in:selection)
+    let point=recognizer.location(in:strip)
     switch recognizer.state {
     case .began:
-      guard !retired,!busy,let (id,tile)=selectedViews.first(where:{$0.value.frame.contains(point)}),let snapshot=tile.snapshotView(afterScreenUpdates:false) else{return}
-      dragId=id;reorderRevision=revision;dragOrigin=point;snapshot.frame=tile.frame
-      selection.addSubview(snapshot);dragSnapshot=snapshot;tile.isHidden=true
-      UIImpactFeedbackGenerator(style:.light).impactOccurred()
-      UIView.animate(withDuration:0.2){snapshot.transform=CGAffineTransform(scaleX:1.05,y:1.05)}
+      guard !retired,!busy,visible,canReorder,let index=strip.indexPathForItem(at:point),
+        selected.indices.contains(index.item) else{return}
+      cancelReorder();dragId=selected[index.item];reorderRevision=revision
+      if strip.beginInteractiveMovementForItem(at:index) {UIImpactFeedbackGenerator(style:.light).impactOccurred()}
+      else {cancelReorder()}
     case .changed:
-      guard let snapshot=dragSnapshot else{return}
-      let delta=CGPoint(x:point.x-dragOrigin.x,y:point.y-dragOrigin.y)
-      snapshot.transform=CGAffineTransform(translationX:delta.x,y:delta.y).scaledBy(x:1.05,y:1.05)
+      guard reorderRevision==revision,dragId != nil else{cancelReorder();return}
+      strip.updateInteractiveMovementTargetPosition(point)
     case .ended:
-      guard let id=dragId,reorderRevision==revision,let target=selectedViews.first(where:{$0.value.frame.contains(point)})?.key,
-        let from=selected.firstIndex(of:id),let to=selected.firstIndex(of:target) else{cancelReorder();return}
-      var order=selected;order.remove(at:from);order.insert(id,at:to)
-      cancelReorder();emit("reorder",payload:["ids":order]);UISelectionFeedbackGenerator().selectionChanged()
+      guard !retired,!busy,visible,reorderRevision==revision else{cancelReorder();return}
+      strip.endInteractiveMovement()
     case .cancelled,.failed:cancelReorder()
     default:break
     }
   }
   func cancelReorder() {
-    if let id=dragId {selectedViews[id]?.isHidden=false}
-    dragSnapshot?.removeFromSuperview();dragSnapshot=nil;dragId=nil;reorderRevision=nil
+    strip.cancelInteractiveMovement();dragId=nil;reorderRevision=nil
   }
 }

@@ -245,6 +245,8 @@ function fixture(probeEnabled = false) {
     './settings-screen': { SettingsScreen: 'SettingsScreen' },
     './sky-background': { SkyLayer: 'SkyLayer' },
     './theme-color-picker': { ThemeColorPicker: 'ThemeColorPicker' },
+    './theme-chat-preview': { ThemeChatPreview: 'ThemeChatPreview' },
+    './theme-preset-list': { ThemePresetList: 'ThemePresetList' },
   };
   const settingsModule = { exports: {} as { ThemeSettings(): Element } };
   runInNewContext(settingsOutput.outputFiles[0]!.text, {
@@ -387,7 +389,9 @@ test('all preset controls switch the actual provider and retain independent cust
   const expected = new Map<string, number>();
   for (const [index, profile] of THEME_PROFILES.entries()) {
     const tree = f.drawSettings();
-    const preset = nodes(tree).find((node) => node.props.profile === profile)!;
+    const preset = nodes(tree).find(
+      (node) => node.props.profile === profile && typeof node.props.onPress === 'function',
+    )!;
     assert.ok(preset, profile);
     preset.props.onPress();
     let current = await f.settle();
@@ -454,10 +458,11 @@ test('installed iOS Switch native event reaches actual Automatic preference and 
   f.reads.get('appearance')!.resolve('day');
   current = await f.settle();
   assert.equal(current.preference, 'auto');
+  const visibleProfile = current.profile;
   f.automaticSwitch().props.onIsOnChange({ nativeEvent: { isOn: false } });
   current = await f.settle();
-  assert.equal(current.preference, 'night');
-  assert.equal(f.saved.get('appearance'), 'night');
+  assert.equal(current.preference, visibleProfile);
+  assert.equal(f.saved.get('appearance'), visibleProfile);
 });
 
 test('opt-in Automatic probe observes callback and actual provider commit without changing selection or storing diagnostics', async () => {
@@ -489,5 +494,25 @@ test('opt-in Automatic probe observes callback and actual provider commit withou
         ? ['screen-touch-start', 'js-callback', 'preference-request', 'preference-committed']
         : [],
     );
+  }
+});
+
+test('appearance controls follow restored preset instead of the profile visible before hydration', async () => {
+  for (const profile of ['telegram-day', 'telegram-night'] as const) {
+    const f = fixture();
+    f.drawSettings();
+    f.reads.get('appearance')!.resolve(profile);
+    const current = await f.settle();
+    assert.equal(current.profile, profile);
+    const tree = f.drawSettings();
+    const selected = nodes(tree).find(
+      (node) => node.props.profile === profile && typeof node.props.onPress === 'function',
+    )!;
+    assert.equal(selected.props.selected, true, profile);
+    const font = nodes(tree).find((node) => node.props.testID === 'theme-text-size')!;
+    font.props.onValueChange(24);
+    const changed = await f.settle();
+    assert.equal(changed.customizations[profile].textSize, 24);
+    assert.equal(changed.presentation.typography.message.fontSize, 24);
   }
 });

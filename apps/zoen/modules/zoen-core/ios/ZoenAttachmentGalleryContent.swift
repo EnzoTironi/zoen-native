@@ -31,14 +31,13 @@ import UIKit
   UIScrollViewDelegate, UIGestureRecognizerDelegate {
   let root = GalleryRoot()
   var view: UIView { root }
-  var scrollView: UIScrollView { selectedMode ? selection : pager }
-  var animatedViews: [UIView] { [root, pager, selection, toolbar, captionPanel, counter, check, recipient] }
+  var scrollView: UIScrollView { pager }
+  var animatedViews: [UIView] { [root, pager, strip, toolbar, captionPanel, counter, check, recipient] }
   var hasKeyboardFocus: Bool { caption.isFirstResponder }
   var didBeginEditing: (() -> Void)?
   var transitionSourceView: ((String) -> UIView?)?
   let send: (String,[String:Any]) -> Void
   let pager = UIScrollView()
-  let selection = UIScrollView()
   let stripLayout = UICollectionViewFlowLayout()
   lazy var strip = UICollectionView(frame: .zero, collectionViewLayout: stripLayout)
   let toolbar = UIView()
@@ -58,13 +57,9 @@ import UIKit
   let placeholder = UILabel()
   let errorLabel = UILabel()
   let retry = UIButton(type: .system)
-  let title = UILabel()
   let conversationCaption = UITextView()
   let position = UILabel()
-  let dragHint = UILabel()
   var pages: [String:GalleryMediaView] = [:]
-  var selectedViews: [String:GallerySelectionTile] = [:]
-  var backgrounds: [UIView] = []
   var items: [GalleryItem] = []
   var selected: [String] = []
   var previewId = ""
@@ -72,8 +67,7 @@ import UIKit
   var source = "photos"
   var labels: [String:String] = [:]
   var appearance: ZoenKeyboardPanelAppearance?
-  var selectedMode = false
-  var grouped = true
+  var reviewingSelection = false
   var retired = false
   var visible = true
   var needsRebuild = false
@@ -98,8 +92,6 @@ import UIKit
   var pagingRevision: String?
   var reorderRevision: String?
   var dragId: String?
-  var dragSnapshot: UIView?
-  var dragOrigin = CGPoint.zero
   lazy var dismissal = UIPanGestureRecognizer(target: self, action: #selector(dismissPan(_:)))
   lazy var reorder = UILongPressGestureRecognizer(target: self, action: #selector(reorderGesture(_:)))
 
@@ -118,10 +110,7 @@ import UIKit
     pager.showsHorizontalScrollIndicator = false; pager.delegate = self
     pager.contentInsetAdjustmentBehavior = .never
     pager.accessibilityIdentifier = "attachment-gallery-pager"
-    selection.alwaysBounceVertical = true; selection.contentInsetAdjustmentBehavior = .never
-    selection.keyboardDismissMode = .onDrag
-    selection.accessibilityIdentifier = "attachment-gallery-selected-list"
-    for child in [pager,selection,toolbar,captionPanel,counter,check,recipient,recipientArrow,errorLabel,retry] { root.addSubview(child) }
+    for child in [pager,toolbar,captionPanel,counter,check,recipient,recipientArrow,errorLabel,retry] { root.addSubview(child) }
     conversationCaption.textColor = .white; conversationCaption.font = .systemFont(ofSize:17)
     conversationCaption.backgroundColor = .clear; conversationCaption.isEditable = false
     conversationCaption.textContainerInset = .zero; conversationCaption.isScrollEnabled = true
@@ -169,9 +158,6 @@ import UIKit
     errorLabel.font = .systemFont(ofSize:13); errorLabel.textColor = .white
     errorLabel.numberOfLines = 3; errorLabel.accessibilityTraits = .updatesFrequently
     retry.addAction(UIAction { [weak self] _ in self?.emit("retry") },for:.touchUpInside)
-    title.font = .systemFont(ofSize:13); title.textColor = .white; title.textAlignment = .center
-    dragHint.font = .systemFont(ofSize:13); dragHint.textColor = .white; dragHint.textAlignment = .center
-    selection.addSubview(title); selection.addSubview(dragHint)
     strip.backgroundColor = .clear; strip.dataSource = self; strip.delegate = self
     strip.register(GalleryStripCell.self,forCellWithReuseIdentifier:"strip")
     strip.showsHorizontalScrollIndicator = false; strip.showsVerticalScrollIndicator = false
@@ -180,7 +166,7 @@ import UIKit
     stripLayout.minimumLineSpacing = 4; stripLayout.minimumInteritemSpacing = 4
     root.addSubview(strip)
     dismissal.delegate = self; pager.addGestureRecognizer(dismissal)
-    reorder.minimumPressDuration = 0.3; reorder.delegate = self; selection.addGestureRecognizer(reorder)
+    reorder.minimumPressDuration = 0.3; reorder.delegate = self; strip.addGestureRecognizer(reorder)
   }
 
 
@@ -188,7 +174,7 @@ import UIKit
   func retire() {
     guard !retired else{return}
     retired=true;finishHero();root.isUserInteractionEnabled=false;caption.resignFirstResponder();caption.delegate=nil
-    didBeginEditing=nil;cancelReorder();pages.values.forEach{$0.retire()};selectedViews.values.forEach{$0.retire()}
+    didBeginEditing=nil;cancelReorder();pages.values.forEach{$0.retire()}
     strip.visibleCells.forEach{($0 as? GalleryStripCell)?.retire()}
   }
 }

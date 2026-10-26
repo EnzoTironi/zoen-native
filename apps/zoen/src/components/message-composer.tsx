@@ -1,4 +1,4 @@
-import type { ReactNode, Ref } from 'react';
+import { createRef, type ReactNode, type Ref } from 'react';
 import { Text, View, Pressable, type TextInputInstance } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboardMotion } from './keyboard-motion';
@@ -165,9 +165,14 @@ export function MessageComposer({
       hasSend: inlineAction,
       accessoryButtonsWidth: hasInputMode ? 34 : 0,
     }).total;
+    const send = createRef<() => void>();
     const field = (
       <ComposerTextField
         inputRef={inputRef}
+        bindSend={(capture) => {
+          send.current = capture;
+        }}
+        onSend={onSend}
         context={JSON.stringify([
           spaceId,
           threadRootId ?? null,
@@ -256,7 +261,7 @@ export function MessageComposer({
           label={editing ? t('chat.saveEdit') : t('chat.sendMessage')}
           prominent
           disabled={(!hasText && !allowEmptyEdit) || sending || draft?.ready === false}
-          onPress={onSend}
+          onPress={() => send.current?.()}
         />
       );
     const searchNavigation = (

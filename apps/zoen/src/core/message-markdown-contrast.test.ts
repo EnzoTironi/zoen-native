@@ -21,6 +21,7 @@ const nativePorts = new Set([
   'react-native-enriched-markdown',
   '../theme',
   './use-link-launch',
+  './use-message-code-copy',
 ]);
 const compiled = await build({
   stdin: {
@@ -88,6 +89,7 @@ function fixture() {
         return { EnrichedMarkdownText: 'NativeMarkdownText' };
       if (name === '../theme') return { useTheme: () => theme };
       if (name === './use-link-launch') return { useLinkLaunch: () => () => {} };
+      if (name === './use-message-code-copy') return { useMessageCodeCopy: () => () => {} };
       throw new Error(`Unexpected native port ${name}`);
     },
   });

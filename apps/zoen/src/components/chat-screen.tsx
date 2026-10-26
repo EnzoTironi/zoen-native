@@ -60,6 +60,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
     loadedSpace,
     rows,
     railHeight,
+    rail,
     Math,
     noticeHeight,
     items,
@@ -231,10 +232,16 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
               backgroundColor: 'transparent',
             }}
           >
-            <ConversationRail onHeight={setRailHeight}>
+            <ConversationRail
+              onHeight={setRailHeight}
+              height={railHeight}
+              motion={rail}
+              collapsible={conversationMiniapps.length > 0}
+            >
               <MiniappRail
                 key={`${cards.ownerKey}:${id}`}
                 onReorder={cards.reorder}
+                onEditingChange={rail.onEditingChange}
                 items={conversationMiniapps}
                 paddingVertical={6}
                 error={home.error}
@@ -312,7 +319,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
               keyboardDismissMode="interactive"
               keyboardShouldPersistTaps="handled"
               contentInsetAdjustmentBehavior="never"
-              ListHeaderComponent={<ConversationRailSpacer height={railHeight} />}
+              ListHeaderComponent={<ConversationRailSpacer motion={rail} />}
               ListFooterComponent={composerSpacer}
               contentContainerStyle={{
                 paddingHorizontal: 16,
