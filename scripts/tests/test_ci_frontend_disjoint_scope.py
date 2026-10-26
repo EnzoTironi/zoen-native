@@ -8,8 +8,9 @@ from ci_frontend_scope_fixture import SCOPE, SOURCE, FrontendRepositoryFixture
 ROOT_LAYOUT = "apps/zoen/src/app/_layout.tsx"
 CHILD_LAYOUT = "apps/zoen/src/app/miniapp/_layout.tsx"
 DETAIL = "apps/zoen/src/miniapps/detail-screen.tsx"
+REVIEW = "apps/zoen/src/miniapps/app-request-review.ts"
 READER = "miniapps/excalidraw-ui/test/native-host-navigation-fixture.mjs"
-READER_SHA = "c1dd1a82bb2352e0f376d579bfa0ec77512e8ba929e726c13f7a9043dfaad48d"
+READER_SHA = "177d00b51ff5669e9ccd4f16c0853890c9e2115472b97fd926ebf12b887fb902"
 
 
 class DisjointLayoutScopeTests(FrontendRepositoryFixture):
@@ -18,7 +19,7 @@ class DisjointLayoutScopeTests(FrontendRepositoryFixture):
         self.reader = (SOURCE.parents[1] / READER).read_bytes()
         self.assertEqual(hashlib.sha256(self.reader).hexdigest(), READER_SHA)
         self.write(READER, self.reader)
-        for path in (ROOT_LAYOUT, CHILD_LAYOUT, DETAIL):
+        for path in (ROOT_LAYOUT, CHILD_LAYOUT, DETAIL, REVIEW):
             self.write(path, "export const screen = 'original';\n")
         self.base = self.commit()
 
@@ -51,6 +52,15 @@ class DisjointLayoutScopeTests(FrontendRepositoryFixture):
         result = self.classify()
         self.assert_full(result)
         self.assertIn("cross-boundary", result["reason"])
+
+    def test_real_review_parser_is_an_input_alone_and_beside_root(self):
+        for paths in ((REVIEW,), (ROOT_LAYOUT, REVIEW)):
+            with self.subTest(paths=paths):
+                self.restore()
+                self.edit(*paths)
+                result = self.classify()
+                self.assert_full(result)
+                self.assertIn("cross-boundary", result["reason"])
 
     def test_reader_drift_is_full_even_when_only_root_changes(self):
         self.write(READER, self.reader + b"\n// Existing drift\n")

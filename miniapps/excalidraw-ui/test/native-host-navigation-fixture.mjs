@@ -100,6 +100,7 @@ const { JSDOM } = miniRequire("jsdom");
 const React = appRequire("react");
 const expo = join(dirname(appRequire.resolve("expo-router/package.json")), "build");
 const detail = join(app, "src/miniapps/detail-screen.tsx");
+const appRequestReview = join(app, "src/miniapps/app-request-review.ts");
 const layout = join(app, "src/app/miniapp/_layout.tsx");
 const chrome = join(app, "src/miniapps/app-sheet-chrome.tsx");
 
@@ -303,12 +304,14 @@ async function fixture(platform = "android", options = {}) {
           }));
           builder.onResolve({ filter: /.*/ }, ({ path, importer }) =>
             importer === detail && path.startsWith(".")
-              ? ["./deck-version-selection", "./binary-formats"].includes(path)
-                ? { path: join(app, "src/miniapps", `${path}.ts`) }
-                : {
-                    path: path === "./view-host" ? "fixture:view" : "fixture:ports",
-                    namespace: "fixture",
-                  }
+              ? path === "./app-request-review"
+                ? { path: appRequestReview }
+                : ["./deck-version-selection", "./binary-formats"].includes(path)
+                  ? { path: join(app, "src/miniapps", `${path}.ts`) }
+                  : {
+                      path: path === "./view-host" ? "fixture:view" : "fixture:ports",
+                      namespace: "fixture",
+                    }
               : undefined,
           );
         },

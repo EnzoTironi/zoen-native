@@ -30,7 +30,7 @@ DISJOINT_TEST = "scripts/tests/test_ci_frontend_disjoint_scope.py"
 DISJOINT_FRONTEND_REFERENCES = {
     ("miniapps/excalidraw-ui/test/native-host-navigation-fixture.mjs",
      "apps/zoen/src/app/_layout.tsx"): (
-        "c1dd1a82bb2352e0f376d579bfa0ec77512e8ba929e726c13f7a9043dfaad48d",
+        "177d00b51ff5669e9ccd4f16c0853890c9e2115472b97fd926ebf12b887fb902",
         "apps/zoen/src/app/miniapp/_layout.tsx",
     ),
 }
