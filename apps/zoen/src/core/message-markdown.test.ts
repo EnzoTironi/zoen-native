@@ -112,7 +112,14 @@ function fixture(
   const copied: string[] = [];
   const alerts: AlertRecord[] = [];
   const localization = createLocalization({ chat, common }, [options.language ?? 'en']);
-  const colors = { accent: '#1478d4', secondary: '#798088', surface: '#232933', line: '#3b424b' };
+  const colors = {
+    accent: '#1478d4',
+    secondary: '#798088',
+    surface: '#232933',
+    muted: '#30353f',
+    text: '#ffffff',
+    line: '#3b424b',
+  };
   type Slot = { deps?: unknown[]; value?: unknown; cleanup?: () => void };
   const slots: Slot[] = [];
   let cursor = 0;

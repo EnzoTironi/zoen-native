@@ -25,7 +25,7 @@ export const MessageMarkdown = memo(function MessageMarkdown({
   selectable = false,
   onLayout,
 }: MessageMarkdownProps) {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const launchLink = useLinkLaunch(text);
   const markdownStyle = useMemo<MarkdownStyle>(() => {
     const body = { color, fontSize, lineHeight: Math.ceil(fontSize * 1.3) };
@@ -45,12 +45,12 @@ export const MessageMarkdown = memo(function MessageMarkdown({
       h4: heading(0),
       h5: heading(0),
       h6: heading(0),
-      strong: { color },
-      em: { color },
+      // Emphasis inherits its block ink, including the table's separate surface.
       link: { color: colors.accent, underline: false },
       list: { ...body, marginTop: 3, marginBottom: 6, gapWidth: 6, itemSpacing: 2 },
       blockquote: {
         ...body,
+        color: colors.text,
         borderColor: colors.accent,
         borderWidth: 3,
         backgroundColor: colors.surface,
@@ -59,9 +59,10 @@ export const MessageMarkdown = memo(function MessageMarkdown({
         marginTop: 4,
         marginBottom: 6,
       },
-      code: { color, fontFamily: mono, backgroundColor: colors.surface },
+      code: { color: colors.text, fontFamily: mono, backgroundColor: colors.surface },
       codeBlock: {
         ...body,
+        color: colors.text,
         fontFamily: mono,
         fontSize: Math.max(13, fontSize - 2),
         backgroundColor: colors.surface,
@@ -71,12 +72,31 @@ export const MessageMarkdown = memo(function MessageMarkdown({
         padding: 8,
         marginTop: 4,
         marginBottom: 6,
+        syntaxColors: {
+          comment: colors.secondary,
+          ...(scheme === 'light'
+            ? {
+                keyword: colors.danger,
+                string: colors.accent,
+                number: colors.accent,
+                constant: colors.accent,
+                function: colors.accent,
+                type: colors.danger,
+                property: colors.accent,
+                tag: colors.accent,
+                attribute: colors.danger,
+              }
+            : {}),
+        },
       },
       table: {
         ...body,
+        color: colors.text,
         fontSize: Math.max(13, fontSize - 1),
-        headerTextColor: color,
+        headerTextColor: colors.text,
         headerBackgroundColor: colors.surface,
+        rowEvenBackgroundColor: colors.surface,
+        rowOddBackgroundColor: colors.muted,
         borderColor: colors.line,
         borderWidth: 0.5,
         borderRadius: 4,
@@ -89,7 +109,7 @@ export const MessageMarkdown = memo(function MessageMarkdown({
       taskList: { checkedColor: colors.accent, borderColor: colors.secondary },
       spoiler: { color: colors.secondary },
     };
-  }, [color, colors, fontSize]);
+  }, [color, colors, fontSize, scheme]);
   if (process.env.EXPO_OS !== 'ios' && messageMarkdownMayLoadMedia(text))
     return (
       <Text
