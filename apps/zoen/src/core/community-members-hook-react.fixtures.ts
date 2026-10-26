@@ -59,6 +59,8 @@ export async function memberHookReactFixture() {
         return {
           ...value(),
           member_id: command.identity_id,
+          can_remove: false,
+          role_options: [],
           member: { ...value().member!, id: command.identity_id },
         };
       const pending = nextRead;
@@ -72,15 +74,32 @@ export async function memberHookReactFixture() {
             {
               ...value(),
               state: 'Removed',
+              can_remove: false,
               can_add: true,
+              role_options: [
+                { role: 'member', revision: 'c'.repeat(64) },
+                { role: 'reader', revision: 'a'.repeat(64) },
+                { role: 'admin', revision: 'b'.repeat(64) },
+              ],
               delivery_ready: false,
               member: null,
               role: null,
               candidate: value().member,
             },
           ];
-    if (command.op === 'add_member_reviewed') {
-      candidateState = { ...value(), can_add: false, delivery_ready: false, state: 'Updating' };
+    if (command.op === 'set_member_role_reviewed') {
+      candidateState = {
+        ...value(),
+        can_add: false,
+        can_remove: false,
+        delivery_ready: false,
+        state: 'Updating',
+        role: null,
+        member: null,
+        candidate: value().member,
+        role_options: [],
+        pending_role: command.role,
+      };
       return candidateState;
     }
     if (command.op === 'remove_member_reviewed')
@@ -194,6 +213,13 @@ export async function memberHookReactFixture() {
     value,
     memberState(next: Partial<SpaceMemberContext>) {
       candidateState = { ...value(), ...next };
+      if (candidateState.state !== 'Active') candidateState.can_remove = false;
+      if (candidateState.can_add && next.role_options === undefined)
+        candidateState.role_options = [
+          { role: 'member', revision: 'c'.repeat(64) },
+          { role: 'reader', revision: 'a'.repeat(64) },
+          { role: 'admin', revision: 'b'.repeat(64) },
+        ];
     },
     canonicalChange() {
       driver.changed?.({ kind: 'change', spaceIds: [room.id] });

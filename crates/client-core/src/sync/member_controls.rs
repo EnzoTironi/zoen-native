@@ -3,7 +3,7 @@ use super::{t, CoreError, Engine, EventBody, Role, SpaceKind, R};
 use crate::{MemberActionState, SpaceMemberContext};
 use sha2::{Digest, Sha256};
 
-fn changed() -> CoreError {
+pub(super) fn changed() -> CoreError {
     CoreError::Forbidden {
         reason: t(
             "o participante ou o acesso à conversa mudou",
@@ -11,7 +11,7 @@ fn changed() -> CoreError {
         ),
     }
 }
-fn role_name(role: Role) -> String {
+pub(super) fn role_name(role: Role) -> String {
     match role {
         Role::Owner => "owner",
         Role::Admin => "admin",
@@ -73,6 +73,7 @@ impl Engine {
         let pending = self.store.outbox()?;
         let mut updating = false;
         let mut removing = false;
+        let mut pending_role = None;
         for row in pending
             .iter()
             .filter(|row| !row.failed && row.event.space == space)
@@ -86,7 +87,19 @@ impl Engine {
                 continue;
             }
             match &row.event.body {
-                EventBody::SpaceCreated { .. } | EventBody::MemberAdded { .. } => updating = true,
+                EventBody::SpaceCreated { .. } => updating = true,
+                EventBody::MemberAdded {
+                    identity: target,
+                    role,
+                } => {
+                    updating = true;
+                    if target == member
+                        && row.event.author == identity
+                        && row.event.device.as_deref() == Some(device)
+                    {
+                        pending_role = Some(role_name(*role));
+                    }
+                }
                 EventBody::MemberRemoved { identity: target } => {
                     updating = true;
                     removing |= target == member;
@@ -121,21 +134,40 @@ impl Engine {
             && projected(member).is_none()
             && member != identity
             && candidate.is_some();
+        // All three controls share the same exact signed-intent/current-cut
+        // refusal test. A role/rejoin ABA invalidates old outcomes uniformly.
+        let applicable_failure = |row: &store::Pending, require_member: bool| {
+            let event = &row.event;
+            if !row.failed
+                || event.space != space
+                || event.author != identity
+                || event.device.as_deref() != Some(device)
+            {
+                return false;
+            }
+            let (Some(log), Some(seen), Some(actor)) =
+                (self.logs.get(space), event.seen.as_ref(), actor_cut)
+            else {
+                return false;
+            };
+            event_log::verify_author(event).is_ok()
+                && !log.events().iter().any(|e| e.client_id == event.client_id)
+                && log
+                    .events()
+                    .iter()
+                    .any(|e| e.seq == seen.seq && e.hash == seen.hash)
+                && actor.seq <= seen.seq
+                && if require_member {
+                    member_cut.is_some_and(|target| target.seq <= seen.seq)
+                } else {
+                    member_cut.is_none_or(|target| target.seq <= seen.seq)
+                }
+        };
         let addition_failure = if state == MemberActionState::Removed {
             pending.iter().rev().find(|row| {
                 let event = &row.event;
-                if !row.failed || event.space != space || event.author != identity
-                    || event.device.as_deref() != Some(device)
-                    || !matches!(&event.body, EventBody::MemberAdded { identity: target, role: Role::Member } if target == member)
-                { return false; }
-                let (Some(log), Some(seen), Some(actor)) =
-                    (self.logs.get(space), event.seen.as_ref(), actor_cut)
-                else { return false; };
-                event_log::verify_author(event).is_ok()
-                    && !log.events().iter().any(|e| e.client_id == event.client_id)
-                    && log.events().iter().any(|e| e.seq == seen.seq && e.hash == seen.hash)
-                    && actor.seq <= seen.seq
-                    && member_cut.is_none_or(|target| target.seq <= seen.seq)
+                matches!(&event.body, EventBody::MemberAdded { identity: target, role } if target == member && *role != Role::Owner && actor_role.can_assign(None, *role))
+                    && applicable_failure(row, false)
             }).map(|row| row.event.client_id.as_str())
         } else {
             None
@@ -150,18 +182,23 @@ impl Engine {
         let failure = if state == MemberActionState::Active {
             pending.iter().rev().find(|row| {
                 let event = &row.event;
-                if !row.failed || event.space != space || event.author != identity
-                    || event.device.as_deref() != Some(device)
-                    || !matches!(&event.body, EventBody::MemberRemoved { identity: target } if target == member)
-                { return false; }
-                let (Some(log), Some(seen), Some(actor), Some(target)) =
-                    (self.logs.get(space), event.seen.as_ref(), actor_cut, member_cut)
-                else { return false; };
-                event_log::verify_author(event).is_ok()
-                    && !log.events().iter().any(|e| e.client_id == event.client_id)
-                    && log.events().iter().any(|e| e.seq == seen.seq && e.hash == seen.hash)
-                    && actor.seq <= seen.seq && target.seq <= seen.seq
+                matches!(&event.body, EventBody::MemberRemoved { identity: target } if target == member)
+                    && applicable_failure(row, true)
             }).map(|row| row.event.client_id.as_str())
+        } else {
+            None
+        };
+        let role_failure = if state == MemberActionState::Active {
+            pending
+                .iter()
+                .rev()
+                .find(|row| {
+                    matches!(&row.event.body, EventBody::MemberAdded { identity: target, role }
+                    if target == member && Some(*role) != target_role && *role != Role::Owner
+                        && actor_role.can_assign(target_role, *role))
+                        && applicable_failure(row, true)
+                })
+                .map(|row| row.event.client_id.as_str())
         } else {
             None
         };
@@ -176,7 +213,7 @@ impl Engine {
             target_role,
             actor_cut.map(|event| &event.hash),
             member_cut.map(|event| &event.hash),
-            failure,
+            (failure, role_failure, &pending_role),
             addition_failure,
             delivery_ready,
             owned_agent,
@@ -192,7 +229,7 @@ impl Engine {
                 "could not verify the member",
             ),
         })?;
-        Ok(SpaceMemberContext {
+        let mut context = SpaceMemberContext {
             identity_id: identity.into(),
             device_id: device.into(),
             space_id: space.into(),
@@ -209,8 +246,19 @@ impl Engine {
             candidate,
             addition_failed: addition_failure.is_some(),
             removal_failed: failure.is_some(),
+            role_options: Vec::new(),
+            pending_role,
+            role_change_failed: role_failure.is_some(),
             revision: format!("{:x}", Sha256::digest(review)),
-        })
+        };
+        context.role_options = super::member_roles::options(
+            &context,
+            actor_role,
+            target_role,
+            projected(identity),
+            projected(member),
+        )?;
+        Ok(context)
     }
 
     /// A single Engine guard spans current device/permission/review checks and
@@ -246,8 +294,19 @@ impl Engine {
         if !current.can_add || current.revision != revision {
             return Err(changed());
         }
-        self.add_member(space, member, Role::Member)?;
-        self.space_member_context(space, member, identity, device)
+        let choice = current
+            .role_options
+            .iter()
+            .find(|choice| choice.role == "member")
+            .ok_or_else(changed)?;
+        self.set_member_role_reviewed(
+            space,
+            member,
+            identity,
+            device,
+            &choice.revision,
+            &choice.role,
+        )
     }
     pub(crate) fn member_candidates(
         &self,

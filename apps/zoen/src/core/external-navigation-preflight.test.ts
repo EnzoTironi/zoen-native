@@ -86,6 +86,7 @@ const snapshot: Snapshot = {
       title: 'Synthetic',
       kind: 'Group',
       privacy: 'EndToEnd',
+      can_write: true,
       members: [person],
       counterpart: null,
       last_preview: '',

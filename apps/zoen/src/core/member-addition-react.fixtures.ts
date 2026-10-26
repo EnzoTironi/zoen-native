@@ -1,3 +1,8 @@
+import { createLocalization } from '../i18n/runtime.ts';
+import { community } from '../i18n/catalogs/community.ts';
+import { common } from '../i18n/catalogs/common.ts';
+import { chat } from '../i18n/catalogs/chat.ts';
+import { memberRoleLabelKey } from '../communities/member-role-label.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -24,13 +29,14 @@ type Sheet = { isPresented: boolean; onDismiss(): void; children?: React.ReactNo
 
 /** Real React/Compiler + real external-store session. Native controls are ports;
  * invoking a captured callback does not prove native hit testing or touch delivery. */
-export async function memberAdditionReactFixture(inline = false) {
+export async function memberAdditionReactFixture(inline = false, locale?: 'en' | 'pt-BR') {
   const f = await additionFixture();
   const root = createReactTestRoot();
   const controls = new Map<string, Action>();
   const routes: unknown[] = [],
     confirmations: unknown[] = [];
   let sheet: Sheet | null = null;
+  const menus = new Map<string, any>();
   const texts = new Map<object, string>();
   let answer: (options: unknown) => Promise<boolean> = async () => true;
   const useCapture = (id: string, props: Action) => {
@@ -53,6 +59,7 @@ export async function memberAdditionReactFixture(inline = false) {
     react: React,
     'react/compiler-runtime': require('react/compiler-runtime'),
     'react/jsx-runtime': require('react/jsx-runtime'),
+    './member-role-label': { memberRoleLabelKey },
     '@expo/ui': {
       Host: children,
       RNHostView: children,
@@ -64,6 +71,17 @@ export async function memberAdditionReactFixture(inline = false) {
           };
         }, [props]);
         return props.isPresented ? children(props) : null;
+      },
+    },
+    '@expo/ui/community/menu': {
+      MenuView: (props: any) => {
+        React.useLayoutEffect(() => {
+          menus.set(props.testID, props);
+          return () => {
+            if (menus.get(props.testID) === props) menus.delete(props.testID);
+          };
+        }, [props]);
+        return children(props);
       },
     },
     'react-native': {
@@ -98,10 +116,13 @@ export async function memberAdditionReactFixture(inline = false) {
         ),
     },
     'expo-router': { router: { push: (route: unknown) => routes.push(structuredClone(route)) } },
-    '../i18n': { t: (key: string) => key },
+    '../i18n': locale
+      ? createLocalization({ community, common, chat }, [locale])
+      : { t: (key: string) => key },
     '../theme': { useTheme: () => theme },
     '../components/dialogs': { useDialogs: () => ({ confirm }) },
     '../components/primitives': {
+      Icon: () => null,
       Loading: () => null,
       Field: (props: any) => useCapture('search', props),
       IconButton: (props: Action & { label: string }) => useCapture(props.label, props),
@@ -145,6 +166,11 @@ export async function memberAdditionReactFixture(inline = false) {
     ...f,
     routes,
     confirmations,
+    roleMenu(id: string) {
+      const menu = menus.get(`member-add-role-${id}`);
+      assert.ok(menu);
+      return menu;
+    },
     text: () => [...texts.values()].join(' '),
     render: () => root.render(React.createElement(Surface)),
     act: root.act,

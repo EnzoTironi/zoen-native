@@ -16,7 +16,9 @@ use std::collections::HashMap;
 
 use base64::Engine as _;
 use documents::{BlockEdit, Kind, Page};
-use types::{new_id, EventBody, ItemContent, ItemId, ItemKind, PageContent, PlanDoc, Role};
+#[cfg(test)]
+use types::Role;
+use types::{new_id, EventBody, ItemContent, ItemId, ItemKind, PageContent, PlanDoc};
 
 use crate::engine::{Engine, ItemState, R};
 use crate::i18n::t;

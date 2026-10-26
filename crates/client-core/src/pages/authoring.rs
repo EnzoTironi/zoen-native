@@ -22,11 +22,7 @@ impl Engine {
     }
 
     pub(super) fn page_writer(&self, space: &str, actor: &str) -> bool {
-        self.state.spaces.get(space).is_some_and(|s| {
-            s.members
-                .iter()
-                .any(|(id, role)| id == actor && *role != Role::Reader)
-        })
+        self.state.writer(space, actor)
     }
 
     pub(super) fn page_content(

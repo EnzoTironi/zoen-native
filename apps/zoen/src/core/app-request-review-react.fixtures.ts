@@ -18,6 +18,7 @@ import * as admission from '../miniapps/editor-agent-admission.ts';
 import * as memberFlow from '../communities/member-actions.ts';
 import * as addition from '../communities/member-addition.ts';
 import * as memberPort from '../communities/member-context-port.ts';
+import { memberRoleLabelKey } from '../communities/member-role-label.ts';
 import * as source from '../sites/source.ts';
 import * as enrollment from '../agent-enrollment/session.ts';
 import * as enrollmentPort from '../agent-enrollment/core-port.ts';
@@ -219,6 +220,7 @@ export async function appRequestReviewReactFixture(options: { canonicalFlush?: b
         { Item: Capture },
       ),
     },
+    '@expo/ui/community/menu': { MenuView: children },
     'expo-image': { Image: Capture },
     'expo-crypto': { randomUUID: () => 'generated-id' },
     'expo-camera': {
@@ -287,6 +289,7 @@ export async function appRequestReviewReactFixture(options: { canonicalFlush?: b
     './member-actions': memberFlow,
     './member-addition': addition,
     './member-context-port': memberPort,
+    './member-role-label': { memberRoleLabelKey },
     './session': enrollment,
     './core-port': enrollmentPort,
     '../agents/trust-confirmation': trust,

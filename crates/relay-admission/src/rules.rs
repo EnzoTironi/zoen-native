@@ -19,6 +19,10 @@ pub struct Facts {
     pub author_role: Option<Role>,
     /// Role of the identity a `MemberAdded`/`MemberRemoved` names.
     pub target_role: Option<Role>,
+    /// Last canonical removal, retained across re-entry to fence delayed grants.
+    pub target_removed_at: Option<u64>,
+    /// Last removal of the author: re-entry cannot revive old administration.
+    pub author_removed_at: Option<u64>,
     pub member_count: u32,
     /// Hash stored at the envelope's `seen.seq`, when that seq exists.
     pub seen_hash: Option<String>,
@@ -118,10 +122,24 @@ pub fn admit(env: &Envelope, f: &Facts) -> Result<Effect, Reject> {
                     by_invite: true,
                 }
             } else {
-                match f.author_role {
-                    Some(Role::Owner) => {}
-                    Some(Role::Admin) if role != Role::Owner => {}
-                    _ => return Err(Reject::no("only owners and admins add members")),
+                if f.target_removed_at
+                    .into_iter()
+                    .chain(f.author_removed_at)
+                    .any(|removed| env.seen().is_none_or(|seen| seen.seq < removed))
+                {
+                    return Err(Reject::no(
+                        "member was removed after this membership review",
+                    ));
+                }
+                if !f
+                    .author_role
+                    .is_some_and(|actor| actor.can_assign(f.target_role, role))
+                {
+                    return Err(Reject::no(if f.target_role == Some(Role::Owner) {
+                        "owner role is protected"
+                    } else {
+                        "only owners and admins add members"
+                    }));
                 }
                 if f.kind == Some(SpaceKind::Direct)
                     && f.member_count >= 2

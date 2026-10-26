@@ -101,6 +101,9 @@ impl Engine {
                     candidate: role.is_none().then_some(person),
                     addition_failed: false,
                     removal_failed: false,
+                    role_options: Vec::new(),
+                    pending_role: None,
+                    role_change_failed: false,
                     revision: event_log::content_hash(&(
                         space,
                         identity,

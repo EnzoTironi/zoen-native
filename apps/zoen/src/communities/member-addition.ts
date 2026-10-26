@@ -1,3 +1,5 @@
+import type { MemberRoleOption } from '../core/generated/MemberRoleOption';
+import { validateMemberContext, sameMemberRoleOption } from './member-context-validation.ts';
 import type { SpaceMemberContext } from '../core/generated/SpaceMemberContext';
 import { accountScopeKey, type AccountScope } from '../core/account-scope.ts';
 import type { MemberAdditionPort } from './member-context-port.ts';
@@ -27,36 +29,8 @@ export const emptyMemberAddition: MemberAdditionState = {
   busy: false,
   failed: false,
 };
-function validate(c: SpaceMemberContext, space: string, owner: AccountScope, id?: string) {
-  if (
-    !c ||
-    c.space_id !== space ||
-    (id !== undefined && c.member_id !== id) ||
-    c.identity_id !== owner.identity ||
-    c.device_id !== owner.device ||
-    !/^[a-f0-9]{64}$/.test(c.revision) ||
-    typeof c.can_manage_members !== 'boolean' ||
-    typeof c.can_add !== 'boolean' ||
-    typeof c.delivery_ready !== 'boolean' ||
-    typeof c.owned_agent !== 'boolean' ||
-    (c.owned_agent &&
-      (!(c.member ?? c.candidate) ||
-        (c.member ?? c.candidate)?.kind !== 'Agent' ||
-        (c.member ?? c.candidate)?.owner_id !== owner.identity ||
-        !(c.member ?? c.candidate)?.is_mine)) ||
-    typeof c.addition_failed !== 'boolean' ||
-    !['Active', 'Updating', 'Removing', 'Removed'].includes(c.state) ||
-    (c.candidate !== null && c.candidate.id !== c.member_id) ||
-    (c.can_add &&
-      (!c.can_manage_members ||
-        c.state !== 'Removed' ||
-        !c.candidate ||
-        c.member_id === owner.identity ||
-        c.member !== null ||
-        c.role !== null))
-  )
-    throw Error('Invalid member addition context');
-  return c;
+function validate(c: SpaceMemberContext, space: string, owner: AccountScope, id = c.member_id) {
+  return validateMemberContext(c, space, id, owner);
 }
 
 /** Focus-owned review; membership and pending/failure durability remain entirely in Core. */
@@ -224,37 +198,53 @@ export class MemberAdditionSession {
   }
   async select(
     member: string,
-    confirm: (context: SpaceMemberContext) => Promise<boolean>,
+    confirm: (context: SpaceMemberContext, option: MemberRoleOption) => Promise<boolean>,
     ticket: AdditionTicket | null,
+    option?: MemberRoleOption,
   ) {
     const context = this.state.results.find((c) => c.member_id === member),
       owner = this.owner;
+    const selected = option ?? context?.role_options.find((choice) => choice.role === 'member');
     if (
       !this.current(ticket) ||
       !ticket ||
       !owner ||
       !this.state.open ||
       !context?.can_add ||
+      !selected ||
+      !context.role_options.some((choice) => sameMemberRoleOption(choice, selected)) ||
       this.state.busy ||
       this.review ||
       this.writes.has(ticket.scope)
     )
       return;
+    const choice = Object.freeze({ ...selected });
+    const revision = context.revision;
     const review = {};
     this.review = review;
     this.publish({ busy: true, selected: context, failed: false });
     let dispatched = false;
     try {
-      if (!(await confirm(context)) || !this.current(ticket) || this.review !== review) return;
+      if (!(await confirm(context, choice)) || !this.current(ticket) || this.review !== review)
+        return;
       const current = validate(await this.readCandidate(context, owner), this.space, owner, member);
       if (!this.current(ticket) || this.review !== review) return;
-      if (!current.can_add || current.revision !== context.revision) {
+      if (
+        !current.can_add ||
+        current.revision !== revision ||
+        !current.role_options.some((option) => sameMemberRoleOption(option, choice))
+      ) {
         await this.refresh();
         return;
       }
       this.writes.set(ticket.scope, review);
       dispatched = true;
-      const result = validate(await this.port.add(current, owner), this.space, owner, member);
+      const result = validate(
+        await this.port.setRole(current, choice, owner),
+        this.space,
+        owner,
+        member,
+      );
       if (this.current(ticket)) this.publish({ selected: result });
     } catch {
       if (this.current(ticket)) this.publish({ failed: true });

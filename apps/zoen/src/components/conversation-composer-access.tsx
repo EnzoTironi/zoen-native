@@ -21,13 +21,15 @@ export function ConversationComposerAccess({
   const { bottom } = useSafeAreaInsets();
   const owner = homeOwnerFor(client);
   const identity = client.snapshot?.me?.id ?? client.snapshot?.account?.identity_id;
+  const conversation = client.snapshot?.conversations.find((space) => space.id === spaceId);
+  const member = homeSpacesFor(client).has(spaceId);
   // An unavailable owner, unknown chat or pending load is not evidence of leaving.
   const readOnly = Boolean(
     !client.store.isSessionRetiring &&
     owner &&
     owner.identityId === identity &&
-    client.snapshot?.conversations.some((space) => space.id === spaceId) &&
-    !homeSpacesFor(client).has(spaceId),
+    conversation &&
+    (!member || conversation.can_write === false),
   );
   if (searching || !readOnly) return children;
   return (
@@ -36,7 +38,7 @@ export function ConversationComposerAccess({
       style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: Math.max(bottom, 12) }}
     >
       <Text style={{ color: p.chat.service.text, fontSize: 13, textAlign: 'center' }}>
-        {t('chat.noLongerAMember')}
+        {t(member ? 'chat.readOnlyChat' : 'chat.noLongerAMember')}
       </Text>
     </View>
   );

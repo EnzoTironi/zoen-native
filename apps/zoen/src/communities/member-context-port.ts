@@ -1,11 +1,17 @@
 import type { ClientStore } from '../core/store';
 import type { SpaceMemberContext } from '../core/generated/SpaceMemberContext';
+import type { MemberRoleOption } from '../core/generated/MemberRoleOption';
 import { accountScope, accountScopeKey, type AccountScope } from '../core/account-scope.ts';
 
 export interface MemberActionsPort {
   scope(): AccountScope | null;
   read(member: string, owner: AccountScope): Promise<SpaceMemberContext>;
   remove(context: SpaceMemberContext, owner: AccountScope): Promise<SpaceMemberContext>;
+  setRole(
+    context: SpaceMemberContext,
+    option: MemberRoleOption,
+    owner: AccountScope,
+  ): Promise<SpaceMemberContext>;
 }
 export function createMemberActionsPort(store: ClientStore, space: string): MemberActionsPort {
   const check = (owner: AccountScope) => {
@@ -35,12 +41,23 @@ export function createMemberActionsPort(store: ClientStore, space: string): Memb
         observed_revision: context.revision,
       });
     },
+    setRole: (context, option, owner) => {
+      check(owner);
+      return store.request({
+        op: 'set_member_role_reviewed',
+        space_id: space,
+        identity_id: context.member_id,
+        expected_identity_id: owner.identity,
+        expected_device_id: owner.device,
+        observed_revision: option.revision,
+        role: option.role,
+      });
+    },
   };
 }
 
-export interface MemberAdditionPort extends Pick<MemberActionsPort, 'scope' | 'read'> {
+export interface MemberAdditionPort extends Pick<MemberActionsPort, 'scope' | 'read' | 'setRole'> {
   find(query: string, owner: AccountScope): Promise<SpaceMemberContext[]>;
-  add(context: SpaceMemberContext, owner: AccountScope): Promise<SpaceMemberContext>;
 }
 export function createMemberAdditionPort(
   store: ClientStore,
@@ -55,6 +72,7 @@ export function createMemberAdditionPort(
   return {
     scope: shared.scope,
     read: shared.read,
+    setRole: shared.setRole,
     find: (query, owner) => {
       check(owner);
       return store.driver.request({
@@ -64,17 +82,6 @@ export function createMemberAdditionPort(
         query,
         expected_identity_id: owner.identity,
         expected_device_id: owner.device,
-      });
-    },
-    add: (context, owner) => {
-      check(owner);
-      return store.request({
-        op: 'add_member_reviewed',
-        space_id: space,
-        identity_id: context.member_id,
-        expected_identity_id: owner.identity,
-        expected_device_id: owner.device,
-        observed_revision: context.revision,
       });
     },
   };

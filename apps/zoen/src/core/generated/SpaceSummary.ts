@@ -4,7 +4,11 @@ import type { Persona } from "./Persona";
 import type { PrivacyDto } from "./PrivacyDto";
 import type { SpaceKindDto } from "./SpaceKindDto";
 
-export type SpaceSummary = { id: string, title: string, kind: SpaceKindDto, privacy: PrivacyDto, members: Array<Persona>, 
+export type SpaceSummary = { id: string, title: string, kind: SpaceKindDto, privacy: PrivacyDto, 
+/**
+ * Current projected write permission, shared with the original Core writer.
+ */
+can_write: boolean, members: Array<Persona>, 
 /**
  * Para DMs: a outra ponta (pessoa ou agente).
  */
