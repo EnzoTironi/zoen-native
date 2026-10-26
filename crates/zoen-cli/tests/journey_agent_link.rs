@@ -184,6 +184,11 @@ async fn agent_links_are_stable_redeemable_revocable_and_the_page_is_hardened(
     assert!(!page.body.contains("alert(1)"), "{}", page.body);
     assert!(page.body.contains(">A</div>"), "no glyph: the initial");
     redeem(&mut stranger, &c.code).await.expect("first use");
+    assert_eq!(
+        get(&w, &format!("/a/{}", c.code), &[]).status,
+        404,
+        "spent public link stays hidden before an existing redeemer retries"
+    );
     // The same person again counts once: still fine, and the only use isn't spent twice.
     redeem(&mut stranger, &c.code)
         .await
@@ -196,6 +201,29 @@ async fn agent_links_are_stable_redeemable_revocable_and_the_page_is_hardened(
         .await
         .expect("replaced");
     assert_ne!(d.code, c.code);
+
+    // A stale physical link after directory revocation must not spend its use.
+    // Restore only the isolated fixture row afterwards to inspect the unchanged
+    // FDB quota; this is not a product path for resuming a revoked agent.
+    let blocked = register_agent(&w, &owner, "blocked_invite", "#4F7CFF", None).await?;
+    let blocked_link = create(&mut owner, &blocked, 1, 3600).await?;
+    {
+        use sqlx::Connection;
+        let mut db = sqlx::PgConnection::connect(&w.db_url).await?;
+        sqlx::query("UPDATE agent_citizens SET revoked_at=now() WHERE agent=$1")
+            .bind(&blocked)
+            .execute(&mut db)
+            .await?;
+        let denied = redeem(&mut stranger, &blocked_link.code).await.unwrap_err();
+        assert!(denied.contains("revoked"), "{denied}");
+        sqlx::query("UPDATE agent_citizens SET revoked_at=NULL WHERE agent=$1")
+            .bind(&blocked)
+            .execute(&mut db)
+            .await?;
+    }
+    redeem(&mut outro, &blocked_link.code)
+        .await
+        .expect("revoked preflight consumed no quota");
 
     // An expired link: no preview, no page, no redeem.
     revoke(&mut owner, &agenda).await.expect("revoke");

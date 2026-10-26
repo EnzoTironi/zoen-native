@@ -374,7 +374,11 @@ impl Session {
             }
             Op::RedeemAgentInvite { code } => {
                 self.spend_invite_guess()?;
-                let observed = self.st.log.preview_invite(&code).await?;
+                let observed = self
+                    .st
+                    .log
+                    .preview_agent_invite_for_redeemer(&code, &self.identity)
+                    .await?;
                 self.agent_invite_allowed(&observed).await?;
                 let i = self
                     .st

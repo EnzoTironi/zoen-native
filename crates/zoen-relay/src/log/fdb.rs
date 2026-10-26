@@ -434,6 +434,7 @@ impl FdbLog {
     }
 }
 
+mod agent_invites;
 mod apply;
 mod cell;
 mod fallible;
