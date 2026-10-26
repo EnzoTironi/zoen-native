@@ -11,7 +11,27 @@ for (const locale of ['en', 'pt-BR'] as const)
       .flatMap((node) => node.props.rows);
     youRows.find((row: any) => row.id === 'settings-notifications').onPress();
     assert.equal(f.routes[0], '/notifications');
-    const entry = nodes(f.entry()).find(
+    const notificationScreen = f.entry();
+    assert.equal(notificationScreen.type, 'ScrollView');
+    assert.equal(notificationScreen.props.title, f.t('notifications.notifications'));
+    const disclosure = nodes(notificationScreen).find((node) => node.type === 'Collapsible')!;
+    assert.equal(disclosure.props.isOpen, false);
+    assert.ok(
+      strings(disclosure).includes(
+        f.t('notifications.registrationConfirmsThatTheServerReceivedTheRequest'),
+      ),
+    );
+    const summary = notificationScreen.props.children[0];
+    assert.ok(strings(summary).includes(f.t('notifications.allowedOnDevice')));
+    assert.equal(
+      strings(summary).includes(
+        f.t('notifications.registrationConfirmsThatTheServerReceivedTheRequest'),
+      ),
+      false,
+    );
+    disclosure.props.onOpenChange(true);
+    assert.equal(nodes(f.entry()).find((node) => node.type === 'Collapsible')!.props.isOpen, true);
+    const entry = nodes(notificationScreen).find(
       (node) => node.props.testID === 'notification-chat-settings',
     )!;
     entry.props.rows[0].onPress();
