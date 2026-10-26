@@ -136,8 +136,10 @@ export function ComposerTextField({
         if (active?.editable !== false) active?.onSubmitEditing?.(event);
       }}
       onLayout={(event) => {
+        const active = events();
+        if (!active) return;
         setWidth(event.nativeEvent.layout.width);
-        props.onLayout?.(event);
+        active.onLayout?.(event);
       }}
       onContentSizeChange={(event) => {
         // Content-size events carry no text identity. Remeasure the actual

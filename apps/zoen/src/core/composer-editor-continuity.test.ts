@@ -4,6 +4,47 @@ import { byId, find, fixture, styleOf, type Handler } from './attachment-compose
 
 const tick = () => new Promise<void>((done) => setImmediate(done));
 
+test('a retired native layout cannot schedule fitting for the replacement session', () => {
+  const f = fixture();
+  const first = find(f.render(), byId('message-input'));
+  f.client.store.sessionEpoch++;
+  f.render();
+  const before = f.measurements.length;
+  (first.props.onLayout as Handler)({ nativeEvent: { layout: { width: 117, height: 40 } } });
+  f.render();
+  assert.ok(f.measurements.slice(before).every((measurement) => measurement.width !== 117));
+});
+
+for (const changed of ['identity', 'device', 'epoch', 'relay'] as const)
+  test(`same-Space ${changed} replacement and ABA retire native callbacks without borrowing the new draft`, () => {
+    const f = fixture();
+    const account = f.client.snapshot.account;
+    const originalAccount = { ...account };
+    const originalEpoch = f.client.store.sessionEpoch;
+    const first = find(f.render(), byId('message-input'));
+    if (changed === 'identity') account.identity_id = 'other-person';
+    if (changed === 'device') account.device_id = 'other-device';
+    if (changed === 'relay') account.relay_url = 'https://other-relay.example';
+    if (changed === 'epoch') f.client.store.sessionEpoch++;
+    const second = find(
+      f.render(undefined, { onChangeText: (text: string) => f.calls.push(`new:${text}`) }),
+      byId('message-input'),
+    );
+    (first.props.onChangeText as Handler)('old native event');
+    assert.deepEqual(f.calls, []);
+    (second.props.onChangeText as Handler)('Live new draft');
+    assert.deepEqual(f.calls, ['new:Live new draft']);
+    Object.assign(account, originalAccount);
+    f.client.store.sessionEpoch = originalEpoch;
+    const returned = find(f.render(), byId('message-input'));
+    (first.props.onChangeText as Handler)('retired original owner');
+    (second.props.onChangeText as Handler)('retired second owner');
+    assert.deepEqual(f.calls, ['new:Live new draft']);
+    (returned.props.onChangeText as Handler)('Live returned draft');
+    assert.deepEqual(f.calls, ['new:Live new draft', 'normal:Live returned draft']);
+    assert.equal(returned.props.ref, first.props.ref);
+  });
+
 test('normal and caption callbacks cannot cross the mounted editor handoff or its return', () => {
   const f = fixture();
   const inputRef = { current: null as unknown };

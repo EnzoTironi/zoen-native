@@ -288,7 +288,12 @@ test('compiled field preserves its actual native owner while input-mode, caption
     );
     assert.equal(inputRef.current, f.nativeField);
     assert.ok(
-      f.keyboardFields.some(([tag, context]) => tag === 101 && context === current.context),
+      f.keyboardFields.some(
+        ([tag, context]) =>
+          tag === 101 &&
+          typeof context === 'string' &&
+          JSON.stringify(JSON.parse(context).slice(0, 4)) === current.context,
+      ),
     );
     if (JSON.parse(current.context)[2] === 'search')
       assert.equal(parentOf(tree, find(tree, byId('composer-input-mode'))).props.active, false);
@@ -297,7 +302,15 @@ test('compiled field preserves its actual native owner while input-mode, caption
     find(f.renderRoot(patch), (node) => node.type === 'AttachmentKeyboardProvider');
   const provider = providerFor({ search: { state: { completed: false } } });
   assert.equal(provider.type, 'AttachmentKeyboardProvider');
-  assert.equal(provider.props.scope, 'space:');
+  const [ownerScope, space, thread] = JSON.parse(provider.props.scope as string);
+  assert.equal(space, 'space');
+  assert.equal(thread, null);
+  assert.deepEqual(JSON.parse(ownerScope), [
+    { mode: 'account', identityId: 'me', deviceId: 'device' },
+    1,
+    'https://relay.example',
+    false,
+  ]);
   assert.equal(provider.props.enabled, false, 'search retires accessory input authority');
   assert.equal(providerFor({ suspended: true }).props.enabled, false);
   assert.equal(providerFor({}).props.enabled, true);

@@ -11,6 +11,8 @@ import * as composerMotion from './telegram-composer-motion.ts';
 import * as composerPresentation from './telegram-composer-presentation.ts';
 import type { AttachmentKeyboardSession } from '../media/attachment-keyboard-session.ts';
 import { keyboardFieldHook } from './attachment-keyboard-field.fixtures.ts';
+import { homeOwnerFor } from '../home/access.ts';
+import { composerOwnerFixture } from './composer-owner.fixtures.ts';
 
 export type Element = { type: unknown; props: Record<string, unknown> };
 export type Handler = (...args: unknown[]) => unknown;
@@ -173,8 +175,9 @@ export function fixture(
       result = fieldModule.exports.ComposerTextField(props);
       assert.equal(result.type, 'TextInput');
       (result.props.ref as (node: unknown) => void)(nativeField);
-      (result.props.onLayout as Handler)({ nativeEvent: { layout: { width: 264, height: 52 } } });
       for (const commit of effects) commit();
+      // RN delivers layout after the committed ref and layout effects.
+      (result.props.onLayout as Handler)({ nativeEvent: { layout: { width: 264, height: 52 } } });
     } while (dirty);
     fieldElement = result;
     return result;
@@ -193,6 +196,7 @@ export function fixture(
     thread: false,
   };
   const calls: string[] = [];
+  const client = composerOwnerFixture();
   const file = {
     mutationId: 'selected-asset',
     scope,
@@ -305,6 +309,8 @@ export function fixture(
     },
     './composer-control-surface': { ComposerGlyph: 'ComposerGlyph' },
     '../core/telegram-composer-presentation': composerPresentation,
+    '../core/provider': { useClient: () => client },
+    '../home/access': { homeOwnerFor },
     './keyboard-motion': { useKeyboardMotion: () => ({ progress: { value: 0 } }) },
     '../theme': { useTheme: () => theme },
     '../i18n/index.ts': { t: (key: string) => key },
@@ -373,6 +379,7 @@ export function fixture(
   }
   return {
     file,
+    client,
     calls,
     measurements,
     theme,
