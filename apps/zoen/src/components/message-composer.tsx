@@ -402,7 +402,8 @@ export function MessageComposer({
         style={[
           {
             // f1dd7a2 textFieldInsets:1432; separate action gap:3537.
-            paddingHorizontal: process.env.EXPO_OS === 'ios' ? 8 : 12,
+            paddingLeft: insets.left + (process.env.EXPO_OS === 'ios' ? 8 : 12),
+            paddingRight: insets.right + (process.env.EXPO_OS === 'ios' ? 8 : 12),
             paddingTop: process.env.EXPO_OS === 'ios' ? 0 : 10,
             gap: process.env.EXPO_OS === 'ios' ? 0 : 8,
           },
