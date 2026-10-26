@@ -24,8 +24,9 @@
       "id": "apps-and-durable-agents",
       "status": "IN_PROGRESS",
       "exit": "Persistent isolated MCP Apps, Excalidraw and real external authorization; agents resume without clients and reconcile grants, approvals, effects and costs.",
-      "activeScope": "Durable agents, permissions, approvals, budgets and conversational execution.",
-      "pausedScope": "All MCP Apps, App SDK/host expansion and creation-editor integration are paused by the user."
+      "activeScope": "Durable agents only: permissions, approvals, budgets, attributed conversational results and recovery; existing domain contracts remain authoritative.",
+      "pausedScope": "All MCP Apps development/QA, App host/SDK expansion and creation-editor integration are paused by Enzo; their original exit criteria and final-product scope remain required.",
+      "statusBoundary": "IN_PROGRESS applies only to active agents; it does not resume or accept the paused Apps portion of this retained milestone."
     },
     {
       "id": "shared-creation-workspace",
@@ -55,7 +56,7 @@
   "completionScope": "Thirty requiredJourneys plus all declared creationWorkspace capabilities and the numerical operating envelope. Competitor quality is a design reference, not an unbounded all-features/global-scale acceptance target.",
   "currentSimulatorCheckpoint": "currentIphoneArtifact",
   "currentFocus": "User-confirmed priority: agents and conversation only. Complete the selected Telegram iOS interface/interactions and corresponding backend before resuming Apps or shared creation. Preserve all approved final-product scope.",
-  "publicationStatus": "PR621 merged0036bc46; PR627 mergedd3fc6b11 and scoped625/626 closed; PR628 merged49e0c8f; PR629 merged0dd7679669ac3d9780ce1e30a6a708e172705dbb after all applicable checks passed. Its merge tree equals48eb6fd9. Native707/local relay remain actualeb62;48 differs only in a CLI test fixture. Issue170 records active Telegram/conversation/agent priorities.",
+  "publicationStatus": "PR #632 merged normally in 6c02022d606ffbcaed1dd719636a70470dade59d from qualified 9f6920d1; PR #633 merged normally in 477ac2f393b346a9dd2caab786c3f053382a4dcf with parents 6c02022d and approved UI b7ab2265. App 718 is actual b7ab2265; Core/UniFFI 707 and local relay retain actual eb62, so the native artifact does not include632 Core changes. Earlier #621/#627/#628/#629 merges and #625/#626 closure retain their own sources and scoped evidence. Issue #170 is the maintained work-status authority.",
   "coordinationIssue": "https://github.com/EnzoTironi/zoen-native/issues/170",
   "activeWorkstreams": [
     "Telegram iOS conversation/composer/attachments/media/profile/settings",
@@ -67,5 +68,10 @@
     "Shared creation: Pages, Slides, Sites and Images",
     "Anchored Page comments706 and independent App-repository extraction"
   ],
-  "resumeAppsAfter": "Completion and native acceptance of the selected Telegram iOS agents/conversation scope; a new product direction may revise the sequence."
+  "resumeAppsAfter": "Completion and native acceptance of the selected Telegram iOS agents/conversation scope; a new product direction may revise the sequence.",
+  "roadmap": {
+    "guide": "docs/roadmap/README.md",
+    "manifestSnapshot": "docs/roadmap/manifest.json",
+    "policy": "Derived snapshot/view of the canonical acceptance source and scoped evidence, not a second status authority. Issue #170 owns work status; acceptance.json and its referenced parts own acceptance criteria. Regenerate the snapshot when its source changes."
+  }
 }

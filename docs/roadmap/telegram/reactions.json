@@ -1,0 +1,367 @@
+[
+  {
+    "id": "TG-reactions-message-reactions",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/components/reaction-palette.tsx",
+      "crates/types/src/annotation.rs"
+    ],
+    "gap": "QA718 só exibiu a barra; qualificar aplicar/trocar/remover reação confirmada no destinatário.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-reactions-reaction-participants",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/reaction-details.ios.tsx"
+    ],
+    "gap": "Qualificar abertura, contagens, participantes e mudança de mensagem/conta no sheet nativo.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-reactions-reaction-moderation",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "crates/types/src/annotation.rs"
+    ],
+    "gap": "Permitir remoção administrativa auditável de reação alheia; contrato só possui React/Unreact do autor.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-reactions-service-message-reactions",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "crates/types/src/annotation.rs",
+      "apps/zoen/src/core/conversation-timeline.ts"
+    ],
+    "gap": "Permitir reação a eventos de serviço elegíveis; a projeção atual informa que as marcas só se ligam a Message.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-reactions-premium-reaction-choices",
+    "scope": "decision",
+    "implementation": "different",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/core/reaction-emoji.ts",
+      "apps/zoen/src/components/reaction-details.ios.tsx"
+    ],
+    "gap": "Decidir direitos Zoen: hoje aceita emoji Unicode válido, sem catálogo ou entitlement Premium Telegram.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Adaptar expressão e descoberta no sistema comum de reações e mídia; sem uma camada Premium paralela."
+  },
+  {
+    "id": "TG-reactions-multiple-reactions",
+    "scope": "decision",
+    "implementation": "different",
+    "acceptance": "pending",
+    "evidence": [
+      "crates/types/src/annotation.rs"
+    ],
+    "gap": "Decidir multiplicidade e limite; o contrato atual substitui a única reação de cada pessoa.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Adaptar expressão e descoberta no sistema comum de reações e mídia; sem uma camada Premium paralela."
+  },
+  {
+    "id": "TG-reactions-interactive-emoji",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/EmojiKeyboard/NOTICE.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Sincronizar efeitos de emoji entre participantes com redução de movimento e fallback acessível.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-reactions-custom-emoji",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/EmojiKeyboard/NOTICE.md",
+      "apps/zoen/src/core/reaction-emoji.ts"
+    ],
+    "gap": "Definir identidade/asset de emoji personalizado e inserir/renderizar sem reduzir a texto Unicode.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-reactions-emoji-categories-and-search",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/emoji-keyboard-panel.ios.tsx",
+      "apps/zoen/modules/zoen-core/ios/EmojiKeyboard/NOTICE.md"
+    ],
+    "gap": "Categorias Unicode existem; completar busca por palavra e qualificar tom de pele/inserção na seleção nativa.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-reactions-ai-sticker-and-emoji-search",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/EmojiKeyboard/NOTICE.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Definir catálogo/provedor e busca semântica com política de privacidade e resultado selecionável.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Adaptar expressão e descoberta no sistema comum de reações e mídia; sem uma camada Premium paralela."
+  },
+  {
+    "id": "TG-reactions-sticker-packs",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/EmojiKeyboard/NOTICE.md",
+      "apps/zoen/src/media/emoji-keyboard-panel.ios.tsx"
+    ],
+    "gap": "Instalar, compartilhar e remover packs com assets duráveis e seletor integrado ao composer.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-reactions-animated-stickers",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/EmojiKeyboard/NOTICE.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Renderizar e enviar stickers animados com limite de recursos e redução de movimento.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-reactions-video-stickers",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/EmojiKeyboard/NOTICE.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Adicionar contrato/decodificação de sticker de vídeo e prévia antes do envio.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-reactions-premium-stickers",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/EmojiKeyboard/NOTICE.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Decidir acesso Zoen a stickers com efeitos e manter fallback entre clientes.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Adaptar expressão e descoberta no sistema comum de reações e mídia; sem uma camada Premium paralela."
+  },
+  {
+    "id": "TG-reactions-favorite-stickers",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/EmojiKeyboard/NOTICE.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Persistir favoritos por conta com seleção, remoção e restauração em outro dispositivo.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-reactions-recent-and-trending-stickers",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/EmojiKeyboard/NOTICE.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Exibir recentes reais e definir origem/ranking de tendências sem inventar catálogo remoto.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-reactions-sticker-pack-ordering",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/EmojiKeyboard/NOTICE.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Reordenar packs e definir política de ordem automática preservando preferência do usuário.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-reactions-sticker-previews",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/EmojiKeyboard/NOTICE.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Abrir prévia longa de sticker e voltar ao seletor sem enviar involuntariamente.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-reactions-sticker-editor",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/ZoenAttachmentPhotoEditor.swift",
+      "apps/zoen/modules/zoen-core/ios/EmojiKeyboard/NOTICE.md"
+    ],
+    "gap": "Criar sticker com recorte/texto/desenho e salvá-lo no pack pelo fluxo da conversa.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-reactions-photo-to-sticker-conversion",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/ZoenAttachmentPhotoEditor.swift",
+      "apps/zoen/modules/zoen-core/ios/EmojiKeyboard/NOTICE.md"
+    ],
+    "gap": "Converter uma foto visualizada em sticker editável sem alterar o arquivo original.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-reactions-mixed-sticker-packs",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/EmojiKeyboard/NOTICE.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Permitir pack com formatos estático/animado/vídeo e validar cada asset.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-reactions-gif-search-and-saved-gifs",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/EmojiKeyboard/NOTICE.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Integrar busca/favoritos de GIFs com prévia, origem e envio pelo rascunho atual.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-reactions-gif-captions",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/product/telegram-ios-video-editing.md",
+      "apps/zoen/src/media/media-draft-types.ts"
+    ],
+    "gap": "Enviar GIF com legenda e posição acima/abaixo preservadas no destinatário.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-reactions-gif-and-sticker-editing",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/product/telegram-ios-video-editing.md",
+      "apps/zoen/modules/zoen-core/ios/ZoenAttachmentPhotoEditor.swift"
+    ],
+    "gap": "Editar texto/desenho/duração e produzir mídia animada/sticker com semântica de entrega correta.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-reactions-message-effects",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/EmojiKeyboard/NOTICE.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Escolher efeito de envio e renderizar no recebimento com redução de movimento e fallback.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-reactions-choosing-sticker-activity",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/EmojiKeyboard/NOTICE.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Publicar atividade efêmera de escolha de sticker com expiração e escopo corretos.",
+    "issues": [
+      170
+    ]
+  }
+]

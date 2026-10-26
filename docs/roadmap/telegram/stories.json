@@ -1,0 +1,422 @@
+[
+  {
+    "id": "TG-stories-story-publishing",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Se adotado: capturar, publicar, consultar e expirar um story com autoria e resultado explícitos.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência adicional: um feed social de stories não é necessário para trabalho entre pessoas e agentes."
+  },
+  {
+    "id": "TG-stories-story-audience-controls",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Se adotado: escolher e revisar quem pode assistir antes da publicação e aplicar mudanças de audiência.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência adicional: um feed social de stories não é necessário para trabalho entre pessoas e agentes."
+  },
+  {
+    "id": "TG-stories-stories-on-profiles",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Se adotado: consultar stories no perfil distinguindo conteúdo temporário de foto, bio e arquivos persistentes.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência adicional: um feed social de stories não é necessário para trabalho entre pessoas e agentes."
+  },
+  {
+    "id": "TG-stories-story-albums",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Se adotado: organizar stories em álbuns persistentes com ordem e público reconhecíveis.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência adicional: um feed social de stories não é necessário para trabalho entre pessoas e agentes."
+  },
+  {
+    "id": "TG-stories-story-editing",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Se adotado: editar story com salvar, descartar e publicação explícita sem perder o original.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência adicional: um feed social de stories não é necessário para trabalho entre pessoas e agentes."
+  },
+  {
+    "id": "TG-stories-dual-camera-stories",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Se adotado: capturar duas câmeras com prévia e fallback nos dispositivos incompatíveis.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência adicional: um feed social de stories não é necessário para trabalho entre pessoas e agentes."
+  },
+  {
+    "id": "TG-stories-story-collage",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Se adotado: montar colagem com ordem, recorte e leitura acessível das mídias.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência adicional: um feed social de stories não é necessário para trabalho entre pessoas e agentes."
+  },
+  {
+    "id": "TG-stories-story-music",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Se adotado: adicionar música disponível e autorizada com controle de trecho e volume.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência adicional: um feed social de stories não é necessário para trabalho entre pessoas e agentes."
+  },
+  {
+    "id": "TG-stories-saved-profile-audio-in-stories",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Se adotado: reutilizar áudio salvo no perfil preservando autoria e permissões de uso.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência adicional: um feed social de stories não é necessário para trabalho entre pessoas e agentes."
+  },
+  {
+    "id": "TG-stories-story-captions-and-links",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Se adotado: ler e editar legendas e abrir links sem perder posição no story.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência adicional: um feed social de stories não é necessário para trabalho entre pessoas e agentes."
+  },
+  {
+    "id": "TG-stories-story-location-and-hashtag-discovery",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Se adotado: descobrir stories por localização ou hashtag respeitando publicação e localização consentidas.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência adicional: um feed social de stories não é necessário para trabalho entre pessoas e agentes."
+  },
+  {
+    "id": "TG-stories-story-reactions",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Se adotado: reagir a um story com destinatário e visibilidade da reação claros.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência adicional: um feed social de stories não é necessário para trabalho entre pessoas e agentes."
+  },
+  {
+    "id": "TG-stories-story-view-statistics",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Se adotado: consultar espectadores e métricas segundo política de privacidade e retenção definida.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência adicional: um feed social de stories não é necessário para trabalho entre pessoas e agentes."
+  },
+  {
+    "id": "TG-stories-story-reposting",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Se adotado: republicar story autorizado com atribuição e audiência explícitas.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência adicional: um feed social de stories não é necessário para trabalho entre pessoas e agentes."
+  },
+  {
+    "id": "TG-stories-channel-posts-in-stories",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Se adotado: publicar conteúdo de canal em story mantendo origem e navegação até a publicação.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência adicional: um feed social de stories não é necessário para trabalho entre pessoas e agentes."
+  },
+  {
+    "id": "TG-stories-video-note-overlays",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Se adotado: sobrepor vídeo circular com reprodução, posicionamento e edição acessíveis.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência adicional: um feed social de stories não é necessário para trabalho entre pessoas e agentes."
+  },
+  {
+    "id": "TG-stories-story-covers",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Se adotado: escolher capa e reconhecê-la na apresentação persistente do perfil.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência adicional: um feed social de stories não é necessário para trabalho entre pessoas e agentes."
+  },
+  {
+    "id": "TG-stories-weather-widget",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Se adotado: adicionar clima usando localização consentida, com remover e corrigir.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência adicional: um feed social de stories não é necessário para trabalho entre pessoas e agentes."
+  },
+  {
+    "id": "TG-stories-several-stories-at-once",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Se adotado: publicar lote ordenado com progresso e resultado individual recuperável.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência adicional: um feed social de stories não é necessário para trabalho entre pessoas e agentes."
+  },
+  {
+    "id": "TG-stories-split-long-story-video",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Se adotado: dividir vídeo longo em segmentos ordenados sem corte silencioso nem perda de trecho.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência adicional: um feed social de stories não é necessário para trabalho entre pessoas e agentes."
+  },
+  {
+    "id": "TG-stories-live-stories",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Se adotado: iniciar e encerrar transmissão ao vivo com audiência e falhas recuperáveis.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência adicional: um feed social de stories não é necessário para trabalho entre pessoas e agentes."
+  },
+  {
+    "id": "TG-stories-channel-and-group-stories",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Se adotado: publicar story pela comunidade somente com papel autorizado e autoria identificável.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência adicional: um feed social de stories não é necessário para trabalho entre pessoas e agentes."
+  },
+  {
+    "id": "TG-stories-premium-story-priority",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Se adotado: aplicar eventual prioridade paga de distribuição com benefício e elegibilidade explícitos.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência adicional: um feed social de stories não é necessário para trabalho entre pessoas e agentes."
+  },
+  {
+    "id": "TG-stories-premium-stealth-viewing",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Se adotado: aplicar eventual visualização anônima sem contradizer a política de espectadores.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência adicional: um feed social de stories não é necessário para trabalho entre pessoas e agentes."
+  },
+  {
+    "id": "TG-stories-longer-viewer-history-access",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Se adotado: consultar histórico de espectadores pelo período autorizado e informar o fim da retenção.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência adicional: um feed social de stories não é necessário para trabalho entre pessoas e agentes."
+  },
+  {
+    "id": "TG-stories-custom-story-expiry",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Se adotado: escolher validade e retirar acesso após expiração confirmada.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência adicional: um feed social de stories não é necessário para trabalho entre pessoas e agentes."
+  },
+  {
+    "id": "TG-stories-save-eligible-stories",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Se adotado: salvar apenas stories elegíveis preservando consentimento e atribuição do autor.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência adicional: um feed social de stories não é necessário para trabalho entre pessoas e agentes."
+  },
+  {
+    "id": "TG-stories-higher-quality-stories",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Se adotado: publicar e assistir em qualidade definida sem perda silenciosa ou promessa comercial implícita.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência adicional: um feed social de stories não é necessário para trabalho entre pessoas e agentes."
+  }
+]

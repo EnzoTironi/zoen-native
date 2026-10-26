@@ -1,0 +1,518 @@
+[
+  {
+    "id": "TG-messaging-cloud-conversations",
+    "scope": "active",
+    "implementation": "different",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/core/normal-message-draft-service.ts",
+      "apps/zoen/src/components/message-composer.tsx"
+    ],
+    "gap": "Sincronizar sessões autorizadas sem adotar confiança cloud Telegram; provar histórico criptografado e recuperação entre dispositivos.",
+    "issues": [
+      172,
+      176
+    ]
+  },
+  {
+    "id": "TG-messaging-text-messages",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/components/message-composer.tsx",
+      "apps/zoen/src/components/use-chat-controller.ts"
+    ],
+    "gap": "Qualificar envio privado/grupo, falha offline e retomada no iPhone pelo mesmo rascunho canônico.",
+    "issues": [
+      172,
+      176
+    ]
+  },
+  {
+    "id": "TG-messaging-replies",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/components/use-message-actions.tsx",
+      "apps/zoen/src/core/generated/TimelineEntry.ts"
+    ],
+    "gap": "Qualificar resposta, salto à origem e retorno após paginação, exclusão e retomada fria.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-messaging-selected-text-quotes",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/use-message-actions.tsx",
+      "apps/zoen/src/core/generated/TimelineEntry.ts"
+    ],
+    "gap": "Selecionar trecho e preservar intervalo citado na resposta; ReplyQuote hoje transporta texto integral sem intervalo.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-messaging-reply-in-another-chat",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/forward/[space]/[message].tsx",
+      "apps/zoen/src/core/forward-message.test.ts"
+    ],
+    "gap": "Escolher outro destino mantendo citação e acesso à origem; encaminhar não equivale a responder.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-messaging-edit-sent-messages",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/components/use-message-actions.tsx",
+      "apps/zoen/src/core/generated/TimelineEntry.ts"
+    ],
+    "gap": "Fechar edição de texto e legenda com falha/retomada sem editar uma mensagem aposentada.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-messaging-replace-sent-media",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/use-message-actions.tsx",
+      "apps/zoen/src/core/generated/TimelineEntry.ts"
+    ],
+    "gap": "Trocar mídia já enviada preservando identidade, autorização e recuperação da mensagem.",
+    "issues": [
+      172,
+      173
+    ]
+  },
+  {
+    "id": "TG-messaging-add-media-after-sending",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/use-message-actions.tsx",
+      "apps/zoen/src/core/generated/TimelineEntry.ts"
+    ],
+    "gap": "Adicionar anexo durante edição sem criar envio duplicado ou perder o texto.",
+    "issues": [
+      172,
+      173
+    ]
+  },
+  {
+    "id": "TG-messaging-edit-timestamps",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/use-message-actions.tsx",
+      "apps/zoen/src/core/generated/TimelineEntry.ts"
+    ],
+    "gap": "Exibir horário da última edição; o DTO lido só oferece edited booleano.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-messaging-delete-for-both-participants",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/components/use-message-actions.tsx",
+      "apps/zoen/src/core/generated/TimelineEntry.ts"
+    ],
+    "gap": "Qualificar remoção nos dois clientes, offline e recuperação; ação atual limita-se à própria autoria.",
+    "issues": [
+      172,
+      176
+    ]
+  },
+  {
+    "id": "TG-messaging-delete-by-date",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/use-message-actions.tsx",
+      "apps/zoen/src/core/generated/TimelineEntry.ts"
+    ],
+    "gap": "Escolher intervalo e revisar remoção com alcance claro e resultado recuperável.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-messaging-undo-chat-deletion",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx",
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Permitir desfazer remoção de conversa sem prometer reverter evento destrutivo já confirmado.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-messaging-message-forwarding",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/app/forward/[space]/[message].tsx",
+      "apps/zoen/src/core/forward-message.test.ts"
+    ],
+    "gap": "Qualificar atribuição da origem e envio real; DTO distingue forwarded mas não expõe autoria original.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-messaging-forward-without-sender-or-caption",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/forward/[space]/[message].tsx",
+      "apps/zoen/src/core/forward-message.test.ts"
+    ],
+    "gap": "Revisar ocultação de autoria/legenda antes de encaminhar, com proteção de conteúdo.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-messaging-forward-to-several-destinations",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/forward/[space]/[message].tsx",
+      "apps/zoen/src/core/forward-message.test.ts"
+    ],
+    "gap": "Selecionar vários destinos e mostrar resultado individual sem repetir os já aceitos.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-messaging-change-forwarding-destination",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/app/forward/[space]/[message].tsx",
+      "apps/zoen/src/core/forward-message.test.ts"
+    ],
+    "gap": "Trocar destinatário em revisão explícita antes de aceitar envio; toque atual já envia.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-messaging-multi-message-selection",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/use-message-actions.tsx",
+      "apps/zoen/src/core/generated/TimelineEntry.ts"
+    ],
+    "gap": "Selecionar várias mensagens e aplicar encaminhamento/cópia/exclusão com alcance visível.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-messaging-selective-text-copying",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/components/message-markdown.tsx",
+      "apps/zoen/src/core/message-markdown.test.ts"
+    ],
+    "gap": "Qualificar seleção parcial na apresentação real e preservar texto exato; seleção depende de modo explícito.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-messaging-cloud-drafts",
+    "scope": "active",
+    "implementation": "different",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/core/normal-message-draft-service.ts",
+      "apps/zoen/src/components/message-composer.tsx"
+    ],
+    "gap": "Retomar rascunho em outro dispositivo autorizado; persistência Rust local não comprova sincronização entre sessões.",
+    "issues": [
+      172,
+      176
+    ]
+  },
+  {
+    "id": "TG-messaging-scheduled-messages",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/message-composer.tsx",
+      "apps/zoen/src/components/use-chat-controller.ts"
+    ],
+    "gap": "Escolher data, revisar fila e editar/cancelar envio futuro com recuperação durável.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-messaging-send-when-online",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/message-composer.tsx",
+      "apps/zoen/src/components/use-chat-controller.ts"
+    ],
+    "gap": "Enzo definir utilidade e privacidade de envio condicionado à presença antes de criar fila dependente dela.",
+    "issues": [
+      172
+    ],
+    "recommendation": "Manter envio condicionado à presença como expansão posterior; priorizar agendamento explícito e privacidade."
+  },
+  {
+    "id": "TG-messaging-silent-delivery",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/message-composer.tsx",
+      "apps/zoen/src/components/use-chat-controller.ts"
+    ],
+    "gap": "Escolher envio silencioso e respeitar opção no push do destinatário, sem confundir mute local.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-messaging-silent-scheduled-delivery",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/message-composer.tsx",
+      "apps/zoen/src/components/use-chat-controller.ts"
+    ],
+    "gap": "Preservar escolha silenciosa ao agendar, reabrir, editar e entregar mensagem.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-messaging-repeating-scheduled-messages",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/message-composer.tsx",
+      "apps/zoen/src/components/use-chat-controller.ts"
+    ],
+    "gap": "Depois do agendamento básico, definir recorrência, fuso e cancelamento sem envios repetidos indevidos.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-messaging-saved-message-reminders",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx",
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Criar lembrete pessoal recuperável com destino Salvos e horário explícito.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-messaging-presence-and-activity",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/components/message-composer.tsx",
+      "apps/zoen/src/components/use-chat-controller.ts"
+    ],
+    "gap": "Qualificar online/digitando/gravando e expiração de estado após saída/rede sem vazar atividade antiga.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-messaging-read-state-and-message-checks",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/components/message-receipt.tsx",
+      "apps/zoen/src/core/generated/TimelineEntry.ts"
+    ],
+    "gap": "Qualificar recibos canônicos em dois clientes e offline; ícones não são confirmação de entrega por si.",
+    "issues": [
+      172,
+      176
+    ]
+  },
+  {
+    "id": "TG-messaging-read-timestamps",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/use-message-actions.tsx",
+      "apps/zoen/src/core/generated/TimelineEntry.ts"
+    ],
+    "gap": "Expor horário de leitura autorizado, separado do estado agregado Read.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-messaging-small-group-read-receipts",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/use-message-actions.tsx",
+      "apps/zoen/src/core/generated/TimelineEntry.ts"
+    ],
+    "gap": "Mostrar participantes que leram com atualização e permissões, sem inferir pela presença.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-messaging-topic-read-time",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/use-message-actions.tsx",
+      "apps/zoen/src/core/generated/TimelineEntry.ts"
+    ],
+    "gap": "Depois de tópicos/leitura individual, oferecer informação de leitura no contexto correto.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-messaging-message-links",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/app/search.tsx",
+      "apps/zoen/src/core/conversation-search.ts",
+      "apps/zoen/src/core/chat-search-react.test.ts"
+    ],
+    "gap": "Compartilhar e resolver link autenticado para mensagem; salto interno por ID já existe, URL externa não foi qualificada.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-messaging-phone-number-actions",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/core/message-markdown.ts",
+      "apps/zoen/src/components/use-link-launch.ts"
+    ],
+    "gap": "Detectar número em texto e oferecer ações acessíveis; link tel validado não prova detecção/contexto completos.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-messaging-date-and-time-entities",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/message-markdown.tsx",
+      "apps/zoen/src/core/message-markdown.test.ts"
+    ],
+    "gap": "Reconhecer datas/horários sem ambiguidade e apresentar no fuso do leitor com ação apropriada.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-messaging-interactive-buttons-inside-messages",
+    "scope": "paused",
+    "implementation": "unverified",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/use-message-actions.tsx",
+      "apps/zoen/src/core/generated/TimelineEntry.ts"
+    ],
+    "gap": "Retomar ações de Apps na mensagem somente quando a frente Apps voltar; verificar contrato e feedback real.",
+    "issues": [
+      172,
+      179
+    ]
+  },
+  {
+    "id": "TG-messaging-inline-document-presentation",
+    "scope": "paused",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/components/message-markdown.tsx",
+      "apps/zoen/src/core/message-markdown.test.ts"
+    ],
+    "gap": "Preservar leitura inline existente e qualificar documentos por tipo ao retomar Apps/Páginas; Markdown de mensagem não cobre todos.",
+    "issues": [
+      172,
+      179
+    ]
+  },
+  {
+    "id": "TG-messaging-app-update-placeholders",
+    "scope": "paused",
+    "implementation": "unverified",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/use-message-actions.tsx",
+      "apps/zoen/src/core/generated/TimelineEntry.ts"
+    ],
+    "gap": "Ao retomar Apps, mostrar atualização transitória sem substituir conteúdo atual por placeholder permanente.",
+    "issues": [
+      172,
+      179
+    ]
+  }
+]

@@ -1,0 +1,531 @@
+[
+  {
+    "id": "TG-photos-attachment-picker",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/media/attachment-picker.ts",
+      "docs/product/telegram-ios-attachment-tabs.md"
+    ],
+    "gap": "QA718 cobriu uma foto e Cancelar; concluir Files/Audio/câmera e envio confirmado sem perder rascunho.",
+    "issues": [
+      173
+    ]
+  },
+  {
+    "id": "TG-photos-attachment-preview-and-ordering",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/media/attachment-approval.ios.tsx",
+      "apps/zoen/src/core/attachment-photo-session-gallery.test.ts",
+      "apps/zoen/src/core/attachment-gallery-layout-native.test.ts"
+    ],
+    "gap": "QA718 confirmou tela cheia/Voltar/Cancelar; provar reordenação de vários itens, legendas e envio na ordem final.",
+    "issues": [
+      173
+    ]
+  },
+  {
+    "id": "TG-photos-media-albums",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/product/telegram-ios-media-albums.md",
+      "apps/zoen/src/media/attachment-photo-options.ts"
+    ],
+    "gap": "Qualificar álbum enviado/recebido; completar reações e respostas agrupadas sem perder alvos individuais.",
+    "issues": [
+      172,
+      173
+    ]
+  },
+  {
+    "id": "TG-photos-file-albums",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/product/telegram-ios-media-albums.md",
+      "apps/zoen/src/media/attachment-photo-options.ts"
+    ],
+    "gap": "Agrupar documentos como álbum com seleção, legenda e ações coerentes; hoje voltam a linhas individuais.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-photos-captions",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/attachment-approval.ios.tsx",
+      "apps/zoen/src/media/media-draft-contract.ts"
+    ],
+    "gap": "Preservar formatação por item no editor e no destinatário; qualificar teclado, salvamento e recuperação de legenda.",
+    "issues": [
+      173
+    ]
+  },
+  {
+    "id": "TG-photos-captions-above-media",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/product/telegram-ios-media-albums.md",
+      "apps/zoen/src/media/media-draft-types.ts"
+    ],
+    "gap": "Oferecer posição acima/abaixo e persistir a escolha no contrato e na bolha recebida.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-photos-original-file-sending",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/attachment-photo-options.ts",
+      "docs/product/telegram-ios-photo-send-as-file.md"
+    ],
+    "gap": "Enviar como arquivo já existe, mas CURRENT não garante original/HD; definir representação e provar bytes recebidos sem conversão oculta.",
+    "issues": [
+      173
+    ]
+  },
+  {
+    "id": "TG-photos-large-uploads",
+    "scope": "decision",
+    "implementation": "different",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/media-draft-contract.ts",
+      "apps/zoen/src/media/attachment-draft.ts"
+    ],
+    "gap": "Enzo deve definir o limite Zoen e retomada de arquivos grandes; o contrato atual limita a seleção a64MiB.",
+    "issues": [
+      173
+    ],
+    "recommendation": "Priorizar transferências retomáveis e qualidade explícita dentro dos limites medidos; casting e vantagens pagas são referências adicionais."
+  },
+  {
+    "id": "TG-photos-download-manager",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/product/telegram-ios-file-audio.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Dar ao usuário uma fila visível com progresso, pausa, retomada e erros por transferência.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-photos-download-priorities",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/product/telegram-ios-file-audio.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Permitir priorizar uma transferência sem corromper a fila ou reiniciar downloads concluídos.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-photos-faster-downloads",
+    "scope": "decision",
+    "implementation": "different",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/media/media-draft-contract.ts"
+    ],
+    "gap": "Decidir política Zoen de banda/limites; não existe equivalência demonstrada ao desbloqueio Premium do Telegram.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Priorizar transferências retomáveis e qualidade explícita dentro dos limites medidos; casting e vantagens pagas são referências adicionais."
+  },
+  {
+    "id": "TG-photos-hd-photos",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/product/telegram-ios-video-editing.md",
+      "docs/product/telegram-ios-media-albums.md"
+    ],
+    "gap": "Expor modo HD e produzir a representação correspondente com dimensões/qualidade verificáveis.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-photos-photo-editor",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/ZoenAttachmentPhotoEditor.swift",
+      "docs/product/telegram-ios-gallery-sources.json"
+    ],
+    "gap": "Completar ajustes de imagem além do subconjunto crop/rotação/tinta e qualificar Salvar/Reabrir no iPhone.",
+    "issues": [
+      173
+    ]
+  },
+  {
+    "id": "TG-photos-crop-and-rotation",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/ZoenAttachmentPhotoEditor.swift"
+    ],
+    "gap": "Qualificar recorte/rotação com orientação EXIF, paisagem, Salvar e reabertura dos bytes resultantes.",
+    "issues": [
+      173
+    ]
+  },
+  {
+    "id": "TG-photos-markup-and-precision-drawing",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/ZoenAttachmentPhotoEditor.swift",
+      "docs/product/telegram-ios-gallery-sources.json"
+    ],
+    "gap": "Qualificar PencilKit/undo e completar ferramentas de precisão e acessibilidade esperadas no editor.",
+    "issues": [
+      173
+    ]
+  },
+  {
+    "id": "TG-photos-photo-cutouts",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/ZoenAttachmentPhotoEditor.swift",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Recortar o sujeito e reutilizar o resultado com transparência dentro da mesma edição.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-photos-video-trimming",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/product/telegram-ios-video-editing.md"
+    ],
+    "gap": "Qualificar arraste dos dois handles, áudio, rotação e Salvar/Reabrir; localização/acessibilidade dos handles ainda faltam.",
+    "issues": [
+      173
+    ]
+  },
+  {
+    "id": "TG-photos-compression-control",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/product/telegram-ios-video-editing.md"
+    ],
+    "gap": "Mostrar escolha de tamanho/qualidade e exportar no perfil escolhido; hoje o renderer usa qualidade máxima.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-photos-video-to-gif",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/product/telegram-ios-video-editing.md"
+    ],
+    "gap": "Persistir metadados de animação e loop no destinatário; mute/loop do editor ainda envia vídeo comum.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-photos-media-spoiler",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/product/telegram-ios-media-albums.md",
+      "apps/zoen/src/media/media-draft-types.ts"
+    ],
+    "gap": "Ocultar a prévia até revelação explícita e preservar essa política no envio e no destinatário.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-photos-view-once-media",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/media-draft-types.ts",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Implementar consumo único com autorização e descarte verificáveis, inclusive offline e em múltiplos dispositivos.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-photos-disappearing-media",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/media-draft-types.ts",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Persistir expiração e retirar mídia/bytes conforme política, com comportamento consistente no destinatário.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-photos-live-and-motion-photos",
+    "scope": "active",
+    "implementation": "unverified",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/attachment-picker.ts",
+      "docs/product/telegram-ios-video-editing.md"
+    ],
+    "gap": "Definir e provar preservação/reprodução da parte animada de Live/Motion Photo; foto/vídeo genéricos não bastam.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-photos-document-scanner",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/product/telegram-ios-attachment-tabs.md",
+      "apps/zoen/src/media/attachment-picker.ts"
+    ],
+    "gap": "Capturar várias páginas com bordas/perspectiva, revisar e gerar um documento no mesmo fluxo de anexo.",
+    "issues": [
+      173
+    ]
+  },
+  {
+    "id": "TG-photos-camera-capture",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/attachment-picker.ts"
+    ],
+    "gap": "Qualificar permissão, foto/vídeo, cancelamento e retorno ao rascunho; QA718 não abriu câmera.",
+    "issues": [
+      173
+    ]
+  },
+  {
+    "id": "TG-photos-video-message-flash",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/voice-record-button.tsx",
+      "apps/zoen/src/media/attachment-picker.ts"
+    ],
+    "gap": "Adicionar captura de vídeo circular com iluminação e controle explícito antes de gravar.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-photos-document-viewer",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/product/telegram-ios-file-audio.md"
+    ],
+    "gap": "Qualificar abertura/retorno, arquivos grandes e formatos suportados mantendo versão/autorização atuais.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-photos-gallery-viewer",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "scoped",
+    "evidence": [
+      "docs/product/telegram-ios-conversation-gallery.md",
+      "apps/zoen/src/core/attachment-gallery-layout-native.test.ts"
+    ],
+    "gap": "QA718 mostrou prévia de uma foto; qualificar paginação recebida, zoom, vídeo, interrupção e retorno.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-photos-shared-media-calendar",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/shared-media/[id].tsx",
+      "apps/zoen/src/profile/shared-media-projection.ts"
+    ],
+    "gap": "Navegar pela mídia compartilhada por calendário/data, preservando posição e acesso autorizado.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-photos-media-type-filters",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/profile/shared-media-projection.ts",
+      "apps/zoen/src/app/shared-media/[id].tsx"
+    ],
+    "gap": "Separar fotos e vídeos além das abas media/files/audio/links e qualificar histórico completo/paginação.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-photos-video-streaming",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/conversation-media-preview.ts",
+      "docs/product/telegram-ios-file-audio.md"
+    ],
+    "gap": "Iniciar reprodução por chunks autorizados antes do download completo; a prévia atual materializa arquivo local.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-photos-adaptive-video-quality",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/product/telegram-ios-video-editing.md",
+      "apps/zoen/modules/zoen-core/ios/TelegramConversationVideo/ZoenConversationVideoPlayback.swift"
+    ],
+    "gap": "Produzir/selecionar rendições e adaptar qualidade sem perder posição nem autorização.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-photos-video-covers",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/draft-video-thumbnail.ts",
+      "docs/product/telegram-ios-video-editing.md"
+    ],
+    "gap": "Permitir escolher e persistir capa; a miniatura atual é extraída automaticamente do instante0.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-photos-playback-progress-restoration",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/TelegramConversationVideo/ZoenConversationVideoPlayback.swift"
+    ],
+    "gap": "Restaurar posição de vídeo ao reabrir e após reiniciar; o player atual mantém posição só na instância.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-photos-timestamp-sharing",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/TelegramConversationVideo/ZoenConversationVideoControls.swift",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Gerar e abrir referência a um instante do vídeo com destino e acesso preservados.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-photos-picture-in-picture",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/ZoenMediaGalleryPreview.swift"
+    ],
+    "gap": "Permitir PiP e definir continuidade/retirada ao bloquear conta ou perder acesso; a prévia o desativa.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-photos-playback-speed",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/AudioClip.tsx",
+      "apps/zoen/modules/zoen-core/ios/TelegramConversationVideo/ZoenConversationVideoControls.swift"
+    ],
+    "gap": "Áudio oferece1/1,5/2×; expor velocidade também no vídeo e qualificar alteração durante busca/retorno.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-photos-chromecast-output",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/ZoenMediaGalleryPreview.swift",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Decidir suporte a casting e autorização do dispositivo; a prévia atual desativa reprodução externa.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Priorizar transferências retomáveis e qualidade explícita dentro dos limites medidos; casting e vantagens pagas são referências adicionais."
+  }
+]

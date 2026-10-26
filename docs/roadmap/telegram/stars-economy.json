@@ -1,0 +1,242 @@
+[
+  {
+    "id": "TG-stars-stars-balance-and-transaction-history",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Saldo transferível Stars fica fora; orçamento e custos de agentes não são carteira de consumo.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de moeda virtual, mercado de presentes ou remuneração de criadores. Saldo transferível Stars fica fora; orçamento e custos de agentes não são carteira de consumo."
+  },
+  {
+    "id": "TG-stars-stars-purchases-and-gifts",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Compra, transferência e estorno de moeda de consumo ficam fora.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de moeda virtual, mercado de presentes ou remuneração de criadores. Compra, transferência e estorno de moeda de consumo ficam fora."
+  },
+  {
+    "id": "TG-stars-paid-messages",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Mensagens não serão cobradas por paridade; proteção de contato usa consentimento e controles de abuso.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de moeda virtual, mercado de presentes ou remuneração de criadores. Mensagens não serão cobradas por paridade; proteção de contato usa consentimento e controles de abuso."
+  },
+  {
+    "id": "TG-stars-paid-media",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Paywall e direito comercial de mídia ficam fora; autorização normal de anexos permanece separada.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de moeda virtual, mercado de presentes ou remuneração de criadores. Paywall e direito comercial de mídia ficam fora; autorização normal de anexos permanece separada."
+  },
+  {
+    "id": "TG-stars-paid-reactions",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Reação não introduz transferência financeira; apoio pago e ledger de consumo ficam fora.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de moeda virtual, mercado de presentes ou remuneração de criadores. Reação não introduz transferência financeira; apoio pago e ledger de consumo ficam fora."
+  },
+  {
+    "id": "TG-stars-paid-channel-subscriptions",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Assinatura paga e revogação comercial de canal ficam fora; acesso continua regido por participação.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de moeda virtual, mercado de presentes ou remuneração de criadores. Assinatura paga e revogação comercial de canal ficam fora; acesso continua regido por participação."
+  },
+  {
+    "id": "TG-stars-paid-bot-and-app-content",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Cobrança de conteúdo digital fica fora; Apps e sua QA continuam pausados.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de moeda virtual, mercado de presentes ou remuneração de criadores. Cobrança de conteúdo digital fica fora; Apps e sua QA continuam pausados."
+  },
+  {
+    "id": "TG-stars-funded-suggested-posts",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Propostas remuneradas, liquidação e disputas de publicação ficam fora.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de moeda virtual, mercado de presentes ou remuneração de criadores. Propostas remuneradas, liquidação e disputas de publicação ficam fora."
+  },
+  {
+    "id": "TG-stars-creator-ad-revenue",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Não introduzir publicidade nem divisão de receita para obter paridade.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de moeda virtual, mercado de presentes ou remuneração de criadores. Não introduzir publicidade nem divisão de receita para obter paridade."
+  },
+  {
+    "id": "TG-stars-bot-ad-revenue",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Anúncios em bots e repasse ao operador ficam fora.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de moeda virtual, mercado de presentes ou remuneração de criadores. Anúncios em bots e repasse ao operador ficam fora."
+  },
+  {
+    "id": "TG-stars-telegram-advertising",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Campanhas patrocinadas e inventário publicitário ficam fora.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de moeda virtual, mercado de presentes ou remuneração de criadores. Campanhas patrocinadas e inventário publicitário ficam fora."
+  },
+  {
+    "id": "TG-stars-creator-and-developer-rewards",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Programa financeiro de recompensas e sua elegibilidade ficam fora.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de moeda virtual, mercado de presentes ou remuneração de criadores. Programa financeiro de recompensas e sua elegibilidade ficam fora."
+  },
+  {
+    "id": "TG-stars-affiliate-programs",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Remuneração por referência e conciliação de afiliados ficam fora.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de moeda virtual, mercado de presentes ou remuneração de criadores. Remuneração por referência e conciliação de afiliados ficam fora."
+  },
+  {
+    "id": "TG-stars-premium-giveaways",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Sorteios comerciais de assinatura ficam fora.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de moeda virtual, mercado de presentes ou remuneração de criadores. Sorteios comerciais de assinatura ficam fora."
+  },
+  {
+    "id": "TG-stars-star-giveaways",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Sorteios de moeda virtual e concessão de saldos ficam fora.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de moeda virtual, mercado de presentes ou remuneração de criadores. Sorteios de moeda virtual e concessão de saldos ficam fora."
+  },
+  {
+    "id": "TG-stars-custom-giveaway-prizes",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Oferta e responsabilidade de entrega de prêmios ficam fora; não criar sorteios por paridade.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de moeda virtual, mercado de presentes ou remuneração de criadores. Oferta e responsabilidade de entrega de prêmios ficam fora; não criar sorteios por paridade."
+  }
+]

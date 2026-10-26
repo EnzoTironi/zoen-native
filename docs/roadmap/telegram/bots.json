@@ -1,0 +1,410 @@
+[
+  {
+    "id": "TG-bots-bot-conversations",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/app/agent/[id].tsx",
+      "crates/zoen-cli/src/agent/source_recovery.rs",
+      "crates/zoen-cli/src/agent/source_mode/tests/known_tools.rs"
+    ],
+    "gap": "Fechar aceite físico/provedor do agente no mesmo source, incluindo pausas/aprovações e reconciliação sem replay; #632 já protege o host CLI.",
+    "issues": [
+      175,
+      615,
+      176
+    ]
+  },
+  {
+    "id": "TG-bots-slash-commands",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/message-composer.tsx",
+      "apps/zoen/src/app/agent/[id].tsx"
+    ],
+    "gap": "Descobrir/invocar comandos tipados por agente e escopo, com ajuda, argumentos, autorização e recuperação de resultado.",
+    "issues": [
+      175,
+      172
+    ]
+  },
+  {
+    "id": "TG-bots-reply-keyboards",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/message-composer.tsx",
+      "apps/zoen/src/components/message-actions.types.ts"
+    ],
+    "gap": "Renderizar teclado de ações do agente com versão/expiração, acessibilidade e submissão canônica sem texto sintético acidental.",
+    "issues": [
+      175,
+      172
+    ]
+  },
+  {
+    "id": "TG-bots-inline-action-buttons",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/agents/request-card.tsx",
+      "apps/zoen/src/core/agent-control-session.test.ts"
+    ],
+    "gap": "Concluir ações inline tipadas com validade, estado e reconciliação, reutilizando revisão canônica e sem botões arbitrários concederem autoridade.",
+    "issues": [
+      175,
+      615,
+      177
+    ]
+  },
+  {
+    "id": "TG-bots-colored-bot-buttons",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/agents/request-card.tsx"
+    ],
+    "gap": "Definir variantes visuais acessíveis de botões tipados, com semântica consistente e sem cor alterar autorização.",
+    "issues": [
+      175,
+      172
+    ]
+  },
+  {
+    "id": "TG-bots-bot-menu",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/message-composer.tsx",
+      "apps/zoen/src/app/agent/[id].tsx"
+    ],
+    "gap": "Oferecer menu de ações/comandos na conversa do agente; manter perfil/gestão próprios e destinos Apps preservados enquanto pausados.",
+    "issues": [
+      175,
+      172,
+      180
+    ]
+  },
+  {
+    "id": "TG-bots-inline-bots",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/message-composer.tsx",
+      "docs/dev/agent-source-hosting.md"
+    ],
+    "gap": "Buscar e inserir conteúdo de agente a partir de outro compositor, com escolha explícita e contexto mínimo autorizado.",
+    "issues": [
+      175,
+      172,
+      177
+    ]
+  },
+  {
+    "id": "TG-bots-guest-bots",
+    "scope": "decision",
+    "implementation": "different",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/dev/agent-source-hosting.md",
+      "docs/dev/independent-agent-enrollment.md"
+    ],
+    "gap": "Recomendação: invocação pontual com capability por pedido e recorte de contexto, sem filiação implícita nem ampliação de grants; reutilizar revisão e recibos existentes.",
+    "issues": [
+      175,
+      177,
+      181
+    ],
+    "recommendation": "Ampliar os mesmos contratos de agentes com contexto mínimo; serviços de pagamentos, OTP e login para terceiros ficam como referência."
+  },
+  {
+    "id": "TG-bots-bot-to-bot-conversations",
+    "scope": "later",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "crates/zoen-cli/src/agent.rs",
+      "docs/agent-runtime-capabilities-execution.md"
+    ],
+    "gap": "Qualificar coordenação entre agentes com linhagem, orçamento, teto de loops e cancelamento; mensagem de outro agente não amplia autoridade.",
+    "issues": [
+      175,
+      182
+    ]
+  },
+  {
+    "id": "TG-bots-managed-bots",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/dev/independent-agent-enrollment.md",
+      "apps/zoen/src/agent-enrollment/connect-agent-view.tsx",
+      "crates/zoen-runtime/src/lib.rs"
+    ],
+    "gap": "Concluir criação/gestão revisada pelo dono, custódia e execução durável; enrollment não inicia runtime nem herda grants/orçamento.",
+    "issues": [
+      175,
+      177,
+      182,
+      327
+    ]
+  },
+  {
+    "id": "TG-bots-streaming-responses",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "crates/zoen-agentd/src/citizen/host.rs",
+      "docs/agent-runtime-capabilities-execution.md",
+      "crates/zoen-runtime/src/lib.rs"
+    ],
+    "gap": "Reter saída incremental, cursor/ordem, cancelamento e reconexão sem nova geração; liberar publicação gerenciada só com autoridade comprovada.",
+    "issues": [
+      175,
+      615,
+      182,
+      327
+    ]
+  },
+  {
+    "id": "TG-bots-bot-conversation-topics",
+    "scope": "later",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/message-actions.types.ts",
+      "apps/zoen/src/app/agent/[id].tsx"
+    ],
+    "gap": "Adicionar organização em tópicos para conversa privada do agente, com contexto e continuidade por tópico sobre threads canônicas.",
+    "issues": [
+      175,
+      172,
+      176
+    ]
+  },
+  {
+    "id": "TG-bots-ephemeral-group-commands",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/dev/agent-source-hosting.md",
+      "apps/zoen/src/components/message-actions.types.ts"
+    ],
+    "gap": "Recomendação: comando em canal privado autorizado vinculado ao grupo, com destinatários no domínio e contexto mínimo; ocultação visual não fornece privacidade.",
+    "issues": [
+      175,
+      177,
+      181
+    ],
+    "recommendation": "Ampliar os mesmos contratos de agentes com contexto mínimo; serviços de pagamentos, OTP e login para terceiros ficam como referência."
+  },
+  {
+    "id": "TG-bots-ephemeral-group-responses",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/dev/agent-source-hosting.md",
+      "apps/zoen/src/components/message-actions.types.ts"
+    ],
+    "gap": "Recomendação: resposta privada por destinatário autorizado, ligada ao pedido original e com retenção/revogação explícitas, sem publicar conteúdo privado no grupo.",
+    "issues": [
+      175,
+      177,
+      181
+    ],
+    "recommendation": "Ampliar os mesmos contratos de agentes com contexto mínimo; serviços de pagamentos, OTP e login para terceiros ficam como referência."
+  },
+  {
+    "id": "TG-bots-bot-reaction-support",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/message-actions.tsx",
+      "crates/zoen-cli/src/agent.rs"
+    ],
+    "gap": "Concluir recepção/emissão de reações pelo agente com eventos, grants e dedupe; paleta de reação humana é apenas a base existente.",
+    "issues": [
+      175,
+      172,
+      176
+    ]
+  },
+  {
+    "id": "TG-bots-bot-chat-and-user-selection",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/agents/request-card.tsx",
+      "apps/zoen/src/components/message-composer.tsx"
+    ],
+    "gap": "Permitir pedido tipado de seleção de pessoa/chat com prévia de dados compartilhados, consentimento e resposta vinculada ao pedido.",
+    "issues": [
+      175,
+      177,
+      181
+    ]
+  },
+  {
+    "id": "TG-bots-bot-localization",
+    "scope": "later",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/i18n/catalog.ts",
+      "apps/zoen/src/app/agent/[id].tsx",
+      "apps/zoen/src/agent-definition/definition-view.tsx"
+    ],
+    "gap": "Completar nome/descrição/comandos por idioma do agente; preservar EN/PT da interface sem traduzir implicitamente persona ou regras.",
+    "issues": [
+      175,
+      181,
+      184
+    ]
+  },
+  {
+    "id": "TG-bots-bot-deep-links",
+    "scope": "later",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/app.json",
+      "apps/zoen/src/app/agent/[id].tsx",
+      "apps/zoen/src/native-surfaces/links.ts"
+    ],
+    "gap": "Adicionar payload inicial tipado e validado de agente, com destino/conta e consentimento; abrir link não concede acesso nem executa ação.",
+    "issues": [
+      175,
+      177,
+      184
+    ]
+  },
+  {
+    "id": "TG-bots-bot-group-privacy",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/dev/agent-source-hosting.md",
+      "crates/zoen-cli/src/agent.rs"
+    ],
+    "gap": "Definir privacidade de entrada por agente/grupo e provar que contexto/backlog fora desse modo não se transforma em tarefa.",
+    "issues": [
+      175,
+      181,
+      177
+    ]
+  },
+  {
+    "id": "TG-bots-bot-administration-tools",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/agent/[id].tsx",
+      "docs/dev/agent-source-hosting.md"
+    ],
+    "gap": "Expor moderação/grupo por ferramentas tipadas, com papel atual, revisão necessária, revogação e recibo canônico.",
+    "issues": [
+      175,
+      181,
+      177
+    ]
+  },
+  {
+    "id": "TG-bots-botfather-management",
+    "scope": "active",
+    "implementation": "different",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/app/agent/[id].tsx",
+      "apps/zoen/src/agent-definition/definition-view.tsx",
+      "apps/zoen/src/agents/agent-control-session.ts"
+    ],
+    "gap": "Concluir gestão própria (identidade, comportamento, capacidades e lifecycle), preservando intenção incerta também após morte do store/processo.",
+    "issues": [
+      175,
+      615,
+      177
+    ]
+  },
+  {
+    "id": "TG-bots-bot-payments",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/agents/request-card.tsx",
+      "crates/zoen-runtime/src/lib.rs"
+    ],
+    "gap": "Recomendação: adaptar invoices, autorização e reconciliação/reembolso a provedor explícito; serviços comerciais Telegram são referência adicional e orçamento de IA permanece separado.",
+    "issues": [
+      175,
+      182,
+      177
+    ],
+    "recommendation": "Ampliar os mesmos contratos de agentes com contexto mínimo; serviços de pagamentos, OTP e login para terceiros ficam como referência."
+  },
+  {
+    "id": "TG-bots-html-games",
+    "scope": "paused",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/agents/request-card.tsx",
+      "apps/zoen/src/native-surfaces/widget-catalog.ts"
+    ],
+    "gap": "Após a pausa de Apps, definir jogo isolado, identidade de partida, resultados ligados ao chat e limites do host.",
+    "issues": [
+      180,
+      179,
+      175
+    ]
+  },
+  {
+    "id": "TG-bots-web-login",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/app.config.ts",
+      "docs/dev/independent-agent-enrollment.md"
+    ],
+    "gap": "Recomendação: autenticação externa pela identidade Zoen própria com protocolo padronizado, consentimento, escopos e revogação; login Telegram é referência adicional.",
+    "issues": [
+      177,
+      182
+    ],
+    "recommendation": "Ampliar os mesmos contratos de agentes com contexto mínimo; serviços de pagamentos, OTP e login para terceiros ficam como referência."
+  },
+  {
+    "id": "TG-bots-verification-code-delivery",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/dev/independent-agent-enrollment.md",
+      "apps/zoen/src/agent-enrollment/connect-agent-view.tsx"
+    ],
+    "gap": "Recomendação: serviço dedicado de OTP com destinatário, expiração, tentativas e proteção contra abuso; Gateway é referência adicional e pairing de agente permanece separado.",
+    "issues": [
+      177,
+      182,
+      175
+    ],
+    "recommendation": "Ampliar os mesmos contratos de agentes com contexto mínimo; serviços de pagamentos, OTP e login para terceiros ficam como referência."
+  }
+]

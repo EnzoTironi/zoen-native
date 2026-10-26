@@ -1,0 +1,197 @@
+[
+  {
+    "id": "plan-exact-money-conflict-approval-history-restore",
+    "title": "Editar Planos com valores exatos, conflito e aprovação",
+    "phase": "paused-creation",
+    "issues": [
+      179
+    ],
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/179"
+    ],
+    "remaining": [
+      "Retomar após o recorte ativo",
+      "Qualificar dinheiro exato, conflito, aprovação, histórico e restauração"
+    ]
+  },
+  {
+    "id": "encrypted-photo-camera-document-voice-video-delivery",
+    "title": "Entregar fotos, câmera, documentos, voz e vídeo criptografados",
+    "phase": "active-ios",
+    "issues": [
+      173,
+      446,
+      489,
+      494
+    ],
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/173",
+      "https://github.com/EnzoTironi/zoen-native/pull/633"
+    ],
+    "remaining": [
+      "Qualificar revisão, Cancelar, recuperação e envio explícito de cada mídia",
+      "Verificar bytes no destinatário e ciclo de vida físico/permissões"
+    ]
+  },
+  {
+    "id": "agents-owner-controls-grants-budgets-approvals",
+    "title": "Gerir agentes, permissões, orçamentos e aprovações",
+    "phase": "active-ios",
+    "issues": [
+      175,
+      615,
+      419
+    ],
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/175",
+      "https://github.com/EnzoTironi/zoen-native/pull/633"
+    ],
+    "remaining": [
+      "Qualificar retomada durável e provedores reais com resultado atribuído",
+      "Concluir controles, orçamento, aprovação e efeitos sem repetição",
+      "Não confundir Pausar/Retomar com cancelamento de turno ou recibo durável"
+    ]
+  },
+  {
+    "id": "miniapps-native-and-origin-isolated-web-capabilities",
+    "title": "Executar Apps nativos e Web com capacidades isoladas",
+    "phase": "paused-creation",
+    "issues": [
+      180
+    ],
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/180"
+    ],
+    "remaining": [
+      "Retomar host/SDK e integração apenas após o recorte ativo",
+      "Qualificar pacote externo fixado, isolamento, permissões e recuperação"
+    ]
+  },
+  {
+    "id": "home-miniapp-cards-native-pin-menus-account-device-scope-and-conversation-rails",
+    "title": "Organizar cards na Home e trilhos de conversa por conta/dispositivo",
+    "phase": "paused-creation",
+    "issues": [
+      180,
+      172
+    ],
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/180"
+    ],
+    "remaining": [
+      "Preservar pausa da expansão de Apps; trilho conversacional permanece ativo",
+      "Qualificar Pin/menu/escopo e persistência da jornada completa"
+    ]
+  },
+  {
+    "id": "communities-membership-permissions-invites",
+    "title": "Gerir comunidades, convites e permissões",
+    "phase": "active-ios",
+    "issues": [
+      181
+    ],
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/181",
+      "https://github.com/EnzoTironi/zoen-native/pull/633"
+    ],
+    "remaining": [
+      "Concluir telas, associação, administradores e convites",
+      "Provar revogação consistente no front e backend"
+    ]
+  },
+  {
+    "id": "push-token-refresh-content-free-wake-deep-links",
+    "title": "Receber push privado e abrir destinos autorizados",
+    "phase": "later-ios",
+    "issues": [
+      178,
+      199
+    ],
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/178"
+    ],
+    "remaining": [
+      "Qualificar APNs físico, refresh, revogação e deep links",
+      "Cobrir app bloqueado/encerrado e falha de entrega sem perder eventos"
+    ]
+  },
+  {
+    "id": "widgets-live-activities-app-intents-scoped-actions",
+    "title": "Usar widgets, Live Activities e App Intents com escopo",
+    "phase": "later-ios",
+    "issues": [
+      178
+    ],
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/178"
+    ],
+    "remaining": [
+      "Inspecionar e qualificar contratos existentes por extensão",
+      "Verificar aposentadoria após troca de conta e ações autorizadas"
+    ]
+  },
+  {
+    "id": "local-time-sky-manual-phases-auto-reduced-motion-contrast-accessibility",
+    "title": "Aplicar céu local/manual e temas acessíveis",
+    "phase": "active-ios",
+    "issues": [
+      181,
+      440
+    ],
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/181",
+      "https://github.com/EnzoTironi/zoen-native/pull/633"
+    ],
+    "remaining": [
+      "Qualificar Auto, fases manuais e retorno ao preset salvo",
+      "Validar contraste, movimento reduzido e comportamento nativo"
+    ]
+  },
+  {
+    "id": "iphone-layout-voiceover-dynamic-type-and-keyboard-navigation",
+    "title": "Usar iPhone com VoiceOver, Dynamic Type e teclado",
+    "phase": "active-ios",
+    "issues": [
+      181,
+      183
+    ],
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/181",
+      "https://github.com/EnzoTironi/zoen-native/pull/633"
+    ],
+    "remaining": [
+      "Qualificar navegação, foco, leitura e tamanhos em todo recorte iOS",
+      "Validar em iPhone físico com os mesmos artefatos"
+    ]
+  }
+]

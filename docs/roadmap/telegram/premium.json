@@ -1,0 +1,152 @@
+[
+  {
+    "id": "TG-premium-subscriptions-premium-subscription-management",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Compra, restauração e gestão de assinatura de consumo ficam fora; orçamento operacional de IA é contrato separado.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de uma assinatura de consumo, compra de benefícios ou restauração de pagamentos. Compra, restauração e gestão de assinatura de consumo ficam fora; orçamento operacional de IA é contrato separado."
+  },
+  {
+    "id": "TG-premium-subscriptions-premium-gifts",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Presentear assinatura exige cobrança e titularidade fora da entrega aprovada.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de uma assinatura de consumo, compra de benefícios ou restauração de pagamentos. Presentear assinatura exige cobrança e titularidade fora da entrega aprovada."
+  },
+  {
+    "id": "TG-premium-subscriptions-premium-gifting-with-stars",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Moeda Stars e compra de presentes de assinatura ficam fora do modelo financeiro aprovado.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de uma assinatura de consumo, compra de benefícios ou restauração de pagamentos. Moeda Stars e compra de presentes de assinatura ficam fora do modelo financeiro aprovado."
+  },
+  {
+    "id": "TG-premium-subscriptions-bulk-subscription-gifts",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Compra em lote e direitos de assinatura por destinatário ficam fora da entrega.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de uma assinatura de consumo, compra de benefícios ou restauração de pagamentos. Compra em lote e direitos de assinatura por destinatário ficam fora da entrega."
+  },
+  {
+    "id": "TG-premium-subscriptions-sponsored-message-removal",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Não introduzir anúncios nem assinatura para removê-los por equivalência ao Telegram.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de uma assinatura de consumo, compra de benefícios ou restauração de pagamentos. Não introduzir anúncios nem assinatura para removê-los por equivalência ao Telegram."
+  },
+  {
+    "id": "TG-premium-subscriptions-expanded-account-limits",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Benefício visual ou de capacidade pode ser adaptado separadamente; o requisito Telegram de acesso monetizado não integra a entrega.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada nessa forma. Adaptar depois quotas por capacidade e custo reais nas configurações comuns; sem plano Premium por paridade."
+  },
+  {
+    "id": "TG-premium-subscriptions-premium-app-icons",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Benefício visual ou de capacidade pode ser adaptado separadamente; o requisito Telegram de acesso monetizado não integra a entrega.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada nessa forma. Adaptar depois ícones opcionais como preferência comum; sem catálogo pago obrigatório."
+  },
+  {
+    "id": "TG-premium-subscriptions-premium-account-capacity",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Benefício visual ou de capacidade pode ser adaptado separadamente; o requisito Telegram de acesso monetizado não integra a entrega.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada nessa forma. Tratar depois múltiplas contas como capacidade isolada do Core; sem vender uma conta adicional por paridade."
+  },
+  {
+    "id": "TG-premium-subscriptions-expanded-ai-text-allowance",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Benefício visual ou de capacidade pode ser adaptado separadamente; o requisito Telegram de acesso monetizado não integra a entrega.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada nessa forma. Adaptar o benefício ao orçamento real de agentes e permissões; sem franquia Premium copiada."
+  },
+  {
+    "id": "TG-premium-subscriptions-premium-gated-limited-gifts",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Escassez comercial e acesso pago a lançamentos de presentes ficam fora.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de uma assinatura de consumo, compra de benefícios ou restauração de pagamentos. Escassez comercial e acesso pago a lançamentos de presentes ficam fora."
+  }
+]

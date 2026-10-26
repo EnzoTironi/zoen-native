@@ -1,0 +1,408 @@
+[
+  {
+    "id": "app:miniapps/_layout",
+    "name": "Layout miniapps/_layout",
+    "kind": "layout",
+    "path": "apps/zoen/src/app/miniapps/_layout.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/components/composer-action.ios.tsx, apps/zoen/src/components/composer-action.tsx, apps/zoen/src/components/sky-background.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "app:miniapps/index",
+    "name": "Catálogo e instalação de Apps",
+    "kind": "route",
+    "path": "apps/zoen/src/app/miniapps/index.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/miniapps/binary-formats.ts, apps/zoen/src/miniapps/schema-form.tsx, apps/zoen/src/miniapps/schema.ts, apps/zoen/src/documents/use-dirty-editor.ts, apps/zoen/src/components/dialogs.tsx",
+    "scope": "paused",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Catálogo alterna formulário schema/instalação; sem conversa há estado próprio; criação exige ferramenta do catálogo."
+    ],
+    "issues": [
+      180
+    ]
+  },
+  {
+    "id": "app:new-chat",
+    "name": "Nova conversa/grupo",
+    "kind": "route",
+    "path": "apps/zoen/src/app/new-chat.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/profile/profile-avatar.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Form sheet seleciona participantes e cria conversa; teclado e seleção extensa precisam avaliação visual."
+    ],
+    "issues": [
+      172,
+      181
+    ]
+  },
+  {
+    "id": "app:new-page",
+    "name": "Criar Página",
+    "kind": "route",
+    "path": "apps/zoen/src/app/new-page.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/documents/markdown-files.ts, apps/zoen/src/documents/use-dirty-editor.ts, apps/zoen/src/documents/use-page-creation-destination.ts",
+    "scope": "paused",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Texto/importação Markdown e proteção de draft presentes; criação compartilhada está pausada."
+    ],
+    "issues": [
+      179
+    ]
+  },
+  {
+    "id": "app:new-site",
+    "name": "Criar Site",
+    "kind": "route",
+    "path": "apps/zoen/src/app/new-site.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/documents/export-activity.ts, apps/zoen/src/documents/use-dirty-editor.ts, apps/zoen/src/sites/source.ts",
+    "scope": "paused",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Autoridade, id de mutação e retorno são validados; criação de Site está pausada."
+    ],
+    "issues": [
+      179
+    ]
+  },
+  {
+    "id": "app:notifications",
+    "name": "Notificações",
+    "kind": "route",
+    "path": "apps/zoen/src/app/notifications.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/components/notification-settings.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "NotificationSettings é o consumidor real; permissão do sistema e mute por conversa são fluxos separados."
+    ],
+    "issues": [
+      178
+    ]
+  },
+  {
+    "id": "app:open-link",
+    "name": "Abrir convite/agente",
+    "kind": "route",
+    "path": "apps/zoen/src/app/open-link.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/notifications/links.ts",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Link inválido, preview, erro/retry e confirmação explícita presentes; convite revogado depende do retorno canônico."
+    ],
+    "issues": [
+      181,
+      175
+    ]
+  },
+  {
+    "id": "app:owner-budget/[id]",
+    "name": "Política e orçamento do dono",
+    "kind": "route",
+    "path": "apps/zoen/src/app/owner-budget/[id].tsx",
+    "entrypoint": "Render/export → apps/zoen/src/agents/account-budget-screen.tsx, apps/zoen/src/agents/owner-policy-screen.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Escolhe AccountBudgetScreen ou OwnerPolicyScreen; revisão de ferramenta de imagem é validada antes de autorizar."
+    ],
+    "issues": [
+      175
+    ]
+  },
+  {
+    "id": "app:page/[id]",
+    "name": "Página compartilhada",
+    "kind": "route",
+    "path": "apps/zoen/src/app/page/[id].tsx",
+    "entrypoint": "Render/export → apps/zoen/src/components/dialogs.tsx, apps/zoen/src/components/dialogs.web.tsx, apps/zoen/src/documents/artifact-discussion.tsx, apps/zoen/src/documents/page-blocks.tsx, apps/zoen/src/documents/page-duplicate.ts",
+    "scope": "paused",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Blocos, discussão, versão/exportação e autoridade presentes; QA de documentos está pausado."
+    ],
+    "issues": [
+      179
+    ]
+  },
+  {
+    "id": "app:page-block/[id]",
+    "name": "Editor de bloco de Página",
+    "kind": "route",
+    "path": "apps/zoen/src/app/page-block/[id].tsx",
+    "entrypoint": "Render/export → apps/zoen/src/documents/page-input-editor.tsx, apps/zoen/src/documents/page-input.ts, apps/zoen/src/components/block-editor.tsx, apps/zoen/src/components/block-editor.web.tsx, apps/zoen/src/components/dialogs.tsx",
+    "scope": "paused",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "DurablePageEditor e BlockEditor preservam texto/spans; caminhos de conflito e edição longa distintos."
+    ],
+    "issues": [
+      179
+    ]
+  },
+  {
+    "id": "app:person/[id]",
+    "name": "Perfil da pessoa",
+    "kind": "route",
+    "path": "apps/zoen/src/app/person/[id].tsx",
+    "entrypoint": "Render/export → apps/zoen/src/components/dialogs.tsx, apps/zoen/src/components/dialogs.web.tsx, apps/zoen/src/profile/use-profile-photo.ts, apps/zoen/src/profile/profile-header.tsx, apps/zoen/src/profile/profile-section.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Perfil contém bloquear/desbloquear, mídia e conversa; revogação e contato ausente precisam avaliação contextual."
+    ],
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "app:request/[id]",
+    "name": "Revisar solicitação",
+    "kind": "route",
+    "path": "apps/zoen/src/app/request/[id].tsx",
+    "entrypoint": "Render/export → apps/zoen/src/agents/request-card.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Há loading, erro/retry e solicitação ainda não recebida; RequestCard possui as decisões de autoridade."
+    ],
+    "issues": [
+      175
+    ]
+  },
+  {
+    "id": "app:search",
+    "name": "Busca global/na conversa",
+    "kind": "route",
+    "path": "apps/zoen/src/app/search.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/profile/profile-avatar.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Consulta diferencia mensagem/pessoa/item; busca vazia, sem resultados e mudança de espaço são estados distintos."
+    ],
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "app:settings/appearance",
+    "name": "Aparência e temas",
+    "kind": "route",
+    "path": "apps/zoen/src/app/settings/appearance.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/components/theme-settings.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "ThemeSettings importa lista/prévia persistida; prévias e wallpaper precisam aceite visual em tema claro/escuro."
+    ],
+    "issues": [
+      172,
+      181
+    ]
+  },
+  {
+    "id": "app:settings/blocked-people",
+    "name": "Pessoas bloqueadas",
+    "kind": "route",
+    "path": "apps/zoen/src/app/settings/blocked-people.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/components/dialogs.tsx, apps/zoen/src/components/dialogs.web.tsx, apps/zoen/src/profile/use-blocked-people.ts, apps/zoen/src/profile/blocked-people-view.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Ticket de sessão valida abrir/desbloquear; confirmação inclui nome e estado da conta."
+    ],
+    "issues": [
+      177,
+      181
+    ]
+  },
+  {
+    "id": "app:settings/data",
+    "name": "Dados e armazenamento",
+    "kind": "route",
+    "path": "apps/zoen/src/app/settings/data.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/components/device-data-actions.tsx, apps/zoen/src/components/settings-rows.tsx, apps/zoen/src/components/settings-rows.web.tsx, apps/zoen/src/components/settings-screen.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Backup e DeviceDataActions presentes; apagar dados/saída têm confirmação específica."
+    ],
+    "issues": [
+      177
+    ]
+  },
+  {
+    "id": "app:settings/general",
+    "name": "Configurações gerais",
+    "kind": "route",
+    "path": "apps/zoen/src/app/settings/general.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/components/appearance-picker.ios.tsx, apps/zoen/src/components/appearance-picker.tsx, apps/zoen/src/components/settings-screen.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Exibe conexão e fila pendente, além de preferência de aparência; erro de persistência tem alert."
+    ],
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "app:settings/muted-chats",
+    "name": "Conversas silenciadas",
+    "kind": "route",
+    "path": "apps/zoen/src/app/settings/muted-chats.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/components/dialogs.tsx, apps/zoen/src/components/dialogs.web.tsx, apps/zoen/src/notifications/use-muted-chats.ts, apps/zoen/src/notifications/muted-chats-screen.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Ticket de sessão valida abrir/reativar; confirmação e conta indisponível são estados próprios."
+    ],
+    "issues": [
+      178
+    ]
+  },
+  {
+    "id": "app:settings/permissions",
+    "name": "Permissões",
+    "kind": "route",
+    "path": "apps/zoen/src/app/settings/permissions.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/components/settings-rows.tsx, apps/zoen/src/components/settings-rows.web.tsx, apps/zoen/src/components/settings-screen.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Mistura permissões de Apps pausados e agentes ativos; conectar agente só aparece em conta iOS."
+    ],
+    "issues": [
+      175,
+      180
+    ]
+  },
+  {
+    "id": "app:shared-media/[id]",
+    "name": "Mídia compartilhada",
+    "kind": "route",
+    "path": "apps/zoen/src/app/shared-media/[id].tsx",
+    "entrypoint": "Render/export → apps/zoen/src/media/file-size.ts, apps/zoen/src/profile/shared-media-tile.tsx, apps/zoen/src/profile/shared-media-projection.ts",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Abas/tile/lista e paginação usam dono; falha de mídia, retorno ao chat e lista vazia precisam revisão visual."
+    ],
+    "issues": [
+      173,
+      181
+    ]
+  },
+  {
+    "id": "app:sign-in",
+    "name": "Alias de entrada",
+    "kind": "alias",
+    "path": "apps/zoen/src/app/sign-in.tsx",
+    "entrypoint": "Redireciona \"/\" ",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Onboarding pertence a SessionGate, não a esta rota."
+    ],
+    "issues": [
+      177
+    ]
+  },
+  {
+    "id": "app:site/[id]",
+    "name": "Documento Site e versão",
+    "kind": "route",
+    "path": "apps/zoen/src/app/site/[id].tsx",
+    "entrypoint": "Render/export → apps/zoen/src/sites/document.tsx",
+    "scope": "paused",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "SiteDocument valida versão positiva; preview/publicação/perda de autoridade pertencem ao consumidor."
+    ],
+    "issues": [
+      179
+    ]
+  },
+  {
+    "id": "app:space/[id]",
+    "name": "Perfil do grupo/conversa",
+    "kind": "route",
+    "path": "apps/zoen/src/app/space/[id].tsx",
+    "entrypoint": "Render/export → apps/zoen/src/profile/profile-avatar.tsx, apps/zoen/src/profile/profile-header.tsx, apps/zoen/src/profile/profile-section.tsx, apps/zoen/src/profile/use-profile-photo.ts, apps/zoen/src/components/dialogs.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "MemberActionsSheet/MemberAdditionSheet administram membros e funções; sair/excluir e integridade são ações distintas com confirmação."
+    ],
+    "issues": [
+      181,
+      172
+    ]
+  },
+  {
+    "id": "app:surface",
+    "name": "Entrada por atalho nativo",
+    "kind": "route",
+    "path": "apps/zoen/src/app/surface.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/app/surface.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Atalho aguarda restauração e autorização; falha mostra retorno ao Zoen, não abre recurso sem dono."
+    ],
+    "issues": [
+      178
+    ]
+  },
+  {
+    "id": "app:thread/[space]/[root]",
+    "name": "Respostas da mensagem",
+    "kind": "route",
+    "path": "apps/zoen/src/app/thread/[space]/[root].tsx",
+    "entrypoint": "Render/export → apps/zoen/src/media/message-audio-provider.tsx, apps/zoen/src/media/mosaic-layout.ios.ts, apps/zoen/src/media/mosaic-layout.ts, apps/zoen/src/home/provider.tsx, apps/zoen/src/components/message-composer.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Timeline e compositor têm owner/draft/foco de áudio; teclado, raiz ausente e mídia são aceites separados."
+    ],
+    "issues": [
+      172,
+      173
+    ]
+  }
+]

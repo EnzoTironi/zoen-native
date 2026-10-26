@@ -1,0 +1,414 @@
+[
+  {
+    "id": "TG-storage-cache-management",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/app/settings/data.tsx",
+      "apps/zoen/src/media/device-cache.ts",
+      "apps/zoen/src/core/device-cache.test.ts"
+    ],
+    "gap": "Adicionar inspeção e limpeza de cache de mídia sem apagar conta, chaves, histórico canônico ou trabalho ainda pendente.",
+    "issues": [
+      176,
+      177,
+      182
+    ]
+  },
+  {
+    "id": "TG-storage-per-chat-cache-controls",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/settings/data.tsx",
+      "apps/zoen/src/media/device-cache.ts"
+    ],
+    "gap": "Escolher conversa e categoria para limpar somente cópias locais recuperáveis, preservando referências e downloads em uso.",
+    "issues": [
+      176,
+      182
+    ]
+  },
+  {
+    "id": "TG-storage-media-auto-removal",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/device-cache.ts",
+      "apps/zoen/src/app/settings/data.tsx"
+    ],
+    "gap": "Aplicar retenção local por categoria/conversa com proteção de pendências, rascunhos e arquivos ainda em uso.",
+    "issues": [
+      176,
+      182
+    ]
+  },
+  {
+    "id": "TG-storage-storage-usage-breakdown",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/settings/data.tsx",
+      "apps/zoen/src/app/settings/general.tsx"
+    ],
+    "gap": "Mostrar bytes por conversa/categoria distinguindo originais, cópias recuperáveis, rascunhos e trabalho pendente.",
+    "issues": [
+      176,
+      182
+    ]
+  },
+  {
+    "id": "TG-storage-automatic-download-presets",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "crates/client-core/src/net/file_demand_tests/selection.rs",
+      "apps/zoen/src/app/settings/data.tsx"
+    ],
+    "gap": "Adicionar presets por conexão/tipo/tamanho sobre o download autorizado existente, com limites e cancelamento após revogação.",
+    "issues": [
+      176,
+      182,
+      489,
+      494
+    ]
+  },
+  {
+    "id": "TG-storage-save-to-gallery-controls",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/app.json",
+      "apps/zoen/src/app/settings/data.tsx"
+    ],
+    "gap": "Oferecer salvamento explícito/opt-in por origem e categoria, respeitando permissão e privacidade da biblioteca do sistema.",
+    "issues": [
+      173,
+      177,
+      184
+    ]
+  },
+  {
+    "id": "TG-storage-network-usage-charts",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/settings/general.tsx",
+      "apps/zoen/src/app/settings/data.tsx"
+    ],
+    "gap": "Medir e apresentar tráfego por mídia/serviço e conexão, com reset e contadores sem conteúdo privado.",
+    "issues": [
+      182,
+      176
+    ]
+  },
+  {
+    "id": "TG-storage-proxy-configuration",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/settings/general.tsx",
+      "docs/dev/call-turn-transport.md"
+    ],
+    "gap": "Recomendação: proxy opt-in por perfil, preservando TLS/MLS e identidade do relay; adicionar credenciais e falhas explícitas, sem fallback silencioso de privacidade.",
+    "issues": [
+      176,
+      182,
+      184
+    ],
+    "recommendation": "Priorizar armazenamento, transferência e integração nativa necessários às jornadas; serviços externos especializados ficam como referência."
+  },
+  {
+    "id": "TG-storage-chat-history-import",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/backup.tsx",
+      "crates/client-core/src/backup_api.rs"
+    ],
+    "gap": "Importar formatos declarados de outros mensageiros com atribuição, dedupe e limites; restauração de backup Zoen fica separada.",
+    "issues": [
+      176,
+      177,
+      184
+    ]
+  },
+  {
+    "id": "TG-storage-account-and-chat-export",
+    "scope": "later",
+    "implementation": "different",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/backup.tsx",
+      "crates/client-core/src/backup_api.rs"
+    ],
+    "gap": "Preservar backup criptografado e adicionar exportação legível e selecionável de conta/chat sem expor chaves nem dados de terceiros.",
+    "issues": [
+      177,
+      176,
+      184
+    ]
+  },
+  {
+    "id": "TG-storage-operating-system-share-integration",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/media/share-message.ts",
+      "apps/zoen/app.json"
+    ],
+    "gap": "Completar entrada por share sheet com seleção de conversa e rascunho recuperável; a saída de anexos já possui cópia temporária verificada.",
+    "issues": [
+      173,
+      176,
+      184
+    ]
+  },
+  {
+    "id": "TG-storage-home-screen-widgets",
+    "scope": "later",
+    "implementation": "different",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/native-surfaces/widget-catalog.ts",
+      "apps/zoen/src/native-surfaces/links.ts"
+    ],
+    "gap": "Adicionar escolha de conversas com navegação e privacidade por conta/dispositivo; widgets atuais de Apps permanecem preservados na pausa.",
+    "issues": [
+      178,
+      184,
+      179
+    ]
+  },
+  {
+    "id": "TG-storage-tablet-and-desktop-layouts",
+    "scope": "later",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/app.json",
+      "apps/zoen/src/components/app-navigation.web.tsx",
+      "apps/zoen/src/app/_layout.tsx"
+    ],
+    "gap": "Completar painéis/resizing/teclado e continuidade de navegação no tablet/desktop, além de supportsTablet e navegação web responsiva.",
+    "issues": [
+      184,
+      183
+    ]
+  },
+  {
+    "id": "TG-storage-web-clients",
+    "scope": "later",
+    "implementation": "present",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/app.json",
+      "apps/zoen/src/components/app-navigation.web.tsx"
+    ],
+    "gap": "Preservar cliente Expo Web e ampliar aceite funcional, acessibilidade, offline e segurança para todo o catálogo; chamadas web seguem indisponíveis.",
+    "issues": [
+      184,
+      176,
+      183
+    ]
+  },
+  {
+    "id": "TG-storage-watch-applications",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/app.json",
+      "apps/zoen/src/app/_layout.tsx"
+    ],
+    "gap": "Definir consumidor de relógio com identidade, privacidade e ações limitadas antes de adicionar alvo e sincronização próprios.",
+    "issues": [
+      184,
+      178,
+      177
+    ]
+  },
+  {
+    "id": "TG-storage-location-messages",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/media/location-file.ts",
+      "apps/zoen/src/media/location-map.ios.tsx",
+      "apps/zoen/src/core/static-location.test.ts"
+    ],
+    "gap": "Preservar ponto GeoJSON criptografado e provar seleção/GPS → envio → recepção/preview frio em clientes autorizados, incluindo plataformas restantes.",
+    "issues": [
+      173,
+      488,
+      176,
+      184
+    ]
+  },
+  {
+    "id": "TG-storage-live-location",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/location-file.ts",
+      "apps/zoen/src/media/location-selection.ts"
+    ],
+    "gap": "Adicionar compartilhamento contínuo com prazo, revogação, consumo em background e atualização autorizada da mesma sessão.",
+    "issues": [
+      173,
+      178,
+      177
+    ]
+  },
+  {
+    "id": "TG-storage-extended-live-location-duration",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/location-file.ts"
+    ],
+    "gap": "Permitir renovar/encerrar duração de sessão viva com intenção explícita e estado canônico recuperável.",
+    "issues": [
+      173,
+      178,
+      177
+    ]
+  },
+  {
+    "id": "TG-storage-location-proximity-alerts",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/location-selection.ts"
+    ],
+    "gap": "Definir alertas de proximidade com consentimento de ambos, limites de background e cancelamento ao retirar acesso.",
+    "issues": [
+      178,
+      177,
+      182
+    ]
+  },
+  {
+    "id": "TG-storage-external-map-integration",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/location-attachment.tsx",
+      "apps/zoen/src/media/location-map.ios.tsx"
+    ],
+    "gap": "Abrir ponto observado no app de mapas escolhido, confirmando transferência de coordenadas para o serviço externo.",
+    "issues": [
+      173,
+      177,
+      184
+    ]
+  },
+  {
+    "id": "TG-storage-travel-time-estimates",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/location-attachment.tsx"
+    ],
+    "gap": "Oferecer estimativa de trajeto com origem/modo explícitos, privacidade, validade e tratamento de indisponibilidade do provedor.",
+    "issues": [
+      173,
+      182,
+      184
+    ]
+  },
+  {
+    "id": "TG-storage-public-message-embeds",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/message-actions.types.ts",
+      "apps/zoen/app.json"
+    ],
+    "gap": "Publicar embed somente de mensagem explicitamente pública, com retirada e verificação de acesso após mudanças.",
+    "issues": [
+      181,
+      176,
+      182
+    ]
+  },
+  {
+    "id": "TG-storage-discussion-widgets",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/native-surfaces/widget-catalog.ts",
+      "apps/zoen/src/components/message-actions.types.ts"
+    ],
+    "gap": "Criar discussão web incorporável com identidade, moderação e visibilidade canônica; widget de tela inicial não fornece esse contrato.",
+    "issues": [
+      181,
+      182,
+      184
+    ]
+  },
+  {
+    "id": "TG-storage-telegraph-publishing",
+    "scope": "paused",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/_layout.tsx"
+    ],
+    "gap": "Após a pausa de Páginas/Sites, definir publicação de artigo independente, autoria, revisão e retirada por link público.",
+    "issues": [
+      179,
+      180,
+      182
+    ]
+  },
+  {
+    "id": "TG-storage-instant-view-publishing-tools",
+    "scope": "paused",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/_layout.tsx"
+    ],
+    "gap": "Após a pausa de publicação, fornecer templates de leitura de artigos com sanitização, origem e atualização verificáveis.",
+    "issues": [
+      179,
+      180,
+      182
+    ]
+  },
+  {
+    "id": "TG-storage-telegram-passport",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/app.config.ts",
+      "crates/client-core/src/backup_api.rs"
+    ],
+    "gap": "Recomendação: adaptar a necessidade com compartilhamento seletivo E2EE de documentos, consentimento e revogação; Passport é referência adicional, sem integrar credenciais Telegram.",
+    "issues": [
+      177,
+      182
+    ],
+    "recommendation": "Priorizar armazenamento, transferência e integração nativa necessários às jornadas; serviços externos especializados ficam como referência."
+  }
+]

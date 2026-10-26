@@ -1,0 +1,558 @@
+[
+  {
+    "id": "app:(tabs)/(chats)/_layout",
+    "name": "Layout (tabs)/(chats)/_layout",
+    "kind": "layout",
+    "path": "apps/zoen/src/app/(tabs)/(chats)/_layout.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/components/sky-background.tsx, apps/zoen/src/components/navigation-appearance.ts",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "app:(tabs)/(chats)/chats",
+    "name": "Conversas",
+    "kind": "route",
+    "path": "apps/zoen/src/app/(tabs)/(chats)/chats.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/profile/profile-avatar.tsx, apps/zoen/src/components/message-receipt.tsx, apps/zoen/src/components/chats-actions.ios.tsx, apps/zoen/src/components/chats-actions.tsx, apps/zoen/src/home/provider.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "FlashList, busca/filtros e recibos presentes; longa lista e leitura offline aguardam avaliação visual."
+    ],
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "app:(tabs)/_layout",
+    "name": "Layout (tabs)/_layout",
+    "kind": "layout",
+    "path": "apps/zoen/src/app/(tabs)/_layout.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/components/app-navigation.tsx, apps/zoen/src/components/app-navigation.web.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "app:(tabs)/files",
+    "name": "Arquivos e workspace",
+    "kind": "route",
+    "path": "apps/zoen/src/app/(tabs)/files.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/components/sky-background.tsx, apps/zoen/src/home/access.ts, apps/zoen/src/documents/workspace-view.tsx",
+    "scope": "paused",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "WorkspaceBrowser troca a chave por sessão/dono; avaliação de arquivos e documentos está pausada."
+    ],
+    "issues": [
+      179
+    ]
+  },
+  {
+    "id": "app:(tabs)/index",
+    "name": "Início e cartões de Apps",
+    "kind": "route",
+    "path": "apps/zoen/src/app/(tabs)/index.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/components/sky-background.tsx, apps/zoen/src/home/menus.ios.tsx, apps/zoen/src/home/menus.tsx, apps/zoen/src/home/menus.web.tsx, apps/zoen/src/home/menus.android.tsx",
+    "scope": "decision",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "A tela inicial ainda prioriza cartões de Apps; direção atual prioriza conversação/agentes, posição de produto requer decisão."
+    ],
+    "issues": [
+      174,
+      179,
+      180
+    ]
+  },
+  {
+    "id": "app:(tabs)/you",
+    "name": "Você",
+    "kind": "route",
+    "path": "apps/zoen/src/app/(tabs)/you.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/components/sky-background.tsx, apps/zoen/src/components/dialogs.tsx, apps/zoen/src/components/dialogs.web.tsx, apps/zoen/src/profile/use-profile-photo.ts, apps/zoen/src/components/settings-rows.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Perfil, orçamento, permissões e integridade acessíveis; hierarquia visual e nomes extensos sem aceite nesta inspeção."
+    ],
+    "issues": [
+      181,
+      177
+    ]
+  },
+  {
+    "id": "app:+native-intent",
+    "name": "Redirecionamento nativo",
+    "kind": "system",
+    "path": "apps/zoen/src/app/+native-intent.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/notifications/links.ts",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      184
+    ]
+  },
+  {
+    "id": "app:_layout",
+    "name": "Layout _layout",
+    "kind": "layout",
+    "path": "apps/zoen/src/app/_layout.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/components/keyboard-motion.tsx, apps/zoen/src/components/session-gate.tsx, apps/zoen/src/components/session-gate.web.tsx, apps/zoen/src/components/dialogs.tsx, apps/zoen/src/components/dialogs.web.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "app:a/[target]",
+    "name": "Alias de agente",
+    "kind": "alias",
+    "path": "apps/zoen/src/app/a/[target].tsx",
+    "entrypoint": "Redireciona {{ pathname: '/open-link', params: { kind: 'agent', target } }} ",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      175
+    ]
+  },
+  {
+    "id": "app:account-budget",
+    "name": "Orçamento da conta",
+    "kind": "route",
+    "path": "apps/zoen/src/app/account-budget.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/agents/account-budget-screen.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "AccountBudgetScreen compartilhado com política do dono; alterações de teto exigem confirmação canônica."
+    ],
+    "issues": [
+      175
+    ]
+  },
+  {
+    "id": "app:activity",
+    "name": "Atividade e solicitações",
+    "kind": "route",
+    "path": "apps/zoen/src/app/activity.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/components/sky-background.tsx, apps/zoen/src/agents/request-card.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Mista: atividade de agentes ativa e atalhos de Apps ainda presentes; estados de consulta/erro precisam inspeção visual."
+    ],
+    "issues": [
+      175,
+      174
+    ]
+  },
+  {
+    "id": "app:agent/[id]",
+    "name": "Perfil e controle do agente",
+    "kind": "route",
+    "path": "apps/zoen/src/app/agent/[id].tsx",
+    "entrypoint": "Render/export → apps/zoen/src/agents/trust-confirmation.ts, apps/zoen/src/components/settings-rows.tsx, apps/zoen/src/components/settings-rows.web.tsx, apps/zoen/src/components/dialogs.tsx, apps/zoen/src/components/dialogs.web.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Pausar/Retomar reconciliam o canônico; incerteza de controle só é retida enquanto o store vive."
+    ],
+    "issues": [
+      175,
+      181,
+      419
+    ]
+  },
+  {
+    "id": "app:agent-definition/[id]",
+    "name": "Definição do agente",
+    "kind": "route",
+    "path": "apps/zoen/src/app/agent-definition/[id].tsx",
+    "entrypoint": "Render/export → apps/zoen/src/agent-definition/use-agent-definition.ts, apps/zoen/src/agent-definition/definition-view.tsx, apps/zoen/src/components/dialogs.tsx, apps/zoen/src/components/dialogs.web.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "usePreventRemove protege alterações; definição, conflito e autorização dependem da sessão importada."
+    ],
+    "issues": [
+      175
+    ]
+  },
+  {
+    "id": "app:app/[id]",
+    "name": "Alias de item",
+    "kind": "alias",
+    "path": "apps/zoen/src/app/app/[id].tsx",
+    "entrypoint": "Redireciona {{ pathname: '/item/[id]', params: { id } }} ",
+    "scope": "paused",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      180
+    ]
+  },
+  {
+    "id": "app:ask/[space]",
+    "name": "Conversa temporária com Zoen",
+    "kind": "route",
+    "path": "apps/zoen/src/app/ask/[space].tsx",
+    "entrypoint": "Render/export → apps/zoen/src/components/conversation-viewport.tsx, apps/zoen/src/components/message-composer.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "EphemeralConversation tem preparação/indisponibilidade; sessão temporária não equivale a conversa durável."
+    ],
+    "issues": [
+      175
+    ]
+  },
+  {
+    "id": "app:backup",
+    "name": "Backup criptografado",
+    "kind": "route",
+    "path": "apps/zoen/src/app/backup.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/components/dialogs.tsx, apps/zoen/src/components/dialogs.web.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Segredo/copiar e saída protegida presentes; recuperação completa em aparelho continua um aceite próprio."
+    ],
+    "issues": [
+      177,
+      242
+    ]
+  },
+  {
+    "id": "app:backup.web",
+    "name": "Backup na Web indisponível",
+    "kind": "route",
+    "path": "apps/zoen/src/app/backup.web.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/app/backup.web.tsx",
+    "scope": "later",
+    "implementation": "partial",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Implementação Web exibe explicitamente suporte apenas iOS, sem fluxo de backup Web."
+    ],
+    "issues": [
+      177,
+      184
+    ]
+  },
+  {
+    "id": "app:chat/[id]",
+    "name": "Conversa",
+    "kind": "route",
+    "path": "apps/zoen/src/app/chat/[id].tsx",
+    "entrypoint": "Render/export → apps/zoen/src/components/chat-screen.tsx, apps/zoen/src/components/use-chat-controller.ts",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Controller e render separados; teclado/detent, envio/reconexão e timeline longa exigem aceites nativos distintos."
+    ],
+    "issues": [
+      172,
+      173
+    ]
+  },
+  {
+    "id": "app:chat-attachment/[id]",
+    "name": "Anexo por categoria",
+    "kind": "route",
+    "path": "apps/zoen/src/app/chat-attachment/[id].tsx",
+    "entrypoint": "Render/export → apps/zoen/src/media/attachment-categories.ts, apps/zoen/src/media/attachment-route.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Valida destino/epoch/categoria e nega enquete em thread; cada categoria tem estado próprio e autorização."
+    ],
+    "issues": [
+      173,
+      225
+    ]
+  },
+  {
+    "id": "app:connect-agent",
+    "name": "Conectar agente",
+    "kind": "route",
+    "path": "apps/zoen/src/app/connect-agent.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/agent-enrollment/connect-agent-view.tsx, apps/zoen/src/agent-enrollment/use-agent-enrollment.ts, apps/zoen/src/components/dialogs.tsx, apps/zoen/src/components/dialogs.web.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "QR/código, expiração e reconciliação presentes; o perfil só abre a partir do registro atual verificado."
+    ],
+    "issues": [
+      175
+    ]
+  },
+  {
+    "id": "app:connected-app/[id]",
+    "name": "App remoto conectado",
+    "kind": "route",
+    "path": "apps/zoen/src/app/connected-app/[id].tsx",
+    "entrypoint": "Render/export → apps/zoen/src/miniapps/remote-view.tsx",
+    "scope": "paused",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "RemoteAppScreen carrega canal remoto e consentimento; trabalho de Apps está pausado."
+    ],
+    "issues": [
+      180
+    ]
+  },
+  {
+    "id": "app:conversation-cards/[id]",
+    "name": "Organizar cartões da conversa",
+    "kind": "route",
+    "path": "apps/zoen/src/app/conversation-cards/[id].tsx",
+    "entrypoint": "Render/export → apps/zoen/src/components/sky-background.tsx, apps/zoen/src/miniapps/conversation-order-list.ios.tsx, apps/zoen/src/miniapps/conversation-order-list.tsx, apps/zoen/src/miniapps/conversation-provider.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Lista de ordem usa provider canônico; indisponibilidade e conversa não carregada têm fallback."
+    ],
+    "issues": [
+      172,
+      174
+    ]
+  },
+  {
+    "id": "app:devices",
+    "name": "Dispositivos",
+    "kind": "route",
+    "path": "apps/zoen/src/app/devices.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/components/dialogs.tsx, apps/zoen/src/components/dialogs.web.tsx, apps/zoen/src/components/settings-screen.tsx, apps/zoen/src/components/settings-rows.tsx, apps/zoen/src/components/settings-rows.web.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Lista abre autorização, transferência e detalhe em sheets; revogação tem confirmação."
+    ],
+    "issues": [
+      177
+    ]
+  },
+  {
+    "id": "app:edit-profile",
+    "name": "Editar perfil",
+    "kind": "route",
+    "path": "apps/zoen/src/app/edit-profile.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/profile/picker.ts, apps/zoen/src/profile/use-profile-photo.ts, apps/zoen/src/profile/profile-section.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Nome/foto possuem draft, foco e posse; teclado e nomes longos ainda precisam revisão visual."
+    ],
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "app:forward/[space]/[message]",
+    "name": "Encaminhar mensagem",
+    "kind": "route",
+    "path": "apps/zoen/src/app/forward/[space]/[message].tsx",
+    "entrypoint": "Render/export → apps/zoen/src/profile/profile-avatar.tsx, apps/zoen/src/home/access.ts",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "ForwardMessageSession delimita origem/destinos e dono; perda de acesso durante encaminhamento exige aceite funcional."
+    ],
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "app:home-order",
+    "name": "Organizar Início",
+    "kind": "route",
+    "path": "apps/zoen/src/app/home-order.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/components/sky-background.tsx, apps/zoen/src/home/order-list.ios.tsx, apps/zoen/src/home/order-list.tsx, apps/zoen/src/home/provider.tsx",
+    "scope": "paused",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Reordenação dedicada de cartões de Apps; coerência com prioridade de conversas requer decisão de produto."
+    ],
+    "issues": [
+      174,
+      180
+    ]
+  },
+  {
+    "id": "app:integrity/[id]",
+    "name": "Integridade da conversa",
+    "kind": "route",
+    "path": "apps/zoen/src/app/integrity/[id].tsx",
+    "entrypoint": "Render/export → apps/zoen/src/app/integrity/[id].tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Relatório e eventos de log presentes; mensagem de erro e recuperação não demonstram integridade global."
+    ],
+    "issues": [
+      176
+    ]
+  },
+  {
+    "id": "app:item/[id]/line",
+    "name": "Editar linha de plano",
+    "kind": "route",
+    "path": "apps/zoen/src/app/item/[id]/line.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/components/dialogs.tsx, apps/zoen/src/components/dialogs.web.tsx, apps/zoen/src/documents/editing.ts, apps/zoen/src/documents/use-dirty-editor.ts, apps/zoen/src/documents/plan-undo.ts",
+    "scope": "paused",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Revisão de versão concorrente e proteção de rascunho presentes; caminho legado ainda acessível."
+    ],
+    "issues": [
+      179
+    ]
+  },
+  {
+    "id": "app:item/[id]",
+    "name": "Detalhe de item/plano/arquivo",
+    "kind": "route",
+    "path": "apps/zoen/src/app/item/[id].tsx",
+    "entrypoint": "useCoreQuery(item/plan_page/page/item_at/page_at) → PlanBlocks/PageBlocks/FileAttachment/MiniappState; sem history: page→/page/[id], item.app→/miniapp/[id], HTML→/site/[id]",
+    "scope": "paused",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Renderer depende do tipo de item e encaminha para editores; estados de versões e permissão são próprios."
+    ],
+    "issues": [
+      179
+    ]
+  },
+  {
+    "id": "app:join/[code]",
+    "name": "Alias de convite",
+    "kind": "alias",
+    "path": "apps/zoen/src/app/join/[code].tsx",
+    "entrypoint": "Redireciona {{ pathname: '/open-link', params: { kind: 'invite', target: code } }} ",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "app:miniapp/[id]/manage",
+    "name": "Gerenciar App",
+    "kind": "route",
+    "path": "apps/zoen/src/app/miniapp/[id]/manage.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/miniapps/detail-screen.tsx",
+    "scope": "paused",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Mesmo MiniappScreen com manage=true; instalação/permissões são superfícies diferentes do host."
+    ],
+    "issues": [
+      180
+    ]
+  },
+  {
+    "id": "app:miniapp/[id]/tool",
+    "name": "Formulário de ferramenta de App",
+    "kind": "route",
+    "path": "apps/zoen/src/app/miniapp/[id]/tool.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/components/dialogs.tsx, apps/zoen/src/components/dialogs.web.tsx, apps/zoen/src/miniapps/schema-form.tsx, apps/zoen/src/miniapps/schema.ts, apps/zoen/src/miniapps/actions.ts",
+    "scope": "paused",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Schema inválido/ferramenta ausente e erro/retry presentes; rascunho protege saída."
+    ],
+    "issues": [
+      180
+    ]
+  },
+  {
+    "id": "app:miniapp/[id]",
+    "name": "App em tela cheia",
+    "kind": "route",
+    "path": "apps/zoen/src/app/miniapp/[id].tsx",
+    "entrypoint": "Render/export → apps/zoen/src/miniapps/detail-screen.tsx",
+    "scope": "paused",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "MiniappScreen importa host canônico/gerenciado; não confundir host presente com cada App aceito."
+    ],
+    "issues": [
+      180
+    ]
+  },
+  {
+    "id": "app:miniapp/_layout",
+    "name": "Layout miniapp/_layout",
+    "kind": "layout",
+    "path": "apps/zoen/src/app/miniapp/_layout.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/components/sky-background.tsx, apps/zoen/src/miniapps/app-sheet-chrome.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "app:miniapp-permissions",
+    "name": "Permissões de Apps",
+    "kind": "route",
+    "path": "apps/zoen/src/app/miniapp-permissions.tsx",
+    "entrypoint": "Render/export → apps/zoen/src/miniapps/network-consent.ts, apps/zoen/src/miniapps/use-device-consent.ts, apps/zoen/src/miniapps/device-consent.ios.tsx, apps/zoen/src/miniapps/device-consent.tsx, apps/zoen/src/components/dialogs.tsx",
+    "scope": "paused",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Consumo dos grants e revogação com confirmação; não constitui aceite das jornadas de Apps."
+    ],
+    "issues": [
+      180
+    ]
+  }
+]

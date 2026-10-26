@@ -12,6 +12,33 @@ de critérios é [acceptance.json](../../apps/zoen/acceptance.json).
 As evidências anteriores continuam com seu escopo e seus artefatos originais.
 Ampliar a meta não transforma provas parciais em aprovação do produto completo.
 
+## Roadmap verificável — 26 de outubro de 2026
+
+A [roadmap completa em checklist](../roadmap/README.md) organiza as 30 jornadas,
+as dez capacidades de criação, as seis plataformas e os critérios de operação.
+O [painel consultável](../roadmap/index.html) cruza esse plano com a revisão das
+506 capacidades do Telegram e o inventário das telas, sheets, menus e superfícies
+nativas do Zoen. O levantamento tem fonte e data: presença de código, evidência
+parcial e aceite integral são estados distintos.
+
+Enzo responde pela direção de produto. Codex propõe e executa as decisões técnicas
+e de sequência nos issues correspondentes, antecipando falhas e eliminando
+duplicação. Elegância significa poucas autoridades de estado, contexto preservado
+entre telas e ações claras; ambição significa jornadas completas de pessoas e
+agentes, incluindo interrupção e recuperação. Completude inclui estados vazio,
+carregando, offline, erro, permissão recusada e revogação, além do caminho feliz.
+
+O catálogo do Telegram serve para encontrar lacunas. Capacidades essenciais de
+conversa, privacidade e comunidades entram na entrega; modelos de moeda, boosts,
+colecionáveis e publicidade continuam referências adicionais. Benefícios úteis
+de aparência, expressão e automação devem usar os controles comuns do Zoen,
+sem criar versões concorrentes do mesmo recurso. As decisões e recomendações
+ficam explícitas no painel, preservando todo o escopo previamente aprovado.
+
+O issue #170 e seus issues de entrega continuam sendo o registro de execução;
+o manifesto de aceitação continua sendo o contrato de conclusão. O painel é uma
+leitura datada dessas fontes, sem um segundo estado de tarefas editável.
+
 ## Coordenação durável no GitHub
 
 Por direção do usuário em 22 de outubro de 2026, o registro de trabalho é o
@@ -29,7 +56,7 @@ das demais frentes permanece explícita no GitHub e não é anunciada como traba
 em execução. Um PR parcial referencia seu issue; não encerra os critérios ainda
 pendentes. Merge normal após fonte limpa e checks aplicáveis aprovados.
 
-## Execução atual — 20 de outubro de 2026
+## Execução atual — 26 de outubro de 2026
 
 [Ordem de entrega iOS, lotes e critérios de saída](zoen-complete-product-execution.md).
 O plano integral e as evidências preservadas mantêm seu escopo e seus limites.

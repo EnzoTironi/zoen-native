@@ -1,0 +1,56 @@
+{
+  "head": "477ac2f393b346a9dd2caab786c3f053382a4dcf",
+  "routeModules": 60,
+  "counts": {
+    "layout": 5,
+    "route": 50,
+    "system": 1,
+    "alias": 4
+  },
+  "screenCountRule": "route + alias modules; excludes layouts/native-intent; backup.web is platform variant, not extra route path",
+  "uniquePathsExcludingPlatformOverride": 53,
+  "unmappedRouteModules": [],
+  "visualEvidencePolicy": "All source-only; runtime review belongs to sole QA/root. Import graph records static local imports, includes platform variants; dynamic require/runtime gates require separate acceptance.",
+  "presentationEntries": 22,
+  "customNativeControllers": 9,
+  "nativePresentationEntries": 24,
+  "osPortEntries": 10,
+  "scopeCounts": {
+    "active": 16,
+    "paused": 6
+  },
+  "coverageLimits": [
+    "22 famílias de apresentação deduplicadas;24 entradas nativas incluem controllers, overlays e pontos de chamada UIKit, sem somar variantes/diálogos repetidos ao total77.",
+    "Grafo estático cobre imports relativos resolvidos, variantes e declarações; disponibilidade depende dos gates de sessão/plataforma/feature em execução.",
+    "ViewControllers de terceiros não foram enumerados como telas próprias; UIKit chamado explicitamente é inventariado."
+  ],
+  "routeRendererModules": 50,
+  "uniqueRouteRenderers": 49,
+  "pureAliasModules": 4,
+  "conditionalAliases": [
+    {
+      "path": "apps/zoen/src/app/item/[id].tsx",
+      "conditions": {
+        "page && !history": "/page/[id]",
+        "item.app && !history": "/miniapp/[id]",
+        "file text/html && !history": "/site/[id]"
+      }
+    }
+  ],
+  "uniqueVisibleSurfaceFamilies": {
+    "totalZoenSourceFamilies": 77,
+    "routeRendererDestinations": 49,
+    "nonRoutePresentationFamilies": 22,
+    "additionalNativeContentControllers": 6,
+    "explanation": "49 destinos com renderer próprio +22 famílias de apresentação fora de rotas +6 controllers nativos de conteúdo que não duplicam MessageActions. Estados, variantes de plataforma,4 aliases,5 layouts,1 intent,HistoryTransfer inline,controllers de infraestrutura e diálogos UIKit de recuperação não somam telas novas. Fonte presente, não77 aceites visuais.",
+    "externalSystemFamiliesExcludedFromTotal": "Seletores/compartilhamento/autenticação/permissões do SO são inventariados separadamente; não são telas próprias do Zoen."
+  },
+  "nativeCoverageCriterion": "Todas as declarações custom class: UIViewController e class: QLPreviewController sob apps/zoen/modules/zoen-core/ios, mais construções explícitas UIAlertController/UIActivityViewController e overlays UIView com posse de apresentação.9 controllers custom:7 de conteúdo e2 de infraestrutura; menu da mensagem já contabilizado nas22 famílias de apresentação, restam6 adicionais. O arquivo native-surfaces contém24 entradas (controllers, overlays e pontos UIKit), não24 famílias próprias.",
+  "remainingUnknowns": [
+    "Disponibilidade real por plataforma/sessão, geometria e comportamento não foram executados.",
+    "Cobertura de visualização nativa por estados e fontes finais precisa ser anexada pela operadora única; nenhum artefato visual é atribuído nesta faixa.",
+    "WebViews/editores de Apps pausados e bibliotecas de terceiros têm UI interna além das superfícies do host; não foram enumerados como novas telas Zoen.",
+    "Quantidade77 é de famílias de interface definidas na fonte; não é contagem de screenshots, estados, modais simultâneos ou aceites."
+  ],
+  "scopeCountsLabel": "Somente22 famílias de apresentação; rotas possuem scope individual."
+}

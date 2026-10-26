@@ -1,0 +1,372 @@
+[
+  {
+    "id": "TG-profiles-names-usernames-and-biography",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/edit-profile.tsx",
+      "apps/zoen/src/core/telegram-profile-ui-profile-edit.cases.ts"
+    ],
+    "gap": "Nome, @handle e bio são editáveis com validação; falta aceite nativo de salvar e reabrir.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-profiles-profile-photos",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/edit-profile.tsx",
+      "apps/zoen/src/profile/types.ts"
+    ],
+    "gap": "Escolher, remover e persistir foto existe; falta aceite real de upload, retorno e outro dispositivo.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-profiles-profile-videos",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/profile/types.ts",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "O contrato aceita foto estática; falta escolher, editar e reproduzir vídeo de perfil.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-profiles-animated-avatars-across-surfaces",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/profile/types.ts",
+      "apps/zoen/src/app/person/[id].tsx"
+    ],
+    "gap": "Falta reproduzir avatar animado de forma consistente em listas, perfil e conversa.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-profiles-personal-contact-photos",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/person/[id].tsx",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Falta atribuir uma foto privada ao contato sem alterar o perfil publicado por ele.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-profiles-suggested-contact-photos",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/person/[id].tsx",
+      "apps/zoen/src/core/generated/Command.ts"
+    ],
+    "gap": "Falta enviar e aceitar uma sugestão de foto com controle da pessoa destinatária.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-profiles-public-fallback-avatar",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/person/[id].tsx",
+      "apps/zoen/src/profile/types.ts"
+    ],
+    "gap": "Falta separar foto pública de foto restrita e mostrar qual audiência vê cada uma.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-profiles-avatar-creator",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/edit-profile.tsx",
+      "apps/zoen/src/profile/types.ts"
+    ],
+    "gap": "Falta criar um avatar com cores/elementos e confirmar sua publicação.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-profiles-contact-discovery",
+    "scope": "decision",
+    "implementation": "different",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/new-chat.tsx",
+      "apps/zoen/src/auth/README.md"
+    ],
+    "gap": "Zoen busca pessoas por nome/@handle; matching da agenda telefônica requer seleção e regra de privacidade próprias.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Priorizar pessoas, agentes e identidade verificável; recursos de telefone, colecionáveis e rating comercial ficam como referência."
+  },
+  {
+    "id": "TG-profiles-add-contacts-without-a-phone-number",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/new-chat.tsx",
+      "apps/zoen/src/app/person/[id].tsx"
+    ],
+    "gap": "É possível encontrar e conversar por identidade; falta salvar e gerenciar um contato fora de chats existentes.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-profiles-contact-cards",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/contact-attachment.tsx"
+    ],
+    "gap": "Há cartão com prévia e compartilhamento; falta qualificar seleção dos campos e envio/abertura ponta a ponta.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-profiles-contact-notes",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/person/[id].tsx",
+      "apps/zoen/src/core/generated/Persona.ts"
+    ],
+    "gap": "Falta escrever e recuperar uma nota privada sobre a pessoa.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-profiles-birthdays",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/edit-profile.tsx",
+      "apps/zoen/src/core/generated/Persona.ts"
+    ],
+    "gap": "Falta editar aniversário e escolher quem pode vê-lo.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-profiles-suggested-birthdays",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/person/[id].tsx",
+      "apps/zoen/src/core/generated/Persona.ts"
+    ],
+    "gap": "Falta sugerir e aceitar aniversário sem alterar o perfil de outra pessoa diretamente.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-profiles-profile-music",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/person/[id].tsx",
+      "apps/zoen/src/core/generated/Persona.ts"
+    ],
+    "gap": "Falta adicionar, ordenar e reproduzir músicas escolhidas no perfil.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-profiles-default-profile-tab",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/person/[id].tsx"
+    ],
+    "gap": "Falta escolher a seção inicial do perfil; a tela atual tem uma única sequência de conteúdo.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-profiles-channel-on-profile",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/person/[id].tsx",
+      "docs/dev/zoen-complete-product-goal.md"
+    ],
+    "gap": "Definir equivalente Zoen para canal destacado antes de adicionar vínculo e controle de propriedade.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Priorizar pessoas, agentes e identidade verificável; recursos de telefone, colecionáveis e rating comercial ficam como referência."
+  },
+  {
+    "id": "TG-profiles-premium-badge",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/person/[id].tsx",
+      "docs/dev/zoen-complete-product-goal.md"
+    ],
+    "gap": "Selo de assinatura do Telegram não é requisito Zoen sem decisão sobre planos e identidade comercial.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Priorizar pessoas, agentes e identidade verificável; recursos de telefone, colecionáveis e rating comercial ficam como referência."
+  },
+  {
+    "id": "TG-profiles-emoji-status",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/edit-profile.tsx",
+      "apps/zoen/src/core/generated/Persona.ts"
+    ],
+    "gap": "Falta escolher status de emoji, duração e sua apresentação nas superfícies de identidade.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-profiles-profile-and-name-colors",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/core/generated/Persona.ts",
+      "apps/zoen/src/app/edit-profile.tsx",
+      "apps/zoen/src/app/person/[id].tsx"
+    ],
+    "gap": "Perfis consomem tint_hex; falta permitir escolher e revisar a cor de identidade nas superfícies.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-profiles-verification-and-impersonation-signals",
+    "scope": "active",
+    "implementation": "different",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/person/[id].tsx",
+      "apps/zoen/src/integrity/integrity-warning.tsx"
+    ],
+    "gap": "Integridade do log não verifica identidade pública; falta orientar confiança e suspeita de impostor no perfil.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-profiles-third-party-verification",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/person/[id].tsx",
+      "docs/dev/zoen-complete-product-goal.md"
+    ],
+    "gap": "Definir emissores, confiança e revogação antes de exibir selos independentes.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Priorizar pessoas, agentes e identidade verificável; recursos de telefone, colecionáveis e rating comercial ficam como referência."
+  },
+  {
+    "id": "TG-profiles-contact-confirmation",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/person/[id].tsx",
+      "apps/zoen/src/app/new-chat.tsx"
+    ],
+    "gap": "O perfil mostra nome/@handle e grupos comuns; falta revisão explícita de um primeiro contato desconhecido.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-profiles-stars-profile-rating",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/person/[id].tsx",
+      "docs/dev/zoen-complete-product-goal.md"
+    ],
+    "gap": "Rating por transações Stars depende do produto comercial Telegram; equivalente Zoen não está selecionado.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Priorizar pessoas, agentes e identidade verificável; recursos de telefone, colecionáveis e rating comercial ficam como referência."
+  },
+  {
+    "id": "TG-profiles-collectible-usernames",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/edit-profile.tsx",
+      "docs/dev/zoen-complete-product-goal.md"
+    ],
+    "gap": "Transferência e compra de nomes exigem decisão comercial; edição normal de @handle já existe.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Priorizar pessoas, agentes e identidade verificável; recursos de telefone, colecionáveis e rating comercial ficam como referência."
+  },
+  {
+    "id": "TG-profiles-anonymous-number-accounts",
+    "scope": "decision",
+    "implementation": "different",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/auth/README.md",
+      "docs/adr/0003-identity-and-device-keys.md"
+    ],
+    "gap": "Conta Zoen usa identidade e Apple/Google, não número colecionável; não adicionar dependência telefônica por paridade.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Priorizar pessoas, agentes e identidade verificável; recursos de telefone, colecionáveis e rating comercial ficam como referência."
+  }
+]
