@@ -1,0 +1,355 @@
+{
+  "date": "2026-10-26T21:14:23.955365+00:00",
+  "kind": "ios-simulator-read-only",
+  "source": "b7ab2265bc68fc6ec29465d99e41cdc03b818415",
+  "coreSource": "eb62cdaf911a945c25a3e9b26e336e2a39bf1d60",
+  "screenshots": 38,
+  "distinctPngHashes": 37,
+  "coverage": "38 capturas de estados acessíveis, não 38 telas distintas ou aceite das 77 famílias. Sem aceite funcional, físico ou de paridade Telegram.",
+  "localEvidence": "output/roadmap-review-v723/index.md",
+  "excluded": "Apps/Pages/editores pausados; sem mudanças de preferências, envio, digitação ou seleção de mídia. Sem teste físico, VoiceOver, chamadas ou permissões.",
+  "screens": [
+    {
+      "name": "Início",
+      "image": "../../output/roadmap-review-v723/01-home.png",
+      "sha256": "1bf87731d42177243cc96549124a25362f3241d1f95d1f384dd0de01133d4975",
+      "findings": [
+        "Aba Início",
+        "Cards existentes; nenhum aberto."
+      ]
+    },
+    {
+      "name": "Atividade",
+      "image": "../../output/roadmap-review-v723/02-activity.png",
+      "sha256": "a0f1d185af5752e09c7feef82e9dbd641a7950ea2dd47ce0aeb78eb18b10c994",
+      "findings": [
+        "Início → solicitações",
+        "Pedidos históricos somente visíveis; nenhuma decisão."
+      ]
+    },
+    {
+      "name": "Chats / Todas",
+      "image": "../../output/roadmap-review-v723/03-chats.png",
+      "sha256": "6d5da5b0179bb479724dc385e99a7852fd3118b5b6b79d8cf044a62065dfe90a",
+      "findings": [
+        "Aba Chats",
+        "Lista e faixa de cards existentes."
+      ]
+    },
+    {
+      "name": "Conversa QA617",
+      "image": "../../output/roadmap-review-v723/04-conversation.png",
+      "sha256": "3821eb9cdc528b8456014b4f719db4382d1f1d69c529da68c707cac89db3dbc9",
+      "findings": [
+        "Chats → QA617 Native Group",
+        "Mensagem sintética existente; texto antigo sob cabeçalho/cards. Composer vazio."
+      ]
+    },
+    {
+      "name": "Busca na conversa vazia",
+      "image": "../../output/roadmap-review-v723/05-conversation-search.png",
+      "sha256": "de61f855f9c98fcc221a88157c2770324c5954af3df2439bd9754d5c5868bcc0",
+      "findings": [
+        "Conversa → lupa",
+        "Teclado aberto; nenhuma consulta digitada."
+      ]
+    },
+    {
+      "name": "Menu de mensagem",
+      "image": "../../output/roadmap-review-v723/06-message-menu.png",
+      "sha256": "a3f5cd9179a20c81f64605f7aca52eb54b962bbd5f4ae29f9b0680f1061042c6",
+      "findings": [
+        "Long press em mensagem própria sintética",
+        "Menu/reactions observados; Back sem ação ou reação."
+      ]
+    },
+    {
+      "name": "Detalhes do grupo",
+      "image": "../../output/roadmap-review-v723/07-group-details.png",
+      "sha256": "1b6553b3d0f3078f73dd3457a6d88cf4092f9a6ddfa508255a1b21c2ee29205d",
+      "findings": [
+        "Conversa → cabeçalho",
+        "Preferências visualmente compactas; switches sem alteração."
+      ]
+    },
+    {
+      "name": "Participantes",
+      "image": "../../output/roadmap-review-v723/08-group-participants.png",
+      "sha256": "306bb9267ec70c10d741238b0a9147404346f2f867655a35b8390a26d5f40454",
+      "findings": [
+        "Detalhes → rolar",
+        "Owner + Agent existentes; nenhum convite/adição/saída."
+      ]
+    },
+    {
+      "name": "Perfil do Agent",
+      "image": "../../output/roadmap-review-v723/09-agent-profile.png",
+      "sha256": "a85893d83ba6ab0805ac7c614beb605205e17062f95b136bc18acd4440f68eb1",
+      "findings": [
+        "Participantes → Ver QA345 Agent",
+        "Perfil e grupos em comum; nenhuma DM aberta."
+      ]
+    },
+    {
+      "name": "Perfil do Agent — captura repetida",
+      "image": "../../output/roadmap-review-v723/10-agent-controls.png",
+      "sha256": "a85893d83ba6ab0805ac7c614beb605205e17062f95b136bc18acd4440f68eb1",
+      "findings": [
+        "Perfil → scroll bottom",
+        "PNG byte-idêntico a 09; não representa uma tela adicional de controles. Rodapé parcialmente capturado."
+      ]
+    },
+    {
+      "name": "Anexo / Galeria",
+      "image": "../../output/roadmap-review-v723/11-attachment-gallery.png",
+      "sha256": "2ac729528897edb680b7b2e9e6feda711ddce2c9e4d1e22db912e29752f91748",
+      "findings": [
+        "Conversa → clipe",
+        "Galeria apenas; zero seleção/câmera."
+      ]
+    },
+    {
+      "name": "Anexo / Arquivo",
+      "image": "../../output/roadmap-review-v723/12-attachment-files.png",
+      "sha256": "a580a078e18ff0077397f0036b747d9df432e89f2fb80e23c51f5dbdf98acac7",
+      "findings": [
+        "Anexos → Arquivo",
+        "Entradas e metadados recentes; seletor de arquivos não aberto."
+      ]
+    },
+    {
+      "name": "Anexo / Áudio",
+      "image": "../../output/roadmap-review-v723/13-attachment-audio.png",
+      "sha256": "cbc9c4e631e391dabad845c9df38b9e51f8d32ebe190d6903c5af137005b4846",
+      "findings": [
+        "Anexos → Áudio",
+        "Sem seleção, gravação ou microfone."
+      ]
+    },
+    {
+      "name": "Anexo / Contato",
+      "image": "../../output/roadmap-review-v723/14-attachment-contact.png",
+      "sha256": "94b9e5347c3e066825b261f476e0a1dc10f6e5a5371a7679ec8bc066628ca78c",
+      "findings": [
+        "Anexos → Contato",
+        "Sheet vazia; Escolher contato não acionado; Fechar normal."
+      ]
+    },
+    {
+      "name": "Você",
+      "image": "../../output/roadmap-review-v723/15-you-profile.png",
+      "sha256": "4214a19100d17ad6a1b2e4eb718539a81dbae12623fe2c4858864563553ec123",
+      "findings": [
+        "Aba Você",
+        "Identidade QA345 Owner / @qa345v455owner."
+      ]
+    },
+    {
+      "name": "Aparência / primeiros temas",
+      "image": "../../output/roadmap-review-v723/16-appearance.png",
+      "sha256": "3a3982d9b633a651349b61c18f125a3a26d2082d70e7ff4d5f20047c6a06ada1",
+      "findings": [
+        "Você → Aparência",
+        "Céu diurno, Céu noturno selecionado, Clássico; Auto desligado."
+      ]
+    },
+    {
+      "name": "Aparência / demais temas",
+      "image": "../../output/roadmap-review-v723/17-six-themes-more.png",
+      "sha256": "9e4599861a4cc2a3c094564d12d8c803e440364a0b68e654f22631aa2fd709b6",
+      "findings": [
+        "Lista de temas → pan horizontal",
+        "Dia, Noite, Noite colorida; combinado com 16 cobre seis presets, sem selecionar."
+      ]
+    },
+    {
+      "name": "Aparência / opções",
+      "image": "../../output/roadmap-review-v723/18-appearance-options.png",
+      "sha256": "ef5241acbd12a57ba0efdba7997e54011bf5a348b51cdd84d298d4fcd8eed064",
+      "findings": [
+        "Aparência → rolar",
+        "Cores, texto 17 pt, emoji/movimento e Restaurar tema apenas observados."
+      ]
+    },
+    {
+      "name": "Geral",
+      "image": "../../output/roadmap-review-v723/19-general.png",
+      "sha256": "a0fd376aa5b15dd4a28d71b7a20bea9d2132d9b8e3ca8140eb9c54ba48dc5fc4",
+      "findings": [
+        "Você → Geral",
+        "Tema Céu noturno; estado de conexão é texto UI, não prova de serviço."
+      ]
+    },
+    {
+      "name": "Notificações",
+      "image": "../../output/roadmap-review-v723/20-notifications.png",
+      "sha256": "82d9ab7ede9fd80d8e7ac3a80cabbd53ed9445e81a71c182398d26b9a58f8fc5",
+      "findings": [
+        "Você → Notificações",
+        "Permissão ainda não escolhida; nenhum pedido de permissão."
+      ]
+    },
+    {
+      "name": "Conversas silenciadas",
+      "image": "../../output/roadmap-review-v723/21-muted-chats.png",
+      "sha256": "5217fd96703c7b86cb6df6c4b00561e08ae16aadc3872adcf81907fcbe3810c8",
+      "findings": [
+        "Notificações → Conversas silenciadas",
+        "Estado vazio."
+      ]
+    },
+    {
+      "name": "Controles de dados",
+      "image": "../../output/roadmap-review-v723/22-data-controls.png",
+      "sha256": "a00beceda642a3e3ed847cd0f5e3067111e6e2b861b4b2140bd7cb603e58b90c",
+      "findings": [
+        "Você → Controles de dados",
+        "Backup e sair/apagar visíveis; não acionados."
+      ]
+    },
+    {
+      "name": "Dispositivos",
+      "image": "../../output/roadmap-review-v723/23-devices.png",
+      "sha256": "f836a0783c0364b9c14a6dcc7f0affc0ce7912e9fbcfb8af2d3fd7ccbcf522d6",
+      "findings": [
+        "Você → Dispositivos",
+        "Aparelho atual/outro aparelho; nenhum vínculo/refresh/revogação."
+      ]
+    },
+    {
+      "name": "Pessoas bloqueadas",
+      "image": "../../output/roadmap-review-v723/24-blocked-people.png",
+      "sha256": "2babf8119799139055eb1cc5ec14b6b1b2855bc4446d0b38d46174fd8815ccbd",
+      "findings": [
+        "Você → Pessoas bloqueadas",
+        "Estado vazio; nenhum refresh ou bloqueio."
+      ]
+    },
+    {
+      "name": "Permissões",
+      "image": "../../output/roadmap-review-v723/25-permissions.png",
+      "sha256": "822f24ec01f81df2e16f72eb503c0b0331e1b31e350f3eb86bc6c53db5766b08",
+      "findings": [
+        "Você → Permissões",
+        "Lista de Agents e entrada de permissões de Apps."
+      ]
+    },
+    {
+      "name": "Permissões de Apps",
+      "image": "../../output/roadmap-review-v723/26-app-permissions.png",
+      "sha256": "0cdd1d4ff78501b9a421a68e67152289d6c0fc0d8d2d4a06ad7a1af920521dab",
+      "findings": [
+        "Permissões → Apps",
+        "Nenhuma permissão ativa; sem revogar."
+      ]
+    },
+    {
+      "name": "Agent / modo geral",
+      "image": "../../output/roadmap-review-v723/27-agent-settings.png",
+      "sha256": "c37beca3b94834c4e611f856fe8bb1b701efbe3a0f4f4a528d6accf8b37b5fc9",
+      "findings": [
+        "Permissões → QA345 Agent",
+        "Sugerir marcado; sem mudança de modo/grant/orçamento."
+      ]
+    },
+    {
+      "name": "Agent / histórico de atividade",
+      "image": "../../output/roadmap-review-v723/28-agent-conversation-controls.png",
+      "sha256": "06c2a30557a6b99b2067f353f9be7e9ecd3d4b37d2b1652d94c9bd24eba77a75",
+      "findings": [
+        "Agent → scroll bottom",
+        "Nome do arquivo é legado: pixels mostram histórico; texto cruza o título do cabeçalho."
+      ]
+    },
+    {
+      "name": "Editar perfil",
+      "image": "../../output/roadmap-review-v723/29-profile-edit-readonly.png",
+      "sha256": "919645b0e7eaa870ae591cb593404cccb13530d0329d0a1be85c1c2f68ae96ab",
+      "findings": [
+        "Você → Editar meu perfil",
+        "Formulário somente observado; sem foco/typing/foto/salvar; Cancelar."
+      ]
+    },
+    {
+      "name": "Biblioteca",
+      "image": "../../output/roadmap-review-v723/30-files-library.png",
+      "sha256": "bc82df3c73edf5fca738f9d07e7b957ca9d34f437e12af83d206d5ddd540df25",
+      "findings": [
+        "Aba Arquivos",
+        "Lista somente; filtros Tudo/Todas conversas preservados; nenhum item aberto."
+      ]
+    },
+    {
+      "name": "Busca global vazia",
+      "image": "../../output/roadmap-review-v723/31-global-search-empty.png",
+      "sha256": "828cd5687313fbb4dd5b801cc817274a8009e0ab0bc711a1fd7c7d32603f56ac",
+      "findings": [
+        "Início → Buscar",
+        "Estado vazio parcialmente coberto pelo teclado; nenhuma consulta."
+      ]
+    },
+    {
+      "name": "Chats / Grupos",
+      "image": "../../output/roadmap-review-v723/32-chats-groups.png",
+      "sha256": "c2808681b3d6046a3eb2bea7918619467f81b7b5a2b9f3677fb2ff05a7c5ece6",
+      "findings": [
+        "Chats → Grupos",
+        "Filtro somente; nenhum grupo aberto."
+      ]
+    },
+    {
+      "name": "Chats / Comunidades",
+      "image": "../../output/roadmap-review-v723/33-chats-communities.png",
+      "sha256": "ae66f06232d3252e667118ea2b5c08c086cb9947b31713b5819b6e9de027ad39",
+      "findings": [
+        "Chats → Comunidades",
+        "Comunidade existente somente listada."
+      ]
+    },
+    {
+      "name": "Chats / Pessoas",
+      "image": "../../output/roadmap-review-v723/34-chats-people.png",
+      "sha256": "d83567775657434e243a021135aae2fd95a18b3419e4c101ad3135979fced04b",
+      "findings": [
+        "Chats → Pessoas",
+        "Agent/Peer sintéticos listados; nenhuma DM aberta."
+      ]
+    },
+    {
+      "name": "Chats / Não lidas",
+      "image": "../../output/roadmap-review-v723/35-chats-unread.png",
+      "sha256": "6b557f630c8461364c9be95475d6af6244c3088228637c512acbc4aee2dd452d",
+      "findings": [
+        "Chats → Não lidas",
+        "Estado vazio; Todas restaurado depois."
+      ]
+    },
+    {
+      "name": "Agent / controles por conversa",
+      "image": "../../output/roadmap-review-v723/36-agent-scope-controls.png",
+      "sha256": "fd58a92fa28ffe9b789d7294aefd063c2ae2a3b7acc4e5462b2a5dd47a24597a",
+      "findings": [
+        "Permissões → Agent → rolar",
+        "Modo global Sugerir e escopo legado QA604 Word Agent/Agir visíveis; nenhuma alteração. Texto sob cabeçalho."
+      ]
+    },
+    {
+      "name": "Dispositivos / captura antes do detalhe",
+      "image": "../../output/roadmap-review-v723/37-current-device.png",
+      "sha256": "2dd56afad0ac1d7d5509c423f976133a0ed9f23e52ebfdd2b42fad03f0d75f37",
+      "findings": [
+        "Dispositivos → Este aparelho",
+        "PNG ainda é lista. Sheet de identificação surgiu depois em AX (resume-final-device-ax), sem PNG qualificado do detalhe; Back fechou."
+      ]
+    },
+    {
+      "name": "Início final",
+      "image": "../../output/roadmap-review-v723/38-final-home.png",
+      "sha256": "f9c6ef071c3d0daa82e119e5385846a61696c47cd48519af6615038e6bb6912d",
+      "findings": [
+        "Você → Início",
+        "Home Portrait deixado aberto para Enzo; driver e runners fechados."
+      ]
+    }
+  ]
+}

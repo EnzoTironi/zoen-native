@@ -1,0 +1,214 @@
+[
+  {
+    "id": "TG-voice-voice-recording",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/media-composer-capture.ts",
+      "apps/zoen/src/media/voice-record-button.tsx",
+      "apps/zoen/src/core/voice-controls-recording.cases.ts"
+    ],
+    "gap": "Qualificar gravação real, permissão, interrupção e envio/recebimento sem captura ou envio duplicado.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-voice-hands-free-recording",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/voice-record-button.tsx",
+      "apps/zoen/src/media/voice-dock.tsx"
+    ],
+    "gap": "Qualificar gesto de travar/destravar com cancelamento e VoiceOver sem iniciar outra gravação.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-voice-pause-and-resume-recording",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/core/voice-controls-recording.cases.ts",
+      "apps/zoen/src/media/media-composer-capture.ts"
+    ],
+    "gap": "Qualificar pausa/retomada real e background preservando a mesma fonte e duração final.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-voice-voice-review",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/voice-dock.tsx",
+      "apps/zoen/src/media/voice-review.ios.tsx"
+    ],
+    "gap": "Qualificar ouvir/revisar/Cancelar/Enviar no dock e na tela expandida com a mesma sessão.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-voice-voice-trimming",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/voice-review.ios.tsx",
+      "apps/zoen/src/media/voice-edit.ts",
+      "apps/zoen/src/core/voice-session-render-transcript.cases.ts"
+    ],
+    "gap": "Qualificar seleção precisa, audição e reabertura do corte salvo sem recuperar áudio removido.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-voice-waveform-scrubbing",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/audio-progress.tsx",
+      "apps/zoen/src/media/AudioClip.tsx"
+    ],
+    "gap": "Qualificar busca por waveform em voz recebida e revisão sem disputar o scroll vertical da conversa.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-voice-voice-playback-speed",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/AudioClip.tsx",
+      "apps/zoen/src/media/message-audio-session.ts"
+    ],
+    "gap": "Qualificar1/1,5/2×, preservação da posição e troca de nota sem sobreposição de áudio.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-voice-raise-to-listen",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/audio-mode.ts",
+      "apps/zoen/src/media/message-audio-session.ts"
+    ],
+    "gap": "Usar proximidade/posição para alternar escuta e saída de áudio com consentimento e interrupção de chamada.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-voice-round-video-messages",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/voice-record-button.tsx",
+      "apps/zoen/src/media/attachment-picker.ts"
+    ],
+    "gap": "Gravar, revisar e enviar vídeo circular com contrato/renderer próprios na conversa.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-voice-one-time-voice-and-video-notes",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/voice-session.ts",
+      "apps/zoen/src/media/media-draft-types.ts"
+    ],
+    "gap": "Adicionar reprodução única e descarte autenticado para voz/vídeo circular em todos os dispositivos.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-voice-voice-transcription",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/ZoenVoiceEditor.swift",
+      "apps/zoen/src/media/voice-session.ts",
+      "apps/zoen/src/media/voice-transcript.tsx"
+    ],
+    "gap": "Qualificar idioma/modelo Apple, indisponibilidade e transcrição recebida; hoje a edição usa SpeechAnalyzer local.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-voice-video-note-transcription",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/voice-session.ts",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Transcrever vídeo circular mantendo ligação entre texto, trecho e mídia original autorizada.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-voice-music-playlists",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/product/telegram-ios-file-audio.md",
+      "apps/zoen/src/media/message-audio-session.ts"
+    ],
+    "gap": "Criar fila de faixas com próxima/anterior e continuidade; Audio atual abre prévia individual.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-voice-podcast-and-audiobook-controls",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/message-audio-session.ts",
+      "apps/zoen/src/media/AudioClip.tsx"
+    ],
+    "gap": "Adicionar retomada durável, saltos/capítulos e arquivos longos; posição atual fica em cache da sessão.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-voice-search-audio-by-artist",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/product/telegram-ios-file-audio.md"
+    ],
+    "gap": "Extrair/indexar artista e permitir busca por metadados; o seletor ainda não extrai performer/duração.",
+    "issues": [
+      170
+    ]
+  }
+]

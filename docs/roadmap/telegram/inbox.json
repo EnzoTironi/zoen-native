@@ -1,0 +1,269 @@
+[
+  {
+    "id": "TG-inbox-chat-folders",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx",
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Criar abas filtradas pelo usuário; categorias fixas atuais não equivalem a pastas personalizadas.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-inbox-default-folder",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx",
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Escolher pasta inicial e recuperá-la por conta; filtro atual inicia em all local.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-inbox-folder-tags",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx",
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Mostrar etiquetas por associação à pasta sem duplicar autoridade de classificação.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-inbox-emoji-folder-names",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx",
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Após pastas personalizadas, permitir nome com emoji e fallback acessível.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-inbox-shared-folders",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx",
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Enzo definir convite de conjunto de conversas e permissões; compartilhamento não deve conceder acesso implícito.",
+    "issues": [
+      172
+    ],
+    "recommendation": "Adotar convites de pastas depois das pastas pessoais; cada conversa exige sua própria autorização."
+  },
+  {
+    "id": "TG-inbox-pinned-chats",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx",
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Qualificar pin/despin e ordenação persistente após retomada e troca de conta; consumidor e ação existem.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-inbox-archived-chats",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx",
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Qualificar arquivar/restaurar preservando mensagens, unread e preferência no retorno.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-inbox-automatic-archive-controls",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx",
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Definir regra para novos remetentes e permitir recuperação sem ocultar conversa necessária.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-inbox-mark-read-or-unread",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx",
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Oferecer marcar não lida sem falsificar recibo remoto; abertura já marca leitura canônica.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-inbox-archive-bulk-read",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx",
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Marcar arquivo inteiro como lido com alcance explícito e sem afetar conversas fora dele.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-inbox-chat-list-swipe-actions",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx",
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Adicionar gestos por linha para ações frequentes com desfazer e alternativa acessível.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-inbox-chat-previews",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx",
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Abrir preview interativo sem entrar/marcar leitura; texto de última mensagem atual não satisfaz preview.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-inbox-recent-chat-navigation",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx",
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Retornar rapidamente entre conversas abertas preservando contexto; lista ordenada por atividade não registra navegação recente.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-inbox-unread-and-mention-counters",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx",
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Além do badge unread, navegar ao primeiro não lido/menção e limpar contagem só pela leitura correta.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-inbox-saved-messages",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx",
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Criar conversa pessoal canônica para guardar mensagens/arquivos e encontrá-la sempre.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-inbox-saved-messages-by-source",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx",
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Agrupar Salvos pela conversa de origem mantendo vínculo e acesso apropriados.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-inbox-saved-message-tags",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx",
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Após Salvos, filtrar por etiquetas de reação com persistência e remoção previsíveis.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-inbox-saved-message-shared-media-entry",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx",
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Abrir itens salvos de uma conversa pela mídia compartilhada sem perder a origem.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-inbox-pinned-saved-dialogs",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx",
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Após Salvos por origem, fixar fontes pessoais sem confundir pin da conversa original.",
+    "issues": [
+      172
+    ]
+  }
+]

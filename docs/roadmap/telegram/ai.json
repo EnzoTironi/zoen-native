@@ -1,0 +1,152 @@
+[
+  {
+    "id": "TG-ai-selected-message-translation",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/message-actions.types.ts",
+      "apps/zoen/src/components/message-composer.tsx",
+      "crates/zoen-models/src/lib.rs"
+    ],
+    "gap": "Adicionar ação Traduzir no contexto da mensagem com escopo, idioma, privacidade e indicação do texto gerado.",
+    "issues": [
+      175,
+      172,
+      182
+    ]
+  },
+  {
+    "id": "TG-ai-whole-chat-translation",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/message-actions.types.ts",
+      "apps/zoen/src/i18n/catalog.ts"
+    ],
+    "gap": "Traduzir a leitura da conversa por opção explícita, com cache/revogação e original preservado; locale de interface permanece separado.",
+    "issues": [
+      175,
+      176,
+      182
+    ]
+  },
+  {
+    "id": "TG-ai-channel-and-article-summaries",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/message-actions.types.ts",
+      "docs/agent-runtime-capabilities-execution.md"
+    ],
+    "gap": "Expor resumo atribuído a fonte/versão e limitar contexto/custo, com atualização e falha visíveis ao leitor.",
+    "issues": [
+      175,
+      181,
+      182
+    ]
+  },
+  {
+    "id": "TG-ai-composer-grammar-correction",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/message-actions.types.ts",
+      "apps/zoen/src/components/message-composer.tsx",
+      "crates/zoen-models/src/lib.rs"
+    ],
+    "gap": "Revisar rascunho por ação explícita, com prévia/desfazer e preservação do texto e destino durante atraso ou troca de conta.",
+    "issues": [
+      175,
+      172,
+      182
+    ]
+  },
+  {
+    "id": "TG-ai-composer-style-rewriting",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/message-actions.types.ts",
+      "apps/zoen/src/components/message-composer.tsx",
+      "crates/zoen-models/src/lib.rs"
+    ],
+    "gap": "Reescrever rascunho em estilo escolhido sem enviar automaticamente nem perder original, seleção ou rascunho recuperável.",
+    "issues": [
+      175,
+      172,
+      182
+    ]
+  },
+  {
+    "id": "TG-ai-composer-translation",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/message-actions.types.ts",
+      "apps/zoen/src/components/message-composer.tsx",
+      "crates/zoen-models/src/lib.rs"
+    ],
+    "gap": "Traduzir rascunho com origem/destino explícitos, prévia e envio sob a mesma autoridade do compositor.",
+    "issues": [
+      175,
+      172,
+      182
+    ]
+  },
+  {
+    "id": "TG-ai-custom-ai-styles",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/agent-definition/definition-view.tsx",
+      "apps/zoen/src/components/message-composer.tsx"
+    ],
+    "gap": "Criar/compartilhar estilos de edição como dados revisáveis, sem convertê-los em instruções privilegiadas ou permissões de agente.",
+    "issues": [
+      175,
+      172,
+      177
+    ]
+  },
+  {
+    "id": "TG-ai-ai-style-previews",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/message-composer.tsx",
+      "apps/zoen/src/components/message-actions.types.ts"
+    ],
+    "gap": "Visualizar origem e efeito de um estilo compartilhado antes de adicioná-lo, preservando rascunho e permitindo rejeitar/desfazer.",
+    "issues": [
+      175,
+      172
+    ]
+  },
+  {
+    "id": "TG-ai-confidential-ai-execution",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/dev/independent-agent-enrollment.md",
+      "crates/zoen-models/src/lib.rs",
+      "crates/zoen-runtime/src/lib.rs"
+    ],
+    "gap": "Recomendação: opção local ou serviço com garantia auditável e consentimento explícito; implementar atestado/retenção/limites antes de anunciar inferência confidencial no gateway.",
+    "issues": [
+      175,
+      177,
+      182,
+      327
+    ],
+    "recommendation": "Reusar o runtime de agentes e orçamento; manter promessa de confidencialidade limitada à arquitetura comprovada."
+  }
+]

@@ -1,0 +1,202 @@
+[
+  {
+    "id": "spaces-and-parent-child-organization-with-all-items-and-recent-items",
+    "title": "Organizar espaços e itens filhos/recentes",
+    "phase": "paused-creation",
+    "issues": [
+      179,
+      180
+    ],
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/acceptance/parts/scope/creation-workspace.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/179",
+      "https://github.com/EnzoTironi/zoen-native/issues/180"
+    ],
+    "remaining": [
+      "Preservar código, dados, evidências e pausa determinada por Enzo",
+      "Após retomada, qualificar capacidade inteira com permissões, conteúdo e recuperação"
+    ]
+  },
+  {
+    "id": "live-block-pages-direct-editing-agent-edits-comments-presence-and-history",
+    "title": "Editar Páginas vivas com pessoas e agentes",
+    "phase": "paused-creation",
+    "issues": [
+      179,
+      180
+    ],
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/acceptance/parts/scope/creation-workspace.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/179",
+      "https://github.com/EnzoTironi/zoen-native/issues/180"
+    ],
+    "remaining": [
+      "Preservar código, dados, evidências e pausa determinada por Enzo",
+      "Após retomada, qualificar capacidade inteira com permissões, conteúdo e recuperação"
+    ]
+  },
+  {
+    "id": "slides-create-edit-reorder-present-export-and-recover",
+    "title": "Criar, editar, apresentar e exportar Slides",
+    "phase": "paused-creation",
+    "issues": [
+      179,
+      180
+    ],
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/acceptance/parts/scope/creation-workspace.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/179",
+      "https://github.com/EnzoTironi/zoen-native/issues/180"
+    ],
+    "remaining": [
+      "Preservar código, dados, evidências e pausa determinada por Enzo",
+      "Após retomada, qualificar capacidade inteira com permissões, conteúdo e recuperação"
+    ]
+  },
+  {
+    "id": "sites-create-preview-explicit-publish-version-and-rollback",
+    "title": "Criar Sites com publicação explícita e rollback",
+    "phase": "paused-creation",
+    "issues": [
+      179,
+      180
+    ],
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/acceptance/parts/scope/creation-workspace.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/179",
+      "https://github.com/EnzoTironi/zoen-native/issues/180"
+    ],
+    "remaining": [
+      "Preservar código, dados, evidências e pausa determinada por Enzo",
+      "Após retomada, qualificar capacidade inteira com permissões, conteúdo e recuperação"
+    ]
+  },
+  {
+    "id": "images-generate-upload-edit-reference-variants-and-save-to-library",
+    "title": "Gerar, editar e guardar Imagens",
+    "phase": "paused-creation",
+    "issues": [
+      179,
+      180
+    ],
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/acceptance/parts/scope/creation-workspace.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/179",
+      "https://github.com/EnzoTironi/zoen-native/issues/180"
+    ],
+    "remaining": [
+      "Preservar código, dados, evidências e pausa determinada por Enzo",
+      "Após retomada, qualificar capacidade inteira com permissões, conteúdo e recuperação"
+    ]
+  },
+  {
+    "id": "files-upload-preview-download-share-and-encrypted-private-storage",
+    "title": "Guardar e compartilhar Arquivos privados",
+    "phase": "paused-creation",
+    "issues": [
+      179,
+      180
+    ],
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/acceptance/parts/scope/creation-workspace.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/179",
+      "https://github.com/EnzoTironi/zoen-native/issues/180"
+    ],
+    "remaining": [
+      "Preservar código, dados, evidências e pausa determinada por Enzo",
+      "Após retomada, qualificar capacidade inteira com permissões, conteúdo e recuperação"
+    ]
+  },
+  {
+    "id": "scoped-cross-artifact-search-sharing-roles-and-revocation",
+    "title": "Buscar e compartilhar artefatos com papéis e revogação",
+    "phase": "paused-creation",
+    "issues": [
+      179,
+      180
+    ],
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/acceptance/parts/scope/creation-workspace.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/179",
+      "https://github.com/EnzoTironi/zoen-native/issues/180"
+    ],
+    "remaining": [
+      "Preservar código, dados, evidências e pausa determinada por Enzo",
+      "Após retomada, qualificar capacidade inteira com permissões, conteúdo e recuperação"
+    ]
+  },
+  {
+    "id": "trash-restore-and-explicit-permanent-deletion",
+    "title": "Restaurar lixeira e excluir permanentemente",
+    "phase": "paused-creation",
+    "issues": [
+      179,
+      180
+    ],
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/acceptance/parts/scope/creation-workspace.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/179",
+      "https://github.com/EnzoTironi/zoen-native/issues/180"
+    ],
+    "remaining": [
+      "Preservar código, dados, evidências e pausa determinada por Enzo",
+      "Após retomada, qualificar capacidade inteira com permissões, conteúdo e recuperação"
+    ]
+  },
+  {
+    "id": "artifact-scoped-agent-context-reviewable-changes-and-attributed-results",
+    "title": "Revisar alterações atribuídas de agentes por artefato",
+    "phase": "paused-creation",
+    "issues": [
+      179,
+      180
+    ],
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/acceptance/parts/scope/creation-workspace.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/179",
+      "https://github.com/EnzoTironi/zoen-native/issues/180"
+    ],
+    "remaining": [
+      "Preservar código, dados, evidências e pausa determinada por Enzo",
+      "Após retomada, qualificar capacidade inteira com permissões, conteúdo e recuperação"
+    ]
+  },
+  {
+    "id": "offline-reopen-conflict-recovery-and-idempotent-operations",
+    "title": "Reabrir offline e recuperar conflitos sem duplicação",
+    "phase": "paused-creation",
+    "issues": [
+      179,
+      180
+    ],
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/acceptance/parts/scope/creation-workspace.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/179",
+      "https://github.com/EnzoTironi/zoen-native/issues/180"
+    ],
+    "remaining": [
+      "Preservar código, dados, evidências e pausa determinada por Enzo",
+      "Após retomada, qualificar capacidade inteira com permissões, conteúdo e recuperação"
+    ]
+  }
+]

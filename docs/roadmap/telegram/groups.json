@@ -1,0 +1,483 @@
+[
+  {
+    "id": "TG-groups-groups-and-supergroups",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/app/new-chat.tsx",
+      "apps/zoen/src/app/space/[id].tsx",
+      "apps/zoen/src/communities/member-context-port.ts"
+    ],
+    "gap": "Comprovar criação, administração e reconexão entre contas, inclusive limites de participantes.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Concluir criação e administração de grupos na autoridade Core existente."
+  },
+  {
+    "id": "TG-groups-public-and-private-groups",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/space/[id].tsx",
+      "apps/zoen/src/app/new-chat.tsx"
+    ],
+    "gap": "Mostrar e aplicar quem pode descobrir, entrar e ler; não alterar privacidade silenciosamente.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Explicitar acesso e descoberta da comunidade e preservar sua privacidade atual."
+  },
+  {
+    "id": "TG-groups-forum-topics",
+    "scope": "later",
+    "implementation": "different",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/thread/[space]/[root].tsx",
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Organizar discussões persistentes com nome, acesso e navegação próprios sem duplicar mensagens de Threads.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Adicionar tópicos nomeados depois de concluir Threads e administração."
+  },
+  {
+    "id": "TG-groups-custom-topic-icons",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Identificar tópicos por ícones acessíveis sem tornar o ícone obrigatório para entender o destino.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Estender os tópicos com ícones somente após comprovar sua navegação."
+  },
+  {
+    "id": "TG-groups-topic-tabs",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx",
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Alternar entre tópicos preservando leitura e rascunho de cada contexto.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Adicionar abas quando tópicos nomeados tiverem contrato e navegação estáveis."
+  },
+  {
+    "id": "TG-groups-topic-presentation-controls",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Alternar apresentação de tópicos sem perder posição, contexto ou acesso às conversas.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Oferecer controles de apresentação depois de validar a estrutura de tópicos."
+  },
+  {
+    "id": "TG-groups-communities",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/app/new-chat.tsx",
+      "apps/zoen/src/app/space/[id].tsx",
+      "apps/zoen/src/communities/member-context-port.ts"
+    ],
+    "gap": "Aceitar criação, entrada, participação e administração entre contas com recuperação de falhas.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Concluir comunidades como conversas administradas, sem nova autoridade de membros."
+  },
+  {
+    "id": "TG-groups-community-navigation",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx",
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Preservar leitura e contexto ao abrir, trocar e retornar à comunidade.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Completar navegação de comunidades pelo inbox e detalhes existentes."
+  },
+  {
+    "id": "TG-groups-invite-links",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/app/space/[id].tsx",
+      "apps/zoen/src/app/open-link.tsx",
+      "apps/zoen/src/app/join/[code].tsx"
+    ],
+    "gap": "Comprovar entrada, convite inválido e troca de conta sem ingressar na identidade errada.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Completar convite compartilhável com prévia e ingresso recuperável."
+  },
+  {
+    "id": "TG-groups-expiring-invitation-links",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/space/[id].tsx",
+      "apps/zoen/src/app/open-link.tsx"
+    ],
+    "gap": "Administrador limita validade e revoga links; quem abre link vencido recebe resultado claro e não entra.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Adicionar expiração e revogação ao mesmo contrato de convite."
+  },
+  {
+    "id": "TG-groups-named-invite-links",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Administrador distingue, compartilha e revoga o convite correto sem afetar os demais.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Identificar convites no gerenciamento sem criar outro fluxo de entrada."
+  },
+  {
+    "id": "TG-groups-join-requests",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/space/[id].tsx",
+      "apps/zoen/src/app/open-link.tsx"
+    ],
+    "gap": "Solicitante acompanha espera; administrador aceita ou recusa uma vez, com reconciliação após falha.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Concluir ingresso com aprovação administrativa e estado durável."
+  },
+  {
+    "id": "TG-groups-public-group-join-approval",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/space/[id].tsx",
+      "apps/zoen/src/app/open-link.tsx"
+    ],
+    "gap": "Descobrir um grupo não concede participação; aprovação deve produzir acesso canônico verificável.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Aplicar o mesmo ingresso revisado também a comunidades descobertas publicamente."
+  },
+  {
+    "id": "TG-groups-welcome-messages",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Novo membro recebe orientação configurada uma única vez, respeitando audiência e pausa da automação.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Adaptar saudação pelo runtime de agentes após concluir ingresso."
+  },
+  {
+    "id": "TG-groups-member-tags",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/space/[id].tsx",
+      "apps/zoen/src/communities/member-actions-sheet.tsx"
+    ],
+    "gap": "Exibir rótulos de membros separadamente do papel que realmente concede autorização.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Adicionar identificação descritiva somente sem confundi-la com direitos."
+  },
+  {
+    "id": "TG-groups-admin-titles-and-badges",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/app/space/[id].tsx",
+      "apps/zoen/src/communities/member-actions-sheet.tsx",
+      "apps/zoen/src/core/member-role.test.ts"
+    ],
+    "gap": "Reconhecer administradores e atualizar o papel visível após ACK e reconciliação entre contas.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Expor o papel canônico na lista e nas ações de membro."
+  },
+  {
+    "id": "TG-groups-granular-admin-rights",
+    "scope": "active",
+    "implementation": "different",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/communities/member-context-port.ts",
+      "apps/zoen/src/communities/member-actions.ts",
+      "apps/zoen/src/core/member-role.test.ts"
+    ],
+    "gap": "Administrador entende e concede apenas operações autorizadas; perda de direito durante confirmação impede a alteração.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Concluir os papéis revisados e mostrar seu alcance; acrescentar direitos apenas onde o papel não basta."
+  },
+  {
+    "id": "TG-groups-per-member-restrictions",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/communities/member-context-port.ts",
+      "apps/zoen/src/communities/member-actions.ts",
+      "apps/zoen/src/core/member-role.test.ts"
+    ],
+    "gap": "Aplicar e remover limites de escrita ou participação com efeito entre contas, sem confundir intenção pendente com papel confirmado.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Completar restrições de participação usando o contexto revisado de membro."
+  },
+  {
+    "id": "TG-groups-granular-media-permissions",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/space/[id].tsx",
+      "apps/zoen/src/communities/member-context-port.ts"
+    ],
+    "gap": "Impedir composição e envio de mídia não permitida e explicar a restrição sem descartar o rascunho.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Integrar limites de mídia ao mesmo modelo de autorização da conversa."
+  },
+  {
+    "id": "TG-groups-slow-mode",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/space/[id].tsx",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Participante vê quando pode enviar novamente; reinício ou outro cliente não contorna o intervalo nem perde o rascunho.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Oferecer intervalo de envio como regra da conversa, validada na autoridade existente."
+  },
+  {
+    "id": "TG-groups-anti-spam-moderation",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/space/[id].tsx",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Administrador trata abuso, desfaz restrição indevida e comunica o resultado ao membro afetado.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Concluir moderação básica revisável e recuperável antes de automação ampla."
+  },
+  {
+    "id": "TG-groups-guardian-bots",
+    "scope": "later",
+    "implementation": "different",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/agent/[id].tsx",
+      "apps/zoen/src/communities/member-context-port.ts"
+    ],
+    "gap": "Agente atua somente nas operações de moderação concedidas, com histórico, pausa e revogação efetivos.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Adaptar agentes moderadores ao runtime existente com escopo e revisão humanos."
+  },
+  {
+    "id": "TG-groups-hidden-member-list",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Pessoa sem permissão não recebe nem vê a lista; administrador mantém acesso necessário à gestão.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Aplicar política de visibilidade da lista de membros na projeção autorizada."
+  },
+  {
+    "id": "TG-groups-anonymous-administrators",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/space/[id].tsx",
+      "apps/zoen/src/communities/member-actions.ts"
+    ],
+    "gap": "Se adotado, ocultar identidade perante participantes sem eliminar rastreabilidade administrativa autorizada.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Manter como referência: anonimato de publicação exige política própria de autoria e responsabilização."
+  },
+  {
+    "id": "TG-groups-posting-as-a-channel",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/new-chat.tsx",
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Se adotado, escolher remetente de canal autorizado e preservar autoria e auditoria canônicas.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Manter como referência até existir produto de canais e identidade editorial aprovada."
+  },
+  {
+    "id": "TG-groups-moderation-audit-log",
+    "scope": "active",
+    "implementation": "different",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/integrity/[id].tsx",
+      "apps/zoen/src/communities/member-actions.ts"
+    ],
+    "gap": "Administrador identifica autor, alvo, operação e resultado de uma ação sem confundir log íntegro com ação confirmada.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Projetar ações de moderação sobre o log de integridade existente."
+  },
+  {
+    "id": "TG-groups-bulk-moderation",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/space/[id].tsx",
+      "apps/zoen/src/communities/member-actions.ts"
+    ],
+    "gap": "Selecionar vários alvos, confirmar alcance e acompanhar sucesso ou recusa por pessoa sem repetir ações já aceitas.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Concluir operações em lote como composição das mesmas ações revisadas de membro."
+  },
+  {
+    "id": "TG-groups-ownership-transfer",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/communities/member-actions.ts",
+      "apps/zoen/src/core/member-role.test.ts"
+    ],
+    "gap": "Proprietário transfere autoridade a membro elegível e ambas as contas reconhecem o novo titular após confirmação canônica.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Completar transferência explícita de propriedade com confirmação e reconciliação."
+  },
+  {
+    "id": "TG-groups-ownership-transfer-on-departure",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Ao sair, proprietário resolve destino da autoridade; falha ou cancelamento não produz comunidade órfã.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Exigir sucessão explícita antes de saída que deixaria comunidade sem gestão."
+  },
+  {
+    "id": "TG-groups-group-statistics",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/space/[id].tsx"
+    ],
+    "gap": "Administrador consulta métricas sustentadas por eventos reais, com acesso e período definidos.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Adicionar métricas úteis após concluir participação e moderação."
+  },
+  {
+    "id": "TG-groups-group-sticker-and-emoji-sets",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/space/[id].tsx",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Membros descobrem e usam conjuntos próprios sem transformar aparência em autorização.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Estender expressão comunitária depois de concluir permissões e mídia básica."
+  },
+  {
+    "id": "TG-groups-group-appearance",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/space/[id].tsx",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Aplicar personalização por comunidade com precedência clara e contraste preservado.",
+    "issues": [
+      181
+    ],
+    "recommendation": "Adicionar aparência comunitária sem substituir preferências pessoais de acessibilidade."
+  }
+]

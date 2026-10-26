@@ -1,0 +1,212 @@
+[
+  {
+    "id": "TG-boosts-boost-allocation",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Slots de patrocínio e elegibilidade por pagamento ficam fora do contrato de comunidade.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. Boosts e seus níveis comerciais não são necessários para permissões ou recursos de comunidade. Slots de patrocínio e elegibilidade por pagamento ficam fora do contrato de comunidade."
+  },
+  {
+    "id": "TG-boosts-boost-reassignment",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Transferência e carência de boosts não entram na autoridade de permissões.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. Boosts e seus níveis comerciais não são necessários para permissões ou recursos de comunidade. Transferência e carência de boosts não entram na autoridade de permissões."
+  },
+  {
+    "id": "TG-boosts-chat-levels",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Capacidades de comunidade não serão condicionadas a níveis financiados.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. Boosts e seus níveis comerciais não são necessários para permissões ou recursos de comunidade. Capacidades de comunidade não serão condicionadas a níveis financiados."
+  },
+  {
+    "id": "TG-boosts-boosted-channel-stories",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Publicação e quota de Stories pertencem às permissões do canal; desbloqueio por boost fica fora.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. Boosts e seus níveis comerciais não são necessários para permissões ou recursos de comunidade. Publicação e quota de Stories pertencem às permissões do canal; desbloqueio por boost fica fora."
+  },
+  {
+    "id": "TG-boosts-boosted-group-stories",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Publicação e quota de Stories pertencem às permissões do grupo; desbloqueio por boost fica fora.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. Boosts e seus níveis comerciais não são necessários para permissões ou recursos de comunidade. Publicação e quota de Stories pertencem às permissões do grupo; desbloqueio por boost fica fora."
+  },
+  {
+    "id": "TG-boosts-boosted-chat-colors",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Benefício visual ou de capacidade pode ser adaptado separadamente; o requisito Telegram de acesso monetizado não integra a entrega.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada nessa forma. Adaptar depois cores de comunidade nas configurações comuns, com permissão de edição; sem níveis ou compra de boosts."
+  },
+  {
+    "id": "TG-boosts-boosted-chat-wallpaper",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Benefício visual ou de capacidade pode ser adaptado separadamente; o requisito Telegram de acesso monetizado não integra a entrega.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada nessa forma. Adaptar depois wallpaper de comunidade nas configurações comuns, com permissão de edição; sem desbloqueio pago."
+  },
+  {
+    "id": "TG-boosts-boosted-chat-emoji-status",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Benefício visual ou de capacidade pode ser adaptado separadamente; o requisito Telegram de acesso monetizado não integra a entrega.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada nessa forma. Adaptar depois status visual de comunidade com autorização de edição; sem exigir boost."
+  },
+  {
+    "id": "TG-boosts-boosted-custom-reactions",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Benefício visual ou de capacidade pode ser adaptado separadamente; o requisito Telegram de acesso monetizado não integra a entrega.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada nessa forma. Adaptar depois reações personalizadas com limites e permissões da comunidade; sem benefício pago."
+  },
+  {
+    "id": "TG-boosts-group-custom-emoji-packs",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Benefício visual ou de capacidade pode ser adaptado separadamente; o requisito Telegram de acesso monetizado não integra a entrega.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada nessa forma. Adaptar depois pacotes compartilhados com direitos de uso e controle da comunidade; sem assinatura obrigatória."
+  },
+  {
+    "id": "TG-boosts-group-transcription-allowance",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Benefício visual ou de capacidade pode ser adaptado separadamente; o requisito Telegram de acesso monetizado não integra a entrega.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada nessa forma. Adaptar depois transcrição pelo orçamento real de IA e consentimento; sem quota comprada por boost."
+  },
+  {
+    "id": "TG-boosts-booster-permissions",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Pagamento não concede exceção de moderação nem amplia autoridade de membro.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. Boosts e seus níveis comerciais não são necessários para permissões ou recursos de comunidade. Pagamento não concede exceção de moderação nem amplia autoridade de membro."
+  },
+  {
+    "id": "TG-boosts-channel-sponsored-message-controls",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Não introduzir anúncios de canal nem venda de sua remoção para obter paridade.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. Boosts e seus níveis comerciais não são necessários para permissões ou recursos de comunidade. Não introduzir anúncios de canal nem venda de sua remoção para obter paridade."
+  },
+  {
+    "id": "TG-boosts-giveaway-boost-grants",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Sorteios de assinatura e concessões comerciais de boosts ficam fora da entrega.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. Boosts e seus níveis comerciais não são necessários para permissões ou recursos de comunidade. Sorteios de assinatura e concessões comerciais de boosts ficam fora da entrega."
+  }
+]

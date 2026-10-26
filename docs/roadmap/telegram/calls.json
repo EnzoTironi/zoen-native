@@ -1,0 +1,293 @@
+[
+  {
+    "id": "TG-calls-private-voice-calls",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/calls/provider.ios.tsx",
+      "apps/zoen/modules/zoen-core/ios/Calls/ZoenCallRTC.swift",
+      "docs/dev/ios-calls.md"
+    ],
+    "gap": "Preservar Core/RTC/CallKit atuais e provar voz E2EE entre duas pontas via TURN, com áudio de sistema, rede, encerramento e aparelho físico.",
+    "issues": [
+      178,
+      266,
+      288,
+      284
+    ]
+  },
+  {
+    "id": "TG-calls-private-video-calls",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/calls/provider.ios.tsx",
+      "apps/zoen/modules/zoen-core/ios/Calls/ZoenCallRTC.swift",
+      "docs/dev/ios-calls.md"
+    ],
+    "gap": "Provar vídeo entre duas pontas, permissões, câmera, retorno ao chat e recuperação física; ampliar Android/Web depois do aceite iOS.",
+    "issues": [
+      178,
+      266,
+      288,
+      312,
+      184
+    ]
+  },
+  {
+    "id": "TG-calls-secure-ad-hoc-group-calls",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "crates/client-core/src/engine/calls.rs",
+      "docs/dev/ios-calls.md"
+    ],
+    "gap": "Definir sala canônica, admissão por dispositivo, participantes e precedência de fim antes de ampliar o 1:1 para huddles E2EE.",
+    "issues": [
+      178,
+      181,
+      182
+    ]
+  },
+  {
+    "id": "TG-calls-group-voice-chats",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "crates/client-core/src/engine/calls.rs",
+      "docs/dev/ios-calls.md"
+    ],
+    "gap": "Ligar sala de voz ao grupo/canal com papéis, entrada/saída, revogação e reconexão preservadas no domínio.",
+    "issues": [
+      178,
+      181,
+      182
+    ]
+  },
+  {
+    "id": "TG-calls-group-video-chats",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "crates/client-core/src/engine/calls.rs",
+      "apps/zoen/modules/zoen-core/ios/Calls/ZoenCallRTC.swift"
+    ],
+    "gap": "Adicionar mídia multiparte, seleção de trilhas e capacidade de SFU com E2EE e remoção efetiva de participantes.",
+    "issues": [
+      178,
+      181,
+      182
+    ]
+  },
+  {
+    "id": "TG-calls-screen-sharing",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/Calls/ZoenCallRTC.swift",
+      "docs/dev/ios-calls.md"
+    ],
+    "gap": "Adicionar captura de tela autorizada pelo sistema, trilha de compartilhamento e parada ao aposentar chamada/conta.",
+    "issues": [
+      178,
+      183,
+      184
+    ]
+  },
+  {
+    "id": "TG-calls-screen-sharing-with-audio",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/Calls/ZoenCallRTC.swift",
+      "docs/dev/ios-calls.md"
+    ],
+    "gap": "Compartilhar áudio de sistema com consentimento e handoff sem perder microfone, CallKit ou intenção de encerramento.",
+    "issues": [
+      178,
+      183,
+      184
+    ]
+  },
+  {
+    "id": "TG-calls-selective-screen-sharing",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/Calls/ZoenCallRTC.swift",
+      "docs/dev/ios-calls.md"
+    ],
+    "gap": "Selecionar janela/superfície no sistema e comprovar que somente a seleção autorizada é transmitida.",
+    "issues": [
+      178,
+      183,
+      184
+    ]
+  },
+  {
+    "id": "TG-calls-noise-suppression",
+    "scope": "active",
+    "implementation": "unverified",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/Calls/ZoenCallRTC.swift",
+      "docs/dev/ios-calls.md"
+    ],
+    "gap": "Qualificar redução de ruído/AEC do SDK mantido em mídia real e definir o controle necessário; defaults do engine não são prova.",
+    "issues": [
+      178,
+      266,
+      183
+    ]
+  },
+  {
+    "id": "TG-calls-per-participant-volume",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/Calls/ZoenCallRTC.swift",
+      "crates/client-core/src/engine/calls.rs"
+    ],
+    "gap": "Controlar ganho local por participante sem alterar permissões de fala nem a autoridade da sala.",
+    "issues": [
+      178,
+      181
+    ]
+  },
+  {
+    "id": "TG-calls-raise-hand",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "crates/client-core/src/engine/calls.rs",
+      "docs/dev/ios-calls.md"
+    ],
+    "gap": "Representar solicitação de fala e sua retirada por participante, com ordem, papel e reconexão consistentes.",
+    "issues": [
+      178,
+      181
+    ]
+  },
+  {
+    "id": "TG-calls-speaker-and-listener-links",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "crates/client-core/src/engine/calls.rs",
+      "docs/dev/ios-calls.md"
+    ],
+    "gap": "Criar convites de sala com papéis distintos, validade, revogação e admissão canônica por dispositivo.",
+    "issues": [
+      178,
+      181,
+      177
+    ]
+  },
+  {
+    "id": "TG-calls-scheduled-voice-sessions",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "crates/client-core/src/engine/calls.rs",
+      "docs/dev/ios-calls.md"
+    ],
+    "gap": "Agendar sessão com fuso, lembrete e identidade estável da ocorrência, sem iniciar captura automaticamente.",
+    "issues": [
+      178,
+      181
+    ]
+  },
+  {
+    "id": "TG-calls-call-recording",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/modules/zoen-core/ios/Calls/ZoenCallRTC.swift",
+      "docs/dev/ios-calls.md"
+    ],
+    "gap": "Recomendação: manter gravação desligada por padrão; exigir consentimento de todos, acesso/retensão E2EE e encerramento verificável antes de habilitar sessões gravadas.",
+    "issues": [
+      178,
+      177,
+      182
+    ],
+    "recommendation": "Concluir chamadas privadas e grupos antes de gravação; captura exige consentimento visível e acesso/retenção definidos."
+  },
+  {
+    "id": "TG-calls-rtmp-streaming",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "crates/client-core/src/engine/calls.rs",
+      "docs/dev/call-turn-transport.md"
+    ],
+    "gap": "Adicionar ingestão/publicação de transmissão com credenciais limitadas, autorização e orçamento de capacidade.",
+    "issues": [
+      178,
+      181,
+      182
+    ]
+  },
+  {
+    "id": "TG-calls-call-comments-and-reactions",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "crates/client-core/src/engine/calls.rs",
+      "apps/zoen/src/components/message-actions.types.ts"
+    ],
+    "gap": "Vincular comentários e reações à instância da chamada e aos participantes autorizados, sem reaproveitar estado efêmero sem escopo.",
+    "issues": [
+      178,
+      181,
+      176
+    ]
+  },
+  {
+    "id": "TG-calls-join-as-a-channel",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "crates/client-core/src/engine/calls.rs",
+      "docs/dev/ios-calls.md"
+    ],
+    "gap": "Definir representação de canal e direito de falar em seu nome, preservando a identidade/dispositivo responsáveis.",
+    "issues": [
+      178,
+      181,
+      177
+    ]
+  },
+  {
+    "id": "TG-calls-group-call-verification",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "crates/client-core/src/engine/calls.rs",
+      "docs/dev/ios-calls.md"
+    ],
+    "gap": "Prover verificação dos participantes e rotação de chaves de mídia em grupos, com tratamento explícito de entrada/remoção.",
+    "issues": [
+      178,
+      177,
+      182
+    ]
+  }
+]

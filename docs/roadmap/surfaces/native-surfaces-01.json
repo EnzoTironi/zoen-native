@@ -1,0 +1,365 @@
+[
+  {
+    "id": "native:apps/zoen/modules/zoen-core/ios/Calls/ZoenCallViewController.swift:ZoenCallViewController",
+    "name": "Chamada de áudio/vídeo",
+    "kind": "native-controller",
+    "path": "apps/zoen/modules/zoen-core/ios/Calls/ZoenCallViewController.swift",
+    "entrypoint": "NativeCallsProvider → ZoenCallSession → ZoenCallViewController; CallKit/return-layout",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Aceite de chamada com dois clientes/aparelho e interrupção do sistema permanece separado."
+    ],
+    "issues": [
+      178,
+      266
+    ]
+  },
+  {
+    "id": "native:apps/zoen/modules/zoen-core/ios/TelegramVideoEditing/ZoenTelegramVideoEditingController.swift:ZoenTelegramVideoEditingController",
+    "name": "Editor de vídeo Telegram",
+    "kind": "native-controller",
+    "path": "apps/zoen/modules/zoen-core/ios/TelegramVideoEditing/ZoenTelegramVideoEditingController.swift",
+    "entrypoint": "ZoenSession+MediaDraftEditing → ZoenAttachmentVideoEditor → ZoenTelegramVideoEditingController",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      173,
+      225
+    ]
+  },
+  {
+    "id": "native-system:apps/zoen/modules/zoen-core/ios/TelegramVideoEditing/ZoenTelegramVideoEditingController.swift:62",
+    "name": "Discard changes?",
+    "kind": "system",
+    "path": "apps/zoen/modules/zoen-core/ios/TelegramVideoEditing/ZoenTelegramVideoEditingController.swift",
+    "entrypoint": "UIAlertController linha62; ZoenTelegramVideoEditingController",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      173,
+      225
+    ]
+  },
+  {
+    "id": "native:apps/zoen/modules/zoen-core/ios/ZoenAttachmentPhotoEditor.swift:Editor",
+    "name": "Editor de foto/desenho",
+    "kind": "native-controller",
+    "path": "apps/zoen/modules/zoen-core/ios/ZoenAttachmentPhotoEditor.swift",
+    "entrypoint": "ZoenSession+MediaDraftEditing → ZoenAttachmentPhotoEditor → Editor (PencilKit)",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      173,
+      225
+    ]
+  },
+  {
+    "id": "native-system:apps/zoen/modules/zoen-core/ios/ZoenAttachmentPhotoEditor.swift:65",
+    "name": "Your changes need attention",
+    "kind": "system",
+    "path": "apps/zoen/modules/zoen-core/ios/ZoenAttachmentPhotoEditor.swift",
+    "entrypoint": "UIAlertController linha65; ZoenAttachmentPhotoEditor",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      173,
+      225
+    ]
+  },
+  {
+    "id": "native-system:apps/zoen/modules/zoen-core/ios/ZoenAttachmentPhotoEditor.swift:206",
+    "name": "Discard changes?",
+    "kind": "system",
+    "path": "apps/zoen/modules/zoen-core/ios/ZoenAttachmentPhotoEditor.swift",
+    "entrypoint": "UIAlertController linha206; ZoenAttachmentPhotoEditor",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      173,
+      225
+    ]
+  },
+  {
+    "id": "native-system:apps/zoen/modules/zoen-core/ios/ZoenAttachmentPhotoEditor.swift:213",
+    "name": "Unable to save changes",
+    "kind": "system",
+    "path": "apps/zoen/modules/zoen-core/ios/ZoenAttachmentPhotoEditor.swift",
+    "entrypoint": "UIAlertController linha213; ZoenAttachmentPhotoEditor",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      173,
+      225
+    ]
+  },
+  {
+    "id": "native:apps/zoen/modules/zoen-core/ios/ZoenAttachmentPresentationOwner.swift:AttachmentPresentationController",
+    "name": "Controller de posse de anexos",
+    "kind": "native-controller",
+    "path": "apps/zoen/modules/zoen-core/ios/ZoenAttachmentPresentationOwner.swift",
+    "entrypoint": "ZoenAttachmentContainer → ZoenAttachmentPresentationOwner → AttachmentPresentationController",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Controller de infraestrutura/posse de apresentação, não uma tela de conteúdo adicional."
+    ],
+    "issues": [
+      173,
+      225
+    ]
+  },
+  {
+    "id": "native-system:apps/zoen/modules/zoen-core/ios/ZoenAttachmentVideoEditor.swift:96",
+    "name": "Unable to save changes",
+    "kind": "system",
+    "path": "apps/zoen/modules/zoen-core/ios/ZoenAttachmentVideoEditor.swift",
+    "entrypoint": "UIAlertController linha96; ZoenAttachmentVideoEditor",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      173,
+      225
+    ]
+  },
+  {
+    "id": "native-system:apps/zoen/modules/zoen-core/ios/ZoenAttachmentVideoEditor.swift:107",
+    "name": "Your changes need attention",
+    "kind": "system",
+    "path": "apps/zoen/modules/zoen-core/ios/ZoenAttachmentVideoEditor.swift",
+    "entrypoint": "UIAlertController linha107; ZoenAttachmentVideoEditor",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      173,
+      225
+    ]
+  },
+  {
+    "id": "native:apps/zoen/modules/zoen-core/ios/ZoenConversationMediaGallery.swift:Controller",
+    "name": "Galeria de mídia da conversa",
+    "kind": "native-controller",
+    "path": "apps/zoen/modules/zoen-core/ios/ZoenConversationMediaGallery.swift",
+    "entrypoint": "ZoenSession+ConversationGallery → ZoenConversationMediaGallery → Controller",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      173,
+      225
+    ]
+  },
+  {
+    "id": "native:apps/zoen/modules/zoen-core/ios/ZoenMediaGalleryPreview.swift:Gallery",
+    "name": "Prévia de mídia com zoom/compartilhar",
+    "kind": "native-controller",
+    "path": "apps/zoen/modules/zoen-core/ios/ZoenMediaGalleryPreview.swift",
+    "entrypoint": "ZoenSession+Files ou +MediaDraft → ZoenMediaGalleryPreview → Gallery",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      173,
+      225
+    ]
+  },
+  {
+    "id": "native-system:apps/zoen/modules/zoen-core/ios/ZoenMediaGalleryPreview.swift:352",
+    "name": "UIActivityViewController",
+    "kind": "system",
+    "path": "apps/zoen/modules/zoen-core/ios/ZoenMediaGalleryPreview.swift",
+    "entrypoint": "UIActivityViewController linha352; ZoenMediaGalleryPreview",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      173,
+      225
+    ]
+  },
+  {
+    "id": "native:apps/zoen/modules/zoen-core/ios/ZoenMessageContextController.swift:ZoenMessageContextController",
+    "name": "Menu nativo extraído da mensagem",
+    "kind": "native-controller",
+    "path": "apps/zoen/modules/zoen-core/ios/ZoenMessageContextController.swift",
+    "entrypoint": "MessageActions.ios → MessageContextSession → ZoenCoreModule → ZoenMessageContext.present → ZoenMessageContextController",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "native:apps/zoen/modules/zoen-core/ios/ZoenPresentationWindowPolicy.swift:ZoenPresentationRootController",
+    "name": "Controller raiz de apresentação",
+    "kind": "native-controller",
+    "path": "apps/zoen/modules/zoen-core/ios/ZoenPresentationWindowPolicy.swift",
+    "entrypoint": "ZoenPresentationRootDelegate.createRootViewController → ZoenPresentationRootController; orientation/status ownership",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Controller de infraestrutura/posse de apresentação, não uma tela de conteúdo adicional."
+    ],
+    "issues": [
+      173,
+      225
+    ]
+  },
+  {
+    "id": "native:apps/zoen/modules/zoen-core/ios/ZoenQuickLookPreview.swift:Controller",
+    "name": "Prévia de arquivo Quick Look",
+    "kind": "native-controller",
+    "path": "apps/zoen/modules/zoen-core/ios/ZoenQuickLookPreview.swift",
+    "entrypoint": "ZoenSession+FilePreview → ZoenQuickLookPreview → QLPreviewController",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      173,
+      225
+    ]
+  },
+  {
+    "id": "native-system:apps/zoen/modules/zoen-core/ios/ZoenQuickLookPreview.swift:144",
+    "name": "Could not save your changes.",
+    "kind": "system",
+    "path": "apps/zoen/modules/zoen-core/ios/ZoenQuickLookPreview.swift",
+    "entrypoint": "UIAlertController linha144; ZoenQuickLookPreview",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      173,
+      225
+    ]
+  },
+  {
+    "id": "native-system:apps/zoen/modules/zoen-core/ios/ZoenQuickLookPreview.swift:159",
+    "name": "Your changes were saved.",
+    "kind": "system",
+    "path": "apps/zoen/modules/zoen-core/ios/ZoenQuickLookPreview.swift",
+    "entrypoint": "UIAlertController linha159; ZoenQuickLookPreview",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      173,
+      225
+    ]
+  },
+  {
+    "id": "native-overlay:ZoenAttachmentContainer.swift",
+    "name": "Container nativo expansível de anexos",
+    "kind": "sheet",
+    "path": "apps/zoen/modules/zoen-core/ios/ZoenAttachmentContainer.swift",
+    "entrypoint": "ZoenKeyboardPanelHost → ZoenAttachmentContainer → ZoenAttachmentPresentationOwner",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      173,
+      225
+    ]
+  },
+  {
+    "id": "native-overlay:ZoenAttachmentKeyboardContent.swift",
+    "name": "Teclado/painel nativo de anexos",
+    "kind": "sheet",
+    "path": "apps/zoen/modules/zoen-core/ios/ZoenAttachmentKeyboardContent.swift",
+    "entrypoint": "ZoenKeyboardPanelHost → conteúdo Photos",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      173,
+      225
+    ]
+  },
+  {
+    "id": "native-overlay:ZoenAttachmentGalleryContent.swift",
+    "name": "Pager nativo de seleção/galeria",
+    "kind": "sheet",
+    "path": "apps/zoen/modules/zoen-core/ios/ZoenAttachmentGalleryContent.swift",
+    "entrypoint": "ZoenAttachmentKeyboardContent → ZoenAttachmentGalleryContent",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      173,
+      225
+    ]
+  },
+  {
+    "id": "native-overlay:TelegramFileAttachment/ZoenAttachmentFileContent.swift",
+    "name": "Arquivos recentes e seletor",
+    "kind": "sheet",
+    "path": "apps/zoen/modules/zoen-core/ios/TelegramFileAttachment/ZoenAttachmentFileContent.swift",
+    "entrypoint": "ZoenKeyboardPanelHost → ZoenAttachmentFileContent",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      173
+    ]
+  },
+  {
+    "id": "native-overlay:ZoenAttachmentReferenceMenu.swift",
+    "name": "Menu extraído de referência/anexo",
+    "kind": "menu",
+    "path": "apps/zoen/modules/zoen-core/ios/ZoenAttachmentReferenceMenu.swift",
+    "entrypoint": "AttachmentKeyboardContent+Actions ou FileContent+Table → ReferenceMenu",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      173
+    ]
+  },
+  {
+    "id": "native-overlay:ZoenKeyboardPanelHost.swift",
+    "name": "Teclado, emoji e painel de composição",
+    "kind": "system",
+    "path": "apps/zoen/modules/zoen-core/ios/ZoenKeyboardPanelHost.swift",
+    "entrypoint": "Expo native view → ZoenKeyboardPanelHost",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      172,
+      173
+    ]
+  }
+]

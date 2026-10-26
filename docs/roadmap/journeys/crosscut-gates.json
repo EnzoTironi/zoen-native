@@ -1,0 +1,186 @@
+{
+  "sourceHead": "477ac2f393b346a9dd2caab786c3f053382a4dcf",
+  "classificationPolicy": "scoped indica prova limitada; nenhuma jornada completa foi aceita. Implementação parcial reflete os registros lidos, não execução ou inspeção exaustiva de código.",
+  "platforms": [
+    {
+      "id": "ios",
+      "phase": "active-ios",
+      "acceptance": "pending",
+      "remaining": [
+        "Qualificar todas as jornadas e capacidades aplicáveis no artefato final; respeitar sequência iOS → Web/Android → desktop"
+      ]
+    },
+    {
+      "id": "web",
+      "phase": "web-android",
+      "acceptance": "pending",
+      "remaining": [
+        "Qualificar todas as jornadas e capacidades aplicáveis no artefato final; respeitar sequência iOS → Web/Android → desktop"
+      ]
+    },
+    {
+      "id": "android",
+      "phase": "web-android",
+      "acceptance": "pending",
+      "remaining": [
+        "Qualificar todas as jornadas e capacidades aplicáveis no artefato final; respeitar sequência iOS → Web/Android → desktop"
+      ]
+    },
+    {
+      "id": "macos",
+      "phase": "desktop",
+      "acceptance": "pending",
+      "remaining": [
+        "Qualificar todas as jornadas e capacidades aplicáveis no artefato final; respeitar sequência iOS → Web/Android → desktop"
+      ]
+    },
+    {
+      "id": "windows",
+      "phase": "desktop",
+      "acceptance": "pending",
+      "remaining": [
+        "Qualificar todas as jornadas e capacidades aplicáveis no artefato final; respeitar sequência iOS → Web/Android → desktop"
+      ]
+    },
+    {
+      "id": "linux",
+      "phase": "desktop",
+      "acceptance": "pending",
+      "remaining": [
+        "Qualificar todas as jornadas e capacidades aplicáveis no artefato final; respeitar sequência iOS → Web/Android → desktop"
+      ]
+    }
+  ],
+  "productionGates": [
+    {
+      "id": "completeProductAndCompetitiveJourneyMatrix",
+      "phase": "production",
+      "issues": [
+        182,
+        183,
+        184
+      ],
+      "acceptance": "pending",
+      "remaining": [
+        "Produzir evidência reproduzível no backend público e artefatos finais compatíveis"
+      ]
+    },
+    {
+      "id": "exactProductionArtifactsAcrossAllPlatforms",
+      "phase": "production",
+      "issues": [
+        182,
+        183,
+        184
+      ],
+      "acceptance": "pending",
+      "remaining": [
+        "Produzir evidência reproduzível no backend público e artefatos finais compatíveis"
+      ]
+    },
+    {
+      "id": "completePublicBackendAndRealProviders",
+      "phase": "production",
+      "issues": [
+        182,
+        183,
+        184
+      ],
+      "acceptance": "pending",
+      "remaining": [
+        "Produzir evidência reproduzível no backend público e artefatos finais compatíveis"
+      ]
+    },
+    {
+      "id": "cryptographicIntegrityOfflineAndSecureRecovery",
+      "phase": "production",
+      "issues": [
+        182,
+        183,
+        184
+      ],
+      "acceptance": "pending",
+      "remaining": [
+        "Produzir evidência reproduzível no backend público e artefatos finais compatíveis"
+      ]
+    },
+    {
+      "id": "declaredScaleLatencyAvailabilityRecoveryAndCost",
+      "phase": "production",
+      "issues": [
+        182,
+        183,
+        184
+      ],
+      "acceptance": "pending",
+      "remaining": [
+        "Produzir evidência reproduzível no backend público e artefatos finais compatíveis"
+      ]
+    },
+    {
+      "id": "loadFaultSecurityAndAccessibilityVerification",
+      "phase": "production",
+      "issues": [
+        182,
+        183,
+        184
+      ],
+      "acceptance": "pending",
+      "remaining": [
+        "Produzir evidência reproduzível no backend público e artefatos finais compatíveis"
+      ]
+    },
+    {
+      "id": "observabilityAbuseProtectionAndIncidentOperations",
+      "phase": "production",
+      "issues": [
+        182,
+        183,
+        184
+      ],
+      "acceptance": "pending",
+      "remaining": [
+        "Produzir evidência reproduzível no backend público e artefatos finais compatíveis"
+      ]
+    },
+    {
+      "id": "reproducibleReleasesDataMigrationsAndRollback",
+      "phase": "production",
+      "issues": [
+        182,
+        183,
+        184
+      ],
+      "acceptance": "pending",
+      "remaining": [
+        "Produzir evidência reproduzível no backend público e artefatos finais compatíveis"
+      ]
+    },
+    {
+      "id": "maintainableArchitectureAndLegacyRemoval",
+      "phase": "production",
+      "issues": [
+        182,
+        183,
+        184
+      ],
+      "acceptance": "pending",
+      "remaining": [
+        "Produzir evidência reproduzível no backend público e artefatos finais compatíveis"
+      ]
+    }
+  ],
+  "operatingEnvelope": {
+    "status": "DECLARED_NOT_MEASURED",
+    "path": "docs/dev/zoen-operating-envelope-v1.json",
+    "sha256": "4a3a1c3f8bb80a349c4133cfcc7463a46b5aa347261fdc16bd649b8de0468a6d",
+    "independentFullRuns": 2,
+    "monthlyObservedDays": 30,
+    "accepted": false
+  },
+  "globalFlags": {
+    "fullAppParityAccepted": false,
+    "productionReadinessAccepted": false,
+    "scaleReadinessAccepted": false
+  }
+}

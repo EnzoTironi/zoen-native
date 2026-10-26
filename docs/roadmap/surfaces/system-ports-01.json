@@ -1,0 +1,147 @@
+[
+  {
+    "id": "os:miniapps/native-capabilities.ts:Seletor de fotos do sistema",
+    "name": "Seletor de fotos do sistema",
+    "kind": "system",
+    "path": "apps/zoen/src/miniapps/native-capabilities.ts",
+    "entrypoint": "launchImageLibraryAsync(; apps/zoen/src/miniapps/view-host-ready.tsx",
+    "scope": "paused",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      180
+    ]
+  },
+  {
+    "id": "os:app/agent/[id].tsx:Compartilhamento do sistema",
+    "name": "Compartilhamento do sistema",
+    "kind": "system",
+    "path": "apps/zoen/src/app/agent/[id].tsx",
+    "entrypoint": "Share.share(; Consumidor não estabelecido no grafo estático; revisar export/entrada nativa",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      172,
+      173
+    ]
+  },
+  {
+    "id": "os:app/space/[id].tsx:Compartilhamento do sistema",
+    "name": "Compartilhamento do sistema",
+    "kind": "system",
+    "path": "apps/zoen/src/app/space/[id].tsx",
+    "entrypoint": "Share.share(; Consumidor não estabelecido no grafo estático; revisar export/entrada nativa",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      172,
+      173
+    ]
+  },
+  {
+    "id": "os:profile/picker.ts:Seletor de fotos do sistema",
+    "name": "Seletor de fotos do sistema",
+    "kind": "system",
+    "path": "apps/zoen/src/profile/picker.ts",
+    "entrypoint": "launchImageLibraryAsync(; apps/zoen/src/app/edit-profile.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "os:documents/markdown-files.ts:Seletor de arquivos do sistema",
+    "name": "Seletor de arquivos do sistema",
+    "kind": "system",
+    "path": "apps/zoen/src/documents/markdown-files.ts",
+    "entrypoint": "getDocumentAsync(; apps/zoen/src/app/new-page.tsx, apps/zoen/src/app/page/[id].tsx, apps/zoen/src/documents/page-version-export-action.tsx",
+    "scope": "paused",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      179
+    ]
+  },
+  {
+    "id": "os:documents/markdown-files.web.ts:Seletor de arquivos do sistema",
+    "name": "Seletor de arquivos do sistema",
+    "kind": "system",
+    "path": "apps/zoen/src/documents/markdown-files.web.ts",
+    "entrypoint": "getDocumentAsync(; Consumidor não estabelecido no grafo estático; revisar export/entrada nativa",
+    "scope": "paused",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      179
+    ]
+  },
+  {
+    "id": "os:notifications/system.ts:Permissão do sistema",
+    "name": "Permissão do sistema",
+    "kind": "system",
+    "path": "apps/zoen/src/notifications/system.ts",
+    "entrypoint": "requestPermissionsAsync(; apps/zoen/src/notifications/provider.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      178
+    ]
+  },
+  {
+    "id": "os:media/attachment-picker.ts:Seletor de fotos do sistema",
+    "name": "Seletor de fotos do sistema",
+    "kind": "system",
+    "path": "apps/zoen/src/media/attachment-picker.ts",
+    "entrypoint": "launchImageLibraryAsync(; apps/zoen/src/media/use-durable-attachment-controller.ts, apps/zoen/src/media/attachment-approval.types.ts, apps/zoen/src/media/attachment-composer.tsx, apps/zoen/src/media/durable-attachment-pick.ts, apps/zoen/src/media/attachment-photo-picker.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      172,
+      173
+    ]
+  },
+  {
+    "id": "os:media/attachment-picker.ts:Seletor de arquivos do sistema",
+    "name": "Seletor de arquivos do sistema",
+    "kind": "system",
+    "path": "apps/zoen/src/media/attachment-picker.ts",
+    "entrypoint": "getDocumentAsync(; apps/zoen/src/media/use-durable-attachment-controller.ts, apps/zoen/src/media/attachment-approval.types.ts, apps/zoen/src/media/attachment-composer.tsx, apps/zoen/src/media/durable-attachment-pick.ts, apps/zoen/src/media/attachment-photo-picker.tsx",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      172,
+      173
+    ]
+  },
+  {
+    "id": "os:media/media-composer-selection.ts:Seletor de arquivos do sistema",
+    "name": "Seletor de arquivos do sistema",
+    "kind": "system",
+    "path": "apps/zoen/src/media/media-composer-selection.ts",
+    "entrypoint": "getDocumentAsync(; apps/zoen/src/media/use-media-composer-controller.ts",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      172,
+      173
+    ]
+  }
+]

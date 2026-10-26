@@ -1,0 +1,242 @@
+[
+  {
+    "id": "TG-stars-gifts",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Catálogo, compra e titularidade comercial de presentes digitais ficam fora.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de moeda virtual, mercado de presentes ou remuneração de criadores. Catálogo, compra e titularidade comercial de presentes digitais ficam fora."
+  },
+  {
+    "id": "TG-stars-collectible-gifts",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Escassez e propriedade negociável de colecionáveis ficam fora.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de moeda virtual, mercado de presentes ou remuneração de criadores. Escassez e propriedade negociável de colecionáveis ficam fora."
+  },
+  {
+    "id": "TG-stars-gift-marketplace",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Mercado secundário, custódia e disputa ficam fora.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de moeda virtual, mercado de presentes ou remuneração de criadores. Mercado secundário, custódia e disputa ficam fora."
+  },
+  {
+    "id": "TG-stars-gift-auctions",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Leilões, reserva de fundos e liquidação ficam fora.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de moeda virtual, mercado de presentes ou remuneração de criadores. Leilões, reserva de fundos e liquidação ficam fora."
+  },
+  {
+    "id": "TG-stars-gift-purchase-offers",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Ofertas de compra de presentes e suas obrigações ficam fora.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de moeda virtual, mercado de presentes ou remuneração de criadores. Ofertas de compra de presentes e suas obrigações ficam fora."
+  },
+  {
+    "id": "TG-stars-gift-crafting",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Consumo e criação de colecionáveis negociáveis ficam fora.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de moeda virtual, mercado de presentes ou remuneração de criadores. Consumo e criação de colecionáveis negociáveis ficam fora."
+  },
+  {
+    "id": "TG-stars-gift-display-and-pinning",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Benefício visual ou de capacidade pode ser adaptado separadamente; o requisito Telegram de acesso monetizado não integra a entrega.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada nessa forma. Adaptar depois destaque no perfil apenas para conteúdo autorizado; sem exigir presente negociável."
+  },
+  {
+    "id": "TG-stars-gift-collections",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Benefício visual ou de capacidade pode ser adaptado separadamente; o requisito Telegram de acesso monetizado não integra a entrega.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada nessa forma. Adaptar depois organização visual de conteúdo autorizado; sem criar inventário comercial de presentes."
+  },
+  {
+    "id": "TG-stars-gift-based-themes",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Benefício visual ou de capacidade pode ser adaptado separadamente; o requisito Telegram de acesso monetizado não integra a entrega.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada nessa forma. Adaptar depois temas nas configurações comuns; sem vincular personalização a um presente pago."
+  },
+  {
+    "id": "TG-stars-gift-signatures",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Atribuição de presentes comerciais fica fora; privacidade normal de remetente é contrato separado.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de moeda virtual, mercado de presentes ou remuneração de criadores. Atribuição de presentes comerciais fica fora; privacidade normal de remetente é contrato separado."
+  },
+  {
+    "id": "TG-stars-gift-upgrades-for-others",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Upgrade pago de presente de terceiro fica fora.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de moeda virtual, mercado de presentes ou remuneração de criadores. Upgrade pago de presente de terceiro fica fora."
+  },
+  {
+    "id": "TG-stars-gift-value-information",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Não exibir valuation comercial de ativos que a entrega não oferece.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de moeda virtual, mercado de presentes ou remuneração de criadores. Não exibir valuation comercial de ativos que a entrega não oferece."
+  },
+  {
+    "id": "TG-stars-gift-reception-controls",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Controles de presente comercial ficam fora; bloqueio e consentimento normais permanecem próprios.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de moeda virtual, mercado de presentes ou remuneração de criadores. Controles de presente comercial ficam fora; bloqueio e consentimento normais permanecem próprios."
+  },
+  {
+    "id": "TG-stars-collectible-transfers",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Transferência comercial de colecionáveis e efeito contábil correspondente ficam fora.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de moeda virtual, mercado de presentes ou remuneração de criadores. Transferência comercial de colecionáveis e efeito contábil correspondente ficam fora."
+  },
+  {
+    "id": "TG-stars-blockchain-gift-export",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Blockchain, custódia e exportação de colecionáveis ficam fora.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de moeda virtual, mercado de presentes ou remuneração de criadores. Blockchain, custódia e exportação de colecionáveis ficam fora."
+  },
+  {
+    "id": "TG-stars-stars-withdrawal",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/roadmap-status.md",
+      "output/telegram-feature-matrix-2026-10-20/matrix.json"
+    ],
+    "gap": "Saque e liquidação de ganhos de moeda virtual ficam fora.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência; não integra a entrega aprovada. A entrega aprovada não depende de moeda virtual, mercado de presentes ou remuneração de criadores. Saque e liquidação de ganhos de moeda virtual ficam fora."
+  }
+]

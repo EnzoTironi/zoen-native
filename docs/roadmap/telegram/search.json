@@ -1,0 +1,259 @@
+[
+  {
+    "id": "TG-search-conversation-search",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/app/search.tsx",
+      "apps/zoen/src/core/conversation-search.ts",
+      "apps/zoen/src/core/chat-search-react.test.ts"
+    ],
+    "gap": "Qualificar busca, paginação e salto no iPhone; testes de fonte cobrem aposentadoria/retomada e perda de acesso.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-search-global-message-search",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/app/search.tsx",
+      "apps/zoen/src/core/conversation-search.ts",
+      "apps/zoen/src/core/chat-search-react.test.ts"
+    ],
+    "gap": "Fechar busca global paginada em todo histórico disponível e salto ao contexto correto; tela global limita primeira consulta a 30.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-search-search-filters",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/search.tsx",
+      "apps/zoen/src/core/conversation-search.ts",
+      "apps/zoen/src/core/chat-search-react.test.ts"
+    ],
+    "gap": "Filtrar por mídia/tipo/período mantendo cursor e escopo da consulta.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-search-author-and-chat-filters",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/app/search.tsx",
+      "apps/zoen/src/core/conversation-search.ts",
+      "apps/zoen/src/core/chat-search-react.test.ts"
+    ],
+    "gap": "Filtro de conversa existe via rota space; falta seleção de autor e combinação de filtros na interface.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-search-jump-to-date",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/search.tsx",
+      "apps/zoen/src/core/conversation-search.ts",
+      "apps/zoen/src/core/chat-search-react.test.ts"
+    ],
+    "gap": "Escolher dia e posicionar histórico real sem exigir palavra de busca.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-search-search-result-list",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/app/search.tsx",
+      "apps/zoen/src/core/conversation-search.ts",
+      "apps/zoen/src/core/chat-search-react.test.ts"
+    ],
+    "gap": "Qualificar lista, trechos, erro e abertura de resultado em conversa/thread com contexto preservado.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-search-public-post-search",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/search.tsx",
+      "apps/zoen/src/core/conversation-search.ts",
+      "apps/zoen/src/core/chat-search-react.test.ts"
+    ],
+    "gap": "Definir descoberta pública autorizada; índice local acessível não equivale à busca pública Telegram.",
+    "issues": [
+      172
+    ],
+    "recommendation": "Adotar descoberta pública e leitura integrada somente no contexto de comunidades; respeitar os destinos e permissões atuais."
+  },
+  {
+    "id": "TG-search-global-hashtag-search",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/search.tsx",
+      "apps/zoen/src/core/conversation-search.ts",
+      "apps/zoen/src/core/chat-search-react.test.ts"
+    ],
+    "gap": "Definir semântica de hashtag pública e proteção contra exposição de conversas privadas.",
+    "issues": [
+      172
+    ],
+    "recommendation": "Adotar descoberta pública e leitura integrada somente no contexto de comunidades; respeitar os destinos e permissões atuais."
+  },
+  {
+    "id": "TG-search-chat-scoped-hashtags",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/app/search.tsx",
+      "apps/zoen/src/core/conversation-search.ts",
+      "apps/zoen/src/core/chat-search-react.test.ts"
+    ],
+    "gap": "Tratar toque em hashtag como consulta contextual, com correspondência canônica em vez de texto aproximado.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-search-channel-recommendations",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/search.tsx",
+      "apps/zoen/src/core/conversation-search.ts",
+      "apps/zoen/src/core/chat-search-react.test.ts"
+    ],
+    "gap": "Definir recomendações explicáveis de comunidades com controle de privacidade e entrada autorizada.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-search-bot-recommendations",
+    "scope": "paused",
+    "implementation": "unverified",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/search.tsx",
+      "apps/zoen/src/core/conversation-search.ts",
+      "apps/zoen/src/core/chat-search-react.test.ts"
+    ],
+    "gap": "Retomar descoberta de agentes/Apps apenas na frente apropriada, sem apresentar busca por nome como recomendação.",
+    "issues": [
+      172,
+      179
+    ]
+  },
+  {
+    "id": "TG-search-in-app-browser",
+    "scope": "decision",
+    "implementation": "different",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/core/message-markdown.ts",
+      "apps/zoen/src/components/use-link-launch.ts"
+    ],
+    "gap": "Abertura atual usa navegador do sistema; Enzo decidir se leitura interna agrega valor sem criar segundo navegador.",
+    "issues": [
+      172
+    ],
+    "recommendation": "Adotar descoberta pública e leitura integrada somente no contexto de comunidades; respeitar os destinos e permissões atuais."
+  },
+  {
+    "id": "TG-search-browser-choice",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/core/message-markdown.ts",
+      "apps/zoen/src/components/use-link-launch.ts"
+    ],
+    "gap": "Decidir se preferência de navegador é necessária além da escolha do sistema operacional.",
+    "issues": [
+      172
+    ],
+    "recommendation": "Adotar descoberta pública e leitura integrada somente no contexto de comunidades; respeitar os destinos e permissões atuais."
+  },
+  {
+    "id": "TG-search-instant-view",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/media/article-editor.tsx",
+      "apps/zoen/src/documents/markdown-files.ts"
+    ],
+    "gap": "Artigo tem editor próprio, mas leitura de URL extraída em layout nativo ainda precisa contrato e jornada qualificados.",
+    "issues": [
+      172,
+      173
+    ]
+  },
+  {
+    "id": "TG-search-instant-view-tables-and-rtl",
+    "scope": "active",
+    "implementation": "unverified",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/article-editor.tsx",
+      "apps/zoen/src/documents/markdown-files.ts"
+    ],
+    "gap": "Qualificar tabelas largas/RTL e leitura de artigo real; suporte Markdown isolado não prova importação de páginas web.",
+    "issues": [
+      172,
+      173
+    ]
+  },
+  {
+    "id": "TG-search-search-settings",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/search.tsx",
+      "apps/zoen/src/core/conversation-search.ts",
+      "apps/zoen/src/core/chat-search-react.test.ts"
+    ],
+    "gap": "Adicionar resultados de configurações/ajuda com destino exato, sem misturar hits inexistentes de mensagem.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-search-qr-scanner",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/core/message-markdown.ts",
+      "apps/zoen/src/components/use-link-launch.ts"
+    ],
+    "gap": "Ler QR de câmera e abrir só links reconhecidos com confirmação de destino/permissão; parser de link não é scanner.",
+    "issues": [
+      172
+    ]
+  }
+]

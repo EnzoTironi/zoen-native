@@ -1,0 +1,298 @@
+[
+  {
+    "id": "TG-notifications-notification-exceptions",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/notification-settings.tsx",
+      "apps/zoen/src/notifications/muted-chats.ts"
+    ],
+    "gap": "Há silenciamento por conversa; falta escolher exceções de alerta por pessoa/tipo.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-notifications-custom-notification-sounds",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/notification-settings.tsx",
+      "apps/zoen/src/notifications/system.ts"
+    ],
+    "gap": "Som permanece padrão; falta escolher, ouvir e atribuir um alerta próprio.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-notifications-custom-mute-duration",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/notifications/muted-chats.ts",
+      "apps/zoen/src/core/generated/Command.ts"
+    ],
+    "gap": "Silenciar existe, mas falta escolher uma duração e ver quando o alerta retorna.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-notifications-reaction-notification-controls",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/notification-settings.tsx",
+      "apps/zoen/src/notifications/local.ts"
+    ],
+    "gap": "Falta escolher quais reações geram alerta sem silenciar todas as mensagens.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-notifications-unread-badge-policy",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/notifications/system.ts",
+      "apps/zoen/src/components/notification-settings.tsx"
+    ],
+    "gap": "O badge recebe um total; falta escolher chats versus mensagens e categorias incluídas.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-notifications-expanded-notifications",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/notifications/system.ts",
+      "apps/zoen/src/notifications/presentation.ts"
+    ],
+    "gap": "Há prévia local e abertura; faltam ações expandidas qualificadas no sistema.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-notifications-siri-message-announcements",
+    "scope": "later",
+    "implementation": "unverified",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/notifications/README.md",
+      "apps/zoen/src/notifications/system.ts"
+    ],
+    "gap": "Não foi comprovado anúncio de mensagens pelo Siri nem seu consentimento.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-notifications-cloud-themes",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/theme-settings.tsx",
+      "apps/zoen/src/core/theme-persistence.test.ts"
+    ],
+    "gap": "Customizações são locais; falta compartilhar e recuperar temas em outro dispositivo.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-notifications-theme-editor",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/theme-settings.tsx",
+      "apps/zoen/src/core/theme-preview-list.test.ts"
+    ],
+    "gap": "Editor tem cores, fundo, texto e prévia; falta aceite nativo de edição, restauração e reset.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-notifications-light-dark-and-automatic-themes",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/theme/catalog.ts",
+      "apps/zoen/src/components/theme-settings.tsx",
+      "apps/zoen/src/core/theme-persistence.test.ts"
+    ],
+    "gap": "Seis temas selecionados: quatro Telegram e dois Céu Zoen; falta aceite integrado de Auto e retorno.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-notifications-animated-chat-backgrounds",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/sky-background.tsx",
+      "apps/zoen/src/components/theme-settings.tsx"
+    ],
+    "gap": "Há transição do céu; falta reproduzir e qualificar o movimento de fundos selecionados do Telegram.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-notifications-photo-and-patterned-wallpapers",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/sky-background.tsx",
+      "apps/zoen/src/components/theme-settings.tsx"
+    ],
+    "gap": "Existem fotos fixas dos céus; falta escolher foto/padrão por uma jornada de papel de parede.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-notifications-wallpaper-motion-and-blur",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/sky-background.tsx",
+      "apps/zoen/src/components/theme-settings.tsx"
+    ],
+    "gap": "O céu usa blur fixo; falta controlar e pré-visualizar movimento e desfoque do fundo.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-notifications-shared-wallpaper-links",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/theme-settings.tsx",
+      "apps/zoen/src/app/(tabs)/you.tsx"
+    ],
+    "gap": "Falta gerar e abrir um link de configuração de fundo com prévia e confirmação.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-notifications-wallpapers-for-both-sides",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/theme-settings.tsx",
+      "apps/zoen/src/core/generated/Command.ts"
+    ],
+    "gap": "Falta propor um fundo compartilhado e respeitar a decisão da outra pessoa.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-notifications-chat-specific-themes",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/theme-settings.tsx",
+      "apps/zoen/src/components/appearance-picker.tsx"
+    ],
+    "gap": "A aparência é global; falta aplicar e remover uma aparência apenas desta conversa.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-notifications-font-scaling",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/theme-settings.tsx",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Tamanho de mensagem é editável; falta verificar escala de toda a interface e Dynamic Type sem cortes.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-notifications-voiceover-and-talkback",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/theme-settings.tsx",
+      "apps/zoen/src/app/person/[id].tsx",
+      "docs/product/telegram-ios-blocked-people.md"
+    ],
+    "gap": "Há rótulos e papéis; faltam leitura, foco, ordem e ações completas com leitores de tela nativos.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-notifications-rtl-and-localization",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "packages/zoen-ui/web/locale.ts",
+      "apps/zoen/src/i18n/index.ts"
+    ],
+    "gap": "Português e inglês existem; faltam idiomas RTL e qualificação dos layouts espelhados.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-notifications-power-saving-controls",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/theme-settings.tsx",
+      "apps/zoen/src/notifications/README.md"
+    ],
+    "gap": "Reduzir movimento existe; faltam controles coerentes de autoplay e atividade em segundo plano.",
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "TG-notifications-high-refresh-rate-ui",
+    "scope": "active",
+    "implementation": "unverified",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/sky-background.tsx",
+      "apps/zoen/acceptance.json"
+    ],
+    "gap": "Falta medir e qualificar transições nas taxas de atualização reais dos dispositivos.",
+    "issues": [
+      181
+    ]
+  }
+]

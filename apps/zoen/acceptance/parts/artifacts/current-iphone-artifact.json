@@ -1,29 +1,56 @@
 {
-  "checkpoint": "707",
-  "commit": "eb62cdaf911a945c25a3e9b26e336e2a39bf1d60",
+  "checkpoint": "718",
+  "commit": "b7ab2265bc68fc6ec29465d99e41cdc03b818415",
   "coreCommit": "eb62cdaf911a945c25a3e9b26e336e2a39bf1d60",
-  "frontendQualificationCommit": "23e997cdf9c5e3838f686c007a0f1844a83a2094",
-  "integrationChecks": "58 affected tests and TSC passed on actualeb62; full frontend2718 remains attributed to23e.",
+  "frontendQualificationCommit": "930cae47cf31150f1c5d1f257a30d924e47e2009",
+  "integrationChecks": "Original full check failed on a dialog TypeScript contract and remains preserved. Causal 930cae47 types/lint/format and 2758 tests passed; b38951f0 discovery 10/10 and b7ab2265 final 20/20 focused results remain separate, without a repeated full-check claim.",
   "configuration": "Release arm64 iOS Simulator; normal Xcode signature, no Metro",
   "deviceUdid": "E439FAD5-4E39-4224-ABFD-215D0ECCFC68",
-  "archivePath": "/Users/enzotironi/.codex/builds/zoen-ios-membership-v707/attempt-01/sealed/Zoen.app",
-  "executableSha256": "7e3ec28544c9530fd6f318898d28ae11e6d9910dc014ad25ad4341eb0f4aa6f5",
-  "bundleSha256": "fb566b09eafc8b306e99024ef8ae93b97d5806f912aee6f1cdedbf22f8eff463",
+  "archivePath": "/Users/enzotironi/.codex/builds/zoen-telegram-conversation-v718/final-js/attempt-01/sealed/Zoen.app",
+  "executableSha256": "d775993305f33c1e93af44011a598bd6e0437029a030bc8445a2e51729c8a17a",
+  "bundleSha256": "78efa9c81ff6be803b19257e6834d600de11f664c35d57b210181a98ec117931",
   "preservingInstall": true,
   "installedFilesVerified": 426,
   "strictSignatureVerified": true,
   "physicalDeviceAccepted": false,
   "fullAppParityAccepted": false,
   "sourceRelabeled": false,
-  "status": "PARTIAL: appearance header after scroll and exact native Field input passed. One Page creation/version1/cold reopen completed before the user paused Apps; no further creation QA is active. Agents/conversation acceptance remains incomplete.",
-  "buildVerification": "/Users/enzotironi/.codex/builds/zoen-ios-membership-v707/handoff.json",
-  "installedVerification": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/core707/upgrade-receipt.json",
-  "runtimeAcceptance": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/core707/receipt.json",
-  "backend": "Local relay upgraded normally to actualeb62, preserving PG/FDB/HTTPS, environment and durable data; health/ready and RFC6455 upgrade passed. No whole authenticated-platform claim from those probes.",
+  "status": "PARTIAL: final product 718 restored in place from actual b7ab2265, no diagnostic source. QA 718 qualifies bounded code-copy/paste, own-message context and full-aspect photo review/back/cancel. Its carousel collapse effect was absent; later coordinate probes are diagnostic evidence on separate artifacts, not product acceptance. Restore confirms artifact/identity/Home portrait only, not a new journey.",
+  "buildVerification": "/Users/enzotironi/.codex/builds/zoen-telegram-conversation-v718/handoff.json",
+  "installedVerification": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/product718-final-restore/install-receipt.json",
+  "runtimeAcceptance": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/conversation-v718/receipt.json",
+  "backend": "Core/UniFFI 707 reused from actual eb62; retained local relay remains attributed to its own eb62 deployment. Newly merged #632 Core/MLS changes were not rebuilt into 718. No authenticated-platform/public-backend acceptance follows.",
   "pending": [
-    "Complete Telegram iOS conversation/agent native journeys",
-    "Physical iPhone, real background/calls and public-backend release",
-    "Apps/shared-creation acceptance paused by user; existing results keep their original scope"
+    "Qualify complete Telegram iOS conversation/agent journeys, including carousel detent after keyboard dismissal and independent-recipient media",
+    "Build and qualify a coherent native artifact containing the merged #632 Core changes",
+    "Physical iPhone, real providers, background/push/calls and public-backend release",
+    "Apps/shared-creation development and QA remain paused by Enzo; all final capabilities and historical evidence remain required"
   ],
-  "historicalEvidence": "Earlier701/CORE637/v85 and other receipts retain their original sources and limits. This pointer does not requalify earlier journeys on707; old pointer is preserved at48eb6fd9:apps/zoen/acceptance/parts/artifacts/current-iphone-artifact.json."
+  "historicalEvidence": "Previous 707 record preserved at 477ac2f393b346a9dd2caab786c3f053382a4dcf:apps/zoen/acceptance/parts/artifacts/current-iphone-artifact.json; older pointer at 48eb6fd9 retains its own record. Earlier 707/708/CORE637/v85 and diagnostic 722 receipts keep their original sources and limits; none are requalified as 718.",
+  "restoreVerification": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/product718-final-restore/receipt.json",
+  "qaBoundary": {
+    "source": "b7ab2265bc68fc6ec29465d99e41cdc03b818415",
+    "scopedPasses": [
+      "exact native code-copy/paste without modal",
+      "own-message context menu and cancel",
+      "one photo full-aspect review/back/cancel; no media send"
+    ],
+    "originalNegative": "QA 718 one requested carousel pan left cards expanded; cause unqualified in that receipt.",
+    "diagnosticFollowup": {
+      "receipts": [
+        "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/rail-native-v722/receipt.json",
+        "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/rail-coordinates-v722/receipt.json"
+      ],
+      "scope": "Separate diagnostic sources f0fe5943/c72d18dd observed actual translations; -104pt collapsed the rail, while -45.67pt returned expanded per rule. No causal or product acceptance; original negative preserved."
+    },
+    "sendBoundary": "One synthetic message/send attempt retained. Original 718 UI remained Enviando; later diagnostic UI showed Enviada without another Send. Independent canonical server acceptance was not read in those QA receipts.",
+    "restoreBoundary": "One product 718 reinstall, 426 files and strict signature; identity/Home portrait confirmed. Product deliberately left open at restore time, with QA session/runner/loggers stopped. This historical observation is not current process-state verification.",
+    "newMlsBackend632Included": false,
+    "physicalDeviceAccepted": false,
+    "wholeJourneyAccepted": false
+  },
+  "historicalPointer": {
+    "commit": "477ac2f393b346a9dd2caab786c3f053382a4dcf",
+    "url": "https://github.com/EnzoTironi/zoen-native/blob/477ac2f393b346a9dd2caab786c3f053382a4dcf/apps/zoen/acceptance/parts/artifacts/current-iphone-artifact.json"
+  }
 }
