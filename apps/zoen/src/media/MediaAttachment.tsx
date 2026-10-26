@@ -23,6 +23,7 @@ export function MessageMedia({
   tile,
   onInlineUnavailable,
   galleryEntries,
+  isCurrent,
 }: {
   spaceId: string;
   entry: TimelineEntry;
@@ -32,6 +33,7 @@ export function MessageMedia({
   tile?: MediaTile;
   onInlineUnavailable?: () => void;
   galleryEntries?: readonly TimelineEntry[];
+  isCurrent?: () => boolean;
 }) {
   if (entry.deleted) return null;
   if (entry.voice)
@@ -41,6 +43,7 @@ export function MessageMedia({
         itemId={entry.voice.item_id}
         voice={entry.voice}
         expectedHash={entry.voice.sha256}
+        isCurrent={isCurrent}
         messageSource={{ spaceId, entry }}
         presentation={presentation}
         mine={entry.author.is_me}
@@ -56,6 +59,7 @@ export function MessageMedia({
       onImageDecoded={onImageDecoded}
       tile={tile}
       onInlineUnavailable={onInlineUnavailable}
+      isCurrent={isCurrent}
       messageSource={{ spaceId, entry }}
       galleryEntries={galleryEntries}
       presentation={presentation}
