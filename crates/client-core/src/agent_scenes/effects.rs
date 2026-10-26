@@ -78,7 +78,20 @@ pub(crate) fn approved_effect(state: &State, event: &Event, owner: &str) -> bool
                 && file.mime == miniapps::excalidraw::MIME
                 && file.path.is_empty()
                 && file.voice.is_none()
-                && file.app_origin == before.document.as_ref().and_then(|d| d.app_origin.clone())
+                && (file.app_origin.as_ref()
+                    == before.document.as_ref().and_then(|d| d.app_origin.as_ref())
+                    // Current sharing restores this authenticated creation proof
+                    // for a late reader, without rewriting the owner's old head.
+                    // Accept only that same known proof, never arbitrary metadata.
+                    || (before.document.as_ref().is_some_and(|d| d.app_origin.is_none())
+                        && file.app_origin.as_ref().is_some_and(|origin| {
+                            it.versions
+                                .initial()
+                                .content
+                                .owned_file()
+                                .and_then(|d| d.app_origin.as_ref())
+                                == Some(origin)
+                        })))
                 && crate::files::validate_file(file, tools::SCENE_LIMIT as u64).is_ok()
                 && expected_state(&c.scene_json, &before.title)
                     .is_ok_and(|state| state == after.state_json)

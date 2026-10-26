@@ -3,8 +3,8 @@
 use super::{
     flush, report_rejection, responses, send, tracing_like, watch, ClaimClockSample, ClientFrame,
     Ctx, CursorRepair, DeferredReceipts, Duration, EphemeralKind, ErrorCode, Exit, HashMap,
-    HashSet, Ingest, KeyPackageClaimClock, ProfileTraffic, RejectionOutcome, ServerFrame, Sink,
-    Waiting,
+    HashSet, Ingest, KeyPackageClaimClock, ProfileTraffic, PublicationRetries, RejectionOutcome,
+    ServerFrame, Sink, Waiting,
 };
 
 /// A per-call borrow, never another cursor, receipt or connection owner.
@@ -12,6 +12,7 @@ pub(super) struct FrameContext<'a> {
     pub(super) ctx: &'a Ctx,
     pub(super) sink: &'a mut Sink,
     pub(super) sent: &'a mut HashMap<String, Option<u64>>,
+    pub(super) retries: &'a mut PublicationRetries,
     pub(super) backoff: &'a mut Duration,
     pub(super) cursor_repair: &'a mut CursorRepair,
     pub(super) repair_deadline: &'a watch::Sender<Option<tokio::time::Instant>>,
@@ -34,6 +35,7 @@ pub(super) async fn dispatch_frame(
         ctx,
         sink,
         sent,
+        retries,
         backoff,
         cursor_repair,
         repair_deadline,
@@ -70,6 +72,7 @@ pub(super) async fn dispatch_frame(
                 let _ = repair_deadline.send_replace(cursor_repair.abort_deadline());
             }
             if r == Ingest::Confirmed {
+                retries.settled(&client_id);
                 let tracked = sent.remove(&client_id).is_some();
                 tracing_like(&format!(
                     "publication confirmed tracked={tracked} in_flight={}",
@@ -82,7 +85,7 @@ pub(super) async fn dispatch_frame(
                     // an offline genesis as soon as their predecessor lands.
                     dirty.insert(space);
                     media_kick.notify_one();
-                    if let Err(e) = flush(ctx, sink, sent).await {
+                    if let Err(e) = flush(ctx, sink, sent, retries).await {
                         return Err(Exit::Retry(e));
                     }
                 }
@@ -135,20 +138,22 @@ pub(super) async fn dispatch_frame(
             permanent,
         } => {
             let sent_epoch = sent.remove(&client_id).flatten();
-            let outcome =
-                engine!(|engine| engine.reject(&client_id, &reason, permanent, sent_epoch));
+            let (outcome, pending) = engine!(|engine| {
+                let outcome = engine.reject(&client_id, &reason, permanent, sent_epoch);
+                (outcome, engine.net.pending.contains_key(&client_id))
+            });
             tracing_like(&format!(
                 "publication {client_id} refused: {reason}; {outcome:?}"
             ));
             if outcome.user_failed() {
                 dirty.insert(space);
             }
-            if !permanent {
-                // Transient (rate limit, db hiccup): retry shortly.
-                let poke = engine!(|engine| engine.net.poke.is_some());
-                if poke {
-                    tokio::time::sleep(Duration::from_millis(500)).await;
-                }
+            if !permanent && pending {
+                // Keep the minimum even if retaining the refusal hit a local
+                // error. Socket reads and independent lanes must keep running.
+                retries.defer(client_id, &reason);
+            } else {
+                retries.settled(&client_id);
             }
             if matches!(
                 outcome,
@@ -156,7 +161,7 @@ pub(super) async fn dispatch_frame(
             ) {
                 // Retry may already have a current sealed copy. A terminal
                 // dependency failure can release later Space heads immediately.
-                if let Err(e) = flush(ctx, sink, sent).await {
+                if let Err(e) = flush(ctx, sink, sent, retries).await {
                     return Err(Exit::Retry(e));
                 }
             }
@@ -259,7 +264,7 @@ pub(super) async fn dispatch_frame(
             }
             // Anything still pending after a full catch-up goes out again (it
             // may have needed the Space to exist first).
-            if let Err(e) = flush(ctx, sink, sent).await {
+            if let Err(e) = flush(ctx, sink, sent, retries).await {
                 return Err(Exit::Retry(e));
             }
             ctx.notify_connection();
@@ -272,6 +277,7 @@ pub(super) async fn dispatch_frame(
                     ctx,
                     sink,
                     sent,
+                    retries,
                     waiting,
                     profiles_inflight,
                     traffic,

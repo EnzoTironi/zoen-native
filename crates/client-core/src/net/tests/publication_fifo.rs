@@ -3,7 +3,7 @@ use super::*;
 
 type R<T> = Result<T, Box<dyn std::error::Error>>;
 
-async fn next_publish(socket: &mut RelaySocket) -> R<Envelope> {
+pub(super) async fn next_publish(socket: &mut RelaySocket) -> R<Envelope> {
     loop {
         match request(socket).await {
             ClientFrame::Publish { env } => return Ok(env),
@@ -33,7 +33,7 @@ async fn next_publish(socket: &mut RelaySocket) -> R<Envelope> {
 
 /// A FIFO command/response marker proves the offer pass ended without sleeping
 /// to infer that no later message was emitted. Its response follows prior echoes.
-async fn marker(
+pub(super) async fn marker(
     socket: &mut RelaySocket,
     cmd: &mpsc::UnboundedSender<Cmd>,
     id: &str,

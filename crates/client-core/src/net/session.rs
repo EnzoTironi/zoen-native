@@ -5,23 +5,52 @@ use super::{
     media_worker, mpsc, recv, refused, register, send, tracing_like, watch, ws_url, AbortOnDrop,
     Arc, AuthenticatedRelay, ClaimClockSample, ClientFrame, Cmd, ConnState, Ctx, CursorRepair,
     CursorRepairPolicy, DeferredReceipts, Duration, Exit, HashMap, HashSet, KeyPackageClaimClock,
-    Message, ProfileTraffic, ServerFrame, SinkExt, StreamExt, Waiting, CAPABILITIES,
-    MAINTENANCE_PERIOD, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION,
+    Message, ProfileTraffic, PublicationRetries, ServerFrame, SinkExt, StreamExt, Waiting,
+    CAPABILITIES, MAINTENANCE_PERIOD, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION,
 };
 
+#[cfg(test)]
 pub(super) async fn session(
     ctx: &Ctx,
     cmd_rx: &mut mpsc::UnboundedReceiver<Cmd>,
     backoff: &mut Duration,
 ) -> Exit {
-    session_with_repair_policy(ctx, cmd_rx, backoff, CursorRepairPolicy::DEFAULT).await
+    session_with_retries(ctx, cmd_rx, backoff, &mut PublicationRetries::default()).await
 }
 
+pub(super) async fn session_with_retries(
+    ctx: &Ctx,
+    cmd_rx: &mut mpsc::UnboundedReceiver<Cmd>,
+    backoff: &mut Duration,
+    retries: &mut PublicationRetries,
+) -> Exit {
+    session_with_policy_and_retries(ctx, cmd_rx, backoff, CursorRepairPolicy::DEFAULT, retries)
+        .await
+}
+
+#[cfg(test)]
 pub(super) async fn session_with_repair_policy(
     ctx: &Ctx,
     cmd_rx: &mut mpsc::UnboundedReceiver<Cmd>,
     backoff: &mut Duration,
     repair_policy: CursorRepairPolicy,
+) -> Exit {
+    session_with_policy_and_retries(
+        ctx,
+        cmd_rx,
+        backoff,
+        repair_policy,
+        &mut PublicationRetries::default(),
+    )
+    .await
+}
+
+async fn session_with_policy_and_retries(
+    ctx: &Ctx,
+    cmd_rx: &mut mpsc::UnboundedReceiver<Cmd>,
+    backoff: &mut Duration,
+    repair_policy: CursorRepairPolicy,
+    retries: &mut PublicationRetries,
 ) -> Exit {
     macro_rules! engine {
         ($work:expr) => {
@@ -204,7 +233,7 @@ pub(super) async fn session_with_repair_policy(
     if let Err(e) = send(&mut sink, &ClientFrame::Sync { cursors, all: true }).await {
         return Exit::Retry(e);
     }
-    if let Err(e) = flush(ctx, &mut sink, &mut sent).await {
+    if let Err(e) = flush(ctx, &mut sink, &mut sent, retries).await {
         return Exit::Retry(e);
     }
     loop {
@@ -237,7 +266,7 @@ pub(super) async fn session_with_repair_policy(
                 };
                 last_rx = tokio::time::Instant::now();
                 if let Err(exit) = dispatch::dispatch_frame(frame, dispatch::FrameContext {
-                    ctx, sink: &mut sink, sent: &mut sent, backoff,
+                    ctx, sink: &mut sink, sent: &mut sent, retries, backoff,
                     cursor_repair: &mut cursor_repair, repair_deadline: &repair_deadline,
                     dirty: &mut dirty, deferred_receipts: &mut deferred_receipts,
                     waiting: &mut waiting, profiles_inflight: &mut profiles_inflight,
@@ -253,7 +282,7 @@ pub(super) async fn session_with_repair_policy(
                     // A profile edit needs a fresh login to re-register.
                     let needs_register = engine!(|engine| engine.account().is_some_and(|a| !a.registered));
                     if needs_register { break Exit::Retry("re-registering".into()) }
-                    if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) }
+                    if let Err(e) = flush(ctx, &mut sink, &mut sent, retries).await { break Exit::Retry(e) }
                     media_kick.notify_one();
                     ctx.notify_connection();
                 }
@@ -275,7 +304,7 @@ pub(super) async fn session_with_repair_policy(
                     continue;
                 }
                 if let Err(exit) = maintenance::maintain(maintenance::MaintenanceContext {
-                    ctx, sink: &mut sink, sent: &mut sent, waiting: &mut waiting,
+                    ctx, sink: &mut sink, sent: &mut sent, retries, waiting: &mut waiting,
                     next_id: &mut next_id, dirty: &mut dirty,
                     profiles_inflight: &mut profiles_inflight, traffic: &mut traffic,
                     opening: &mut opening, claim_clock: &claim_clock,
@@ -287,6 +316,19 @@ pub(super) async fn session_with_repair_policy(
                 // A slow pass must leave time to drive the socket, rather than build a
                 // burst of overdue scans over the same pending work.
                 tick.as_mut().reset(tokio::time::Instant::now() + MAINTENANCE_PERIOD);
+            }
+            () = async {
+                match retries.deadline() {
+                    Some(next) => tokio::time::sleep_until(next).await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                // Release due minima even while catch-up is incomplete; a past
+                // deadline must not spin or stop the ordered inbound dispatcher.
+                retries.release_due();
+                if let Err(e) = flush(ctx, &mut sink, &mut sent, retries).await {
+                    break Exit::Retry(e);
+                }
             }
             () = async {
                 match cursor_repair.admission() {
