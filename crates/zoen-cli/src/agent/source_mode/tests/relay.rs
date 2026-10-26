@@ -30,6 +30,7 @@ impl SecretVault for Vault {
 #[derive(Clone, Copy)]
 pub(super) enum Mode {
     Normal,
+    LostPublicationReceipt,
     Paused,
     Revoked,
     CursorAck,
@@ -62,6 +63,10 @@ pub(super) async fn relay(mode: Mode) -> Relay {
     let url = format!("http://{}", listener.local_addr().unwrap());
     let auth = Arc::new(AuthGate::default());
     let authentication = auth.clone();
+    let lose_receipt = Arc::new(AtomicBool::new(matches!(
+        mode,
+        Mode::LostPublicationReceipt
+    )));
     let calls = Arc::new(Mutex::new(Vec::new()));
     let cursors = Arc::new(Mutex::new(Vec::<(String, u64)>::new()));
     let delivered = Arc::new(Mutex::new(None::<(String, String, u64)>));
@@ -96,6 +101,7 @@ pub(super) async fn relay(mode: Mode) -> Relay {
                 (published_packages.clone(), claim_receipts.clone());
             let (uploaded, devices) = (uploaded.clone(), devices.clone());
             let authentication = authentication.clone();
+            let lose_receipt = lose_receipt.clone();
             tokio::spawn(async move {
                 let mut first = [0];
                 if socket.peek(&mut first).await.unwrap() == 0 {
@@ -324,6 +330,10 @@ pub(super) async fn relay(mode: Mode) -> Relay {
                                 log.push(ev.clone());
                                 (ev, accepted)
                             };
+                            if lose_receipt.swap(false, Ordering::SeqCst) {
+                                // The append succeeded, but this session loses both receipts.
+                                break;
+                            }
                             ws.send(Message::Binary(ServerFrame::Event { ev }.encode().into()))
                                 .await
                                 .unwrap();
