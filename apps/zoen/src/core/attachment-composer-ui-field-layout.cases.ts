@@ -106,7 +106,8 @@ test('the mounted iOS field uses one font for display and scoped native fitting 
     'the native viewport already applies the keyboard correction',
   );
   assert.equal(outerStyle.paddingTop, 0);
-  assert.equal(outerStyle.paddingHorizontal, 8);
+  assert.equal(outerStyle.paddingLeft, 8);
+  assert.equal(outerStyle.paddingRight, 8);
   f.render(f.file, { inputRef });
   assert.equal(
     inputRef.current,

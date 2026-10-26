@@ -23,6 +23,7 @@ export function loadEditorAgent(path: string, ports: Record<string, any>) {
   runInNewContext(compile(path), {
     module,
     exports: module.exports,
+    global: { Error },
     process: { env: { EXPO_OS: 'ios', NODE_ENV: 'production' } },
     setTimeout,
     clearTimeout,

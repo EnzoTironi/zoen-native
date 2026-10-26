@@ -281,7 +281,9 @@ export function fixture(
         },
       },
     },
-    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 59, bottom: 34 }) },
+    'react-native-safe-area-context': {
+      useSafeAreaInsets: () => ({ top: 59, bottom: 34, left: 0, right: 0 }),
+    },
     'react-native-reanimated': {
       __esModule: true,
       default: { View: 'AnimatedView' },
