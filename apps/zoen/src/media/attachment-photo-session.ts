@@ -25,7 +25,6 @@ export class AttachmentPhotoSession {
   private state = empty;
   private request: Request | null = null;
   private sequence = 0;
-  private previewOrigin: 'grid' | 'selected' = 'grid';
   private listeners = new Set<() => void>();
   private readonly port: PhotoPickerPort;
   constructor(port: PhotoPickerPort) {
@@ -68,7 +67,6 @@ export class AttachmentPhotoSession {
       };
       this.request = request;
       this.state = empty;
-      this.previewOrigin = 'grid';
       const restored = journal?.restore();
       this.publish({
         token: ++this.sequence,
@@ -223,13 +221,7 @@ export class AttachmentPhotoSession {
   }
   back() {
     if (!this.isInteractive(this.state.token)) return;
-    if (
-      this.state.screen === 'preview' &&
-      this.previewOrigin === 'selected' &&
-      this.state.selected.length
-    )
-      this.showSelected();
-    else this.showGrid();
+    this.showGrid();
   }
   async albumDetails(id: string) {
     const request = this.request;
@@ -271,8 +263,6 @@ export class AttachmentPhotoSession {
       this.isInteractive(this.state.token) &&
       [...this.state.items, ...this.state.selected].some((item) => item.id === id)
     ) {
-      if (this.state.screen !== 'preview')
-        this.previewOrigin = this.state.screen === 'selected' ? 'selected' : 'grid';
       this.publish({ screen: 'preview', previewId: id });
     }
   }

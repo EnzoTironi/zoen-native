@@ -1,6 +1,6 @@
 import { requireNativeView } from 'expo';
 import { randomUUID } from 'expo-crypto';
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef } from 'react';
 import { type ViewProps } from 'react-native';
 import { t } from '../i18n';
 import { useTheme } from '../theme';
@@ -35,11 +35,6 @@ export function AttachmentApproval(props: AttachmentApprovalProps) {
   const context = JSON.stringify(field.scope);
   const session = useMemo(() => ({ context, token: randomUUID() }), [context]);
   const token = session.token;
-  const [navigation, setNavigation] = useState({
-    token,
-    screen: 'preview' as 'preview' | 'selected',
-  });
-  const screen = navigation.token === token ? navigation.screen : 'preview';
   const owner = useMemo(() => ({ props, token, revision: randomUUID() }), [props, token]);
   const committed = useRef<typeof owner | null>(null);
   useLayoutEffect(() => {
@@ -68,7 +63,7 @@ export function AttachmentApproval(props: AttachmentApprovalProps) {
     revision: owner.revision,
     source: 'draft',
     grouped: props.grouped === true,
-    screen,
+    screen: 'preview',
     previewId: selected.mutationId,
     items: state.items.map((item) => ({
       id: item.mutationId,
@@ -177,9 +172,6 @@ export function AttachmentApproval(props: AttachmentApprovalProps) {
             case 'retry':
               props.onRetry();
               break;
-            case 'selected':
-              setNavigation({ token, screen: 'selected' });
-              break;
             case 'reorder':
               if (
                 props.onReorder &&
@@ -194,8 +186,7 @@ export function AttachmentApproval(props: AttachmentApprovalProps) {
               props.onClose();
               break;
             case 'back':
-              if (screen === 'selected') setNavigation({ token, screen: 'preview' });
-              else props.onClose();
+              props.onClose();
               break;
           }
         }}

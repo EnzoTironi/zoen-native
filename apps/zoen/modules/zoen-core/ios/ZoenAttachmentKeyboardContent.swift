@@ -26,8 +26,8 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
     return grid
   }
   var attachmentHasKeyboardFocus: Bool { caption.isFirstResponder || (galleryVisible && gallery.hasKeyboardFocus) || (activeCategory != "photos" && fileLanding.hasKeyboardFocus) }
-  var attachmentHandlesVerticalGesture: Bool { screen == "preview" || screen == "albums" }
-  var attachmentPrefersFullScreen: Bool { screen == "preview" }
+  var attachmentHandlesVerticalGesture: Bool { galleryVisible || screen == "albums" }
+  var attachmentPrefersFullScreen: Bool { ZoenAttachmentGalleryLayout.prefersFullScreen(screen: screen) }
   var attachmentDidBeginEditing: (() -> Void)?
   var attachmentPresentationChanged: (() -> Void)?
   var attachmentAnimatedViews: [UIView] {

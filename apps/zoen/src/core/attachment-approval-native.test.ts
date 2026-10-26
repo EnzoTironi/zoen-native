@@ -384,12 +384,12 @@ test('nonterminal suspension retains its native token and resumes only fresh cur
   f.unmount();
 });
 
-test('selected mode stays native and reorder requires an exact unique permutation of current IDs', () => {
+test('one native review keeps reorder fenced to an exact unique permutation and Back closes directly', () => {
   const f = fixture(),
     first = f.required();
   f.act(first, 'selected');
   const selected = f.required();
-  assert.equal(JSON.parse(selected.props.model).screen, 'selected');
+  assert.equal(JSON.parse(selected.props.model).screen, 'preview');
   assert.equal(f.calls.length, 0);
   for (const ids of [
     [],
@@ -407,8 +407,6 @@ test('selected mode stays native and reorder requires an exact unique permutatio
   f.act(selected, 'back');
   const preview = f.required();
   assert.equal(JSON.parse(preview.props.model).screen, 'preview');
-  assert.equal(f.calls.filter((v) => v.kind === 'close').length, 0);
-  f.act(preview, 'back');
   assert.equal(f.calls.filter((v) => v.kind === 'close').length, 1);
   f.unmount();
 });
