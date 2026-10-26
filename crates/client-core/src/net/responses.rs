@@ -2,13 +2,14 @@
 
 use super::{
     complete_reads, flush, settle, tracing_like, Ctx, Exit, HashMap, HashSet, ProfileTraffic,
-    Reply, Sink, Waiting,
+    PublicationRetries, Reply, Sink, Waiting,
 };
 
 pub(super) struct ReplyContext<'a> {
     pub(super) ctx: &'a Ctx,
     pub(super) sink: &'a mut Sink,
     pub(super) sent: &'a mut HashMap<String, Option<u64>>,
+    pub(super) retries: &'a mut PublicationRetries,
     pub(super) waiting: &'a mut HashMap<u64, Waiting>,
     pub(super) profiles_inflight: &'a mut Option<tokio::time::Instant>,
     pub(super) traffic: &'a mut ProfileTraffic,
@@ -26,6 +27,7 @@ pub(super) async fn dispatch_reply(
         ctx,
         sink,
         sent,
+        retries,
         waiting,
         profiles_inflight,
         traffic,
@@ -63,7 +65,7 @@ pub(super) async fn dispatch_reply(
                 engine!(|engine| engine.devices_arrived(list))
                     .map_err(|e| Exit::Retry(e.to_string()))?;
             }
-            if let Err(e) = flush(ctx, sink, sent).await {
+            if let Err(e) = flush(ctx, sink, sent, retries).await {
                 return Err(Exit::Retry(e));
             }
         }
@@ -152,7 +154,7 @@ pub(super) async fn dispatch_reply(
                 Err(e) => Err(e),
             };
             engine!(|engine| engine.mls_claimed(&space, &operation, packages));
-            if let Err(e) = flush(ctx, sink, sent).await {
+            if let Err(e) = flush(ctx, sink, sent, retries).await {
                 return Err(Exit::Retry(e));
             }
         }

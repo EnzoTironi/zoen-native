@@ -33,6 +33,7 @@ mod maintenance;
 mod media;
 mod pickup;
 mod profile_traffic;
+mod publication_retries;
 mod receipts;
 mod responses;
 mod session;
@@ -43,9 +44,12 @@ use media::bounded_blob;
 use media::media_worker;
 pub(crate) use pickup::fetch_link_box;
 use profile_traffic::{free, remember_waiting, settle};
+use publication_retries::PublicationRetries;
+#[cfg(test)]
 use session::session;
 #[cfg(test)]
 use session::session_with_repair_policy;
+use session::session_with_retries;
 use transport::{flush, recv, refused, register, run, send};
 
 mod cursor_repair;

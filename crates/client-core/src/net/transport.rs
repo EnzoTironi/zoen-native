@@ -1,18 +1,20 @@
 //! Socket I/O, reconnect outcomes and ordered publication writes.
 
 use super::{
-    mpsc, session, tracing_like, ClientFrame, Cmd, ConnState, Ctx, Duration, ErrorCode, Exit,
-    HashMap, HashSet, Identity, Message, Op, ServerFrame, Sink, SinkExt, Stream, StreamExt,
+    mpsc, session_with_retries, tracing_like, ClientFrame, Cmd, ConnState, Ctx, Duration,
+    ErrorCode, Exit, HashMap, Identity, Message, Op, PublicationRetries, ServerFrame, Sink,
+    SinkExt, Stream, StreamExt,
 };
 
 pub(super) async fn run(ctx: Ctx, mut cmd_rx: mpsc::UnboundedReceiver<Cmd>) {
     let mut backoff = Duration::from_millis(500);
+    let mut retries = PublicationRetries::default();
     loop {
         ctx.set(|s| {
             s.state = ConnState::Connecting;
             s.synced = false;
         });
-        let exit = session(&ctx, &mut cmd_rx, &mut backoff).await;
+        let exit = session_with_retries(&ctx, &mut cmd_rx, &mut backoff, &mut retries).await;
         let blocked = match exit {
             Exit::Stop => {
                 ctx.set(|s| s.state = ConnState::Offline);
@@ -126,18 +128,22 @@ pub(super) async fn flush(
     ctx: &Ctx,
     sink: &mut Sink,
     sent: &mut HashMap<String, Option<u64>>,
+    retries: &mut PublicationRetries,
 ) -> Result<(), String> {
     if !ctx.status.borrow().synced {
         return Ok(());
     }
     let (envs, pending, mut unsettled) = ctx
         .engine(|engine| {
+            let mut unsettled = retries.waiting_spaces(&engine.net.pending);
+            unsettled.extend(
+                sent.keys()
+                    .filter_map(|id| engine.net.pending.get(id).cloned()),
+            );
             (
                 engine.outbox_envelopes_except(sent),
                 engine.net.pending.len(),
-                sent.keys()
-                    .filter_map(|id| engine.net.pending.get(id).cloned())
-                    .collect::<HashSet<_>>(),
+                unsettled,
             )
         })
         .ok_or_else(|| "offline".to_string())?;

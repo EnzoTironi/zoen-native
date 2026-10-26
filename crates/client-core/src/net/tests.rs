@@ -5,6 +5,7 @@ mod ordering_cases;
 mod pickup_cases;
 mod profile_clock_cases;
 mod publication_fifo;
+mod publication_retry;
 mod queue_phases;
 mod queue_scenario;
 use queue_scenario::queued_messages_round_trip;

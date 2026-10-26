@@ -2,8 +2,8 @@
 
 use super::{
     complete_reads, flush, free, report_rejection, send, tracing_like, ClaimClockSample,
-    ClientFrame, Ctx, Duration, EphemeralKind, Exit, HashMap, HashSet, Op, ProfileTraffic, Sink,
-    Waiting, PROFILE_TIMEOUT,
+    ClientFrame, Ctx, Duration, EphemeralKind, Exit, HashMap, HashSet, Op, ProfileTraffic,
+    PublicationRetries, Sink, Waiting, PROFILE_TIMEOUT,
 };
 
 use crate::sync::RejectionOutcome;
@@ -13,6 +13,7 @@ pub(super) struct MaintenanceContext<'a> {
     pub(super) ctx: &'a Ctx,
     pub(super) sink: &'a mut Sink,
     pub(super) sent: &'a mut HashMap<String, Option<u64>>,
+    pub(super) retries: &'a mut PublicationRetries,
     pub(super) waiting: &'a mut HashMap<u64, Waiting>,
     pub(super) next_id: &'a mut u64,
     pub(super) dirty: &'a mut HashSet<String>,
@@ -31,6 +32,7 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
         ctx,
         sink,
         sent,
+        retries,
         waiting,
         next_id,
         dirty,
@@ -76,7 +78,7 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
     let shared = engine!(super::super::engine::Engine::profile_share_pass);
     match shared {
         Ok(true) => {
-            if let Err(e) = flush(ctx, sink, sent).await {
+            if let Err(e) = flush(ctx, sink, sent, retries).await {
                 return Err(Exit::Retry(e));
             }
         }
@@ -185,7 +187,7 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
     let checkpoints = engine!(super::super::engine::Engine::mls_checkpoints);
     match checkpoints {
         Ok(true) => {
-            if let Err(e) = flush(ctx, sink, sent).await {
+            if let Err(e) = flush(ctx, sink, sent, retries).await {
                 return Err(Exit::Retry(e));
             }
         }
@@ -208,7 +210,7 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
                 report_rejection(ctx, &RejectionOutcome::UserFailed);
             }
             if sealed || changed {
-                if let Err(e) = flush(ctx, sink, sent).await {
+                if let Err(e) = flush(ctx, sink, sent, retries).await {
                     return Err(Exit::Retry(e));
                 }
             }
