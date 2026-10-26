@@ -46,6 +46,16 @@ an independent native controller is actually presented is rejected before
 reparenting content; the owner does not pretend that the root controls that
 controller's status bar. Ordinary overlay admission is unchanged.
 
+Normal navigation, including chat, requests portrait through native-stack. Only the
+fullscreen App route and its child App stack explicitly request the device-default
+orientations, allowing portrait and landscape while that presentation owns the
+screen. The generated phone/iPad supported masks stay broad enough for Apps; the
+manifest does not impose a whole-app portrait lock. Native-stack restores the
+underlying portrait mask after dismissal or route removal; a refused document
+close retains the App presentation and its orientation. Existing context-menu
+leases and the hardware-safe App close control are unchanged. Independent system
+media viewers retain their native controller traits.
+
 ## SDK and CNG evidence
 
 The installed versions used are Expo 58.0.16, ExpoModulesCore 58.0.23, autolinking
