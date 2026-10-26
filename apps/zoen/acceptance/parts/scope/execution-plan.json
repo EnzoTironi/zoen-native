@@ -23,11 +23,13 @@
     {
       "id": "apps-and-durable-agents",
       "status": "IN_PROGRESS",
-      "exit": "Persistent isolated MCP Apps, Excalidraw and real external authorization; agents resume without clients and reconcile grants, approvals, effects and costs."
+      "exit": "Persistent isolated MCP Apps, Excalidraw and real external authorization; agents resume without clients and reconcile grants, approvals, effects and costs.",
+      "activeScope": "Durable agents, permissions, approvals, budgets and conversational execution.",
+      "pausedScope": "All MCP Apps, App SDK/host expansion and creation-editor integration are paused by the user."
     },
     {
       "id": "shared-creation-workspace",
-      "status": "IN_PROGRESS",
+      "status": "PAUSED_BY_USER",
       "exit": "All declared creationWorkspace capabilities across Pages, Slides, Sites, Images and Files, with collaboration, permissions, recovery and explicit publication."
     },
     {
@@ -52,7 +54,18 @@
   "referencePolicy": "Telegram iOS is the principal UI and interaction reference; Signal is the principal reliability reference. Evaluate maintained OSS/library reuse independently. Expo remains the product interface and Rust the shared authority; no duplicate durable store is introduced.",
   "completionScope": "Thirty requiredJourneys plus all declared creationWorkspace capabilities and the numerical operating envelope. Competitor quality is a design reference, not an unbounded all-features/global-scale acceptance target.",
   "currentSimulatorCheckpoint": "currentIphoneArtifact",
-  "currentFocus": "Consolidate existing iOS front/core/backend batches before adding capabilities: membership/revocation, offline creation and native Page creation/recovery. Preserve incomplete anchored comments until dependencies are qualified.",
-  "publicationStatus": "Connectivity recovered2026-10-26. PR621 merged normally as0036bc461578462fbabfab2961ae209ebe8d2751 at14:54:50Z; merged tree equals approved46d756ce. Messenger batchcbb2fbf0 is published in PR627, awaiting checks. Subsequent budget/Page and membership batches remain separate; issue170 records live publication/merge state.",
-  "coordinationIssue": "https://github.com/EnzoTironi/zoen-native/issues/170"
+  "currentFocus": "User-confirmed priority: agents and conversation only. Complete the selected Telegram iOS interface/interactions and corresponding backend before resuming Apps or shared creation. Preserve all approved final-product scope.",
+  "publicationStatus": "PR621 merged0036bc46; PR627 mergedd3fc6b11 and scoped625/626 closed; PR628 merged49e0c8f; PR629 merged0dd7679669ac3d9780ce1e30a6a708e172705dbb after all applicable checks passed. Its merge tree equals48eb6fd9. Native707/local relay remain actualeb62;48 differs only in a CLI test fixture. Issue170 records active Telegram/conversation/agent priorities.",
+  "coordinationIssue": "https://github.com/EnzoTironi/zoen-native/issues/170",
+  "activeWorkstreams": [
+    "Telegram iOS conversation/composer/attachments/media/profile/settings",
+    "Durable agents, authority, approvals and budgets",
+    "Messaging reliability, identity/recovery, notifications and calls"
+  ],
+  "pausedWorkstreams": [
+    "MCP Apps, App host/SDK expansion and editor integration",
+    "Shared creation: Pages, Slides, Sites and Images",
+    "Anchored Page comments706 and independent App-repository extraction"
+  ],
+  "resumeAppsAfter": "Completion and native acceptance of the selected Telegram iOS agents/conversation scope; a new product direction may revise the sequence."
 }

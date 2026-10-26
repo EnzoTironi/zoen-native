@@ -23,6 +23,8 @@
     "artifact-scoped-agent-context-reviewable-changes-and-attributed-results",
     "offline-reopen-conflict-recovery-and-idempotent-operations"
   ],
-  "currentImplementationScope": "iOS first, with the real shared Rust core and backend. Current Page input and attachment review work is a foundation; it does not establish the complete creation workspace.",
-  "accepted": false
+  "currentImplementationScope": "Development and QA of Apps, Pages, Slides, Sites, Images, editor integrations and anchored comments are paused by explicit user priority. Agents and the selected Telegram iOS conversation experience are the active scope. Existing code/data/evidence and all final creation capabilities remain preserved for later resumption.",
+  "accepted": false,
+  "status": "PAUSED_BY_USER",
+  "pausedOn": "2026-10-26"
 }

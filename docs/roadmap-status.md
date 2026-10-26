@@ -6,20 +6,20 @@ are maintained in the [complete-product goal](dev/zoen-complete-product-goal.md#
 and [acceptance manifest](../apps/zoen/acceptance.json). Web/Android follow the iOS
 release gate; desktop follows later. Telegram iOS guides UI and interactions;
 Signal guides reliability; Notion/ChatGPT Space guide collaborative creation.
-Enzo approved consolidating existing work before new capabilities: membership
-and revocation, offline creation, then native Page creation/recovery. Anchored
-comments wait for those dependencies. Internal ArtCraft work stays stopped;
-editors are external independently released MCP Apps.
+Enzo confirmed the active priority: **agents and conversation only**, finishing
+the selected Telegram iOS screens/interactions and their backend before Apps.
+App/creation development and QA, editor integration, host/SDK expansion and
+anchored comments are paused. Code, data, evidence and final scope remain intact.
 
-The installed Simulator artifact is701, with partial acceptance; membership703
-is under qualification and is not installed. The maintained
+The installed Simulator artifact is707 with fresh Core/UniFFI and an aligned
+local relay, actual sourceeb62. Its bounded header/Field and pre-pause Page
+results retain their scope. PRs621/627/628 merged normally;625/626 are closed.
+Membership629 merged0dd76796 after all applicable checks passed; its final correction is test-only. The maintained
 [execution plan](../apps/zoen/acceptance/parts/scope/execution-plan.json) and
 [current iPhone artifact](../apps/zoen/acceptance/parts/artifacts/current-iphone-artifact.json)
-separate local source/build evidence, native observations and pending acceptance.
-Physical iPhone and public-backend release remain open. GitHub publication resumed:
-PR621 merged normally with the approved tree, and messenger batch627 awaits checks.
-[Issue170](https://github.com/EnzoTironi/zoen-native/issues/170) records live delivery
-state; local work does not establish a completed remote merge.
+separate implementation, native observations and pending acceptance. Physical
+iPhone and public-backend release remain open. [Issue170](https://github.com/EnzoTironi/zoen-native/issues/170)
+records current ownership, priorities and publication state.
 
 ## Historical checkpoints
 
