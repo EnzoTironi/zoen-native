@@ -1,6 +1,6 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { audioWaveformBars, telegramAudio } from '../core/telegram-audio-presentation';
-import { View } from 'react-native';
+import { Text, View } from 'react-native';
 import {
   GestureDetector,
   useExclusiveGestures,
@@ -60,6 +60,7 @@ export function AudioWaveform({
 
 /** Horizontal waveform control; vertical movement yields to the message timeline. */
 export function AudioProgress({
+  sourceIdentity,
   levels,
   progress,
   duration,
@@ -68,6 +69,7 @@ export function AudioProgress({
   disabled,
   onSeek,
 }: {
+  sourceIdentity: unknown;
   levels: readonly number[];
   progress: number;
   duration: number;
@@ -77,22 +79,28 @@ export function AudioProgress({
   onSeek: (fraction: number) => void;
 }) {
   const [width, setWidth] = useState(0);
-  const [dragging, setDragging] = useState<number | null>(null);
-  const drag = useRef<number | null>(null);
-  const tapping = useRef<number | null>(null);
+  const [dragging, setDragging] = useState<{ owner: object; fraction: number } | null>(null);
+  const drag = useRef<object | null>(null);
+  const tapping = useRef<object | null>(null);
   const messagePan = useMessagePan();
   const consumePress = useMessagePressConsumption();
   const enabled = !disabled && duration > 0 && width > 0;
-  const admission = useRef<{ width: number; enabled: boolean; onSeek: typeof onSeek } | null>(null);
+  // Ordinary progress/callback updates retain a pointer. Replacing the source,
+  // geometry or admission retires it, including A → B → A source reuse.
+  const owner = useMemo(
+    () => ({ sourceIdentity, width, duration, enabled }),
+    [sourceIdentity, width, duration, enabled],
+  );
+  const admission = useRef<{ owner: object; enabled: boolean; onSeek: typeof onSeek } | null>(null);
   useLayoutEffect(() => {
-    admission.current = { width, enabled, onSeek };
+    admission.current = { owner, enabled, onSeek };
     return () => {
       admission.current = null;
     };
-  }, [width, enabled, onSeek]);
+  }, [owner, enabled, onSeek]);
   const at = (x: number) => clamp(x / Math.max(1, width));
-  const current = (captured: number | null) =>
-    Boolean(admission.current?.enabled && admission.current.width === captured);
+  const current = (captured: object | null) =>
+    Boolean(captured === owner && admission.current?.enabled && admission.current.owner === owner);
   const pan = usePanGesture({
     enabled,
     runOnJS: true,
@@ -100,18 +108,20 @@ export function AudioProgress({
     failOffsetY: [-12, 12],
     block: messagePan,
     onBegin: () => {
-      drag.current = width;
+      if (current(owner)) drag.current = owner;
     },
-    onActivate: consumePress,
+    onActivate: () => {
+      if (current(drag.current)) consumePress();
+    },
     onUpdate: (event) => {
-      if (current(drag.current)) setDragging(at(event.x));
+      if (current(drag.current)) setDragging({ owner, fraction: at(event.x) });
     },
     onDeactivate: (event) => {
       if (!event.canceled && current(drag.current)) admission.current!.onSeek(at(event.x));
     },
     onFinalize: () => {
-      drag.current = null;
-      setDragging(null);
+      if (drag.current === owner) drag.current = null;
+      setDragging((value) => (value?.owner === owner ? null : value));
     },
   });
   const tap = useTapGesture({
@@ -119,18 +129,21 @@ export function AudioProgress({
     runOnJS: true,
     block: messagePan,
     onBegin: () => {
-      tapping.current = width;
+      if (current(owner)) tapping.current = owner;
     },
-    onActivate: consumePress,
+    onActivate: () => {
+      if (current(tapping.current)) consumePress();
+    },
     onDeactivate: (event) => {
       if (!event.canceled && current(tapping.current)) admission.current!.onSeek(at(event.x));
     },
     onFinalize: () => {
-      tapping.current = null;
+      if (tapping.current === owner) tapping.current = null;
     },
   });
   const gesture = useExclusiveGestures(pan, tap);
-  const fraction = clamp(dragging ?? progress);
+  const scrubbing = dragging?.owner === owner;
+  const fraction = clamp(scrubbing ? dragging.fraction : progress);
   const time = (seconds: number) =>
     `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
   return (
@@ -159,7 +172,7 @@ export function AudioProgress({
         style={{
           flex: 1,
           minWidth: 36,
-          height: 44,
+          height: compact ? 44 : 60,
           justifyContent: compact ? 'flex-start' : 'center',
           paddingTop: compact ? 1 : 0,
         }}
@@ -167,6 +180,21 @@ export function AudioProgress({
         <View pointerEvents="none" style={{ width: '100%', height: compact ? 18 : 32 }}>
           <AudioWaveform levels={levels} progress={fraction} ink={ink} compact={compact} />
         </View>
+        <Text
+          pointerEvents="none"
+          style={{
+            position: compact ? 'absolute' : undefined,
+            bottom: compact ? 2 : undefined,
+            left: compact ? 0 : undefined,
+            color: ink,
+            opacity: 0.72,
+            fontSize: compact ? 13 : 12,
+            lineHeight: compact ? 16 : undefined,
+            fontVariant: ['tabular-nums'],
+          }}
+        >
+          {time(scrubbing || (fraction > 0 && fraction < 1) ? fraction * duration : duration)}
+        </Text>
       </View>
     </GestureDetector>
   );
