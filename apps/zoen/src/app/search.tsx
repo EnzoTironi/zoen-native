@@ -177,6 +177,7 @@ function SearchBody({
     >
       <Stack.Screen options={{ title: space ? t('chat.searchThisChat') : t('chat.search') }} />
       <TextInput
+        testID="global-search-input"
         accessibilityLabel={t('chat.search')}
         autoFocus
         value={query}

@@ -156,6 +156,7 @@ export function component(name: (typeof files)[number], ports: Record<string, un
     ...ports,
   };
   runInNewContext(compiled[name]!, {
+    Error,
     module,
     exports: module.exports,
     require(path: string) {
