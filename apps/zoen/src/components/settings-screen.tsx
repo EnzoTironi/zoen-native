@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Stack } from 'expo-router';
 import { ScrollView, type ScrollViewProps } from 'react-native';
 import { useTheme } from '../theme';
+import { navigationGlassAppearance } from './navigation-appearance';
 
 export function SettingsScreen({
   title,
@@ -39,6 +40,7 @@ export function SettingsScreen({
     >
       <Stack.Screen
         options={{
+          ...navigationGlassAppearance,
           title,
           headerTintColor: p.navigation.control,
           headerTitleStyle: { ...p.typography.title, color: p.navigation.text },
