@@ -11,6 +11,7 @@ pub struct PublicArtifactReferences {
     artifact_id: String,
     sha256: Option<String>,
     page_head: Option<(String, String)>,
+    scene_uri: Option<String>,
 }
 impl PublicArtifactReferences {
     pub fn new(
@@ -40,6 +41,7 @@ impl PublicArtifactReferences {
             artifact_id,
             sha256,
             page_head: None,
+            scene_uri: None,
         })
     }
     /// The native host already verified both exact public Page CAS fingerprints.
@@ -55,6 +57,32 @@ impl PublicArtifactReferences {
         }
         let mut refs = Self::new("replace_page_block".into(), artifact_id, None)?;
         refs.page_head = Some((prefix, content));
+        Some(refs)
+    }
+    /// Only the exact owned renderer URI verified by native Core is a locator.
+    /// The proposed scene bytes remain semantic input to every Gate rule.
+    pub fn scene_head(artifact_id: String, sha256: String, uri: String) -> Option<Self> {
+        let rest = uri.strip_prefix("ui://zoen/package/")?;
+        let parts: Vec<_> = rest.split('/').collect();
+        if uri.len() > 256
+            || parts.len() != 3
+            || parts[0].is_empty()
+            || parts[0].len() > 128
+            || !parts[0]
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+            || !parts[1]
+                .parse::<u32>()
+                .is_ok_and(|v| v > 0 && v.to_string() == parts[1])
+            || parts[2].len() != 64
+            || !parts[2]
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        {
+            return None;
+        }
+        let mut refs = Self::new("replace_scene".into(), artifact_id, Some(sha256))?;
+        refs.scene_uri = Some(uri);
         Some(refs)
     }
     pub(super) fn gate_text(&self, call: &ToolCall, definition: &ToolDef) -> Option<String> {
@@ -80,6 +108,12 @@ impl PublicArtifactReferences {
             semantic.remove("prefixSha256");
             semantic.remove("contentSha256");
         }
+        if let Some(uri) = &self.scene_uri {
+            if semantic.get("resourceUri").and_then(Value::as_str) != Some(uri) {
+                return None;
+            }
+            semantic.remove("resourceUri");
+        }
         Some(format!(
             "mini-app tool {} ({}) {}",
             self.canonical_tool,
@@ -92,6 +126,49 @@ impl PublicArtifactReferences {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn scene_public_locators_are_exact_and_never_remove_semantic_credentials() {
+        let item = format!("it_mcp_{}", "12".repeat(32));
+        let hash = "34".repeat(32);
+        let uri = format!("ui://zoen/package/it_package/1/{}", "56".repeat(32));
+        let refs =
+            PublicArtifactReferences::scene_head(item.clone(), hash.clone(), uri.clone()).unwrap();
+        let mut call = ToolCall {
+            id: "scene".into(),
+            name: "replace_scene_hash".into(),
+            requires_review: false,
+            arguments: serde_json::json!({"artifactId":item,"sha256":hash,"resourceUri":uri,"version":1,"sceneJson":"reviewed drawing"}),
+        };
+        let definition = ToolDef {
+            name: call.name.clone(),
+            description: "Review this drawing".into(),
+            parameters: serde_json::json!({}),
+        };
+        let text = refs.gate_text(&call, &definition).unwrap();
+        assert!(!text.contains(&item) && !text.contains(&hash) && !text.contains(&uri));
+        assert!(text.contains("reviewed drawing"));
+        assert!(gate::hard_rules(&gate::Check::new(gate::Point::ToolCall, &text)).is_none());
+        call.arguments["sceneJson"] = "load auth.json".into();
+        let text = refs.gate_text(&call, &definition).unwrap();
+        assert!(matches!(
+            gate::hard_rules(&gate::Check::new(gate::Point::ToolCall, &text)),
+            Some((gate::Outcome::Block, _))
+        ));
+        call.arguments["resourceUri"] = format!("{uri}/forged").into();
+        assert!(refs.gate_text(&call, &definition).is_none());
+        assert!(PublicArtifactReferences::scene_head(
+            item.clone(),
+            hash,
+            "https://guest.test/app".into()
+        )
+        .is_none());
+        let read = PublicArtifactReferences::new("read_scene".into(), item.clone(), None).unwrap();
+        let read_call = ToolCall {
+            arguments: serde_json::json!({"artifactId":item}),
+            ..call
+        };
+        assert!(read.gate_text(&read_call, &definition).is_some());
+    }
     #[test]
     fn page_public_fingerprints_are_exact_and_semantic_credential_checks_remain() {
         let prefix = "ab".repeat(32);

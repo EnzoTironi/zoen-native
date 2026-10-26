@@ -168,12 +168,12 @@ pub(crate) fn event_valid(
         if !state.writer(&event.space, &event.author) {
             return false;
         }
-        if let Some(actor) = identities
-            .get(&event.author)
-            .filter(|id| id.kind == types::IdentityKind::Agent)
-        {
-            if matches!(&event.body, EventBody::ItemCreated { .. })
-                || !actor
+        let Some(actor) = identities.get(&event.author) else {
+            return false;
+        };
+        if actor.kind == types::IdentityKind::Agent
+            && (matches!(&event.body, EventBody::ItemCreated { .. })
+                || (!actor
                     .owner
                     .as_deref()
                     .and_then(|owner| state.latest_trust(&event.space, owner, &event.author))
@@ -181,9 +181,11 @@ pub(crate) fn event_valid(
                         g.grant.capability == Capability::Trust(TrustLevel::Act)
                             && g.grant.expires_at_ms.is_none_or(|at| at > event.at_ms)
                     })
-            {
-                return false;
-            }
+                    && !actor.owner.as_deref().is_some_and(|owner| {
+                        crate::agent_scenes::approved_effect(state, event, owner)
+                    })))
+        {
+            return false;
         }
         if matches!(&event.body, EventBody::ItemCreated { .. })
             && !next

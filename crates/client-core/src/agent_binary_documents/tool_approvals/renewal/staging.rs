@@ -7,6 +7,9 @@ impl Engine {
         if action.is_none() {
             return Ok(false);
         }
+        if p.schema == crate::agent_scenes::SCHEMA {
+            return self.scene_tool_accepted(p);
+        }
         if p.schema == 5 {
             return self.site_tool_accepted(p);
         }

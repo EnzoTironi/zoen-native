@@ -15,6 +15,7 @@ impl Engine {
                 | "read_photocraft"
                 | "read_page"
                 | "read_site"
+                | "read_scene"
         ) {
             ActionClass::Reply
         } else {

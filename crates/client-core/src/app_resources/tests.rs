@@ -480,3 +480,31 @@ async fn owned_renderer_pin_cannot_be_bypassed_by_legacy_writes_or_forged_projec
     });
     assert!(event_valid(&e.state, &undo, &e.identities));
 }
+
+#[tokio::test]
+async fn owned_updates_require_the_actor_profile_and_can_reproject_when_it_arrives() {
+    let f = fixture(":memory:");
+    let item = install(&f).await;
+    let e = f.client.lock();
+    let content = e.item_state(&item.id).unwrap().current().content.clone();
+    let event = e
+        .author_for(&f.input.expected_identity_id)
+        .unwrap()
+        .sign_event(
+            &f.input.space_id,
+            "profile_probe",
+            0,
+            None,
+            EventBody::ItemVersioned {
+                item: item.id,
+                content,
+                note: "Authenticated update".into(),
+            },
+        )
+        .unwrap();
+    assert!(event_valid(&e.state, &event, &e.identities));
+    let mut pending_profile = e.identities.clone();
+    pending_profile.remove(&f.input.expected_identity_id);
+    assert!(!event_valid(&e.state, &event, &pending_profile));
+    assert!(event_valid(&e.state, &event, &e.identities));
+}

@@ -105,7 +105,10 @@ impl<'a> SpaceTools<'a> {
             .collect();
         for t in e.agent_tools(space).into_iter().filter(|_| unrestricted) {
             // Artifact transport is for its managed App UI, never a model tool.
-            if binary_items.contains(&t.item_id) {
+            if binary_items.contains(&t.item_id)
+                || e.item(t.item_id.clone())
+                    .is_ok_and(|item| scene_tools::is_owned_scene(&item))
+            {
                 continue;
             }
             if names.len() >= 64 {
@@ -196,6 +199,15 @@ impl<'a> SpaceTools<'a> {
             page_items.push(item.id);
             names.extend(offered);
         }
+        let scene_items = scene_tools::discover(
+            e,
+            space,
+            source,
+            serving,
+            unrestricted,
+            artifact,
+            &mut names,
+        );
         Self {
             e,
             journal,
@@ -207,6 +219,7 @@ impl<'a> SpaceTools<'a> {
             deckcraft_items,
             selection: None,
             page_items,
+            scene_items,
         }
     }
 

@@ -10,6 +10,7 @@ mod agent_binary_documents;
 #[path = "agent_pages/contract.rs"]
 pub mod agent_page_tools;
 mod agent_pages;
+pub mod agent_scenes;
 pub use agent_pages::approvals::ApprovedPageTurn;
 pub use agent_pages::{AgentPageDelivery, AgentPageResult, AgentPageSnapshot, AgentPageTurn};
 pub mod agent_app_creation;

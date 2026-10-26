@@ -32,6 +32,8 @@ const KINDS: &[&str] = &[
     "deckcraft_slide_new",
     "read_page",
     "replace_page_block",
+    "read_scene",
+    "replace_scene",
 ];
 
 fn enabled(value: Option<&str>) -> bool {
@@ -75,6 +77,13 @@ fn public_kind(host: &SpaceTools<'_>, name: &str) -> Option<Value> {
         (crate::deckcraft::model_name(kind, item)?, "__")
     } else if current.page_items.contains(item) && client_core::agent_page_tools::recognizes(kind) {
         (client_core::agent_page_tools::model_name(kind, item)?, "_")
+    } else if current.scene_items.contains(item)
+        && client_core::agent_scenes::tools::recognizes(kind)
+    {
+        (
+            client_core::agent_scenes::tools::model_name(kind, item)?,
+            "_",
+        )
     } else {
         return None;
     };

@@ -121,9 +121,11 @@ impl Engine {
         let ItemContent::App(app) = &current.content else {
             return Err(invalid());
         };
-        let format = miniapps::binary::Format::for_id(&app.app).ok_or_else(invalid)?;
+        let resource_valid = miniapps::binary::Format::for_id(&app.app)
+            .is_some_and(|format| app.resource_uri == format.resource())
+            || (app.view.is_some() && crate::app_resources::valid(app));
         if item.space != input.space_id
-            || app.resource_uri != format.resource()
+            || !resource_valid
             || current.number != binding.version
             || app
                 .document
