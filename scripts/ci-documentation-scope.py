@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 from urllib.parse import unquote, urlsplit
+from ci_static_documents import validate as validate_static_documents
 
 
 # Exact human-maintained prose, not a blanket *.md exception. Adding an entry
@@ -201,6 +202,16 @@ def classify(base, head, event):
         result["paths"] = changes
         if not changes:
             raise ValueError("Empty or unavailable diff requires the full suite")
+        if any(path not in DOCUMENTS for path in changes):
+            try:
+                if ancestor != base:
+                    raise ValueError("Stale static branch requires the full suite")
+                validate_static_documents(git, base, head, changes)
+                result.update(documentation_only=True, run_rust=False,
+                              reason="Verified static roadmap/evidence; runtime and native inputs unchanged")
+                return result
+            except ValueError:
+                pass  # Existing frontend/full fallback remains authoritative.
         if not all(path in DOCUMENTS for path in changes):
             validate_frontend(base, head, ancestor, changes)
             result.update(frontend_only=True, run_rust=False,
@@ -213,6 +224,9 @@ def classify(base, head, event):
             command = ["git", "grep", "-I", "-l", "-F"]
             for path in changes:
                 command += ["-e", path, "-e", PurePosixPath(path).name]
+            # The real Rust file-transfer journey recursively reads docs/*.md.
+            # A directory reader is an input even without a document basename.
+            command += ["-e", '"docs"', "-e", "'docs'"]
             command += [tree, "--", ".", ":(exclude)*.md",
                         ":(exclude)" + SELF, ":(exclude)" + TEST]
             search = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
