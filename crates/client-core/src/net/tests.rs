@@ -4,6 +4,7 @@ mod lease_cases;
 mod ordering_cases;
 mod pickup_cases;
 mod profile_clock_cases;
+mod publication_fifo;
 mod queue_phases;
 mod queue_scenario;
 use queue_scenario::queued_messages_round_trip;
@@ -231,6 +232,7 @@ enum CatchUp {
     HandshakeCollision,
     PermissionRefusal,
     StorageRefusal,
+    TransientOrder,
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -247,4 +249,17 @@ async fn member_seen_beyond_the_next_sequence_is_fetched_once_then_forks() {
 #[test]
 fn superseded_profile_query_cannot_consume_current_batch_or_its_backoff() {
     profile_clock_cases::superseded_profile_query_cannot_consume_current_batch_or_its_backoff();
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn transient_publish_refusal_retains_ciphertext_and_fifo(
+) -> Result<(), Box<dyn std::error::Error>> {
+    queued_messages_round_trip(CatchUp::TransientOrder).await
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn unsettled_space_does_not_block_another_and_reconnect_recovers_lost_echo(
+) -> Result<(), Box<dyn std::error::Error>> {
+    publication_fifo::unsettled_space_does_not_block_another_and_reconnect_recovers_lost_echo()
+        .await
 }
