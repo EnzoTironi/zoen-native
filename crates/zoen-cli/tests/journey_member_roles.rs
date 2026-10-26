@@ -1,5 +1,7 @@
 //! Normal public commands, real relay and independent certified MLS identities.
 mod common;
+#[path = "journey_member_roles/revocation.rs"]
+mod revocation;
 use common::World;
 use serde_json::Value;
 
