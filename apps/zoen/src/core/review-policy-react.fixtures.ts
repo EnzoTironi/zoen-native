@@ -13,6 +13,7 @@ import * as policy from '../owner-policy/session.ts';
 import * as policyCore from '../owner-policy/core-port.ts';
 import { imageToolReviewValid } from './image-tool-review.ts';
 import * as siteSource from '../sites/source.ts';
+import * as appReview from '../miniapps/app-request-review.ts';
 import type { useToolReview } from '../agents/use-tool-review.ts';
 import type { useOwnerPolicy } from '../owner-policy/use-owner-policy.ts';
 import type { AgentRequestDto } from './generated/AgentRequestDto';
@@ -37,6 +38,7 @@ for (const source of Object.values(compiled)) assert.match(source, /react\/compi
 const presentation = {
   card: compile(new URL('../agents/request-card.tsx', import.meta.url)),
   recovery: compile(new URL('../agents/tool-review-recovery.tsx', import.meta.url)),
+  action: compile(new URL('../agents/app-request-review-action.tsx', import.meta.url)),
 };
 assert.match(presentation.recovery, /react\/compiler-runtime/);
 // RequestCard's existing try/finally fallback is checked against its baseline
@@ -263,6 +265,11 @@ export async function reviewPolicyReactFixture(kind: 'review' | 'policy' | 'card
   load(compiled[kind === 'card' ? 'review' : kind], module);
   const card = { exports: {} as Record<string, any> };
   if (kind === 'card') {
+    ports['../miniapps/app-request-review'] = appReview;
+    ports['../i18n'] = ports['../i18n/index.ts'];
+    const action = { exports: {} };
+    load(presentation.action, action);
+    ports['./app-request-review-action'] = action.exports;
     ports['./use-tool-review'] = module.exports;
     const recovery = { exports: {} };
     load(presentation.recovery, recovery);

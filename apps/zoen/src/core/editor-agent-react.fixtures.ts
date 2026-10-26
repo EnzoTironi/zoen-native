@@ -10,6 +10,7 @@ import { EditorAgentSession } from '../miniapps/editor-agent-session.ts';
 import * as port from '../miniapps/editor-agent-port.ts';
 import * as formats from '../miniapps/binary-formats.ts';
 import * as heads from '../miniapps/deck-version-selection.ts';
+import * as appReview from '../miniapps/app-request-review.ts';
 import * as memberFlow from '../communities/member-actions.ts';
 import * as additionFlow from '../communities/member-addition.ts';
 import * as memberPort from '../communities/member-context-port.ts';
@@ -404,6 +405,12 @@ export async function editorAgentReactFixture(
   };
   const load = (path: string, overrides: Record<string, any>) =>
     loadEditorAgent(path, { ...common, ...overrides });
+  common['./app-request-review'] = common['../miniapps/app-request-review'] = appReview;
+  common['./use-app-request-review-handoff'] = load(
+    '../miniapps/use-app-request-review-handoff.ts',
+    {},
+  );
+  common['./app-request-review-action'] = load('../agents/app-request-review-action.tsx', {});
   common['../communities/use-member-actions'] = load('../communities/use-member-actions.ts', {});
   common['../communities/member-addition-sheet'] = load(
     '../communities/member-addition-sheet.tsx',

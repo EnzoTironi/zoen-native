@@ -12,12 +12,14 @@ import { reviewRenewal } from '../i18n/catalogs/review-renewal.ts';
 import { imageToolReviewValid } from './image-tool-review.ts';
 import { imageReview } from '../i18n/catalogs/image-review.ts';
 import * as decision from './tool-request-decision.ts';
+import * as appReview from '../miniapps/app-request-review.ts';
 
 const files = {
   view: '../agents/tool-review-recovery.tsx',
   hook: '../agents/use-tool-review.ts',
   card: '../agents/request-card.tsx',
   site: '../agents/site-tool-review.tsx',
+  action: '../agents/app-request-review-action.tsx',
 };
 const require = createRequire(import.meta.url);
 const { transformSync } = require('@babel/core');
@@ -30,7 +32,7 @@ const compiled = new Map(
           : new URL(path, import.meta.url),
         'utf8',
       );
-      const useCompiler = name === 'view' || name === 'card' || name === 'hook';
+      const useCompiler = name !== 'site';
       const diagnostics: string[] = [];
       const transformed = useCompiler
         ? transformSync(source, {
@@ -263,7 +265,7 @@ export function fixture(locale: 'en' | 'pt-BR' = 'en') {
             cleanups.push(fn());
           },
         };
-      if (path.includes('i18n/index'))
+      if (path === '../i18n' || path.includes('i18n/index'))
         return {
           t: (key: string) =>
             key.startsWith('reviewRenewal.')
@@ -296,6 +298,8 @@ export function fixture(locale: 'en' | 'pt-BR' = 'en') {
       if (path.endsWith('/ZoenCoreModule')) return { sitePreviewVersion: 2 };
       if (path.endsWith('/account-scope.ts')) return ownership;
       if (path.endsWith('/drawing-tool-review')) return { DrawingToolReview: 'DrawingToolReview' };
+      if (path.endsWith('/app-request-review')) return appReview;
+      if (path.endsWith('/app-request-review-action')) return load('action');
       if (path.endsWith('/sites/source')) return siteSource;
       if (path.endsWith('/sites/preview')) return { SitePreview: 'SitePreview' };
       if (path.endsWith('/site-tool-review'))

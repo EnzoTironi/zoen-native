@@ -17,6 +17,7 @@ import { Avatar, NativeButton, Surface } from '../components/primitives';
 import { useDialogs } from '../components/dialogs';
 import { ToolReviewRecovery } from './tool-review-recovery';
 import { DrawingToolReview } from './drawing-tool-review';
+import { AppRequestReviewAction } from './app-request-review-action';
 import type { DrawingReviewPort } from '../miniapps/drawing-review-types';
 import { accountScope, accountScopeKey } from '../core/account-scope.ts';
 import { SiteToolReview } from './site-tool-review';
@@ -39,6 +40,7 @@ export function RequestCard({
   embedded = false,
   onDecision,
   drawingReview,
+  reviewRequested = false,
 }: {
   request: AgentRequestDto;
   compact?: boolean;
@@ -47,6 +49,7 @@ export function RequestCard({
   embedded?: boolean;
   onDecision?: (command: DecisionCommand) => Promise<DecideOutcome>;
   drawingReview?: DrawingReviewPort;
+  reviewRequested?: boolean;
 }) {
   const client = useClient();
   const { store } = client;
@@ -271,6 +274,7 @@ export function RequestCard({
           contentHash={tool.content_hash}
           spaceId={request.space_id}
           onReady={drawingReady}
+          initialOpen={reviewRequested}
         />
       ) : null}
       {!compact ? (
@@ -407,20 +411,26 @@ export function RequestCard({
                 void decide('Deny');
               }}
             />
-            <NativeButton
-              label={busy ? t('agents.saving') : t('agents.allowOnce')}
-              disabled={
-                !canDecide ||
-                request.status === 'Stale' ||
-                toolExpired ||
-                (siteNeedsReview && (!siteReviewed || compact)) ||
-                (drawingNeedsReview && (!drawingReviewed || compact)) ||
-                (imageRequest && !image)
-              }
-              onPress={() => {
-                void decide(tool == null ? 'Approve' : 'ApproveOnce');
-              }}
-            />
+            {drawingNeedsReview && !drawingReview ? (
+              !compact && !embedded ? (
+                <AppRequestReviewAction request={request} />
+              ) : null
+            ) : (
+              <NativeButton
+                label={busy ? t('agents.saving') : t('agents.allowOnce')}
+                disabled={
+                  !canDecide ||
+                  request.status === 'Stale' ||
+                  toolExpired ||
+                  (siteNeedsReview && (!siteReviewed || compact)) ||
+                  (drawingNeedsReview && (!drawingReviewed || compact)) ||
+                  (imageRequest && !image)
+                }
+                onPress={() => {
+                  void decide(tool == null ? 'Approve' : 'ApproveOnce');
+                }}
+              />
+            )}
           </>
         ) : null}
       </View>

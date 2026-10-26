@@ -18,12 +18,14 @@ export function DrawingToolReview({
   contentHash,
   spaceId,
   onReady,
+  initialOpen = false,
 }: {
   port: DrawingReviewPort;
   requestId: string;
   contentHash: string;
   spaceId: string;
   onReady: (ready: boolean) => void;
+  initialOpen?: boolean;
 }) {
   const client = useClient();
   const { store } = client;
@@ -34,7 +36,7 @@ export function DrawingToolReview({
     port?.getSnapshot ?? unavailable,
     port?.getSnapshot ?? unavailable,
   );
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialOpen);
   const [attempt, retry] = useState(0);
   const [preview, setPreview] = useState<{
     value: DrawingReviewPreview;
