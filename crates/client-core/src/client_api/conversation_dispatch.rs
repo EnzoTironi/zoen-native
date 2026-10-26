@@ -11,22 +11,24 @@ impl Client {
         vault: Option<Arc<dyn SecretVault>>,
     ) -> Result<String, CoreError> {
         use Command::{
-            AddAdmin, AddMember, AddMemberReviewed, AgentDefinitionDismiss, AgentDefinitionPreview,
-            AgentDefinitionRead, AgentDefinitionReconcile, AgentDefinitionUpdate,
-            AgentEnrollmentApprove, AgentEnrollmentDismiss, AgentEnrollmentPreview,
-            AgentEnrollmentStatus, AgentStatus, AppCurrentShareContext, AppEditTargets,
-            CallHistory, ControlAgent, CreateAgentInvite, CreateCommunity, CreateGroup,
-            CreateInvite, DeleteMessage, EditMessage, EncryptChat, FindAccountPolicyOptions,
+            AddAdmin, AddMember, AddMemberReviewed, AgentControlChange, AgentControlRead,
+            AgentControlRetry, AgentDefinitionDismiss, AgentDefinitionPreview, AgentDefinitionRead,
+            AgentDefinitionReconcile, AgentDefinitionUpdate, AgentEnrollmentApprove,
+            AgentEnrollmentDismiss, AgentEnrollmentPreview, AgentEnrollmentStatus, AgentStatus,
+            AppCurrentShareContext, AppEditTargets, CallHistory, ConfirmForward, ControlAgent,
+            CreateAgentInvite, CreateCommunity, CreateGroup, CreateInvite, DeleteMessage,
+            DismissForward, EditMessage, EncryptChat, FindAccountPolicyOptions,
             FindMemberCandidates, FindOwnerPolicyOptions, FindOwnerPolicySubmission, FindPeople,
-            ForwardMessage, InviteCall, JoinInvite, LeaveSpace, MarkRead, Message, MessageDraft,
-            NewMutationId, OpenAgentLink, OwnerPolicyOptions, OwnerPolicyStatus, PageBlockMarkdown,
-            PageParseMarkdown, PrepareOwnerPolicy, PreviewInvite, ProviderSignIn, React,
-            RecoverFailedMediaDraft, RemoveMember, RemoveMemberReviewed,
-            RequestAccountPolicyOptions, RequestAppEdit, RequestOwnerPolicyOptions, RespondCall,
-            ReviewOwnerPolicy, RevokeAgentInvite, SaveMessageDraft, SendMessage, SendMessageDraft,
-            SetChatMuted, SetChatPrefs, SetMemberRoleReviewed, SetTyping, ShareAppCurrent,
-            Snapshot, SpaceMemberContext, StartDirect, StartOwnerPolicyDirect, SubmitOwnerPolicy,
-            Thread, Timeline, UniversalSearch,
+            ForwardMessage, ForwardReview, ForwardStatus, InviteCall, JoinInvite, LeaveSpace,
+            MarkRead, Message, MessageDraft, NewMutationId, OpenAgentLink, OwnerPolicyOptions,
+            OwnerPolicyStatus, PageBlockMarkdown, PageParseMarkdown, PrepareOwnerPolicy,
+            PreviewInvite, ProviderSignIn, React, RecoverFailedMediaDraft, RemoveMember,
+            RemoveMemberReviewed, RequestAccountPolicyOptions, RequestAppEdit,
+            RequestOwnerPolicyOptions, RespondCall, ReviewOwnerPolicy, RevokeAgentInvite,
+            SaveMessageDraft, SendMessage, SendMessageDraft, SetChatMuted, SetChatPrefs,
+            SetMemberRoleReviewed, SetTyping, ShareAppCurrent, Snapshot, SpaceMemberContext,
+            StartDirect, StartOwnerPolicyDirect, SubmitOwnerPolicy, Thread, Timeline,
+            UniversalSearch,
         };
         match command {
             AppCurrentShareContext { scope } => encode(&self.app_current_share_context(scope)?),
@@ -239,6 +241,10 @@ impl Client {
                 message_id,
                 emoji,
             } => encode(&self.react(space_id, message_id, emoji)?),
+            command @ (ForwardReview { .. }
+            | ForwardStatus { .. }
+            | ConfirmForward { .. }
+            | DismissForward { .. }) => self.dispatch_forwarding(command),
             ForwardMessage {
                 source_space,
                 message_id,
@@ -307,6 +313,51 @@ impl Client {
             | RemoveMember { .. }) => self.dispatch_member_command(command).await,
             LeaveSpace { space_id } => encode(&self.leave_space(space_id)?),
             EncryptChat { space_id } => encode(&self.encrypt_chat(space_id)?),
+            AgentControlRetry {
+                agent_id,
+                expected_identity_id,
+                expected_device_id,
+                observed_revision,
+                observed_operation_id,
+                action,
+            } => encode(
+                &self
+                    .agent_control_retry(
+                        definition_target(agent_id, expected_identity_id, expected_device_id),
+                        &observed_revision,
+                        &observed_operation_id,
+                        action,
+                    )
+                    .await?,
+            ),
+            AgentControlRead {
+                agent_id,
+                expected_identity_id,
+                expected_device_id,
+            } => encode(
+                &self
+                    .agent_control_read(definition_target(
+                        agent_id,
+                        expected_identity_id,
+                        expected_device_id,
+                    ))
+                    .await?,
+            ),
+            AgentControlChange {
+                agent_id,
+                expected_identity_id,
+                expected_device_id,
+                observed_revision,
+                action,
+            } => encode(
+                &self
+                    .agent_control_change(
+                        definition_target(agent_id, expected_identity_id, expected_device_id),
+                        &observed_revision,
+                        action,
+                    )
+                    .await?,
+            ),
             AgentStatus { agent_id } => encode(&self.agent_status(agent_id).await?),
             AgentDefinitionRead {
                 agent_id,

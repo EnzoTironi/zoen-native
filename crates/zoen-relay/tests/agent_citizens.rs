@@ -433,3 +433,6 @@ async fn competing_exact_next_definitions_do_not_overwrite_and_owner_reads_exact
     d.finish().await;
     Ok(())
 }
+
+#[path = "agent_citizens/control_cases.rs"]
+mod control_cases;

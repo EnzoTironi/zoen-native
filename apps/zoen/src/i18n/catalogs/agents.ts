@@ -57,6 +57,9 @@ export const agents = defineFeature(
     lifecycleReconciling:
       'Checking whether the change was applied. Refreshing will not send it again.',
     lifecycleRefresh: 'Refresh status',
+    retryPauseAgent: 'Retry pause',
+    retryResumeAgent: 'Retry resume',
+    retryRevokeAgent: 'Retry revocation',
     pauseAgent: 'Pause agent',
     resumeAgent: 'Resume agent',
     shareAgent: 'Share agent',
@@ -191,6 +194,9 @@ export const agents = defineFeature(
     lifecycleReconciling:
       'Verificando se a alteração foi aplicada. Atualizar não a envia novamente.',
     lifecycleRefresh: 'Atualizar estado',
+    retryPauseAgent: 'Tentar pausar novamente',
+    retryResumeAgent: 'Tentar retomar novamente',
+    retryRevokeAgent: 'Tentar encerrar novamente',
     pauseAgent: 'Pausar agente',
     resumeAgent: 'Retomar agente',
     shareAgent: 'Compartilhar agente',

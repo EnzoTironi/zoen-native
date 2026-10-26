@@ -14,7 +14,10 @@ pub mod agent_scenes;
 pub use agent_pages::approvals::ApprovedPageTurn;
 pub use agent_pages::{AgentPageDelivery, AgentPageResult, AgentPageSnapshot, AgentPageTurn};
 pub mod agent_app_creation;
+mod agent_control;
 mod agent_definition;
+mod agent_owner_scope;
+pub use agent_control::{AgentControlDto, AgentControlOutcome};
 pub mod agent_sites;
 pub use agent_definition::{
     AgentDefinitionDto, AgentDefinitionPreviewDto, AgentDefinitionUpdateDto,
@@ -54,6 +57,8 @@ pub use backup_api::BackupStatusDto;
 #[cfg(feature = "client-types")]
 pub use client_api::export_typescript;
 mod files;
+mod forwarding;
+pub use forwarding::{ForwardReview, ForwardScope, ForwardSource};
 mod growth;
 pub use growth::{AcquisitionDto, GrowthSyncDto, OnboardingPlanDto};
 mod file_demand;

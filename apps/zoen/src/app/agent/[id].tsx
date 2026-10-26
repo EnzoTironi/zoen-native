@@ -1,7 +1,7 @@
 import { t, formatLocale } from '../../i18n/index.ts';
 import { useState } from 'react';
-import { Stack, router, useLocalSearchParams } from 'expo-router';
-import { Pressable, ScrollView, Share, Text, View } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import { Pressable, Share, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useClient } from '../../core/provider';
 import { useCoreQuery } from '../../core/query';
@@ -9,6 +9,7 @@ import { money } from '../../core/presentation';
 import { agentTrustLevels, confirmAgentTrust } from '../../agents/trust-confirmation';
 import { Avatar, EmptyState, Loading, NativeButton, Surface } from '../../components/primitives';
 import { SettingsRows } from '../../components/settings-rows';
+import { NavigationScrollView } from '../../components/navigation-scroll-view';
 import { useTheme } from '../../theme';
 import { useDialogs } from '../../components/dialogs';
 import { useAgentControl } from '../../agents/use-agent-control';
@@ -52,15 +53,20 @@ export default function Agent() {
     }
   }
   if (!agent)
-    return error ? (
-      <EmptyState title={t('agents.agentUnavailable')} detail={error}>
-        <NativeButton label={t('agents.tryAgain')} onPress={retry} />
-      </EmptyState>
-    ) : (
-      <Loading />
+    return (
+      <NavigationScrollView title={t(error ? 'agents.agentUnavailable' : 'common.loading')}>
+        {error ? (
+          <EmptyState title={t('agents.agentUnavailable')} detail={error}>
+            <NativeButton label={t('agents.tryAgain')} onPress={retry} />
+          </EmptyState>
+        ) : (
+          <Loading />
+        )}
+      </NavigationScrollView>
     );
   return (
-    <ScrollView
+    <NavigationScrollView
+      title={agent.persona.name}
       contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={{
         padding: 24,
@@ -71,7 +77,6 @@ export default function Agent() {
         alignSelf: 'center',
       }}
     >
-      <Stack.Screen options={{ title: agent.persona.name }} />
       <View style={{ alignItems: 'center', gap: 14, paddingVertical: 18 }}>
         <Avatar name={agent.persona.name} color={agent.persona.tint_hex} size={88} agent />
         <Text style={{ color: colors.text, fontSize: 29, fontWeight: '600' }}>
@@ -368,6 +373,6 @@ export default function Agent() {
           ))
         )}
       </Surface>
-    </ScrollView>
+    </NavigationScrollView>
   );
 }

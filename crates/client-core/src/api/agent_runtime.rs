@@ -115,8 +115,12 @@ impl Client {
     /// Owner: "pause", "resume" or "revoke" one of your agents.
     pub async fn agent_control(&self, agent: String, action: String) -> Result<(), CoreError> {
         let action = protocol::AgentAction::parse(&action).ok_or_else(|| invalid("action"))?;
-        self.agent_done(protocol::AgentRequest::Control { agent, action })
-            .await
+        let action = match action {
+            protocol::AgentAction::Pause => crate::AgentControl::Pause,
+            protocol::AgentAction::Resume => crate::AgentControl::Resume,
+            protocol::AgentAction::Revoke => crate::AgentControl::Revoke,
+        };
+        self.control_agent(agent, action).await
     }
 
     pub(super) async fn agent_done(&self, req: protocol::AgentRequest) -> Result<(), CoreError> {

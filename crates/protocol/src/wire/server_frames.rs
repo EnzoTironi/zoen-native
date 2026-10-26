@@ -243,6 +243,7 @@ fn result_to(result: &Result<Reply, String>) -> pb_res::R {
             sealed: sealed.clone().unwrap_or_default(),
             device: None,
         }),
+        Ok(Reply::AgentControl(a)) => pb_res::R::AgentControl(a.clone()),
         Ok(Reply::AgentState(a)) => pb_res::R::AgentState(agent_state_to(a)),
         Ok(Reply::Devices(ds)) => pb_res::R::Devices(PbDevices {
             devices: ds
@@ -314,6 +315,7 @@ fn result_from(result: pb_res::R) -> Result<Result<Reply, String>, DecodeError> 
                 .collect(),
         )),
         pb_res::R::Link(b) => Ok(Reply::Link((!b.sealed.is_empty()).then_some(b.sealed))),
+        pb_res::R::AgentControl(a) => Ok(Reply::AgentControl(a)),
         pb_res::R::AgentState(a) => Ok(Reply::AgentState(AgentStateRecord {
             status: a.status,
             kind: a.kind,

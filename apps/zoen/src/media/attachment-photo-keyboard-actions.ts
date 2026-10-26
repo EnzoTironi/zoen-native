@@ -192,9 +192,13 @@ export function attachmentKeyboardAction(
           finalCaption.includes('\0')
         )
           return;
-        const forced = gallery ? currentDraft.forced : finalCaption;
+        // Returning to the grid leaves its common-caption field empty. That
+        // untouched field must not erase the captions already owned by items.
+        // A final native keystroke still overrides them, including an explicit
+        // clear previously observed as forced === ''.
+        const commonCaption = currentDraft.forced !== null || (!gallery && finalCaption !== '');
         const captions = selected.map((value, index) =>
-          forced !== null
+          commonCaption
             ? index === 0
               ? finalCaption
               : ''

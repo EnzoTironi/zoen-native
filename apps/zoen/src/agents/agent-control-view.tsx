@@ -15,6 +15,7 @@ export function AgentControlView({
 }) {
   const { colors } = useTheme();
   const ticket = session.ticket();
+  const retry = session.retryTicket();
   const status = state.status;
   return (
     <View testID="agent-lifecycle-control" style={{ gap: 10 }}>
@@ -53,6 +54,23 @@ export function AgentControlView({
           label={ticket.action === 'Pause' ? t('agents.pauseAgent') : t('agents.resumeAgent')}
           onPress={() => {
             if (!disabled) void session.change(ticket);
+          }}
+        />
+      ) : null}
+      {retry ? (
+        <NativeButton
+          testID="agent-lifecycle-retry"
+          secondary
+          disabled={disabled || state.busy}
+          label={
+            retry.action === 'Pause'
+              ? t('agents.retryPauseAgent')
+              : retry.action === 'Resume'
+                ? t('agents.retryResumeAgent')
+                : t('agents.retryRevokeAgent')
+          }
+          onPress={() => {
+            if (!disabled) void session.retry(retry);
           }}
         />
       ) : null}

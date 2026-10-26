@@ -1,26 +1,44 @@
 import type { AccountScope } from '../core/account-scope.ts';
 import { accountScopeKey } from '../core/account-scope.ts';
 import type { AgentStatus } from '../core/generated/AgentStatus.ts';
+import type { AgentControlDto } from '../core/generated/AgentControlDto.ts';
+import type { AgentControl } from '../core/generated/AgentControl.ts';
 
 export type AgentLifecycleAction = 'Pause' | 'Resume';
 export type AgentControlPort = {
   scope(): AccountScope | null;
-  read(agent: string, scope: AccountScope): Promise<AgentStatus>;
-  control(agent: string, action: AgentLifecycleAction, scope: AccountScope): Promise<void>;
+  read(agent: string, scope: AccountScope): Promise<AgentControlDto>;
+  retry(
+    agent: string,
+    action: AgentControl,
+    scope: AccountScope,
+    revision: string,
+    operationId: string,
+  ): Promise<void>;
+  control(
+    agent: string,
+    action: AgentLifecycleAction,
+    scope: AccountScope,
+    revision: string,
+  ): Promise<void>;
 };
 export type AgentControlState = Readonly<{
   scopeKey: string | null;
   phase: 'inactive' | 'loading' | 'ready' | 'failed';
   status: AgentStatus | null;
   busy: boolean;
-  pending: AgentLifecycleAction | null;
+  pending: AgentLifecycleAction | 'Revoke' | null;
 }>;
 export type AgentControlTicket = Readonly<{
   scope: string;
+  agent: string;
   generation: number;
   observation: number;
+  revision: string;
   action: AgentLifecycleAction;
 }>;
+export type AgentControlRetryTicket = Omit<AgentControlTicket, 'action'> &
+  Readonly<{ action: AgentControl; operationId: string }>;
 export const emptyAgentControl: AgentControlState = {
   scopeKey: null,
   phase: 'inactive',
@@ -28,8 +46,6 @@ export const emptyAgentControl: AgentControlState = {
   busy: false,
   pending: null,
 };
-const target = (action: AgentLifecycleAction): AgentStatus =>
-  action === 'Pause' ? 'Paused' : 'Active';
 
 /** Focus-local presentation. The relay owns lifecycle state; this is no run/queue store. */
 export class AgentControlSession {
@@ -38,6 +54,8 @@ export class AgentControlSession {
   private scope: AccountScope | null = null;
   private generation = 0;
   private observation = 0;
+  private revision: string | null = null;
+  private operationId: string | null = null;
   private readGeneration = 0;
   private active = false;
   private state: AgentControlState = emptyAgentControl;
@@ -71,6 +89,7 @@ export class AgentControlSession {
       accountScopeKey(scope) === accountScopeKey(this.scope) ? this.state.pending : null;
     ++this.generation;
     ++this.readGeneration;
+    this.operationId = null;
     this.scope = scope ? Object.freeze({ ...scope }) : null;
     this.active = scope !== null;
     this.state = { ...emptyAgentControl, scopeKey: accountScopeKey(scope), pending };
@@ -95,17 +114,17 @@ export class AgentControlSession {
     const read = ++this.readGeneration;
     this.publish({ phase: 'loading' });
     try {
-      const status = await this.port.read(this.agent, scope);
+      const result = await this.port.read(this.agent, scope);
       if (!this.current(generation) || read !== this.readGeneration) return;
       ++this.observation;
-      // A failed send is never evidence that Pause/Resume was not delivered.
-      // A baseline read cannot rule out late delivery; only the target or final
-      // revocation clears this route's unresolved intent. Refresh never resends.
-      const pending = this.state.pending;
+      // Core reopens the durable intent and reconciles the exact relay revision.
+      // Matching status alone cannot prove which request won. Reads never resend.
+      this.revision = result.revision;
+      this.operationId = result.operation_id;
       this.publish({
         phase: 'ready',
-        status,
-        pending: pending && status !== target(pending) && status !== 'Revoked' ? pending : null,
+        status: result.status,
+        pending: result.pending,
       });
     } catch {
       if (this.current(generation) && read === this.readGeneration)
@@ -118,22 +137,70 @@ export class AgentControlSession {
       this.state.phase === 'ready' &&
       !this.state.busy &&
       !this.state.pending &&
+      !!this.revision &&
       (status === 'Active' || status === 'Paused')
       ? Object.freeze({
           scope: accountScopeKey(this.scope),
+          agent: this.agent,
           generation: this.generation,
           observation: this.observation,
+          revision: this.revision,
           action: status === 'Active' ? 'Pause' : 'Resume',
         })
       : null;
+  }
+  retryTicket(): AgentControlRetryTicket | null {
+    return this.current() &&
+      this.state.phase === 'ready' &&
+      !this.state.busy &&
+      this.state.pending &&
+      this.revision &&
+      this.operationId
+      ? Object.freeze({
+          scope: accountScopeKey(this.scope),
+          agent: this.agent,
+          generation: this.generation,
+          observation: this.observation,
+          revision: this.revision,
+          operationId: this.operationId,
+          action: this.state.pending,
+        })
+      : null;
+  }
+  async retry(ticket: AgentControlRetryTicket) {
+    const current = this.retryTicket();
+    if (
+      !current ||
+      !this.scope ||
+      ticket.scope !== current.scope ||
+      ticket.agent !== current.agent ||
+      ticket.generation !== current.generation ||
+      ticket.observation !== current.observation ||
+      ticket.revision !== current.revision ||
+      ticket.operationId !== current.operationId ||
+      ticket.action !== current.action
+    )
+      return;
+    const scope = this.scope;
+    this.publish({ busy: true });
+    try {
+      await this.port.retry(this.agent, ticket.action, scope, ticket.revision, ticket.operationId);
+    } catch {
+      /* The same durable intent remains unresolved; reads never resend it. */
+    }
+    if (!this.current(ticket.generation)) return;
+    await this.refresh();
+    if (this.current(ticket.generation)) this.publish({ busy: false });
   }
   private accepts(ticket: AgentControlTicket) {
     const current = this.ticket();
     return (
       current &&
       ticket.scope === current.scope &&
+      ticket.agent === current.agent &&
       ticket.generation === current.generation &&
       ticket.observation === current.observation &&
+      ticket.revision === current.revision &&
       ticket.action === current.action
     );
   }
@@ -143,7 +210,7 @@ export class AgentControlSession {
     // Consume before dispatch; double taps and queued stale handlers cannot send twice.
     this.publish({ busy: true, pending: ticket.action });
     try {
-      await this.port.control(this.agent, ticket.action, scope);
+      await this.port.control(this.agent, ticket.action, scope, ticket.revision);
     } catch {
       // Delivery is unknown. Reconciliation is a status read, never an automatic retry.
     }

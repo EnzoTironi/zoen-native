@@ -224,6 +224,22 @@ pub(super) enum Command {
         message_id: String,
         emoji: Option<String>,
     },
+    ForwardReview {
+        scope: crate::ForwardScope,
+    },
+    ForwardStatus {
+        source: crate::ForwardSource,
+    },
+    ConfirmForward {
+        scope: crate::ForwardScope,
+        operation_id: String,
+        source_revision: String,
+    },
+    DismissForward {
+        scope: crate::ForwardScope,
+        operation_id: String,
+        accepted_message_id: Option<String>,
+    },
     ForwardMessage {
         source_space: String,
         message_id: String,
@@ -349,6 +365,26 @@ pub(super) enum Command {
     },
     EncryptChat {
         space_id: String,
+    },
+    AgentControlRetry {
+        agent_id: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+        observed_revision: String,
+        observed_operation_id: String,
+        action: crate::AgentControl,
+    },
+    AgentControlRead {
+        agent_id: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+    },
+    AgentControlChange {
+        agent_id: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+        observed_revision: String,
+        action: crate::AgentControl,
     },
     AgentStatus {
         agent_id: String,

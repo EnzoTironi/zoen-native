@@ -186,6 +186,13 @@ export async function communityUi(
         BottomSheet: 'BottomSheet',
         RNHostView: 'RNHostView',
       };
+    if (name === '@expo/ui/swift-ui/modifiers')
+      return Object.fromEntries(
+        ['font', 'foregroundStyle', 'frame', 'padding'].map((modifier) => [
+          modifier,
+          (value: unknown) => ({ [modifier]: value }),
+        ]),
+      );
     if (name === './member-role-label') return { memberRoleLabelKey };
     if (name === '@expo/ui/community/menu') return { MenuView: 'MenuView' };
     if (name === 'react-native-safe-area-context')

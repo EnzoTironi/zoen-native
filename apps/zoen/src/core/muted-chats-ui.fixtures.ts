@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import * as flow from '../notifications/muted-chats.ts';
+import * as notificationSettings from '../notifications/settings-presentation.ts';
 import * as ownership from './account-scope.ts';
 import { ClientStore } from './store.ts';
 import { Driver } from './store.fixtures.ts';
@@ -19,6 +20,7 @@ const files = {
   view: '../notifications/muted-chats-screen.tsx',
   route: '../app/settings/muted-chats.tsx',
   entry: '../components/notification-settings.tsx',
+  settingsScreen: '../components/settings-screen.tsx',
   you: '../app/(tabs)/you.tsx',
 };
 const compiled = new Map(
@@ -98,6 +100,7 @@ export async function mutedUi(locale: 'en' | 'pt-BR' = 'en') {
   let confirm: (options: any) => Promise<boolean> = async () => false;
   let cursor = 0;
   const slots: any[] = [];
+  const stateSlots: any[] = [];
   const memo = (factory: () => any, deps: unknown[]) => {
     const index = cursor++;
     if (!slots[index] || !deps.every((value, i) => Object.is(value, slots[index].deps[i])))
@@ -110,6 +113,16 @@ export async function mutedUi(locale: 'en' | 'pt-BR' = 'en') {
   const require = (name: string): any => {
     if (name === 'react')
       return {
+        useState: (initial: unknown) => {
+          const index = cursor++;
+          if (!(index in stateSlots)) stateSlots[index] = initial;
+          return [
+            stateSlots[index],
+            (value: unknown) => {
+              stateSlots[index] = value;
+            },
+          ];
+        },
         useMemo: memo,
         useCallback: (fn: () => any, deps: unknown[]) => memo(() => fn, deps),
         useSyncExternalStore: (_: unknown, get: () => unknown) => get(),
@@ -139,7 +152,18 @@ export async function mutedUi(locale: 'en' | 'pt-BR' = 'en') {
           if (fn !== focused) nextFocus = fn;
         },
       };
-    if (name === '@expo/ui') return { BottomSheet: 'BottomSheet', RNHostView: 'RNHostView' };
+    if (name === '@expo/ui')
+      return {
+        BottomSheet: 'BottomSheet',
+        RNHostView: 'RNHostView',
+        Host: 'Host',
+        Column: 'Column',
+        Text: 'NativeText',
+        Collapsible: 'Collapsible',
+      };
+    if (name === './settings-screen') return load('settingsScreen');
+    if (name === './navigation-scroll-view') return { NavigationScrollView: 'ScrollView' };
+    if (name.endsWith('/notifications/settings-presentation')) return notificationSettings;
     if (name.endsWith('/core/provider'))
       return { useClient: () => ({ ...store.getSnapshot(), store }) };
     if (name.endsWith('/account-scope')) return ownership;
@@ -174,7 +198,15 @@ export async function mutedUi(locale: 'en' | 'pt-BR' = 'en') {
     if (name.endsWith('/components/settings-rows') || name === './settings-rows')
       return { SettingsRows: 'SettingsRows' };
     if (name.endsWith('/notifications/provider'))
-      return { useNotifications: () => ({ registration: 'unsupported' }) };
+      return {
+        useNotifications: () => ({
+          permission: 'allowed',
+          registration: 'acknowledged',
+          busy: false,
+          failure: null,
+          deliveryVerified: false,
+        }),
+      };
     if (name.endsWith('/profile/use-profile-photo')) return { useProfilePhoto: () => undefined };
     if (name.endsWith('/components/sky-background')) return { SkyScene: 'SkyScene' };
     if (name.endsWith('/profile/profile-header')) return { ProfileHeader: 'ProfileHeader' };
@@ -216,7 +248,11 @@ export async function mutedUi(locale: 'en' | 'pt-BR' = 'en') {
     dialogs,
     route,
     t: localization.t,
-    entry: () => load('entry').NotificationSettings(),
+    entry: () => {
+      cursor = 0;
+      const screen = load('entry').NotificationSettings();
+      return screen.type(screen.props);
+    },
     you: () => {
       const tree = render('you');
       return tree.props.children.type(tree.props.children.props);

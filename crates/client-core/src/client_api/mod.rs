@@ -9,6 +9,7 @@ mod app_resource_dispatch;
 mod command;
 mod content_dispatch;
 mod conversation_dispatch;
+mod forwarding_dispatch;
 use command::Command;
 
 mod handle;
@@ -86,6 +87,7 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
     protocol::sites::Receipt::export_all(&config)?;
     Snapshot::export_all(&config)?;
     crate::SpaceMemberContext::export_all(&config)?;
+    crate::ForwardReview::export_all(&config)?;
     crate::MessageDraftDto::export_all(&config)?;
     crate::MessageDraftSendResult::export_all(&config)?;
     TimelinePage::export_all(&config)?;
@@ -127,6 +129,8 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
     crate::DecideOutcome::export_all(&config)?;
     crate::PageEditResult::export_all(&config)?;
     crate::AgentStatus::export_all(&config)?;
+    crate::AgentControlDto::export_all(&config)?;
+    crate::AgentControlOutcome::export_all(&config)?;
     crate::AgentDefinitionDto::export_all(&config)?;
     crate::AgentDefinitionPreviewDto::export_all(&config)?;
     crate::AgentDefinitionUpdateDto::export_all(&config)?;

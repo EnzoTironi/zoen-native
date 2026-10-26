@@ -5,6 +5,8 @@
 //! wakes through the relay's ordinary fan-out: the agent's own session is a member like
 //! anyone. These rows are the single source of truth the runtime resumes from.
 
+mod control;
+pub use control::{control_reviewed, control_status, invite_live};
 use protocol::{AgentAction, AgentStateRecord};
 use sqlx::{PgPool, Postgres, Transaction};
 
@@ -350,9 +352,9 @@ pub async fn control(
         return Err(AgentCitizenError::Revoked);
     }
     let sql = match action {
-        AgentAction::Pause => "UPDATE agent_citizens SET paused_at = now() WHERE agent = $1",
-        AgentAction::Resume => "UPDATE agent_citizens SET paused_at = NULL WHERE agent = $1",
-        AgentAction::Revoke => "UPDATE agent_citizens SET revoked_at = now() WHERE agent = $1",
+        AgentAction::Pause => "UPDATE agent_citizens SET paused_at = now(), control_revision = control_revision + 1, control_operation = '', control_action = '', control_device = '' WHERE agent = $1",
+        AgentAction::Resume => "UPDATE agent_citizens SET paused_at = NULL, control_revision = control_revision + 1, control_operation = '', control_action = '', control_device = '' WHERE agent = $1",
+        AgentAction::Revoke => "UPDATE agent_citizens SET revoked_at = now(), control_revision = control_revision + 1, control_operation = '', control_action = '', control_device = '' WHERE agent = $1",
     };
     sqlx::query(sql).bind(agent).execute(&mut *tx).await?;
     if action == AgentAction::Revoke {

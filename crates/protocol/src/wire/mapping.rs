@@ -211,6 +211,21 @@ pub(super) fn agent_req_to(a: &AgentRequest) -> PbAgentReq {
             pb.op = "status".into();
             pb.agent.clone_from(agent);
         }
+        AgentRequest::ControlStatus { agent } => {
+            pb.op = "control_status".into();
+            pb.agent.clone_from(agent);
+        }
+        AgentRequest::ControlReviewed {
+            agent,
+            action,
+            operation,
+            revision,
+        } => {
+            pb.op = format!("control_{}", action.id());
+            pb.agent.clone_from(agent);
+            pb.operation.clone_from(operation);
+            pb.revision = *revision;
+        }
         AgentRequest::Control { agent, action } => {
             pb.op = action.id().into();
             pb.agent.clone_from(agent);
@@ -233,6 +248,13 @@ pub(super) fn agent_req_from(pb: PbAgentReq) -> Result<AgentRequest, DecodeError
             definition: pb.definition,
         },
         "status" => AgentRequest::Status { agent: pb.agent },
+        "control_status" => AgentRequest::ControlStatus { agent: pb.agent },
+        other if other.starts_with("control_") => AgentRequest::ControlReviewed {
+            agent: pb.agent,
+            action: AgentAction::parse(&other[8..]).ok_or_else(|| bad("agent control"))?,
+            operation: pb.operation,
+            revision: pb.revision,
+        },
         other => AgentRequest::Control {
             agent: pb.agent,
             action: AgentAction::parse(other).ok_or_else(|| bad("agent op"))?,
