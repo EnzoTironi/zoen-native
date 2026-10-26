@@ -81,6 +81,8 @@ test("full scene transport reconstructs image bytes/state and verifies ordered c
         if (name === "app_scene_read")
           value = {
             transferId: "read",
+            version: 1,
+            currentVersion: 1,
             bytes: bytes.length,
             sha256: sceneHash(bytes),
             chunkBytes: CHUNK_BYTES,
@@ -132,6 +134,8 @@ test("corrupt chunk and retired owner fail closed before any further read or com
             name === "app_scene_read"
               ? {
                   transferId: "read",
+                  version: 1,
+                  currentVersion: 1,
                   bytes: bytes.length,
                   sha256: sceneHash(bytes),
                   chunkBytes: CHUNK_BYTES,

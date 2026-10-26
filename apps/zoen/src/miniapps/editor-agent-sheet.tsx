@@ -17,6 +17,8 @@ import { EditorAgentContent } from './editor-agent-content';
 import { EditorAgentEnrollment } from './editor-agent-enrollment';
 import { editorAgentAdmission } from './editor-agent-admission';
 
+const readyFallback = () => true;
+const noReadinessChanges = () => () => {};
 type Pane = 'prompt' | 'members' | 'enrollment';
 /** State-presented content changes never replace the sibling document or its session. */
 export function EditorAgentAccess({
@@ -28,6 +30,11 @@ export function EditorAgentAccess({
   spaceId: string;
   document: MiniappDocumentController;
 }) {
+  const ready = useSyncExternalStore(
+    document.agentReadiness?.subscribe ?? noReadinessChanges,
+    document.agentReadiness?.getSnapshot ?? readyFallback,
+    document.agentReadiness?.getSnapshot ?? readyFallback,
+  );
   const client = useClient();
   const { store } = client;
   const { scheme, colors } = useTheme();
@@ -51,7 +58,7 @@ export function EditorAgentAccess({
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
   const ticket = session.ticket(state);
   const memberTicket = members.addition.ticket(members.additionState);
-  const admission = editorAgentAdmission(members.additionState);
+  const admission = ready ? editorAgentAdmission(members.additionState) : 'loading';
   const navigate = (next: Pane) => {
     if (!session.accepts(ticket)) return;
     Keyboard.dismiss();
@@ -92,27 +99,29 @@ export function EditorAgentAccess({
   const visiblePane = state.visible ? pane : 'prompt';
   return (
     <>
-      <View
-        style={{
-          position: 'absolute',
-          top: chrome?.top ?? insets.top + 8,
-          right: (chrome?.right ?? insets.right + 12) + (chrome?.width ?? 44) + 8,
-          borderRadius: 24,
-          backgroundColor: colors.surface,
-        }}
-      >
-        <IconButton
-          testID="editor-agent-open"
-          name={{ ios: 'sparkles', android: 'auto_awesome', web: 'auto_awesome' }}
-          label={t('miniapps.askAgent')}
-          disabled={!owner || state.visible}
-          onPress={() => {
-            setPane('prompt');
-            session.open();
-            void members.addition.refresh();
+      {ready ? (
+        <View
+          style={{
+            position: 'absolute',
+            top: chrome?.top ?? insets.top + 8,
+            right: (chrome?.right ?? insets.right + 12) + (chrome?.width ?? 44) + 8,
+            borderRadius: 24,
+            backgroundColor: colors.surface,
           }}
-        />
-      </View>
+        >
+          <IconButton
+            testID="editor-agent-open"
+            name={{ ios: 'sparkles', android: 'auto_awesome', web: 'auto_awesome' }}
+            label={t('miniapps.askAgent')}
+            disabled={!owner || state.visible}
+            onPress={() => {
+              setPane('prompt');
+              session.open();
+              void members.addition.refresh();
+            }}
+          />
+        </View>
+      ) : null}
       <Host
         style={{ position: 'absolute' }}
         pointerEvents="none"
@@ -154,6 +163,7 @@ export function EditorAgentAccess({
                   }}
                   onSend={() => {
                     if (
+                      !ready ||
                       !session.accepts(ticket) ||
                       (!session.getSnapshot().uncertain &&
                         editorAgentAdmission(members.addition.getSnapshot()) !== 'ready')

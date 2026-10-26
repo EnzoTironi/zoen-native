@@ -44,12 +44,16 @@ export function editorAgentPort(
         !/^[a-f0-9]{64}$/.test(observed.sha256)
       )
         throw Error('editor_agent_head_changed');
-      const value = await store.driver.request({
-        op: 'app_binary_read',
-        item_id: itemId,
-        version: null,
-        expected_sha256: null,
-      });
+      const descriptor = document.agentDocument;
+      const value = await store.driver.request(
+        descriptor?.kind === 'owned-scene'
+          ? {
+              op: 'app_document_read_pinned',
+              item_id: itemId,
+              expected_resource_uri: descriptor.resourceUri,
+            }
+          : { op: 'app_binary_read', item_id: itemId, version: null, expected_sha256: null },
+      );
       check();
       if (
         value.item_id !== itemId ||

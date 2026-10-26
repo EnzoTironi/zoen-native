@@ -138,6 +138,7 @@ function fixture(owned = false) {
       },
     },
     subscribe: () => () => {},
+    subscribeCanonicalChanges: () => () => {},
     registerSessionPreflight: () => {
       preflights++;
       return () => {
