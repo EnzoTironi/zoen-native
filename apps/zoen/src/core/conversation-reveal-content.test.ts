@@ -22,6 +22,101 @@ const base = {
   bottomAligned: true,
 };
 
+test('CORE660 short landscape contact reveals the matching caption line above the keyboard', () => {
+  // AX after one older action: row 88.333/136.667, caption wrapper 159.667/44.
+  // Native geometry was captured BEFORE that action; this is a reconstruction,
+  // not a claim that the capped native trace observed the resulting offset.
+  const geometry = {
+    contentOffset: { y: 0 },
+    contentSize: { height: 414 },
+    layoutMeasurement: { height: 402 },
+    contentInset: { top: 0, bottom: 289 + 1 / 3 },
+  };
+  const item = {
+    y: 39 + 2 / 3,
+    height: 139,
+    measured: true,
+    firstItemOffset: 86,
+    childHeight: 229 + 2 / 3,
+    windowHeight: 402,
+    topObstruction: 86,
+    bottomAligned: true,
+  };
+  const alignment = 402 - item.childHeight - item.firstItemOffset;
+  const matchingLine = { y: item.y + 83 + 2 / 3, height: 23 };
+  const old = conversationRevealOffset(geometry, item)!;
+  assert.ok(
+    matchingLine.y + item.firstItemOffset + alignment - old > 130,
+    'whole-body top alignment leaves the caption under the search field',
+  );
+  const selected = { ...item, anchor: matchingLine };
+  const offset = conversationRevealOffset(geometry, selected)!;
+  const top = matchingLine.y + item.firstItemOffset + alignment - offset;
+  assert.equal(top, 86);
+  assert.ok(top + matchingLine.height <= 402 - geometry.contentInset.bottom);
+  assert.ok(offset <= 414 - 402 + geometry.contentInset.bottom, 'native clamp remains unchanged');
+});
+
+test('pending semantic measurement waits only when the complete body cannot fit', () => {
+  const item = { ...base, ...conversationRevealContent(row, { ...body, anchorPending: true }) };
+  assert.equal(conversationRevealOffset(geometry, item), null);
+  const portrait = {
+    ...geometry,
+    layoutMeasurement: { height: 1000 },
+    contentInset: { bottom: 100 },
+  };
+  assert.equal(
+    conversationRevealOffset(portrait, item),
+    conversationRevealOffset(portrait, { ...item, anchorPending: false }),
+  );
+  assert.equal(
+    conversationRevealOffset(portrait, { ...item, anchor: { y: item.y + 100, height: 23 } }),
+    conversationRevealOffset(portrait, item),
+    'a fitting body preserves portrait alignment',
+  );
+});
+
+test('a settled oversized body refines a late matching text anchor; drag cancels further work', () => {
+  const frames: (() => void)[] = [];
+  const offsets: number[] = [];
+  let content: ConversationContentLayout = body;
+  const reveal = new ConversationReveal('one-chat', {
+    current: () => true,
+    item: () => ({ ...base, ...conversationRevealContent(row, content) }),
+    frame: (run) => {
+      frames.push(run);
+      return () => {};
+    },
+    scroll: (offset) => offsets.push(offset),
+  });
+  const data = [{}];
+  reveal.onData(data);
+  reveal.onCommit(data);
+  reveal.onLayout(402);
+  reveal.onContentSize(874, 3000);
+  reveal.onInset(geometry.contentInset);
+  reveal.onScroll(geometry);
+  reveal.request('message');
+  frames.at(-1)!();
+  assert.deepEqual(offsets, [928]);
+  reveal.onScroll({ ...geometry, contentOffset: { y: 928 } });
+  frames.at(-1)!();
+  content = { ...body, anchor: { y: 300, width: 200, height: 23 } };
+  reveal.onItemLayout();
+  frames.at(-1)!();
+  assert.deepEqual(offsets, [928, 1228], 'late text layout refines the completed body alignment');
+  reveal.onScroll({ ...geometry, contentOffset: { y: 1228 } });
+  frames.at(-1)!();
+  reveal.onItemLayout();
+  frames.at(-1)!();
+  assert.deepEqual(offsets, [928, 1228], 'already visible text needs no extra native scroll');
+  reveal.cancel('user-drag');
+  const count = frames.length;
+  content = { ...body, anchor: { y: 400, width: 200, height: 23 } };
+  reveal.onItemLayout();
+  assert.equal(frames.length, count);
+});
+
 test('landscape search reveals the message instead of filling the visible strip with its date', () => {
   const oldOffset = conversationRevealOffset(geometry, { ...base, ...row, measured: true })!;
   assert.ok(row.y + base.firstItemOffset + body.y - oldOffset >= 116);

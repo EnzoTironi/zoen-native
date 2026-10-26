@@ -1,0 +1,17 @@
+# App edit Agent targeting
+
+`app_edit_targets` is a disposable owner/device-bound view over the current App head, UI pin, verified owned writer profiles, actual membership/MLS readers and the existing trust grants. It stores nothing. Its records distinguish delivery readiness, missing explicit permission and eligibility to publish the request. An implicit local owned-Agent default is not presented as schema6 execution readiness.
+
+The UI submits `target_agent_id`, `expected_target_revision` and the owned App `expected_resource_uri` with the existing `request_app_edit` command. The same Core lock rechecks the selected target and exact head before the existing atomic share-and-source publication. Explicit sends require a current unexpired, unrevoked Suggest-or-higher grant. This does not promise execution: the existing App capability, approval, budget and effect checks still apply. Legacy callers that omit target/revision retain the previous effective trust defaults only when exactly one eligible operator exists; ambiguous omission refuses.
+
+The review revision binds the signed membership/grant causal cut and pending authority intents, profiles, explicit grants, current delivery/eligibility, owner/device/Space and document head/pin. Ordinary chat traffic does not retire a choice. Authority ABA, new grants, expiry, revocation and UI release changes require another observation.
+
+The signed `ArtifactRequest` contains the selected `agent_id` and `intent_sha256`. The intent covers the complete publication input, including the chosen Agent/revision, current-artifact disclosure, UI pin and mutation. The signed source remains the durable receipt: an exact retry recovers it before fresh target/head checks, including after a lost response, target revocation or cold unlock. Changed arguments under that mutation refuse. Recovering a receipt does not grant a new tool effect; existing Agent source, trust, approval, pin and CAS checks still apply.
+
+## Narrow predecessor boundary
+
+The predecessor at `601c94a73d6c0277066cbfb54be79065f8d009c4` denies unknown ArtifactRequest fields. New nonempty target/intent metadata therefore decodes as `Unsupported(AppEditRequested)` there. It is not dispatched as unrestricted chat. The exact signed protobuf payload, signature and sequencer chain survive persistence. The predecessor probe covers clear event-log persistence; mixed-version MLS/Agent execution is not qualified.
+
+The checked fixture was produced by compiling the genuine pinned predecessor types/event-log sources unchanged, supplying the new raw body through its SignedContent decoder, sequencing it, cold-reloading its persisted typed view, and appending a normal message. The probe source and per-source hashes are beside the fixture under `crates/event-log/testdata/app-edit-target-cohort*`. Only the temporary workspace member inventory was restricted to the two libraries; no decoder was rewritten.
+
+On upgrade, `SpaceLog::from_events` hydrates only the old inert AppEditRequested view when the retained raw body is recognized as that same discriminator. All signature, framing, chain and causal checks still run, followed by normal application admission. A known typed-body mismatch is never repaired. Unknown/future payloads remain inert. This does not promise general mixed-version UI/execution support: an old Agent cannot execute the new targeted request until it runs the matching contract. Downgrading a store already written with new typed fields is not qualified.

@@ -115,6 +115,14 @@ impl Engine {
         {
             return Err(denied());
         }
+        if reply
+            .as_ref()
+            .and_then(|r| r.artifact.as_ref())
+            .and_then(|r| r.agent_id.as_deref())
+            .is_some_and(|id| id != me || entry.author != owner)
+        {
+            return Err(denied());
+        }
         let source_bytes = serde_json::to_vec(&(entry.id(), &entry.author, text, attaches, reply))
             .map_err(|_| denied())?;
         Ok((
@@ -268,5 +276,7 @@ impl Client {
 #[cfg(test)]
 pub(crate) mod tests;
 
+#[cfg(test)]
+mod source_cohort_tests;
 #[cfg(test)]
 mod source_scope_tests;

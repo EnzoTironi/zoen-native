@@ -4,7 +4,7 @@ use crate::app_edit_requests::AppEditRequestInput;
 use crate::engine::EntryBody;
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
-fn add_agent(
+pub(super) fn add_agent(
     f: &Fixture,
     owner: &Arc<Client>,
     root: [u8; 32],
@@ -37,15 +37,18 @@ fn add_agent(
     e.add_member(&f.space, &id, role)?;
     Ok(id)
 }
-fn with_agent(path: &str) -> Result<(Fixture, String), Box<dyn std::error::Error>> {
+pub(super) fn with_agent(path: &str) -> Result<(Fixture, String), Box<dyn std::error::Error>> {
     let f = fixture(path);
     let id = add_agent(&f, &f.client, [84; 32], Role::Member)?;
     Ok((f, id))
 }
 
-fn input(f: &Fixture, base: &AppBinaryDocumentDto, id: &str) -> R<AppEditRequestInput> {
+pub(super) fn input(f: &Fixture, base: &AppBinaryDocumentDto, id: &str) -> R<AppEditRequestInput> {
     let account = f.client.account().ok_or_else(super::super::unavailable)?;
     Ok(AppEditRequestInput {
+        target_agent_id: None,
+        expected_target_revision: None,
+        expected_resource_uri: None,
         expected_identity_id: account.identity_id,
         expected_device_id: account.device_id,
         space_id: f.space.clone(),

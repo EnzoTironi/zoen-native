@@ -90,6 +90,9 @@ fn post_mode(
 ) -> R<crate::TimelineEntry> {
     let account = owner.account().ok_or_else(|| storage("fixture account"))?;
     let input = AppEditRequestInput {
+        target_agent_id: None,
+        expected_target_revision: None,
+        expected_resource_uri: None,
         expected_identity_id: account.identity.clone(),
         expected_device_id: account.device.clone(),
         space_id: space.into(),
@@ -267,5 +270,56 @@ fn disclosed_send_with_missing_keypackage_never_shares_or_appends_request() -> R
         .iter()
         .any(|c| c.member_id == f.agent_id && c.owned_agent && !c.delivery_ready));
     assert!(!contexts.iter().any(|c| c.delivery_ready));
+    Ok(())
+}
+
+#[test]
+fn typed_target_reports_real_mls_wait_and_never_shares_or_posts_before_the_welcome() -> R<()> {
+    let mut f = missing_package(false)?;
+    f.owner
+        .set_trust(&f.agent_id, SPACE, types::TrustLevel::Suggest)?;
+    let account = f.owner.account().ok_or_else(|| storage("owner account"))?;
+    let mut input = AppEditRequestInput {
+        expected_identity_id: account.identity.clone(),
+        expected_device_id: account.device.clone(),
+        space_id: SPACE.into(),
+        item_id: f.app.item_id.clone(),
+        expected_version: f.app.version,
+        expected_sha256: f.app.sha256.clone(),
+        text: "Edit after joining".into(),
+        mutation_id: "typed_wait".into(),
+        share_current: true,
+        target_agent_id: Some(f.agent_id.clone()),
+        expected_target_revision: None,
+        expected_resource_uri: None,
+    };
+    let targets = f.owner.app_edit_targets(&(&input).into())?;
+    let target = targets
+        .agents
+        .iter()
+        .find(|a| a.agent.id == f.agent_id)
+        .ok_or_else(|| storage("owned target"))?;
+    assert!(!target.delivery_ready && !target.eligible);
+    assert!(
+        !target.permission_required,
+        "Suggest exists, only the actual MLS reader is missing"
+    );
+    input.expected_target_revision = Some(targets.revision);
+    let before = (
+        f.owner.store.event_count()?,
+        f.owner.outbox_len(),
+        f.owner.state.grants.len(),
+        f.owner.state.items.len(),
+    );
+    assert!(f.owner.request_app_edit(input).is_err());
+    assert_eq!(
+        (
+            f.owner.store.event_count()?,
+            f.owner.outbox_len(),
+            f.owner.state.grants.len(),
+            f.owner.state.items.len()
+        ),
+        before
+    );
     Ok(())
 }

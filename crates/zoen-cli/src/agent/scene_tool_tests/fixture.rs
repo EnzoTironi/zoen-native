@@ -249,6 +249,8 @@ pub(super) async fn fixture() -> R<Fixture> {
         sha256: document.sha256,
         request_id: types::new_id("scene_request")?,
         text_sha256: hex::encode(Sha256::digest(text.as_bytes())),
+        agent_id: None,
+        intent_sha256: None,
     });
     let at = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?

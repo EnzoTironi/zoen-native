@@ -1,5 +1,5 @@
 import { memo, useMemo } from 'react';
-import { Text } from 'react-native';
+import { Text, type LayoutChangeEvent } from 'react-native';
 import { EnrichedMarkdownText, type MarkdownStyle } from 'react-native-enriched-markdown';
 import { messageMarkdownLink, messageMarkdownMayLoadMedia } from '../core/message-markdown';
 import { useTheme } from '../theme';
@@ -12,6 +12,7 @@ export type MessageMarkdownProps = {
   maxWidth: number;
   testID?: string;
   selectable?: boolean;
+  onLayout?: (event: LayoutChangeEvent) => void;
 };
 
 /** Same native Markdown engine as the document editor, within the message face. */
@@ -22,6 +23,7 @@ export const MessageMarkdown = memo(function MessageMarkdown({
   maxWidth,
   testID,
   selectable = false,
+  onLayout,
 }: MessageMarkdownProps) {
   const { colors } = useTheme();
   const launchLink = useLinkLaunch(text);
@@ -92,6 +94,7 @@ export const MessageMarkdown = memo(function MessageMarkdown({
     return (
       <Text
         testID={testID}
+        onLayout={onLayout}
         selectable={selectable}
         allowFontScaling
         style={{ color, fontSize, lineHeight: Math.ceil(fontSize * 1.3), maxWidth, flexShrink: 1 }}
@@ -102,6 +105,7 @@ export const MessageMarkdown = memo(function MessageMarkdown({
   return (
     <EnrichedMarkdownText
       testID={testID}
+      onLayout={onLayout}
       markdown={text}
       flavor="github"
       markdownStyle={markdownStyle}

@@ -240,6 +240,23 @@ test('the native renderer gets the exact signed source with read-only task lists
   assert.equal(readFileSync(source, 'utf8').includes('dangerouslySetInnerHTML'), false);
 });
 
+test('native Markdown and media-free fallback expose their actual text-root measurement', () => {
+  const onLayout = () => {};
+  for (const platform of ['ios', 'web']) {
+    const f = fixture(platform);
+    const rendered = f.render({
+      text: '![media](https://example.invalid/x.png)',
+      color: '#fff',
+      fontSize: 17,
+      maxWidth: 300,
+      onLayout,
+    });
+    assert.equal(rendered.type, platform === 'ios' ? 'NativeMarkdownText' : 'PlainText');
+    assert.equal(rendered.props.onLayout, onLayout);
+    f.close();
+  }
+});
+
 test('rendered link events use the navigation boundary, and text selection is an explicit mode', () => {
   const f = fixture();
   const { props } = f.render({

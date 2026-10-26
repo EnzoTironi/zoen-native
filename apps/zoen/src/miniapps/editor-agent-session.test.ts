@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import type { Persona } from '../core/generated/Persona';
 import type { AgentRequestDto } from '../core/generated/AgentRequestDto';
 import type { TimelineEntry } from '../core/generated/TimelineEntry';
 import {
@@ -35,6 +36,12 @@ function fixture() {
     ids = 0;
   const calls: unknown[][] = [],
     entry = { id: 'signed-message' } as TimelineEntry;
+  const agent = { id: 'agent', name: 'Agent', is_mine: true } as Persona;
+  const target = {
+    agent,
+    head: { version: 2, sha256: 'cd'.repeat(32) },
+    revision: 'ab'.repeat(32),
+  };
   const port = {
     scope: () => scope,
     id: () => `request-${++ids}`,
@@ -45,6 +52,13 @@ function fixture() {
       calls.push(['head']);
       return { version: 2, sha256: 'cd'.repeat(32) };
     },
+    targets: async () => ({
+      head: target.head,
+      targets: {
+        revision: target.revision,
+        agents: [{ agent, delivery_ready: true, permission_required: false, eligible: true }],
+      },
+    }),
     requests: async () => [request(), request('other'), request('app', 'other')],
     replies: async (_sourceId: string) => [] as TimelineEntry[],
     send: async (...args: Parameters<EditorAgentPort['send']>) => {
@@ -60,6 +74,7 @@ function fixture() {
   return {
     session,
     port,
+    target,
     calls,
     entry,
     scope: (next: string) => {
@@ -72,10 +87,12 @@ test('open/close only reads, retains the unsent draft and filters exact artifact
   const f = fixture();
   f.session.open();
   await tick();
+  await tick();
   assert.equal(f.session.getSnapshot().requests.length, 1);
   f.session.setDraft('Human draft');
   f.session.close();
   f.session.open();
+  await tick();
   await tick();
   assert.equal(f.session.getSnapshot().draft, 'Human draft');
   assert.deepEqual(f.calls, []);
@@ -88,6 +105,7 @@ test('send flushes without retire before reading head and publishing one explici
     await barrier.promise;
   };
   f.session.open();
+  await tick();
   f.session.setDraft('  Make heading bold  ');
   const sent = f.session.send();
   await tick();
@@ -97,7 +115,7 @@ test('send flushes without retire before reading head and publishing one explici
   assert.deepEqual(f.calls, [
     ['flush'],
     ['head'],
-    ['send', 'Make heading bold', { version: 2, sha256: 'cd'.repeat(32) }, 'request-1'],
+    ['send', 'Make heading bold', { version: 2, sha256: 'cd'.repeat(32) }, 'request-1', f.target],
   ]);
   assert.equal(f.session.getSnapshot().draft, '');
   assert.equal(f.session.getSnapshot().sent?.id, f.entry.id);
@@ -108,6 +126,7 @@ test('closing or changing account during flush prevents publication and preserve
       barrier = deferred<void>();
     f.port.flush = () => barrier.promise;
     f.session.open();
+    await tick();
     f.session.setDraft('Unsent');
     const sending = f.session.send();
     if (retire) {
@@ -129,11 +148,13 @@ test('unknown send outcome retries identical head/id across sheet close/reopen',
     return { entry: f.entry, conflict: null };
   };
   f.session.open();
+  await tick();
   f.session.setDraft('Change title');
   await f.session.send();
   assert.equal(f.session.getSnapshot().uncertain, true);
   f.session.close();
   f.session.open();
+  await tick();
   f.session.setDraft('Cannot replace an unknown intent');
   assert.equal(f.session.getSnapshot().draft, 'Change title');
   fail = false;
@@ -146,6 +167,7 @@ test('definitive conflict leaves an editable draft and never resends automatical
   const f = fixture();
   f.port.send = async () => ({ entry: null, conflict: 'Current version changed' });
   f.session.open();
+  await tick();
   f.session.setDraft('Keep prompt');
   await f.session.send();
   assert.equal(f.session.getSnapshot().uncertain, false);
@@ -157,6 +179,7 @@ test('a later terminal refusal restores the original prompt without resending or
   for (const draft of ['', 'New human intent']) {
     const f = fixture();
     f.session.open();
+    await tick();
     f.session.setDraft('Original reviewed prompt');
     await f.session.send();
     f.session.setDraft(draft);
@@ -181,6 +204,7 @@ test('a later terminal refusal restores the original prompt without resending or
     f.session.close();
     f.session.open();
     await tick();
+    await tick();
     assert.equal(f.calls.filter(([op]) => op === 'send').length, 1);
     await f.session.send();
     const sends = f.calls.filter(([op]) => op === 'send');
@@ -192,6 +216,7 @@ test('review uses existing observed hash after flush and rejects a lateral artif
   const f = fixture(),
     barrier = deferred<void>();
   f.session.open();
+  await tick();
   await tick();
   const command: EditorAgentDecision = {
     op: 'decide_tool_request',
@@ -211,6 +236,7 @@ test('review uses existing observed hash after flush and rejects a lateral artif
   );
   f.session.open();
   await tick();
+  await tick();
   await f.session.decide(command);
   assert.deepEqual(f.calls.at(-1), ['decide', command]);
 });
@@ -220,8 +246,10 @@ test('late reads cannot overwrite a new sheet activation or a retired account', 
   let reads = 0;
   f.port.requests = () => (++reads === 1 ? read.promise : Promise.resolve([request()]));
   f.session.open();
+  await tick();
   f.session.close();
   f.session.open();
+  await tick();
   read.resolve([request('other')]);
   await tick();
   await tick();
@@ -258,6 +286,7 @@ test('only canonical agent replies to the current source are shown and retiremen
       { id: 'update', reply_to: { id: sourceId }, author: { kind: 'Agent' }, kind: { System: {} } },
     ] as TimelineEntry[];
   f.session.open();
+  await tick();
   f.session.setDraft('Please edit');
   await f.session.send();
   await tick();
@@ -274,6 +303,7 @@ test('captured prompt/send tickets cannot act after dismissal or content replace
   const f = fixture();
   f.session.open();
   await tick();
+  await tick();
   f.session.setDraft('Original');
   const stale = f.session.ticket();
   assert.ok(stale);
@@ -286,10 +316,103 @@ test('captured prompt/send tickets cannot act after dismissal or content replace
   f.session.close();
   f.session.open();
   await tick();
+  await tick();
   f.session.setDraft('Stale dismissed event', closed);
   await f.session.send(closed);
   assert.equal(f.session.getSnapshot().draft, 'Original');
   assert.deepEqual(f.calls, []);
   await f.session.send(f.session.ticket());
   assert.equal(f.calls.filter((call) => call[0] === 'send').length, 1);
+});
+
+test('unknown delivery freezes original Agent/revision/mutation across metadata changes and a failed retry flush', async () => {
+  const f = fixture();
+  let attempts = 0;
+  f.port.send = async (...args) => {
+    f.calls.push(['send', ...args]);
+    if (++attempts === 1) throw Error('lost ACK');
+    return { entry: f.entry, conflict: null };
+  };
+  f.session.open();
+  await tick();
+  f.session.setDraft('Original intent');
+  await f.session.send();
+  const original = f.calls.find(([op]) => op === 'send');
+  f.session.invalidateTargets();
+  f.port.targets = async () => ({
+    head: { version: 3, sha256: 'ef'.repeat(32) },
+    targets: {
+      revision: 'ef'.repeat(32),
+      agents: [
+        {
+          agent: { ...f.target.agent, id: 'other' },
+          delivery_ready: true,
+          permission_required: false,
+          eligible: true,
+        },
+      ],
+    },
+  });
+  await f.session.refreshTargets();
+  f.session.selectAgent('other', 'ef'.repeat(32), f.session.ticket());
+  assert.equal(f.session.getSnapshot().target?.agent.id, f.target.agent.id);
+  f.port.flush = async () => {
+    throw Error('temporarily unavailable');
+  };
+  await f.session.send();
+  assert.equal(f.session.getSnapshot().uncertain, true);
+  f.session.setDraft('Cannot retarget this intent');
+  assert.equal(f.session.getSnapshot().draft, 'Original intent');
+  f.port.flush = async () => {};
+  await f.session.send();
+  assert.deepEqual(
+    f.calls.filter(([op]) => op === 'send'),
+    [original, original],
+  );
+  assert.equal(f.session.getSnapshot().uncertain, false);
+});
+
+test('a definitive target refusal preserves the prompt, reloads Core candidates, and requires a new explicit action', async () => {
+  const f = fixture();
+  f.session.open();
+  await tick();
+  f.session.setDraft('Human change');
+  f.port.send = async () => ({
+    entry: null,
+    conflict: 'The chosen agent permission changed',
+    conflict_kind: 'Changed',
+  });
+  await f.session.send();
+  await tick();
+  assert.equal(f.session.getSnapshot().draft, 'Human change');
+  assert.equal(f.session.getSnapshot().error, 'The chosen agent permission changed');
+  assert.equal(f.session.getSnapshot().targetPhase, 'ready');
+  assert.equal(f.session.getSnapshot().uncertain, false);
+});
+
+test('a head changed during flush reloads the selection before another explicit Send, without publishing stale authority', async () => {
+  const f = fixture();
+  f.session.open();
+  await tick();
+  f.session.setDraft('Keep intent');
+  f.port.head = async () => ({ version: 3, sha256: 'ef'.repeat(32) });
+  f.port.targets = async () => ({
+    head: { version: 3, sha256: 'ef'.repeat(32) },
+    targets: {
+      revision: 'ef'.repeat(32),
+      agents: [
+        { agent: f.target.agent, delivery_ready: true, permission_required: false, eligible: true },
+      ],
+    },
+  });
+  await f.session.send();
+  await tick();
+  assert.equal(
+    f.calls.some(([op]) => op === 'send'),
+    false,
+  );
+  assert.equal(f.session.getSnapshot().draft, 'Keep intent');
+  assert.equal(f.session.getSnapshot().target?.head.version, 3);
+  await f.session.send();
+  assert.equal(f.calls.filter(([op]) => op === 'send').length, 1);
 });

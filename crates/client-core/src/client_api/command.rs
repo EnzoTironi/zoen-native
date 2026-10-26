@@ -177,6 +177,9 @@ pub(super) enum Command {
         expected_revision: String,
         expected_message_revision: String,
     },
+    AppEditTargets {
+        input: crate::app_edit_requests::AppEditTargetInput,
+    },
     RequestAppEdit {
         expected_identity_id: String,
         expected_device_id: String,
@@ -189,6 +192,15 @@ pub(super) enum Command {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "client-types", ts(optional))]
         share_current: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "client-types", ts(optional))]
+        target_agent_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "client-types", ts(optional))]
+        expected_target_revision: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "client-types", ts(optional))]
+        expected_resource_uri: Option<String>,
     },
     SendMessage {
         space_id: String,

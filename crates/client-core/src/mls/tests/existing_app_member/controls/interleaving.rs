@@ -101,6 +101,9 @@ fn exercise(change: Change) -> R<()> {
     assert!(agent.item_state(&app.item_id).is_err());
     let account = owner.account().ok_or_else(|| storage("owner account"))?;
     let input = AppEditRequestInput {
+        target_agent_id: None,
+        expected_target_revision: None,
+        expected_resource_uri: None,
         expected_identity_id: account.identity.clone(),
         expected_device_id: account.device.clone(),
         space_id: ROOM.into(),

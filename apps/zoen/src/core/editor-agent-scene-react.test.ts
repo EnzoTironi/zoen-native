@@ -26,7 +26,10 @@ test('compiled owned scene entry waits for reactive canvas readiness; same scree
     assert.equal(sent.length, 1);
     assert.equal(sent[0]!.expected_version, 2);
     assert.equal(sent[0]!.expected_sha256, 'cd'.repeat(32));
-    assert.equal(f.calls.filter((c) => c.op === 'app_document_read_pinned').length, 1);
+    const pinned = f.calls.filter((c) => c.op === 'app_document_read_pinned');
+    assert.equal(pinned.length, 4, 'targets load/reload and Send each read the displayed head');
+    assert.ok(pinned.every((c) => c.expected_resource_uri === sent[0]!.expected_resource_uri));
+    assert.equal(sent[0]!.target_agent_id, f.agentId);
     assert.equal(
       f.calls.some((c) => c.op === 'app_binary_read'),
       false,

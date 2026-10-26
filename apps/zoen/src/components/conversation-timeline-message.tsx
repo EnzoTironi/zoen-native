@@ -1,5 +1,5 @@
 import type { MiniappTimelineActivity } from '../core/conversation-timeline';
-import { sameMessageDay } from '../core/message-presentation';
+import { messageHasStandaloneAppCard, sameMessageDay } from '../core/message-presentation';
 import { Text, View } from 'react-native';
 import { t, formatLocale } from '../i18n';
 import { useTheme } from '../theme';
@@ -8,16 +8,19 @@ import { ConversationMessage, type ConversationMessageProps } from './conversati
 import type { MediaAlbum } from '../core/media-albums';
 import { ConversationAlbumMessage } from './conversation-album-message';
 import type { ConversationContentLayout } from '../core/conversation-reveal-content';
+import { ConversationRevealContentView } from './conversation-reveal-content-view';
 
 export function ConversationTimelineMessage({
   activity,
   album,
   onRevealLayout,
+  revealQuery = '',
   ...message
 }: ConversationMessageProps & {
   activity?: MiniappTimelineActivity;
   album?: MediaAlbum;
   onRevealLayout?: (id: string, layout: ConversationContentLayout) => void;
+  revealQuery?: string;
 }) {
   const { presentation: p, localDate: now } = useTheme();
   const first = activity?.entries[0] ?? album?.entries[0] ?? message.entry;
@@ -73,12 +76,23 @@ export function ConversationTimelineMessage({
         </View>
       ) : null}
       {onRevealLayout ? (
-        <View
+        <ConversationRevealContentView
           key={message.entry.id}
-          onLayout={({ nativeEvent }) => onRevealLayout(message.entry.id, nativeEvent.layout)}
+          id={message.entry.id}
+          query={revealQuery}
+          expectsText={Boolean(
+            !activity &&
+            !album &&
+            !message.entry.deleted &&
+            !message.entry.voice &&
+            'Message' in message.entry.kind &&
+            message.entry.kind.Message.text.trim() &&
+            !messageHasStandaloneAppCard(message.entry),
+          )}
+          onLayout={onRevealLayout}
         >
           {content}
-        </View>
+        </ConversationRevealContentView>
       ) : (
         content
       )}

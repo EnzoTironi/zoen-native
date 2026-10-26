@@ -357,6 +357,8 @@ fn shared_anchor_supports_the_same_scoped_agent_read_and_mutation_authority() ->
         sha256: f.original.sha256.clone(),
         request_id: "share_scoped_request".into(),
         text_sha256: event_log::sha256_hex(text.as_bytes()),
+        agent_id: None,
+        intent_sha256: None,
     };
     let request = f.owner.append(
         SPACE,

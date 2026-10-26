@@ -71,6 +71,7 @@ export function renderConversationMessage(context: MessageFace) {
     onTextLayout,
     onTextFrame,
     onImageDecoded,
+    revealAnchor,
   } = context;
 
   const metadata = (outside = false) => renderMessageMetadata(context, outside);
@@ -274,6 +275,7 @@ export function renderConversationMessage(context: MessageFace) {
                       >
                         <MessageMarkdown
                           testID={`message-body-${entry.id}`}
+                          onLayout={revealAnchor?.onLayout}
                           text={text}
                           color={attachment && !appCard ? colors.text : ink}
                           fontSize={messageFontSize}
@@ -286,8 +288,26 @@ export function renderConversationMessage(context: MessageFace) {
                     ) : (
                       <Text
                         testID={`message-body-${entry.id}`}
-                        onTextLayout={attachment ? undefined : onTextLayout}
-                        onLayout={attachment ? undefined : onTextFrame}
+                        onTextLayout={
+                          revealAnchor
+                            ? (event) => {
+                                if (!attachment) onTextLayout(event);
+                                revealAnchor.onTextLayout(event);
+                              }
+                            : attachment
+                              ? undefined
+                              : onTextLayout
+                        }
+                        onLayout={
+                          revealAnchor
+                            ? (event) => {
+                                if (!attachment) onTextFrame(event);
+                                revealAnchor.onLayout(event);
+                              }
+                            : attachment
+                              ? undefined
+                              : onTextFrame
+                        }
                         style={{
                           color: attachment && !appCard ? colors.text : ink,
                           fontSize: messageFontSize,
@@ -346,12 +366,15 @@ export function renderConversationMessage(context: MessageFace) {
                       {formattedText ? (
                         <MessageMarkdown
                           text={fileCaption}
+                          onLayout={revealAnchor?.onLayout}
                           color={ink}
                           fontSize={p.typography.message.fontSize}
                           maxWidth={Math.max(1, mediaWidth - 28)}
                         />
                       ) : (
                         <Text
+                          onLayout={revealAnchor?.onLayout}
+                          onTextLayout={revealAnchor?.onTextLayout}
                           style={{
                             color: ink,
                             fontSize: p.typography.message.fontSize,

@@ -65,6 +65,8 @@ fn scoped_discovery_and_dispatch_never_fall_back_to_other_space_tools_or_cached_
         sha256: base.sha256.clone(),
         request_id: types::new_id("app_request")?,
         text_sha256: hex::encode(Sha256::digest(text.as_bytes())),
+        agent_id: None,
+        intent_sha256: None,
     });
     let source = types::new_id("source")?;
     let event = log.append(

@@ -1,4 +1,7 @@
 export const miniappsPtBR = {
+  chooseEditAgent: 'Escolher agente',
+  agentPermissions: 'Permissões de %{name}',
+  allowAgentSuggestions: 'Permitir sugestões nesta conversa',
   openAppPackage: 'Abrir App',
   updateAppPackage: 'Atualizar App',
   chooseAppPackage: 'Escolher arquivo',

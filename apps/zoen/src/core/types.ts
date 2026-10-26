@@ -25,6 +25,7 @@ import type { AppCallOutcome } from './generated/AppCallOutcome';
 import type { AppBinaryDocumentDto } from './generated/AppBinaryDocumentDto';
 import type { AppShareContext } from './generated/AppShareContext';
 import type { AppShareResult } from './generated/AppShareResult';
+import type { AppEditTargets } from './generated/AppEditTargets';
 import type { AppEditRequestResult } from './generated/AppEditRequestResult';
 import type { AppDocumentDto } from './generated/AppDocumentDto';
 import type { DeviceDto } from './generated/DeviceDto';
@@ -115,6 +116,7 @@ type Results = {
   timeline: TimelinePage;
   send_message: TimelineEntry;
   request_app_edit: AppEditRequestResult;
+  app_edit_targets: AppEditTargets;
   app_current_share_context: AppShareContext;
   share_app_current: AppShareResult;
   message_draft: MessageDraftDto;

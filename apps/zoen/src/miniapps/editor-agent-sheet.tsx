@@ -15,11 +15,13 @@ import { editorAgentPort, editorAgentScope } from './editor-agent-port';
 import { EditorAgentSession } from './editor-agent-session';
 import { EditorAgentContent } from './editor-agent-content';
 import { EditorAgentEnrollment } from './editor-agent-enrollment';
+import type { Persona } from '../core/generated/Persona';
+import { EditorAgentPermissions } from './editor-agent-permissions';
 import { editorAgentAdmission } from './editor-agent-admission';
 
 const readyFallback = () => true;
 const noReadinessChanges = () => () => {};
-type Pane = 'prompt' | 'members' | 'enrollment';
+type Pane = 'prompt' | 'members' | 'enrollment' | 'permissions';
 /** State-presented content changes never replace the sibling document or its session. */
 export function EditorAgentAccess({
   itemId,
@@ -43,6 +45,7 @@ export function EditorAgentAccess({
   const chrome = useAppSheetCloseButton();
   const owner = editorAgentScope(store, spaceId, client);
   const [pane, setPane] = useState<Pane>('prompt');
+  const [permissionAgent, setPermissionAgent] = useState<Persona | null>(null);
   const [enrollmentOpened, setEnrollmentOpened] = useState(false);
   const members = useMemberActions(spaceId, true);
   const session = useMemo(
@@ -70,6 +73,7 @@ export function EditorAgentAccess({
       members.addition.close(memberTicket, true);
       void members.addition.refresh();
     }
+    if (next === 'prompt') void session.refreshTargets();
     if (next === 'enrollment') setEnrollmentOpened(true);
     setPane(next);
   };
@@ -83,7 +87,10 @@ export function EditorAgentAccess({
     const stop = store.subscribe(() => {
       if (editorAgentScope(store, spaceId) !== owner) session.retire();
     });
-    const changed = store.subscribeCanonicalChanges(() => {
+    const changed = store.subscribeCanonicalChanges((spaces) => {
+      if (spaces && !spaces.includes(spaceId)) return;
+      session.invalidateTargets();
+      void session.refreshTargets();
       void session.refresh();
     });
     const app = AppState.addEventListener('change', (next) => {
@@ -96,6 +103,10 @@ export function EditorAgentAccess({
       session.retire();
     };
   }, [store, spaceId, owner, session]);
+  useEffect(() => {
+    session.invalidateTargets();
+    if (ready) void session.refreshTargets();
+  }, [ready, session]);
   const visiblePane = state.visible ? pane : 'prompt';
   return (
     <>
@@ -160,7 +171,22 @@ export function EditorAgentAccess({
                     navigate(members.additionState.allResults.length ? 'members' : 'enrollment')
                   }
                   onRefresh={() => {
-                    if (session.accepts(ticket)) void members.addition.refresh();
+                    if (!session.accepts(ticket)) return;
+                    void members.addition.refresh();
+                    void session.refreshTargets();
+                  }}
+                  onPermissions={(id) => {
+                    if (
+                      !session.accepts(ticket) ||
+                      !state.targets?.agents.some(
+                        (candidate) => candidate.agent.id === id && candidate.permission_required,
+                      )
+                    )
+                      return;
+                    const candidate = state.targets.agents.find((value) => value.agent.id === id);
+                    if (!candidate) return;
+                    setPermissionAgent(candidate.agent);
+                    navigate('permissions');
                   }}
                   onSend={() => {
                     if (
@@ -198,6 +224,50 @@ export function EditorAgentAccess({
                   }}
                 />
               </View>
+              {state.visible && visiblePane === 'permissions' && permissionAgent ? (
+                <EditorAgentPermissions
+                  key={`${owner}:${permissionAgent.id}`}
+                  agent={permissionAgent}
+                  spaceId={spaceId}
+                  enabled={
+                    ready &&
+                    state.targetPhase === 'ready' &&
+                    Boolean(
+                      state.targets?.agents.some(
+                        (candidate) =>
+                          candidate.agent.id === permissionAgent.id &&
+                          candidate.permission_required,
+                      ),
+                    )
+                  }
+                  allowed={() =>
+                    session.accepts(ticket) &&
+                    pane === 'permissions' &&
+                    ready &&
+                    session.getSnapshot().targetPhase === 'ready' &&
+                    Boolean(
+                      session
+                        .getSnapshot()
+                        .targets?.agents.some(
+                          (candidate) =>
+                            candidate.agent.id === permissionAgent.id &&
+                            candidate.permission_required,
+                        ),
+                    )
+                  }
+                  onBack={() => navigate('prompt')}
+                  onGranted={() => {
+                    if (
+                      editorAgentScope(store, spaceId) !== owner ||
+                      !session.getSnapshot().visible
+                    )
+                      return;
+                    session.invalidateTargets();
+                    void session.refreshTargets();
+                    setPane('prompt');
+                  }}
+                />
+              ) : null}
               {enrollmentOpened ? (
                 <View
                   style={{ flex: 1, display: visiblePane === 'enrollment' ? 'flex' : 'none' }}

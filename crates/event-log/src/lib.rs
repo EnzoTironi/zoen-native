@@ -17,6 +17,7 @@
 //! the fact, which is what makes offline-first sending with a total order per Space work.
 
 pub mod agent_owner;
+mod app_request_cohort;
 pub mod content;
 pub mod media;
 pub mod owner_budget;
@@ -465,7 +466,10 @@ impl SpaceLog {
     pub fn from_events(space: impl Into<SpaceId>, events: Vec<Event>) -> Result<Self, LogError> {
         let log = Self {
             space: space.into(),
-            events,
+            events: events
+                .into_iter()
+                .map(app_request_cohort::hydrate)
+                .collect(),
         };
         log.verify()?;
         Ok(log)

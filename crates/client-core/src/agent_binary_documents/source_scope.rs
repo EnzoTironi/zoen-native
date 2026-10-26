@@ -44,6 +44,7 @@ pub(crate) fn proposal_valid(
     state: &crate::engine::State,
     space: &str,
     proposal: &types::ToolProposal,
+    agent: &str,
 ) -> bool {
     let Some(entry) = state
         .spaces
@@ -63,7 +64,11 @@ pub(crate) fn proposal_valid(
     let Some(request) = &reference.artifact else {
         return true;
     };
-    request_valid(state, space, text, reference)
+    request
+        .agent_id
+        .as_deref()
+        .is_none_or(|id| id == agent && entry.author == proposal.owner)
+        && request_valid(state, space, text, reference)
         && matches!(proposal.schema, 1 | crate::agent_scenes::SCHEMA)
         && proposal.artifact == request.item_id
         && proposal.version >= request.version
