@@ -345,22 +345,39 @@ async fn checked(
     {
         Ok(outcome)
     } else {
-        match JournalState::begin_turn(cx.journal.as_path(), cx, space, t) {
-            Ok(true) => {}
-            Ok(false) => {
-                trace::stop(space, &t.id, trace::Stop::SourceAttemptLimit, None);
-                return true;
-            }
-            Err(_) => {
-                trace::stop(space, &t.id, trace::Stop::SourceReservationRefused, None);
+        let source_host = source_recovery::SourceTools::new(&tools, cx, def, t);
+        let recovered = match source_host.recover() {
+            Ok(recovered) => recovered,
+            Err(error) => {
+                turn_note(
+                    selection,
+                    "agent_host_source_checkpoint_refused",
+                    format_args!("source recovery refused: {error}"),
+                );
                 return false;
             }
-        }
-        trace::normal(space, &t.id, &done);
-        let result = cx
-            .runtime
-            .turn_with_tools(tc, &history, &inbound, &tools, done)
-            .await;
+        };
+        let result = if let Some((original, progress)) = recovered {
+            cx.runtime
+                .resume_tool_progress(tc, &history, &inbound, &source_host, original, progress)
+                .await
+        } else {
+            match JournalState::begin_turn(cx.journal.as_path(), cx, space, t) {
+                Ok(true) => {}
+                Ok(false) => {
+                    trace::stop(space, &t.id, trace::Stop::SourceAttemptLimit, None);
+                    return true;
+                }
+                Err(_) => {
+                    trace::stop(space, &t.id, trace::Stop::SourceReservationRefused, None);
+                    return false;
+                }
+            }
+            trace::normal(space, &t.id, &done);
+            cx.runtime
+                .turn_with_tools(tc, &history, &inbound, &source_host, done)
+                .await
+        };
         if matches!(&result, Err(zoen_agentd::HostError::BrainNotDispatched(_))) {
             if tools.check_selection().is_err() {
                 return false;

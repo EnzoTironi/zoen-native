@@ -305,6 +305,19 @@ pub trait ToolHost: Send + Sync {
     fn refreshed_tools(&self) -> Option<Vec<ToolDef>> {
         None
     }
+    /// A durable host fences each new invocation before dispatch, including after tools.
+    fn begin_model(&self) -> Result<(), String> {
+        Ok(())
+    }
+    /// A complete returned batch is known before any Gate/tool work begins.
+    fn model_calls(
+        &self,
+        _calls: &[ToolCall],
+        _steps: &[ToolStep],
+        _round: usize,
+    ) -> Result<(), String> {
+        Ok(())
+    }
     /// Diagnostics only, at the actual Brain boundary. Default has no side effects.
     fn observe_model_input(&self, _tools: &[ToolDef], _steps: &[ToolStep], _round: usize) {}
     /// A closed class, never a raw result or an execution/approval permit.
@@ -418,6 +431,20 @@ fn json_fence(text: &str) -> Option<(&str, &str, &str)> {
 pub struct Runtime {
     pub gate: Gate,
     pub brain: Box<dyn Brain>,
+}
+
+impl Runtime {
+    /// Binds a completed response to the policy that admitted it, without re-running a provider.
+    pub fn delivery_policy_sha256(&self) -> Result<String, HostError> {
+        let encoded = serde_json::to_vec(&(
+            "zoen.delivery-policy.v1",
+            self.tool_policy_sha256()?,
+            Gate::questions(Point::ConversationMessage),
+            Gate::questions(Point::Outbound),
+        ))
+        .map_err(|_| HostError::ToolContinuation("policy encoding".into()))?;
+        Ok(hex::encode(Sha256::digest(encoded)))
+    }
 }
 
 mod runtime;

@@ -6,6 +6,10 @@ use sha2::{Digest, Sha256};
 #[serde(rename_all = "snake_case")]
 pub(in crate::agent) enum ModelOutcome {
     Unknown,
+    Tools {
+        original: Option<Box<ToolAsk>>,
+        policy_hash: String,
+    },
     NotDispatched,
     Known {
         outcome: Box<TurnOutcome>,
@@ -19,7 +23,7 @@ fn digest(value: serde_json::Value) -> String {
     ))
 }
 
-fn key(context: &Ctx, space: &str, source: &str) -> String {
+pub(in crate::agent) fn key(context: &Ctx, space: &str, source: &str) -> String {
     format!(
         "turn_{}",
         digest(json!([
@@ -33,7 +37,7 @@ fn key(context: &Ctx, space: &str, source: &str) -> String {
     )
 }
 
-fn binding(source: &TimelineEntry) -> Result<String, String> {
+pub(in crate::agent) fn binding(source: &TimelineEntry) -> Result<String, String> {
     Ok(digest(json!([
         "zoen.agent.source-budget-content.v1",
         source.author.id,
@@ -41,7 +45,10 @@ fn binding(source: &TimelineEntry) -> Result<String, String> {
     ])))
 }
 
-fn current_policy_hash(context: &Ctx, definition: &Definition) -> Result<String, String> {
+pub(in crate::agent) fn current_policy_hash(
+    context: &Ctx,
+    definition: &Definition,
+) -> Result<String, String> {
     Ok(digest(json!([
         "zoen.agent.source-policy.v1",
         definition,
@@ -135,7 +142,10 @@ impl JournalState {
                 .ok_or("The source attempt is missing")?;
             if prior.content_hash != binding
                 || prior.source.as_deref() != Some(&source.id)
-                || prior.model_outcome != Some(ModelOutcome::Unknown)
+                || !matches!(
+                    prior.model_outcome,
+                    Some(ModelOutcome::Unknown | ModelOutcome::Tools { .. })
+                )
                 || prior.attempts == 0
             {
                 return Err("The source model witness changed".into());

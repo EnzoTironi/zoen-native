@@ -4,6 +4,7 @@ use zoen_agentd::citizen::{testing::ControlledToolBrain, BrainOut};
 mod file_import;
 mod fixture;
 mod known_result;
+mod known_tools;
 mod owner_controls;
 mod publication_recovery;
 mod reconnect;

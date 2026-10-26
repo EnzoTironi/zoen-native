@@ -34,6 +34,7 @@ use zoen_agentd::{
 
 mod providers;
 use providers::{brain, gate};
+mod source_recovery;
 mod turn;
 use turn::turn;
 mod messages;

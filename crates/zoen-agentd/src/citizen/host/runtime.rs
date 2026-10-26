@@ -7,18 +7,6 @@ impl Runtime {
         Self { gate, brain }
     }
 
-    /// Binds a completed response to the policy that admitted it, without re-running a provider.
-    pub fn delivery_policy_sha256(&self) -> Result<String, HostError> {
-        let encoded = serde_json::to_vec(&(
-            "zoen.delivery-policy.v1",
-            self.tool_policy_sha256()?,
-            Gate::questions(Point::ConversationMessage),
-            Gate::questions(Point::Outbound),
-        ))
-        .map_err(|_| HostError::ToolContinuation("policy encoding".into()))?;
-        Ok(hex::encode(Sha256::digest(encoded)))
-    }
-
     pub(super) fn tool_policy_sha256(&self) -> Result<String, HostError> {
         let thresholds = serde_json::to_value(&self.gate.thresholds)
             .map_err(|_| HostError::ToolContinuation("policy encoding".into()))?;
@@ -293,6 +281,7 @@ impl Runtime {
             } else {
                 &[]
             };
+            host.begin_model().map_err(HostError::ToolContinuation)?;
             host.observe_model_input(offer, &steps, round);
             let out = self
                 .brain
@@ -312,6 +301,8 @@ impl Runtime {
             if offer.is_empty() {
                 break;
             }
+            host.model_calls(&calls, &steps, round)
+                .map_err(HostError::ToolContinuation)?;
             if let Some(ask) =
                 self.run_tool_calls(cx, inbound, host, tools, &mut steps, calls, round)?
             {
