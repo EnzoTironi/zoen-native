@@ -179,8 +179,9 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         arguments.is_empty()
             || arguments == ["--two-client"]
             || arguments == ["--two-client-renewals"]
-            || arguments == ["--two-client-conflicts"],
-        "usage: log_store [--two-client|--two-client-renewals|--two-client-conflicts]"
+            || arguments == ["--two-client-conflicts"]
+            || arguments == ["--agent-invite-replay"],
+        "usage: log_store [--two-client|--two-client-renewals|--two-client-conflicts|--agent-invite-replay]"
     );
     // The error at the FDB boundary is otherwise lost behind the retryable public
     // rejection. Test-owned stderr observes it without weakening the contract.

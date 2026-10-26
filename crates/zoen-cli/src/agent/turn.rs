@@ -12,6 +12,51 @@ pub(super) enum Outcome {
     Deferred,
 }
 
+/// One fresh canonical read admits one finite turn, not the wake-loop backlog.
+/// A later Pause does not cancel remaining rounds/tools of that admitted turn.
+/// Inactive/error observations defer the next source or continuation before its
+/// model reservation, approved-tool resume or retained-result delivery.
+pub(super) async fn admitted(
+    e: &Arc<Client>,
+    cx: &Ctx,
+    def: &Definition,
+    space: &str,
+    before: &[TimelineEntry],
+    t: &TimelineEntry,
+) -> Outcome {
+    if !current(e, cx, def).await {
+        return Outcome::Deferred;
+    }
+    turn(e, cx, def, space, before, t).await
+}
+
+/// Same canonical admission for bounded backlog trimming, before cursor mutation.
+pub(super) async fn current(e: &Client, cx: &Ctx, def: &Definition) -> bool {
+    let current_actor = || {
+        e.account().is_some_and(|account| {
+            account.identity_id == cx.me
+                && account.device_id == cx.device
+                && e.agent_owner().as_deref() == Some(cx.owner.as_str())
+        })
+    };
+    if !current_actor() {
+        return false;
+    }
+    let Ok(state) = e.agent_state().await else {
+        return false;
+    };
+    if !current_actor() || state.status != "active" {
+        return false;
+    }
+    let current = source_mode::definition(
+        &state.status,
+        &state.kind,
+        state.definition_version,
+        &state.definition,
+    );
+    current.as_ref().is_ok_and(|current| current == def)
+}
+
 pub(super) async fn turn(
     e: &Arc<Client>,
     cx: &Ctx,
