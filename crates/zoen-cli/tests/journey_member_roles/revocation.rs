@@ -5,9 +5,9 @@ use event_log::{Author, Signer};
 use protocol::Envelope;
 use types::{EventBody, Role};
 
-fn author(w: &World) -> TestResult<Author> {
+fn author(w: &World, who: &str) -> TestResult<Author> {
     let key = |name: &str| -> TestResult<Signer> {
-        let bytes: [u8; 32] = std::fs::read(w.dir.join("ana/vault").join(name))?
+        let bytes: [u8; 32] = std::fs::read(w.dir.join(who).join("vault").join(name))?
             .try_into()
             .map_err(|_| "synthetic fixture key length")?;
         Ok(Signer::from_secret(&bytes))
@@ -61,11 +61,12 @@ async fn removed_members_require_new_inclusion_even_when_an_old_role_review_arri
     ));
     let target = queued["member_id"].as_str().ok_or("Claire missing")?;
     w.zoen("bruno", &["remove", &space, "@claire"]);
-    let mut owner = RawClient::reconnect(&w.relay_url(), author(&w)?).await;
+    let mut owner = RawClient::reconnect(&w.relay_url(), author(&w, "ana")?).await;
     let refused = owner.publish_env(Envelope::plain(&original)?).await;
     assert!(
         refused.is_err(),
-        "a delayed change must not readmit the removed person: {refused:?}"
+        "a delayed change must not readmit the removed person; accepted seq={:?}",
+        refused.as_ref().ok().map(|event| event.seq)
     );
     assert!(refused
         .err()
@@ -78,7 +79,7 @@ async fn removed_members_require_new_inclusion_even_when_an_old_role_review_arri
         .iter()
         .any(|member| member["identity_id"] == target));
     drop(owner);
-    let mut owner = RawClient::reconnect(&w.relay_url(), author(&w)?).await;
+    let mut owner = RawClient::reconnect(&w.relay_url(), author(&w, "ana")?).await;
     assert!(
         owner
             .publish_env(Envelope::plain(&original)?)
@@ -137,6 +138,52 @@ async fn removed_members_require_new_inclusion_even_when_an_old_role_review_arri
     assert_eq!(
         json(&w, "claire", &["member-role", &space, "@claire", "--json"])?["role"],
         "member"
+    );
+    // The author's old membership generation is fenced too, even when Admin
+    // was explicitly granted again after removal.
+    let pending = json(
+        &w,
+        "bruno",
+        &[
+            "--offline",
+            "member-role",
+            &space,
+            "@claire",
+            "admin",
+            "--json",
+        ],
+    )?;
+    assert_eq!(pending["pending_role"], "admin");
+    let old_admin = local_role_events(&w, "bruno", &space, "outbox")?.into_iter().find(|event|
+        matches!(&event.body, EventBody::MemberAdded { identity, role: Role::Admin } if identity == target))
+        .ok_or("admin's old role intent missing")?;
+    w.zoen("ana", &["remove", &space, "@bruno"]);
+    let restored = json(
+        &w,
+        "ana",
+        &["add", &space, "@bruno", "--role", "admin", "--json"],
+    )?;
+    assert_eq!(restored["role"], "admin");
+    let mut returning_admin = RawClient::reconnect(&w.relay_url(), author(&w, "bruno")?).await;
+    assert!(
+        returning_admin
+            .publish_env(Envelope::plain(&old_admin)?)
+            .await
+            .is_err(),
+        "restored administration cannot revive a pre-removal signature"
+    );
+    assert_eq!(
+        json(&w, "claire", &["member-role", &space, "@claire", "--json"])?["role"],
+        "member"
+    );
+    assert_eq!(
+        json(
+            &w,
+            "bruno",
+            &["member-role", &space, "@claire", "reader", "--json"]
+        )?["role"],
+        "reader",
+        "a new review in the restored generation is allowed"
     );
     Ok(())
 }

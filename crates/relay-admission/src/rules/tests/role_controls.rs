@@ -100,3 +100,63 @@ fn role_assignment_reuses_authority_at_member_limit_and_binds_the_signed_role(
     );
     Ok(())
 }
+
+#[test]
+fn signed_membership_review_must_observe_target_and_administrator_removal_cuts(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let author = Author::device(&Signer::generate()?, Signer::generate()?);
+    let target = Signer::generate()?.id();
+    for current in [None, Some(Role::Reader)] {
+        for (target_cut, author_cut) in [(Some(5), None), (None, Some(5)), (Some(5), Some(6))] {
+            let stale = env(
+                &author,
+                Some(Seen {
+                    seq: 4,
+                    hash: "h4".into(),
+                }),
+                EventBody::MemberAdded {
+                    identity: target.clone(),
+                    role: Role::Admin,
+                },
+            )?;
+            stale.verify().map_err(|error| format!("{error:?}"))?;
+            let facts = Facts {
+                head: Some((9, "h9".into())),
+                seen_hash: Some("h4".into()),
+                target_role: current,
+                target_removed_at: target_cut,
+                author_removed_at: author_cut,
+                ..member_facts(Role::Owner)
+            };
+            assert!(
+                admit(&stale, &facts).is_err(),
+                "an authentic old signature cannot regrant after a membership cut"
+            );
+            let fresh = env(
+                &author,
+                Some(Seen {
+                    seq: 6,
+                    hash: "h6".into(),
+                }),
+                EventBody::MemberAdded {
+                    identity: target.clone(),
+                    role: Role::Admin,
+                },
+            )?;
+            let facts = Facts {
+                seen_hash: Some("h6".into()),
+                ..facts
+            };
+            assert_eq!(
+                admit(&fresh, &facts).map_err(|error| format!("{error:?}"))?,
+                Effect::Add {
+                    identity: target.clone(),
+                    role: Role::Admin,
+                    by_invite: false
+                },
+                "a new explicit review may observe the cut; unrelated later messages are harmless"
+            );
+        }
+    }
+    Ok(())
+}

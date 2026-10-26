@@ -1,9 +1,9 @@
-import {
-  type Conversation,
-  type Message,
-  type MessagesState,
-} from '../../../../packages/zoen-ui/web/messages';
-import { browserMessageEntry } from './browser-message-entry';
+import type {
+  Conversation,
+  Message,
+  MessagesState,
+} from '../../../../packages/zoen-ui/web/messages.ts';
+import { browserMessageEntry } from './browser-message-entry.ts';
 import type { Persona } from './generated/Persona';
 import type { SpaceSummary } from './generated/SpaceSummary';
 import type { Snapshot, TimelineEntry } from './types';
@@ -88,6 +88,7 @@ export function browserSnapshot({
             ? 'Community'
             : 'Direct',
       privacy: conversation.privacy,
+      can_write: conversation.can_send && conversation.integrity_error === null,
       members: conversation.roster.map((member) =>
         persona(member.id, member.id === account?.identity ? account.name : 'Desconhecido'),
       ),

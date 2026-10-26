@@ -81,6 +81,7 @@ function notificationSnapshot(): Snapshot {
         title: 'Marina',
         kind: 'Direct',
         privacy: 'EndToEnd',
+        can_write: true,
         members: [me, other],
         counterpart: other,
         last_preview: 'Hello',
