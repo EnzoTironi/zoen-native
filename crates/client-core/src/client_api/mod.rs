@@ -129,6 +129,8 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
     crate::DecideOutcome::export_all(&config)?;
     crate::PageEditResult::export_all(&config)?;
     crate::AgentStatus::export_all(&config)?;
+    crate::AgentControlDto::export_all(&config)?;
+    crate::AgentControlOutcome::export_all(&config)?;
     crate::AgentDefinitionDto::export_all(&config)?;
     crate::AgentDefinitionPreviewDto::export_all(&config)?;
     crate::AgentDefinitionUpdateDto::export_all(&config)?;

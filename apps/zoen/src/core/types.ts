@@ -18,6 +18,7 @@ import type { PageVersionExport } from './generated/PageVersionExport';
 import type { PageDto } from './generated/PageDto';
 import type { PlanPageDto } from './generated/PlanPageDto';
 import type { SearchHit } from './generated/SearchHit';
+import type { AgentControlDto } from './generated/AgentControlDto';
 import type { AgentProfile } from './generated/AgentProfile';
 import type { AgentRequestDto } from './generated/AgentRequestDto';
 import type { AppSpecDto } from './generated/AppSpecDto';
@@ -195,6 +196,9 @@ type Results = {
   attachment_reference_validate: RecentAttachment;
   page_apply: PageEditResult;
   agent_status: AgentStatus;
+  agent_control_read: AgentControlDto;
+  agent_control_change: AgentControlDto;
+  agent_control_retry: AgentControlDto;
   agent_definition_read: AgentDefinitionDto;
   agent_definition_preview: AgentDefinitionPreviewDto;
   agent_definition_update: AgentDefinitionUpdateDto;

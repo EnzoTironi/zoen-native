@@ -122,7 +122,7 @@ pub mod pb_req {
     }
 }
 
-/// `op`: "state", "advance", "define", "pause", "resume" or "revoke".
+/// Agent runtime operations, legacy owner control, and revision-bound `control_*`.
 #[derive(Clone, PartialEq, Message)]
 pub struct PbAgentReq {
     #[prost(string, tag = "1")]
@@ -139,6 +139,10 @@ pub struct PbAgentReq {
     pub kind: String,
     #[prost(bytes = "vec", tag = "7")]
     pub definition: Vec<u8>,
+    #[prost(string, tag = "8")]
+    pub operation: String,
+    #[prost(uint64, tag = "9")]
+    pub revision: u64,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -517,7 +521,7 @@ pub struct PbRes {
     pub id: u64,
     #[prost(
         oneof = "pb_res::R",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17"
     )]
     pub r: Option<pb_res::R>,
 }
@@ -561,6 +565,8 @@ pub mod pb_res {
         RuntimeBinding(PbRuntimeBindingProof),
         #[prost(message, tag = "16")]
         CompletePage(crate::complete_reads::Page),
+        #[prost(message, tag = "17")]
+        AgentControl(crate::agent_control::Record),
     }
 }
 
