@@ -54,6 +54,7 @@ impl JournalState {
                                 | "progress"
                                 | "registered"
                                 | "outcome_unknown"
+                                | "model_outcome"
                         )
                     })
                 })
@@ -72,6 +73,13 @@ impl JournalState {
             };
             let registered = flag("registered")?;
             let outcome_unknown = flag("outcome_unknown")?;
+            let model_outcome = budget
+                .get("model_outcome")
+                .map(|value| {
+                    serde_json::from_value(value.clone())
+                        .map_err(|_| "The model outcome witness is corrupt")
+                })
+                .transpose()?;
             let attempts = budget
                 .get("attempts")
                 .and_then(serde_json::Value::as_u64)
@@ -141,6 +149,7 @@ impl JournalState {
                     progress,
                     registered,
                     outcome_unknown,
+                    model_outcome,
                 },
             );
         }
@@ -163,6 +172,7 @@ impl JournalState {
                 // and conservative unknown-execution semantics remain unchanged.
                 if budget.registered { value["registered"] = true.into(); }
                 if budget.outcome_unknown { value["outcome_unknown"] = true.into(); }
+                if let Some(outcome) = budget.model_outcome { value["model_outcome"] = json!(outcome); }
                 (request.clone(), value)
             })
             .collect();
@@ -233,41 +243,51 @@ impl JournalState {
             return Err("The continuation request is invalid".into());
         }
         Self::update(path, |state| {
-            if let Some(budget) = state.continuations.get_mut(request) {
-                if budget.content_hash != content_hash
-                    || (source.is_some()
-                        && budget
-                            .source
-                            .as_deref()
-                            .is_some_and(|old| Some(old) != source))
-                {
-                    return Err("The continuation request hash changed".into());
-                }
-                if budget.attempts >= MAX_TRIES {
-                    return Ok(false);
-                }
-                budget.attempts += 1;
-                if budget.source.is_none() {
-                    budget.source = source.map(str::to_string);
-                }
-            } else {
-                state.continuations.insert(
-                    request.into(),
-                    ResumeAttempts {
-                        content_hash: content_hash.into(),
-                        attempts: 1,
-                        source: source.map(str::to_string),
-                        prepared: None,
-                        progress: None,
-                        registered: false,
-                        outcome_unknown: false,
-                    },
-                );
-            }
-            Ok(true)
+            state.reserve_resume(request, content_hash, source)
         })
+    }
+
+    fn reserve_resume(
+        &mut self,
+        request: &str,
+        content_hash: &str,
+        source: Option<&str>,
+    ) -> Result<bool, String> {
+        if let Some(budget) = self.continuations.get_mut(request) {
+            if budget.content_hash != content_hash
+                || (source.is_some()
+                    && budget
+                        .source
+                        .as_deref()
+                        .is_some_and(|old| Some(old) != source))
+            {
+                return Err("The continuation request hash changed".into());
+            }
+            if budget.attempts >= MAX_TRIES {
+                return Ok(false);
+            }
+            budget.attempts += 1;
+            if budget.source.is_none() {
+                budget.source = source.map(str::to_string);
+            }
+        } else {
+            self.continuations.insert(
+                request.into(),
+                ResumeAttempts {
+                    content_hash: content_hash.into(),
+                    attempts: 1,
+                    source: source.map(str::to_string),
+                    prepared: None,
+                    progress: None,
+                    registered: false,
+                    outcome_unknown: false,
+                    model_outcome: None,
+                },
+            );
+        }
+        Ok(true)
     }
 }
 
 mod renewal;
-mod turn_budget;
+pub(super) mod turn_budget;

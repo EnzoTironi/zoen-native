@@ -70,7 +70,12 @@ impl ToolHost for Tools {
 struct NoBrain;
 #[async_trait]
 impl Brain for NoBrain {
-    async fn think(&self, _: TurnContext<'_>, _: &[Turn], _: &Turn) -> Result<BrainOut, String> {
+    async fn think(
+        &self,
+        _: TurnContext<'_>,
+        _: &[Turn],
+        _: &Turn,
+    ) -> Result<BrainOut, BrainError> {
         panic!("not used")
     }
 }
@@ -179,7 +184,12 @@ impl ToolHost for DynamicTools {
 struct DiscoveryBrain;
 #[async_trait]
 impl Brain for DiscoveryBrain {
-    async fn think(&self, _: TurnContext<'_>, _: &[Turn], _: &Turn) -> Result<BrainOut, String> {
+    async fn think(
+        &self,
+        _: TurnContext<'_>,
+        _: &[Turn],
+        _: &Turn,
+    ) -> Result<BrainOut, BrainError> {
         panic!("tool boundary required")
     }
     async fn think_with_tools(
@@ -189,7 +199,7 @@ impl Brain for DiscoveryBrain {
         _: &Turn,
         tools: &[ToolDef],
         steps: &[ToolStep],
-    ) -> Result<BrainOut, String> {
+    ) -> Result<BrainOut, BrainError> {
         let name = match steps.len() {
             0 => {
                 assert_eq!(tools.len(), 1);

@@ -7,7 +7,9 @@ async fn cold_host_restarts_cannot_reset_normal_source_model_attempts(
     let mut f = Fixture::new("http://127.0.0.1:1")?;
     let calls = Arc::new(AtomicUsize::new(0));
     for attempt in 0..MAX_TRIES + 2 {
-        let cx = context(&f, &calls, true);
+        // This adapter explicitly refuses before dispatch. Opaque failures have
+        // a separate cold-restart regression and never regain this retry budget.
+        let cx = super::uncertain_outcome::not_dispatched_context(&f, &calls);
         let timeline = f.client.timeline(f.space.clone()).unwrap();
         let index = timeline.iter().position(|t| t.id == f.source).unwrap();
         let outcome = super::super::super::turn::turn(

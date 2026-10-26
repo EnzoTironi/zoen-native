@@ -15,7 +15,7 @@ pub mod testing;
 pub use codex::CodexBrain;
 pub use creator::{creator_definition, CREATOR_HANDLE, CREATOR_NAME};
 pub use host::{
-    parse_reply, AgentSpec, ApprovedToolAdmission, Brain, BrainOut, Host, HostError,
+    parse_reply, AgentSpec, ApprovedToolAdmission, Brain, BrainError, BrainOut, Host, HostError,
     PublicArtifactReferences, Runtime, ToolAsk, ToolAskEnvelope, ToolCall, ToolDef, ToolHost,
     ToolObservation, ToolProgress, ToolResult, ToolStep, Turn, TurnContext, TurnOutcome,
     CREATE_AGENT_CAPABILITY, MAX_CALLS_PER_ROUND, MAX_TOOL_CONTINUATION_BYTES, MAX_TOOL_ROUNDS,

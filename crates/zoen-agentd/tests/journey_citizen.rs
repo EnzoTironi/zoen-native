@@ -315,7 +315,9 @@ mod tools {
     use async_trait::async_trait;
     use std::sync::Mutex;
     use zoen_agentd::citizen::{BrainOut, MAX_TOOL_ROUNDS};
-    use zoen_agentd::{Brain, Runtime, ToolCall, ToolDef, ToolHost, ToolStep, TurnContext};
+    use zoen_agentd::{
+        Brain, BrainError, Runtime, ToolCall, ToolDef, ToolHost, ToolStep, TurnContext,
+    };
 
     #[derive(Default)]
     struct Shop {
@@ -349,7 +351,7 @@ mod tools {
             _: TurnContext<'_>,
             _: &[Turn],
             _: &Turn,
-        ) -> Result<BrainOut, String> {
+        ) -> Result<BrainOut, BrainError> {
             Ok(BrainOut::Say("(no tools)".into()))
         }
         async fn think_with_tools(
@@ -359,7 +361,7 @@ mod tools {
             _: &Turn,
             tools: &[ToolDef],
             steps: &[ToolStep],
-        ) -> Result<BrainOut, String> {
+        ) -> Result<BrainOut, BrainError> {
             if steps.len() >= self.want || tools.is_empty() {
                 let r: Vec<_> = steps.iter().map(|s| s.result.as_str()).collect();
                 return Ok(BrainOut::Say(format!("done: {}", r.join(","))));

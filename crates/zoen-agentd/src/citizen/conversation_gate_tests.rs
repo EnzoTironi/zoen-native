@@ -37,7 +37,12 @@ struct ReplyBrain(Arc<Mutex<usize>>);
 
 #[async_trait]
 impl Brain for ReplyBrain {
-    async fn think(&self, _: TurnContext<'_>, _: &[Turn], _: &Turn) -> Result<BrainOut, String> {
+    async fn think(
+        &self,
+        _: TurnContext<'_>,
+        _: &[Turn],
+        _: &Turn,
+    ) -> Result<BrainOut, BrainError> {
         *self.0.lock().unwrap() += 1;
         Ok(BrainOut::Say("Synthetic reply".into()))
     }

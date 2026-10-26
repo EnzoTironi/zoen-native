@@ -50,7 +50,7 @@ impl Runtime {
         check
     }
 
-    /// `Err` only when the brain failed: the caller retries rather than moving on.
+    /// A failed invocation is unknown unless the adapter proves no dispatch.
     pub async fn turn(
         &self,
         cx: TurnContext<'_>,
@@ -64,7 +64,10 @@ impl Runtime {
             .brain
             .think(cx, history, inbound)
             .await
-            .map_err(HostError::Brain)?;
+            .map_err(|error| match error {
+                BrainError::NotDispatched(message) => HostError::BrainNotDispatched(message),
+                BrainError::OutcomeUnknown(message) => HostError::Brain(message),
+            })?;
         Ok(self.settle(cx, inbound, out))
     }
 
@@ -283,7 +286,14 @@ impl Runtime {
                 .brain
                 .think_with_tools(cx, history, inbound, offer, &steps)
                 .await
-                .map_err(HostError::Brain)?;
+                .map_err(|error| match error {
+                    // A later invocation can fail before dispatch after earlier
+                    // inference/tools already ran. That cannot release this turn.
+                    BrainError::NotDispatched(message) if round == 0 && steps.is_empty() => {
+                        HostError::BrainNotDispatched(message)
+                    }
+                    error => HostError::Brain(error.to_string()),
+                })?;
             let BrainOut::CallTools(calls) = out else {
                 return Ok(self.settle(cx, inbound, out));
             };

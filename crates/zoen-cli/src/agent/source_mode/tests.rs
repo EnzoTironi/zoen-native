@@ -8,6 +8,7 @@ mod publication_recovery;
 mod reconnect;
 mod relay;
 mod turn_budget;
+mod uncertain_outcome;
 use fixture::{message, Fixture};
 use relay::{online, relay, Mode};
 

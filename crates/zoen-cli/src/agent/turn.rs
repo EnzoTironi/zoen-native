@@ -353,9 +353,26 @@ async fn checked(
             }
         }
         trace::normal(space, &t.id, &done);
-        cx.runtime
+        let result = cx
+            .runtime
             .turn_with_tools(tc, &history, &inbound, &tools, done)
-            .await
+            .await;
+        if matches!(&result, Err(zoen_agentd::HostError::BrainNotDispatched(_))) {
+            if tools.check_selection().is_err() {
+                return false;
+            }
+            if let Err(error) =
+                JournalState::model_not_dispatched(cx.journal.as_path(), cx, space, t)
+            {
+                turn_note(
+                    selection,
+                    "agent_host_source_reservation_refused",
+                    format_args!("model witness refused: {error}"),
+                );
+                return false;
+            }
+        }
+        result
     };
     if tools.check_selection().is_err() {
         return false;

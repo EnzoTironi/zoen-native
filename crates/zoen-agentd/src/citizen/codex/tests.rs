@@ -152,7 +152,7 @@ fn tool() -> ToolDef {
         parameters: json!({"type":"object","properties":{"shapeId":{"type":"integer"},"text":{"type":"string"}},"required":["shapeId","text"]}),
     }
 }
-async fn think(brain: &CodexBrain) -> Result<BrainOut, String> {
+async fn think(brain: &CodexBrain) -> Result<BrainOut, BrainError> {
     let def = definition();
     let cx = TurnContext {
         agent: "agent",
@@ -212,7 +212,7 @@ async fn output_bound_is_enforced_before_a_missing_newline_allocates_unbounded_m
     let (_dir, brain, _) = fixture("oversize");
     assert_eq!(
         think(&brain).await.unwrap_err(),
-        "Codex output exceeds limit"
+        BrainError::OutcomeUnknown("Codex output exceeds limit".into())
     );
 }
 #[tokio::test]
@@ -262,7 +262,7 @@ async fn full_brain_timeout_bounds_admission_without_assuming_a_started_session(
     brain.timeout = Duration::from_millis(500);
     assert_eq!(
         think(&brain).await.unwrap_err(),
-        "Codex local inference timed out"
+        BrainError::OutcomeUnknown("Codex local inference timed out".into())
     );
     // This timeout includes version and admission subprocesses. A PID marker
     // may not exist yet; only the prestarted-session test proves a stalled child.

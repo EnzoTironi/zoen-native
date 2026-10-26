@@ -1,4 +1,21 @@
 use super::*;
+
+#[test]
+fn retained_or_uncertain_admission_never_proves_model_non_dispatch() {
+    for error in [
+        zoen_models::GatewayError::NotFresh,
+        zoen_models::GatewayError::Admission(AdmissionError::Unavailable),
+    ] {
+        assert!(matches!(
+            gateway_failure(error),
+            BrainError::OutcomeUnknown(_)
+        ));
+    }
+    assert!(matches!(
+        gateway_failure(zoen_models::GatewayError::InvalidRequest),
+        BrainError::NotDispatched(_)
+    ));
+}
 use zoen_models::{image_response_budget, ImageBackground, ImageQuality, ImageRequest, ImageSize};
 
 #[tokio::test]
