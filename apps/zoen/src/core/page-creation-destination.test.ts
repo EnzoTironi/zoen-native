@@ -289,3 +289,22 @@ test('revocation during the actual Markdown file read discards the late text and
     await f.close();
   }
 });
+
+test('foreground without route blur requires a fresh role before re-enabling creation', async () => {
+  const f = await pageCreationFixture();
+  try {
+    await f.title();
+    const old = f.button('documents.createPage');
+    await f.background('background');
+    f.roles.set(f.room.id, 'reader');
+    const read = f.holdRead();
+    await f.background('active');
+    assert.equal(f.button('documents.createPage').disabled, true);
+    await f.root.act(() => old.onPress());
+    await f.root.act(() => read.resolve(f.context()));
+    assert.equal(f.button('documents.createPage').disabled, true);
+    assert.equal(f.created.length, 0);
+  } finally {
+    await f.close();
+  }
+});

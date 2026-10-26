@@ -53,6 +53,7 @@ export function usePageCreationDestination(initial: string) {
   useFocusEffect(
     useCallback(() => {
       let release = () => {};
+      let foreground = AppState.currentState === 'active';
       const retire = () => {
         release();
         setBusy(false);
@@ -80,8 +81,14 @@ export function usePageCreationDestination(initial: string) {
       });
       const preflight = store.registerSessionPreflight(retire);
       const lifecycle = AppState.addEventListener('change', (next) => {
-        if (next === 'active') activate();
-        else retire();
+        const active = next === 'active';
+        if (active === foreground) return;
+        foreground = active;
+        if (active) {
+          stampNow.current = null;
+          setRevision((n) => n + 1);
+          activate();
+        } else retire();
       });
       return () => {
         account();
