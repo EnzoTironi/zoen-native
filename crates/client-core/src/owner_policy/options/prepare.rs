@@ -37,9 +37,16 @@ impl Engine {
         let current = options.current_policy.as_ref().map(|signed| &signed.policy);
         let mut allowed_profiles =
             current.map_or_else(Vec::new, |policy| policy.allowed_profiles.clone());
-        // Disabling retires existing authority; it cannot approve a newly
-        // configured service or require an unused seventeenth profile slot.
+        // Disabling an existing policy preserves its services and never requires
+        // an unused seventeenth profile slot for a newly configured service.
         if enabled {
+            allowed_profiles.push(options.image_profile_digest.clone());
+        } else if current.is_none() {
+            if limit_units != 0 || max_attempt_units != 0 {
+                return Err(invalid());
+            }
+            // The first explicit disable names only the authenticated service;
+            // enabled=false and zero limits confer no spending authority.
             allowed_profiles.push(options.image_profile_digest.clone());
         }
         allowed_profiles.sort();

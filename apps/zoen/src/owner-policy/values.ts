@@ -67,6 +67,19 @@ export function validContext(value: OwnerPolicyContext) {
 }
 export function validReview(value: OwnerPolicyReview, scope: PolicyScope, state: PolicyState) {
   const context = state.context;
+  const firstDisable =
+    !!context &&
+    validContext(context) &&
+    context.current_policy_digest === null &&
+    state.optionsState === 'ready' &&
+    !!state.optionsSource &&
+    value.enabled === false &&
+    value.limit_units === '0' &&
+    value.max_attempt_units === '0' &&
+    value.version === 1 &&
+    Array.isArray(value.allowed_profiles) &&
+    value.allowed_profiles.length === 1 &&
+    value.allowed_profiles[0] === context.image_profile_digest;
   return (
     !!context &&
     value.scope.expected_identity_id === scope.identity &&
@@ -95,7 +108,7 @@ export function validReview(value: OwnerPolicyReview, scope: PolicyScope, state:
     value.allowed_profiles.every(digest) &&
     (value.enabled
       ? value.allowed_profiles.includes(context.image_profile_digest)
-      : value.allowed_profiles.length === context.existing_profile_count) &&
+      : firstDisable || value.allowed_profiles.length === context.existing_profile_count) &&
     value.allowed_profiles.every(
       (profile, index) => index === 0 || value.allowed_profiles[index - 1] < profile,
     )
