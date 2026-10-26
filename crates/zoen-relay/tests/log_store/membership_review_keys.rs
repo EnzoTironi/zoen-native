@@ -1,4 +1,4 @@
-//! Malformed membership must be refused per envelope before any oversized FDB key read.
+//! Malformed membership is refused per envelope without poisoning valid batch entries.
 use super::*;
 
 pub(super) async fn malformed_membership_target_does_not_poison_a_shared_batch(
