@@ -2,6 +2,10 @@ import type { SpaceMemberContext } from '../core/generated/SpaceMemberContext';
 import type { MemberRoleOption } from '../core/generated/MemberRoleOption';
 import { accountScopeKey, type AccountScope } from '../core/account-scope.ts';
 import type { MemberActionsPort } from './member-context-port.ts';
+import {
+  validateMemberContext as validate,
+  sameMemberRoleOption as sameOption,
+} from './member-context-validation.ts';
 
 export type MemberActionTicket = Readonly<{ scope: string; generation: number; member: string }>;
 export type MemberActionsState = Readonly<{
@@ -21,59 +25,6 @@ export const emptyMemberActions: MemberActionsState = {
   actionFailed: false,
 };
 type ReviewedAction = { kind: 'remove' } | { kind: 'role'; option: MemberRoleOption };
-const roles = ['admin', 'member', 'reader'];
-const sameOption = (left: MemberRoleOption, right: MemberRoleOption) =>
-  left.role === right.role && left.revision === right.revision;
-function validate(context: SpaceMemberContext, space: string, member: string, owner: AccountScope) {
-  if (
-    !context ||
-    context.space_id !== space ||
-    context.member_id !== member ||
-    context.identity_id !== owner.identity ||
-    context.device_id !== owner.device ||
-    typeof context.space_title !== 'string' ||
-    !/^[a-f0-9]{64}$/.test(context.revision) ||
-    !['Active', 'Updating', 'Removing', 'Removed'].includes(context.state) ||
-    typeof context.can_remove !== 'boolean' ||
-    typeof context.removal_failed !== 'boolean' ||
-    typeof context.role_change_failed !== 'boolean' ||
-    !Array.isArray(context.role_options) ||
-    !context.role_options.every(
-      (option) =>
-        option &&
-        roles.includes(option.role) &&
-        option.role !== context.role &&
-        /^[a-f0-9]{64}$/.test(option.revision),
-    ) ||
-    new Set(context.role_options.map((option) => option.role)).size !==
-      context.role_options.length ||
-    (context.role_options.length > 0 &&
-      (context.state !== 'Active' ||
-        !context.member ||
-        context.role === 'owner' ||
-        member === owner.identity ||
-        context.pending_role !== null)) ||
-    (context.pending_role !== null &&
-      (!roles.includes(context.pending_role) ||
-        context.pending_role === context.role ||
-        context.state !== 'Updating' ||
-        !context.member ||
-        context.can_remove)) ||
-    (context.member !== null && context.member.id !== member) ||
-    (context.state === 'Removed' &&
-      (context.member !== null ||
-        context.can_remove ||
-        context.removal_failed ||
-        context.role_change_failed ||
-        context.role_options.length > 0 ||
-        context.pending_role !== null)) ||
-    (context.can_remove &&
-      (context.state !== 'Active' || !context.member || member === owner.identity))
-  )
-    throw Error('Invalid member context');
-  return context;
-}
-
 /** Focus-owned projection. Only Core's signed log and existing outbox persist work. */
 export class MemberActionsSession {
   private state = emptyMemberActions;

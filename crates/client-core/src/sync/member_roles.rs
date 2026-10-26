@@ -11,9 +11,15 @@ pub(super) fn options(
     projected_actor: Option<Role>,
     projected_target: Option<Role>,
 ) -> R<Vec<MemberRoleOption>> {
-    if context.state != MemberActionState::Active
+    let available = match context.state {
+        MemberActionState::Active => target.is_some(),
+        MemberActionState::Removed => {
+            target.is_none() && context.can_add && context.candidate.is_some()
+        }
+        _ => false,
+    };
+    if !available
         || context.member_id == context.identity_id
-        || target.is_none()
         || target == Some(Role::Owner)
         || projected_target != target
     {

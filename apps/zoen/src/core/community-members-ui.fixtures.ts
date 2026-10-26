@@ -1,3 +1,4 @@
+import { memberRoleLabelKey } from '../communities/member-role-label.ts';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
@@ -185,6 +186,7 @@ export async function communityUi(
         BottomSheet: 'BottomSheet',
         RNHostView: 'RNHostView',
       };
+    if (name === './member-role-label') return { memberRoleLabelKey };
     if (name === '@expo/ui/community/menu') return { MenuView: 'MenuView' };
     if (name === 'react-native-safe-area-context')
       return { useSafeAreaInsets: () => ({ top: 50, bottom: 20, left: 0, right: 0 }) };

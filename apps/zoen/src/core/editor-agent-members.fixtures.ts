@@ -45,6 +45,15 @@ export function editorAgentMembers(snapshot: Snapshot, space: string) {
       candidate: absent || mode === 'pending' ? profile() : null,
       can_remove: false,
       can_add: absent && manageable(),
+      role_options:
+        absent && manageable()
+          ? [
+              { role: 'member', revision: 'c'.repeat(64) },
+              { role: 'reader', revision: 'a'.repeat(64) },
+              { role: 'admin', revision: 'b'.repeat(64) },
+            ]
+          : [],
+      pending_role: mode === 'pending' ? 'member' : null,
       can_manage_members: manageable(),
       delivery_ready: mode === 'ready' || mode === 'reader',
       revision: String(
@@ -71,7 +80,7 @@ export function editorAgentMembers(snapshot: Snapshot, space: string) {
   const operations = [
     'find_member_candidates',
     'space_member_context',
-    'add_member_reviewed',
+    'set_member_role_reviewed',
     'agent_enrollment_status',
     'agent_enrollment_preview',
     'agent_enrollment_approve',
@@ -111,15 +120,19 @@ export function editorAgentMembers(snapshot: Snapshot, space: string) {
               device_id: snapshot.account!.device_id,
               space_id: space,
               can_manage_members: manageable(),
+              can_remove: false,
               owned_agent: false,
               role: writable ? 'owner' : 'member',
               delivery_ready: true,
               member: { ...context().member!, id: command.identity_id },
             };
           return candidate();
-        case 'add_member_reviewed':
+        case 'set_member_role_reviewed':
           assert.equal(command.identity_id, id);
-          assert.equal(command.observed_revision, candidate().revision);
+          assert.equal(
+            command.observed_revision,
+            candidate().role_options.find((option) => option.role === command.role)?.revision,
+          );
           assert.equal(candidate().can_add, true);
           mode = 'pending';
           return candidate();

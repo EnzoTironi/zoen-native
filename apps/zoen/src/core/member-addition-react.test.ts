@@ -63,7 +63,12 @@ test('real pending confirmation loses role and current-member duplicate remains 
     f.confirm(() => answer.promise);
     await f.press(`member-add-${peer}`);
     await f.act(async () => {
-      f.value({ ...additionContext(), can_add: false, can_manage_members: false });
+      f.value({
+        ...additionContext(),
+        can_add: false,
+        role_options: [],
+        can_manage_members: false,
+      });
       answer.resolve(true);
       await settle();
     });
@@ -72,6 +77,7 @@ test('real pending confirmation loses role and current-member duplicate remains 
       f.value({
         ...additionContext(),
         can_add: false,
+        role_options: [],
         state: 'Active',
         member: additionContext().candidate,
         role: 'member',
@@ -120,6 +126,7 @@ test('confirmed association says Connecting until observed MLS delivery readines
         ...additionContext(),
         state: 'Active',
         can_add: false,
+        role_options: [],
         delivery_ready: false,
         member: additionContext().candidate,
         role: 'member',
@@ -135,6 +142,7 @@ test('confirmed association says Connecting until observed MLS delivery readines
         ...additionContext(),
         state: 'Active',
         can_add: false,
+        role_options: [],
         delivery_ready: true,
         member: additionContext().candidate,
         role: 'member',

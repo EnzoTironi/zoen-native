@@ -8,19 +8,10 @@ import { Icon, IconButton, Loading, NativeButton } from '../components/primitive
 import { useDialogs } from '../components/dialogs';
 import { SettingsRows } from '../components/settings-rows';
 import { ProfileAvatar } from '../profile/profile-avatar';
+import { memberRoleLabelKey } from './member-role-label';
 import type { MemberActionsSession, MemberActionsState } from './member-actions';
 
-function roleLabel(role: string | null) {
-  return t(
-    role === 'owner'
-      ? 'community.owner'
-      : role === 'admin'
-        ? 'community.admin'
-        : role === 'reader'
-          ? 'community.reader'
-          : 'community.member',
-  );
-}
+const roleLabel = (role: string | null) => t(memberRoleLabelKey(role));
 
 export function MemberActionsSheet({
   session,
@@ -94,6 +85,7 @@ export function MemberActionsSheet({
                 {context.role_options.length ? (
                   <MenuView
                     testID="member-role-menu"
+                    style={{ width: '100%' }}
                     colorScheme={scheme}
                     actions={context.role_options.map((option) => ({
                       id: option.revision,

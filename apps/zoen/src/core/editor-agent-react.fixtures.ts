@@ -1,3 +1,4 @@
+import { memberRoleLabelKey } from '../communities/member-role-label.ts';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import * as React from 'react';
@@ -297,6 +298,8 @@ export async function editorAgentReactFixture(
         },
       },
     },
+    './member-role-label': { memberRoleLabelKey },
+    '@expo/ui/community/menu': { MenuView: children },
     '@expo/ui': {
       Host: children,
       RNHostView: children,

@@ -14,7 +14,7 @@ const openDraft = async (f: Awaited<ReturnType<typeof editorAgentReactFixture>>)
   await f.act(() => f.controls.get('editor-agent-prompt')!.onChangeText('Keep this exact request'));
 };
 const adds = (f: Awaited<ReturnType<typeof editorAgentReactFixture>>) =>
-  f.calls.filter((c) => c.op === 'add_member_reviewed');
+  f.calls.filter((c) => c.op === 'set_member_role_reviewed');
 const sends = (f: Awaited<ReturnType<typeof editorAgentReactFixture>>) =>
   f.calls.filter((c) => c.op === 'request_app_edit');
 

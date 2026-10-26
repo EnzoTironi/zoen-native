@@ -13,8 +13,8 @@ pub(super) async fn run(cmd: String, cli: &mut Cli, context: Context) {
         ..
     } = context;
     match cmd.as_str() {
-        "member-role" => {
-            member_role::run(&e, cli, offline, sync_budget.deadline())
+        "member-role" | "add" => {
+            member_role::run(&e, cli, offline, sync_budget.deadline(), cmd == "add")
                 .await
                 .unwrap_or_else(|error| die(error));
         }
@@ -140,27 +140,16 @@ pub(super) async fn run(cmd: String, cli: &mut Cli, context: Context) {
                 }
             }
         }
-        "add" | "remove" => {
-            let admin = cli.switch("--admin");
+        "remove" => {
             if cli.args.len() != 2 {
                 usage();
             }
             let space = chat(&e, &cli.args[0]);
-            let h = cli.args[1].trim_start_matches('@').to_string();
-            let who = e
-                .find_people(h.clone())
-                .await
-                .unwrap_or_else(|err| die(err))
-                .into_iter()
-                .find(|p| p.handle == h)
-                .unwrap_or_else(|| die(format!("@{h} isn't on Zoen")));
-            match (cmd.as_str(), admin) {
-                ("add", true) => e.add_admin(space, who.id),
-                ("add", false) => e.add_member(space, who.id),
-                _ => e.remove_member(space, who.id),
+            let who = person(&e, &cli.args[1]).await;
+            e.remove_member(space, who).unwrap_or_else(|err| die(err));
+            if !offline {
+                e.wait_until_idle(timeout).await;
             }
-            .unwrap_or_else(|err| die(err));
-            e.wait_until_idle(timeout).await;
         }
         "encrypt" => {
             let space = chat(

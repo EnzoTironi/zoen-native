@@ -1,3 +1,4 @@
+import { memberRoleLabelKey } from '../communities/member-role-label.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -59,6 +60,7 @@ export function memberReactFixture() {
     react: React,
     'react/compiler-runtime': require('react/compiler-runtime'),
     'react/jsx-runtime': require('react/jsx-runtime'),
+    './member-role-label': { memberRoleLabelKey },
     '@expo/ui': {
       Host: children,
       RNHostView: children,

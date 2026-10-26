@@ -216,7 +216,7 @@ test('unknown ACK reconciles a retained pending role without resending', async (
   assert.equal(f.session.getSnapshot().context?.role, 'member');
 });
 
-test('cold canonical ACK after a lost write response shows the actual role without a false failure', async () => {
+test('canonical ACK after a lost write response shows the actual role without a false failure', async () => {
   const f = await roleFixture();
   f.roleWrite(async () => {
     f.value(roleContext({ role: 'reader', role_options: [admin], revision: '2'.repeat(64) }));

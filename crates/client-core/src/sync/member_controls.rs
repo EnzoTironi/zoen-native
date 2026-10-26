@@ -94,7 +94,6 @@ impl Engine {
                 } => {
                     updating = true;
                     if target == member
-                        && target_role.is_some()
                         && row.event.author == identity
                         && row.event.device.as_deref() == Some(device)
                     {
@@ -167,7 +166,7 @@ impl Engine {
         let addition_failure = if state == MemberActionState::Removed {
             pending.iter().rev().find(|row| {
                 let event = &row.event;
-                matches!(&event.body, EventBody::MemberAdded { identity: target, role: Role::Member } if target == member)
+                matches!(&event.body, EventBody::MemberAdded { identity: target, role } if target == member && *role != Role::Owner && actor_role.can_assign(None, *role))
                     && applicable_failure(row, false)
             }).map(|row| row.event.client_id.as_str())
         } else {
@@ -295,8 +294,19 @@ impl Engine {
         if !current.can_add || current.revision != revision {
             return Err(changed());
         }
-        self.add_member(space, member, Role::Member)?;
-        self.space_member_context(space, member, identity, device)
+        let choice = current
+            .role_options
+            .iter()
+            .find(|choice| choice.role == "member")
+            .ok_or_else(changed)?;
+        self.set_member_role_reviewed(
+            space,
+            member,
+            identity,
+            device,
+            &choice.revision,
+            &choice.role,
+        )
     }
     pub(crate) fn member_candidates(
         &self,

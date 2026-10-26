@@ -56,9 +56,8 @@ export function createMemberActionsPort(store: ClientStore, space: string): Memb
   };
 }
 
-export interface MemberAdditionPort extends Pick<MemberActionsPort, 'scope' | 'read'> {
+export interface MemberAdditionPort extends Pick<MemberActionsPort, 'scope' | 'read' | 'setRole'> {
   find(query: string, owner: AccountScope): Promise<SpaceMemberContext[]>;
-  add(context: SpaceMemberContext, owner: AccountScope): Promise<SpaceMemberContext>;
 }
 export function createMemberAdditionPort(
   store: ClientStore,
@@ -73,6 +72,7 @@ export function createMemberAdditionPort(
   return {
     scope: shared.scope,
     read: shared.read,
+    setRole: shared.setRole,
     find: (query, owner) => {
       check(owner);
       return store.driver.request({
@@ -82,17 +82,6 @@ export function createMemberAdditionPort(
         query,
         expected_identity_id: owner.identity,
         expected_device_id: owner.device,
-      });
-    },
-    add: (context, owner) => {
-      check(owner);
-      return store.request({
-        op: 'add_member_reviewed',
-        space_id: space,
-        identity_id: context.member_id,
-        expected_identity_id: owner.identity,
-        expected_device_id: owner.device,
-        observed_revision: context.revision,
       });
     },
   };

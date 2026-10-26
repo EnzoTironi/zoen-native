@@ -3,6 +3,9 @@ import { defineFeature } from '../catalog.ts';
 export const community = defineFeature(
   {
     add: 'Add participant',
+    chooseRole: 'Choose role',
+    addAs: 'Add as %{role}',
+    addNamedRole: 'Add %{name} as %{role}?',
     addUnavailable: 'You can no longer add participants.',
     addNamed: 'Add %{name}?',
     addTo: 'Add to “%{title}”?',
@@ -36,6 +39,9 @@ export const community = defineFeature(
   },
   {
     add: 'Adicionar participante',
+    chooseRole: 'Escolher papel',
+    addAs: 'Adicionar como %{role}',
+    addNamedRole: 'Adicionar %{name} como %{role}?',
     addUnavailable: 'Você não pode mais adicionar participantes.',
     addNamed: 'Adicionar %{name}?',
     addTo: 'Adicionar a “%{title}”?',

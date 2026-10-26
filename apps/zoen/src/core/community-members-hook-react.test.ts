@@ -117,7 +117,7 @@ test('actual member hook owns addition review across background, blur and accoun
       answer.resolve(true);
       await action;
     });
-    assert.equal(f.calls.filter((c) => c.op === 'add_member_reviewed').length, 0);
+    assert.equal(f.calls.filter((c) => c.op === 'set_member_role_reviewed').length, 0);
     assert.equal(f.current().additionState.open, false);
     assert.notEqual(f.current().additionState.scope, old.scope);
     assert.equal(f.current().additionState.canManage, true);
@@ -152,7 +152,7 @@ test('Driver.change and foreground reconcile confirmed member delivery readiness
       f.current().addition.select(peer, async () => true, f.current().addition.ticket()),
     );
     assert.equal(f.current().additionState.selected?.state, 'Updating');
-    const writes = () => f.calls.filter((c) => c.op === 'add_member_reviewed').length;
+    const writes = () => f.calls.filter((c) => c.op === 'set_member_role_reviewed').length;
     assert.equal(writes(), 1);
     await f.act(() => {
       f.memberState({

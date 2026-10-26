@@ -8,7 +8,7 @@ const USAGE: &str = "usage: zoen [--home DIR] <command>\n\n\
          dm @HANDLE [TEXT]                end-to-end (MLS): the relay holds ciphertext\n\
          group TITLE @HANDLE... [--readable]   end-to-end unless --readable\n\
          encrypt CHAT                     make a relay-readable chat end-to-end, for good\n\
-         add CHAT @HANDLE [--admin]       bring someone in (an admin can add and remove too)\n\
+         add CHAT PERSON [--role member|reader|admin] [--json]   add directly with the reviewed role\n\
          remove CHAT @HANDLE              take someone out (end-to-end: they read nothing after)\n\
          keys CHAT [--json]               public MLS epoch/digest/member/device IDs\n\
          members CHAT [--json]            current public identity IDs and roles\n\
