@@ -1,15 +1,7 @@
 {
   "objective": "Deliver the complete Zoen product across iOS, Android, Web, macOS, Windows and Linux, including the production backend, refined native interactions, end-to-end privacy, data integrity and verified operation at declared production scale. Compete with WhatsApp, Slack and Wabi through demonstrable product quality, reliability and scalability. Completion requires reproducible end-to-end, security, integrity, load, recovery and release evidence across the supported platform matrix.",
   "goalDocument": "docs/dev/zoen-complete-product-goal.md",
-  "comparisonReferences": [
-    "Signal",
-    "WhatsApp",
-    "Slack",
-    "Wabi",
-    "Ando",
-    "Hark",
-    "Muse (Meta)"
-  ],
+  "comparisonReferences": ["Signal", "WhatsApp", "Slack", "Wabi", "Ando", "Hark", "Muse (Meta)"],
   "reliabilityReference": {
     "$part": "scope/reliability-reference.json"
   },
@@ -19,38 +11,22 @@
   "creationWorkspace": {
     "$part": "scope/creation-workspace.json"
   },
-  "platforms": [
-    "ios",
-    "web",
-    "android",
-    "macos",
-    "windows",
-    "linux"
-  ],
+  "platforms": ["ios", "web", "android", "macos", "windows", "linux"],
   "deliveryPhases": [
     {
       "id": "ios-release",
-      "platforms": [
-        "ios"
-      ],
+      "platforms": ["ios"],
       "accepted": false
     },
     {
       "id": "mobile-web-expansion",
-      "platforms": [
-        "web",
-        "android"
-      ],
+      "platforms": ["web", "android"],
       "startsAfter": "ios-release",
       "accepted": false
     },
     {
       "id": "desktop",
-      "platforms": [
-        "macos",
-        "windows",
-        "linux"
-      ],
+      "platforms": ["macos", "windows", "linux"],
       "startsAfter": "mobile-web-expansion",
       "accepted": false
     }
