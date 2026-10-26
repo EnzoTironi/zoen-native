@@ -172,13 +172,17 @@ for (const kind of ['text', 'photo', 'video', 'file', 'voice'] as const) {
   });
 }
 
-for (const mode of ['cancel', 'success', 'unknownAck', 'coldAccepted'] as const)
+for (const mode of ['cancel', 'success', 'unknownAck', 'coldAccepted', 'demo'] as const)
   test(`compiled forwarding route: ${mode} preserves keyboard/media and canonical operation semantics`, async () => {
     const root = createReactTestRoot();
     const views = new Map<string, any>();
     const events: string[] = [];
     const message = entry(card('photo'));
-    const owner = { mode: 'account', identityId: 'alice', deviceId: 'phone' };
+    const owner = {
+      mode: mode === 'demo' ? 'demo' : 'account',
+      identityId: 'alice',
+      deviceId: 'phone',
+    };
     const snapshot = {
       conversations: [
         { id: 'source', title: 'Source', can_write: true },
@@ -198,6 +202,10 @@ for (const mode of ['cancel', 'success', 'unknownAck', 'coldAccepted'] as const)
         : null;
     const store = {
       sessionEpoch: 1,
+      open: async (mode: string) => {
+        assert.equal(mode, 'account');
+        events.push('account');
+      },
       getSnapshot: () => ({ snapshot }),
       subscribe: () => () => {},
       driver: {
@@ -282,12 +290,19 @@ for (const mode of ['cancel', 'success', 'unknownAck', 'coldAccepted'] as const)
       '../../../theme': { useTheme: () => ({ colors: { text: '#111', secondary: '#777' } }) },
       '../../../i18n/index.ts': { t: (key: string) => key, formatLocale: 'en-US' },
       '../../../profile/profile-avatar': { ProfileAvatar: () => null },
-      '../../../components/primitives': { NativeButton: host('Button'), EmptyState: () => null },
+      '../../../components/primitives': {
+        NativeButton: host('Button'),
+        EmptyState: host('Empty', true),
+      },
       '../../../components/forward-message-preview': { ForwardMessagePreview: host('Preview') },
     });
     try {
       await root.render(React.createElement(route.default));
-      if (mode === 'coldAccepted') {
+      if (mode === 'demo') {
+        assert.deepEqual(events, []);
+        await root.act(() => views.get('forward-message-use-account').onPress());
+        assert.deepEqual(events, ['account']);
+      } else if (mode === 'coldAccepted') {
         assert.equal(views.get('forward-message-accepted').children, 'chat.alreadyForwarded');
         assert.equal(views.get('forward-message-send').label, 'chat.forwardAgain');
         assert.deepEqual(events, ['status']);

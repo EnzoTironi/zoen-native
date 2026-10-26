@@ -72,6 +72,7 @@ export class ForwardMessageSession {
     const scope = this.scope;
     return Boolean(
       scope &&
+      scope.owner.mode === 'account' &&
       !this.disposed &&
       this.focused &&
       homeOwnerKey(this.port.owner()) === homeOwnerKey(scope.owner) &&

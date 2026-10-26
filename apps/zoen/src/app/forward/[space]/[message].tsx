@@ -134,6 +134,21 @@ export default function Forward() {
   const reviewedMessage = review?.message;
   const content =
     reviewedMessage && 'Message' in reviewedMessage.kind ? reviewedMessage.kind.Message : null;
+  if (mode !== 'account')
+    return (
+      <View style={{ flex: 1, paddingTop: headerHeight }}>
+        <Stack.Screen options={{ title: t('chat.forwardTo') }} />
+        <EmptyState title={t('chat.forwardRequiresAccount')}>
+          <NativeButton
+            testID="forward-message-use-account"
+            label={t('settings.useYourOwnAccount')}
+            onPress={() => {
+              void store.open('account');
+            }}
+          />
+        </EmptyState>
+      </View>
+    );
   return (
     <View style={{ flex: 1, paddingTop: headerHeight, backgroundColor: 'transparent' }}>
       <Stack.Screen options={{ title: t('chat.forwardTo') }} />
