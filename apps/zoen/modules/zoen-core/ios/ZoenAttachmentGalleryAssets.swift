@@ -128,6 +128,7 @@ struct GalleryItem:Equatable {
   private var player:AVPlayer?
   private var playerLayer:AVPlayerLayer?
   private let conversation:Bool
+  private var reviewVideo:ZoenAttachmentGalleryVideo?
   private var playback:ZoenConversationVideoPlayback?
   private var videoControls:ZoenConversationVideoControls?
   private var chromeVisible=true
@@ -141,6 +142,7 @@ struct GalleryItem:Equatable {
   var active=false {didSet{
     guard !retired else{return}
     if active,conversation,item.video,playback == nil,let uri=item.uri {install(AVPlayerItem(url:uri),autoplay:false)}
+    reviewVideo?.setActive(active)
     locationPreview?.setActive(active)
     playback?.setActive(active);if !active{stop()};refreshVideoPresentation()
   }}
@@ -157,13 +159,17 @@ struct GalleryItem:Equatable {
     zoom.addGestureRecognizer(tap);zoom.addGestureRecognizer(double)
     play.setImage(ZoenTelegramAttachmentGlyph.image(.play),for:.normal);play.backgroundColor=UIColor.black.withAlphaComponent(0.3);play.layer.cornerRadius=30;play.tintColor = .white
     play.accessibilityLabel=item.name;play.addAction(UIAction{[weak self] _ in self?.playVideo()},for:.touchUpInside);play.isHidden = !item.video;addSubview(play)
+    if item.video && !conversation {
+      let review=ZoenAttachmentGalleryVideo(item:item)
+      reviewVideo=review;addSubview(review);play.isHidden=true
+    }
     if let source=item.location {
       let preview=ZoenDraftLocationGallery(url:item.uri,source:source,errorText:item.locationErrorLabel)
       locationPreview=preview;addSubview(preview);hideMediaStatus();zoom.isHidden=true;play.isHidden=true
     }
   }
   required init?(coder:NSCoder){return nil}
-  override func layoutSubviews(){super.layoutSubviews();locationPreview?.frame=bounds;zoom.frame=bounds;if !isZoomed{image.frame=zoom.bounds};playerLayer?.frame=bounds;videoControls?.frame=bounds;play.frame=CGRect(x:bounds.midX-30,y:bounds.midY-30,width:60,height:60)}
+  override func layoutSubviews(){super.layoutSubviews();locationPreview?.frame=bounds;reviewVideo?.frame=bounds;zoom.frame=bounds;if !isZoomed{image.frame=zoom.bounds};playerLayer?.frame=bounds;videoControls?.frame=bounds;play.frame=CGRect(x:bounds.midX-30,y:bounds.midY-30,width:60,height:60)}
   func viewForZooming(in scrollView:UIScrollView)->UIView?{image}
   func scrollViewDidZoom(_ scrollView:UIScrollView){zoomChanged?(isZoomed)}
   @objc private func singleTap(){if conversation{toggle?()}else if item.video,let player,player.rate>0{player.pause();play.isHidden=false}else{toggle?()}}
@@ -211,30 +217,26 @@ struct GalleryItem:Equatable {
     if autoplay {if let playback {playback.play()}else{player.play()}}
   }
   func updateVideoPresentation(visible:Bool,safeArea:UIEdgeInsets,captionFrame:CGRect) {
-    chromeVisible=visible;chromeSafe=safeArea;chromeCaption=captionFrame;refreshVideoPresentation()
+    chromeVisible=visible;chromeSafe=safeArea;chromeCaption=captionFrame
+    reviewVideo?.updatePresentation(visible:visible,safeArea:safeArea,captionFrame:captionFrame)
+    refreshVideoPresentation()
   }
   private func refreshVideoPresentation() {
     videoControls?.updatePresentation(active:active,chromeVisible:chromeVisible,safeArea:chromeSafe,captionFrame:chromeCaption)
   }
-  func stop(){if let playback {playback.pause()}else{player?.pause()}}
+  func ownsControls(at point:CGPoint)->Bool { reviewVideo?.controlFrame.contains(point) == true }
+  func stop(){reviewVideo?.pause();if let playback {playback.pause()}else{player?.pause()}}
 
   override func retire(){
     guard !retired else{return}
     // Preserve the last rendered conversation frame through a user dismissal;
     // authority/player work retires now, and the parent removes this surface.
     if conversation,player != nil,let snapshot=snapshotView(afterScreenUpdates:false){snapshot.frame=bounds;addSubview(snapshot)}
+    reviewVideo?.retire();reviewVideo=nil
     locationPreview?.retire();locationPreview=nil
     playback?.retire();videoControls?.retire()
     super.retire();stop();if let videoRequest{videoManager.cancelImageRequest(videoRequest)};videoRequest=nil;playerStatus=nil;player?.replaceCurrentItem(with:nil);player=nil;playerLayer?.removeFromSuperlayer();playerLayer=nil;playback=nil;videoControls=nil;toggle=nil;zoomChanged=nil
   }
-}
-
-@MainActor final class GallerySelectionTile:GalleryAssetView {
-  var open:(()->Void)?
-  init(item:GalleryItem){super.init(item:item);clipsToBounds=true;addGestureRecognizer(UITapGestureRecognizer(target:self,action:#selector(tap)));isAccessibilityElement=true;accessibilityLabel=item.name;accessibilityTraits = .button}
-  required init?(coder:NSCoder){return nil}
-  @objc private func tap(){if !retired{open?()}}
-  override func retire(){super.retire();open=nil}
 }
 
 @MainActor final class GalleryStripCell:UICollectionViewCell {

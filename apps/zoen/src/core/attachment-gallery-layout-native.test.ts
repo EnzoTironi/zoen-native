@@ -16,10 +16,38 @@ test(
       writeFileSync(
         main,
         `import Foundation
-        let result = Dictionary(uniqueKeysWithValues: ["grid", "albums", "preview", "selected"].map {
+        import CoreGraphics
+        let screens = Dictionary(uniqueKeysWithValues: ["grid", "albums", "preview", "selected"].map {
           ($0, ["fullScreen": ZoenAttachmentGalleryLayout.prefersFullScreen(screen: $0),
                  "pager": ZoenAttachmentGalleryLayout.usesPager(screen: $0)])
         })
+        func rect(_ value: CGRect) -> [Double] {
+          [value.minX, value.minY, value.width, value.height].map { Double($0) }
+        }
+        let viewport = CGSize(width: 390, height: 844)
+        let withoutKeyboard = ZoenAttachmentGalleryLayout.mediaFrame(size: viewport, keyboardHeight: 0)
+        let withKeyboard = ZoenAttachmentGalleryLayout.mediaFrame(size: viewport, keyboardHeight: 300)
+        let media: [[Double]] = [rect(withoutKeyboard), rect(withKeyboard),
+            rect(ZoenAttachmentGalleryLayout.mediaFrame(size: viewport, keyboardHeight: -1)),
+            rect(ZoenAttachmentGalleryLayout.mediaFrame(size: viewport, keyboardHeight: 900)),
+            rect(ZoenAttachmentGalleryLayout.mediaFrame(size: viewport, keyboardHeight: .nan))]
+        let fit: [[Double]] = [
+            rect(ZoenAttachmentGalleryLayout.aspectFit(dimensions: CGSize(width: 1600, height: 900), viewport: withoutKeyboard)),
+            rect(ZoenAttachmentGalleryLayout.aspectFit(dimensions: CGSize(width: 900, height: 1600), viewport: withoutKeyboard)),
+            rect(ZoenAttachmentGalleryLayout.aspectFit(dimensions: CGSize(width: 1600, height: 900), viewport: withKeyboard)),
+            rect(ZoenAttachmentGalleryLayout.aspectFit(dimensions: .zero, viewport: withoutKeyboard)),
+            rect(ZoenAttachmentGalleryLayout.aspectFit(dimensions: viewport, viewport: CGRect(x: 0, y: 0, width: CGFloat.infinity, height: 1)))]
+        let orders: [[String]] = [
+            ZoenAttachmentGalleryLayout.reordered(["a", "b", "c"], from: 0, to: 2) ?? [],
+            ZoenAttachmentGalleryLayout.reordered(["a", "b", "c"], from: 2, to: 0) ?? [],
+            ZoenAttachmentGalleryLayout.reordered(["a", "b", "c"], from: 1, to: 1) ?? []]
+        let invalidReorders: [Bool] = [
+            ZoenAttachmentGalleryLayout.reordered(["a", "a"], from: 0, to: 1) == nil,
+            ZoenAttachmentGalleryLayout.reordered(["a"], from: -1, to: 0) == nil,
+            ZoenAttachmentGalleryLayout.reordered(["a"], from: 0, to: 1) == nil,
+            ZoenAttachmentGalleryLayout.reordered((0..<11).map(String.init), from: 0, to: 1) == nil]
+        let result: [String: Any] = ["screens": screens, "media": media, "fit": fit,
+          "orders": orders, "invalidReorders": invalidReorders]
         print(String(decoding: try JSONSerialization.data(withJSONObject: result), as: UTF8.self))
         `,
       );
@@ -49,12 +77,36 @@ test(
         { encoding: 'utf8', timeout: 120000 },
       );
       const result = JSON.parse(execFileSync(binary, [], { encoding: 'utf8', timeout: 10000 }));
-      assert.equal(result.grid.fullScreen, false);
-      assert.equal(result.albums.fullScreen, false);
-      assert.equal(result.preview.fullScreen, true);
-      assert.equal(result.preview.pager, true);
-      assert.equal(result.selected.fullScreen, true, 'ordered selection review fills the screen');
-      assert.equal(result.selected.pager, true, 'review retains aspect-fit media paging');
+      assert.equal(result.screens.grid.fullScreen, false);
+      assert.equal(result.screens.albums.fullScreen, false);
+      assert.equal(result.screens.preview.fullScreen, true);
+      assert.equal(result.screens.preview.pager, true);
+      assert.equal(
+        result.screens.selected.fullScreen,
+        true,
+        'ordered selection review fills the screen',
+      );
+      assert.equal(result.screens.selected.pager, true, 'review retains aspect-fit media paging');
+      assert.deepEqual(result.media, [
+        [0, 0, 390, 844],
+        [0, -150, 390, 844],
+        [0, 0, 390, 844],
+        [0, -422, 390, 844],
+        [0, 0, 0, 0],
+      ]);
+      assert.deepEqual(result.fit[0], [0, 312.3125, 390, 219.375]);
+      assert.deepEqual(result.fit[1], [0, (844 - (390 * 1600) / 900) / 2, 390, (390 * 1600) / 900]);
+      assert.deepEqual(result.fit[2], [0, 162.3125, 390, 219.375]);
+      assert.deepEqual(result.fit.slice(3), [
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+      ]);
+      assert.deepEqual(result.orders, [
+        ['b', 'c', 'a'],
+        ['c', 'a', 'b'],
+        ['a', 'b', 'c'],
+      ]);
+      assert.deepEqual(result.invalidReorders, [true, true, true, true]);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

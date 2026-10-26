@@ -57,8 +57,9 @@ struct ZoenTelegramVideoState: Equatable, Sendable {
   static func prepare(asset: AVAsset, initialState: ZoenTelegramVideoState? = nil,
                       allowsTrimming: Bool, glyphs: ZoenTelegramVideoGlyphs,
                       fileInfo: String? = nil) async throws -> ZoenTelegramVideoEditingContent {
-    guard try await asset.load(.isPlayable), try await asset.load(.isExportable) else {
-      throw ZoenTelegramVideoFailure.unavailable
+    guard try await asset.load(.isPlayable) else { throw ZoenTelegramVideoFailure.unavailable }
+    if allowsTrimming {
+      guard try await asset.load(.isExportable) else { throw ZoenTelegramVideoFailure.unavailable }
     }
     let duration = try await asset.load(.duration)
     let tracks = try await asset.loadTracks(withMediaType: .video)
