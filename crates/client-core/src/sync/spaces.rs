@@ -129,12 +129,19 @@ impl Engine {
                 .find(|(id, _)| id == identity)
                 .map(|(_, role)| *role)
         };
-        let mut actor = actual(&me);
-        // Keep offline birth queueing: only the current device's authenticated
-        // first genesis can establish its creator before any canonical receipt.
-        if actor.is_none() && members.is_empty() && self.unconfirmed_creator(space, &me)? {
-            actor = Some(Role::Owner);
-        }
+        // A failed creation can leave an old UI projection until reload succeeds.
+        // Before the first canonical event, that projection is never authority:
+        // require the current device's authenticated, still-live first genesis.
+        let actor = if self.net.synced.contains(space)
+            && self
+                .logs
+                .get(space)
+                .is_none_or(event_log::SpaceLog::is_empty)
+        {
+            self.unconfirmed_creator(space, &me)?.then_some(Role::Owner)
+        } else {
+            actual(&me)
+        };
         if who == me || !actor.is_some_and(|actor| actor.can_assign(actual(who), role)) {
             return Err(CoreError::Forbidden {
                 reason: t(

@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
+import * as React from 'react';
 const require = createRequire(import.meta.url);
 const file = new URL('../components/primitives.tsx', import.meta.url);
 const { code } = require('@babel/core').transformSync(readFileSync(file, 'utf8'), {
@@ -19,6 +20,7 @@ runInNewContext(code, {
   exports: module.exports,
   require(name: string) {
     if (name.startsWith('@babel/runtime/')) return require(name);
+    if (name === 'react') return React;
     if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
     if (name === '@expo/ui') return { Host: 'Host', Button: 'Button', Text: 'NativeText' };
     if (name === 'expo-symbols') return { SymbolView: 'SymbolView' };

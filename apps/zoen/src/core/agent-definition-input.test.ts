@@ -169,6 +169,9 @@ async function fixture() {
     return module.exports;
   }
   const primitives = load(primitivesCode, {
+    // This fixture ports hooks while joining real form/input/responder wiring.
+    // field-identity.test.ts qualifies useId with the actual React lifecycle.
+    react: { useId: () => 'joined-input-field' },
     'expo-symbols': { SymbolView: 'SymbolView' },
     '@expo/ui': { Host: 'Host', Button: 'Button' },
     'expo-image': { Image: 'Image' },
