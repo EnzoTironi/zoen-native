@@ -24,6 +24,6 @@ export function useMessageCodeCopy(source: string, identity?: string) {
       // A rejected or refused write gets the same feedback.
     }
     if (lifetime.current === owner)
-      await dialogs.inform(t(copied ? 'chat.codeCopied' : 'chat.copyCodeFailed'));
+      await dialogs.inform(t(copied ? 'chat.codeCopied' : 'chat.copyCodeFailed'), '');
   };
 }
