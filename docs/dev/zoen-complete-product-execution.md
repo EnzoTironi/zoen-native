@@ -5,29 +5,34 @@ para lançamento**, com jornadas completas contra os serviços reais. As outras
 plataformas permanecem no escopo final, em fases posteriores; não dividem agora
 o trabalho de refinamento e validação manual.
 
-### Prioridade de consolidação — 26 de outubro de 2026
+### Prioridade confirmada — 26 de outubro de 2026
 
-Após a revisão de rumo com Enzo, concluir e integrar os lotes existentes antes de
-abrir novas capacidades. A prioridade imediata é fechar gestão de papéis e
-revogação ([#181](https://github.com/EnzoTironi/zoen-native/issues/181)), preservar
-criação offline e concluir criação/recuperação de Páginas no aplicativo
-([#179](https://github.com/EnzoTironi/zoen-native/issues/179)). Os comentários
-ancorados permanecem preservados, com implementação incompleta, até essas
-dependências estarem resolvidas. Desenvolvimento e QA internos de ArtCraft
-continuam parados; os editores seguem como Apps MCP externos.
+Enzo definiu e confirmou o foco exclusivo em **agentes e conversação**. Concluir
+as telas e interações selecionadas do Telegram iOS, com o backend correspondente,
+antes de retomar Apps. São jornadas completas de mensagens, compositor, anexos e
+mídia, voz, busca, grupos, perfis, configurações/temas, notificações e chamadas.
+Agentes devem executar trabalho durável, respeitar permissões/aprovações/orçamento
+e recuperar interrupções com resultados verificáveis.
 
-O próximo resultado integrado reúne duas pessoas, uma conversa e um artefato:
-criar, editar por pessoa e agente, aprovar, receber a alteração e recuperar o
-mesmo documento após reinício, com autoria e permissões efetivas. Em seguida,
-conversa/mídia e criação/Apps avançam em duas frentes de produto, com QA por lote
-e uma integração comum. O marco de lançamento abaixo mantém todos os seus
-critérios; esta sequência não reduz as capacidades aprovadas.
+**Desenvolvimento e QA de Apps e criação estão pausados:** MCP Apps, expansão de
+host/SDK, editores externos/internos, Páginas, Slides, Sites, Imagens e comentários
+ancorados706. Preservar código, dados, ramos e evidências; a pausa não cancela as
+capacidades finais aprovadas. Edição nativa de legenda/mídia da mensagem pertence
+à conversação; integração de editores de Apps continua pausada.
 
-Os testes nativos recentes são de simulador. A validação em iPhone físico,
-distribuição e backend público ainda exigem suas próprias provas. Trabalho local
-qualificado não conta como publicado ou mergeado. A conectividade voltou e o
-PR621 foi mergeado normalmente; o lote de mensageria627 aguarda checks. Os demais
-lotes seguem separados, com estados atuais registrados no issue170.
+A arquitetura segue contratos tipados por domínio, uma autoridade de estado e
+adaptadores UI/SDK/CLI/MCP. Fortalecer as fronteiras no workspace existente;
+extrações de repositórios e novas integrações de Apps aguardam sua retomada.
+Implementar e validar em lotes verticais, com dono de integração e operador único
+de QA. A medida de conclusão é a jornada aceita de ponta a ponta.
+
+PRs621,627 e628 foram mergeados normalmente;625/626 estão fechadas. O lote629 de
+papéis/revogação da conversação foi mergeado em0dd76796 após checks aprovados;
+o ajuste final48 mudou somente uma fixture. App707
+e relay local usam a fonteeb62; o caso de criação que terminou antes da pausa
+conserva seu escopo histórico. Os testes nativos recentes são de simulador;
+iPhone físico, backend público e lançamento continuam pendentes. O issue170 é
+o registro de prioridade, responsáveis e estado de entrega.
 
 | Lote                          | Entrega observável                                                                                                                                                                                                  | Critério de saída                                                                                                                                                                                                                                                               |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

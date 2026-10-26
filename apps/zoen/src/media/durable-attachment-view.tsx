@@ -88,6 +88,7 @@ export function renderDurableAttachment(
   const field: AttachmentComposerField | undefined =
     selected && content && scope
       ? {
+          mutationId: selected.mutationId,
           scope,
           targetFrozen: true,
           value: selected.caption,

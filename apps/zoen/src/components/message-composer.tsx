@@ -27,6 +27,8 @@ import { composerExternalWidth } from '../core/telegram-composer-motion';
 import { ConversationComposerAccess } from './conversation-composer-access';
 import { ComposerTextField } from './composer-text-field';
 import { NativeButton } from './primitives';
+import { useClient } from '../core/provider';
+import { homeOwnerFor } from '../home/access';
 import { ComposerGlyph } from './composer-control-surface';
 import {
   AttachmentKeyboardProvider,
@@ -115,6 +117,13 @@ export function MessageComposer({
   draft?: { ready: boolean; error: boolean; rejected?: boolean; onRetry: () => void };
 }) {
   const { colors, scheme, presentation: p, reducedMotion } = useTheme();
+  const client = useClient();
+  const sessionScope = JSON.stringify([
+    homeOwnerFor(client),
+    client.store.sessionEpoch,
+    client.snapshot?.account?.relay_url ?? null,
+    client.store.isSessionRetiring,
+  ]);
   const insets = useSafeAreaInsets();
   const { progress } = useKeyboardMotion();
   const restingBottom = Math.max(insets.bottom, 12);
@@ -159,7 +168,13 @@ export function MessageComposer({
     const field = (
       <ComposerTextField
         inputRef={inputRef}
-        context={`${spaceId}:${threadRootId ?? ''}:${search ? 'search' : files ? `caption:${files.position}` : editing ? 'edit' : 'normal'}`}
+        context={JSON.stringify([
+          spaceId,
+          threadRootId ?? null,
+          search ? 'search' : files ? 'caption' : editing ? 'edit' : 'normal',
+          files?.mutationId ?? (editing ? (context?.entry?.id ?? null) : null),
+          sessionScope,
+        ])}
         testID="message-input"
         accessibilityLabel={
           search
@@ -395,7 +410,7 @@ export function MessageComposer({
   }
   const composer = (
     <AttachmentKeyboardProvider
-      scope={`${spaceId}:${threadRootId ?? ''}`}
+      scope={JSON.stringify([sessionScope, spaceId, threadRootId ?? null])}
       enabled={!search && !suspended}
     >
       <Animated.View

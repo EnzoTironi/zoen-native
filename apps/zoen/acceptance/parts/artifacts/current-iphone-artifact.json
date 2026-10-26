@@ -1,34 +1,29 @@
 {
-  "checkpoint": "701",
-  "commit": "e58f24942794616c7044af849f7a9af667d02c70",
-  "coreCommit": "5659c6caaab5ff27b43eef8c598732fda0a9db4f",
-  "frontendQualificationCommit": "c5748bf4346ba7f57760c158869e94ebbbef9ae7",
+  "checkpoint": "707",
+  "commit": "eb62cdaf911a945c25a3e9b26e336e2a39bf1d60",
+  "coreCommit": "eb62cdaf911a945c25a3e9b26e336e2a39bf1d60",
+  "frontendQualificationCommit": "23e997cdf9c5e3838f686c007a0f1844a83a2094",
+  "integrationChecks": "58 affected tests and TSC passed on actualeb62; full frontend2718 remains attributed to23e.",
   "configuration": "Release arm64 iOS Simulator; normal Xcode signature, no Metro",
   "deviceUdid": "E439FAD5-4E39-4224-ABFD-215D0ECCFC68",
-  "archivePath": "/Users/enzotironi/.codex/builds/zoen-messenger-budget-consumer-v701/attempt-01/sealed/Zoen.app",
-  "executableSha256": "911e96a865711e1a2739ab7bbcf6578dd7e57898ab1411e22f8c21a418e481bc",
-  "bundleSha256": "623d093b90078273cb5346f6086f5e0a759cedde147367ec4bed459655b7d650",
+  "archivePath": "/Users/enzotironi/.codex/builds/zoen-ios-membership-v707/attempt-01/sealed/Zoen.app",
+  "executableSha256": "7e3ec28544c9530fd6f318898d28ae11e6d9910dc014ad25ad4341eb0f4aa6f5",
+  "bundleSha256": "fb566b09eafc8b306e99024ef8ae93b97d5806f912aee6f1cdedbf22f8eff463",
   "preservingInstall": true,
   "installedFilesVerified": 426,
   "strictSignatureVerified": true,
   "physicalDeviceAccepted": false,
   "fullAppParityAccepted": false,
   "sourceRelabeled": false,
-  "status": "PARTIAL: native budget702 readonly interoperability passed; Page creation701 stopped before Create because title input identification failed.",
-  "buildVerification": "/Users/enzotironi/.codex/builds/zoen-messenger-budget-consumer-v701/handoff.json",
-  "installedVerification": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/core701/upgrade-receipt.json",
-  "runtimeAcceptance": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/core701/receipt.json",
-  "latestRetainedQa": {
-    "case": "UI701 settings review",
-    "scope": "Readonly You/Appearance/General/Notifications walkthrough; no theme, account or policy mutation.",
-    "receipt": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/ui701-settings-review/receipt.json",
-    "finding": "Appearance preview text overlaps the native title after scroll; shared settings header correction awaits native validation."
-  },
+  "status": "PARTIAL: appearance header after scroll and exact native Field input passed. One Page creation/version1/cold reopen completed before the user paused Apps; no further creation QA is active. Agents/conversation acceptance remains incomplete.",
+  "buildVerification": "/Users/enzotironi/.codex/builds/zoen-ios-membership-v707/handoff.json",
+  "installedVerification": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/core707/upgrade-receipt.json",
+  "runtimeAcceptance": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/core707/receipt.json",
+  "backend": "Local relay upgraded normally to actualeb62, preserving PG/FDB/HTTPS, environment and durable data; health/ready and RFC6455 upgrade passed. No whole authenticated-platform claim from those probes.",
   "pending": [
-    "Page creation/reopen and Reader/Member/import/foreground/Direct destination cases",
-    "Membership703 correction, fresh Core/UniFFI and native qualification",
-    "Unexpected PDF navigation has no qualified root cause; preserve observation without speculative patch",
-    "Physical iPhone, public backend/provider and whole-product acceptance"
+    "Complete Telegram iOS conversation/agent native journeys",
+    "Physical iPhone, real background/calls and public-backend release",
+    "Apps/shared-creation acceptance paused by user; existing results keep their original scope"
   ],
-  "historicalEvidence": "Earlier v85/CORE637 and later scoped receipts retain their original source and scope. This current-artifact pointer replaces their old latest labels; original record is preserved at0b869f98:apps/zoen/acceptance/parts/artifacts/current-iphone-artifact.json. No earlier journey is requalified on701."
+  "historicalEvidence": "Earlier701/CORE637/v85 and other receipts retain their original sources and limits. This pointer does not requalify earlier journeys on707; old pointer is preserved at48eb6fd9:apps/zoen/acceptance/parts/artifacts/current-iphone-artifact.json."
 }

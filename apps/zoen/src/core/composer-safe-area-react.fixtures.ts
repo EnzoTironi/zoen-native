@@ -6,6 +6,8 @@ import { telegramPresentation } from '../theme/telegram.ts';
 import * as presentation from './telegram-composer-presentation.ts';
 import * as motion from './telegram-composer-motion.ts';
 import { conversationQueryFits } from './conversation-search.ts';
+import { composerOwnerFixture } from './composer-owner.fixtures.ts';
+import { homeOwnerFor } from '../home/access.ts';
 
 type Props = Record<string, any>;
 export type Frame = {
@@ -22,6 +24,7 @@ const flatten = (style: any): any =>
 /** Actual Expo/Compiler composer, iOS actions and viewport. Native Views,
  * keyboard shared values, text focus and measured bounds are explicit ports. */
 export async function composerSafeAreaFixture(searching = true, noResults = false) {
+  const client = composerOwnerFixture();
   const root = createReactTestRoot(),
     controls = new Map<string, Props>();
   const Context = React.createContext<Frame>({
@@ -120,6 +123,8 @@ export async function composerSafeAreaFixture(searching = true, noResults = fals
     '../core/telegram-composer-presentation': presentation,
     '../core/telegram-composer-motion': motion,
     '../core/conversation-search': { conversationQueryFits },
+    '../core/provider': { useClient: () => client },
+    '../home/access': { homeOwnerFor },
     './composer-action-motion': {
       useComposerActionMotion: () => React.useContext(ActionContext),
       composerFrameTransition: () => undefined,

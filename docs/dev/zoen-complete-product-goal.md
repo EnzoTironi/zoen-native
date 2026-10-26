@@ -34,7 +34,23 @@ pendentes. Merge normal após fonte limpa e checks aplicáveis aprovados.
 [Ordem de entrega iOS, lotes e critérios de saída](zoen-complete-product-execution.md).
 O plano integral e as evidências preservadas mantêm seu escopo e seus limites.
 
+## Prioridade ativa — 26 de outubro de 2026
+
+Por direção confirmada de Enzo, o trabalho ativo é exclusivamente **agentes e
+conversação**, concluindo o recorte selecionado de interface/interações do
+Telegram iOS e seu backend antes de retomar Apps. Desenvolvimento e QA de Apps,
+criação compartilhada, editores e expansão de SDK/host estão pausados. Código,
+dados e evidências ficam preservados; as capacidades permanecem no produto final.
+Esta é uma mudança de sequência, sem aceite ou exclusão das jornadas pendentes.
+
 ## Plataformas e arquitetura
+
+O Zoen deve compor capacidades que pessoas, agentes e outros produtos possam
+consumir pelos mesmos contratos de domínio. UI, SDK, CLI e MCP adaptam essas
+operações; cada domínio preserva a autoridade de seu estado, permissões e
+recuperação. Comprovar as fronteiras no workspace atual e o consumo independente
+antes de extrair repositórios. Implementação nativa, bindings e contratos gerados
+compatíveis integram a mesma unidade de release.
 
 A execução atual conclui o iOS antes de ampliar a validação manual para Web e
 Android. Em seguida, as mesmas jornadas são qualificadas nessas duas plataformas;
