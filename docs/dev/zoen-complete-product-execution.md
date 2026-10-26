@@ -1,6 +1,6 @@
 ## Execução atual — 20 de outubro de 2026
 
-A meta foi ativada novamente nesta conversa. O próximo marco é **Zoen iOS pronto
+O próximo marco é **Zoen iOS pronto
 para lançamento**, com jornadas completas contra os serviços reais. As outras
 plataformas permanecem no escopo final, em fases posteriores; não dividem agora
 o trabalho de refinamento e validação manual.
@@ -29,15 +29,20 @@ com uma mesma capa nativa e navegação para todos os motores. O fluxo completo 
 gerar, verificar, registrar e atualizar um novo programa por agente ainda precisa
 de seu próprio aceite; criar uma instância do catálogo não equivale a essa prova.
 
-A ordem é de entrega; trabalho independente do núcleo/backend pode avançar em
-paralelo. Cada lote fecha front, núcleo e backend da mesma jornada. Subagentes
-trabalham com escopos isolados e um responsável por fonte, dispositivos e serviços.
+A execução segue a [ordem de engenharia do AGENTS.md](../../AGENTS.md#engenharia):
+questionar requisitos, eliminar partes dispensáveis, simplificar, acelerar e
+automatizar. A solução deve concretizar a visão completa com uma estrutura
+reutilizável e uma única autoridade de estado. As 30 jornadas, capacidades de
+criação e critérios de lançamento permanecem no escopo aprovado.
 
-Implementar um lote coerente, revisar e validar em conjunto. Repetir build ou a
-suíte ampla quando uma mudança/falha justificar; não repetir tudo após ajustes de
-documentação. Preservar testes de contratos, durabilidade e permissões. Uma falha
-de ferramenta ou de ambiente é registrada separadamente, enquanto o trabalho
-independente continua. Uma prova não executada permanece pendente.
+Cada lote fecha front, núcleo e backend da mesma jornada e usa um issue, um
+responsável e um registro final conciso de mudança, testes e limitações. Frentes
+independentes avançam em paralelo. Implementação, checks adequados, QA por lote
+e revisão/merge formam o caminho de entrega; decisões rotineiras já autorizadas
+prosseguem sem novas rodadas de ACK. Repetir build ou suíte ampla exige mudança,
+falha ou dúvida material. Preservar testes de autorização, durabilidade e
+recuperação; registrar falhas de ferramenta separadamente e manter pendente a
+prova ainda não executada.
 
 **Marco iOS aceito** exige as jornadas iOS aplicáveis e as capacidades de criação
 previstas, front e backend completos, provedores/configuração reais, build
