@@ -59,7 +59,7 @@ fn role_assignment_reuses_authority_at_member_limit_and_binds_the_signed_role(
                     ..member_facts(actor)
                 };
                 assert_eq!(
-                    admit(&event, &facts)?,
+                    admit(&event, &facts).map_err(|reject| format!("{reject:?}"))?,
                     Effect::Add {
                         identity: target.clone(),
                         role: desired,
