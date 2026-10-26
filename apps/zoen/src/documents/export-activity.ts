@@ -3,6 +3,11 @@ export class DocumentExportActivity {
   private focused: object | null = null;
   private flight: object | null = null;
 
+  observe(): () => boolean {
+    const lease = this.focused;
+    return () => lease !== null && this.focused === lease;
+  }
+
   focus(): () => void {
     const lease = {};
     this.focused = lease;
