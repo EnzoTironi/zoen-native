@@ -80,7 +80,7 @@ impl Engine {
         Ok((me, device))
     }
 
-    pub(super) fn app_document_scope(
+    pub(crate) fn app_document_scope(
         &self,
         item: &str,
     ) -> R<(String, String, String, u32, AppDoc)> {
@@ -89,7 +89,10 @@ impl Engine {
         let ItemContent::App(app) = &state.current().content else {
             return Err(invalid());
         };
-        if app.app != "excalidraw" || app.resource_uri != RESOURCE {
+        if app.app != "excalidraw"
+            || (app.resource_uri != RESOURCE && app.view.is_none())
+            || !crate::app_resources::valid(app)
+        {
             return Err(invalid());
         }
         let file = app.document.as_ref().ok_or_else(invalid)?;

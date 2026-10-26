@@ -58,7 +58,12 @@ impl Engine {
         }
         let file = content.document.as_ref().ok_or_else(refused)?;
         // Validate the actual owned bytes/codec before disclosure, not just counts.
-        self.app_binary_read(&scope.item_id, Some(current.number), Some(&file.sha256))?;
+        if content.app == "excalidraw" && content.view.is_some() {
+            self.app_document_read(&scope.item_id)?;
+            self.app_document_resource(&scope.item_id, &content.resource_uri)?;
+        } else {
+            self.app_binary_read(&scope.item_id, Some(current.number), Some(&file.sha256))?;
+        }
         let log = self.logs.get(&scope.space_id).ok_or_else(refused)?;
         let creation = if let Some(origin) = &item.shared {
             origin.creation.clone()

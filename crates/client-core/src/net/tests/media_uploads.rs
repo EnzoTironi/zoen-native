@@ -182,6 +182,7 @@ fn failed_nonfile_attachment_keeps_its_canonical_app_card_after_cold_reopen(
     let item = types::new_id("app").unwrap();
     let created = sender.lock().append(&space, &me, EventBody::ItemCreated {
         item: item.clone(), kind: types::ItemKind::App, content: types::ItemContent::App(types::AppDoc {
+            view: None,
             app:"countdown".into(), resource_uri:"ui://builtin/countdown".into(), title:"Retained App".into(),
             state_json:serde_json::json!({"title":"Retained App","place":"QA","target":1_800_000_000_000i64,"log":[]}).to_string(), document:None,
         }), origin:"local canonical fixture".into(),

@@ -399,6 +399,7 @@ pub(super) fn received_app_owned_documents_keep_manifest_history_without_becomin
     )
     .unwrap();
     let document = types::AppDoc {
+        view: None,
         app: "excalidraw".into(),
         resource_uri: "ui://zoen/excalidraw.html".into(),
         title: "Drawing".into(),

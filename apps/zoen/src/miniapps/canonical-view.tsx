@@ -23,7 +23,12 @@ import { frameAuthority, frameClosures } from './lifetime';
 import { MiniappSession } from './protocol';
 import { canonicalCopy } from './canonical-copy';
 import { safeMiniappLink, sandboxHtml, type VerifiedMiniappResource } from './sandbox';
-import { readVerifiedMiniappResource } from './resource-load';
+import {
+  canonicalResourcePin,
+  isOwnedAppResource,
+  readCanonicalResource,
+  type CanonicalResourcePin,
+} from './canonical-resource';
 
 type Props = {
   item: ItemDetail;
@@ -64,7 +69,11 @@ export function CanonicalDrawingView(props: Props) {
     }, []),
   );
   return focus.lifetime ? (
-    <FocusedDrawing key={focus.epoch} {...props} registerClose={focus.lifetime.register} />
+    <FocusedDrawing
+      key={`${focus.epoch}:${props.item.id}`}
+      {...props}
+      registerClose={focus.lifetime.register}
+    />
   ) : null;
 }
 
@@ -79,6 +88,7 @@ function FocusedDrawing({
 }: Props & { registerClose: (end: () => void) => () => void }) {
   const { store } = useClient();
   const { colors } = useTheme();
+  const [pin] = useState(() => canonicalResourcePin(item, spec));
   const epoch = useRef(store.sessionEpoch).current;
   const owner = useRef(
     (() => {
@@ -87,7 +97,7 @@ function FocusedDrawing({
     })(),
   ).current;
   const [attempt, retry] = useState(0);
-  const readKey = `${item.id}:${spec.resource_uri}:${attempt}`;
+  const readKey = `${pin.itemId}:${pin.resourceUri}:${attempt}`;
   const [read, setRead] = useState<{
     key?: string;
     verified?: VerifiedMiniappResource;
@@ -118,22 +128,13 @@ function FocusedDrawing({
     });
     void (async () => {
       lifetime.check();
-      if (spec.resource_uri !== 'ui://zoen/excalidraw.html')
-        throw new Error(t('miniapps.thisResourceDoesNotBelongToTheOpen'));
-      const [verified, doc] = await Promise.all([
-        readVerifiedMiniappResource(
-          () => store.driver.request({ op: 'app_resource', uri: spec.resource_uri }),
-          'excalidraw',
-          spec.resource_uri,
-          lifetime.check,
-        ),
-        store.driver.request({ op: 'app_document_read', item_id: item.id }),
-      ]);
+      const { verified, doc } = await readCanonicalResource(
+        pin,
+        (command) => store.driver.request(command),
+        lifetime.check,
+      );
       if (!active) return;
       lifetime.check();
-      if (verified.manifest.allowedDomains.length || verified.manifest.capabilities.length)
-        throw new Error(t('miniapps.theMiniappManifestDoesNotMatchThisResource'));
-      if (doc.item_id !== item.id) throw new Error(t('drawing.unavailable'));
       setRead({ key: readKey, verified, doc, check: lifetime.check });
     })().catch((error: unknown) => {
       if (active)
@@ -147,7 +148,7 @@ function FocusedDrawing({
       lifetime.close();
       unregisterClose();
     };
-  }, [store, registerClose, checkOwner, item.id, spec.resource_uri, readKey]);
+  }, [store, registerClose, checkOwner, pin, readKey]);
   if (read.key !== readKey) return <Loading />;
   if (read.error)
     return (
@@ -171,6 +172,7 @@ function FocusedDrawing({
       fill={fill}
       verified={read.verified}
       doc={read.doc}
+      pin={pin}
       checkOwner={read.check}
       registerClose={registerClose}
       onDocumentController={onDocumentController}
@@ -185,6 +187,7 @@ function DrawingDocument({
   fill,
   verified,
   doc,
+  pin,
   checkOwner,
   registerClose,
   onDocumentController,
@@ -193,6 +196,7 @@ function DrawingDocument({
 }: Props & {
   verified: VerifiedMiniappResource;
   doc: CanonicalSceneDoc;
+  pin: CanonicalResourcePin;
   checkOwner: () => void;
   registerClose: (end: () => void) => () => void;
 }) {
@@ -270,7 +274,15 @@ function DrawingDocument({
       check: lifetime.check,
       save: async (input) => {
         lifetime.check();
-        const accepted = await store.request({ op: 'app_document_save', ...input });
+        const accepted = await store.request(
+          isOwnedAppResource(pin.resourceUri)
+            ? {
+                op: 'app_document_save_pinned',
+                expected_resource_uri: pin.resourceUri,
+                ...input,
+              }
+            : { op: 'app_document_save', ...input },
+        );
         lifetime.check();
         return accepted;
       },
@@ -364,7 +376,15 @@ function DrawingDocument({
       staged: (uploadId, bytes, sha) => scene.stagedScene(uploadId, bytes, sha),
       save: async (input) => {
         lifetime.check();
-        const accepted = await store.request({ op: 'app_document_copy', ...input });
+        const accepted = await store.request(
+          isOwnedAppResource(pin.resourceUri)
+            ? {
+                op: 'app_document_copy_pinned',
+                expected_resource_uri: pin.resourceUri,
+                ...input,
+              }
+            : { op: 'app_document_copy', ...input },
+        );
         lifetime.check();
         return accepted;
       },
@@ -454,7 +474,7 @@ function DrawingDocument({
       close();
       unregisterClose();
     };
-  }, [store, checkOwner, context, doc, item.id, resource, manifest, dialogs, registerClose]);
+  }, [store, checkOwner, context, doc, item.id, resource, manifest, dialogs, registerClose, pin]);
   useEffect(() => {
     session.current?.syncContext();
   }, [scheme, dimensions, safeAreaInsets, closeButton]);

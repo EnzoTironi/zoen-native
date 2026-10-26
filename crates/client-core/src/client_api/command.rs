@@ -576,6 +576,37 @@ pub(super) enum Command {
     AppDocumentRead {
         item_id: String,
     },
+    AppResourceInstall {
+        input: crate::app_resources::Install,
+    },
+    AppResourceFind {
+        input: crate::app_resources::Install,
+    },
+    AppDocumentResource {
+        item_id: String,
+        expected_resource_uri: String,
+    },
+    AppResourceUpdate {
+        input: crate::app_resources::Update,
+    },
+    AppDocumentReadPinned {
+        item_id: String,
+        expected_resource_uri: String,
+    },
+    AppDocumentSavePinned {
+        item_id: String,
+        expected_resource_uri: String,
+        expected_version: u32,
+        expected_sha256: String,
+        scene_json: String,
+        mutation_id: String,
+    },
+    AppDocumentCopyPinned {
+        item_id: String,
+        expected_resource_uri: String,
+        scene_json: String,
+        mutation_id: String,
+    },
     AppDocumentCopy {
         item_id: String,
         scene_json: String,

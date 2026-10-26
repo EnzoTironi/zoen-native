@@ -190,15 +190,28 @@ fn valid_document(app: &AppDoc) -> bool {
         && app.title.chars().count() <= 160
         && app.state_json.len() <= 128 * 1024
         && serde_json::from_str::<serde_json::Value>(&app.state_json).is_ok()
-        && miniapps::binary::Format::for_id(&app.app).is_some_and(|format| {
-            app.resource_uri == format.resource()
-                && app.document.as_ref().is_some_and(|file| {
-                    file.mime == format.mime()
-                        && file.voice.is_none()
-                        && file.path.is_empty()
-                        && crate::files::validate_file(file, format.max_bytes() as u64).is_ok()
-                })
-        })
+        && ((app.app == "excalidraw"
+            && app.view.is_some()
+            && crate::app_resources::valid(app)
+            && app.document.as_ref().is_some_and(|file| {
+                file.mime == miniapps::excalidraw::MIME
+                    && file.voice.is_none()
+                    && file.path.is_empty()
+                    && crate::files::validate_file(
+                        file,
+                        miniapps::excalidraw::MAX_SCENE_BYTES as u64,
+                    )
+                    .is_ok()
+            }))
+            || miniapps::binary::Format::for_id(&app.app).is_some_and(|format| {
+                app.resource_uri == format.resource()
+                    && app.document.as_ref().is_some_and(|file| {
+                        file.mime == format.mime()
+                            && file.voice.is_none()
+                            && file.path.is_empty()
+                            && crate::files::validate_file(file, format.max_bytes() as u64).is_ok()
+                    })
+            }))
 }
 
 /// Checked against authenticated prefix headers. Opaque historical applications

@@ -46,6 +46,7 @@ pub(super) fn seed(e: &mut Engine, com: &str, cast: &Cast, t0: i64) -> R<()> {
             item: hike.clone(),
             kind: ItemKind::App,
             content: ItemContent::App(AppDoc {
+                view: None,
                 document: None,
                 app: "hike".into(),
                 resource_uri: "ui://builtin/hike".into(),

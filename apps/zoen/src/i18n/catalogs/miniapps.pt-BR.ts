@@ -1,4 +1,8 @@
 export const miniappsPtBR = {
+  openAppPackage: 'Abrir App',
+  updateAppPackage: 'Atualizar App',
+  chooseAppPackage: 'Escolher arquivo',
+  noAppPackages: 'Nenhum arquivo de App nesta conversa.',
   shareCurrentDisclosure: 'A versão atual será compartilhada nesta conversa.',
   addOwnAgent: 'Adicionar seu agente',
   agentUnavailable: 'Você não pode adicionar um agente a esta conversa.',

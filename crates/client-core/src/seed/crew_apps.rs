@@ -64,6 +64,7 @@ pub(super) fn seed(e: &mut Engine, turma: &str, cast: &Cast, t0: i64) -> R<()> {
             item: hike.clone(),
             kind: ItemKind::App,
             content: ItemContent::App(AppDoc {
+                view: None,
                 document: None,
                 app: "hike".into(),
                 resource_uri: "ui://builtin/hike".into(),
@@ -168,6 +169,7 @@ pub(super) fn seed(e: &mut Engine, turma: &str, cast: &Cast, t0: i64) -> R<()> {
             item: pet.clone(),
             kind: ItemKind::App,
             content: ItemContent::App(AppDoc {
+                view: None,
                 document: None,
                 app: "pet".into(),
                 resource_uri: "ui://builtin/pet".into(),
@@ -235,6 +237,7 @@ pub(super) fn seed(e: &mut Engine, turma: &str, cast: &Cast, t0: i64) -> R<()> {
             item: maptap.clone(),
             kind: ItemKind::App,
             content: ItemContent::App(AppDoc {
+                view: None,
                 document: None,
                 app: "maptap".into(),
                 resource_uri: "ui://builtin/maptap".into(),

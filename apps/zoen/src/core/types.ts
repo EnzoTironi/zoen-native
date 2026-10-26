@@ -146,6 +146,10 @@ type Results = {
   decide_request: DecideOutcome;
   decide_tool_request: DecideOutcome;
   app_resource: AppResourceDto;
+  app_document_resource: AppResourceDto;
+  app_resource_find: ItemDetail | null;
+  app_resource_install: ItemDetail;
+  app_resource_update: AppDocumentDto;
   raise_budget: AgentProfile;
   search: SearchHit[];
   find_people: Snapshot['conversations'][number]['members'];
@@ -159,6 +163,9 @@ type Results = {
   app_document_read: AppDocumentDto;
   app_document_save: AppDocumentDto;
   app_document_copy: AppDocumentDto;
+  app_document_read_pinned: AppDocumentDto;
+  app_document_save_pinned: AppDocumentDto;
+  app_document_copy_pinned: AppDocumentDto;
   install_app: ItemDetail;
   devices: DeviceDto[];
   start_direct: string;

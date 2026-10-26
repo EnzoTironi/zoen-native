@@ -137,6 +137,7 @@ export function useHome(){return{items:[],isPinned(){return false}}};
 export function useDialogs(){return{}};
 export function useConversationCards(){return{items:[],isPinned(){return false}}};
 export const MiniappState=()=>null,MiniappSurfaceControls=()=>null,HomeCardMenu=()=>null,EditorAgentAccess=()=>null;
+export const AppPackageReleaseSheet=()=>null;
 export const callMiniapp=()=>{throw Error('Unexpected app tool')};
 export const EmptyState=({title,children})=>React.createElement('div',null,title,children);
 export const Loading=()=>React.createElement('div',{'data-qa-loading':'true'});

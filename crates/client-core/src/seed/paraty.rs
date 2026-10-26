@@ -214,6 +214,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<()> {
             item: trip.clone(),
             kind: ItemKind::App,
             content: ItemContent::App(AppDoc {
+                view: None,
                 document: None,
                 app: "countdown".into(),
                 resource_uri: "ui://builtin/countdown".into(),

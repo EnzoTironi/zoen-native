@@ -18,6 +18,7 @@ import { HomeCardMenu } from '../home/menus';
 import { useConversationCards } from './conversation-provider';
 import { EditorAgentAccess } from './editor-agent-sheet';
 import type { MiniappDocumentController } from './document-controller';
+import { AppPackageReleaseSheet } from './package-release-sheet';
 
 export function MiniappScreen({ manage = false }: { manage?: boolean }) {
   const { id, version, sha256 } = useLocalSearchParams<{
@@ -273,6 +274,7 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
           {message}
         </Text>
       ) : null}
+      {manage ? <AppPackageReleaseSheet item={item} onUpdated={read.retry} /> : null}
       {!manage ? (
         spec?.has_view ? (
           <MiniappView

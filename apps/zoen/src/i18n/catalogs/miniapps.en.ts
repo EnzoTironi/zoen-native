@@ -1,4 +1,8 @@
 export const miniappsEn = {
+  openAppPackage: 'Open App',
+  updateAppPackage: 'Update App',
+  chooseAppPackage: 'Choose a file',
+  noAppPackages: 'No App files in this chat.',
   shareCurrentDisclosure: 'The current version will be shared in this conversation.',
   addOwnAgent: 'Add your agent',
   agentUnavailable: 'You cannot add an agent to this conversation.',

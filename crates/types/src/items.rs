@@ -259,4 +259,8 @@ pub struct AppDoc {
     /// Optional owned document. Its encrypted chunks share this App Item's history.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub document: Option<FileDoc>,
+    /// Immutable owned MCP UI bytes. Disclosed with the current App, never by
+    /// granting access to the source package Item or its history.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub view: Option<Box<FileDoc>>,
 }

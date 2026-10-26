@@ -29,6 +29,9 @@ impl Client {
             StageImageGeneration, StandingDecisions, TogglePlanLine, UnblockPerson, Undo,
             UnlinkDevice, UpdateHandle, UpdateProfile, VerifyLog,
         };
+        if let Some(result) = self.dispatch_app_resources(&command) {
+            return result;
+        }
         match command {
             SiteToolReview {
                 expected_identity_id,

@@ -166,6 +166,17 @@ impl Engine {
             }
             let mut refs: Vec<(&ChunkRef, &str)> = Vec::new();
             let content = &it.versions.current().content;
+            if let ItemContent::App(app) = content {
+                if let Some(view) = &app.view {
+                    if crate::app_resources::valid(app) {
+                        refs.extend(
+                            view.chunks
+                                .iter()
+                                .map(|chunk| (chunk, "application/octet-stream")),
+                        );
+                    }
+                }
+            }
             match (content, content.owned_file()) {
                 (_, Some(f)) => {
                     if validate_file(f, MAX_FILE_BYTES as u64).is_err() {

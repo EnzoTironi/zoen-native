@@ -18,6 +18,7 @@ mod cold_recovery;
 mod existing_app_member;
 mod native_member_addition;
 mod outbox_cases;
+mod owned_app_resource;
 mod prefix_admission_cases;
 mod prefix_settlement_cases;
 mod publish_window_cases;

@@ -49,7 +49,7 @@ pub(crate) fn usage() -> ! {
          page export ITEM --out FILE | page export-all CHAT --dir DIR\n\
          page show ITEM | page check ITEM N | page add ITEM TEXT | page set ITEM N TEXT\n\
          page new CHAT TITLE | pages CHAT\n\
-         file add CHAT FILE [--thumb PNG] [--path DIR] | files CHAT\n\
+         file add CHAT FILE [--mime MIME] [--thumb PNG] [--path DIR] | files CHAT\n\
          file get ITEM --out FILE [--version N] [--thumb-out PNG]\n\
          file version ITEM FILE [--thumb PNG]\n\
          versions ITEM | restore ITEM N      ITEM = id (prefix ok), path or title\n\

@@ -136,6 +136,7 @@ impl Engine {
                     item: item.clone(),
                     kind: ItemKind::App,
                     content: ItemContent::App(AppDoc {
+                        view: None,
                         app: format.id().into(),
                         resource_uri: format.resource().into(),
                         title: title.into(),

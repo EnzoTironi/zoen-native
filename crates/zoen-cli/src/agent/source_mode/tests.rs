@@ -1,6 +1,7 @@
 use super::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use zoen_agentd::citizen::{testing::ControlledToolBrain, BrainOut};
+mod file_import;
 mod fixture;
 mod owner_controls;
 mod relay;
