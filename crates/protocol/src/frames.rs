@@ -181,6 +181,15 @@ pub enum AgentRequest {
     },
     /// Owner only: one of your agents' status ("active", "paused" or "revoked").
     Status { agent: IdentityId },
+    /// Owner only: canonical lifecycle revision and last operation.
+    ControlStatus { agent: IdentityId },
+    /// Owner only: apply once at exactly the observed lifecycle revision.
+    ControlReviewed {
+        agent: IdentityId,
+        action: AgentAction,
+        operation: String,
+        revision: u64,
+    },
     /// Owner only.
     Control {
         agent: IdentityId,
@@ -264,7 +273,10 @@ impl Op {
             Op::Agent(AgentRequest::State) => "agent_state",
             Op::Agent(AgentRequest::Advance { .. }) => "agent_advance",
             Op::Agent(AgentRequest::Define { .. }) => "agent_define",
-            Op::Agent(AgentRequest::Control { .. }) => "agent_control",
+            Op::Agent(AgentRequest::Control { .. } | AgentRequest::ControlReviewed { .. }) => {
+                "agent_control"
+            }
+            Op::Agent(AgentRequest::ControlStatus { .. }) => "agent_control_status",
             Op::Agent(AgentRequest::Status { .. }) => "agent_status",
             Op::CallTurn { .. } => "call_turn",
             Op::RuntimeBinding(_) => "runtime_binding",
@@ -309,6 +321,7 @@ pub enum Reply {
     Devices(Vec<DeviceRecord>),
     CompletePage(crate::complete_reads::Page),
     AgentState(AgentStateRecord),
+    AgentControl(crate::agent_control::Record),
     CallTurn(crate::turn::TurnCredentials),
     RuntimeBinding(crate::runtime_binding::Proof),
 }

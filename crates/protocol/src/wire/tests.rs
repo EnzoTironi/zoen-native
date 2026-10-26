@@ -263,3 +263,40 @@ fn agent_requests_round_trip() {
     };
     assert_eq!(ServerFrame::decode(&r.encode()).unwrap(), r);
 }
+
+#[test]
+fn reviewed_lifecycle_frames_preserve_identity_and_revision(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for op in [
+        Op::Agent(crate::AgentRequest::ControlStatus {
+            agent: "a".repeat(64),
+        }),
+        Op::Agent(crate::AgentRequest::ControlReviewed {
+            agent: "a".repeat(64),
+            action: crate::AgentAction::Pause,
+            operation: "b".repeat(64),
+            revision: 42,
+        }),
+    ] {
+        let frame = ClientFrame::Req { id: 7, op };
+        assert_eq!(
+            ClientFrame::decode(&frame.encode()).map_err(|e| e.0)?,
+            frame
+        );
+    }
+    let frame = ServerFrame::Res {
+        id: 7,
+        result: Ok(Reply::AgentControl(crate::agent_control::Record {
+            status: "paused".into(),
+            revision: 43,
+            operation: "b".repeat(64),
+            action: "pause".into(),
+            device: "d".repeat(64),
+        })),
+    };
+    assert_eq!(
+        ServerFrame::decode(&frame.encode()).map_err(|e| e.0)?,
+        frame
+    );
+    Ok(())
+}

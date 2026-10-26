@@ -432,3 +432,6 @@ async fn legacy_v306_same_key_receipt_fails_closed_before_any_new_dispatch() {
 mod schema_cases;
 
 mod reconcile_cases;
+
+#[path = "../agent_control/tests.rs"]
+mod control_cases;

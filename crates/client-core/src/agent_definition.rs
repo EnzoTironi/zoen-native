@@ -1,5 +1,6 @@
 //! Owner-reviewed behavior edits. Status/Define remain the relay authority; the
 //! local receipt is protected recovery context, never a permission or cancellation.
+pub(crate) use crate::agent_owner_scope::{OwnerScope as Scope, OwnerTarget as DefinitionTarget};
 use crate::{api::invalid, AgentStatus, Client, CoreError, Engine};
 use protocol::{AgentRequest, AgentStateRecord, Op, Reply};
 use serde::{Deserialize, Serialize};
@@ -119,11 +120,6 @@ pub struct AgentDefinitionUpdateDto {
     pub current: Option<AgentDefinitionDto>,
 }
 
-pub(crate) struct DefinitionTarget {
-    pub agent: String,
-    pub identity: String,
-    pub device: String,
-}
 pub(crate) struct DefinitionEdit {
     pub version: u32,
     pub sha256: String,
@@ -131,49 +127,7 @@ pub(crate) struct DefinitionEdit {
     pub rules: Vec<String>,
 }
 
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Scope {
-    owner: String,
-    device: String,
-    certificate_sha256: String,
-    relay: String,
-    agent: String,
-    configured_relay: String,
-}
 impl Scope {
-    fn capture(engine: &Engine, target: &DefinitionTarget) -> R<Self> {
-        let owner =
-            crate::agent_enrollment::owner_context(engine, &target.identity, &target.device)?;
-        if target.agent == target.identity
-            || event_log::agent_owner::enrollment_offer_message(&target.agent, &"0".repeat(64))
-                .is_none()
-        {
-            return Err(changed());
-        }
-        Ok(Self {
-            owner: target.identity.clone(),
-            device: target.device.clone(),
-            certificate_sha256: owner.certificate_sha256,
-            relay: owner.relay,
-            agent: target.agent.clone(),
-            configured_relay: engine.account().ok_or_else(changed)?.relay_url.clone(),
-        })
-    }
-    fn check(&self, engine: &Engine) -> R<()> {
-        let current = Self::capture(
-            engine,
-            &DefinitionTarget {
-                agent: self.agent.clone(),
-                identity: self.owner.clone(),
-                device: self.device.clone(),
-            },
-        )?;
-        if current != *self {
-            return Err(changed());
-        }
-        Ok(())
-    }
     fn key(&self) -> R<String> {
         // Preserve v306's exact key bytes/order. Adding a configured spelling
         // must never hide a retained unknown attempt as an absent receipt.
@@ -371,29 +325,9 @@ impl Receipt {
 }
 
 impl Client {
-    async fn definition_request(&self, scope: &Scope, op: Op) -> R<Reply> {
-        // Match start_sync's net→engine lock order and select the authenticated
-        // connection while the reviewed owner/device/relay are still current.
-        let request = {
-            let net = self
-                .net
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            scope.check(&self.lock())?;
-            let net = net.as_ref().ok_or_else(changed)?;
-            if net
-                .authenticated_relay_name(&scope.configured_relay, &scope.owner, &scope.device)
-                .is_none()
-            {
-                return Err(changed());
-            }
-            net.request_handle()
-        };
-        request.send(op).await.map_err(invalid)
-    }
     async fn definition_record(&self, scope: &Scope) -> R<Record> {
         let response = self
-            .definition_request(
+            .owner_agent_request(
                 scope,
                 Op::Agent(AgentRequest::Status {
                     agent: scope.agent.clone(),
@@ -480,7 +414,7 @@ impl Client {
         // conflict. This is not an expected-hash server CAS. A lost reply may arrive
         // later, so even observing the exact old base remains Unknown.
         let _ack = self
-            .definition_request(
+            .owner_agent_request(
                 &receipt.scope,
                 Op::Agent(AgentRequest::Define {
                     agent: receipt.scope.agent.clone(),

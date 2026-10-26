@@ -328,16 +328,31 @@ impl Client {
         agent_id: String,
         action: AgentControl,
     ) -> Result<(), CoreError> {
-        let action = match action {
-            AgentControl::Pause => protocol::AgentAction::Pause,
-            AgentControl::Resume => protocol::AgentAction::Resume,
-            AgentControl::Revoke => protocol::AgentAction::Revoke,
+        let account = self
+            .account()
+            .ok_or_else(|| invalid("No active account."))?;
+        let target = || crate::agent_definition::DefinitionTarget {
+            agent: agent_id.clone(),
+            identity: account.identity_id.clone(),
+            device: account.device_id.clone(),
         };
-        self.agent_done(protocol::AgentRequest::Control {
-            agent: agent_id,
-            action,
-        })
-        .await
+        let observed = self.agent_control_read(target()).await?;
+        if observed.pending.is_some() {
+            return Err(invalid("Agent control delivery is unresolved."));
+        }
+        let result = self
+            .agent_control_change(target(), &observed.revision, action)
+            .await?;
+        let target_status = match action {
+            AgentControl::Pause => AgentStatus::Paused,
+            AgentControl::Resume => AgentStatus::Active,
+            AgentControl::Revoke => AgentStatus::Revoked,
+        };
+        if result.outcome != crate::AgentControlOutcome::Confirmed || result.status != target_status
+        {
+            return Err(invalid("Agent control delivery is unresolved."));
+        }
+        Ok(())
     }
 
     /// Takes the agent's share link down; the next `create_agent_invite` mints a new one.
