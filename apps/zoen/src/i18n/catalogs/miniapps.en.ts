@@ -1,4 +1,7 @@
 export const miniappsEn = {
+  chooseEditAgent: 'Choose an agent',
+  agentPermissions: 'Permissions for %{name}',
+  allowAgentSuggestions: 'Allow suggestions in this chat',
   openAppPackage: 'Open App',
   updateAppPackage: 'Update App',
   chooseAppPackage: 'Choose a file',

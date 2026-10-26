@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { runInNewContext } from 'node:vm';
 import * as React from 'react';
+import { loadEditorAgent } from './editor-agent-compile.fixtures.ts';
+import { editorAgentTargets } from './editor-agent-targets.fixtures.ts';
 import { createReactTestRoot } from './react-test-root.fixtures.ts';
 import { ClientStore } from './store.ts';
 import { Driver, draftSession } from './store.fixtures.ts';
@@ -20,6 +20,7 @@ import { drawingReviewPort } from '../miniapps/drawing-review-port.ts';
 import { drawingReview, drawingReply } from './drawing-review.fixtures.ts';
 import * as enrollmentFlow from '../agent-enrollment/session.ts';
 import * as enrollmentPort from '../agent-enrollment/core-port.ts';
+import * as trust from '../agents/trust-confirmation.ts';
 import * as admission from '../miniapps/editor-agent-admission.ts';
 import { editorAgentMembers, type AgentMemberMode } from './editor-agent-members.fixtures.ts';
 import { telegramPresentation } from '../theme/telegram.ts';
@@ -28,23 +29,8 @@ import type { ItemDetail, TimelineEntry } from './types';
 import type { MiniappDocumentController } from '../miniapps/document-controller';
 import type { AgentRequestDto } from './generated/AgentRequestDto';
 
-const require = createRequire(import.meta.url),
-  { transformSync } = require('@babel/core');
+const require = createRequire(import.meta.url);
 type Control = Record<string, any>;
-function compile(path: string) {
-  const file = new URL(path, import.meta.url);
-  const output = transformSync(readFileSync(file, 'utf8'), {
-    filename: file.pathname,
-    babelrc: false,
-    configFile: false,
-    presets: [['babel-preset-expo', { jsxRuntime: 'automatic' }]],
-    plugins: [['babel-plugin-react-compiler', { target: '19' }]],
-    caller: { name: 'metro', platform: 'ios', isDev: false, supportsStaticESM: false },
-  }).code as string;
-  if (path.endsWith('/editor-agent-sheet.tsx') || path.endsWith('/detail-screen.tsx'))
-    assert.match(output, /react\/compiler-runtime/);
-  return output;
-}
 /** Real compiled screen/sheet + React/Store + real session/port; native controls
  * and Core are explicit ports, not a claim of iPhone presentation or AI execution. */
 export async function editorAgentReactFixture(
@@ -56,6 +42,9 @@ export async function editorAgentReactFixture(
   const space = snapshot.conversations[0]!.id,
     itemId = 'word-item';
   const memberModel = editorAgentMembers(snapshot, space);
+  const targetModel = editorAgentTargets(snapshot, space, memberModel, () =>
+    driver.changed?.({ kind: 'change', spaceIds: [space] }),
+  );
   const calls: any[] = [],
     routes: any[] = [],
     controls = new Map<string, Control>();
@@ -116,6 +105,13 @@ export async function editorAgentReactFixture(
   driver.opening = async () => snapshot;
   driver.operation = async (command) => {
     calls.push(structuredClone(command));
+    if (targetModel.handles(command.op))
+      return targetModel.handle(
+        command,
+        sceneVersion,
+        sceneSha,
+        options.ownedScene ? resourceUri : undefined,
+      );
     if (memberModel.handles(command.op)) return memberModel.handle(command);
     switch (command.op) {
       case 'snapshot':
@@ -158,6 +154,12 @@ export async function editorAgentReactFixture(
           engine_revision: formats.WORDCRAFT_ENGINE_REVISION,
         };
       case 'request_app_edit':
+        targetModel.checkRequest(
+          command,
+          sceneVersion,
+          sceneSha,
+          options.ownedScene ? resourceUri : undefined,
+        );
         if (editConflict)
           return { entry: null, conflict: editConflict, conflict_kind: editConflictKind };
         return {
@@ -294,7 +296,21 @@ export async function editorAgentReactFixture(
         },
       },
     },
-    '@expo/ui': { Host: children, RNHostView: children, BottomSheet: Sheet },
+    '@expo/ui': {
+      Host: children,
+      RNHostView: children,
+      BottomSheet: Sheet,
+      Picker: Object.assign(
+        (props: Control) =>
+          React.createElement(
+            React.Fragment,
+            null,
+            React.createElement(Capture, props),
+            props.children,
+          ),
+        { Item: Capture },
+      ),
+    },
     'expo-router': {
       useFocusEffect: (work: () => void | (() => void)) => React.useEffect(work, [work]),
     },
@@ -386,23 +402,8 @@ export async function editorAgentReactFixture(
     './binary-formats': formats,
     './deck-version-selection': heads,
   };
-  function load(path: string, overrides: Record<string, any>) {
-    const module = { exports: {} as any };
-    runInNewContext(compile(path), {
-      module,
-      exports: module.exports,
-      process: { env: { EXPO_OS: 'ios', NODE_ENV: 'production' } },
-      setTimeout,
-      clearTimeout,
-      require: (name: string) => {
-        if (name.startsWith('@babel/runtime/')) return require(name);
-        const value = { ...common, ...overrides }[name];
-        if (!value) throw Error(`Unmocked ${name}`);
-        return value;
-      },
-    });
-    return module.exports;
-  }
+  const load = (path: string, overrides: Record<string, any>) =>
+    loadEditorAgent(path, { ...common, ...overrides });
   common['../communities/use-member-actions'] = load('../communities/use-member-actions.ts', {});
   common['../communities/member-addition-sheet'] = load(
     '../communities/member-addition-sheet.tsx',
@@ -425,6 +426,11 @@ export async function editorAgentReactFixture(
       },
     });
   }
+  common['./editor-agent-choice'] = load('../miniapps/editor-agent-choice.tsx', {});
+  common['./editor-agent-permissions'] = load('../miniapps/editor-agent-permissions.tsx', {
+    '../agents/trust-confirmation': trust,
+    '../components/dialogs': { useDialogs: () => ({ confirm: targetModel.confirm }) },
+  });
   common['./editor-agent-content'] = load('../miniapps/editor-agent-content.tsx', {});
   common['./editor-agent-enrollment'] = load('../miniapps/editor-agent-enrollment.tsx', {});
   const sheet = load('../miniapps/editor-agent-sheet.tsx', {});
@@ -479,6 +485,10 @@ export async function editorAgentReactFixture(
       editConflictKind = kind;
     },
     agentId: memberModel.id,
+    targets: targetModel,
+    targetsChanged() {
+      driver.changed?.({ kind: 'change', spaceIds: [space] });
+    },
     members(mode: AgentMemberMode) {
       memberModel.set(mode);
       driver.changed?.({ kind: 'change', spaceIds: [space] });

@@ -11,6 +11,7 @@ import type {
   EditorAgentTicket,
 } from './editor-agent-session';
 import type { DrawingReviewPort } from './drawing-review-types';
+import { EditorAgentChoice } from './editor-agent-choice';
 import type { EditorAgentAdmission } from './editor-agent-admission';
 
 export function EditorAgentContent({
@@ -24,6 +25,7 @@ export function EditorAgentContent({
   onClose,
   onAdd,
   onRefresh,
+  onPermissions,
   onSend,
   drawingReview,
 }: {
@@ -37,6 +39,7 @@ export function EditorAgentContent({
   onClose: () => void;
   onAdd: () => void;
   onRefresh: () => void;
+  onPermissions: (id: string) => void;
   onSend: () => void;
   drawingReview?: DrawingReviewPort;
 }) {
@@ -78,6 +81,13 @@ export function EditorAgentContent({
       {!state.uncertain ? (
         <Text style={{ color: colors.secondary }}>{t('miniapps.shareCurrentDisclosure')}</Text>
       ) : null}
+      <EditorAgentChoice
+        state={state}
+        session={session}
+        ticket={ticket}
+        onPermissions={onPermissions}
+        onRefresh={onRefresh}
+      />
       {!state.uncertain && admission === 'missing' ? (
         <NativeButton
           testID="editor-agent-add"
@@ -107,7 +117,12 @@ export function EditorAgentContent({
       <NativeButton
         testID="editor-agent-send"
         label={state.uncertain ? t('miniapps.tryAgain') : t('miniapps.sendEditRequest')}
-        disabled={state.busy || !state.draft.trim() || (!state.uncertain && admission !== 'ready')}
+        disabled={
+          state.busy ||
+          !state.draft.trim() ||
+          (!state.uncertain &&
+            (admission !== 'ready' || state.targetPhase !== 'ready' || !state.target))
+        }
         onPress={onSend}
       />
       {state.uncertain ? (

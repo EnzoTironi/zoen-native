@@ -38,6 +38,9 @@ test('compiled prompt sends current typed identity/item/head after flush without
     assert.equal(sent.length, 1);
     assert.deepEqual(sent[0], {
       op: 'request_app_edit',
+      target_agent_id: f.agentId,
+      expected_target_revision: f.targets.current(1, 'ab'.repeat(32)).revision,
+      expected_resource_uri: undefined,
       share_current: true,
       expected_identity_id: f.snapshot.account!.identity_id,
       expected_device_id: f.snapshot.account!.device_id,

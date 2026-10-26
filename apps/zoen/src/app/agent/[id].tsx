@@ -6,35 +6,18 @@ import * as Clipboard from 'expo-clipboard';
 import { useClient } from '../../core/provider';
 import { useCoreQuery } from '../../core/query';
 import { money } from '../../core/presentation';
-import type { TrustLevelDto } from '../../core/generated/TrustLevelDto';
+import { agentTrustLevels, confirmAgentTrust } from '../../agents/trust-confirmation';
 import { Avatar, EmptyState, Loading, NativeButton, Surface } from '../../components/primitives';
 import { SettingsRows } from '../../components/settings-rows';
 import { useTheme } from '../../theme';
 import { useDialogs } from '../../components/dialogs';
 
-const levels: { value: TrustLevelDto; title: string; detail: string }[] = [
-  { value: 'Listen', title: t('agents.listen'), detail: t('agents.followsTheConversation') },
-  {
-    value: 'Suggest',
-    title: t('agents.suggest'),
-    detail: t('agents.proposesChangesAndAsksForYourApproval'),
-  },
-  {
-    value: 'Act',
-    title: t('agents.act'),
-    detail: t('agents.performsAllowedActionsWithAnOptionToUndo'),
-  },
-  {
-    value: 'Autonomous',
-    title: t('agents.autonomous'),
-    detail: t('agents.actsWithinThePermissionsAndBudgetYouSet'),
-  },
-];
 export default function Agent() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { store, mode } = useClient();
   const { colors } = useTheme();
   const dialogs = useDialogs();
+  const levels = agentTrustLevels();
   const { data: agent, error, retry } = useCoreQuery({ op: 'agent_profile', agent_id: id });
   const standing = useCoreQuery({ op: 'standing_decisions' });
   const status = useCoreQuery(
@@ -161,17 +144,13 @@ export default function Agent() {
                 if (space.level === level.value) return;
                 void act(async () => {
                   if (
-                    levels.findIndex((item) => item.value === level.value) >
-                      levels.findIndex((item) => item.value === space.level) &&
-                    !(await dialogs.confirm({
-                      title: t('agents.allowAutonomy', { level: level.title }),
-                      message: t('agents.autonomyConfirmation', {
-                        name: agent.persona.name,
-                        chat: space.space_title,
-                        detail: level.detail,
-                      }),
-                      confirmLabel: t('agents.updateAutonomy'),
-                    }))
+                    !(await confirmAgentTrust(
+                      dialogs,
+                      agent.persona.name,
+                      space.space_title,
+                      space.level,
+                      level.value,
+                    ))
                   )
                     return;
                   await store.request({
