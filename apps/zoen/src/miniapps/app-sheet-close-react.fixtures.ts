@@ -215,6 +215,8 @@ export async function appSheetCloseFixture({
           b.onResolve({ filter: /.*/ }, ({ path, importer }) => {
             if (importer === chrome && path === '../i18n/index.ts')
               return { path: 'fixture:ports', namespace: 'fixture' };
+            if (importer === detail && path === './app-request-review')
+              return { path: join(app, 'src/miniapps/app-request-review.ts') };
             if (
               importer === detail &&
               path.startsWith('.') &&

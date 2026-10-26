@@ -13,6 +13,7 @@ import * as resource from '../miniapps/canonical-resource.ts';
 import * as packages from '../miniapps/package-intent.ts';
 import * as formats from '../miniapps/binary-formats.ts';
 import * as heads from '../miniapps/deck-version-selection.ts';
+import * as appReview from '../miniapps/app-request-review.ts';
 import { telegramPresentation } from '../theme/telegram.ts';
 import { t } from '../i18n/index.ts';
 import type { ItemDetail } from './types';
@@ -191,6 +192,7 @@ export async function workspaceManagementFixture(owned = true) {
     },
     './binary-formats': formats,
     './deck-version-selection': heads,
+    './app-request-review': appReview,
     '../components/dialogs': { useDialogs: () => ({ confirm: async () => true }) },
     '../home/provider': { useHome: () => ({}) },
     '../home/menus': { HomeCardMenu: () => null },
