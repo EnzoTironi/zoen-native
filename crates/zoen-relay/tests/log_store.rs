@@ -125,6 +125,9 @@ async fn read_all(log: &FdbLog, space: &str, page: usize) -> Vec<Sequenced> {
     }
 }
 
+#[path = "log_store/agent_invite_replay.rs"]
+mod agent_invite_replay;
+
 #[path = "log_store/ordering.rs"]
 mod ordering;
 use ordering::*;
@@ -192,6 +195,14 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         .init();
     let network = unsafe { foundationdb::boot() };
     tokio::runtime::Runtime::new().unwrap().block_on(async {
+        if arguments == ["--agent-invite-replay"] {
+            run(
+                "agent preflight keeps prior-redeemer replay without exposing spent links",
+                agent_invite_replay::agent_redemption_preflight_preserves_idempotent_replay(),
+            )
+            .await?;
+            return Ok::<(), Box<dyn std::error::Error>>(());
+        }
         if arguments == ["--two-client-renewals"] {
             run(
                 "two storage clients keep the chain during explicit lease renewals",
@@ -249,6 +260,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         )
         .await?;
         run("invites are bounded by uses", invites_are_bounded_by_uses()).await?;
+        run(
+            "agent preflight keeps prior-redeemer replay without exposing spent links",
+            agent_invite_replay::agent_redemption_preflight_preserves_idempotent_replay(),
+        )
+        .await?;
         run(
             "end-to-end spaces hold ciphertext on every relay",
             mls_contracts::end_to_end_spaces_hold_ciphertext_on_every_relay(),
