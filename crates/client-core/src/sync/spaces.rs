@@ -129,7 +129,13 @@ impl Engine {
                 .find(|(id, _)| id == identity)
                 .map(|(_, role)| *role)
         };
-        if who == me || !actual(&me).is_some_and(|actor| actor.can_assign(actual(who), role)) {
+        let mut actor = actual(&me);
+        // Keep offline birth queueing: only the current device's authenticated
+        // first genesis can establish its creator before any canonical receipt.
+        if actor.is_none() && members.is_empty() && self.unconfirmed_creator(space, &me)? {
+            actor = Some(Role::Owner);
+        }
+        if who == me || !actor.is_some_and(|actor| actor.can_assign(actual(who), role)) {
             return Err(CoreError::Forbidden {
                 reason: t(
                     "este papel não pode ser atribuído ao participante",
@@ -147,6 +153,42 @@ impl Engine {
             },
         )?;
         Ok(())
+    }
+
+    fn unconfirmed_creator(&self, space: &str, identity: &str) -> R<bool> {
+        if !self.net.synced.contains(space)
+            || self.logs.get(space).is_some_and(|log| !log.is_empty())
+        {
+            return Ok(false);
+        }
+        let Some(account) = self.net.account.as_ref() else {
+            return Ok(false);
+        };
+        self.native_surface_owner(identity, &account.device)?;
+        let rows = self.store.outbox()?;
+        let mut queued = rows.iter().filter(|row| row.event.space == space);
+        let Some(first) = queued.next() else {
+            return Ok(false);
+        };
+        let event = &first.event;
+        Ok(!first.failed
+            && event.author == identity
+            && event.device.as_deref() == Some(account.device.as_str())
+            && event.cert.as_deref() == Some(account.cert.as_str())
+            && event.seen.is_none()
+            && event.seq == 0
+            && event.prev.is_empty()
+            && event.hash.is_empty()
+            && event.sealed_wire.is_none()
+            && matches!(
+                event.body,
+                EventBody::SpaceCreated {
+                    kind: SpaceKind::Group | SpaceKind::Community,
+                    ..
+                }
+            )
+            && !queued.any(|row| matches!(row.event.body, EventBody::SpaceCreated { .. }))
+            && event_log::verify_author(event).is_ok())
     }
 
     /// Takes someone out of a chat. In an end-to-end chat they read nothing written after

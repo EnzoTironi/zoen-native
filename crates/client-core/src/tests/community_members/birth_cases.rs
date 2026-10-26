@@ -39,3 +39,78 @@ fn public_creator_can_queue_an_initial_addition_before_genesis_confirmation() ->
     }
     Ok(())
 }
+
+#[test]
+fn pending_genesis_is_not_a_failed_foreign_corrupt_or_revoked_authority_fallback() -> TestResult<()>
+{
+    for fault in ["failed", "foreign", "corrupt", "revoked"] {
+        let f = Fixture::new(SpaceKind::Group)?;
+        let space = f.client.create_community("Unconfirmed birth".into())?;
+        {
+            let e = f.client.lock();
+            let original = e
+                .store
+                .outbox()?
+                .into_iter()
+                .find(|row| row.event.space == space)
+                .ok_or("genesis missing")?
+                .event;
+            match fault {
+                "failed" => {
+                    e.store
+                        .outbox_note(&original.client_id, "synthetic rejection", true)?
+                }
+                "revoked" => e
+                    .store
+                    .set_meta("devices.revoked", &serde_json::to_string(&vec![&f.device])?)?,
+                _ => {
+                    let mut changed = if fault == "foreign" {
+                        e.author_for(&f.founder)?.sign_event(
+                            &space,
+                            &original.client_id,
+                            original.at_ms,
+                            None,
+                            original.body,
+                        )?
+                    } else {
+                        original.clone()
+                    };
+                    if fault == "foreign" {
+                        event_log::verify_author(&changed)?;
+                    } else {
+                        changed.cert = Some("corrupt certificate".into());
+                    }
+                    e.store.conn().execute(
+                        "UPDATE outbox SET json=?1 WHERE client_id=?2",
+                        rusqlite::params![serde_json::to_string(&changed)?, original.client_id],
+                    )?;
+                }
+            }
+        }
+        let before = f.counts()?;
+        let original: Vec<_> = f
+            .client
+            .lock()
+            .store
+            .outbox()?
+            .into_iter()
+            .map(|row| row.event)
+            .collect();
+        assert!(
+            f.client.add_member(space, f.member.clone()).is_err(),
+            "{fault}"
+        );
+        assert_eq!(f.counts()?, before);
+        assert_eq!(
+            f.client
+                .lock()
+                .store
+                .outbox()?
+                .into_iter()
+                .map(|row| row.event)
+                .collect::<Vec<_>>(),
+            original
+        );
+    }
+    Ok(())
+}
