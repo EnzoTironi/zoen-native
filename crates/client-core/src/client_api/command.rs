@@ -224,6 +224,22 @@ pub(super) enum Command {
         message_id: String,
         emoji: Option<String>,
     },
+    ForwardReview {
+        scope: crate::ForwardScope,
+    },
+    ForwardStatus {
+        source: crate::ForwardSource,
+    },
+    ConfirmForward {
+        scope: crate::ForwardScope,
+        operation_id: String,
+        source_revision: String,
+    },
+    DismissForward {
+        scope: crate::ForwardScope,
+        operation_id: String,
+        accepted_message_id: Option<String>,
+    },
     ForwardMessage {
         source_space: String,
         message_id: String,

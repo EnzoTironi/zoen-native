@@ -54,6 +54,8 @@ pub use backup_api::BackupStatusDto;
 #[cfg(feature = "client-types")]
 pub use client_api::export_typescript;
 mod files;
+mod forwarding;
+pub use forwarding::{ForwardReview, ForwardScope, ForwardSource};
 mod growth;
 pub use growth::{AcquisitionDto, GrowthSyncDto, OnboardingPlanDto};
 mod file_demand;
