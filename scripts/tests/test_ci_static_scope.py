@@ -76,6 +76,22 @@ class StaticScopeTests(unittest.TestCase):
         result = self.classify(head)
         self.assertFalse(any(result["run_" + job] for job in EXPO.JOBS), result)
 
+    def test_stale_static_branch_cannot_omit_a_new_base_runtime_consumer(self):
+        ancestor = self.base
+        self.write("docs/roadmap/index.html", "<main>branch roadmap</main>")
+        stale_head = self.commit()
+        self.git("checkout", "--detach", "-q", ancestor)
+        self.write("crates/documents/src/lib.rs",
+                   'const HTML: &str = include_str!("../../../docs/roadmap/index.html");\n')
+        self.base = self.commit()
+        self.assertEqual(self.git("merge-base", self.base, stale_head), ancestor)
+        result = CI.classify(self.base, stale_head, "pull_request")
+        self.assertTrue(result["run_rust"], result)
+        self.assertFalse(result["documentation_only"], result)
+        # A clean event merge now contains that consumer, and Expo must keep
+        # its artifact jobs too: head-only evidence cannot erase base inputs.
+        self.assertTrue(self.full(stale_head))
+
     def test_existing_prose_lane_also_retains_its_real_directory_consumer(self):
         corpus = "crates/zoen-cli/tests/journey_files.rs"
         self.write(corpus, (ROOT / corpus).read_text())

@@ -204,7 +204,9 @@ def classify(base, head, event):
             raise ValueError("Empty or unavailable diff requires the full suite")
         if any(path not in DOCUMENTS for path in changes):
             try:
-                validate_static_documents(git, ancestor, head, changes)
+                if ancestor != base:
+                    raise ValueError("Stale static branch requires the full suite")
+                validate_static_documents(git, base, head, changes)
                 result.update(documentation_only=True, run_rust=False,
                               reason="Verified static roadmap/evidence; runtime and native inputs unchanged")
                 return result
