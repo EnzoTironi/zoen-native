@@ -19,7 +19,12 @@
 //! [`OnDevice`] (Apple Foundation Models through an FFI callback) and [`Mock`]
 //! (deterministic, for tests and as the offline floor).
 
+mod contract;
 mod mock;
+mod rules;
+
+pub use contract::*;
+pub use rules::hard_rules;
 mod providers;
 pub mod redact;
 
@@ -28,8 +33,7 @@ pub use providers::{
     Clef, ClefModel, HttpTransport, OnDevice, OnDeviceJudge, OpenAIDecisions, SystemOneHttp,
 };
 
-use grants::consent::{self, Verdict};
-use serde::{Deserialize, Serialize};
+use grants::consent;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::time::Instant;
@@ -38,288 +42,10 @@ use std::time::Instant;
 /// than allowing a model to judge a prefix that omits relevant instructions.
 const MAX_DECISION_INPUT_CHARS: usize = 6000;
 
-// ───────────────────────────── questions and answers ─────────────────────────────
-
-/// A typed question. `Predicate` is System One's `noul` and OpenAI's `predicate`.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub enum Question {
-    Predicate {
-        name: String,
-        instructions: String,
-    },
-    Choice {
-        name: String,
-        instructions: String,
-        choices: Vec<(String, String)>,
-    },
-    Score {
-        name: String,
-        instructions: String,
-        levels: Vec<String>,
-    },
-}
-
-impl Question {
-    pub fn name(&self) -> &str {
-        match self {
-            Question::Predicate { name, .. }
-            | Question::Choice { name, .. }
-            | Question::Score { name, .. } => name,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub enum Answer {
-    /// Probability the condition is true.
-    Predicate {
-        p: f64,
-    },
-    Choice {
-        choice: String,
-        confidence: f64,
-    },
-    /// Expected level index (0 = lowest), may fall between levels.
-    Score {
-        score: f64,
-        confidence: f64,
-    },
-    Refusal,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct DecisionRequest {
-    pub input: String,
-    pub questions: Vec<Question>,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
-pub struct DecisionResponse {
-    pub answers: BTreeMap<String, Answer>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum GateError {
-    Transport(String),
-    BadResponse(String),
-    Unavailable(String),
-}
-
-pub trait DecisionProvider: Send + Sync {
-    fn name(&self) -> String;
-    /// Runs on this device (may see sensitive categories).
-    fn on_device(&self) -> bool;
-    fn decide(&self, req: &DecisionRequest) -> Result<DecisionResponse, GateError>;
-}
-
-// ───────────────────────────── gate points ─────────────────────────────
-
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Point {
-    /// A tool or capability call by a mini-app or agent.
-    ToolCall,
-    /// Tool results, web content and mini-app outputs coming into the agent's context.
-    Inbound,
-    /// A conversation message from the host's authenticated timeline. This identifies
-    /// its source, not permission to bypass policy or execute an action.
-    ConversationMessage,
-    /// A marketplace agent or mini-app bundle at install or publish time.
-    Bundle,
-    /// An agent message before it posts to a group.
-    Outbound,
-}
-
-impl Point {
-    pub fn id(self) -> &'static str {
-        match self {
-            Point::ToolCall => "tool-call",
-            Point::Inbound => "inbound",
-            Point::ConversationMessage => "conversation-message",
-            Point::Bundle => "bundle",
-            Point::Outbound => "outbound",
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Outcome {
-    Allow,
-    Ask,
-    Block,
-}
-
-impl Outcome {
-    pub fn id(self) -> &'static str {
-        match self {
-            Outcome::Allow => "allow",
-            Outcome::Ask => "ask",
-            Outcome::Block => "block",
-        }
-    }
-}
-
-/// What's being checked.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct Check {
-    pub point: Point,
-    /// The thing itself: "calendar.freebusy for Saturday hike", a web result, a bundle
-    /// summary, a draft message.
-    pub text: String,
-    /// What you just said or tapped (tool calls).
-    pub user_intent: Option<String>,
-    /// Capability string, for tool calls (feeds the consent policy's always-ask list).
-    pub capability: Option<String>,
-    /// The consent policy's inputs, when the caller has them (tool calls).
-    pub consent: Option<consent::Request>,
-    /// Health, contacts, full calendar…: on-device only.
-    pub sensitive: bool,
-    /// Known irreversible from the action class (fail closed).
-    pub irreversible: bool,
-}
-
-impl Check {
-    pub fn new(point: Point, text: impl Into<String>) -> Self {
-        Check {
-            point,
-            text: text.into(),
-            user_intent: None,
-            capability: None,
-            consent: None,
-            sensitive: false,
-            irreversible: false,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct AuditRecord {
-    pub point: String,
-    pub outcome: String,
-    /// Stable rule id: `hard:*`, `always:*`, `model:*`, `fail:*`.
-    pub rule: String,
-    pub provider: String,
-    /// Redacted, truncated description (never raw arguments).
-    pub summary: String,
-    /// sha256 of the raw input, so the decision can be matched later without storing it.
-    pub input_hash: String,
-    pub answers: BTreeMap<String, f64>,
-    pub latency_ms: u64,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct Decision {
-    pub outcome: Outcome,
-    pub rule: String,
-    pub provider: String,
-    pub answers: BTreeMap<String, f64>,
-    pub latency_ms: u64,
-    pub audit: AuditRecord,
-}
-
-// ───────────────────────────── thresholds ─────────────────────────────
-
-/// Mapping from answers to outcomes. The defaults lean towards asking.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct Thresholds {
-    pub min_confidence: f64,
-    pub intent_min: f64,
-    pub severity_ask: f64,
-    pub severity_block: f64,
-    pub irreversible_ask: f64,
-    pub exfil_ask: f64,
-    pub exfil_block: f64,
-    pub outside_ask: f64,
-    pub injection_ask: f64,
-    pub injection_block: f64,
-    pub malicious_block: f64,
-    pub harvest_ask: f64,
-    pub harvest_block: f64,
-    pub harmful_block: f64,
-    pub harmful_ask: f64,
-    pub leak_ask: f64,
-    pub leak_block: f64,
-}
-
-impl Default for Thresholds {
-    fn default() -> Self {
-        Thresholds {
-            min_confidence: 0.35,
-            intent_min: 0.5,
-            severity_ask: 1.3,
-            severity_block: 2.4,
-            irreversible_ask: 0.5,
-            exfil_ask: 0.5,
-            exfil_block: 0.85,
-            outside_ask: 0.6,
-            injection_ask: 0.4,
-            injection_block: 0.75,
-            malicious_block: 0.6,
-            harvest_ask: 0.5,
-            harvest_block: 0.85,
-            harmful_block: 2.0,
-            harmful_ask: 1.2,
-            leak_ask: 0.5,
-            leak_block: 0.85,
-        }
-    }
-}
-
-impl Thresholds {
-    /// Dev preset for Laya served locally (tools/gate-serve). Laya's score confidences are
-    /// uncalibrated (a 4-level score rarely clears 0.35) and its `harmful_content` score rated
-    /// a plain itinerary 0.80/3, so both are ignored; it leans on exfiltration, intent and
-    /// leak predicates, which separated cleanly. FITTED ON THE SAME 21 RED-TEAM FIXTURES IT
-    /// IS SCORED ON: re-fit on a held-out set before trusting it. Jev uses the defaults.
-    pub fn laya_local() -> Self {
-        Thresholds {
-            min_confidence: 0.0,
-            intent_min: 0.53,
-            severity_ask: 1.6,
-            severity_block: 9.0,
-            irreversible_ask: 0.5,
-            exfil_ask: 0.3,
-            exfil_block: 0.85,
-            outside_ask: 0.6,
-            injection_ask: 0.4,
-            injection_block: 0.75,
-            harmful_ask: 9.0,
-            harmful_block: 9.0,
-            leak_ask: 0.5,
-            leak_block: 0.85,
-            ..Thresholds::default()
-        }
-    }
-
-    /// "Mostly escalate to ask": for a decision model that hasn't been validated (or scores
-    /// near random), never let it allow on its own a borderline answer, and never block on
-    /// it alone either: the hard rules still block what must be blocked.
-    pub fn escalate_to_ask() -> Self {
-        Thresholds {
-            min_confidence: 0.6,
-            intent_min: 0.7,
-            severity_ask: 0.8,
-            severity_block: 9.0,
-            irreversible_ask: 0.3,
-            exfil_ask: 0.3,
-            exfil_block: 9.0,
-            outside_ask: 0.4,
-            injection_ask: 0.25,
-            injection_block: 9.0,
-            malicious_block: 9.0,
-            harvest_ask: 0.3,
-            harvest_block: 9.0,
-            harmful_block: 9.0,
-            harmful_ask: 0.8,
-            leak_ask: 0.3,
-            leak_block: 9.0,
-        }
-    }
-}
-
 // ───────────────────────────── the gate ─────────────────────────────
 
 pub struct Gate {
-    /// Remote provider (Jev in prod, Laya/Kev locally, or OpenAI Decisions). Never sees
+    /// Remote provider (Jev in prod, Laya/Kev locally, or `OpenAI` Decisions). Never sees
     /// sensitive categories; always sees redacted input.
     pub remote: Option<Box<dyn DecisionProvider>>,
     /// On-device provider (Foundation Models). Gets sensitive checks.
@@ -341,6 +67,7 @@ impl Default for Gate {
 }
 
 impl Gate {
+    #[must_use]
     pub fn questions(point: Point) -> Vec<Question> {
         let p = |n: &str, i: &str| Question::Predicate {
             name: n.into(),
@@ -394,17 +121,19 @@ impl Gate {
         }
     }
 
+    #[must_use]
     pub fn check(&self, c: &Check) -> Decision {
         self.check_with(c, true)
     }
 
     /// `use_rules: false` skips the hard rules: only for measuring a model on its own.
+    #[must_use]
     pub fn check_with(&self, c: &Check, use_rules: bool) -> Decision {
         let start = Instant::now();
         // 1. Hard rules.
         if use_rules {
             if let Some((outcome, rule)) = hard_rules(c) {
-                return self.finish(c, outcome, rule, "rules".into(), BTreeMap::new(), start);
+                return Self::finish(c, outcome, rule, "rules".into(), BTreeMap::new(), start);
             }
         }
         // 2. Pick the provider: sensitive stays on device; remote gets redacted text.
@@ -422,7 +151,7 @@ impl Gate {
         };
         let Some(input) = describe(c, redacted) else {
             let (outcome, rule) = fail(c, "decision context too large");
-            return self.finish(c, outcome, rule, provider.name(), BTreeMap::new(), start);
+            return Self::finish(c, outcome, rule, provider.name(), BTreeMap::new(), start);
         };
         let req = DecisionRequest {
             input,
@@ -433,15 +162,15 @@ impl Gate {
         match res {
             Err(e) => {
                 let (o, r) = fail(c, &format!("{e:?}"));
-                self.finish(c, o, r, name, BTreeMap::new(), start)
+                Self::finish(c, o, r, name, BTreeMap::new(), start)
             }
             Ok(resp) => {
                 if resp.answers.values().any(|a| matches!(a, Answer::Refusal)) {
                     let (o, r) = fail(c, "refusal");
-                    return self.finish(c, o, r, name, flatten(&resp), start);
+                    return Self::finish(c, o, r, name, flatten(&resp), start);
                 }
                 let (o, r) = self.map(c, &resp);
-                self.finish(c, o, r, name, flatten(&resp), start)
+                Self::finish(c, o, r, name, flatten(&resp), start)
             }
         }
     }
@@ -480,31 +209,7 @@ impl Gate {
                     "exfiltrates_personal_data"
                 );
                 let outside = get!(pred("outside_space"), "outside_space");
-                if sev >= t.severity_block {
-                    return block("severity");
-                }
-                if exfil >= t.exfil_block {
-                    return block("exfiltration");
-                }
-                if conf < t.min_confidence {
-                    return ask("low-confidence");
-                }
-                if sev >= t.severity_ask {
-                    return ask("severity");
-                }
-                if irr >= t.irreversible_ask {
-                    return ask("irreversible");
-                }
-                if exfil >= t.exfil_ask {
-                    return ask("exfiltration");
-                }
-                if outside >= t.outside_ask {
-                    return ask("outside-space");
-                }
-                if intent < t.intent_min {
-                    return ask("intent-mismatch");
-                }
-                (Outcome::Allow, "model:clear".into())
+                t.tool_outcome(intent, sev, conf, irr, exfil, outside)
             }
             Point::Inbound | Point::ConversationMessage => {
                 let inj = get!(
@@ -572,7 +277,6 @@ impl Gate {
     }
 
     fn finish(
-        &self,
         c: &Check,
         outcome: Outcome,
         rule: String,
@@ -580,12 +284,9 @@ impl Gate {
         answers: BTreeMap<String, f64>,
         start: Instant,
     ) -> Decision {
-        let latency_ms = start.elapsed().as_millis() as u64;
+        let latency_ms = elapsed_millis(start.elapsed());
         let summary: String = redact::redact(&c.text).chars().take(140).collect();
-        let input_hash = Sha256::digest(c.text.as_bytes())
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect::<String>();
+        let input_hash = format!("{:x}", Sha256::digest(c.text.as_bytes()));
         let audit = AuditRecord {
             point: c.point.id().into(),
             outcome: outcome.id().into(),
@@ -639,10 +340,14 @@ fn fail(c: &Check, why: &str) -> (Outcome, String) {
 fn describe(c: &Check, redacted: bool) -> Option<String> {
     let mut s = String::new();
     if let Some(i) = &c.user_intent {
-        s.push_str(&format!("User just said or did: {i}\n"));
+        s.push_str("User just said or did: ");
+        s.push_str(i);
+        s.push('\n');
     }
     if let Some(cap) = &c.capability {
-        s.push_str(&format!("Capability: {cap}\n"));
+        s.push_str("Capability: ");
+        s.push_str(cap);
+        s.push('\n');
     }
     s.push_str(&c.text);
     if s.chars().count() > MAX_DECISION_INPUT_CHARS {
@@ -655,138 +360,54 @@ fn describe(c: &Check, redacted: bool) -> Option<String> {
     }
 }
 
-// ───────────────────────────── hard rules ─────────────────────────────
+#[cfg(test)]
+mod tests;
 
-const DESTRUCTIVE: [&str; 12] = [
-    "rm -rf",
-    "drop table",
-    "drop database",
-    "truncate table",
-    "format disk",
-    "mkfs",
-    "delete all",
-    "wipe all",
-    "delete every",
-    "factory reset",
-    ":(){",
-    "del /f /s",
-];
-const INJECTION: [&str; 14] = [
-    "ignore previous instructions",
-    "ignore all previous",
-    "ignore the previous",
-    "disregard your instructions",
-    "disregard previous",
-    "forget your instructions",
-    "new instructions:",
-    "system prompt",
-    "you are now",
-    "ignore prior",
-    "ignore todas as instru",
-    "ignore as instru",
-    "assistant: sure",
-    "begin hidden",
-];
-const TRACKING: [&str; 6] = [
-    "document.cookie",
-    "navigator.sendbeacon",
-    "keylogger",
-    "localstorage.getitem('token",
-    "indexeddb.open('wallet",
-    "crypto miner",
-];
-const CREDENTIAL_PATHS: [&str; 7] = [
-    "auth.json",
-    "id_rsa",
-    ".ssh/",
-    "keychain",
-    ".aws/credentials",
-    ".env",
-    "passwords.txt",
-];
-
-fn has(text: &str, needles: &[&str]) -> bool {
-    let t = text.to_lowercase();
-    needles.iter().any(|n| t.contains(n))
-}
-
-/// Zero-width and bidi control characters, used to hide instructions.
-fn hidden_chars(text: &str) -> bool {
-    text.chars().any(|c| matches!(c, '\u{200B}' | '\u{200C}' | '\u{200D}' | '\u{2060}' | '\u{FEFF}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{E0000}'..='\u{E007F}'))
-}
-
-pub fn hard_rules(c: &Check) -> Option<(Outcome, String)> {
-    let deny = |r: &str| Some((Outcome::Block, format!("hard:{r}")));
-    match c.point {
-        Point::ToolCall => {
-            if redact::contains_secret(&c.text) || has(&c.text, &CREDENTIAL_PATHS) {
-                return deny("credential");
-            }
-            if has(&c.text, &DESTRUCTIVE) {
-                return deny("destructive");
-            }
-            if let Some(r) = &c.consent {
-                match consent::review(r) {
-                    Verdict::Deny(rule) => return Some((Outcome::Block, rule.id().into())),
-                    Verdict::Ask(rule) if rule.is_always_ask() => {
-                        return Some((Outcome::Ask, rule.id().into()))
-                    }
-                    _ => {}
-                }
-            } else if let Some(cap) = &c.capability {
-                // No full consent context: the access class alone still enforces the list.
-                let (access, sens) = consent::classify(cap);
-                use consent::Access::*;
-                let rule = match access {
-                    PostOutside => Some("always:post-outside"),
-                    Irreversible => Some("always:irreversible"),
-                    Payment => Some("always:payment"),
-                    ShareToGroup => Some("always:share-to-group"),
-                    External => Some("always:external"),
-                    _ if sens == consent::Sensitivity::Sensitive => Some("always:sensitive-first"),
-                    _ => None,
-                };
-                if let Some(r) = rule {
-                    return Some((Outcome::Ask, r.into()));
-                }
-            }
-            if c.irreversible {
-                return Some((Outcome::Ask, "always:irreversible".into()));
-            }
-            None
+impl Thresholds {
+    fn tool_outcome(
+        &self,
+        intent: f64,
+        sev: f64,
+        conf: f64,
+        irr: f64,
+        exfil: f64,
+        outside: f64,
+    ) -> (Outcome, String) {
+        let ask = |why: &str| (Outcome::Ask, format!("model:{why}"));
+        let block = |why: &str| (Outcome::Block, format!("model:{why}"));
+        if sev >= self.severity_block {
+            return block("severity");
         }
-        Point::Inbound | Point::ConversationMessage => {
-            if hidden_chars(&c.text) {
-                return deny("hidden-characters");
-            }
-            if has(&c.text, &INJECTION) {
-                return deny("injection-marker");
-            }
-            None
+        if exfil >= self.exfil_block {
+            return block("exfiltration");
         }
-        Point::Bundle => {
-            if has(&c.text, &TRACKING) {
-                return deny("tracking-api");
-            }
-            if redact::contains_secret(&c.text) {
-                return deny("embedded-secret");
-            }
-            if c.text.contains("undeclared-network: yes") {
-                return deny("undeclared-network");
-            }
-            None
+        if conf < self.min_confidence {
+            return ask("low-confidence");
         }
-        Point::Outbound => {
-            if redact::contains_secret(&c.text) {
-                return deny("secret");
-            }
-            if redact::contains_card(&c.text) {
-                return deny("card-number");
-            }
-            None
+        if sev >= self.severity_ask {
+            return ask("severity");
         }
+        if irr >= self.irreversible_ask {
+            return ask("irreversible");
+        }
+        if exfil >= self.exfil_ask {
+            return ask("exfiltration");
+        }
+        if outside >= self.outside_ask {
+            return ask("outside-space");
+        }
+        if intent < self.intent_min {
+            return ask("intent-mismatch");
+        }
+        (Outcome::Allow, "model:clear".into())
     }
 }
 
-#[cfg(test)]
-mod tests;
+// Audit latency is representational telemetry: cap only durations beyond u64 milliseconds
+// (over 584 million years), rather than wrapping to a misleading short latency.
+fn elapsed_millis(elapsed: std::time::Duration) -> u64 {
+    elapsed
+        .as_secs()
+        .saturating_mul(1000)
+        .saturating_add(u64::from(elapsed.subsec_millis()))
+}
