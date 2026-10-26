@@ -10,6 +10,7 @@ import type {
   EditorAgentState,
   EditorAgentTicket,
 } from './editor-agent-session';
+import type { DrawingReviewPort } from './drawing-review-types';
 import type { EditorAgentAdmission } from './editor-agent-admission';
 
 export function EditorAgentContent({
@@ -24,6 +25,7 @@ export function EditorAgentContent({
   onAdd,
   onRefresh,
   onSend,
+  drawingReview,
 }: {
   session: EditorAgentSession;
   state: EditorAgentState;
@@ -36,6 +38,7 @@ export function EditorAgentContent({
   onAdd: () => void;
   onRefresh: () => void;
   onSend: () => void;
+  drawingReview?: DrawingReviewPort;
 }) {
   const { colors } = useTheme();
   return (
@@ -160,6 +163,7 @@ export function EditorAgentContent({
         <RequestCard
           key={request.id}
           request={request}
+          drawingReview={drawingReview}
           embedded
           disabled={state.busy}
           onResolved={() => {

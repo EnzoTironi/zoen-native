@@ -9,12 +9,16 @@ use serde_json::{json, Value};
 use types::{ActionClass, AgentRequest, ItemContent, ToolProposal};
 
 mod effects;
+mod preview;
 mod recovery;
 mod review;
 #[cfg(test)]
 mod tests;
 pub mod tools;
 pub(crate) use effects::approved_effect;
+#[cfg(feature = "client-types")]
+pub(crate) use preview::SceneToolReview;
+pub(crate) use preview::SceneToolReviewInput;
 pub use review::ApprovedSceneTurn;
 pub(crate) use review::{access, matches, parsed};
 pub const SCHEMA: u8 = 6;

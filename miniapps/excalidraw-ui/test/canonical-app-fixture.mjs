@@ -2,6 +2,7 @@ import { build } from "esbuild";
 import { JSDOM, VirtualConsole } from "jsdom";
 import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";
+import { png } from "../../../apps/zoen/src/core/drawing-review.fixtures.ts";
 import { CHUNK_BYTES, sceneBytes, sceneHash } from "../src/canonical-transfer.ts";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -43,6 +44,13 @@ const scene = (text) =>
     files: {},
   });
 const graphics = `import React,{useEffect} from 'react';
+export async function exportToCanvas(input){
+ (window.qaReviewExports??=[]).push(input);
+ if(window.qaReviewGate)await window.qaReviewGate.promise;
+ const text=JSON.stringify(input.elements);
+ const encoded=text.includes('#ff0000')?window.qaReviewRed:window.qaReviewBlue;
+ return {width:1,height:1,toBlob(cb){cb(new Blob([Uint8Array.from(atob(encoded),c=>c.charCodeAt(0))],{type:'image/png'}));}};
+}
 export const CaptureUpdateAction={NEVER:"NEVER"};
 export const restore=(data)=>data;
 export const serializeAsJSON=(elements,appState,files)=>JSON.stringify({type:'excalidraw',version:2,elements,appState:{viewBackgroundColor:appState.viewBackgroundColor}});
@@ -180,6 +188,9 @@ async function fixture(initial = scene("initial")) {
     virtualConsole: console,
     beforeParse(w) {
       w.qaApp = app;
+      w.Blob = Blob;
+      w.qaReviewRed = png([255, 0, 0, 255]).toString("base64");
+      w.qaReviewBlue = png([0, 0, 255, 255]).toString("base64");
       w.TextEncoder = TextEncoder;
       w.TextDecoder = TextDecoder;
       const nativeSetTimeout = w.setTimeout.bind(w),
@@ -218,6 +229,12 @@ async function fixture(initial = scene("initial")) {
     failures,
     statuses,
     wait,
+    reviewExports: () => dom.window.qaReviewExports ?? [],
+    holdReviewExport: () => {
+      const gate = held();
+      dom.window.qaReviewGate = gate;
+      return gate;
+    },
     setNativeCall: (call) => {
       nativeCall = call;
     },

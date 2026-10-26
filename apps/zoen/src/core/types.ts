@@ -7,6 +7,7 @@ import type { TimelinePage } from './generated/TimelinePage';
 import type { TimelineEntry } from './generated/TimelineEntry';
 import type { ItemDiscussionDto } from './generated/ItemDiscussionDto';
 import type { ItemDetail } from './generated/ItemDetail';
+import type { SceneToolReview } from './generated/SceneToolReview';
 import type { SiteToolReview } from './generated/SiteToolReview';
 import type { SiteSource } from './generated/SiteSource';
 import type { SiteReview } from './generated/SiteReview';
@@ -102,6 +103,7 @@ type Results = {
   owner_policy_status: OwnerPolicyStatus;
   find_owner_policy_submission: OwnerPolicyStatus | null;
   site_tool_review: SiteToolReview;
+  scene_tool_review: SceneToolReview;
   site_read: SiteSource;
   site_create: SiteSource;
   site_save: SiteSource;

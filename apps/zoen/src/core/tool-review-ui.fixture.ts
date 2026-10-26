@@ -261,6 +261,8 @@ export function fixture(locale: 'en' | 'pt-BR' = 'en') {
           toolApprovalValid: () => true,
         };
       if (path.endsWith('/ZoenCoreModule')) return { sitePreviewVersion: 2 };
+      if (path.endsWith('/account-scope.ts')) return ownership;
+      if (path.endsWith('/drawing-tool-review')) return { DrawingToolReview: 'DrawingToolReview' };
       if (path.endsWith('/sites/source')) return siteSource;
       if (path.endsWith('/sites/preview')) return { SitePreview: 'SitePreview' };
       if (path.endsWith('/site-tool-review'))

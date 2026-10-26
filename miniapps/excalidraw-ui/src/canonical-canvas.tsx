@@ -7,6 +7,7 @@ import type { CanonicalLabels } from "./canonical-app";
 import { canonicalSceneTransport, type SceneDocument } from "./canonical-transfer";
 import { createSceneSaves, type SceneSaveState } from "./canonical-saves";
 import { serializeCanonicalScene, PendingSceneImages } from "./canonical-serialize";
+import { createSceneReviewExport } from "./canonical-review";
 import { createSceneApplication } from "./canonical-application";
 const owners = new WeakMap<App, object>();
 const IMAGE_IMPORT_DEADLINE_MS = 10_000;
@@ -46,6 +47,7 @@ export function CanonicalCanvas({
     ...state,
     itemId,
     liveRefresh: 1,
+    reviewPreview: 1,
     ready: initialized.current && protocolReady.current,
     clean: initialized.current && protocolReady.current && !importPending.current && saves.clean(),
     ...head.current,
@@ -198,6 +200,7 @@ export function CanonicalCanvas({
     const check = () => {
       if (!live.current || owners.get(app) !== owner) throw new Error("This drawing has closed.");
     };
+    const review = createSceneReviewExport(itemId, check);
     const freeze = async (mode: "copy" | "teardown" | "refresh") => {
       check();
       if (action.current) throw new Error("This drawing action is already in progress.");
@@ -231,6 +234,7 @@ export function CanonicalCanvas({
     let copyWork: Promise<Awaited<ReturnType<typeof transport.prepareCopy>>> | null = null;
     app.oncalltool = async ({ name, arguments: args }) => {
       check();
+      if (name === "render_scene_review") return review.render(args);
       if (name === "resume_scene") {
         if (action.current && !freezing.current)
           throw new Error("This drawing action is already in progress.");
@@ -366,6 +370,7 @@ export function CanonicalCanvas({
       imageWaiters.current.clear();
       freezeAck.current?.reject(new Error("This drawing has closed."));
       freezeAck.current = null;
+      review.dispose();
       application.dispose();
       saves.dispose();
       document.removeEventListener("visibilitychange", background);
