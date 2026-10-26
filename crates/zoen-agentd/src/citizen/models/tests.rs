@@ -11,10 +11,17 @@ fn retained_or_uncertain_admission_never_proves_model_non_dispatch() {
             BrainError::OutcomeUnknown(_)
         ));
     }
-    assert!(matches!(
-        gateway_failure(zoen_models::GatewayError::InvalidRequest),
-        BrainError::NotDispatched(_)
-    ));
+    for error in [
+        zoen_models::GatewayError::InvalidConfiguration,
+        zoen_models::GatewayError::InvalidRequest,
+        zoen_models::GatewayError::UnsupportedOperation,
+        zoen_models::GatewayError::Admission(AdmissionError::Denied),
+    ] {
+        assert!(matches!(
+            gateway_failure(error),
+            BrainError::NotDispatched(_)
+        ));
+    }
 }
 use zoen_models::{image_response_budget, ImageBackground, ImageQuality, ImageRequest, ImageSize};
 

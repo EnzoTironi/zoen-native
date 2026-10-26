@@ -30,7 +30,12 @@ fn gateway_failure(error: zoen_models::GatewayError) -> BrainError {
         | zoen_models::GatewayError::Admission(AdmissionError::Unavailable) => {
             BrainError::OutcomeUnknown(error.to_string())
         }
-        error => BrainError::NotDispatched(error.to_string()),
+        zoen_models::GatewayError::InvalidConfiguration
+        | zoen_models::GatewayError::InvalidRequest
+        | zoen_models::GatewayError::UnsupportedOperation
+        | zoen_models::GatewayError::Admission(AdmissionError::Denied) => {
+            BrainError::NotDispatched(error.to_string())
+        }
     }
 }
 

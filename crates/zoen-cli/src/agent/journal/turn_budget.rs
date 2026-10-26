@@ -60,8 +60,11 @@ impl JournalState {
             }
             let reserved = state.reserve_resume(&key, &binding, Some(&source.id))?;
             if reserved {
-                state.continuations.get_mut(&key).unwrap().model_outcome =
-                    Some(ModelOutcome::Unknown);
+                let attempt = state
+                    .continuations
+                    .get_mut(&key)
+                    .ok_or("The reserved source attempt is missing")?;
+                attempt.model_outcome = Some(ModelOutcome::Unknown);
             }
             Ok(reserved)
         })
