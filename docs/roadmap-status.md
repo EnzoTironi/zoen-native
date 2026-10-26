@@ -16,8 +16,10 @@ is under qualification and is not installed. The maintained
 [execution plan](../apps/zoen/acceptance/parts/scope/execution-plan.json) and
 [current iPhone artifact](../apps/zoen/acceptance/parts/artifacts/current-iphone-artifact.json)
 separate local source/build evidence, native observations and pending acceptance.
-Physical iPhone and public-backend release remain open. GitHub publication awaits
-connectivity and fresh remote-state checks; local work is not a completed merge.
+Physical iPhone and public-backend release remain open. GitHub publication resumed:
+PR621 merged normally with the approved tree, and messenger batch627 awaits checks.
+[Issue170](https://github.com/EnzoTironi/zoen-native/issues/170) records live delivery
+state; local work does not establish a completed remote merge.
 
 ## Historical checkpoints
 

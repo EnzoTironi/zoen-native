@@ -25,8 +25,9 @@ critérios; esta sequência não reduz as capacidades aprovadas.
 
 Os testes nativos recentes são de simulador. A validação em iPhone físico,
 distribuição e backend público ainda exigem suas próprias provas. Trabalho local
-qualificado não conta como publicado ou mergeado; a publicação pendente deve
-retomar pelo fluxo normal quando a conectividade com GitHub permitir.
+qualificado não conta como publicado ou mergeado. A conectividade voltou e o
+PR621 foi mergeado normalmente; o lote de mensageria627 aguarda checks. Os demais
+lotes seguem separados, com estados atuais registrados no issue170.
 
 | Lote                          | Entrega observável                                                                                                                                                                                                  | Critério de saída                                                                                                                                                                                                                                                               |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

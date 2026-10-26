@@ -4,7 +4,6 @@
   "currentMilestone": "ios-conversation-and-media",
   "currentManualValidationPlatforms": ["ios"],
   "currentEnvironment": "Local production-like composition with the real Rust services; final release still requires the compatible public backend and real providers.",
-  "currentPullRequest": "https://github.com/EnzoTironi/zoen-native/pull/621",
   "milestones": [
     {
       "id": "ios-conversation-and-media",
@@ -54,5 +53,6 @@
   "completionScope": "Thirty requiredJourneys plus all declared creationWorkspace capabilities and the numerical operating envelope. Competitor quality is a design reference, not an unbounded all-features/global-scale acceptance target.",
   "currentSimulatorCheckpoint": "currentIphoneArtifact",
   "currentFocus": "Consolidate existing iOS front/core/backend batches before adding capabilities: membership/revocation, offline creation and native Page creation/recovery. Preserve incomplete anchored comments until dependencies are qualified.",
-  "publicationStatus": "Last confirmed PR621 head46d756ce had four successful workflows at2026-10-26T08:48:41Z. Current remote merge state is unverified; authenticated publication is blocked by connectivity. Local work is not claimed published or merged."
+  "publicationStatus": "Connectivity recovered2026-10-26. PR621 merged normally as0036bc461578462fbabfab2961ae209ebe8d2751 at14:54:50Z; merged tree equals approved46d756ce. Messenger batchcbb2fbf0 is published in PR627, awaiting checks. Subsequent budget/Page and membership batches remain separate; issue170 records live publication/merge state.",
+  "coordinationIssue": "https://github.com/EnzoTironi/zoen-native/issues/170"
 }
