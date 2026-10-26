@@ -2,6 +2,7 @@ import {
   AppBridge,
   McpUiHostCapabilitiesSchema,
   McpUiHostContextSchema,
+  McpUiInitializedNotificationSchema,
 } from '@modelcontextprotocol/ext-apps/app-bridge';
 import {
   CallToolResultSchema,
@@ -13,6 +14,10 @@ import { ProtocolError, type JSONRPCMessage, type Transport } from '@modelcontex
 import { z } from 'zod/v4';
 import { t } from '../i18n/index.ts';
 import { parseMiniappRequest } from './json.ts';
+import {
+  MINIAPP_REQUEST_TIMEOUT,
+  waitForMiniappInitialization,
+} from './protocol-initialization.ts';
 
 type Params = Record<string, unknown>;
 export type HostOptions = {
@@ -46,6 +51,8 @@ export class MiniappSession {
   private active = true;
   private initialized = false;
   private handshake = false;
+  private initialization: Promise<void> | null = null;
+  private finishInitialization: (() => void) | null = null;
   private inputSent = false;
   private flush: Promise<void> | null = null;
   private pending = new Map<string, { method: string; finish: () => void }>();
@@ -83,6 +90,8 @@ export class MiniappSession {
     this.bridge.addEventListener('initialized', () => {
       if (!this.active || !this.handshake || this.initialized) return;
       this.initialized = true;
+      this.finishInitialization?.();
+      this.finishInitialization = null;
       this.sync();
     });
     this.bridge.addEventListener('sizechange', ({ height }) => {
@@ -174,6 +183,15 @@ export class MiniappSession {
         !(message.method === 'ui/notifications/initialized' && this.handshake)
       )
         return;
+      if (!this.initialized) {
+        if (!McpUiInitializedNotificationSchema.safeParse(message).success) return;
+        // Native may deliver initialized and the first tool request in one JS
+        // batch. Readiness still belongs to the official bridge's event, rather
+        // than to receipt of the packet or completion of its transport send.
+        this.initialization ??= new Promise<void>((resolve) => {
+          this.finishInitialization = resolve;
+        });
+      }
       await this.connected;
       if (this.active) this.transport.onmessage?.(message);
       return;
@@ -192,7 +210,8 @@ export class MiniappSession {
       this.error(id, t('miniapps.anActionIsInProgress'));
       return;
     }
-    if (!this.initialized && message.method !== 'ui/initialize') {
+    const initialization = this.initialized ? null : this.initialization;
+    if (!this.initialized && !initialization && message.method !== 'ui/initialize') {
       this.error(id, t('miniapps.theInterfaceHasNotInitializedYet'));
       return;
     }
@@ -201,7 +220,16 @@ export class MiniappSession {
       finish = resolve;
     });
     this.pending.set(key, { method: message.method, finish });
-    await this.connected;
+    try {
+      if (initialization && message.method !== 'ui/initialize')
+        await waitForMiniappInitialization(initialization);
+      await this.connected;
+    } catch {
+      this.pending.delete(key);
+      finish();
+      this.error(id, t('miniapps.theInterfaceHasNotInitializedYet'));
+      return;
+    }
     if (this.active) this.transport.onmessage?.(message);
     else {
       this.pending.delete(key);
@@ -232,13 +260,16 @@ export class MiniappSession {
   /** Native UI may request a declared app-side tool without routing through a model. */
   async callAppTool(name: string, args: Params = {}) {
     this.check();
-    const result = await this.bridge.callTool({ name, arguments: args }, { timeout: 20_000 });
+    const result = await this.bridge.callTool(
+      { name, arguments: args },
+      { timeout: MINIAPP_REQUEST_TIMEOUT },
+    );
     this.check();
     return result;
   }
 
   /** Keep tool authority alive until the app acknowledges its last pending edit. */
-  flushResource(timeout = 20_000): Promise<void> {
+  flushResource(timeout = MINIAPP_REQUEST_TIMEOUT): Promise<void> {
     if (!this.active) return Promise.reject(new Error(t('miniapps.thisInterfaceHasClosed')));
     if (!this.initialized) return Promise.resolve();
     if (this.flush) return this.flush;
@@ -257,6 +288,8 @@ export class MiniappSession {
   dispose() {
     if (!this.active) return;
     this.active = false;
+    this.finishInitialization?.();
+    this.finishInitialization = null;
     for (const pending of this.pending.values()) pending.finish();
     this.pending.clear();
     void this.bridge

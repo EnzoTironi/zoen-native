@@ -5,6 +5,10 @@ impl Client {
         command: &Command,
     ) -> Option<Result<String, CoreError>> {
         let result = match command {
+            Command::SceneToolReview { input } => self
+                .lock()
+                .scene_tool_review(input)
+                .and_then(|value| encode(&value)),
             Command::AppResourceFind { input } => self
                 .lock()
                 .find_app_resource(input)

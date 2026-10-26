@@ -22,6 +22,8 @@ import type { MiniappFrameHandle } from './frame-types';
 import { frameAuthority, frameClosures } from './lifetime';
 import { MiniappSession } from './protocol';
 import { canonicalCopy } from './canonical-copy';
+import { canonicalPersistence } from './canonical-persistence';
+import { drawingReviewPort } from './drawing-review-port';
 import { canonicalRefresh } from './canonical-refresh';
 import { safeMiniappLink, sandboxHtml, type VerifiedMiniappResource } from './sandbox';
 import {
@@ -270,24 +272,13 @@ function DrawingDocument({
     let live = true;
     let retiring = false;
     let refresh: ReturnType<typeof canonicalRefresh> | null = null;
+    let review: ReturnType<typeof drawingReviewPort> | null = null;
+    const persistence = canonicalPersistence(store, pin, lifetime.check);
     const scene = new CanonicalSceneHost({
       initialDoc: doc,
       id: () => Crypto.randomUUID(),
       check: lifetime.check,
-      save: async (input) => {
-        lifetime.check();
-        const accepted = await store.request(
-          isOwnedAppResource(pin.resourceUri)
-            ? {
-                op: 'app_document_save_pinned',
-                expected_resource_uri: pin.resourceUri,
-                ...input,
-              }
-            : { op: 'app_document_save', ...input },
-        );
-        lifetime.check();
-        return accepted;
-      },
+      save: persistence.save,
       onState: (next) => {
         if (!live) return;
         setPhase(next);
@@ -340,6 +331,7 @@ function DrawingDocument({
           | undefined;
         const state = value?.zoen?.sceneSave;
         refresh?.observe(params.structuredContent);
+        review?.observe(params.structuredContent);
         if (state?.phase === 'pending') setPending(true);
         if (state?.phase === 'error') setError(t('drawing.saveFailed'));
         return {};
@@ -377,20 +369,7 @@ function DrawingDocument({
       id: () => Crypto.randomUUID(),
       prepare: () => current.callAppTool('prepare_scene_copy'),
       staged: (uploadId, bytes, sha) => scene.stagedScene(uploadId, bytes, sha),
-      save: async (input) => {
-        lifetime.check();
-        const accepted = await store.request(
-          isOwnedAppResource(pin.resourceUri)
-            ? {
-                op: 'app_document_copy_pinned',
-                expected_resource_uri: pin.resourceUri,
-                ...input,
-              }
-            : { op: 'app_document_copy', ...input },
-        );
-        lifetime.check();
-        return accepted;
-      },
+      save: persistence.copy,
       blocked: (value) => {
         if (live) setCopyBlocked(value);
       },
@@ -446,12 +425,7 @@ function DrawingDocument({
         itemId: item.id,
         scene,
         check: lifetime.check,
-        read: () =>
-          store.driver.request({
-            op: 'app_document_read_pinned',
-            item_id: item.id,
-            expected_resource_uri: pin.resourceUri,
-          }),
+        read: persistence.read,
         call: (name, args) => current.callAppTool(name, args),
         conflict: () => {
           if (live) setError(t('drawing.saveFailed'));
@@ -463,6 +437,18 @@ function DrawingDocument({
         observedHead: refresh.observedHead,
         agentReadiness: refresh.readiness,
       };
+    if (isOwnedAppResource(pin.resourceUri)) {
+      review = drawingReviewPort({
+        store,
+        pin,
+        spaceId: item.space_id,
+        key: Crypto.randomUUID(),
+        id: () => Crypto.randomUUID(),
+        check: lifetime.check,
+        call: (name, args) => current.callAppTool(name, args),
+      });
+      controller = { ...controller, drawingReview: review };
+    }
     flushAction.current = controller.flush;
     callbacks.current.onDocumentController?.(controller);
     const unregisterPreflight = store.registerSessionPreflight(() => {
@@ -474,6 +460,7 @@ function DrawingDocument({
       unregisterPreflight();
       lifetime.close();
       refresh?.dispose();
+      review?.dispose();
       copy.dispose();
       copyAction.current = null;
       flushAction.current = null;

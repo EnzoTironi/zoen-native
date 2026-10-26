@@ -65,6 +65,9 @@ pub(super) enum Command {
         scope: crate::owner_policy::OwnerPolicyScope,
         source: String,
     },
+    SceneToolReview {
+        input: crate::agent_scenes::SceneToolReviewInput,
+    },
     SiteToolReview {
         expected_identity_id: String,
         expected_device_id: String,

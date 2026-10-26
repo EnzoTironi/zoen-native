@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { fixture, documentPort, current } from './native-host-navigation-fixture.mjs';
+import { fixture, documentPort, current } from "./native-host-navigation-fixture.mjs";
 
 for (const origin of ["home", "chat"])
   test(`Expo default Back waits for actual screen flush and returns to ${origin}`, async () => {
@@ -219,19 +219,19 @@ test("floating close refuses missing state, root mismatch, unfocused route and a
     await f.close();
   }
 });
-test("nested native headers keep their own actions and regain floating close only on the App canvas", async () => {
+test("management shares floating close while nested tool headers keep their native actions", async () => {
   const doc = documentPort();
   const f = await fixture("ios", { controller: doc.controller, management: true });
   try {
-    assert.equal(f.node.querySelector("[data-qa-close]"), null);
-    assert.equal(f.qa.editorChrome, null);
-    await f.act(() => f.path('/miniapp/synthetic-drawing/tool'));
+    assert.ok(f.node.querySelector("[data-qa-close]"));
+    assert.deepEqual(f.qa.editorChrome, { top: 32, right: 12, width: 44, height: 44 });
+    await f.act(() => f.path("/miniapp/synthetic-drawing/tool"));
     assert.equal(f.node.querySelector("[data-qa-close]"), null);
     assert.equal(f.qa.editorChrome, null);
     await f.act(() => f.back());
     assert.equal(current(f).state.index, 0);
     assert.equal(doc.calls.length, 0);
-    await f.act(() => f.path('/miniapp/synthetic-drawing'));
+    await f.act(() => f.path("/miniapp/synthetic-drawing"));
     assert.ok(f.node.querySelector("[data-qa-close]"));
     assert.ok(f.qa.editorChrome);
     await f.act(() => pressClose(f));

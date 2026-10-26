@@ -19,8 +19,8 @@ They are not exemptions for maintained source, tests, documents or patches.
 | Telegram GPL notice copies in `TelegramAttachmentPresentation`, `TelegramFileAttachment` and `TelegramVideoEditing`                   | Original GPLv3 text bundled with the respective upstream-derived integrations, under each directory's `Resources/Notices/`.                                                               |
 
 The generated Excalidraw manifest contains the resource hash/size and the audited
-inventory (78 bundled dependencies and 35 source inputs in this release). Its
-20,201 bytes are generated metadata, rather than authored editor code. The
+inventory (78 bundled dependencies and 36 source inputs in this release). Its
+20,302 bytes are generated metadata, rather than authored editor code. The
 builder, authored manifest neighbors and JSON documents remain subject to the
 20,000-byte source limit; this exception names only that output.
 

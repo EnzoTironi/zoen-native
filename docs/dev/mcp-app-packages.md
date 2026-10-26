@@ -162,7 +162,26 @@ authorize a write. The native gate stages the exact held call as an ordinary
 Request. The existing RequestCard and `decide_tool_request` record the owner's
 `ApproveOnce` decision; Suggest access remains Suggest. The signed review detail
 contains the frozen proposed scene, and cannot describe different proposed bytes.
-This first review is textual; a visual before/after comparison remains open.
+The owned App's existing Agent sheet can show visual before/after previews when
+its admitted renderer advertises `reviewPreview: 1`. Core's read-only
+`scene_tool_review` returns the canonical base and exact signed replacement only
+to the current owner/device, with the request hash, Space and renderer pin held.
+It refuses changed bases, pins, grants, expired or resolved proposals.
+
+The host sends those bytes to the same frame's read-only `render_scene_review`
+MCP tool. The pinned SDK uses upstream Excalidraw's offscreen `exportToCanvas`;
+it does not touch the open canvas, draft, save queue or observed head. Each PNG
+is limited to 128 KiB and 896 pixels per side. The host checks the echoed
+request/hash/pin/base, scene and image hashes, dimensions and a second Core read.
+The native images use no persistent image cache. Approval becomes available
+only after both images load, and retires on owner, focus or canonical changes.
+Renderer output remains presentation; it does not grant an effect or replace
+Core's exact-byte approval and publication checks.
+
+Older renderer releases remain manually usable but cannot qualify this visual
+approval. Close and reopen the App after an explicit renderer update. Native
+WebKit acceptance of the new review UI is still separate from Core, React
+Compiler, SDK and headless Chrome pixel evidence.
 
 Execution rechecks the owner/device, source, membership, writer rights, App grant,
 renderer pin and document base. An approved effect uses the same App document and
@@ -186,6 +205,6 @@ when the selected source only needs a drawing. This does not skip provider, Gate
 permission or approval configuration. Do not start the unrestricted host to test
 one App when its retained profile contains older unrelated work.
 
-Generic package creation by an agent, additional document formats, visual review,
+Generic package creation by an agent, additional document formats, native visual-review acceptance,
 remote-tool credentials, distribution/registry and independent deployment remain
 separate acceptance work under #180.

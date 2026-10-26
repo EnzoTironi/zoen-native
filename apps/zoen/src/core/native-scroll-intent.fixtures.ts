@@ -1,11 +1,19 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 
-const sdk = fileURLToPath(
-  new URL('../../node_modules/react-native-keyboard-controller/src/components/', import.meta.url),
-);
+const require = createRequire(import.meta.url);
+const { transformSync } = require('@babel/core') as {
+  transformSync(source: string, options: Record<string, unknown>): { code: string };
+};
+const sdk =
+  process.env.ZOEN_NATIVE_SCROLL_SDK_SOURCE ??
+  fileURLToPath(
+    new URL('../../node_modules/react-native-keyboard-controller/src/components/', import.meta.url),
+  );
 const bundled = await build({
   stdin: {
     contents: `export {default as Chat} from ${JSON.stringify(`${sdk}KeyboardChatScrollView/index.tsx`)};
@@ -23,6 +31,24 @@ const bundled = await build({
     {
       name: 'native-scroll-host-ports',
       setup(builder) {
+        // Execute the same Expo/Hermes worklet transform as the installed SDK.
+        // Dependency code is not claimed to be React Compiler transformed.
+        builder.onLoad({ filter: /\/useExtraContentPadding\/index\.ts$/ }, ({ path }) => ({
+          contents: transformSync(readFileSync(path, 'utf8'), {
+            filename: path,
+            configFile: false,
+            babelrc: false,
+            presets: [require.resolve('babel-preset-expo')],
+            caller: {
+              name: 'metro',
+              platform: 'ios',
+              engine: 'hermes',
+              isDev: false,
+              supportsReactCompiler: true,
+            },
+          }).code,
+          loader: 'js',
+        }));
         builder.onResolve({ filter: /./ }, ({ path }) => {
           if (
             ['react', 'react/jsx-runtime', 'react-native', 'react-native-reanimated'].includes(path)
@@ -56,23 +82,39 @@ type Reaction = {
 type KeyboardEvent = { height: number; duration: number };
 
 /** Actual pinned SDK keyboard, padding correction, and animatedProps; only host ports are replaced. */
-export function nativeScrollIntentFixture() {
-  const extra = { value: 240 };
+export function nativeScrollIntentFixture({
+  initialExtra = 240,
+  initialOffset = 376,
+  viewportHeight = 700,
+  contentHeight = 1300,
+  offset = 0,
+} = {}) {
+  const extra = { value: initialExtra };
+  const blankSpace = { value: 0 };
   const freeze = { value: false };
-  const scroll = { value: 376 };
-  const layout = { value: { width: 390, height: 700 } };
-  const size = { value: { width: 390, height: 1300 } };
+  const scroll = { value: initialOffset };
+  const layout = { value: { width: 390, height: viewportHeight } };
+  const size = { value: { width: 390, height: contentHeight } };
   const reactions: Reaction[] = [];
   const effects: (() => void)[] = [];
   const handlers: {
     onStart?: (event: KeyboardEvent) => void;
     onEnd?: (event: KeyboardEvent) => void;
+    onInteractive?: () => void;
   }[] = [];
   const reanimated = {
     __esModule: true,
     default: { View: 'AnimatedView', ScrollView: 'NativeScrollView' },
     makeMutable: <T>(value: T): Mutable<T> => ({ value }),
-    useSharedValue: <T>(value: T): Mutable<T> => ({ value }),
+    useSharedValue: <T>(value: T) => ({
+      value,
+      get() {
+        return this.value;
+      },
+      set(next: T) {
+        this.value = next;
+      },
+    }),
     useAnimatedRef: () => ({}),
     useDerivedValue: <T>(read: () => T) => ({
       get value() {
@@ -87,6 +129,12 @@ export function nativeScrollIntentFixture() {
     useAnimatedStyle: (read: () => unknown) => read(),
     useAnimatedReaction: (read: Reaction['read'], run: Reaction['run']) =>
       reactions.push({ read, run, previous: null }),
+    interpolate: (value: number, input: number[], output: number[]) => {
+      assert.equal(input.length, 2);
+      assert.equal(output.length, 2);
+      const fraction = (value - input[0]!) / (input[1]! - input[0]!);
+      return output[0]! + fraction * (output[1]! - output[0]!);
+    },
     runOnJS: (callback: unknown) => callback,
     scrollTo: () => assert.fail('iOS Fabric must retain its atomic animatedProps path'),
   };
@@ -131,6 +179,7 @@ export function nativeScrollIntentFixture() {
     },
   };
   runInNewContext(bundled.outputFiles[0]!.text, {
+    global: { Error },
     module,
     exports: module.exports,
     require: (name: string) => {
@@ -141,8 +190,10 @@ export function nativeScrollIntentFixture() {
   const chat = module.exports.Chat(
     {
       extraContentPadding: extra,
+      blankSpace,
       freeze,
-      contentOffset: { x: 0, y: 376 },
+      contentOffset: { x: 0, y: initialOffset },
+      offset,
       keyboardLiftBehavior: 'always',
       children: null,
     },
@@ -165,10 +216,16 @@ export function nativeScrollIntentFixture() {
   tick();
   return {
     extra,
+    blankSpace,
     freeze,
     scroll,
+    layout,
+    size,
     tick,
     props: () => (view.props.animatedProps as Mutable<Record<string, unknown>>).value,
+    interactive() {
+      for (const handler of handlers) handler.onInteractive?.();
+    },
     keyboard(height: number) {
       for (const handler of handlers) handler.onStart?.({ height, duration: 250 });
       for (const handler of handlers) handler.onEnd?.({ height, duration: 250 });
