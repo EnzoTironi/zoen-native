@@ -126,6 +126,14 @@ export function fixture(name: keyof typeof sources, dependencies: Record<string,
         }
         return slot.value;
       },
+      useMemo(read: () => unknown, deps: unknown[]) {
+        const slot = next();
+        if (!slot.deps || deps.some((value, index) => !Object.is(value, slot.deps![index]))) {
+          slot.deps = deps;
+          slot.value = read();
+        }
+        return slot.value;
+      },
       useSyncExternalStore: (_: unknown, read: () => any) => read(),
     },
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' },
