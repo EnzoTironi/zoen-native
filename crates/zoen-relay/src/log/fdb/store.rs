@@ -374,6 +374,14 @@ impl LogStore for FdbLog {
         })
     }
 
+    async fn preview_agent_invite_for_redeemer(
+        &self,
+        code: &str,
+        who: &str,
+    ) -> Result<InviteInfo, String> {
+        self.agent_invite_redemption_preview(code, who).await
+    }
+
     async fn redeem_agent_invite(&self, code: &str, who: &str) -> Result<InviteInfo, String> {
         let root = &self.cell.root;
         let key = root.pack(&("ainv", code_hash(code)));
