@@ -43,6 +43,7 @@ pub(super) enum Mode {
 }
 pub(super) struct Relay {
     pub url: String,
+    pub lifecycle: Arc<Mutex<&'static str>>,
     pub auth: Arc<AuthGate>,
     pub calls: Arc<Mutex<Vec<&'static str>>>,
     pub cursors: Arc<Mutex<Vec<(String, u64)>>>,
@@ -60,6 +61,12 @@ impl Drop for Relay {
     }
 }
 pub(super) async fn relay(mode: Mode) -> Relay {
+    let lifecycle = Arc::new(Mutex::new(match mode {
+        Mode::Paused => "paused",
+        Mode::Revoked => "revoked",
+        _ => "active",
+    }));
+    let current_lifecycle = lifecycle.clone();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
     let auth = Arc::new(AuthGate::default());
@@ -103,6 +110,7 @@ pub(super) async fn relay(mode: Mode) -> Relay {
             let (uploaded, devices) = (uploaded.clone(), devices.clone());
             let authentication = authentication.clone();
             let lose_receipt = lose_receipt.clone();
+            let current_lifecycle = current_lifecycle.clone();
             tokio::spawn(async move {
                 let mut first = [0];
                 if socket.peek(&mut first).await.unwrap() == 0 {
@@ -257,13 +265,21 @@ pub(super) async fn relay(mode: Mode) -> Relay {
                             op: Op::Agent(AgentRequest::State),
                         } => {
                             seen.lock().unwrap().push("agent_state");
-                            let result = Ok(Reply::AgentState(AgentStateRecord {
-                                status: match mode { Mode::InvalidStatus => "future-status", Mode::Paused => "paused", Mode::Revoked => "revoked", _ => "active" }.into(),
+                            let lifecycle = match current_lifecycle.lock() {
+                                Ok(state) => *state,
+                                Err(_) => "unavailable",
+                            };
+                            let result = if lifecycle == "error" {
+                                Err("synthetic lifecycle read failure".into())
+                            } else {
+                                Ok(Reply::AgentState(AgentStateRecord {
+                                status: if matches!(mode, Mode::InvalidStatus) { "future-status" } else { lifecycle }.into(),
                                 kind: if matches!(mode, Mode::InvalidKind) { "future-kind" } else if matches!(mode, Mode::DefinitionKindMismatch) { "Creator" } else { "User" }.into(),
                                 definition_version: if matches!(mode, Mode::DefinitionVersionMismatch) { 3 } else { 2 },
                                 definition: br#"{"version":2,"kind":"user","persona":"Synthetic source fixture","rules":[],"state":{},"model_tier":"cheap"}"#.to_vec(),
                                 cursors: positions.lock().unwrap().clone(),
-                            }));
+                            }))
+                            };
                             ServerFrame::Res { id, result }
                         }
                         ClientFrame::Req {
@@ -353,6 +369,7 @@ pub(super) async fn relay(mode: Mode) -> Relay {
     });
     Relay {
         url,
+        lifecycle,
         auth,
         calls,
         cursors,

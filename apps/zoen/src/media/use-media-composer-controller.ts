@@ -297,18 +297,25 @@ export function useMediaComposerController({
       }),
     [disabled, suspended, stop],
   );
-  const previewIsCurrent = useCallback(
-    (session: VoiceSession) =>
+  // The same route/lifecycle admission owns preview playback and explicit Send.
+  // Hiding controls does not retire callbacks already queued by native UI.
+  const voiceIsActive = useCallback(
+    () =>
       mounted.current &&
       !playbackRetired.current &&
       focused.current &&
       appState.current === 'active' &&
       !disabledNow.current &&
-      !suspendedNow.current &&
+      !suspendedNow.current,
+    [],
+  );
+  const previewIsCurrent = useCallback(
+    (session: VoiceSession) =>
+      voiceIsActive() &&
       !busyNow.current &&
       clipNow.current?.owner?.session === session &&
       (!clipNow.current.durable || store.mediaDrafts.isCurrent(clipNow.current.durable.channel)),
-    [store],
+    [store, voiceIsActive],
   );
   useEffect(
     () =>
@@ -416,6 +423,8 @@ export function useMediaComposerController({
     );
   }
   async function sendEdited(owner: VoiceReviewOwner, captured: VoiceSendable) {
+    // Like raw Send, lifecycle retirement cancels quietly without consuming the draft.
+    if (!voiceIsActive() || !controlIsCurrent(voiceControl)) return;
     if (!media || busyNow.current) throw new Error(t('media.voiceRecordingUnavailable'));
     if (clipNow.current?.owner !== owner || hasPendingVoiceTrim(trimNow.current, owner.session))
       throw new Error(t('media.voiceRecordingUnavailable'));
@@ -425,6 +434,7 @@ export function useMediaComposerController({
     setFailure(null);
     try {
       await stop();
+      if (!voiceIsActive() || !controlIsCurrent(voiceControl)) return;
       if (clipNow.current?.owner !== owner || hasPendingVoiceTrim(trimNow.current, owner.session))
         throw new Error(t('media.voiceRecordingUnavailable'));
       const durable = durableOwners.current.get(owner);
@@ -462,14 +472,22 @@ export function useMediaComposerController({
     }
   }
   async function send() {
-    if (!controlIsCurrent(voiceControl) || !media || busyNow.current || !clip || clip.owner) return;
+    if (
+      !controlIsCurrent(voiceControl) ||
+      !voiceIsActive() ||
+      !media ||
+      busyNow.current ||
+      !clip ||
+      clip.owner
+    )
+      return;
     busyNow.current = true;
     setBusy(true);
     setFailure(null);
     const uri = clip.uri;
     try {
       await stop();
-      if (!controlIsCurrent(voiceControl)) return;
+      if (!controlIsCurrent(voiceControl) || !voiceIsActive()) return;
       await media.sendVoice({
         uri: clip.uri,
         durationMs: clip.durationMs,

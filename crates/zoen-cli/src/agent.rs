@@ -36,6 +36,7 @@ mod providers;
 use providers::{brain, gate};
 mod source_recovery;
 mod turn;
+#[cfg(test)]
 use turn::turn;
 mod messages;
 use messages::{
@@ -363,7 +364,7 @@ pub async fn host(
             let continuations = e.approved_tool_sources(&s.id);
             for source in continuations {
                 if let Some(index) = tl.iter().position(|entry| entry.id == source) {
-                    if turn(e, &cx, &def, &s.id, &tl[..index], &tl[index]).await
+                    if turn::admitted(e, &cx, &def, &s.id, &tl[..index], &tl[index]).await
                         == turn::Outcome::Deferred
                     {
                         continue 'spaces;
@@ -382,6 +383,9 @@ pub async fn host(
                 .map(|t| t.seq)
                 .collect();
             if pending.len() > BACKLOG_CAP {
+                if !turn::current(e, &cx, &def).await {
+                    continue 'spaces;
+                }
                 let skip_to = pending[pending.len() - BACKLOG_CAP - 1];
                 say(format_args!(
                     "skipping {} old messages",
@@ -399,7 +403,7 @@ pub async fn host(
                     continue;
                 }
                 connection.activity(Instant::now());
-                let handled = turn(e, &cx, &def, &s.id, &tl[..i], t).await;
+                let handled = turn::admitted(e, &cx, &def, &s.id, &tl[..i], t).await;
                 if handled == turn::Outcome::Deferred {
                     caught_up = false;
                     break; // no attempt, advance or read watermark before admission
