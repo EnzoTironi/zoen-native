@@ -97,6 +97,16 @@ export async function communityUi(
       room.members = room.members.filter((member) => member.id !== peer);
       return structuredClone(current);
     }
+    if (command.op === 'set_member_role_reviewed') {
+      current = {
+        ...current,
+        state: 'Updating',
+        can_remove: false,
+        role_options: [],
+        pending_role: command.role,
+      };
+      return structuredClone(current);
+    }
     throw Error('Unexpected community command ' + command.op);
   };
   const store = new ClientStore(driver);
@@ -175,6 +185,7 @@ export async function communityUi(
         BottomSheet: 'BottomSheet',
         RNHostView: 'RNHostView',
       };
+    if (name === '@expo/ui/community/menu') return { MenuView: 'MenuView' };
     if (name === 'react-native-safe-area-context')
       return { useSafeAreaInsets: () => ({ top: 50, bottom: 20, left: 0, right: 0 }) };
     if (name === 'expo-router')
@@ -222,6 +233,7 @@ export async function communityUi(
       };
     if (name.endsWith('/components/primitives'))
       return {
+        Icon: 'Icon',
         EmptyState: 'EmptyState',
         Loading: 'Loading',
         IconButton: 'IconButton',

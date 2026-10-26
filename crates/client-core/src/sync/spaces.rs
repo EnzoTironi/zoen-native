@@ -122,6 +122,22 @@ impl Engine {
 
     pub fn add_member(&mut self, space: &str, who: &str, role: Role) -> R<()> {
         let me = self.me_id()?;
+        let members = self.receipt_members(space)?;
+        let actual = |identity: &str| {
+            members
+                .iter()
+                .find(|(id, _)| id == identity)
+                .map(|(_, role)| *role)
+        };
+        if who == me || !actual(&me).is_some_and(|actor| actor.can_assign(actual(who), role)) {
+            return Err(CoreError::Forbidden {
+                reason: t(
+                    "este papel não pode ser atribuído ao participante",
+                    "this member role cannot be assigned",
+                ),
+            });
+        }
+        drop(members);
         self.append(
             space,
             &me,

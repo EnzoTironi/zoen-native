@@ -118,10 +118,15 @@ pub fn admit(env: &Envelope, f: &Facts) -> Result<Effect, Reject> {
                     by_invite: true,
                 }
             } else {
-                match f.author_role {
-                    Some(Role::Owner) => {}
-                    Some(Role::Admin) if role != Role::Owner => {}
-                    _ => return Err(Reject::no("only owners and admins add members")),
+                if !f
+                    .author_role
+                    .is_some_and(|actor| actor.can_assign(f.target_role, role))
+                {
+                    return Err(Reject::no(if f.target_role == Some(Role::Owner) {
+                        "owner role is protected"
+                    } else {
+                        "only owners and admins add members"
+                    }));
                 }
                 if f.kind == Some(SpaceKind::Direct)
                     && f.member_count >= 2

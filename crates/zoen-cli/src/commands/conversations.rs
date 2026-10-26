@@ -1,5 +1,6 @@
 //! Conversations commands use the same already-open Client.
 use super::*;
+mod member_role;
 mod read;
 
 pub(super) async fn run(cmd: String, cli: &mut Cli, context: Context) {
@@ -8,9 +9,15 @@ pub(super) async fn run(cmd: String, cli: &mut Cli, context: Context) {
         timeout,
         offline,
         for_secs,
+        sync_budget,
         ..
     } = context;
     match cmd.as_str() {
+        "member-role" => {
+            member_role::run(&e, cli, offline, sync_budget.deadline())
+                .await
+                .unwrap_or_else(|error| die(error));
+        }
         "whoami" | "status" => {
             let a = e.account().unwrap_or_else(|| die("no account"));
             let c = e.connection();

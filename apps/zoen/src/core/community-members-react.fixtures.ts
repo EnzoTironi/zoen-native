@@ -21,6 +21,11 @@ const compiled = transformSync(readFileSync(source, 'utf8'), {
 
 type Action = { onPress(): void; disabled?: boolean };
 type Sheet = { isPresented: boolean; onDismiss(): void; children?: React.ReactNode };
+type Menu = {
+  actions: { id: string; title: string; attributes: { disabled: boolean } }[];
+  onPressAction(event: { nativeEvent: { event: string } }): void;
+  children?: React.ReactNode;
+};
 
 /** Real React/Compiler + real external-store session. Native controls are ports;
  * invoking a captured callback does not prove native hit testing or touch delivery. */
@@ -31,6 +36,7 @@ export function memberReactFixture() {
   const routes: unknown[] = [],
     confirmations: unknown[] = [];
   let sheet: Sheet | null = null;
+  let menu: Menu | null = null;
   let answer: (options: unknown) => Promise<boolean> = async () => true;
   const useCapture = (id: string, props: Action) => {
     React.useLayoutEffect(() => {
@@ -66,12 +72,24 @@ export function memberReactFixture() {
         return props.isPresented ? children(props) : null;
       },
     },
+    '@expo/ui/community/menu': {
+      MenuView: (props: Menu) => {
+        React.useLayoutEffect(() => {
+          menu = props;
+          return () => {
+            if (menu === props) menu = null;
+          };
+        }, [props]);
+        return children(props);
+      },
+    },
     'react-native': { ScrollView: children, View: children, Text: () => null },
     'expo-router': { router: { push: (route: unknown) => routes.push(structuredClone(route)) } },
     '../i18n': { t: (key: string) => key },
     '../theme': { useTheme: () => theme },
     '../components/dialogs': { useDialogs: () => ({ confirm }) },
     '../components/primitives': {
+      Icon: () => null,
       Loading: () => null,
       IconButton: (props: Action & { label: string }) => useCapture(props.label, props),
       NativeButton: (props: Action & { testID?: string; label: string }) =>
@@ -123,6 +141,10 @@ export function memberReactFixture() {
     sheet: () => {
       assert.ok(sheet);
       return sheet;
+    },
+    menu: () => {
+      assert.ok(menu);
+      return menu;
     },
     confirm(next: typeof answer) {
       answer = next;

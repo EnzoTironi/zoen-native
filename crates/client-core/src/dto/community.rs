@@ -1,6 +1,14 @@
 //! Owner-bound disposable views of the existing signed membership projection.
 use super::Persona;
 
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+pub struct MemberRoleOption {
+    pub role: String,
+    /// Binds the current actor/device/member cut and this exact desired role.
+    pub revision: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub enum MemberActionState {
@@ -37,6 +45,14 @@ pub struct SpaceMemberContext {
     pub addition_failed: bool,
     /// Permanent failure of an exact local intent on the current membership cut.
     pub removal_failed: bool,
+    /// Available reviewed transitions; an empty list grants no assignment.
+    #[serde(default)]
+    pub role_options: Vec<MemberRoleOption>,
+    /// Exact local role intent, separate from the still-confirmed role above.
+    #[serde(default)]
+    pub pending_role: Option<String>,
+    #[serde(default)]
+    pub role_change_failed: bool,
     /// A derived review fingerprint, not a stored grant or a mutation receipt.
     pub revision: String,
 }

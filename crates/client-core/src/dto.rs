@@ -97,6 +97,10 @@ pub struct SpaceSummary {
     pub title: String,
     pub kind: SpaceKindDto,
     pub privacy: PrivacyDto,
+    /// Current projected write permission, shared with the original Core writer.
+    #[serde(default)]
+    #[uniffi(default = false)]
+    pub can_write: bool,
     pub members: Vec<Persona>,
     /// Para DMs: a outra ponta (pessoa ou agente).
     pub counterpart: Option<Persona>,

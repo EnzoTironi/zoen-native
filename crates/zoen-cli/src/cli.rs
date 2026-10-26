@@ -12,6 +12,7 @@ const USAGE: &str = "usage: zoen [--home DIR] <command>\n\n\
          remove CHAT @HANDLE              take someone out (end-to-end: they read nothing after)\n\
          keys CHAT [--json]               public MLS epoch/digest/member/device IDs\n\
          members CHAT [--json]            current public identity IDs and roles\n\
+         member-role CHAT PERSON [member|reader|admin] [--json]   inspect or assign a reviewed role\n\
          send CHAT TEXT [--offline]      CHAT = @handle, title or space id\n\
          read CHAT [--json] [--peek] [--older]   --peek omits the read watermark; no --older\n\
          agent-keys | agent-init --name N --handle H --owner ID --proof JSON --definition FILE\n\

@@ -53,6 +53,7 @@ export const chat = defineFeature(
     cancel: 'Cancel',
     message: 'Message',
     noLongerAMember: 'You’re no longer a member of this chat.',
+    readOnlyChat: 'Read-only chat.',
     draftLoadFailed: 'Could not open your draft. Try again to continue safely.',
     draftSaveFailed: 'Your latest changes are still on this screen. Try saving again.',
     draftSendRejected:
@@ -261,6 +262,7 @@ export const chat = defineFeature(
     cancel: 'Cancelar',
     message: 'Mensagem',
     noLongerAMember: 'Você não faz mais parte desta conversa.',
+    readOnlyChat: 'Conversa somente leitura.',
     draftLoadFailed: 'Não foi possível abrir o rascunho. Tente novamente para continuar.',
     draftSaveFailed: 'As últimas alterações ainda estão nesta tela. Tente salvar novamente.',
     draftSendRejected:

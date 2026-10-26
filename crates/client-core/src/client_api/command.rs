@@ -332,6 +332,14 @@ pub(super) enum Command {
         expected_device_id: String,
         observed_revision: String,
     },
+    SetMemberRoleReviewed {
+        space_id: String,
+        identity_id: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+        observed_revision: String,
+        role: String,
+    },
     RemoveMember {
         space_id: String,
         identity_id: String,

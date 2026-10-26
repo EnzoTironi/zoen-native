@@ -2,7 +2,7 @@ import { t } from '../i18n/index.ts';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { Host, Button, Text as NativeText } from '@expo/ui';
 import { Image } from 'expo-image';
-import type { ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -109,12 +109,14 @@ export function NativeButton({
   );
 }
 export function Field({ label, ...props }: TextInputProps & { label: string }) {
+  const instanceId = useId();
   const { presentation: p } = useTheme();
   return (
     <View style={{ gap: 8 }}>
       <Text style={{ ...p.typography.footnote, color: p.list.section }}>{label}</Text>
       <TextInput
         {...props}
+        testID={props.testID ?? `field-${instanceId}`}
         accessibilityLabel={label}
         placeholderTextColor={p.search.placeholder}
         style={[

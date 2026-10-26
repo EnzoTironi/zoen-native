@@ -5,6 +5,7 @@
 
 mod agent_runtime;
 pub(crate) mod call_turn;
+mod member_roles;
 mod sync_completion;
 
 pub use agent_runtime::agent_id_for_root;

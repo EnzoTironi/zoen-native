@@ -1,11 +1,17 @@
 import type { ClientStore } from '../core/store';
 import type { SpaceMemberContext } from '../core/generated/SpaceMemberContext';
+import type { MemberRoleOption } from '../core/generated/MemberRoleOption';
 import { accountScope, accountScopeKey, type AccountScope } from '../core/account-scope.ts';
 
 export interface MemberActionsPort {
   scope(): AccountScope | null;
   read(member: string, owner: AccountScope): Promise<SpaceMemberContext>;
   remove(context: SpaceMemberContext, owner: AccountScope): Promise<SpaceMemberContext>;
+  setRole(
+    context: SpaceMemberContext,
+    option: MemberRoleOption,
+    owner: AccountScope,
+  ): Promise<SpaceMemberContext>;
 }
 export function createMemberActionsPort(store: ClientStore, space: string): MemberActionsPort {
   const check = (owner: AccountScope) => {
@@ -33,6 +39,18 @@ export function createMemberActionsPort(store: ClientStore, space: string): Memb
         expected_identity_id: owner.identity,
         expected_device_id: owner.device,
         observed_revision: context.revision,
+      });
+    },
+    setRole: (context, option, owner) => {
+      check(owner);
+      return store.request({
+        op: 'set_member_role_reviewed',
+        space_id: space,
+        identity_id: context.member_id,
+        expected_identity_id: owner.identity,
+        expected_device_id: owner.device,
+        observed_revision: option.revision,
+        role: option.role,
       });
     },
   };

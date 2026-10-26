@@ -27,6 +27,9 @@ export function context(member = peer): SpaceMemberContext {
     candidate: null,
     addition_failed: false,
     removal_failed: false,
+    role_options: [],
+    pending_role: null,
+    role_change_failed: false,
     revision: '1'.repeat(64),
     member: {
       id: member,
@@ -71,8 +74,23 @@ export function fixture() {
     value = { ...review, state: 'Removing', can_remove: false };
     return value;
   };
+  let roleWriter: MemberActionsPort['setRole'] = async (review, option) => {
+    value = {
+      ...review,
+      state: 'Updating',
+      can_remove: false,
+      role_options: [],
+      pending_role: option.role,
+    };
+    return value;
+  };
   const reads: { id: string; owner: AccountScope }[] = [];
   const writes: { review: SpaceMemberContext; owner: AccountScope }[] = [];
+  const roleWrites: {
+    review: SpaceMemberContext;
+    option: SpaceMemberContext['role_options'][number];
+    owner: AccountScope;
+  }[] = [];
   const port: MemberActionsPort = {
     scope: () => owner,
     read: (id, current) => {
@@ -83,6 +101,10 @@ export function fixture() {
       writes.push({ review, owner: current });
       return writer(review, current);
     },
+    setRole: (review, option, current) => {
+      roleWrites.push({ review, option, owner: current });
+      return roleWriter(review, option, current);
+    },
   };
   const session = new MemberActionsSession('sp_fixture', port);
   session.activate(scope);
@@ -91,6 +113,7 @@ export function fixture() {
     port,
     reads,
     writes,
+    roleWrites,
     scope(next: AccountScope | null) {
       owner = next;
     },
@@ -102,6 +125,9 @@ export function fixture() {
     },
     write(next: MemberActionsPort['remove']) {
       writer = next;
+    },
+    roleWrite(next: MemberActionsPort['setRole']) {
+      roleWriter = next;
     },
     async open(id = peer) {
       session.open(id);

@@ -54,7 +54,7 @@ impl Engine {
         }
     }
 
-    pub(super) fn receipt_members(&self, space: &str) -> R<Cow<'_, [(IdentityId, Role)]>> {
+    pub(crate) fn receipt_members(&self, space: &str) -> R<Cow<'_, [(IdentityId, Role)]>> {
         let pending_membership = self.net.pending.values().any(|s| s == space)
             && self.store.outbox()?.iter().any(|pending| {
                 !pending.failed
