@@ -7,6 +7,8 @@ import { telegramPresentation } from '../theme/telegram.ts';
 import * as presentation from './telegram-audio-presentation.ts';
 import * as composerMotion from './telegram-composer-motion.ts';
 import * as composerPresentation from './telegram-composer-presentation.ts';
+import { composerOwnerFixture } from './composer-owner.fixtures.ts';
+import { homeOwnerFor } from '../home/access.ts';
 
 export type Element = { type: any; props: Record<string, any> };
 export type Slot = { value?: any; deps?: unknown[]; cleanup?: () => void };
@@ -49,6 +51,7 @@ export function nodes(tree: any): Element[] {
   return [tree, ...nodes(tree.props.children)];
 }
 export function fixture(name: keyof typeof sources, dependencies: Record<string, unknown> = {}) {
+  const client = composerOwnerFixture();
   const scopes = new Map<string, Slot[]>([['root', []]]);
   let slots = scopes.get('root')!;
   let cursor = 0;
@@ -184,6 +187,8 @@ export function fixture(name: keyof typeof sources, dependencies: Record<string,
     '../core/telegram-audio-presentation': presentation,
     '../core/telegram-composer-presentation': composerPresentation,
     '../core/telegram-composer-motion': composerMotion,
+    '../core/provider': { useClient: () => client },
+    '../home/access': { homeOwnerFor },
     '../components/composer-control-surface': {
       ComposerControlSurface: 'ComposerControlSurface',
       ComposerGlyph: 'ComposerGlyph',

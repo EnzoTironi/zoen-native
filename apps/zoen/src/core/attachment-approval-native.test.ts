@@ -144,6 +144,7 @@ function fixture() {
       error: null,
     },
     field: {
+      mutationId: 'a',
       scope,
       targetFrozen: false,
       value: 'Caption a',
