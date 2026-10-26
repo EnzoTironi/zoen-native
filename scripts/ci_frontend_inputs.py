@@ -40,7 +40,7 @@ FRONTEND_CONTRACTS = {
     "miniapps/deckcraft-ui/build.py": "7c7174d17f521ba4f3d307cc21f6ef511dd54b85619383333cbf3878087b2434",
     "miniapps/deckcraft-ui/build-runtime.mjs": "6af2fd64c6a5500387e2e668943dad5caffeaed6f9b12a9edc4978de4015f36f",
     "miniapps/deckcraft-ui/build-resource-manifest.mjs": "b42a717513b924557cc5bdba395424763469b2813eede6fa1790fd18c3a30b27",
-    "crates/zoen-agentd/src/citizen/codex.rs": "43dc6b20260f9db0fd0977d389437c756835a610bac1f6784240efd8f9790eb6",
+    "crates/zoen-agentd/src/citizen/codex.rs": "4d5e32fb4677abf8e2429b7a8867c50ca7e9998dc2d073dc8e0d6e4f9def41df",
     "crates/zoen-relay/src/lib.rs": "0a85a11509ff1968e85b09abefab3b979c5e19ba797624f2fb7a42ab1deb0981",
     "Cargo.toml": "6abf6b794f912e0e95fcb66d5ea6f89a176b04a1b2b8714d1c21f40f091827bb",
     ".github/workflows/ci.yml": "ee7fe86c711c7aba549f94bbc452dec7a381e75ffd440b5ee78d95d9b055eb46",
