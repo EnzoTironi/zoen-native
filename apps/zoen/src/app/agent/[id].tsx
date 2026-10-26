@@ -11,6 +11,8 @@ import { Avatar, EmptyState, Loading, NativeButton, Surface } from '../../compon
 import { SettingsRows } from '../../components/settings-rows';
 import { useTheme } from '../../theme';
 import { useDialogs } from '../../components/dialogs';
+import { useAgentControl } from '../../agents/use-agent-control';
+import { AgentControlView } from '../../agents/agent-control-view';
 
 export default function Agent() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -20,9 +22,8 @@ export default function Agent() {
   const levels = agentTrustLevels();
   const { data: agent, error, retry } = useCoreQuery({ op: 'agent_profile', agent_id: id });
   const standing = useCoreQuery({ op: 'standing_decisions' });
-  const status = useCoreQuery(
-    mode === 'account' && agent?.persona.is_mine ? { op: 'agent_status', agent_id: id } : null,
-  );
+  const control = useAgentControl(id, mode === 'account' && !!agent?.persona.is_mine);
+  const controlUnavailable = control.state.busy || control.state.pending !== null;
   const activity = useCoreQuery({ op: 'agent_activity', agent_id: id });
   const [previewSpace, setPreviewSpace] = useState<string | null>(null);
   const selectedSpace = previewSpace ?? agent?.spaces[0]?.space_id;
@@ -39,7 +40,7 @@ export default function Agent() {
     setMessage(null);
     try {
       await action();
-      status.retry();
+      void control.session.refresh();
       retry();
       standing.retry();
       activity.retry();
@@ -272,42 +273,13 @@ export default function Agent() {
           <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>
             {t('agents.yourAgent')}
           </Text>
-          {status.error ? (
-            <Text selectable style={{ color: colors.danger }}>
-              {status.error}
-            </Text>
-          ) : null}
-          <Text style={{ color: colors.secondary }}>
-            {status.data === 'Active'
-              ? t('agents.active')
-              : status.data === 'Paused'
-                ? t('agents.paused')
-                : status.data === 'Revoked'
-                  ? t('agents.revoked')
-                  : t('agents.checkingStatus')}
-          </Text>
+          <AgentControlView state={control.state} session={control.session} disabled={busy} />
           {process.env.EXPO_OS === 'ios' ? (
             <NativeButton
               testID="agent-definition-open"
               secondary
               label={t('agentDefinition.title')}
               onPress={() => router.push({ pathname: '/agent-definition/[id]', params: { id } })}
-            />
-          ) : null}
-          {status.data === 'Active' || status.data === 'Paused' ? (
-            <NativeButton
-              secondary
-              disabled={busy}
-              label={status.data === 'Active' ? t('agents.pauseAgent') : t('agents.resumeAgent')}
-              onPress={() => {
-                void act(() =>
-                  store.request({
-                    op: 'control_agent',
-                    agent_id: id,
-                    action: status.data === 'Active' ? 'Pause' : 'Resume',
-                  }),
-                );
-              }}
             />
           ) : null}
           <NativeButton
@@ -335,10 +307,10 @@ export default function Agent() {
               void act(() => store.request({ op: 'revoke_agent_invite', agent_id: id }));
             }}
           />
-          {status.data && status.data !== 'Revoked' ? (
+          {control.state.status && control.state.status !== 'Revoked' ? (
             <NativeButton
               secondary
-              disabled={busy}
+              disabled={busy || controlUnavailable}
               label={t('agents.revokeAgent')}
               onPress={() => {
                 void dialogs
