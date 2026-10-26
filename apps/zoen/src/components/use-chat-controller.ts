@@ -8,6 +8,7 @@ import { useDialogs } from '../components/dialogs';
 import { useKeyboardMotion } from '../components/keyboard-motion';
 import { useMessageActions } from '../components/use-message-actions';
 import { useChatNativeMetrics } from './use-chat-native-metrics';
+import { useConversationRail } from './use-conversation-rail';
 import { ConversationReveal } from '../core/conversation-reveal';
 import {
   conversationRevealContent,
@@ -47,7 +48,6 @@ export function useChatController() {
   const { top: statusBarHeight } = useSafeAreaInsets();
   const timelineTopInset = process.env.EXPO_OS === 'ios' ? 0 : statusBarHeight;
   const keyboard = useKeyboardMotion();
-  const { progress: keyboardProgress } = keyboard;
   const conversationMiniapps = cards.visible;
   const { inform } = useDialogs();
   const input = useRef<TextInputInstance>(null);
@@ -66,6 +66,12 @@ export function useChatController() {
   const composerText = editing ? editDraft : draft;
   const chat = snapshot?.conversations.find((conversation) => conversation.id === id);
   const { owner, search, searchState } = useConversationSearch(id);
+  const rail = useConversationRail(
+    `${owner}:${store.sessionEpoch}:${id}`,
+    railHeight,
+    conversationMiniapps.length > 0,
+  );
+  const { visibleHeight: railVisibleHeight } = rail;
   useMessageAudioFocus(id, `${owner}:${store.sessionEpoch}`);
   const [searchRead, setSearchRead] = useState<{
     search: ConversationSearch;
@@ -203,7 +209,7 @@ export function useChatController() {
           topObstruction:
             current.headerHeight -
             current.timelineTopInset +
-            current.railHeight * (1 - Math.min(1, Math.max(0, keyboardProgress.value))) +
+            railVisibleHeight.value +
             current.noticeHeight +
             8,
         };
@@ -227,7 +233,7 @@ export function useChatController() {
           }
         : undefined,
     });
-  }, [searchReveal, search, keyboardProgress, observeNativeMetrics]);
+  }, [searchReveal, search, railVisibleHeight, observeNativeMetrics]);
   useLayoutEffect(() => {
     revealLayout.current = {
       entries: visibleEntries,
@@ -421,7 +427,7 @@ export function useChatController() {
           viewOffset: -(
             headerHeight -
             timelineTopInset +
-            railHeight * (1 - Math.min(1, Math.max(0, keyboardProgress.value))) +
+            railVisibleHeight.value +
             noticeHeight +
             8
           ),
@@ -444,7 +450,7 @@ export function useChatController() {
     timelineTopInset,
     railHeight,
     noticeHeight,
-    keyboardProgress,
+    railVisibleHeight,
     conversationMiniapps.length,
     cards.loading,
   ]);
@@ -544,6 +550,7 @@ export function useChatController() {
     loadedSpace,
     rows,
     railHeight,
+    rail,
     Math,
     noticeHeight,
     items,

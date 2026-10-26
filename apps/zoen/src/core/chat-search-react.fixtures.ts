@@ -107,6 +107,7 @@ export async function chatSearchReactFixture(qa = false) {
       appState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
       useFocusEffect: focus.exports.useFocusEffect as (callback: () => void | (() => void)) => void,
     }),
+    './use-conversation-rail': { useConversationRail: () => ({ visibleHeight: { value: 0 } }) },
     '../core/conversation-reveal': conversationReveal,
     '../core/conversation-reveal-content': conversationContent,
     '../core/conversation-search': conversationSearch,

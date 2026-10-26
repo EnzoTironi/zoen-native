@@ -5,6 +5,8 @@ export const conversationCards = defineFeature(
     title: 'Cards in this chat',
     manage: 'Manage cards',
     organize: 'Organize chat cards',
+    collapse: 'Collapse chat cards',
+    expand: 'Expand chat cards',
     organizeHint: 'Drag the handles to reorder your cards. Hidden cards stay available below.',
     pinned: 'Shown above messages',
     hidden: 'Hidden from the conversation',
@@ -27,6 +29,8 @@ export const conversationCards = defineFeature(
     title: 'Cards da conversa',
     manage: 'Organizar cards',
     organize: 'Organizar cards da conversa',
+    collapse: 'Recolher cards da conversa',
+    expand: 'Expandir cards da conversa',
     organizeHint:
       'Arraste as alças para organizar os cards. Os ocultos continuam disponíveis abaixo.',
     pinned: 'Acima das mensagens',

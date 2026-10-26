@@ -45,7 +45,11 @@ export function MiniappRail({
   const { colors } = useTheme();
   const [localEditing, setLocalEditing] = useState(false);
   const editing = controlledEditing ?? localEditing;
-  const setEditing = onEditingChange ?? setLocalEditing;
+  const setEditing = (next: boolean) => {
+    const accepted = onEditingChange?.(next);
+    if (accepted !== false && controlledEditing === undefined) setLocalEditing(next);
+    return accepted;
+  };
   const [pending, setPending] = useState(false);
   const scrollPort = useCardScrollPort(true);
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
