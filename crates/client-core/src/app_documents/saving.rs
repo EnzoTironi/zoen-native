@@ -82,12 +82,18 @@ impl Engine {
         if app.view.is_some() && resource != Some(app.resource_uri.as_str()) {
             return Err(stale());
         }
+        let source = if app.view.is_some() {
+            self.scene_save_source(item, expected_version, expected, scene_json, mutation_id)?
+        } else {
+            None
+        };
         if app.view.is_some()
             && self
                 .identities
                 .get(&me)
                 .is_some_and(|i| i.kind == types::IdentityKind::Agent)
             && self.trust(&me, &space) < TrustLevel::Act
+            && source.is_none()
         {
             return Err(unavailable());
         }
@@ -112,7 +118,7 @@ impl Engine {
                     }
                 }
                 let key = e.file_key(Some(item))?;
-                let file = e.file_doc(
+                let mut file = e.file_doc(
                     &space,
                     &key,
                     "drawing.excalidraw",
@@ -122,6 +128,7 @@ impl Engine {
                     None,
                     &prior,
                 )?;
+                file.app_origin = current.app_origin.clone();
                 e.store
                     .set_meta(&format!("file_key:{item}"), &hex::encode(key))?;
                 let mut compact: Value =
@@ -148,6 +155,7 @@ impl Engine {
                 fingerprint,
                 version,
                 sha256: new_hash.clone(),
+                source,
             });
             if receipts.len() > MAX_RECEIPTS {
                 receipts.remove(0);

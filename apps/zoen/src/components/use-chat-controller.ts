@@ -136,7 +136,12 @@ export function useChatController() {
   });
   const searchReveal = useMemo(() => new ConversationReveal(`${id}:${owner}`), [id, owner]);
   const metricsFocused = useIsFocused();
-  const { navigationMetrics, observe: observeNativeMetrics } = useChatNativeMetrics({
+  const {
+    navigationMetrics,
+    observe: observeNativeMetrics,
+    onComposerLayout,
+    onInsetRequested,
+  } = useChatNativeMetrics({
     reveal: searchReveal,
     focused: metricsFocused,
     searchActive: searchState.active,
@@ -509,6 +514,8 @@ export function useChatController() {
     initialEnd,
     searchReveal,
     navigationMetrics,
+    onComposerLayout,
+    onInsetRequested,
     onSearchContentLayout,
     normalDraft,
     editing,

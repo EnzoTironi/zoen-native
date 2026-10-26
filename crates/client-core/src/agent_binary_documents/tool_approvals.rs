@@ -65,6 +65,9 @@ pub(super) struct ApprovalBinding {
 }
 
 fn parsed(p: &ToolProposal) -> R<(Value, Option<Value>)> {
+    if p.schema == crate::agent_scenes::SCHEMA {
+        return crate::agent_scenes::parsed(p);
+    }
     if p.schema == 5 {
         return crate::agent_sites::parsed(p);
     }
@@ -184,6 +187,8 @@ pub(crate) fn mutation_id(p: &ToolProposal, intent: &str) -> String {
 pub(crate) fn operation(tool: &str) -> String {
     use crate::i18n::t;
     match tool {
+        "read_scene" => t("Ler desenho", "Read drawing"),
+        "replace_scene" => t("Editar desenho", "Edit drawing"),
         "create_site" => t("Criar site", "Create Site"),
         "read_site" => t("Ler site", "Read Site"),
         "replace_site_source" => t("Atualizar site", "Update Site"),
@@ -217,6 +222,12 @@ pub(crate) fn review_detail(p: &ToolProposal, title: &str) -> String {
     let args: Value = serde_json::from_str(&p.arguments_json).unwrap_or(Value::Null);
     let heading = format!("{} · v{}", title, p.version);
     match p.canonical_tool.as_str() {
+        "read_scene" => heading,
+        "replace_scene" => format!(
+            "{}\n{}",
+            heading,
+            args["sceneJson"].as_str().unwrap_or_default()
+        ),
         "read_page" => heading,
         "replace_page_block" => format!(
             "{}\n{}\n{}\n{}\n{}",

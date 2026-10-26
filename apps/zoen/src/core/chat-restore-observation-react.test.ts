@@ -17,6 +17,10 @@ test('actual Expo chat observes normal→search→restored modes under the same 
       },
     });
     assert.ok(packet('1').binding);
+    await f.act(() => {
+      f.current().onComposerLayout(279.333);
+      f.current().onInsetRequested({ top: 0, bottom: 279.333 });
+    });
     await f.act(() => f.current().navigationMetrics.changed(packet('1')));
     assert.equal(
       f.restoreRecords.length,
@@ -24,13 +28,25 @@ test('actual Expo chat observes normal→search→restored modes under the same 
       'normal owned conversation must be observed before search',
     );
     await f.act(() => f.current().search.open());
+    await f.act(() => {
+      f.current().onComposerLayout(91.333);
+      f.current().onInsetRequested({ top: 0, bottom: 393.333 });
+    });
     await f.act(() => f.current().navigationMetrics.changed(packet('2')));
     await f.act(() => f.current().search.close());
+    await f.act(() => {
+      f.current().onComposerLayout(279.333);
+      f.current().onInsetRequested({ top: 0, bottom: 581.333 });
+    });
     await f.act(() => f.current().navigationMetrics.changed(packet('3')));
     assert.deepEqual(
       f.restoreRecords.map((r) => JSON.parse(r.slice('[ZoenRestore] '.length)).phase),
       ['before-search', 'search', 'restored'],
     );
+    const restored = JSON.parse(f.restoreRecords[2]!.slice('[ZoenRestore] '.length));
+    assert.deepEqual(restored.composer, { height: 279.333 });
+    assert.deepEqual(restored.requestedInset, { top: 0, bottom: 581.333 });
+    assert.deepEqual(restored.native, packet('3').geometry);
     const old = f.current().navigationMetrics.changed;
     f.snapshot.conversations[0]!.members = [];
     await f.act(() => f.store.refresh());

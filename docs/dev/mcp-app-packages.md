@@ -148,9 +148,44 @@ File. Missing chunks remain unavailable until received; missing bytes alone must
 not quarantine an otherwise valid authenticated event. Copying to another Space
 rekeys both the UI and document through the existing file authority.
 
-The first agent edit follows the existing Excalidraw authorization contract.
-Suggest-only access is not an approval implementation; it must refuse the write.
-Explicitly authorized Act access can edit the same document. Generic package
-creation by an agent, suggested-edit approval, additional document formats,
+## Request and approve an agent edit
+
+The owned Excalidraw tool family uses the existing signed request and approval
+pipeline, with proposal schema 6. Its closed commands are `read_scene` and
+`replace_scene`; the latter proposes a complete scene of at most 32 KiB against
+the version, SHA and renderer pin returned by the read. It never updates the
+renderer or admits arbitrary guest tools.
+
+The normal CLI agent host discovers only the App authorized by the signed source.
+An offered tool, a successful read or a model's `requires_review: false` does not
+authorize a write. The native gate stages the exact held call as an ordinary
+Request. The existing RequestCard and `decide_tool_request` record the owner's
+`ApproveOnce` decision; Suggest access remains Suggest. The signed review detail
+contains the frozen proposed scene, and cannot describe different proposed bytes.
+This first review is textual; a visual before/after comparison remains open.
+
+Execution rechecks the owner/device, source, membership, writer rights, App grant,
+renderer pin and document base. An approved effect uses the same App document and
+durable mutation receipt. Retry and cold continuation recover the accepted result
+without a second version or effect. An expired review needs a current renewed
+review; an older predecessor cannot shadow its approved successor.
+
+The Core/CLI tests use real clients, signatures and the ordinary host with a
+controlled model. They do not prove a real provider or native approval journey.
+The earlier native632 build covers the preceding manual-editor contract and does
+not contain this schema-6 rollout. Clients/runtime must be upgraded together;
+older clients' handling of these requests remains unqualified.
+
+For a real-provider run, use the normal
+[`agent-host --source`](agent-source-hosting.md) selector with the exact new signed
+edit-request message, never the App card or an unrelated backlog entry. Scene
+commands execute in Core and require no binary editor worker. Omit all optional
+binary-worker triplets and their cache directory from that process configuration;
+configured workers otherwise initialize and compile their WASM at startup, even
+when the selected source only needs a drawing. This does not skip provider, Gate,
+permission or approval configuration. Do not start the unrestricted host to test
+one App when its retained profile contains older unrelated work.
+
+Generic package creation by an agent, additional document formats, visual review,
 remote-tool credentials, distribution/registry and independent deployment remain
 separate acceptance work under #180.

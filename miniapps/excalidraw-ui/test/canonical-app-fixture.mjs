@@ -43,6 +43,8 @@ const scene = (text) =>
     files: {},
   });
 const graphics = `import React,{useEffect} from 'react';
+export const CaptureUpdateAction={NEVER:"NEVER"};
+export const restore=(data)=>data;
 export const serializeAsJSON=(elements,appState,files)=>JSON.stringify({type:'excalidraw',version:2,elements,appState:{viewBackgroundColor:appState.viewBackgroundColor}});
 export function Excalidraw(props){
  window.qaProps=props;
@@ -51,7 +53,7 @@ export function Excalidraw(props){
  const change=()=>window.qaProps.onChange(current().elements,{...current().appState,viewModeEnabled:window.qaProps.viewModeEnabled},current().files);
  window.qaAcknowledge=change;
  window.qaEdit=(text)=>{if(window.qaProps.viewModeEnabled)return false;window.qaScene={...current(),elements:[{id:'text',type:'text',text}]};change();return true;};
- useEffect(()=>{props.excalidrawAPI({getSceneElements:()=>current().elements,getAppState:()=>({...current().appState,viewModeEnabled:window.qaProps.viewModeEnabled}),getFiles:()=>current().files});change();window.qaCanvasReady=true;},[]);
+ useEffect(()=>{props.excalidrawAPI({getSceneElements:()=>current().elements,getAppState:()=>({...current().appState,viewModeEnabled:window.qaProps.viewModeEnabled}),getFiles:()=>current().files,addFiles:(files)=>{window.qaScene={...current(),files:{...current().files,...Object.fromEntries(files.map(f=>[f.id,f]))}};},updateScene:(scene)=>{window.qaScene={...current(),elements:scene.elements,appState:scene.appState};if(!window.qaHoldApply)change();}});change();window.qaCanvasReady=true;},[]);
  useEffect(()=>{if(!window.qaHoldFreeze)change();},[props.viewModeEnabled]);
  return React.createElement('div',{'data-qa-canvas':props.viewModeEnabled?'readonly':'editable'});
 }`;
@@ -72,7 +74,7 @@ const result = await build({
     {
       name: "graphics-only",
       setup(p) {
-        p.onLoad({ filter: /src\/canonical-app\.tsx$/ }, async ({ path }) => {
+        p.onLoad({ filter: /src\/canonical-(?:app|canvas|serialize)\.tsx?$/ }, async ({ path }) => {
           let contents = await readFile(path, "utf8");
           if (process.env.ZOEN_CANONICAL_NEGATIVE === "normal-flush")
             contents = contents.replace("if (action.current) return;", "");
@@ -92,6 +94,15 @@ const result = await build({
               "await saves.pause();",
             );
           return { contents, loader: "tsx" };
+        });
+        p.onLoad({ filter: /src\/canonical-application\.ts$/ }, async ({ path }) => {
+          let contents = await readFile(path, "utf8");
+          if (process.env.ZOEN_CANONICAL_NEGATIVE === "refresh-apply-ack")
+            contents = contents.replace(
+              "await new Promise<void>((resolve, reject) => {",
+              "await new Promise<void>((resolve, reject) => { queueMicrotask(resolve);",
+            );
+          return { contents, loader: "ts" };
         });
         p.onResolve({ filter: /^@excalidraw\/excalidraw$/ }, () => ({
           path: "graphics",
@@ -114,7 +125,9 @@ async function fixture(initial = scene("initial")) {
     deadlines = new Map();
   let commitFailure = false,
     appendGate = null;
-  const bytes = sceneBytes(initial);
+  let bytes = sceneBytes(initial),
+    version = 1;
+  let nativeCall = null;
   const app = {
     getHostContext: () => ({ locale: "en" }),
     updateModelContext: async (value) => {
@@ -123,10 +136,13 @@ async function fixture(initial = scene("initial")) {
     },
     async callServerTool({ name, arguments: a }) {
       calls.push({ name, args: a });
+      if (nativeCall) return nativeCall(name, a);
       let value;
       if (name === "app_scene_read")
         value = {
           transferId: "read",
+          version,
+          currentVersion: version,
           bytes: bytes.length,
           sha256: sceneHash(bytes),
           chunkBytes: CHUNK_BYTES,
@@ -202,6 +218,13 @@ async function fixture(initial = scene("initial")) {
     failures,
     statuses,
     wait,
+    setNativeCall: (call) => {
+      nativeCall = call;
+    },
+    setReadScene: (json, nextVersion = 2) => {
+      bytes = sceneBytes(json);
+      version = nextVersion;
+    },
     setCommitFailure: (v) => {
       commitFailure = v;
     },
@@ -234,6 +257,5 @@ async function fixture(initial = scene("initial")) {
     },
   };
 }
-
 
 export { fixture, completedNativeImage, pendingNativeImage, tick, held, scene, jpeg };

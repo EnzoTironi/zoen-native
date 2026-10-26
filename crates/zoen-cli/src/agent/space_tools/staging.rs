@@ -71,6 +71,13 @@ impl SpaceTools<'_> {
             self.check_selection()?;
             return result;
         }
+        if self.scene_items.contains(item) && client_core::agent_scenes::tools::recognizes(tool) {
+            let result = self
+                .stage_scene(item, tool, ask)
+                .and_then(|dto| self.register_staged(dto, &prior));
+            self.check_selection()?;
+            return result;
+        }
         if !self.deckcraft_items.contains(item) || !crate::deckcraft::recognizes(tool) {
             return Err("This tool has no supported canonical approval shape".into());
         }

@@ -22,6 +22,9 @@ export class ConversationRestoreObservation {
   private sequence = -1n;
   private searched = false;
   private last = '';
+  private composerHeight: number | null = null;
+  private requestedInset: { top: number; bottom: number } | null = null;
+  private revision = 0;
   private counts = { 'before-search': 0, search: 0, restored: 0 };
   private readonly binding: string;
   private readonly activation: number;
@@ -39,6 +42,41 @@ export class ConversationRestoreObservation {
   }
   retire = () => {
     this.live = false;
+  };
+  composerLayout = (height: number): boolean => {
+    try {
+      if (
+        !this.live ||
+        !this.port?.current() ||
+        !Number.isFinite(height) ||
+        height <= 0 ||
+        height === this.composerHeight
+      )
+        return false;
+      this.composerHeight = height;
+      this.revision++;
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  insetRequested = ({ top, bottom }: { top: number; bottom: number }): boolean => {
+    try {
+      if (
+        !this.live ||
+        !this.port?.current() ||
+        ![top, bottom].every(Number.isFinite) ||
+        top < 0 ||
+        bottom < 0 ||
+        (top === this.requestedInset?.top && bottom === this.requestedInset.bottom)
+      )
+        return false;
+      this.requestedInset = { top, bottom };
+      this.revision++;
+      return true;
+    } catch {
+      return false;
+    }
   };
   receive = (packet: ConversationNativeMetrics) => {
     try {
@@ -92,6 +130,10 @@ export class ConversationRestoreObservation {
       reply: c.reply,
       editing: c.editing,
       keyboard: { height: c.keyboardHeight, progress: c.keyboardProgress },
+      // JS layout and the SDK callback describe desired reservation, not a
+      // UIKit acknowledgement. Keep them separate from the bound native facts.
+      composer: { height: this.composerHeight },
+      requestedInset: this.requestedInset ? { ...this.requestedInset } : null,
       native: {
         contentOffset: { y: g.contentOffset.y },
         contentSize: { height: g.contentSize.height },
@@ -119,9 +161,15 @@ export class ConversationRestoreObservation {
     }
   }
   async sample(read: (binding: string) => Promise<ConversationNativeMetrics | null>) {
-    if (!this.live || !this.port?.current()) return;
     try {
+      if (!this.live || !this.port?.current()) return;
+      const revision = ++this.revision;
+      const searching = this.port.context().searchActive;
+      this.searched ||= searching;
       const packet = await read(this.binding);
+      // A read captured before a phase or composer change cannot describe the
+      // restored layout. Real later native notifications remain observable.
+      if (revision !== this.revision || searching !== this.port?.context().searchActive) return;
       if (packet) this.receive(packet);
     } catch {
       /* A missing native view is an unavailable observation, not a scroll failure. */

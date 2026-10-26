@@ -233,8 +233,8 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
           onDocumentDiscard={discardDocument}
         />
         {!historical &&
-        isBinaryEditorId(spec.id) &&
-        binaryEditorFormat(spec.id).liveReview &&
+        ((isBinaryEditorId(spec.id) && binaryEditorFormat(spec.id).liveReview) ||
+          (spec.id === 'excalidraw' && document?.agentDocument?.kind === 'owned-scene')) &&
         document?.observedHead ? (
           <EditorAgentAccess itemId={item.id} spaceId={item.space_id} document={document} />
         ) : null}

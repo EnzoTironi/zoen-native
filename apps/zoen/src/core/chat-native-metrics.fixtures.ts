@@ -1,31 +1,39 @@
+import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
-import { build } from 'esbuild';
 import * as React from 'react';
 import { ConversationRestoreObservation } from './conversation-restore-observation.ts';
 import type { useChatNativeMetrics } from '../components/use-chat-native-metrics.ts';
 
-const output = await build({
-  stdin: {
-    contents: readFileSync(
-      new URL('../components/use-chat-native-metrics.ts', import.meta.url),
-      'utf8',
-    ),
-    loader: 'ts',
-  },
-  bundle: true,
-  platform: 'node',
-  format: 'cjs',
-  write: false,
-  plugins: [
-    {
-      name: 'real-chat-metrics-hook',
-      setup(b) {
-        b.onResolve({ filter: /./ }, ({ path }) => ({ path, external: true }));
-      },
-    },
-  ],
-});
+const require = createRequire(import.meta.url);
+const file = new URL('../components/use-chat-native-metrics.ts', import.meta.url);
+const { transformSync } = require('@babel/core');
+const compiled = new Map<boolean, string>();
+function compiledHook(qa: boolean) {
+  const cached = compiled.get(qa);
+  if (cached) return cached;
+  // Expo inlines public flags at build time. Qualify both actual build variants,
+  // rather than changing the VM environment after transformation.
+  const previous = process.env.EXPO_PUBLIC_ZOEN_REVEAL_QA;
+  process.env.EXPO_PUBLIC_ZOEN_REVEAL_QA = qa ? '1' : '0';
+  try {
+    const output = transformSync(readFileSync(file, 'utf8'), {
+      filename: file.pathname,
+      babelrc: false,
+      configFile: false,
+      presets: [['babel-preset-expo', { jsxRuntime: 'automatic' }]],
+      plugins: [['babel-plugin-react-compiler', { target: '19' }]],
+      caller: { name: 'metro', platform: 'ios', isDev: false, supportsStaticESM: false },
+    }).code as string;
+    assert.ok(output.includes('react/compiler-runtime'), 'the real metrics hook must be compiled');
+    compiled.set(qa, output);
+    return output;
+  } finally {
+    if (previous === undefined) delete process.env.EXPO_PUBLIC_ZOEN_REVEAL_QA;
+    else process.env.EXPO_PUBLIC_ZOEN_REVEAL_QA = previous;
+  }
+}
 
 /** Actual compiled hook; platform lifecycle/native samples are explicit ports. */
 export function chatNativeMetricsModule(options: {
@@ -39,13 +47,15 @@ export function chatNativeMetricsModule(options: {
   emit?: (line: string) => void;
 }) {
   const module = { exports: {} as { useChatNativeMetrics: typeof useChatNativeMetrics } };
-  runInNewContext(output.outputFiles[0]!.text, {
+  runInNewContext(compiledHook(!!options.qa), {
     module,
     exports: module.exports,
     process: { env: { EXPO_PUBLIC_ZOEN_REVEAL_QA: options.qa ? '1' : undefined } },
     console: { info: options.emit ?? (() => {}) },
     require(name: string) {
       if (name === 'react') return React;
+      if (name === 'react/compiler-runtime' || name.startsWith('@babel/runtime/helpers/'))
+        return require(name);
       if (name === 'expo-router') return { useFocusEffect: options.useFocusEffect };
       if (name === 'react-native') return { AppState: options.appState };
       if (name === '../core/conversation-restore-observation')

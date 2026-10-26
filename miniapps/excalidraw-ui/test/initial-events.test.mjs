@@ -197,6 +197,8 @@ async function fixture({
             ? {
                 structuredContent: {
                   transferId: "read",
+                  version: 1,
+                  currentVersion: 1,
                   bytes: sceneBytes.length,
                   sha256: sceneHash,
                   chunkBytes: 196608,

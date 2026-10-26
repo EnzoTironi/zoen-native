@@ -110,6 +110,7 @@ impl Engine {
                 fingerprint,
                 version: result.version,
                 sha256: result.sha256.clone(),
+                source: None,
             });
             if receipts.len() > crate::app_documents::MAX_RECEIPTS {
                 receipts.remove(0);

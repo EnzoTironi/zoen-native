@@ -21,6 +21,7 @@ import { editorAgentMembers, type AgentMemberMode } from './editor-agent-members
 import { telegramPresentation } from '../theme/telegram.ts';
 import { t } from '../i18n/index.ts';
 import type { ItemDetail, TimelineEntry } from './types';
+import type { MiniappDocumentController } from '../miniapps/document-controller';
 import type { AgentRequestDto } from './generated/AgentRequestDto';
 
 const require = createRequire(import.meta.url),
@@ -42,7 +43,9 @@ function compile(path: string) {
 }
 /** Real compiled screen/sheet + React/Store + real session/port; native controls
  * and Core are explicit ports, not a claim of iPhone presentation or AI execution. */
-export async function editorAgentReactFixture() {
+export async function editorAgentReactFixture(
+  options: { ownedScene?: boolean; ready?: boolean } = {},
+) {
   const root = createReactTestRoot(),
     driver = new Driver(),
     snapshot = draftSession();
@@ -58,10 +61,10 @@ export async function editorAgentReactFixture() {
     space_title: 'Conversation',
     title: 'My document',
     version: 1,
-    app: { app_id: 'wordcraft' },
+    app: { app_id: options.ownedScene ? 'excalidraw' : 'wordcraft' },
   } as ItemDetail;
   const spec = {
-    id: 'wordcraft',
+    id: options.ownedScene ? 'excalidraw' : 'wordcraft',
     has_view: true,
     tools: [],
     resource_uri: 'ui://zoen/wordcraft/index.html',
@@ -76,8 +79,27 @@ export async function editorAgentReactFixture() {
   let editConflictKind: 'MissingOwnedAgent' | 'WaitingForMls' | 'Changed' = 'Changed';
   let remoteEntries: TimelineEntry[] = [],
     remoteRequests: AgentRequestDto[] = [];
-  const document = {
-    observedHead: async () => ({ itemId, version: 1, sha256: 'ab'.repeat(32) }),
+  let sceneReady = options.ready !== false;
+  const sceneListeners = new Set<() => void>();
+  const resourceUri = `ui://zoen/package/file/1/${'ef'.repeat(32)}`;
+  let sceneVersion = 1,
+    sceneSha = 'ab'.repeat(32);
+  const document: MiniappDocumentController = {
+    ...(options.ownedScene
+      ? {
+          agentDocument: { kind: 'owned-scene', resourceUri } as const,
+          agentReadiness: {
+            getSnapshot: () => sceneReady,
+            subscribe: (listener: () => void) => {
+              sceneListeners.add(listener);
+              return () => {
+                sceneListeners.delete(listener);
+              };
+            },
+          },
+        }
+      : {}),
+    observedHead: async () => ({ itemId, version: sceneVersion, sha256: sceneSha }),
     flush: async (options?: unknown) => {
       assert.equal(options, undefined);
       flushes++;
@@ -96,6 +118,15 @@ export async function editorAgentReactFixture() {
         return { entries: remoteEntries, before: null, has_more: false };
       case 'thread':
         return remoteEntries;
+      case 'app_document_read_pinned':
+        assert.equal(command.expected_resource_uri, resourceUri);
+        return {
+          item_id: itemId,
+          version: sceneVersion,
+          current_version: sceneVersion,
+          sha256: sceneSha,
+          scene_json: '{}',
+        };
       case 'app_binary_read':
         return {
           item_id: itemId,
@@ -372,6 +403,12 @@ export async function editorAgentReactFixture() {
   });
   return {
     store,
+    sceneReady(ready: boolean, version = sceneVersion, sha256 = sceneSha) {
+      sceneVersion = version;
+      sceneSha = sha256;
+      sceneReady = ready;
+      for (const listener of sceneListeners) listener();
+    },
     snapshot,
     calls,
     routes,

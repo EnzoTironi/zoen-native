@@ -32,6 +32,8 @@ pub(crate) struct Receipt {
     pub(crate) fingerprint: String,
     pub(crate) version: u32,
     pub(crate) sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) source: Option<crate::agent_scenes::Source>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -162,6 +164,7 @@ impl Engine {
                     || !valid_hash(&r.fingerprint)
                     || !valid_hash(&r.sha256)
                     || r.version == 0
+                    || r.source.as_ref().is_some_and(|source| !source.valid())
             })
         {
             return Err(storage());

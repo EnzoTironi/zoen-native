@@ -49,6 +49,9 @@ mod owner_policy;
 #[cfg(test)]
 mod page_tool_tests;
 mod page_tools;
+#[cfg(test)]
+mod scene_tool_tests;
+mod scene_tools;
 #[path = "agent/site_tools.rs"]
 mod site_tools;
 mod space_tools;
@@ -57,6 +60,7 @@ mod test_support;
 mod tool_execution;
 #[cfg(test)]
 pub(crate) use test_support::{exercise_deckcraft_dispatch, exercise_deckcraft_operation};
+use tool_execution::CanonicalToolAdmission;
 
 mod source_mode;
 mod startup;
@@ -492,11 +496,7 @@ struct SpaceTools<'a> {
     deckcraft_items: Vec<String>,
     selection: Option<&'a source_mode::Bound>,
     page_items: Vec<String>,
-}
-
-struct CanonicalToolAdmission<'a, 'b> {
-    tools: &'a SpaceTools<'b>,
-    permit: page_tools::CanonicalPermit,
+    scene_items: Vec<String>,
 }
 
 #[cfg(test)]

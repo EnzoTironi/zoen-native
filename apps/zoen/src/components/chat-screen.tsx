@@ -30,6 +30,8 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
     initialEnd,
     searchReveal,
     navigationMetrics,
+    onComposerLayout,
+    onInsetRequested,
     onSearchContentLayout,
     normalDraft,
     editing,
@@ -107,7 +109,11 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
           initialEnd.onViewportLayout(height);
           searchReveal.onLayout(height);
         }}
-        onNativeInset={searchReveal.onInset}
+        onNativeInset={(inset) => {
+          searchReveal.onInset(inset);
+          onInsetRequested(inset);
+        }}
+        onComposerLayout={onComposerLayout}
         composer={
           <>
             <MessageComposer

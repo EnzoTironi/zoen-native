@@ -34,7 +34,8 @@ pub(crate) fn request_valid(
         .find(|v| v.number == request.version)
         .is_some_and(|v| {
             matches!(&v.content, ItemContent::App(app)
-            if miniapps::binary::Format::for_id(&app.app).is_some()
+            if (miniapps::binary::Format::for_id(&app.app).is_some()
+                || (app.view.is_some() && crate::app_resources::valid(app)))
                 && app.document.as_ref().is_some_and(|f| f.sha256 == request.sha256))
         })
 }
@@ -63,7 +64,7 @@ pub(crate) fn proposal_valid(
         return true;
     };
     request_valid(state, space, text, reference)
-        && proposal.schema == 1
+        && matches!(proposal.schema, 1 | crate::agent_scenes::SCHEMA)
         && proposal.artifact == request.item_id
         && proposal.version >= request.version
         && (proposal.version != request.version || proposal.sha256 == request.sha256)
@@ -123,7 +124,8 @@ impl Engine {
         let ItemContent::App(app) = &base.content else {
             return Err(denied());
         };
-        if miniapps::binary::Format::for_id(&app.app).is_none()
+        if (miniapps::binary::Format::for_id(&app.app).is_none()
+            && !(app.view.is_some() && crate::app_resources::valid(app)))
             || app
                 .document
                 .as_ref()
@@ -144,7 +146,13 @@ impl Engine {
             if request.item_id != item {
                 return Err(denied());
             }
-            self.app_binary_scoped_head(&request, source, source_sha)?;
+            let owned_scene = matches!(&self.item_state(item)?.current().content,
+                ItemContent::App(app) if app.view.is_some() && crate::app_resources::valid(app));
+            if owned_scene {
+                self.scene_scoped_head(&request, source, source_sha, space)?;
+            } else {
+                self.app_binary_scoped_head(&request, source, source_sha)?;
+            }
         }
         Ok(())
     }

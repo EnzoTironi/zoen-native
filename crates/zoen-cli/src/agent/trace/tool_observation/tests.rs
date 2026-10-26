@@ -59,6 +59,7 @@ impl Catalog {
             deckcraft_items: vec![deck],
             selection: None,
             page_items: vec![page],
+            scene_items: vec![],
         }
     }
 }
@@ -98,6 +99,30 @@ fn default_off_and_invalid_bounds_emit_nothing_without_clamping() {
     };
     assert!(input_record(true, "space", "source", &[], &vec![step; 17], 0, &host).is_none());
     assert!(!fixture.journal.exists());
+}
+
+#[test]
+fn scene_observation_requires_native_membership_and_keeps_payloads_private() {
+    let fixture = Catalog::new();
+    let mut host = fixture.host();
+    let item = "it_synthetic_owned_scene".to_string();
+    let name = client_core::agent_scenes::tools::model_name("replace_scene", &item).unwrap();
+    host.names
+        .push((tool(&name), item.clone(), "replace_scene".into()));
+    assert!(public_kind(&host, &name).is_none());
+    host.scene_items.push(item);
+    let record = result_record(
+        true,
+        "space",
+        "source",
+        &call(&name),
+        ToolObservation::Held,
+        &host,
+    )
+    .unwrap();
+    assert_eq!(record["tool"]["kind"], "replace_scene");
+    assert_eq!(record["tool"]["artifactAlias"].as_str().unwrap().len(), 16);
+    assert!(!record.to_string().contains("PRIVATE"));
 }
 #[test]
 fn bound_offer_metadata_and_step_classes_never_disclose_payloads_or_unknown_names() {

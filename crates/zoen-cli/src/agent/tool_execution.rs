@@ -2,6 +2,11 @@
 
 use super::*;
 
+pub(super) struct CanonicalToolAdmission<'a, 'b> {
+    pub(super) tools: &'a SpaceTools<'b>,
+    pub(super) permit: page_tools::CanonicalPermit,
+}
+
 impl ApprovedToolAdmission for CanonicalToolAdmission<'_, '_> {
     fn execute(&self, ask: &ToolAsk) -> Result<ToolResult, String> {
         self.tools.check_selection()?;
@@ -24,6 +29,13 @@ impl ApprovedToolAdmission for CanonicalToolAdmission<'_, '_> {
                     .agent_page_finish_read(permit.turn())
                     .map_err(|e| e.to_string())?;
             }
+        } else if let page_tools::CanonicalPermit::Scene(permit) = &self.permit {
+            if tool == "read_scene" {
+                self.tools
+                    .e
+                    .agent_scene_finish_read(permit.turn())
+                    .map_err(|e| e.to_string())?;
+            }
         }
         let result = if matches!(
             tool,
@@ -32,6 +44,7 @@ impl ApprovedToolAdmission for CanonicalToolAdmission<'_, '_> {
                 | "read_wordcraft"
                 | "read_photocraft"
                 | "read_page"
+                | "read_scene"
         ) {
             self.tools
                 .done()
@@ -77,6 +90,9 @@ impl ToolHost for SpaceTools<'_> {
             || current
                 .page_binding(call)
                 .is_some_and(|(_, tool)| tool == "replace_page_block")
+            || current
+                .scene_binding(call)
+                .is_some_and(|(_, tool)| tool == "replace_scene")
             || current.names.iter().any(|(definition, _, tool)| {
                 definition.name == call.name && client_core::agent_app_creation::is_model_name(tool)
             })
@@ -118,6 +134,11 @@ impl SpaceTools<'_> {
         call: &ToolCall,
     ) -> Option<zoen_agentd::PublicArtifactReferences> {
         self.check_selection().ok()?;
+        if let Some((item, tool)) = self.scene_binding(call) {
+            let references = self.scene_public_references(item, tool, &call.arguments);
+            self.check_selection().ok()?;
+            return references;
+        }
         if let Some((item, tool)) = self.site_binding(call) {
             let command = client_core::agent_sites::parse(tool, &call.arguments).ok()?;
             let (artifact, version, hash) = match command {
@@ -219,6 +240,20 @@ impl SpaceTools<'_> {
         if call.name.starts_with("app_binary_") {
             return Err("Binary App transport is not a model tool".into());
         }
+        if let Some((item, tool)) = self.scene_binding(call) {
+            let result = self.scene_call(item, tool, &call.arguments);
+            self.check_selection()?;
+            if let Ok(text) = &result {
+                if !self.done().iter().any(|step| step.call == *call) {
+                    self.record(ToolStep {
+                        call: call.clone(),
+                        result: text.clone(),
+                        is_error: false,
+                    });
+                }
+            }
+            return result;
+        }
         if let Some((item, tool)) = self.page_binding(call) {
             let result = self.page_call(item, tool, &call.arguments);
             self.check_selection()?;
@@ -274,7 +309,10 @@ impl SpaceTools<'_> {
         }
         // Missing/disabled binary bindings must not fall through to the generic
         // journal cache and report success without fresh native authority.
-        if crate::deckcraft::is_model_name(&call.name) || page_tools::is_model_name(&call.name) {
+        if crate::deckcraft::is_model_name(&call.name)
+            || page_tools::is_model_name(&call.name)
+            || scene_tools::is_model_name(&call.name)
+        {
             return Err("This presentation tool is no longer offered".into());
         }
         // The same call already ran for this message (before a restart): its result, again.

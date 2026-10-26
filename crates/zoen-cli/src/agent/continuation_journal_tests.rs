@@ -45,6 +45,7 @@ fn tools<'a>(fixture: &'a crate::deckcraft::tests::Fixture, journal: &'a Path) -
         deckcraft: None,
         deckcraft_items: vec![],
         page_items: vec![],
+        scene_items: vec![],
     }
 }
 
