@@ -3,6 +3,8 @@
 mod account_controls;
 #[path = "first_account_context.rs"]
 mod first_account_context;
+#[path = "first_account_disable.rs"]
+mod first_account_disable;
 #[path = "owner_controls.rs"]
 mod owner_controls;
 use super::*;
@@ -21,11 +23,11 @@ pub(super) use provider::Provider;
 pub(super) async fn initial_account_context(
     w: &World,
     path: &Path,
-    owner: &Client,
+    owner: Arc<Client>,
     config: &config::Config,
     space: &str,
     provider: &Provider,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(Arc<Client>, String), Box<dyn std::error::Error>> {
     first_account_context::run(w, path, owner, config, space, provider).await
 }
 
@@ -110,7 +112,12 @@ fn owner_client(w: &World) -> Arc<Client> {
     client.start_sync(None).unwrap();
     client
 }
-pub(super) async fn install_policy(w: &World, config: &config::Config, runtime: &RuntimeAuthority) {
+pub(super) async fn install_policy(
+    w: &World,
+    config: &config::Config,
+    runtime: &RuntimeAuthority,
+    previous_digest: &str,
+) {
     // These are only this World's generated keys. Use the same actual owner
     // device/certificate; no SQL policy/financial authority rows are inserted.
     let vault = file_vault::FileVault {
@@ -140,8 +147,8 @@ pub(super) async fn install_policy(w: &World, config: &config::Config, runtime: 
         owner: author.identity.clone(),
         year: year.parse().unwrap(),
         month: month.parse().unwrap(),
-        version: 1,
-        previous_digest: None,
+        version: 2,
+        previous_digest: Some(previous_digest.into()),
         currency: "USD".into(),
         scale: 6,
         limit_units: 100,
@@ -150,6 +157,26 @@ pub(super) async fn install_policy(w: &World, config: &config::Config, runtime: 
         enabled: true,
         allowed_profiles: profiles,
     };
+    // The first OFF is already canonical. The next enabled policy cannot skip
+    // its version or discard its exact predecessor, even with a valid signature.
+    let mut wrong_predecessor = policy.clone();
+    wrong_predecessor.previous_digest = Some("ff".repeat(32));
+    assert_ne!(wrong_predecessor.previous_digest, policy.previous_digest);
+    let mut skipped_version = policy.clone();
+    skipped_version.version += 1;
+    for invalid in [wrong_predecessor, skipped_version] {
+        assert!(invalid.valid_shape());
+        let signed_invalid = event_log::owner_budget::sign(&author, invalid)
+            .expect("valid fixture policy must retain its certified signature");
+        assert!(event_log::owner_budget::verify(&signed_invalid));
+        assert_eq!(
+            runtime
+                .install_policy(signed_invalid)
+                .await
+                .expect_err("a valid signature cannot replace the actual policy chain"),
+            zoen_runtime::RuntimeError::InvalidPolicy
+        );
+    }
     let signed = event_log::owner_budget::sign(&author, policy).unwrap();
     let mut tampered = signed.clone();
     tampered.policy.limit_units += 1;
@@ -157,8 +184,9 @@ pub(super) async fn install_policy(w: &World, config: &config::Config, runtime: 
         runtime.install_policy(tampered).await.unwrap_err(),
         zoen_runtime::RuntimeError::InvalidPolicy
     );
-    assert_eq!(w.count("SELECT count(*) FROM runtime_policies").await, 0);
+    assert_eq!(w.count("SELECT count(*) FROM runtime_policies").await, 1);
     runtime.install_policy(signed).await.unwrap();
+    assert_eq!(w.count("SELECT count(*) FROM runtime_policies").await, 2);
 }
 async fn review(owner: &Client, space: &str, source: &str, host: &mut Host) -> AgentRequestDto {
     let deadline = Instant::now() + Duration::from_secs(60);
