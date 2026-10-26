@@ -16,7 +16,10 @@ on:
         'scripts/build-expo-*.mjs',
         'scripts/expo-artifact-scope.py',
         'scripts/expo_artifact_dependencies.py',
-        'scripts/tests/test_expo_artifact_scope.py',
+        'scripts/expo_artifact_candidate.py',
+        'scripts/ci-documentation-scope.py',
+        'scripts/ci_frontend_inputs.py',
+        'scripts/tests/test_expo_artifact_scope*.py',
         'scripts/build-android-core.sh',
         'scripts/expo-android-*.mjs',
         'scripts/expo-cargo-artifacts.mjs',
@@ -48,7 +51,10 @@ on:
         'scripts/build-expo-*.mjs',
         'scripts/expo-artifact-scope.py',
         'scripts/expo_artifact_dependencies.py',
-        'scripts/tests/test_expo_artifact_scope.py',
+        'scripts/expo_artifact_candidate.py',
+        'scripts/ci-documentation-scope.py',
+        'scripts/ci_frontend_inputs.py',
+        'scripts/tests/test_expo_artifact_scope*.py',
         'scripts/build-android-core.sh',
         'scripts/expo-android-*.mjs',
         'scripts/expo-cargo-artifacts.mjs',
@@ -78,11 +84,13 @@ jobs:
     timeout-minutes: 5
     outputs:
       run_android: ${{ steps.scope.outputs.run_android }}
+      run_android_js: ${{ steps.scope.outputs.run_android_js }}
       run_client: ${{ steps.scope.outputs.run_client }}
       run_release_web: ${{ steps.scope.outputs.run_release_web }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - name: Cargo metadata toolchain (no compilation)
@@ -90,21 +98,23 @@ jobs:
           rustup toolchain install 1.99.1 --profile minimal
           rustup default 1.99.1
       - name: Conservative artifact-scope regressions
-        run: python3 -m unittest discover -s scripts/tests -p test_expo_artifact_scope.py
+        run: python3 -m unittest discover -s scripts/tests -p 'test_expo_artifact_scope*.py'
       - name: Select existing Expo jobs from immutable inputs
         id: scope
         env:
           SCOPE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
           SCOPE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          SCOPE_CANDIDATE: ${{ github.sha }}
           SCOPE_EVENT: ${{ github.event_name }}
-        run: python3 scripts/expo-artifact-scope.py --base "$SCOPE_BASE" --head "$SCOPE_HEAD" --event "$SCOPE_EVENT"
+        run: python3 scripts/expo-artifact-scope.py --base "$SCOPE_BASE" --head "$SCOPE_HEAD" --event "$SCOPE_EVENT" --candidate "$SCOPE_CANDIDATE"
 
   android-build:
     needs: artifact-scope
-    if: ${{ !cancelled() && (needs.artifact-scope.result != 'success' || needs.artifact-scope.outputs.run_android != 'false') }}
+    if: ${{ !cancelled() && (needs.artifact-scope.result != 'success' || needs.artifact-scope.outputs.run_android != 'false' || needs.artifact-scope.outputs.run_android_js == 'true') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
+      ZOEN_ANDROID_FULL: ${{ needs.artifact-scope.result != 'success' || needs.artifact-scope.outputs.run_android != 'false' }}
       CARGO_PROFILE_DEV_DEBUG: '0'
       CARGO_INCREMENTAL: '0'
       CARGO_BUILD_JOBS: '2'
@@ -114,6 +124,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
@@ -121,39 +132,47 @@ jobs:
           cache: npm
           cache-dependency-path: apps/zoen/package-lock.json
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        if: env.ZOEN_ANDROID_FULL == 'true'
         with:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        if: env.ZOEN_ANDROID_FULL == 'true'
         with:
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
       - name: Expo Android SDK, NDK and Rust toolchain
+        if: env.ZOEN_ANDROID_FULL == 'true'
         run: |
           sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0' 'ndk;27.1.12297006'
           rustup toolchain install 1.99.1 --profile minimal --target aarch64-linux-android,x86_64-linux-android
           rustup default 1.99.1
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        if: env.ZOEN_ANDROID_FULL == 'true'
         with:
           key: expo-android-release
           # Registry downloads are reusable; this job qualifies a new owned target.
           cache-targets: false
       - uses: gradle/actions/setup-gradle@0b6dd653ba04f4f93bf581ec31e66cbd7dcb644d # v4
-      - name: Install pinned application and Android binding tools
-        run: |
-          npm ci --prefix apps/zoen
-          cargo install cargo-ndk --version 4.1.2 --locked
+        if: env.ZOEN_ANDROID_FULL == 'true'
+      - name: Install pinned application
+        run: npm ci --prefix apps/zoen
+      - name: Install pinned Android binding tool
+        if: env.ZOEN_ANDROID_FULL == 'true'
+        run: cargo install cargo-ndk --version 4.1.2 --locked
       - name: Verify Android binding source and callback contracts
         run: |
           python3 scripts/test-android-core-contract.py
           python3 scripts/test-android-uniffi-callbacks.py
       - name: Android shared Cargo source qualification fixtures
+        if: env.ZOEN_ANDROID_FULL == 'true'
         env:
           ZOEN_TEST_ANDROID_SHARED_CARGO: '1'
           ZOEN_TEST_ANDROID_ABIS: both
           CARGO_BUILD_JOBS: '1'
         run: node --test --test-concurrency=1 scripts/tests/expo-android-proxy.test.mjs scripts/tests/expo-android-orchestration.test.mjs scripts/tests/expo-android-real.test.mjs
       - name: Build shared Rust core and generate Expo Android project
+        if: env.ZOEN_ANDROID_FULL == 'true'
         run: |
           cargo fetch --locked
           # Exercise the guarded entrypoint for the actual Core and bindgen too,
@@ -166,6 +185,7 @@ jobs:
           cd apps/zoen
           node_modules/.bin/expo prebuild --platform android --no-install
       - name: Compile Expo release and native lifecycle regressions
+        if: env.ZOEN_ANDROID_FULL == 'true'
         working-directory: apps/zoen/android
         # The Expo library exposes its JVM host tests on the debug variant.
         # R8 exhausted Expo's default 2 GiB heap. The public Ubuntu runner has
@@ -176,8 +196,33 @@ jobs:
             --max-workers=2 --no-parallel \
             '-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8' \
             -PreactNativeArchitectures=arm64-v8a
+      # Keep Android platform resolution and Hermes compilation in the same
+      # required check when immutable inputs prove native artifacts unchanged.
+      - name: Bundle and verify Android JavaScript
+        if: env.ZOEN_ANDROID_FULL != 'true'
+        working-directory: apps/zoen
+        env:
+          EXPO_OFFLINE: '1'
+        run: |
+          node_modules/.bin/expo export --platform android --max-workers 2 --output-dir "$RUNNER_TEMP/zoen-android-js"
+          node - "$RUNNER_TEMP/zoen-android-js" <<'JS'
+          const fs = require('node:fs'), path = require('node:path');
+          const root = process.argv[2];
+          const metadata = JSON.parse(fs.readFileSync(path.join(root, 'metadata.json'), 'utf8'));
+          const bundle = metadata.fileMetadata?.android?.bundle;
+          if (typeof bundle !== 'string' || !fs.statSync(path.join(root, bundle)).size)
+            throw new Error('Android export must contain its compiled JavaScript bundle');
+          JS
+      - name: Retain Android JavaScript export
+        if: always() && env.ZOEN_ANDROID_FULL != 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: expo-android-js
+          path: ${{ runner.temp }}/zoen-android-js
+          if-no-files-found: warn
+          retention-days: 7
       - name: Retain Expo Android build and native test results
-        if: always()
+        if: always() && env.ZOEN_ANDROID_FULL == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: expo-android-release

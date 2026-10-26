@@ -80,7 +80,13 @@ class Repository:
         return self.commit("Rust change")
 
     def classify(self, head=None, event="pull_request", cargo=CARGO):
-        return SCOPE.classify(self.base, head or self.git("rev-parse", "HEAD"), event, cargo)
+        head = head or self.git("rev-parse", "HEAD")
+        candidate = head
+        if event == "pull_request":
+            tree = self.git("merge-tree", "--write-tree", self.base, head)
+            candidate = self.git("commit-tree", tree, "-p", self.base, "-p", head, "-m", "PR candidate")
+        self.git("checkout", "--detach", "-q", candidate)
+        return SCOPE.classify(self.base, head, event, cargo, candidate)
 
     def broken_cargo(self, mode):
         program = self.root.parent / ("cargo-" + mode)
@@ -290,10 +296,13 @@ class ScopeTests(unittest.TestCase):
 
     def test_cli_outputs_are_honest_and_failure_conditions_keep_full_jobs_selected(self):
         head = self.repo.change()
+        self.repo.classify(head)
+        candidate = self.repo.git("rev-parse", "HEAD")
         output = self.repo.root.parent / "outputs"
         summary = self.repo.root.parent / "summary"
         result = subprocess.run([sys.executable, str(SCRIPT), "--base", self.repo.base,
-                                 "--head", head, "--event", "pull_request", "--cargo", CARGO],
+                                 "--head", head, "--event", "pull_request", "--cargo", CARGO,
+                                 "--candidate", candidate],
                                 cwd=self.repo.root, capture_output=True, text=True, check=True,
                                 env={**os.environ, "GITHUB_OUTPUT": str(output), "GITHUB_STEP_SUMMARY": str(summary)})
         self.assertFalse(json.loads(result.stdout)["run_android"])
@@ -302,8 +311,9 @@ class ScopeTests(unittest.TestCase):
         self.assertIn("SKIPPED", summary.read_text())
         self.assertNotIn("PASS", summary.read_text())
         workflow = (ROOT / ".github/workflows/expo.yml").read_text()
-        for job in SCOPE.JOBS:
+        for job in ("client", "release_web"):
             self.assertIn("!cancelled() && (needs.artifact-scope.result != 'success' || needs.artifact-scope.outputs.run_" + job + " != 'false')", workflow)
+        self.assertIn("needs.artifact-scope.outputs.run_android_js == 'true'", workflow)
         self.assertIn("cargo build --locked -p zoen-relay -p zoen-cli", workflow)
 
 
