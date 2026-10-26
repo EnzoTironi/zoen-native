@@ -10,10 +10,12 @@ export function ForwardMessagePreview({
   spaceId,
   entry,
   isCurrent,
+  contentWidth,
 }: {
   spaceId: string;
   entry: TimelineEntry;
   isCurrent(): boolean;
+  contentWidth?: number;
 }) {
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
@@ -53,7 +55,7 @@ export function ForwardMessagePreview({
           text={text}
           color={colors.text}
           fontSize={17}
-          maxWidth={Math.max(1, width - 40)}
+          maxWidth={contentWidth ?? Math.max(1, width - 40)}
           selectable
           testID="forward-reviewed-text"
         />

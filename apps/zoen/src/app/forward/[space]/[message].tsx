@@ -4,9 +4,9 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { FlashList } from '@shopify/flash-list';
 import { useHeaderHeight } from 'expo-router/react-navigation';
-import { Keyboard, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Keyboard, Pressable, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ForwardMessagePreview } from '../../../components/forward-message-preview';
+import { ForwardReviewPanel } from '../../../components/forward-review-panel';
 import { useClient } from '../../../core/provider';
 import {
   ForwardMessageSession,
@@ -154,6 +154,7 @@ export default function Forward() {
       <Stack.Screen options={{ title: t('chat.forwardTo') }} />
       {!review && (
         <TextInput
+          testID="forward-search"
           accessibilityLabel={t('chat.searchChats2')}
           value={query}
           onChangeText={setQuery}
@@ -175,71 +176,27 @@ export default function Forward() {
         </Text>
       ) : null}
       {review && content ? (
-        <View
-          testID="forward-message-review"
-          style={{ flex: 1, padding: 20, paddingBottom: Math.max(20, insets.bottom), gap: 20 }}
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-            <ProfileAvatar
-              person={target?.counterpart}
-              name={target?.title ?? t('chat.chatUnavailable')}
-              color={target?.counterpart?.tint_hex}
-            />
-            <Text accessibilityRole="header" style={{ color: colors.text, fontSize: 20, flex: 1 }}>
-              {target?.title ?? t('chat.chatUnavailable')}
-            </Text>
-          </View>
-          <ScrollView
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="interactive"
-            style={{ flex: 1 }}
-            contentContainerStyle={{ gap: 8 }}
-          >
-            <Text style={{ color: colors.secondary }}>
-              {snapshot?.conversations.find((chat) => chat.id === space)?.title}
-            </Text>
-            {reviewedMessage?.author?.name ? (
-              <Text style={{ color: colors.text, fontWeight: '600' }}>
-                {reviewedMessage.author.name}
-              </Text>
-            ) : null}
-            <ForwardMessagePreview
-              key={`${space}:${reviewedMessage!.id}`}
-              spaceId={space}
-              entry={reviewedMessage!}
-              isCurrent={previewCurrent}
-            />
-          </ScrollView>
-          {review.acceptedMessageId !== null ? (
-            <Text
-              testID="forward-message-accepted"
-              accessibilityLiveRegion="polite"
-              style={{ color: colors.secondary }}
-            >
-              {t('chat.alreadyForwarded')}
-            </Text>
-          ) : null}
-          <NativeButton
-            testID="forward-message-send"
-            label={t(review.acceptedMessageId !== null ? 'chat.forwardAgain' : 'chat.send')}
-            disabled={busy || (review.acceptedMessageId === null && target?.can_write !== true)}
-            onPress={() => {
-              if (review.acceptedMessageId !== null) void session.cancelReview();
-              else void session.confirm(review);
-            }}
-          />
-          <NativeButton
-            testID="forward-message-cancel"
-            label={t('common.cancel')}
-            secondary
-            disabled={busy}
-            onPress={() => {
-              previewOwner.current = null;
-              if (review.acceptedMessageId !== null) router.back();
-              else void session.cancelReview();
-            }}
-          />
-        </View>
+        <ForwardReviewPanel
+          spaceId={space}
+          entry={reviewedMessage!}
+          recipient={target?.title ?? t('chat.chatUnavailable')}
+          counterpart={target?.counterpart}
+          sourceTitle={snapshot?.conversations.find((chat) => chat.id === space)?.title}
+          accepted={review.acceptedMessageId !== null}
+          busy={busy}
+          canSend={target?.can_write === true}
+          insets={insets}
+          isCurrent={previewCurrent}
+          onSend={() => {
+            if (review.acceptedMessageId !== null) void session.cancelReview();
+            else void session.confirm(review);
+          }}
+          onCancel={() => {
+            previewOwner.current = null;
+            if (review.acceptedMessageId !== null) router.back();
+            else void session.cancelReview();
+          }}
+        />
       ) : (
         <FlashList
           contentInsetAdjustmentBehavior="never"
