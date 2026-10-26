@@ -22,7 +22,7 @@ import UIKit
     let text = captionModel["value"] as? String ?? ""
     guard text.utf16.count <= (source == "conversation" ? 65536 : 4096), !text.contains("\0"),
       source != "conversation" || (incoming.count <= 10 && selected.isEmpty && model["screen"] as? String == "preview") else { throw GalleryFailure.invalid }
-    let newSelectedMode = model["screen"] as? String == "selected"
+    let newSelectedMode = !ZoenAttachmentGalleryLayout.usesPager(screen: model["screen"] as? String ?? "preview")
     let newGrouped = model["grouped"] as? Bool ?? true
     let mediaChanged = self.source != source || self.items != parsed || self.previewId != preview || selectedMode != newSelectedMode || grouped != newGrouped
     let focusedChanged = self.source != source || self.previewId != preview
