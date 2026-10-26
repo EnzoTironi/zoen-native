@@ -2,7 +2,7 @@
 // Telegram-iOS f1dd7a2 ThemeSettingsThemeItem: reveal the selected theme on entry
 // and after selection. Scrolling to browse never changes the selected appearance.
 import { useCallback, useLayoutEffect, useRef, type ReactNode } from 'react';
-import { ScrollView } from 'react-native';
+import { ScrollView, type ScrollViewInstance } from 'react-native';
 import { useTheme } from '../theme';
 import { THEME_PROFILES, type ThemeProfile } from '../theme/catalog';
 
@@ -16,7 +16,7 @@ export function ThemePresetList({
   children: ReactNode;
 }) {
   const { reducedMotion } = useTheme();
-  const list = useRef<ScrollView>(null);
+  const list = useRef<ScrollViewInstance>(null);
   const geometry = useRef({ width: 0, content: 0 });
   const selection = useRef<ThemeProfile | null>(null);
   const reveal = useCallback(
