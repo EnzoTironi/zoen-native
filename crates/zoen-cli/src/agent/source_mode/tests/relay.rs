@@ -10,6 +10,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Notify;
 use tokio_tungstenite::tungstenite::Message;
 mod auth;
+mod publication;
 pub(super) use auth::AuthGate;
 
 #[derive(Default)]
@@ -30,6 +31,7 @@ impl SecretVault for Vault {
 #[derive(Clone, Copy)]
 pub(super) enum Mode {
     Normal,
+    LostPublicationReceipt,
     Paused,
     Revoked,
     CursorAck,
@@ -62,6 +64,10 @@ pub(super) async fn relay(mode: Mode) -> Relay {
     let url = format!("http://{}", listener.local_addr().unwrap());
     let auth = Arc::new(AuthGate::default());
     let authentication = auth.clone();
+    let lose_receipt = Arc::new(AtomicBool::new(matches!(
+        mode,
+        Mode::LostPublicationReceipt
+    )));
     let calls = Arc::new(Mutex::new(Vec::new()));
     let cursors = Arc::new(Mutex::new(Vec::<(String, u64)>::new()));
     let delivered = Arc::new(Mutex::new(None::<(String, String, u64)>));
@@ -96,6 +102,7 @@ pub(super) async fn relay(mode: Mode) -> Relay {
                 (published_packages.clone(), claim_receipts.clone());
             let (uploaded, devices) = (uploaded.clone(), devices.clone());
             let authentication = authentication.clone();
+            let lose_receipt = lose_receipt.clone();
             tokio::spawn(async move {
                 let mut first = [0];
                 if socket.peek(&mut first).await.unwrap() == 0 {
@@ -300,30 +307,18 @@ pub(super) async fn relay(mode: Mode) -> Relay {
                             let (ev, accepted) = {
                                 let mut logs = history.lock().unwrap();
                                 let log = logs.entry(env.space().into()).or_default();
-                                let seq = log.len() as u64;
-                                let prev = log
-                                    .last()
-                                    .map(|ev| ev.hash.clone())
-                                    .unwrap_or_else(|| types::GENESIS_PREV.into());
-                                let ev = Sequenced {
-                                    seq,
-                                    hash: event_log::chain_hash(
-                                        env.space(),
-                                        seq,
-                                        &prev,
-                                        &env.wire_hash(),
-                                    )?,
-                                    prev,
-                                    env,
-                                };
+                                let ev = publication::sequence(log, env)?;
                                 let accepted = ServerFrame::Accepted {
                                     space: ev.env.space().into(),
                                     client_id: ev.env.client_id().into(),
-                                    seq,
+                                    seq: ev.seq,
                                 };
-                                log.push(ev.clone());
                                 (ev, accepted)
                             };
+                            if lose_receipt.swap(false, Ordering::SeqCst) {
+                                // The append succeeded, but this session loses both receipts.
+                                break;
+                            }
                             ws.send(Message::Binary(ServerFrame::Event { ev }.encode().into()))
                                 .await
                                 .unwrap();
