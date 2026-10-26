@@ -44,8 +44,9 @@ avaliação específica de comportamento, dependências, licença e manutenção
 
 Preservar a identidade de céu do Zoen, os cards consistentes e Apps em tela cheia,
 os agentes, as permissões e os contratos do núcleo/backend. Signal continua como
-referência de confiabilidade e testes comportamentais; Notion e ChatGPT Spaces
-continuam como referências para documentos vivos e criação. As trinta jornadas
+referência de confiabilidade e testes comportamentais; Notion, ChatGPT Spaces/Live Pages
+e [Morrow](../product/live-pages.md#product-references) orientam documentos vivos e criação,
+por confirmação de Enzo em 26 de outubro de 2026. As trinta jornadas
 existentes permanecem inalteradas; nenhuma paridade ou validação nativa decorre
 da importação do catálogo ou da seleção da referência visual. Registrar as
 diferenças visuais e comportamentais até suas provas no iPhone.
