@@ -62,6 +62,7 @@ export async function compileField(platform: Platform) {
     'react/compiler-runtime',
     'react/jsx-runtime',
     'react-native',
+    'react-native-reanimated',
     '../../modules/zoen-core/src/ZoenCoreModule',
     '../media/attachment-keyboard-context',
   ]);
@@ -132,6 +133,7 @@ export function fixture(
     },
   };
   const pendingFits: { request: Record<string, any>; resolve: (value: any) => void }[] = [];
+  const nativeEvents: (() => void)[] = [];
   let deferFits = false;
   const nativeField = { focus() {}, blur() {} };
   const slot = () => (slots[cursor++] ??= {});
@@ -213,6 +215,7 @@ export function fixture(
   };
   const ports: Record<string, unknown> = {
     react: {
+      createRef: () => ({ current: null }),
       useRef: (value: unknown) => {
         const current = slot();
         current.value ??= { current: value };
@@ -291,8 +294,18 @@ export function fixture(
     },
     'react-native-reanimated': {
       __esModule: true,
-      default: { View: 'AnimatedView' },
+      default: { View: 'AnimatedView', createAnimatedComponent: (component: unknown) => component },
       useAnimatedStyle: (read: () => unknown) => read(),
+      makeMutable: (initial: unknown) => {
+        let value = initial;
+        return {
+          get: () => value,
+          set: (next: unknown) => {
+            value = next;
+          },
+        };
+      },
+      useEvent: (handler: Handler) => handler,
     },
     'expo-glass-effect': {
       GlassView: 'GlassView',
@@ -340,6 +353,7 @@ export function fixture(
     exports: fieldModule.exports,
     module: fieldModule,
     process: { env: { EXPO_OS: platform } },
+    global: { Error },
     requestAnimationFrame: () => 1,
     cancelAnimationFrame: () => {},
     require: (path: string) => {
@@ -390,6 +404,17 @@ export function fixture(
       deferFits = true;
     },
     nativeField,
+    nativeChange: (node: Element, text: string, eventCount: number) => {
+      const event = { nativeEvent: { text, eventCount } };
+      (node.props.onNativeChange as Handler | undefined)?.(event.nativeEvent);
+      nativeEvents.push(() => {
+        (node.props.onChange as Handler)(event);
+        (node.props.onChangeText as Handler | undefined)?.(text);
+      });
+    },
+    drainNativeEvents: () => {
+      for (const deliver of nativeEvents.splice(0)) deliver();
+    },
     nativeHandleReads: () => nativeHandleReads,
     unmount: () => {
       assert.ok(fieldElement);
