@@ -8,6 +8,7 @@ import { useProfilePhoto } from '../../profile/use-profile-photo';
 import { useCallback, useRef, useState } from 'react';
 import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Host, Column, Switch } from '@expo/ui';
+import { font, foregroundStyle, frame, padding } from '@expo/ui/swift-ui/modifiers';
 import { Pressable, ScrollView, Share, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDialogs } from '../../components/dialogs';
@@ -109,6 +110,15 @@ export default function Space() {
       : chat.privacy === 'Closed'
         ? t('chat.closedChatReadableByTheServer')
         : t('chat.publicChat');
+  const preferenceModifiers =
+    process.env.EXPO_OS === 'ios'
+      ? [
+          frame({ minHeight: peerInfo.row, maxWidth: Infinity, alignment: 'leading' }),
+          padding({ horizontal: peerInfo.edge }),
+          font({ textStyle: 'body' }),
+          foregroundStyle(p.list.text),
+        ]
+      : undefined;
   return (
     <>
       <ScrollView
@@ -184,25 +194,43 @@ export default function Space() {
           />
         </ProfileSection>
         <ProfileSection title={t('peerInfo.preferences')}>
-          <Host matchContents colorScheme={scheme} seedColor={p.list.accent}>
-            <Column spacing={0}>
+          <Host
+            matchContents={{ vertical: true }}
+            style={{ width: '100%' }}
+            colorScheme={scheme}
+            seedColor={p.list.accent}
+          >
+            <Column
+              spacing={0}
+              modifiers={
+                process.env.EXPO_OS === 'ios'
+                  ? [frame({ maxWidth: Infinity, alignment: 'leading' })]
+                  : undefined
+              }
+            >
               <Switch
+                testID="details-preference-pinned"
                 label={t('chat.pinChat')}
                 value={chat.pinned}
                 onValueChange={(value) => preference('pinned', value)}
                 disabled={busy}
+                modifiers={preferenceModifiers}
               />
               <Switch
+                testID="details-preference-muted"
                 label={t('chat.muteNotifications')}
                 value={chat.muted}
                 onValueChange={(value) => preference('muted', value)}
                 disabled={busy}
+                modifiers={preferenceModifiers}
               />
               <Switch
+                testID="details-preference-archived"
                 label={t('chat.archiveChat')}
                 value={chat.archived}
                 onValueChange={(value) => preference('archived', value)}
                 disabled={busy}
+                modifiers={preferenceModifiers}
               />
             </Column>
           </Host>

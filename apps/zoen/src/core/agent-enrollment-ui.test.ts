@@ -5,7 +5,7 @@ import { runInNewContext } from 'node:vm';
 import { createRequire } from 'node:module';
 import { build } from 'esbuild';
 import { telegramPresentation } from '../theme/telegram.ts';
-import { navigationGlassAppearance } from '../components/navigation-appearance.ts';
+import { navigationScrollFixture } from './navigation-scroll-view.fixture.ts';
 import { t } from '../i18n/index.ts';
 import {
   EnrollmentSession,
@@ -170,7 +170,8 @@ function settingsScroll(tree: Element) {
     require: (name: string) => {
       if (name === 'react-native') return { ScrollView: 'ScrollView' };
       if (name === 'expo-router') return { Stack: { Screen: 'Screen' } };
-      if (name === './navigation-appearance') return { navigationGlassAppearance };
+      if (name === './navigation-scroll-view')
+        return { NavigationScrollView: 'NavigationScrollView' };
       if (name === '../theme')
         return { useTheme: () => ({ presentation: telegramPresentation('night') }) };
       if (name === 'react/jsx-runtime')
@@ -181,7 +182,8 @@ function settingsScroll(tree: Element) {
       throw Error(`Unexpected SettingsScreen import: ${name}`);
     },
   });
-  return module.exports.SettingsScreen(tree.props) as Element;
+  const screen = module.exports.SettingsScreen(tree.props) as Element;
+  return navigationScrollFixture().render(screen.props);
 }
 function nativeHostedTap(scroll: Element, press: () => void) {
   let blurred = false;

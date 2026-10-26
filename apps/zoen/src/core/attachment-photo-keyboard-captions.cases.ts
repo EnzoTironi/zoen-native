@@ -209,3 +209,66 @@ test('native grid and gallery use the captured copy and metadata instead of the 
   f.retire();
   await tick();
 });
+
+for (const mode of ['send', 'send-as-file', 'send-without-grouping'] as const) {
+  test(`Back from mixed review preserves each caption and reordered asset for grid ${mode}`, async () => {
+    const video = {
+      ...item('b'),
+      filename: 'original.mov',
+      mediaType: 'video' as PhotoLibraryItem['mediaType'],
+    };
+    const f = await fixture(true, [item('a'), video], undefined, true);
+    f.act(f.render(), 'preview', 'ph://a');
+    f.act(f.render(), 'caption', 'ph://a', { text: 'Photo 🖼️\noriginal caption' });
+    f.act(f.render(), 'preview', video.id);
+    f.act(f.render(), 'caption', video.id, { text: 'Video caption' });
+    f.act(f.render(), 'reorder', undefined, { ids: [video.id, 'ph://a'] });
+    const review = f.render();
+    f.act(review, 'back');
+    const grid = f.render();
+    assert.equal(JSON.parse(grid.props.model).caption.value, '');
+    assert.deepEqual(f.copies, [], 'Back is navigation, not an export or Send');
+    f.act(review, 'send', video.id, { text: 'Retired review' });
+    assert.deepEqual(f.submissions, []);
+    f.act(grid, mode === 'send' ? 'send' : 'option', mode === 'send' ? undefined : mode, {
+      text: '',
+      ids: [video.id, 'ph://a'],
+    });
+    await tick();
+    assert.equal(f.submissions.length, 1);
+    assert.equal(f.submission()?.send, true);
+    assert.deepEqual(Array.from(f.submission()?.captions ?? []), [
+      'Video caption',
+      'Photo 🖼️\noriginal caption',
+    ]);
+    assert.deepEqual(f.copies, [[video.id, 'ph://a']]);
+    assert.equal(f.picked(), undefined, 'even explicit Send waits for actual native removal');
+    f.close(grid);
+    await tick();
+    assert.deepEqual(
+      (f.picked() as AttachmentAsset[]).map(({ uri, name, mime }) => ({ uri, name, mime })),
+      [
+        { uri: 'file:///owned/b', name: 'original.mov', mime: 'video/quicktime' },
+        { uri: 'file:///owned/a', name: 'a.jpg', mime: 'image/jpeg' },
+      ],
+    );
+  });
+}
+
+for (const common of ['Final common caption', '']) {
+  test(`an explicit grid caption ${common ? 'typed at Send' : 'cleared before Send'} replaces per-item review captions`, async () => {
+    const f = await fixture(true);
+    f.act(f.render(), 'preview', 'ph://a');
+    f.act(f.render(), 'caption', 'ph://a', { text: 'Keep unless explicitly replaced' });
+    f.act(f.render(), 'preview', 'ph://b');
+    f.act(f.render(), 'caption', 'ph://b', { text: 'Second caption' });
+    f.act(f.render(), 'back');
+    if (common === '') f.act(f.render(), 'caption', undefined, { text: '' });
+    const grid = f.render();
+    f.act(grid, 'send', undefined, { text: common });
+    await tick();
+    assert.deepEqual(Array.from(f.submission()?.captions ?? []), [common, '']);
+    f.close(grid);
+    await tick();
+  });
+}

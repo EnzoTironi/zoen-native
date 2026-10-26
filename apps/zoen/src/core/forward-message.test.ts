@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { HomeOwner } from '../home/preferences';
-import { ForwardMessageSession, ForwardMessageUnavailable } from './forward-message.ts';
+import {
+  ForwardMessageSession,
+  ForwardMessageUnavailable,
+  type ForwardMessageReview,
+} from './forward-message.ts';
 import type { TimelineEntry } from './types';
 
 const ownerA: HomeOwner = { mode: 'account', identityId: 'alice', deviceId: 'phone_a' };
@@ -39,6 +43,9 @@ function fixture(scope: 'current' | 'none' = 'current') {
   let spaces = new Set([sourceId, targetId, otherTargetId]);
   let read: () => Promise<TimelineEntry> = async () => message();
   let forward: () => Promise<unknown> = async () => undefined;
+  let epoch = 1;
+  let writable = true;
+  let review: ForwardMessageReview | null = null;
   let busy = false;
   let error: unknown | null = null;
   const events: Event[] = [];
@@ -46,10 +53,12 @@ function fixture(scope: 'current' | 'none' = 'current') {
   const forwards: { space: string; message: string; target: string }[] = [];
   const entered = deferred<void>();
   const session = new ForwardMessageSession(
-    scope === 'current' ? { owner: ownerA, spaceId: sourceId, messageId } : null,
+    scope === 'current' ? { owner: ownerA, spaceId: sourceId, messageId, sessionEpoch: 1 } : null,
     {
       owner: () => owner,
       spaces: () => spaces,
+      epoch: () => epoch,
+      writable: () => writable,
       message: async (space, id) => {
         reads.push({ space, message: id });
         return read();
@@ -61,6 +70,9 @@ function fixture(scope: 'current' | 'none' = 'current') {
       },
     },
     {
+      reviewed: (value) => {
+        review = value;
+      },
       busy: (value) => {
         busy = value;
         events.push({ kind: 'busy', value });
@@ -80,6 +92,13 @@ function fixture(scope: 'current' | 'none' = 'current') {
     forwards,
     entered,
     state: () => ({ busy, error }),
+    review: () => review,
+    epoch: (value: number) => {
+      epoch = value;
+    },
+    writable: (value: boolean) => {
+      writable = value;
+    },
     owner: (value: HomeOwner | null) => {
       owner = value;
     },
@@ -298,4 +317,115 @@ test('a missing captured owner or inaccessible destination never reaches the for
   f.spaces([sourceId]);
   await f.session.send(targetId);
   assert.deepEqual(f.forwards, []);
+});
+
+test('destination selection only reviews canonical content; explicit confirmation alone forwards', async () => {
+  const f = fixture();
+  const canonical = message({
+    forwarded: true,
+    author: { id: 'source-author', name: 'Source author' } as TimelineEntry['author'],
+  });
+  f.read(async () => canonical);
+  await f.session.prepare(targetId);
+  const review = f.review()!;
+  assert.equal(review.targetId, targetId);
+  assert.deepEqual(review.message, canonical);
+  assert.notEqual(review.message, canonical);
+  assert.equal(f.forwards.length, 0);
+  f.session.cancelReview();
+  await f.session.confirm(review);
+  await f.session.prepare(otherTargetId);
+  await f.session.confirm(review);
+  assert.equal(f.forwards.length, 0);
+  await f.session.confirm(f.review()!);
+  assert.deepEqual(f.forwards, [{ space: sourceId, message: messageId, target: otherTargetId }]);
+});
+
+for (const patch of [
+  { kind: { Message: { text: 'Changed text', card: null } } },
+  { voice: { item_id: 'voice', sha256: 'changed' } },
+  { media: { presentation: 'changed', group: null } },
+  { forwarded: true },
+  { deleted: true },
+])
+  test(`content change ${Object.keys(patch)} requires a new review`, async () => {
+    const f = fixture();
+    await f.session.prepare(targetId);
+    const review = f.review()!;
+    f.read(async () => message(patch as Partial<TimelineEntry>));
+    await f.session.confirm(review);
+    assert.equal(f.forwards.length, 0);
+    assert.ok(f.state().error instanceof ForwardMessageUnavailable);
+    await f.session.confirm(review);
+    assert.equal(f.forwards.length, 0);
+  });
+
+for (const revoke of ['epoch', 'writable', 'membership', 'blur'] as const)
+  test(`review cannot cross ${revoke} changes`, async () => {
+    const f = fixture();
+    await f.session.prepare(targetId);
+    const review = f.review()!;
+    if (revoke === 'epoch') f.epoch(2);
+    if (revoke === 'writable') f.writable(false);
+    if (revoke === 'membership') f.spaces([sourceId]);
+    if (revoke === 'blur') f.session.blur();
+    f.session.refresh();
+    assert.equal(f.review(), null);
+    await f.session.confirm(review);
+    assert.equal(f.forwards.length, 0);
+  });
+
+test('late review response cannot reopen after leaving and duplicate Send confirms once', async () => {
+  const f = fixture();
+  const pending = deferred<TimelineEntry>();
+  f.read(() => pending.promise);
+  const preparing = f.session.prepare(targetId);
+  f.session.blur();
+  pending.resolve(message());
+  await preparing;
+  assert.equal(f.review(), null);
+  f.session.focus();
+  f.read(async () => message());
+  await f.session.prepare(targetId);
+  const review = f.review()!;
+  const ack = deferred<void>();
+  f.forward(() => ack.promise);
+  const sending = f.session.confirm(review);
+  await f.entered.promise;
+  await f.session.confirm(review);
+  assert.equal(f.forwards.length, 1);
+  ack.resolve();
+  await sending;
+  await f.session.confirm(review);
+  assert.equal(f.forwards.length, 1);
+});
+
+test('send failure retains review and source projection for an explicit retry', async () => {
+  const f = fixture();
+  const source = message();
+  f.read(async () => source);
+  await f.session.prepare(targetId);
+  const review = f.review()!;
+  f.forward(async () => {
+    throw Error('Not accepted');
+  });
+  await f.session.confirm(review);
+  assert.equal(f.review(), review);
+  assert.equal(f.state().busy, false);
+  assert.equal(f.events.filter((event) => event.kind === 'sent').length, 0);
+  assert.deepEqual(source, message());
+  f.forward(async () => undefined);
+  await f.session.confirm(review);
+  assert.equal(f.events.filter((event) => event.kind === 'sent').length, 1);
+});
+
+test('forwarding to the source conversation still requires review and keeps the source untouched', async () => {
+  const f = fixture();
+  const source = message();
+  f.read(async () => source);
+  await f.session.prepare(sourceId);
+  assert.equal(f.forwards.length, 0);
+  await f.session.confirm(f.review()!);
+  assert.deepEqual(f.forwards, [{ space: sourceId, message: messageId, target: sourceId }]);
+  assert.deepEqual(source, message());
 });

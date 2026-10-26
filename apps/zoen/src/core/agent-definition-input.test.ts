@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import { DefinitionSession } from '../agent-definition/session.ts';
-import { navigationGlassAppearance } from '../components/navigation-appearance.ts';
+import { navigationScrollFixture } from './navigation-scroll-view.fixture.ts';
 import { telegramPresentation } from '../theme/telegram.ts';
 import { t } from '../i18n/index.ts';
 import type { AgentDefinitionDto } from './generated/AgentDefinitionDto.ts';
@@ -179,8 +179,7 @@ async function fixture() {
     '../theme/telegram': {},
   });
   const settings = load(settingsCode, {
-    'expo-router': { Stack: { Screen: 'Screen' } },
-    './navigation-appearance': { navigationGlassAppearance },
+    './navigation-scroll-view': { NavigationScrollView: navigationScrollFixture().render },
   });
   const view = load(viewCode, {
     '../components/primitives': primitives,

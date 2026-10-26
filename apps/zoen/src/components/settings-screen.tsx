@@ -1,8 +1,7 @@
 import type { ReactNode } from 'react';
-import { Stack } from 'expo-router';
-import { ScrollView, type ScrollViewProps } from 'react-native';
+import type { ScrollViewProps } from 'react-native';
 import { useTheme } from '../theme';
-import { navigationGlassAppearance } from './navigation-appearance';
+import { NavigationScrollView } from './navigation-scroll-view';
 
 export function SettingsScreen({
   title,
@@ -21,7 +20,8 @@ export function SettingsScreen({
 >) {
   const { presentation: p } = useTheme();
   return (
-    <ScrollView
+    <NavigationScrollView
+      title={title}
       testID={testID}
       onTouchStart={onTouchStart}
       style={{ flex: 1, backgroundColor: p.list.background }}
@@ -38,15 +38,7 @@ export function SettingsScreen({
         backgroundColor: 'transparent',
       }}
     >
-      <Stack.Screen
-        options={{
-          ...navigationGlassAppearance,
-          title,
-          headerTintColor: p.navigation.control,
-          headerTitleStyle: { ...p.typography.title, color: p.navigation.text },
-        }}
-      />
       {children}
-    </ScrollView>
+    </NavigationScrollView>
   );
 }

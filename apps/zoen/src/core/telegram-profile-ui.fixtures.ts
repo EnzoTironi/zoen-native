@@ -298,6 +298,12 @@ export function fixture(kind: keyof typeof sources, overrides: Record<string, un
     'expo-image': { Image: 'Image' },
     '@shopify/flash-list': { FlashList: 'FlashList' },
     '@expo/ui': { Host: 'Host', Column: 'Column', Switch: 'Switch' },
+    '@expo/ui/swift-ui/modifiers': Object.fromEntries(
+      ['font', 'foregroundStyle', 'frame', 'padding'].map((name) => [
+        name,
+        (value: unknown) => ({ [name]: value }),
+      ]),
+    ),
   };
   const t = (key: string, params?: unknown) => (params ? `${key}:${JSON.stringify(params)}` : key);
   function requirePort(path: string): any {
@@ -366,6 +372,7 @@ export function fixture(kind: keyof typeof sources, overrides: Record<string, un
   runInNewContext(compiled.get(kind)!, {
     module,
     exports: module.exports,
+    process: { env: { EXPO_OS: 'ios' } },
     require: requirePort,
     URL,
     Error,
