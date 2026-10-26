@@ -44,7 +44,7 @@ FRONTEND_CONTRACTS = {
     "crates/zoen-relay/src/lib.rs": "0a85a11509ff1968e85b09abefab3b979c5e19ba797624f2fb7a42ab1deb0981",
     "Cargo.toml": "6abf6b794f912e0e95fcb66d5ea6f89a176b04a1b2b8714d1c21f40f091827bb",
     ".github/workflows/ci.yml": "ee7fe86c711c7aba549f94bbc452dec7a381e75ffd440b5ee78d95d9b055eb46",
-    ".github/workflows/expo.yml": "65304388efad308d8c4b37d3da213cc294abb2be6f295ccd7aa9538f7db06ea4",
+    ".github/workflows/expo.yml": "223a2a4f17db9658187f42454637a03e23387c2b65018859bb399721649c7f53",
     "apps/zoen/package.json": "d58538007aec677d34171d4a09f883973c1c8bf9440b141d5bc72f33b2dba14b",
     "apps/zoen/src/miniapps/vendor/deckcraft-bootstrap.manifest.json": "2f0eccb5f4de55d63dd56a287685921b4acdb4224308d9d7747edd2eec2464cd",
     "apps/zoen/src/miniapps/vendor/runtime-support.manifest.json": "3bd56bac1f1f496a2213c69c2242c6233891cd377fc298db94260b14fcd91318",

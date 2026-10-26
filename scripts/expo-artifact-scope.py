@@ -14,6 +14,7 @@ import tempfile
 
 from expo_artifact_dependencies import compiler_inputs, graph
 from expo_artifact_candidate import tested_candidate
+from ci_static_documents import validate as validate_static_documents
 
 _proof = importlib.util.spec_from_file_location(
     "expo_frontend_proof", Path(__file__).with_name("ci-documentation-scope.py"))
@@ -124,6 +125,13 @@ def classify(base, head, event, cargo="cargo", candidate=None):
             raise ValueError("Ambiguous, stale-base or non-ancestral comparison")
         paths = changes(ancestors[0], head)
         result["paths"] = paths
+        try:
+            validate_static_documents(git, base, head, paths, artifacts=True)
+            result.update({"run_" + job: False for job in JOBS},
+                          reason="Verified static documentation/evidence; no Expo artifact inputs")
+            return result
+        except ValueError:
+            pass  # Unknown paths/consumers retain the full existing artifact lane.
         if event == "pull_request" and all(FRONTEND_PROOF.frontend_path(path) for path in paths):
             FRONTEND_PROOF.validate_frontend(base, head, base, paths)
             result.update(run_android=False, run_android_js=True,
