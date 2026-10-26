@@ -231,9 +231,31 @@ impl Net {
         identity: &str,
         device: &str,
     ) -> Option<String> {
+        self.relay_name(url, identity, device, false)
+    }
+
+    /// Call allocation needs authentication and catch-up from one socket status
+    /// snapshot; reconnect must not combine old synced with new authentication.
+    pub(crate) fn authenticated_synced_relay_name(
+        &self,
+        url: &str,
+        identity: &str,
+        device: &str,
+    ) -> Option<String> {
+        self.relay_name(url, identity, device, true)
+    }
+
+    fn relay_name(
+        &self,
+        url: &str,
+        identity: &str,
+        device: &str,
+        require_synced: bool,
+    ) -> Option<String> {
         let status = self.status.borrow();
         let relay = status.authenticated_relay.as_ref()?;
         (status.state == ConnState::Online
+            && (!require_synced || status.synced)
             && relay.base == http_base(url)
             && relay.identity == identity
             && relay.device == device)

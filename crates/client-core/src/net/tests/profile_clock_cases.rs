@@ -19,7 +19,7 @@ pub(super) fn agent_definition_configured_http_name_keeps_case_and_default_port_
         "relay.example:443/",
     ] {
         let (cmd, _commands) = mpsc::unbounded_channel();
-        let (_status, status) = watch::channel(NetStatus {
+        let (status_tx, status) = watch::channel(NetStatus {
             state: ConnState::Online,
             synced: true,
             registered: true,
@@ -51,6 +51,27 @@ pub(super) fn agent_definition_configured_http_name_keeps_case_and_default_port_
         assert!(net
             .authenticated_relay_name("https://different.example", "owner", "device")
             .is_none());
+        assert!(net
+            .authenticated_synced_relay_name(raw, "owner", "device")
+            .is_some());
+        status_tx.send_modify(|status| status.synced = false);
+        assert!(net
+            .authenticated_relay_name(raw, "owner", "device")
+            .is_some());
+        assert!(
+            net.authenticated_synced_relay_name(raw, "owner", "device")
+                .is_none(),
+            "a newly Ready socket is authenticated but has not caught up"
+        );
+        status_tx.send_modify(|status| {
+            status.synced = true;
+            status.authenticated_relay = None;
+        });
+        assert!(
+            net.authenticated_synced_relay_name(raw, "owner", "device")
+                .is_none(),
+            "catch-up without an authenticated owner is insufficient"
+        );
     }
 }
 

@@ -25,7 +25,42 @@ fn deliver(
 #[test]
 fn own_invite_and_accept_ack_reproject_confirmation_before_media_without_reload(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    own_confirmation(false)
+}
+
+#[test]
+fn own_invite_and_accept_confirmation_does_not_drain_unrelated_chat_or_upload(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    own_confirmation(true)
+}
+
+fn own_confirmation(unrelated_work: bool) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut f = Fixture::new().unwrap();
+    if unrelated_work {
+        f.engine.append_synced(
+            "sp_unrelated_call_backlog",
+            &f.caller,
+            1,
+            EventBody::SpaceCreated {
+                title: "Unrelated pending chat".into(),
+                kind: SpaceKind::Group,
+                privacy: Privacy::Closed,
+            },
+        )?;
+        f.engine.store.queue_external_media(
+            &"a".repeat(64),
+            &"b".repeat(64),
+            &"c".repeat(64),
+            105,
+        )?;
+    }
+    let unrelated: Vec<_> = f
+        .engine
+        .store
+        .outbox()?
+        .into_iter()
+        .map(|row| row.event)
+        .collect();
     let invite = f
         .engine
         .append_synced(
@@ -76,7 +111,16 @@ fn own_invite_and_accept_ack_reproject_confirmation_before_media_without_reload(
         .engine
         .state
         .call_transport_valid(&event(&f, &f.caller, offer).unwrap()));
-    assert!(f.engine.store.outbox().unwrap().is_empty());
+    assert_eq!(
+        f.engine
+            .store
+            .outbox()?
+            .into_iter()
+            .map(|row| row.event)
+            .collect::<Vec<_>>(),
+        unrelated
+    );
+    assert_eq!(f.engine.uploads_pending(), u64::from(unrelated_work));
     Ok(())
 }
 

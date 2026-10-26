@@ -7,6 +7,14 @@ credential authorizes a TURN allocation, not microphone/camera access or a call.
 The Core and native RTC still require the confirmed invitation, selected devices
 and DTLS fingerprint delivered through MLS. ICE remains relay-only.
 
+Native outgoing preflight allocates transport before creating an invitation.
+Core waits up to five seconds for the exact current device/relay to authenticate
+and finish catch-up, then retains the eight-second allocation request budget.
+Unrelated chat queues, uploads or profile work do not gate allocation. Completion
+rechecks the same Net, owner certificate/revocation cache and current pair policy.
+Invitation/acceptance confirmation and MLS readiness still gate media independently;
+no queued message, upload or call confirmation is retired by allocating transport.
+
 The server reads `ZOEN_TURN_URLS` and `ZOEN_TURN_REST_SECRET` together. Missing
 configuration explicitly disables allocation; partial/invalid configuration
 fails startup. URLs are one to four `turns:` TLS endpoints, separated by commas.
