@@ -61,10 +61,17 @@ export default function Forward() {
               .getSnapshot()
               .snapshot?.conversations.some((chat) => chat.id === target && chat.can_write) ===
             true,
-          message: (space_id, message_id) =>
-            store.driver.request({ op: 'message', space_id, message_id }),
-          forward: (source_space, message_id, target_space) =>
-            store.request({ op: 'forward_message', source_space, message_id, target_space }),
+          status: (source) => store.driver.request({ op: 'forward_status', source }),
+          review: (scope) => store.driver.request({ op: 'forward_review', scope }),
+          confirm: (scope, operation_id, source_revision) =>
+            store.request({ op: 'confirm_forward', scope, operation_id, source_revision }),
+          dismiss: (scope, operation_id, accepted_message_id) =>
+            store.driver.request({
+              op: 'dismiss_forward',
+              scope,
+              operation_id,
+              accepted_message_id,
+            }),
         },
         {
           busy: setBusy,
@@ -88,7 +95,7 @@ export default function Forward() {
   );
   useFocusEffect(
     useCallback(() => {
-      session.focus();
+      void session.focus();
       return () => {
         previewOwner.current = null;
         session.blur();
@@ -152,19 +159,19 @@ export default function Forward() {
           {error}
         </Text>
       ) : null}
-      {review && target && content ? (
+      {review && content ? (
         <View
           testID="forward-message-review"
           style={{ flex: 1, padding: 20, paddingBottom: Math.max(20, insets.bottom), gap: 20 }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
             <ProfileAvatar
-              person={target.counterpart}
-              name={target.title}
-              color={target.counterpart?.tint_hex}
+              person={target?.counterpart}
+              name={target?.title ?? t('chat.chatUnavailable')}
+              color={target?.counterpart?.tint_hex}
             />
             <Text accessibilityRole="header" style={{ color: colors.text, fontSize: 20, flex: 1 }}>
-              {target.title}
+              {target?.title ?? t('chat.chatUnavailable')}
             </Text>
           </View>
           <ScrollView
@@ -188,12 +195,22 @@ export default function Forward() {
               isCurrent={previewCurrent}
             />
           </ScrollView>
+          {review.acceptedMessageId !== null ? (
+            <Text
+              testID="forward-message-accepted"
+              accessibilityLiveRegion="polite"
+              style={{ color: colors.secondary }}
+            >
+              {t('chat.alreadyForwarded')}
+            </Text>
+          ) : null}
           <NativeButton
             testID="forward-message-send"
-            label={t('chat.send')}
-            disabled={busy}
+            label={t(review.acceptedMessageId !== null ? 'chat.forwardAgain' : 'chat.send')}
+            disabled={busy || (review.acceptedMessageId === null && target?.can_write !== true)}
             onPress={() => {
-              void session.confirm(review);
+              if (review.acceptedMessageId !== null) void session.cancelReview();
+              else void session.confirm(review);
             }}
           />
           <NativeButton
@@ -203,7 +220,8 @@ export default function Forward() {
             disabled={busy}
             onPress={() => {
               previewOwner.current = null;
-              session.cancelReview();
+              if (review.acceptedMessageId !== null) router.back();
+              else void session.cancelReview();
             }}
           />
         </View>

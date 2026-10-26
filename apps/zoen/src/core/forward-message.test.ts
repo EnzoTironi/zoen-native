@@ -312,3 +312,19 @@ test('parallel explicit Send handlers share one in-flight canonical confirmation
   await first;
   assert.deepEqual(f.sends, ['target']);
 });
+
+test('a lost explicit Cancel ACK reconciles absence without an error or replacement intent', async () => {
+  const f = fixture();
+  await f.ready();
+  await f.session.prepare('target');
+  // Model a private metadata delete that committed before its bridge response was lost.
+  f.dismiss(async () => {
+    f.status(async () => null);
+    throw Error('Cancel ACK lost');
+  });
+  await f.session.cancelReview();
+  assert.equal(f.selected(), null);
+  assert.equal(f.state().error, null);
+  assert.equal(f.confirms.length, 0);
+  assert.equal(f.reviews.length, 1);
+});

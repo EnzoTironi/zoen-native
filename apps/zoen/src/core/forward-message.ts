@@ -230,7 +230,7 @@ export class ForwardMessageSession {
         if (!this.current(attempt)) return;
         const retained = await this.port.status(this.source());
         if (this.current(attempt)) this.project(retained);
-        if (retained?.accepted_message_id) return;
+        if (!retained || retained.accepted_message_id) return;
         throw reason;
       }
     });

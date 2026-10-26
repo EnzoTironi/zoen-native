@@ -65,6 +65,7 @@ import type { Mention } from './generated/Mention';
 import type { DeviceGrantDto } from './generated/DeviceGrantDto';
 import type { DecideOutcome } from './generated/DecideOutcome';
 import type { AppResourceDto } from './generated/AppResourceDto';
+import type { ForwardReview } from './generated/ForwardReview';
 import type { MessageDraftDto } from './generated/MessageDraftDto';
 import type { MessageDraftSendResult } from './generated/MessageDraftSendResult';
 import type { NativeSurfaceItemDto } from './generated/NativeSurfaceItemDto';
@@ -116,6 +117,10 @@ type Results = {
   snapshot: Snapshot;
   timeline: TimelinePage;
   send_message: TimelineEntry;
+  forward_review: ForwardReview;
+  forward_status: ForwardReview | null;
+  confirm_forward: ForwardReview;
+  dismiss_forward: void;
   request_app_edit: AppEditRequestResult;
   app_edit_targets: AppEditTargets;
   app_current_share_context: AppShareContext;
