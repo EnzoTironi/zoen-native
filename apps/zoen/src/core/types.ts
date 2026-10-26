@@ -90,6 +90,7 @@ export type CoreEvent =
 type Results = {
   space_member_context: SpaceMemberContext;
   remove_member_reviewed: SpaceMemberContext;
+  set_member_role_reviewed: SpaceMemberContext;
   add_member_reviewed: SpaceMemberContext;
   find_member_candidates: SpaceMemberContext[];
   start_owner_policy_direct: string;

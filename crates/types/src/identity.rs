@@ -71,3 +71,19 @@ pub enum Role {
     /// Lê, mas não escreve (ex.: agente em modo Ouvir numa comunidade).
     Reader,
 }
+
+impl Role {
+    /// Shared clear-membership authority. Existing owners cannot be demoted by
+    /// an assignment; owner transfer is a separate, deliberately absent operation.
+    #[must_use]
+    pub fn can_assign(self, current: Option<Self>, desired: Self) -> bool {
+        if current == Some(Self::Owner) && desired != Self::Owner {
+            return false;
+        }
+        match self {
+            Self::Owner => true,
+            Self::Admin => desired != Self::Owner,
+            Self::Member | Self::Reader => false,
+        }
+    }
+}

@@ -249,6 +249,7 @@ mod account;
 mod account_preparation;
 mod ingestion;
 mod member_controls;
+mod member_roles;
 mod outbox;
 mod owned_member_candidates;
 mod prepared_account;

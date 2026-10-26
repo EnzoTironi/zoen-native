@@ -12,6 +12,8 @@ use zoen_relay::log::{fdb::FdbLog, LogStore, Sequencing};
 
 #[path = "log_store/history_visibility.rs"]
 mod history_visibility;
+#[path = "log_store/membership_review_keys.rs"]
+mod membership_review_keys;
 
 #[path = "log_store/mls_contracts.rs"]
 mod mls_contracts;
@@ -206,6 +208,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             .await?;
             return Ok::<(), Box<dyn std::error::Error>>(());
         }
+        run(
+            "malformed membership keys cannot poison a shared batch",
+            membership_review_keys::malformed_membership_target_does_not_poison_a_shared_batch(),
+        )
+        .await?;
         run(
             "concurrent writers on one space build one gapless chain",
             concurrent_writers_on_one_space_build_one_gapless_chain(),

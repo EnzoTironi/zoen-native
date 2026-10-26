@@ -153,7 +153,7 @@ impl Engine {
         to: &str,
         thread: bool,
     ) -> R<TimelineEntry> {
-        if !self.is_member(space, author) {
+        if !self.state.writer(space, author) {
             return Err(CoreError::Forbidden {
                 reason: t(
                     "só membros escrevem neste Espaço",

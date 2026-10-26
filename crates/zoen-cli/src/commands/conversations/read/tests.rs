@@ -107,7 +107,7 @@ async fn json_peek_keeps_real_source_ids_seq_thread_and_reply_without_marking_re
 #[test]
 fn public_member_and_mls_json_use_only_the_existing_public_dtos(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let f = crate::deckcraft::tests::fixture()?;
+    let mut f = crate::deckcraft::tests::fixture()?;
     let space = f
         .client
         .create_group_with(
@@ -116,6 +116,10 @@ fn public_member_and_mls_json_use_only_the_existing_public_dtos(
             crate::PrivacyDto::EndToEnd,
         )
         .unwrap();
+    assert!(f.client.member_roles(space.clone())?.is_empty());
+    assert!(members_json(&f.client, &space).is_err());
+    assert!(keys_json(&f.client, &space).is_err());
+    confirm_public_group_creation(&mut f, &space)?;
     let roles = f.client.member_roles(space.clone()).unwrap();
     let projected: serde_json::Value =
         serde_json::from_str(&members_json(&f.client, &space).unwrap()).unwrap();
@@ -134,6 +138,54 @@ fn public_member_and_mls_json_use_only_the_existing_public_dtos(
     let path = f.path.clone();
     drop(f);
     std::fs::remove_dir_all(path).unwrap();
+    Ok(())
+}
+
+/// The public creator queues a signed intent, not confirmed membership. Reuse
+/// the suite's offline signed-event transport, then reconstruct the real Client.
+fn confirm_public_group_creation(
+    fixture: &mut crate::deckcraft::tests::Fixture,
+    space: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let current = std::mem::replace(
+        &mut fixture.client,
+        Client::open(":memory:".into(), "en".into())?,
+    );
+    current.stop_sync();
+    assert_eq!(Arc::strong_count(&current), 1);
+    drop(current);
+    let path = fixture.path.join("agent.sqlite");
+    let database = store::Store::open(path.to_str().ok_or("fixture path is not UTF-8")?)?;
+    assert!(database.events(space)?.is_empty());
+    let pending: Vec<_> = database
+        .outbox()?
+        .into_iter()
+        .filter(|row| row.event.space == space)
+        .collect();
+    assert_eq!(pending.len(), 1, "the public API produced only its genesis");
+    let original = &pending[0].event;
+    assert!(!pending[0].failed);
+    assert!(matches!(
+        original.body,
+        types::EventBody::SpaceCreated {
+            privacy: types::Privacy::EndToEnd,
+            ..
+        }
+    ));
+    event_log::verify_author(original)?;
+    let mut relay_log = event_log::SpaceLog::new(space);
+    let receipt = relay_log.sequence(original.clone())?.clone();
+    relay_log.verify()?;
+    assert_eq!(receipt.content, original.content);
+    assert_eq!(receipt.sig, original.sig);
+    database.append_event(&receipt)?;
+    database.outbox_remove(&original.client_id)?;
+    drop(database);
+    fixture.client = Client::open(
+        path.to_str().ok_or("fixture path is not UTF-8")?.into(),
+        "en".into(),
+    )?;
+    assert!(fixture.client.unlock(fixture.vault.clone())?);
     Ok(())
 }
 

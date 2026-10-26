@@ -3,6 +3,9 @@ import { defineFeature } from '../catalog.ts';
 export const community = defineFeature(
   {
     add: 'Add participant',
+    chooseRole: 'Choose role',
+    addAs: 'Add as %{role}',
+    addNamedRole: 'Add %{name} as %{role}?',
     addUnavailable: 'You can no longer add participants.',
     addNamed: 'Add %{name}?',
     addTo: 'Add to “%{title}”?',
@@ -16,6 +19,11 @@ export const community = defineFeature(
     member: 'Member',
     owner: 'Owner',
     admin: 'Administrator',
+    reader: 'Reader',
+    changeRole: 'Change role',
+    changeRoleNamed: 'Make %{name} %{role}?',
+    changeRoleIn: 'In “%{title}”?',
+    roleRefused: 'Role change was refused. The current role is unchanged.',
     actions: 'Member actions',
     actionsHint: 'Touch and hold for member actions.',
     profile: 'View profile',
@@ -27,10 +35,13 @@ export const community = defineFeature(
     updating: 'Membership updating',
     readFailed: 'Could not verify this member. Try again.',
     actionFailed:
-      'Removal could not be confirmed. Check the current membership before trying again.',
+      'The change could not be confirmed. Check the current membership before trying again.',
   },
   {
     add: 'Adicionar participante',
+    chooseRole: 'Escolher papel',
+    addAs: 'Adicionar como %{role}',
+    addNamedRole: 'Adicionar %{name} como %{role}?',
     addUnavailable: 'Você não pode mais adicionar participantes.',
     addNamed: 'Adicionar %{name}?',
     addTo: 'Adicionar a “%{title}”?',
@@ -44,6 +55,11 @@ export const community = defineFeature(
     member: 'Participante',
     owner: 'Proprietário',
     admin: 'Administrador',
+    reader: 'Leitor',
+    changeRole: 'Alterar papel',
+    changeRoleNamed: 'Tornar %{name} %{role}?',
+    changeRoleIn: 'Em “%{title}”?',
+    roleRefused: 'Alteração de papel recusada. O papel atual foi mantido.',
     actions: 'Ações do participante',
     actionsHint: 'Toque e segure para ver as ações do participante.',
     profile: 'Ver perfil',
@@ -55,6 +71,6 @@ export const community = defineFeature(
     updating: 'Atualizando participantes',
     readFailed: 'Não foi possível verificar este participante. Tente novamente.',
     actionFailed:
-      'Não foi possível confirmar a remoção. Confira os participantes antes de tentar novamente.',
+      'Não foi possível confirmar a alteração. Confira os participantes antes de tentar novamente.',
   },
 );

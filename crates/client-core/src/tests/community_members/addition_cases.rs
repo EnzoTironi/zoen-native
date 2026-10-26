@@ -1,7 +1,7 @@
 //! Real account, signed membership, persisted outbox and JSON dispatcher.
 use super::*;
 
-fn candidate(f: &Fixture, agent: bool) -> TestResult<String> {
+pub(super) fn candidate(f: &Fixture, agent: bool) -> TestResult<String> {
     let mut e = f.client.lock();
     let mut p = e.identities.get(&f.member).ok_or("missing person")?.clone();
     p.id.clear();
@@ -12,7 +12,7 @@ fn candidate(f: &Fixture, agent: bool) -> TestResult<String> {
     }
     Ok(e.create_identity(p, true)?)
 }
-fn read(f: &Fixture, id: &str) -> Result<SpaceMemberContext, CoreError> {
+pub(super) fn read(f: &Fixture, id: &str) -> Result<SpaceMemberContext, CoreError> {
     f.client
         .lock()
         .space_member_context(&f.space, id, &f.identity, &f.device)

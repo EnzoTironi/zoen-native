@@ -122,6 +122,35 @@ impl Engine {
 
     pub fn add_member(&mut self, space: &str, who: &str, role: Role) -> R<()> {
         let me = self.me_id()?;
+        let members = self.receipt_members(space)?;
+        let actual = |identity: &str| {
+            members
+                .iter()
+                .find(|(id, _)| id == identity)
+                .map(|(_, role)| *role)
+        };
+        // A failed creation can leave an old UI projection until reload succeeds.
+        // Before the first canonical event, that projection is never authority:
+        // require the current device's authenticated, still-live first genesis.
+        let actor = if self.net.synced.contains(space)
+            && self
+                .logs
+                .get(space)
+                .is_none_or(event_log::SpaceLog::is_empty)
+        {
+            self.unconfirmed_creator(space, &me)?.then_some(Role::Owner)
+        } else {
+            actual(&me)
+        };
+        if who == me || !actor.is_some_and(|actor| actor.can_assign(actual(who), role)) {
+            return Err(CoreError::Forbidden {
+                reason: t(
+                    "este papel não pode ser atribuído ao participante",
+                    "this member role cannot be assigned",
+                ),
+            });
+        }
+        drop(members);
         self.append(
             space,
             &me,
@@ -131,6 +160,42 @@ impl Engine {
             },
         )?;
         Ok(())
+    }
+
+    fn unconfirmed_creator(&self, space: &str, identity: &str) -> R<bool> {
+        if !self.net.synced.contains(space)
+            || self.logs.get(space).is_some_and(|log| !log.is_empty())
+        {
+            return Ok(false);
+        }
+        let Some(account) = self.net.account.as_ref() else {
+            return Ok(false);
+        };
+        self.native_surface_owner(identity, &account.device)?;
+        let rows = self.store.outbox()?;
+        let mut queued = rows.iter().filter(|row| row.event.space == space);
+        let Some(first) = queued.next() else {
+            return Ok(false);
+        };
+        let event = &first.event;
+        Ok(!first.failed
+            && event.author == identity
+            && event.device.as_deref() == Some(account.device.as_str())
+            && event.cert.as_deref() == Some(account.cert.as_str())
+            && event.seen.is_none()
+            && event.seq == 0
+            && event.prev.is_empty()
+            && event.hash.is_empty()
+            && event.sealed_wire.is_none()
+            && matches!(
+                event.body,
+                EventBody::SpaceCreated {
+                    kind: SpaceKind::Group | SpaceKind::Community,
+                    ..
+                }
+            )
+            && !queued.any(|row| matches!(row.event.body, EventBody::SpaceCreated { .. }))
+            && event_log::verify_author(event).is_ok())
     }
 
     /// Takes someone out of a chat. In an end-to-end chat they read nothing written after

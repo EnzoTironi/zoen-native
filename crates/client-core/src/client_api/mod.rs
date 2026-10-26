@@ -14,6 +14,7 @@ use command::Command;
 mod handle;
 mod integrity;
 mod member_candidates;
+mod member_dispatch;
 mod wire;
 
 use serde::{Deserialize, Serialize};

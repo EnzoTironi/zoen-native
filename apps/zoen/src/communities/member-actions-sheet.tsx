@@ -1,13 +1,17 @@
 import { BottomSheet, Host, RNHostView } from '@expo/ui';
+import { MenuView } from '@expo/ui/community/menu';
 import { ScrollView, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { t } from '../i18n';
 import { useTheme } from '../theme';
-import { IconButton, Loading, NativeButton } from '../components/primitives';
+import { Icon, IconButton, Loading, NativeButton } from '../components/primitives';
 import { useDialogs } from '../components/dialogs';
 import { SettingsRows } from '../components/settings-rows';
 import { ProfileAvatar } from '../profile/profile-avatar';
+import { memberRoleLabelKey } from './member-role-label';
 import type { MemberActionsSession, MemberActionsState } from './member-actions';
+
+const roleLabel = (role: string | null) => t(memberRoleLabelKey(role));
 
 export function MemberActionsSheet({
   session,
@@ -78,9 +82,75 @@ export function MemberActionsSheet({
             ) : null}
             {state.phase === 'ready' && member && context ? (
               <>
-                {context.role === 'owner' || context.role === 'admin' ? (
-                  <Text style={{ color: p.list.secondary }}>
-                    {t(context.role === 'owner' ? 'community.owner' : 'community.admin')}
+                {context.role_options.length ? (
+                  <MenuView
+                    testID="member-role-menu"
+                    style={{ width: '100%' }}
+                    colorScheme={scheme}
+                    actions={context.role_options.map((option) => ({
+                      id: option.revision,
+                      title: roleLabel(option.role),
+                      attributes: { disabled: state.busy },
+                    }))}
+                    onPressAction={({ nativeEvent }) => {
+                      const option = context.role_options.find(
+                        (choice) => choice.revision === nativeEvent.event,
+                      );
+                      if (!option) return;
+                      void session.setRole(
+                        option,
+                        (review) =>
+                          confirm({
+                            title: t('community.changeRoleNamed', {
+                              name: review.member?.name ?? t('community.member'),
+                              role: roleLabel(option.role),
+                            }),
+                            message: t('community.changeRoleIn', { title: review.space_title }),
+                            confirmLabel: t('community.changeRole'),
+                          }),
+                        ticket,
+                      );
+                    }}
+                  >
+                    <View
+                      accessible
+                      accessibilityRole="button"
+                      accessibilityLabel={`${t('community.changeRole')}, ${roleLabel(context.role)}`}
+                      style={{
+                        minHeight: 44,
+                        paddingHorizontal: 16,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        borderRadius: 10,
+                        backgroundColor: p.list.block,
+                      }}
+                    >
+                      <Text
+                        testID="member-current-role"
+                        style={{ color: p.list.text, fontSize: 17 }}
+                      >
+                        {roleLabel(context.role)}
+                      </Text>
+                      <Icon
+                        name={{
+                          ios: 'chevron.up.chevron.down',
+                          android: 'unfold_more',
+                          web: 'unfold_more',
+                        }}
+                        color={p.list.accent}
+                        size={15}
+                      />
+                    </View>
+                  </MenuView>
+                ) : (
+                  <Text testID="member-current-role" style={{ color: p.list.secondary }}>
+                    {roleLabel(context.role)}
+                  </Text>
+                )}
+                {context.state === 'Updating' ? (
+                  <Text accessibilityLiveRegion="polite" style={{ color: p.list.secondary }}>
+                    {t('community.updating')}
                   </Text>
                 ) : null}
                 <SettingsRows
@@ -98,19 +168,13 @@ export function MemberActionsSheet({
                     },
                   ]}
                 />
-                {context.can_remove ||
-                context.state === 'Removing' ||
-                context.state === 'Updating' ? (
+                {context.can_remove || context.state === 'Removing' ? (
                   <NativeButton
                     testID="member-remove"
                     destructive
                     disabled={state.busy || !context.can_remove}
                     label={t(
-                      context.state === 'Removing'
-                        ? 'community.removing'
-                        : context.state === 'Updating'
-                          ? 'community.updating'
-                          : 'community.remove',
+                      context.state === 'Removing' ? 'community.removing' : 'community.remove',
                     )}
                     onPress={() => {
                       void session.remove(
@@ -130,7 +194,13 @@ export function MemberActionsSheet({
                 ) : null}
                 {state.actionFailed ? (
                   <Text accessibilityRole="alert" selectable style={{ color: p.destructive }}>
-                    {t(context.removal_failed ? 'community.refused' : 'community.actionFailed')}
+                    {t(
+                      context.role_change_failed
+                        ? 'community.roleRefused'
+                        : context.removal_failed
+                          ? 'community.refused'
+                          : 'community.actionFailed',
+                    )}
                   </Text>
                 ) : null}
               </>

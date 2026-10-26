@@ -1,11 +1,14 @@
 import { BottomSheet, Host, RNHostView } from '@expo/ui';
+import { MenuView } from '@expo/ui/community/menu';
+import type { MemberRoleOption } from '../core/generated/MemberRoleOption';
+import { memberRoleLabelKey } from './member-role-label';
 import { useEffect, useRef, useState } from 'react';
 import type { SpaceMemberContext } from '../core/generated/SpaceMemberContext';
 import { FlatList, Pressable, Text, View } from 'react-native';
 import { useTheme } from '../theme';
 import { t } from '../i18n';
 import { useDialogs } from '../components/dialogs';
-import { Field, IconButton, Loading, NativeButton } from '../components/primitives';
+import { Field, Icon, IconButton, Loading, NativeButton } from '../components/primitives';
 import { ProfileAvatar } from '../profile/profile-avatar';
 import type { MemberAdditionSession, MemberAdditionState } from './member-addition';
 
@@ -56,11 +59,17 @@ export function MemberAdditionContent({
   title?: string;
   inlineConfirmation?: boolean;
 }) {
-  const { presentation: p } = useTheme();
+  const { presentation: p, scheme } = useTheme();
   const { confirm } = useDialogs();
   const ticket = session.ticket(state);
   const selected = state.selected;
-  type Review = { context: SpaceMemberContext; scope: string; generation: number; token: object };
+  type Review = {
+    context: SpaceMemberContext;
+    options: Parameters<typeof confirm>[0];
+    scope: string;
+    generation: number;
+    token: object;
+  };
   const [pendingReview, setReview] = useState<Review | null>(null);
   const answer = useRef<{ token: object; resolve(approved: boolean): void } | null>(null);
   const review =
@@ -92,9 +101,18 @@ export function MemberAdditionContent({
       answer.current?.resolve(false);
       const token = {};
       answer.current = { token, resolve };
-      setReview({ context, token, scope: ticket.scope, generation: ticket.generation });
+      setReview({ context, options, token, scope: ticket.scope, generation: ticket.generation });
     });
   };
+  const reviewAddition = (context: SpaceMemberContext, option: MemberRoleOption) =>
+    requestConfirmation(context, {
+      title: t('community.addNamedRole', {
+        name: context.candidate?.name ?? t('community.member'),
+        role: t(memberRoleLabelKey(option.role)),
+      }),
+      message: t('community.addTo', { title: context.space_title }),
+      confirmLabel: t('community.addAs', { role: t(memberRoleLabelKey(option.role)) }),
+    });
   return (
     <View style={{ flex: 1, gap: 12, paddingTop: 16, paddingBottom: 24 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -123,14 +141,14 @@ export function MemberAdditionContent({
       {review ? (
         <View style={{ gap: 16 }}>
           <Text style={{ ...p.typography.body, color: p.list.text }}>
-            {t('community.addNamed', { name: review.candidate?.name ?? t('community.member') })}
+            {pendingReview?.options.title}
           </Text>
           <Text style={{ ...p.typography.body, color: p.list.secondary }}>
-            {t('community.addTo', { title: review.space_title })}
+            {pendingReview?.options.message}
           </Text>
           <NativeButton
             testID="member-add-confirm"
-            label={t('community.add')}
+            label={pendingReview?.options.confirmLabel ?? t('community.add')}
             disabled={!state.canManage || state.phase !== 'ready'}
             onPress={() => finish(true)}
           />
@@ -203,58 +221,101 @@ export function MemberAdditionContent({
               const person = item.member ?? item.candidate;
               if (!person) return null;
               return (
-                <Pressable
-                  testID={`member-add-${person.id}`}
-                  accessibilityRole="button"
-                  disabled={state.busy || !state.canManage || !item.can_add}
-                  accessibilityState={{
-                    disabled: state.busy || !state.canManage || !item.can_add,
-                  }}
-                  onPress={() => {
-                    void session.select(
-                      person.id,
-                      (review) =>
-                        requestConfirmation(review, {
-                          title: t('community.addNamed', {
-                            name: review.candidate?.name ?? t('community.member'),
-                          }),
-                          message: t('community.addTo', { title: review.space_title }),
-                          confirmLabel: t('community.add'),
-                        }),
-                      ticket,
-                    );
-                  }}
-                  style={({ pressed }) => ({
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 13,
-                    minHeight: 58,
-                    paddingHorizontal: 16,
-                    paddingVertical: 9,
-                    backgroundColor: pressed ? p.list.highlighted : 'transparent',
-                  })}
-                >
-                  <ProfileAvatar
-                    person={person}
-                    name={person.name}
-                    color={person.tint_hex}
-                    agent={person.kind === 'Agent'}
-                    size={38}
-                  />
-                  <View style={{ flex: 1, gap: 3 }}>
-                    <Text style={{ ...p.typography.body, color: p.list.text }}>{person.name}</Text>
-                    {person.handle ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Pressable
+                    testID={`member-add-${person.id}`}
+                    accessibilityRole="button"
+                    disabled={state.busy || !state.canManage || !item.can_add}
+                    accessibilityState={{
+                      disabled: state.busy || !state.canManage || !item.can_add,
+                    }}
+                    onPress={() => {
+                      void session.select(person.id, reviewAddition, ticket);
+                    }}
+                    style={({ pressed }) => ({
+                      flex: 1,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 13,
+                      minHeight: 58,
+                      paddingHorizontal: 16,
+                      paddingVertical: 9,
+                      backgroundColor: pressed ? p.list.highlighted : 'transparent',
+                    })}
+                  >
+                    <ProfileAvatar
+                      person={person}
+                      name={person.name}
+                      color={person.tint_hex}
+                      agent={person.kind === 'Agent'}
+                      size={38}
+                    />
+                    <View style={{ flex: 1, gap: 3 }}>
+                      <Text style={{ ...p.typography.body, color: p.list.text }}>
+                        {person.name}
+                      </Text>
+                      {person.handle ? (
+                        <Text style={{ ...p.typography.footnote, color: p.list.secondary }}>
+                          @{person.handle}
+                        </Text>
+                      ) : null}
+                    </View>
+                    {item.state === 'Active' ? (
                       <Text style={{ ...p.typography.footnote, color: p.list.secondary }}>
-                        @{person.handle}
+                        {t(
+                          item.delivery_ready ? 'community.alreadyMember' : 'community.connecting',
+                        )}
                       </Text>
                     ) : null}
-                  </View>
-                  {item.state === 'Active' ? (
-                    <Text style={{ ...p.typography.footnote, color: p.list.secondary }}>
-                      {t(item.delivery_ready ? 'community.alreadyMember' : 'community.connecting')}
-                    </Text>
+                  </Pressable>
+                  {item.can_add && item.role_options.length ? (
+                    <MenuView
+                      testID={`member-add-role-${person.id}`}
+                      colorScheme={scheme}
+                      actions={['reader', 'member', 'admin'].flatMap((role) =>
+                        item.role_options
+                          .filter((option) => option.role === role)
+                          .map((option) => ({
+                            id: option.revision,
+                            title: t('community.addAs', {
+                              role: t(memberRoleLabelKey(option.role)),
+                            }),
+                            attributes: { disabled: state.busy || !state.canManage },
+                          })),
+                      )}
+                      onPressAction={({ nativeEvent }) => {
+                        const option = item.role_options.find(
+                          (choice) => choice.revision === nativeEvent.event,
+                        );
+                        if (option) void session.select(person.id, reviewAddition, ticket, option);
+                      }}
+                    >
+                      <View
+                        accessible
+                        accessibilityRole="button"
+                        accessibilityLabel={t('community.chooseRole')}
+                        style={{
+                          minHeight: 44,
+                          paddingHorizontal: 16,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 4,
+                        }}
+                      >
+                        <Text style={{ color: p.list.accent }}>{t('community.member')}</Text>
+                        <Icon
+                          name={{
+                            ios: 'chevron.down',
+                            android: 'arrow_drop_down',
+                            web: 'arrow_drop_down',
+                          }}
+                          size={13}
+                          color={p.list.accent}
+                        />
+                      </View>
+                    </MenuView>
                   ) : null}
-                </Pressable>
+                </View>
               );
             }}
           />

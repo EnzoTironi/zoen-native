@@ -1,3 +1,4 @@
+import type { MemberRoleOption } from './generated/MemberRoleOption';
 import type { SpaceMemberContext } from './generated/SpaceMemberContext';
 import { context, scope, peer, settle } from './community-members.fixtures.ts';
 import type { AccountScope } from './account-scope';
@@ -13,6 +14,11 @@ export function additionContext(): SpaceMemberContext {
     member: null,
     can_remove: false,
     can_add: true,
+    role_options: [
+      { role: 'member', revision: 'c'.repeat(64) },
+      { role: 'reader', revision: 'a'.repeat(64) },
+      { role: 'admin', revision: 'b'.repeat(64) },
+    ],
     delivery_ready: false,
     candidate: { ...current.member!, kind: 'Agent' },
   };
@@ -21,18 +27,32 @@ export async function additionFixture() {
   let owner: AccountScope | null = { ...scope },
     value = additionContext();
   let confirm: (review: SpaceMemberContext) => Promise<boolean> = async () => true;
-  let write: MemberAdditionPort['add'] = async (review) => {
-    value = { ...review, can_add: false, state: 'Updating', member: review.candidate };
+  let write: MemberAdditionPort['setRole'] = async (review, option) => {
+    value = {
+      ...review,
+      can_add: false,
+      role_options: [],
+      pending_role: option.role,
+      state: 'Updating',
+      member: null,
+      role: null,
+    };
     return value;
   };
+  const choices: MemberRoleOption[] = [];
   const writes: SpaceMemberContext[] = [],
     reads: string[] = [],
     searches: string[] = [];
   let read: MemberAdditionPort['read'] = async (id) => ({
     ...value,
     member_id: id,
+    state: id === peer ? value.state : 'Active',
+    member: id === peer ? value.member : context(id).member,
+    role: id === peer ? value.role : 'owner',
+    pending_role: id === peer ? value.pending_role : null,
     candidate: id === peer ? value.candidate : null,
     can_add: id === peer && value.can_add,
+    role_options: id === peer ? value.role_options : [],
   });
   let find: MemberAdditionPort['find'] = async () => [value];
   const port: MemberAdditionPort = {
@@ -45,9 +65,10 @@ export async function additionFixture() {
       searches.push(query);
       return find(query, scope);
     },
-    add: (review, scope) => {
+    setRole: (review, option, scope) => {
       writes.push(review);
-      return write(review, scope);
+      choices.push(option);
+      return write(review, option, scope);
     },
   };
   const session = new MemberAdditionSession('sp_fixture', port);
@@ -57,14 +78,15 @@ export async function additionFixture() {
     session,
     port,
     writes,
+    choices,
     reads,
     searches,
     async open() {
       session.open();
       await settle();
     },
-    select(ticket = session.ticket()) {
-      return session.select(peer, confirm, ticket);
+    select(ticket = session.ticket(), option?: MemberRoleOption) {
+      return session.select(peer, confirm, ticket, option);
     },
     confirm(next: typeof confirm) {
       confirm = next;

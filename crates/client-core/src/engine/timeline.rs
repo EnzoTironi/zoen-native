@@ -83,6 +83,7 @@ impl Engine {
                 Privacy::Closed => PrivacyDto::Closed,
                 Privacy::Public => PrivacyDto::Public,
             },
+            can_write: s.integrity_error.is_none() && self.state.writer(id, &me),
             members,
             counterpart,
             last_preview,
@@ -96,9 +97,9 @@ impl Engine {
     }
 
     pub fn member_roles(&self, space: &str) -> R<Vec<MemberRoleDto>> {
+        self.space_state(space)?;
         Ok(self
-            .space_state(space)?
-            .members
+            .receipt_members(space)?
             .iter()
             .map(|(identity, role)| MemberRoleDto {
                 identity_id: identity.clone(),
@@ -218,7 +219,7 @@ impl Engine {
                 });
             }
         }
-        if !self.is_member(space, &me) {
+        if !self.state.writer(space, &me) {
             return Err(CoreError::Forbidden {
                 reason: t(
                     "só membros escrevem neste Espaço",
@@ -383,7 +384,7 @@ impl Engine {
         text: &str,
         attaches: Option<ItemId>,
     ) -> R<TimelineEntry> {
-        if !self.is_member(space, author) {
+        if !self.state.writer(space, author) {
             return Err(CoreError::Forbidden {
                 reason: t(
                     "só membros escrevem neste Espaço",

@@ -25,22 +25,23 @@ test('native addition port binds target, actor, device and observed cut on the n
   await store.open('account');
   const port = createMemberAdditionPort(store, 'sp_fixture'),
     owner = port.scope()!;
-  await port.add(additionContext(), owner);
+  await port.setRole(additionContext(), additionContext().role_options[0]!, owner);
   assert.deepEqual(
-    calls.find((c: any) => c.op === 'add_member_reviewed'),
+    calls.find((c: any) => c.op === 'set_member_role_reviewed'),
     {
-      op: 'add_member_reviewed',
+      op: 'set_member_role_reviewed',
       space_id: 'sp_fixture',
       identity_id: peer,
       expected_identity_id: owner.identity,
       expected_device_id: owner.device,
-      observed_revision: additionContext().revision,
+      observed_revision: additionContext().role_options[0]!.revision,
+      role: 'member',
     },
   );
   const stale = { ...owner, epoch: owner.epoch + 1 };
   const before = calls.length;
   assert.throws(() => port.find('participant', stale));
-  assert.throws(() => port.add(additionContext(), stale));
+  assert.throws(() => port.setRole(additionContext(), additionContext().role_options[0]!, stale));
   assert.equal(calls.length, before);
 });
 
@@ -87,6 +88,7 @@ test('role loss, pending membership and already-current member invalidate the ex
     {
       state: 'Active' as const,
       can_add: false,
+      role_options: [],
       member: additionContext().candidate,
       role: 'member',
     },
@@ -118,7 +120,7 @@ test('one in-flight inclusion is not reissued by canonical refresh, same-account
   await f.open();
   await f.select();
   assert.equal(f.writes.length, 1);
-  pending.resolve({ ...additionContext(), can_add: false, state: 'Updating' });
+  pending.resolve({ ...additionContext(), can_add: false, role_options: [], state: 'Updating' });
   await action;
   assert.equal(f.session.getSnapshot().busy, false);
   f.session.retire();

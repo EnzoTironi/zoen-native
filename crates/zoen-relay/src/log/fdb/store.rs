@@ -147,6 +147,10 @@ impl LogStore for FdbLog {
             .run(|trx, _| {
                 let key = key.clone();
                 async move {
+                    // The retained causal cut is not a current removal receipt.
+                    if self.cell.role_in(&trx, space, who).await?.is_some() {
+                        return Ok(None);
+                    }
                     Ok(trx
                         .get(&key, true)
                         .await?

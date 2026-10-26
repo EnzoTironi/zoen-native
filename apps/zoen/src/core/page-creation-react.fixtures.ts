@@ -103,6 +103,9 @@ export async function pageCreationFixture(
     candidate: null,
     addition_failed: false,
     removal_failed: false,
+    role_options: [],
+    pending_role: null,
+    role_change_failed: false,
     revision: 'a'.repeat(64),
     ...patch,
   });
