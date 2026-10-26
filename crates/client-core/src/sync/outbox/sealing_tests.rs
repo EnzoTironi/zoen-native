@@ -269,3 +269,80 @@ fn changed_sql_space_cannot_hide_invalid_head_from_precrypto_validation(
     );
     Ok(())
 }
+
+#[test]
+fn unreadable_cached_ciphertext_fences_successor_until_exact_repair_and_cold_reopen(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let database = OwnedDatabase(std::env::temp_dir().join(types::new_id("outbox-cache-repair")?));
+    let mut f = Fixture::with_privacies(
+        database.0.to_str().ok_or("database path")?,
+        Privacy::EndToEnd,
+        Privacy::Closed,
+    )?;
+    f.engine.create_mls_group("sp_fault_a")?;
+    let first = f.message("sp_fault_a", 0);
+    assert!(f.engine.mls_seal_outbox()?);
+    let key = format!("mls.sealed:{}", first.client_id);
+    let original = f.engine.store.meta(&key)?.ok_or("missing sealed copy")?;
+    let epoch = original.split(':').next().ok_or("missing epoch")?;
+    f.engine
+        .store
+        .set_meta(&key, &format!("{epoch}:not-hex:signature"))?;
+    let second = f.message("sp_fault_a", 1);
+    let independent = f.message("sp_fault_b", 2);
+    let provider = provider_rows(&f.engine);
+    let queue = raw_queue(&f.engine);
+    assert!(!f.engine.mls_seal_outbox()?);
+    assert!(
+        provider_rows(&f.engine) == provider,
+        "unreadable cached head advanced sender ratchet"
+    );
+    assert!(f
+        .engine
+        .store
+        .meta(&format!("mls.sealed:{}", second.client_id))?
+        .is_none());
+    assert_eq!(
+        f.engine
+            .outbox_envelopes()
+            .iter()
+            .map(Envelope::client_id)
+            .collect::<Vec<_>>(),
+        [independent.client_id.as_str()]
+    );
+    assert_eq!(raw_queue(&f.engine), queue);
+    f.engine.store.set_meta(&key, &original)?;
+    assert!(f.engine.mls_seal_outbox()?);
+    let repaired = f.engine.outbox_envelopes();
+    assert_eq!(
+        repaired.iter().map(Envelope::client_id).collect::<Vec<_>>(),
+        [
+            first.client_id.as_str(),
+            second.client_id.as_str(),
+            independent.client_id.as_str()
+        ]
+    );
+    let provider = provider_rows(&f.engine);
+    // Exercise publication independently once the successor already has a copy.
+    f.engine
+        .store
+        .set_meta(&key, &format!("{epoch}:not-hex:signature"))?;
+    assert_eq!(
+        f.engine
+            .outbox_envelopes()
+            .iter()
+            .map(Envelope::client_id)
+            .collect::<Vec<_>>(),
+        [independent.client_id.as_str()]
+    );
+    assert!(provider_rows(&f.engine) == provider);
+    f.engine.store.set_meta(&key, &original)?;
+    let device = f.device;
+    drop(f);
+    let mut cold = Engine::open(database.0.to_str().ok_or("database path")?)?;
+    assert!(cold.unlock(Some(device.to_vec()))?);
+    assert_eq!(cold.outbox_envelopes(), repaired);
+    assert!(!cold.mls_seal_outbox()?);
+    assert!(provider_rows(&cold) == provider);
+    Ok(())
+}

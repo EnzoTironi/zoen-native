@@ -82,6 +82,7 @@ enum Finish {
     Say,
     Silence,
     BrainError,
+    NotDispatched,
     EmptyCalls,
 }
 struct Stubborn {
@@ -90,7 +91,12 @@ struct Stubborn {
 }
 #[async_trait]
 impl Brain for Stubborn {
-    async fn think(&self, _: TurnContext<'_>, _: &[Turn], _: &Turn) -> Result<BrainOut, String> {
+    async fn think(
+        &self,
+        _: TurnContext<'_>,
+        _: &[Turn],
+        _: &Turn,
+    ) -> Result<BrainOut, BrainError> {
         panic!("the tool turn must retain the completed steps")
     }
     async fn think_with_tools(
@@ -100,7 +106,7 @@ impl Brain for Stubborn {
         _: &Turn,
         tools: &[ToolDef],
         steps: &[ToolStep],
-    ) -> Result<BrainOut, String> {
+    ) -> Result<BrainOut, BrainError> {
         self.probe
             .lock()
             .unwrap()
@@ -108,6 +114,11 @@ impl Brain for Stubborn {
             .push((tools.len(), steps.len()));
         if matches!(self.finish, Finish::BrainError) && !steps.is_empty() {
             return Err("synthetic brain failure".into());
+        }
+        if matches!(self.finish, Finish::NotDispatched) && !steps.is_empty() {
+            return Err(BrainError::NotDispatched(
+                "synthetic pre-dispatch refusal".into(),
+            ));
         }
         if tools.is_empty() {
             match self.finish {
@@ -377,6 +388,19 @@ async fn normal_final_say_and_silence_are_unchanged() {
         assert_eq!(f.run(vec![]).await.unwrap(), expected);
         assert_eq!(f.probe.lock().unwrap().called, MAX_TOOL_ROUNDS);
     }
+}
+
+#[tokio::test]
+async fn later_round_non_dispatch_does_not_claim_the_turn_had_no_effects() {
+    let f = Fixture::new(Finish::NotDispatched, Failure::None, Policy::Allow);
+    assert_eq!(
+        f.run(vec![]).await,
+        Err(HostError::Brain("synthetic pre-dispatch refusal".into()))
+    );
+    let observed = f.probe.lock().unwrap();
+    assert_eq!(observed.called, 1);
+    assert_eq!(observed.checkpoints.len(), 1);
+    assert_eq!(observed.inputs, [(1, 0), (1, 1)]);
 }
 
 #[tokio::test]

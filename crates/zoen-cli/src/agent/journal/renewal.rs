@@ -34,6 +34,7 @@ impl JournalState {
                     progress: None,
                     registered: true,
                     outcome_unknown: false,
+                    model_outcome: None,
                 },
             );
             Ok(true)

@@ -97,7 +97,7 @@ pub(super) fn context(
                     must_resume,
                 };
                 Box::new(zoen_agentd::citizen::testing::ControlledToolBrain {
-                    evaluate: Box::new(move |steps| controlled.evaluate(steps)),
+                    evaluate: Box::new(move |steps| controlled.evaluate(steps).map_err(Into::into)),
                 })
             },
         ),

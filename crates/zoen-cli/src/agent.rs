@@ -34,6 +34,7 @@ use zoen_agentd::{
 
 mod providers;
 use providers::{brain, gate};
+mod source_recovery;
 mod turn;
 use turn::turn;
 mod messages;
@@ -460,6 +461,8 @@ struct ResumeAttempts {
     registered: bool,
     /// Persisted before executor IO; absence of a result never clears this fence.
     outcome_unknown: bool,
+    /// Source-turn scheduling evidence, never a provider receipt or a grant.
+    model_outcome: Option<journal::turn_budget::ModelOutcome>,
 }
 
 /// The mini-app tools of one chat, for one turn: calls run as the agent serving `serving`.

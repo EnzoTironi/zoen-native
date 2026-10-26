@@ -344,3 +344,52 @@ fn rescheduling_closes_the_open_cancel_request() {
     );
     assert_eq!(open_events(&st, &id), ["cancel_request"]);
 }
+
+#[test]
+fn recovery_receipt_requires_exact_agent_service_member_slot_note_and_source() {
+    let base = open_schedule();
+    let args = json!({"serviceId":"corte","startMs":at(10,0),"forId":"carla","forName":"Carla","ref":"source-exact","note":"reviewed request"});
+    let accepted = call(&base, &AGENT, "schedule_book", args.clone(), at(8, 0));
+    let before = accepted.clone();
+    assert!(
+        crate::recover_tool_result("schedule", "schedule_book", &args, &accepted, &AGENT).is_some()
+    );
+    for (key, other) in [
+        ("serviceId", json!("another-service")),
+        ("startMs", json!(at(11, 0))),
+        ("forId", json!("dani")),
+        ("ref", json!("another-source")),
+        ("note", json!("another-note")),
+        ("endMs", json!(at(12, 0))),
+    ] {
+        let mut changed = args.clone();
+        changed[key] = other;
+        assert!(crate::recover_tool_result(
+            "schedule",
+            "schedule_book",
+            &changed,
+            &accepted,
+            &AGENT
+        )
+        .is_none());
+    }
+    let another = Actor {
+        id: "another-agent",
+        name: "Another",
+        owner: Some("bruno"),
+    };
+    assert!(
+        crate::recover_tool_result("schedule", "schedule_book", &args, &accepted, &another)
+            .is_none()
+    );
+    assert!(
+        crate::recover_tool_result("schedule", "schedule_book", &args, &accepted, &CARLA).is_none()
+    );
+    let mut cancelled = accepted.clone();
+    cancelled["bookings"][0]["status"] = "cancelled".into();
+    assert!(
+        crate::recover_tool_result("schedule", "schedule_book", &args, &cancelled, &AGENT)
+            .is_none()
+    );
+    assert_eq!(accepted, before);
+}

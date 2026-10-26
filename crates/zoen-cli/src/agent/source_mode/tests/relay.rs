@@ -14,7 +14,7 @@ mod publication;
 pub(super) use auth::AuthGate;
 
 #[derive(Default)]
-pub(super) struct Vault(Mutex<HashMap<String, Vec<u8>>>);
+pub(super) struct Vault(pub(super) Mutex<HashMap<String, Vec<u8>>>);
 impl SecretVault for Vault {
     fn load(&self, key: String) -> Option<Vec<u8>> {
         self.0.lock().unwrap().get(&key).cloned()

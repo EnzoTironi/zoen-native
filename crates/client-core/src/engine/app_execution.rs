@@ -5,6 +5,14 @@ use super::{
     ItemContent, ItemKind, ItemState, TimelineEntry, Value, R,
 };
 
+mod recovery;
+
+#[derive(Clone, Copy)]
+enum CallMode {
+    Execute(bool),
+    Recover,
+}
+
 impl Engine {
     /// `tools/call` vindo da interface de um mini-app. Toda chamada passa pelo avaliador
     /// de Concessões: reversível roda (e vira versão do Item); irreversível ou externo
@@ -33,6 +41,18 @@ impl Engine {
     ) -> R<AppCallOutcome> {
         let me = self.me_id()?;
         self.app_call_as(item, &me, tool_name, args_json, false, Some(serving))
+    }
+
+    /// Reconcile an already accepted exact result; absence cannot reach an executor.
+    pub fn agent_recover_tool(
+        &mut self,
+        item: &str,
+        tool: &str,
+        args: &str,
+        serving: &str,
+    ) -> R<AppCallOutcome> {
+        let me = self.me_id()?;
+        self.app_call_mode(item, &me, tool, args, CallMode::Recover, Some(serving))
     }
 
     /// The tools an agent may call in `space`: every mini-app tool there that a call
@@ -113,6 +133,25 @@ impl Engine {
         confirmed: bool,
         serving: Option<&str>,
     ) -> R<AppCallOutcome> {
+        self.app_call_mode(
+            item,
+            actor_id,
+            tool_name,
+            args_json,
+            CallMode::Execute(confirmed),
+            serving,
+        )
+    }
+
+    fn app_call_mode(
+        &mut self,
+        item: &str,
+        actor_id: &str,
+        tool_name: &str,
+        args_json: &str,
+        mode: CallMode,
+        serving: Option<&str>,
+    ) -> R<AppCallOutcome> {
         let it = self.item_state(item)?.clone();
         let ItemContent::App(doc) = it.current().content.clone() else {
             return Err(CoreError::Invalid {
@@ -172,6 +211,11 @@ impl Engine {
             )));
         }
         let state: Value = serde_json::from_str(&doc.state_json).unwrap_or(Value::Null);
+        if tool.read_only && matches!(mode, CallMode::Recover) {
+            return Err(CoreError::Invalid {
+                reason: "A read has no accepted effect receipt".into(),
+            });
+        }
         if tool.read_only {
             let view = apps::view_for(&doc.app, &state, now, &me);
             return Ok(AppCallOutcome {
@@ -221,7 +265,7 @@ impl Engine {
         };
         match decision {
             Decision::Block(reason) => return Ok(denied(reason_label(&reason, &self.policy))),
-            Decision::Request(reason) if !confirmed => {
+            Decision::Request(reason) if !matches!(mode, CallMode::Execute(true)) => {
                 return Ok(AppCallOutcome {
                     status: AppCallStatus::NeedsConfirmation,
                     result_json: apps::call_tool_result(
@@ -275,12 +319,32 @@ impl Engine {
             (Some(_), None) => apps::pin_client(&mut args, None),
             (None, _) => Ok(()),
         };
+        if matches!(mode, CallMode::Recover) {
+            let source = args["ref"].as_str().ok_or_else(|| CoreError::Invalid {
+                reason: "Missing source receipt binding".into(),
+            })?;
+            let served = serving.ok_or_else(|| CoreError::Invalid {
+                reason: "Missing served member".into(),
+            })?;
+            let (device, _, _, _) =
+                self.agent_source_authority(&it.space, source, served, false)?;
+            let accepted = self.accepted_app_tool_receipt(&it, tool_name, &args, &caller, &device);
+            if !accepted {
+                return Err(CoreError::Invalid {
+                    reason: "The tool result has no accepted receipt".into(),
+                });
+            }
+        }
         // The same agent call for the same source message already landed (a restart
         // between the call and the host's journal): report it instead of failing on it.
         if let (Ok(()), Some(_), Some(text)) = (
             &pinned,
             &actor_owner,
-            apps::replayed(&doc.app, tool_name, &args, &state),
+            if matches!(mode, CallMode::Recover) {
+                apps::recover_tool_result(&doc.app, tool_name, &args, &state, &caller)
+            } else {
+                apps::replayed(&doc.app, tool_name, &args, &state)
+            },
         ) {
             let view = apps::view_for(&doc.app, &state, now, &me);
             return Ok(AppCallOutcome {
@@ -290,6 +354,11 @@ impl Engine {
                 confirm_title: None,
                 confirm_detail: None,
                 item: Some(self.item(item)?),
+            });
+        }
+        if matches!(mode, CallMode::Recover) {
+            return Err(CoreError::Invalid {
+                reason: "The exact accepted tool result is unavailable".into(),
             });
         }
         // Serving someone, the agent may only do what they could do themselves (a client
@@ -389,6 +458,17 @@ impl crate::Client {
     ) -> Result<AppCallOutcome, CoreError> {
         self.lock()
             .agent_call_tool(item_id, tool, args_json, serving)
+    }
+
+    /// Read-only recovery retains current native authorization; never executes a call.
+    pub fn agent_recover_tool(
+        &self,
+        item: &str,
+        tool: &str,
+        args: &str,
+        serving: &str,
+    ) -> Result<AppCallOutcome, CoreError> {
+        self.lock().agent_recover_tool(item, tool, args, serving)
     }
 
     /// The mini-app tools the agent host may call in `space` (through

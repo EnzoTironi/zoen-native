@@ -136,6 +136,7 @@ fn classification(error: &HostError) -> (&'static str, &'static str) {
         HostError::NotMember => ("not_member", "unknown"),
         HostError::ToolContinuation(_) => ("tool_continuation", "unknown"),
         HostError::ToolAdmission(_) => ("tool_admission", "unknown"),
+        HostError::BrainNotDispatched(_) => ("brain", "not_dispatched"),
         HostError::Brain(message) => (
             "brain",
             BRAIN_CODES

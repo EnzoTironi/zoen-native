@@ -340,22 +340,75 @@ async fn checked(
                 .resume_tool_ask(tc, &history, &inbound, &tools, ask, &admission)
                 .await
         }
+    } else if let Ok(Some(outcome)) =
+        JournalState::known_turn(cx.journal.as_path(), cx, space, t, def)
+    {
+        Ok(outcome)
     } else {
-        match JournalState::begin_turn(cx.journal.as_path(), cx, space, t) {
-            Ok(true) => {}
-            Ok(false) => {
-                trace::stop(space, &t.id, trace::Stop::SourceAttemptLimit, None);
-                return true;
+        let source_host = source_recovery::SourceTools::new(&tools, cx, def, t);
+        let recovered = match source_host.recover() {
+            Ok(recovered) => recovered,
+            Err(error) => {
+                turn_note(
+                    selection,
+                    "agent_host_source_checkpoint_refused",
+                    format_args!("source recovery refused: {error}"),
+                );
+                return false;
             }
-            Err(_) => {
-                trace::stop(space, &t.id, trace::Stop::SourceReservationRefused, None);
+        };
+        let result = if let Some((original, progress)) = recovered {
+            cx.runtime
+                .resume_tool_progress(tc, &history, &inbound, &source_host, original, progress)
+                .await
+        } else {
+            match JournalState::begin_turn(cx.journal.as_path(), cx, space, t) {
+                Ok(true) => {}
+                Ok(false) => {
+                    trace::stop(space, &t.id, trace::Stop::SourceAttemptLimit, None);
+                    return true;
+                }
+                Err(_) => {
+                    trace::stop(space, &t.id, trace::Stop::SourceReservationRefused, None);
+                    return false;
+                }
+            }
+            trace::normal(space, &t.id, &done);
+            cx.runtime
+                .turn_with_tools(tc, &history, &inbound, &source_host, done)
+                .await
+        };
+        if matches!(&result, Err(zoen_agentd::HostError::BrainNotDispatched(_))) {
+            if tools.check_selection().is_err() {
+                return false;
+            }
+            if let Err(error) =
+                JournalState::model_not_dispatched(cx.journal.as_path(), cx, space, t)
+            {
+                turn_note(
+                    selection,
+                    "agent_host_source_reservation_refused",
+                    format_args!("model witness refused: {error}"),
+                );
                 return false;
             }
         }
-        trace::normal(space, &t.id, &done);
-        cx.runtime
-            .turn_with_tools(tc, &history, &inbound, &tools, done)
-            .await
+        if tools.check_selection().is_err() {
+            return false;
+        }
+        if let Ok(outcome) = &result {
+            if let Err(error) =
+                JournalState::model_known(cx.journal.as_path(), cx, space, t, outcome, def)
+            {
+                turn_note(
+                    selection,
+                    "agent_host_source_checkpoint_refused",
+                    format_args!("model result checkpoint refused: {error}"),
+                );
+                return false;
+            }
+        }
+        result
     };
     if tools.check_selection().is_err() {
         return false;

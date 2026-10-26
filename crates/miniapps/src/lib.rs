@@ -46,7 +46,8 @@ pub use execution::apply;
 pub use projection::{headline, last_action, snapshot, view};
 pub use schedule::Actor;
 pub use scoped::{
-    apply_as, create_as, owner_note_for, pin_client, reconcile_concurrent, replayed, view_for,
+    apply_as, create_as, owner_note_for, pin_client, reconcile_concurrent, recover_tool_result,
+    replayed, view_for,
 };
 
 use catalog::tool;

@@ -1,7 +1,9 @@
 //! Local, opt-in Codex-managed ChatGPT inference. Not a hosted/commercial auth path.
 //! Codex only produces JSON proposals. Runtime remains the sole Gate/ToolHost owner.
 //! No credentials are read, copied or returned by this adapter.
-use super::host::{parse_reply, Brain, BrainOut, ToolCall, ToolDef, ToolStep, Turn, TurnContext};
+use super::host::{
+    parse_reply, Brain, BrainError, BrainOut, ToolCall, ToolDef, ToolStep, Turn, TurnContext,
+};
 use super::models::system_prompt;
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -277,7 +279,7 @@ impl Brain for CodexBrain {
         cx: TurnContext<'_>,
         history: &[Turn],
         inbound: &Turn,
-    ) -> Result<BrainOut, String> {
+    ) -> Result<BrainOut, BrainError> {
         self.think_with_tools(cx, history, inbound, &[], &[]).await
     }
     async fn think_with_tools(
@@ -287,12 +289,14 @@ impl Brain for CodexBrain {
         inbound: &Turn,
         tools: &[ToolDef],
         steps: &[ToolStep],
-    ) -> Result<BrainOut, String> {
+    ) -> Result<BrainOut, BrainError> {
         if tools.len() > 128
             || steps.len() > super::host::MAX_TOOL_ROUNDS * super::host::MAX_CALLS_PER_ROUND
             || tools.iter().any(|t| !token(&t.name, 128))
         {
-            return Err("Codex tool context exceeds limit".into());
+            return Err(BrainError::NotDispatched(
+                "Codex tool context exceeds limit".into(),
+            ));
         }
         let history: Vec<Value> = history
             .iter()
@@ -308,7 +312,8 @@ impl Brain for CodexBrain {
             self.complete(system_prompt(cx.definition), input, tools),
         )
         .await
-        .map_err(|_| "Codex local inference timed out".to_string())?
+        .map_err(|_| BrainError::OutcomeUnknown("Codex local inference timed out".into()))?
+        .map_err(BrainError::OutcomeUnknown)
     }
 }
 

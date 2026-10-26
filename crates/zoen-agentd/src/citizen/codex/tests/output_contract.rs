@@ -141,7 +141,7 @@ fn nested_calls_keep_id_count_offering_json_object_and_review_boundaries() {
     }
 }
 
-async fn think_with_catalog(brain: &CodexBrain, tools: &[ToolDef]) -> Result<BrainOut, String> {
+async fn think_with_catalog(brain: &CodexBrain, tools: &[ToolDef]) -> Result<BrainOut, BrainError> {
     let def = definition();
     let cx = TurnContext {
         agent: "agent",

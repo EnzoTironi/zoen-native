@@ -21,7 +21,7 @@ impl Drop for Fixture {
     }
 }
 impl Fixture {
-    fn close(&mut self) {
+    pub(super) fn close(&mut self) {
         self.client.stop_sync();
         let empty = Client::open(":memory:".into(), "en".into()).unwrap();
         let current = std::mem::replace(&mut self.client, empty);
