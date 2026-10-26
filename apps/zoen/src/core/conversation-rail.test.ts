@@ -91,3 +91,39 @@ test('editing, empty rails, reduced motion and retired chat callbacks keep safe 
     await f.close();
   }
 });
+
+test('a retired activation cannot change a replacement chat or steal its active drag', async () => {
+  const f = await conversationRailFixture();
+  try {
+    const retired = f.model().gesture as any;
+    await f.render({ scope: 'replacement-owner:replacement-chat' });
+    retired.onActivate();
+    retired.onUpdate({ translationY: -150 });
+    retired.onDeactivate({ velocityY: -900, canceled: false });
+    await f.flush();
+    assert.equal(f.model().collapsed, false);
+    assert.equal(f.model().expansion.get(), 1);
+    assert.equal(f.style('conversation-rail').height, 180 + CONVERSATION_RAIL_GRIP);
+
+    const current = f.model().gesture as any;
+    current.onActivate();
+    current.onUpdate({ translationY: -60 });
+    retired.onActivate();
+    retired.onFinalize();
+    current.onUpdate({ translationY: -140 });
+    current.onDeactivate({ velocityY: -900, canceled: false });
+    await f.flush();
+    assert.equal(f.model().collapsed, true);
+    assert.equal(f.model().expansion.get(), 0);
+
+    await f.render({ scope: 'owner:chat' });
+    retired.onActivate();
+    retired.onUpdate({ translationY: -180 });
+    retired.onFinalize();
+    await f.flush();
+    assert.equal(f.model().collapsed, false);
+    assert.equal(f.model().expansion.get(), 1, 'returning to the same scope creates a new owner');
+  } finally {
+    await f.close();
+  }
+});

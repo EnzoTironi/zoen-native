@@ -3,6 +3,7 @@ import { selectionAsync } from 'expo-haptics';
 import { usePanGesture } from 'react-native-gesture-handler';
 import {
   cancelAnimation,
+  makeMutable,
   useDerivedValue,
   useSharedValue,
   withSpring,
@@ -21,7 +22,9 @@ import { useKeyboardMotion } from './keyboard-motion';
 export function useConversationRail(scope: string, height: number, collapsible: boolean) {
   const { progress: keyboard } = useKeyboardMotion();
   const { reducedMotion, presentation } = useTheme();
-  const owner = useMemo(() => ({ scope }), [scope]);
+  // A retired handler must not acquire the next owner's shared gesture state.
+  const owner = useMemo(() => ({ scope, lease: makeMutable({ scope, live: false }) }), [scope]);
+  const { lease } = owner;
   const [intent, setIntent] = useState(() => ({ owner, collapsed: false, editing: false }));
   const collapsed = intent.owner === owner && intent.collapsed;
   const editing = intent.owner === owner && intent.editing;
@@ -34,6 +37,7 @@ export function useConversationRail(scope: string, height: number, collapsible: 
   const committed = useRef<object | null>(null);
   useLayoutEffect(() => {
     committed.current = owner;
+    lease.set({ scope: owner.scope, live: true });
     epoch.set(epoch.get() + 1);
     cancelAnimation(expansion);
     expansion.set(1);
@@ -41,11 +45,12 @@ export function useConversationRail(scope: string, height: number, collapsible: 
     active.set(false);
     return () => {
       committed.current = null;
+      lease.set({ scope: owner.scope, live: false });
       epoch.set(epoch.get() + 1);
       active.set(false);
       cancelAnimation(expansion);
     };
-  }, [owner, epoch, expansion, target, active]);
+  }, [owner, lease, epoch, expansion, target, active]);
   const visibleHeight = useDerivedValue(() =>
     railVisibleHeight(height, expansion.get(), keyboard.get(), collapsible),
   );
@@ -86,7 +91,7 @@ export function useConversationRail(scope: string, height: number, collapsible: 
     enabled: collapsible && height > 0 && !editing,
     onActivate: () => {
       'worklet';
-      if (keyboard.get() > 0) return;
+      if (!lease.get().live || keyboard.get() > 0) return;
       cancelAnimation(expansion);
       origin.set(expansion.get());
       observedEpoch.set(epoch.get());
@@ -94,7 +99,7 @@ export function useConversationRail(scope: string, height: number, collapsible: 
     },
     onUpdate: (event) => {
       'worklet';
-      if (!active.get() || observedEpoch.get() !== epoch.get()) return;
+      if (!lease.get().live || !active.get() || observedEpoch.get() !== epoch.get()) return;
       if (keyboard.get() > 0) {
         active.set(false);
         settle(target.get());
@@ -104,7 +109,7 @@ export function useConversationRail(scope: string, height: number, collapsible: 
     },
     onDeactivate: (event) => {
       'worklet';
-      if (!active.get() || observedEpoch.get() !== epoch.get()) return;
+      if (!lease.get().live || !active.get() || observedEpoch.get() !== epoch.get()) return;
       active.set(false);
       settle(
         event.canceled || keyboard.get() > 0
@@ -115,7 +120,7 @@ export function useConversationRail(scope: string, height: number, collapsible: 
     },
     onFinalize: () => {
       'worklet';
-      if (!active.get() || observedEpoch.get() !== epoch.get()) return;
+      if (!lease.get().live || !active.get() || observedEpoch.get() !== epoch.get()) return;
       active.set(false);
       settle(target.get());
     },

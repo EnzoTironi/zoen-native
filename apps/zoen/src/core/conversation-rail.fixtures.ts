@@ -87,6 +87,7 @@ export async function conversationRailFixture() {
       __esModule: true,
       default: { View: view },
       cancelAnimation() {},
+      makeMutable: <T>(value: T) => new Shared(value),
       useSharedValue: <T>(value: T) => React.useState(() => new Shared(value))[0],
       useDerivedValue: (read: () => number) => {
         const latest = React.useRef(read);
