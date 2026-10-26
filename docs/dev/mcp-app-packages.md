@@ -176,6 +176,16 @@ The earlier native632 build covers the preceding manual-editor contract and does
 not contain this schema-6 rollout. Clients/runtime must be upgraded together;
 older clients' handling of these requests remains unqualified.
 
+For a real-provider run, use the normal
+[`agent-host --source`](agent-source-hosting.md) selector with the exact new signed
+edit-request message, never the App card or an unrelated backlog entry. Scene
+commands execute in Core and require no binary editor worker. Omit all optional
+binary-worker triplets and their cache directory from that process configuration;
+configured workers otherwise initialize and compile their WASM at startup, even
+when the selected source only needs a drawing. This does not skip provider, Gate,
+permission or approval configuration. Do not start the unrestricted host to test
+one App when its retained profile contains older unrelated work.
+
 Generic package creation by an agent, additional document formats, visual review,
 remote-tool credentials, distribution/registry and independent deployment remain
 separate acceptance work under #180.
