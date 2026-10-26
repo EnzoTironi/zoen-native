@@ -21,5 +21,45 @@
   "status": "BOUNDED PASS private PDF capture after process death, Keep without publication and explicit Save/cold exactly one v3; full parity remains open.",
   "runtimeAcceptance": "Existing History download QA1018v63b PDF starts at v2. Controlled kill after synchronous encrypted capture and before canonical save recovers the same black ink stroke. Keep returns to chat with exactly v1/v2; a second cold then explicit Save produces one Anotações event Enviando → Enviada. Third cold shows exactly v1/v2/v3, the same stroke and no private recovery choice. /private/tmp/zoen-pdf-edit-journal-qa-v85/native-acceptance.json",
   "fullAppParityAccepted": false,
-  "installedPublicVerification": "/private/tmp/zoen-pdf-edit-journal-qa-v85/isolated-v85-verify-after.json"
+  "installedPublicVerification": "/private/tmp/zoen-pdf-edit-journal-qa-v85/isolated-v85-verify-after.json",
+  "latestRetainedQa": {
+    "case": "CORE637",
+    "cohort": 632,
+    "sourceCommit": "08a2d126a267f1b025ec8723f9bfa8e7b7e8a044",
+    "configuration": "ad-hoc signed Release arm64 iOS Simulator; actual CFBundleVersion1; no Metro",
+    "deviceUdid": "E439FAD5-4E39-4224-ABFD-215D0ECCFC68",
+    "physicalDeviceAccepted": false,
+    "executableSha256": "4273f1f766e907cec4dacddc61db188fd61cc504da93f34088a1520aac979b96",
+    "bundleSha256": "c31bf210368f4b4076ed9f3f3ceabb61b5b5f358675d9d28f1b245a322041925",
+    "installedFilesVerified": 426,
+    "strictSignatureVerified": true,
+    "normalPreservingInstall": true,
+    "installAttempts": 1,
+    "scope": "Normal published HTML File -> one canonical App -> real Excalidraw rectangle -> save -> close/reopen -> app-only cold relaunch -> independent public CLI scene/pin/version readback. Identity, selected Night preference and exact unsent Article draft retained; no global data-integrity claim.",
+    "appItem": "it_mcp_a0b28ff30381add2df9d2a1dc1a381266c3875ea11dce80f98d98a372e70d2c0",
+    "resourceUri": "ui://zoen/package/it_01m5tr57mdxm1bd1s0dwj4wkdd/1/504923690c679748e87876339ea138eb1c6de81c069a803919b154607319e89e",
+    "documentVersion": 2,
+    "documentBytes": 654,
+    "documentSha256": "1a4ccba938bab2eb716e751e357caf0d8118eb4721bb7ebd7197ecf8c5c24618",
+    "journey": {
+      "path": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/core637-external-app-journey.json",
+      "sha256": "4e47cab265f302700e87dba424f41e993312b35e3788f96f7569adbff7038212"
+    },
+    "canonicalProof": {
+      "path": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/core637/canonical-scene-proof.json",
+      "sha256": "1dc1559d8574366a360321e3dc8c1773ea4cf8f9bb5d57bfedb9d85da738f1d0"
+    },
+    "upgradeReceipt": {
+      "path": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/core637/upgrade-receipt.json",
+      "sha256": "5856f49a8c49eb3afe06762a1ed095aa98530c582dfb7e55b9c416e008dd0cf4"
+    },
+    "publication": "https://github.com/EnzoTironi/zoen-native/issues/180#issuecomment-6405560386",
+    "pending": [
+      "Independent renderer update/rejection",
+      "Suggest approval and live refresh from later634/635",
+      "Sharing/rekey/revocation and mixed versions",
+      "Physical-device and full-product acceptance"
+    ],
+    "historicalEvidence": "All preexisting v85/v92 and later receipts retain their original source and scope."
+  }
 }
