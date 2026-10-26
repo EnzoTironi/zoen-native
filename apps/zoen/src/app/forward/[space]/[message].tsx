@@ -1,10 +1,12 @@
 import { t, formatLocale } from '../../../i18n/index.ts';
 import { ProfileAvatar } from '../../../profile/profile-avatar';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { FlashList } from '@shopify/flash-list';
 import { useHeaderHeight } from 'expo-router/react-navigation';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Keyboard, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ForwardMessagePreview } from '../../../components/forward-message-preview';
 import { useClient } from '../../../core/provider';
 import {
   ForwardMessageSession,
@@ -18,12 +20,20 @@ import { EmptyState, NativeButton } from '../../../components/primitives';
 
 export default function Forward() {
   const headerHeight = useHeaderHeight();
+  const insets = useSafeAreaInsets();
+  const previewOwner = useRef<ForwardMessageReview | null>(null);
   const { space, message } = useLocalSearchParams<{ space: string; message: string }>();
   const client = useClient();
   const { snapshot, store } = client;
   const { colors } = useTheme();
   const [query, setQuery] = useState('');
   const [review, setReview] = useState<ForwardMessageReview | null>(null);
+  useLayoutEffect(() => {
+    previewOwner.current = review;
+    return () => {
+      if (previewOwner.current === review) previewOwner.current = null;
+    };
+  }, [review]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const owner = homeOwnerFor(client);
@@ -79,7 +89,10 @@ export default function Forward() {
   useFocusEffect(
     useCallback(() => {
       session.focus();
-      return () => session.blur();
+      return () => {
+        previewOwner.current = null;
+        session.blur();
+      };
     }, [session]),
   );
   useEffect(() => {
@@ -98,6 +111,18 @@ export default function Forward() {
         chat.can_write &&
         chat.title.toLocaleLowerCase(formatLocale).includes(query.toLocaleLowerCase(formatLocale)),
     ) ?? [];
+  const previewCurrent = useCallback(() => {
+    const current = homeOwnerFor(store.getSnapshot());
+    return (
+      previewOwner.current === review &&
+      review !== null &&
+      store.sessionEpoch === sessionEpoch &&
+      current?.identityId === identityId &&
+      current?.deviceId === deviceId &&
+      current?.mode === mode &&
+      homeSpacesFor(store.getSnapshot()).has(space)
+    );
+  }, [review, store, sessionEpoch, identityId, deviceId, mode, space]);
   const target = review && snapshot?.conversations.find((chat) => chat.id === review.targetId);
   const reviewedMessage = review?.message;
   const content =
@@ -128,7 +153,10 @@ export default function Forward() {
         </Text>
       ) : null}
       {review && target && content ? (
-        <View testID="forward-message-review" style={{ flex: 1, padding: 20, gap: 20 }}>
+        <View
+          testID="forward-message-review"
+          style={{ flex: 1, padding: 20, paddingBottom: Math.max(20, insets.bottom), gap: 20 }}
+        >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
             <ProfileAvatar
               person={target.counterpart}
@@ -139,7 +167,12 @@ export default function Forward() {
               {target.title}
             </Text>
           </View>
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: 8 }}>
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            style={{ flex: 1 }}
+            contentContainerStyle={{ gap: 8 }}
+          >
             <Text style={{ color: colors.secondary }}>
               {snapshot?.conversations.find((chat) => chat.id === space)?.title}
             </Text>
@@ -148,32 +181,12 @@ export default function Forward() {
                 {reviewedMessage.author.name}
               </Text>
             ) : null}
-            {content.card ? (
-              <>
-                <Text selectable style={{ color: colors.text, fontSize: 17 }}>
-                  {content.card.title}
-                </Text>
-                <Text selectable style={{ color: colors.secondary }}>
-                  {content.card.kind_label}
-                </Text>
-                {content.card.summary ? (
-                  <Text selectable style={{ color: colors.text }}>
-                    {content.card.summary}
-                  </Text>
-                ) : null}
-              </>
-            ) : null}
-            <Text selectable style={{ color: colors.text, fontSize: 17 }}>
-              {content.text}
-            </Text>
-            {reviewedMessage?.voice ? (
-              <Text style={{ color: colors.secondary }}>{t('peerInfo.audio')}</Text>
-            ) : null}
-            {reviewedMessage?.voice?.transcript ? (
-              <Text selectable style={{ color: colors.text }}>
-                {reviewedMessage.voice.transcript}
-              </Text>
-            ) : null}
+            <ForwardMessagePreview
+              key={`${space}:${reviewedMessage!.id}`}
+              spaceId={space}
+              entry={reviewedMessage!}
+              isCurrent={previewCurrent}
+            />
           </ScrollView>
           <NativeButton
             testID="forward-message-send"
@@ -188,12 +201,17 @@ export default function Forward() {
             label={t('common.cancel')}
             secondary
             disabled={busy}
-            onPress={() => session.cancelReview()}
+            onPress={() => {
+              previewOwner.current = null;
+              session.cancelReview();
+            }}
           />
         </View>
       ) : (
         <FlashList
           contentInsetAdjustmentBehavior="never"
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
           data={chats}
           keyExtractor={(chat) => chat.id}
           ListEmptyComponent={
@@ -208,6 +226,7 @@ export default function Forward() {
               accessibilityRole="button"
               accessibilityLabel={item.title}
               onPress={() => {
+                Keyboard.dismiss();
                 void session.prepare(item.id);
               }}
               style={{
