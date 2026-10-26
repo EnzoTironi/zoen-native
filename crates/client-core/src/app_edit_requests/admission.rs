@@ -6,6 +6,8 @@ pub(crate) enum AppEditConflictKind {
     MissingOwnedAgent,
     WaitingForMls,
     Changed,
+    ChooseAgent,
+    AgentTrustRequired,
 }
 impl AppEditConflictKind {
     pub(super) fn message(self) -> String {
@@ -17,6 +19,14 @@ impl AppEditConflictKind {
             Self::WaitingForMls => t(
                 "Aguarde a entrada do seu agente na conversa.",
                 "Wait for your agent to join this conversation.",
+            ),
+            Self::ChooseAgent => t(
+                "Escolha o agente para este pedido.",
+                "Choose the agent for this request.",
+            ),
+            Self::AgentTrustRequired => t(
+                "Permita que seu agente sugira alterações nesta conversa.",
+                "Allow your agent to suggest edits in this conversation.",
             ),
             Self::Changed => t(
                 "O App ou o pedido mudou; confira a versão atual.",
@@ -46,18 +56,18 @@ impl Engine {
         if agents.is_empty() {
             return Err(AppEditConflictKind::MissingOwnedAgent);
         }
-        if !self.is_e2e(space) {
-            return Ok(agents[0].clone());
+        let eligible = self.eligible_app_agents(space, owner);
+        match eligible.as_slice() {
+            [agent] => Ok(agent.clone()),
+            [] if agents
+                .iter()
+                .any(|id| self.member_delivery_ready(space, id)) =>
+            {
+                Err(AppEditConflictKind::AgentTrustRequired)
+            }
+            [] => Err(AppEditConflictKind::WaitingForMls),
+            _ => Err(AppEditConflictKind::ChooseAgent),
         }
-        let readers = self
-            .mls_status(space)
-            .map(|(_, _, members)| members)
-            .unwrap_or_default();
-        agents
-            .into_iter()
-            .find(|id| readers.contains(id))
-            .cloned()
-            .ok_or(AppEditConflictKind::WaitingForMls)
     }
     /// Classification is consumed only for an actual definitive Stale result.
     /// It grants nothing and never substitutes for the operation's checks.

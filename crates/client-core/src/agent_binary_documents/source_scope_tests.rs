@@ -22,6 +22,8 @@ pub(crate) fn scope(
         sha256: f.base.sha256.clone(),
         request_id: types::new_id("app_request")?,
         text_sha256: hex::encode(Sha256::digest(text.as_bytes())),
+        agent_id: None,
+        intent_sha256: None,
     });
     alter(&mut reference);
     let mut e = f.agent.lock();
@@ -367,5 +369,41 @@ fn scoped_answer_is_atomic_source_linked_idempotent_and_fenced_after_context_cha
         .is_err());
     assert_eq!(counts(&f), before);
 
+    Ok(())
+}
+
+#[test]
+fn signed_recipient_refuses_another_agent_before_read_reply_or_tool_proposal(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut f = fixture()?;
+    scope(&mut f, |r| {
+        r.artifact.as_mut().unwrap().agent_id = Some("other_agent".into())
+    })?;
+    let before = counts(&f);
+    assert!(f
+        .agent
+        .agent_artifact_request(&f.space, &f.source, &f.owner)
+        .is_err());
+    assert!(f
+        .agent
+        .agent_binary_turn(&f.base.item_id, &f.source, &f.owner, None, None)
+        .is_err());
+    assert!(f
+        .agent
+        .agent_artifact_reply(&f.space, &f.source, &f.owner, "Not for me")
+        .is_err());
+    assert_eq!(counts(&f), before);
+    let agent = f.agent.account().ok_or("agent account")?.identity_id;
+    scope(&mut f, |r| {
+        r.artifact.as_mut().unwrap().agent_id = Some(agent)
+    })?;
+    assert!(f
+        .agent
+        .agent_artifact_request(&f.space, &f.source, &f.owner)?
+        .is_some());
+    assert!(f
+        .agent
+        .agent_binary_turn(&f.base.item_id, &f.source, &f.owner, None, None)
+        .is_ok());
     Ok(())
 }

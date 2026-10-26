@@ -7,7 +7,7 @@ impl State {
         let Some(p) = &req.tool_proposal else {
             return false;
         };
-        if !super::super::source_scope::proposal_valid(self, space, p) {
+        if !super::super::source_scope::proposal_valid(self, space, p, &req.agent) {
             return false;
         }
         if p.schema == crate::agent_scenes::SCHEMA {

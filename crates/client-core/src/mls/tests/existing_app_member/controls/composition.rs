@@ -4,6 +4,9 @@ use crate::app_edit_requests::AppEditRequestInput;
 pub(super) fn input(f: &LateWord, id: &str, share: bool) -> R<AppEditRequestInput> {
     let account = f.owner.account().ok_or_else(|| storage("owner account"))?;
     Ok(AppEditRequestInput {
+        target_agent_id: None,
+        expected_target_revision: None,
+        expected_resource_uri: None,
         expected_identity_id: account.identity.clone(),
         expected_device_id: account.device.clone(),
         space_id: SPACE.into(),
@@ -18,7 +21,14 @@ pub(super) fn input(f: &LateWord, id: &str, share: bool) -> R<AppEditRequestInpu
 #[test]
 fn one_disclosed_send_publishes_share_before_scoped_request_with_no_extra_retry_effect() -> R<()> {
     let mut f = late_word(":memory:", ":memory:")?;
-    let command = input(&f, "one_disclosed_send", true)?;
+    let actor = f.agent.me_id()?;
+    f.owner
+        .set_trust(&actor, SPACE, types::TrustLevel::Suggest)?;
+    publish(&mut f.owner, &mut f.agent, &mut f.blobs)?;
+    let mut command = input(&f, "one_disclosed_send", true)?;
+    let targets = f.owner.app_edit_targets(&(&command).into())?;
+    command.target_agent_id = Some(f.agent.me_id()?);
+    command.expected_target_revision = Some(targets.revision);
     let before = counts(&f.owner);
     let first = f.owner.request_app_edit(command.clone())?;
     assert_eq!(f.owner.outbox_len(), 2);
@@ -45,6 +55,7 @@ fn one_disclosed_send_publishes_share_before_scoped_request_with_no_extra_retry_
         .artifact_request(SPACE, &first.id)?
         .ok_or_else(|| storage("scoped request survives share"))?;
     assert_eq!(request.item_id, f.original.item_id);
+    assert_eq!(request.agent_id.as_deref(), Some(f.agent.me_id()?.as_str()));
     assert_eq!(request.version, 2);
     assert_eq!(
         f.agent

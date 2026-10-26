@@ -1,7 +1,40 @@
 //! The existing request result carries a closed, optional refusal classification.
-use super::{encode, Client, CoreError};
+use super::{encode, Client, Command, CoreError};
 use crate::app_current_share::{AppShareContext, AppShareResult};
 impl Client {
+    pub(super) fn request_app_edit_command(&self, command: Command) -> Result<String, CoreError> {
+        let Command::RequestAppEdit {
+            expected_identity_id,
+            expected_device_id,
+            space_id,
+            item_id,
+            expected_version,
+            expected_sha256,
+            text,
+            mutation_id,
+            share_current,
+            target_agent_id,
+            expected_target_revision,
+            expected_resource_uri,
+        } = command
+        else {
+            return Err(super::invalid("Invalid App edit command."));
+        };
+        self.request_app_edit_bridge(crate::app_edit_requests::AppEditRequestInput {
+            expected_identity_id,
+            expected_device_id,
+            space_id,
+            item_id,
+            expected_version,
+            expected_sha256,
+            text,
+            mutation_id,
+            share_current: share_current.unwrap_or(false),
+            target_agent_id,
+            expected_target_revision,
+            expected_resource_uri,
+        })
+    }
     pub(super) fn share_app_current_bridge(
         &self,
         context: AppShareContext,
