@@ -155,6 +155,27 @@ impl Fixture {
         assert!(client.unlock(self.vault.clone()).unwrap());
         self.client = client;
     }
+    pub(super) fn history(
+        &mut self,
+    ) -> Result<Vec<protocol::Sequenced>, Box<dyn std::error::Error>> {
+        self.close();
+        let db = store::Store::open(self.path.join("agent.sqlite").to_str().unwrap())?;
+        let history = db
+            .events(&self.space)?
+            .into_iter()
+            .map(|event| {
+                Ok(protocol::Sequenced {
+                    seq: event.seq,
+                    prev: event.prev.clone(),
+                    hash: event.hash.clone(),
+                    env: protocol::Envelope::plain(&event)?,
+                })
+            })
+            .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
+        drop(db);
+        self.reopen();
+        Ok(history)
+    }
     /// Sequence and ingest this synthetic agent's actual queued publication.
     /// A registered Page cannot offer an unconfirmed optimistic import as a read base.
     pub(super) fn confirm_publications(

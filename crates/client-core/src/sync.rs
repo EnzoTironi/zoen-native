@@ -102,6 +102,8 @@ pub struct AccountMeta {
 
 #[derive(Default)]
 pub struct NetState {
+    /// Successful author checks over exact retained originals; never permission or epoch state.
+    outbox_verification: std::sync::Mutex<outbox::VerificationCache>,
     pub(crate) file_demands: crate::file_demand::FileDemands,
     pub account: Option<AccountMeta>,
     /// The unlocked device key (loaded from the vault).

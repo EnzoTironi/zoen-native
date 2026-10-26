@@ -2,7 +2,7 @@
 
 use super::{
     mpsc, session, tracing_like, ClientFrame, Cmd, ConnState, Ctx, Duration, ErrorCode, Exit,
-    HashMap, Identity, Message, Op, ServerFrame, Sink, SinkExt, Stream, StreamExt,
+    HashMap, HashSet, Identity, Message, Op, ServerFrame, Sink, SinkExt, Stream, StreamExt,
 };
 
 pub(super) async fn run(ctx: Ctx, mut cmd_rx: mpsc::UnboundedReceiver<Cmd>) {
@@ -130,11 +130,14 @@ pub(super) async fn flush(
     if !ctx.status.borrow().synced {
         return Ok(());
     }
-    let (envs, pending) = ctx
+    let (envs, pending, mut unsettled) = ctx
         .engine(|engine| {
             (
                 engine.outbox_envelopes_except(sent),
                 engine.net.pending.len(),
+                sent.keys()
+                    .filter_map(|id| engine.net.pending.get(id).cloned())
+                    .collect::<HashSet<_>>(),
             )
         })
         .ok_or_else(|| "offline".to_string())?;
@@ -146,6 +149,13 @@ pub(super) async fn flush(
         ));
     }
     for env in envs {
+        // A later envelope can be accepted after an earlier transient refusal.
+        // Keep each Space behind its unsettled signed head; unrelated Spaces
+        // still share this pass. Accepted notices alone cannot release a lane;
+        // confirmation or a terminal refusal resolves its older intent.
+        if unsettled.contains(env.space()) {
+            continue;
+        }
         if let std::collections::hash_map::Entry::Vacant(entry) =
             sent.entry(env.client_id().to_string())
         {
@@ -153,6 +163,7 @@ pub(super) async fn flush(
                 event_log::content::SealedKind::Application => ::mls::application_epoch(data),
                 _ => None,
             });
+            unsettled.insert(env.space().to_string());
             entry.insert(epoch);
             send(sink, &ClientFrame::Publish { env }).await?;
             tracing_like(&format!("publication submitted in_flight={}", sent.len()));

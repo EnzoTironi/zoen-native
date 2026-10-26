@@ -78,12 +78,18 @@ export function reviewMetadataValid(request: AgentRequestDto | null): boolean {
   );
 }
 
+/** Closed presentation states only; expiry, Core metadata and signed admission
+ * still decide whether a particular request can be renewed. */
+export function reviewStatusEligible(status: AgentRequestDto['status'] | undefined): boolean {
+  return status === 'Pending' || status === 'Stale' || status === 'Approved';
+}
+
 /** UI eligibility only. The atomic Core operation verifies the signed predecessor again. */
 export function reviewAvailable(request: AgentRequestDto | null, now = Date.now()): boolean {
   const tool = request?.tool_approval;
   return Boolean(
     request?.agent.is_mine &&
-    request.status === 'Approved' &&
+    reviewStatusEligible(request.status) &&
     tool &&
     toolApprovalValid(tool) &&
     toolApprovalExpired(tool, now) &&
@@ -175,7 +181,7 @@ export class ToolReviewSession {
       !this.flight &&
       !this.state.unknown &&
       request?.agent.is_mine &&
-      request.status === 'Approved' &&
+      reviewStatusEligible(request.status) &&
       request.tool_approval &&
       toolApprovalValid(request.tool_approval) &&
       reviewMetadataValid(request) &&

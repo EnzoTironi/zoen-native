@@ -15,6 +15,7 @@ import { conversationScope } from './conversation-scope.ts';
 import { conversationRevealContent } from './conversation-reveal-content.ts';
 import * as binaryFormats from '../miniapps/binary-formats.ts';
 import { selectedDeckHead } from '../miniapps/deck-version-selection.ts';
+import * as appReview from '../miniapps/app-request-review.ts';
 import type { ItemDetail, TimelineEntry } from './types';
 import type { ItemCard } from './generated/ItemCard';
 
@@ -286,6 +287,7 @@ function renderScreen(
       return { MiniappSurfaceControls: 'MiniappSurfaceControls' };
     if (path === './actions' || path.endsWith('/assistant/launch')) return {};
     if (path.endsWith('/media/mosaic-layout')) return { supportsMediaMosaic: mosaic };
+    if (path === './app-request-review') return appReview;
     return assert.fail(`Missing screen port: ${path}`);
   }
   const jsx = (type: string, props: Element['props']) => ({ type, props });

@@ -121,7 +121,7 @@ pub(super) async fn incremental(
 
     reply(socket, ServerFrame::SyncDone).await;
     let mut sent_at_old_epoch = HashSet::new();
-    while sent_at_old_epoch.len() < 2 {
+    while sent_at_old_epoch.is_empty() {
         match request(socket).await {
             ClientFrame::Publish { env } if env.sealed_kind() == Some(SealedKind::Application) => {
                 assert!(ctx.status.borrow().synced);
@@ -153,8 +153,9 @@ pub(super) async fn incremental(
         }
     }
     assert!(sent_at_old_epoch.contains(&cached.client_id));
-    assert!(sent_at_old_epoch.contains(&fresh.client_id));
-    // Live catch-up overtakes the answers to both epoch-1 publications.
+    assert!(!sent_at_old_epoch.contains(&fresh.client_id));
+    // Live catch-up overtakes the first epoch-1 publication. The newer
+    // message remains queued behind it and is resealed before its first offer.
     reply(
         socket,
         ServerFrame::Event {
@@ -184,20 +185,18 @@ pub(super) async fn incremental(
         .map(|env| (env.client_id().to_string(), env))
         .collect();
     assert_eq!(current_copies.len(), 2);
-    // The cache now contains new ciphertext, but each outstanding answer
-    // still belongs to the old envelope actually written to the socket.
-    for event in [cached, fresh] {
-        reply(
-            socket,
-            ServerFrame::Rejected {
-                space: space.into(),
-                client_id: event.client_id.clone(),
-                reason: protocol::STALE_SEAL.into(),
-                permanent: true,
-            },
-        )
-        .await;
-    }
+    // Both caches have new ciphertext, but only the first envelope was
+    // actually written at epoch1. Its late answer cannot clear the newer copy.
+    reply(
+        socket,
+        ServerFrame::Rejected {
+            space: space.into(),
+            client_id: cached.client_id.clone(),
+            reason: protocol::STALE_SEAL.into(),
+            permanent: true,
+        },
+    )
+    .await;
 }
 
 pub(super) async fn initial(

@@ -354,14 +354,7 @@ jobs:
           cargo install wasm-bindgen-cli --version 0.2.129 --locked
       - name: Disposable Postgres and FoundationDB
         run: |
-          pg=""
-          for attempt in 1 2 3; do
-            for img in public.ecr.aws/docker/library/postgres:17-alpine mirror.gcr.io/library/postgres:17-alpine; do
-              docker pull -q "$img" && { pg="$img"; break 2; }
-            done
-            sleep $((attempt * 15))
-          done
-          test -n "$pg"
+          pg="$(scripts/ci-pull-postgres.sh)"
           docker run -d --name expo-pg -p 5432:5432 -e POSTGRES_USER=zoen -e POSTGRES_HOST_AUTH_METHOD=trust "$pg"
           scripts/fdb.sh up
           eval "$(scripts/fdb.sh env)"

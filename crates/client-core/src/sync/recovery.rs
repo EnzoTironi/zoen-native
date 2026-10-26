@@ -22,6 +22,9 @@ impl Engine {
 
     /// Part of `reload`: account, relay-ordered Spaces and the outbox on top.
     pub(crate) fn reload_sync(&mut self) -> R<()> {
+        if let Ok(cache) = self.net.outbox_verification.get_mut() {
+            cache.clear();
+        }
         self.net.account = match self.store.meta("account")? {
             Some(j) => serde_json::from_str(&j).ok(),
             None => None,

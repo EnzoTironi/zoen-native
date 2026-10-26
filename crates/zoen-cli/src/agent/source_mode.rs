@@ -243,6 +243,7 @@ pub(super) struct Run {
     bound: Bound,
     observed: Option<Head>,
     completed_through: u64,
+    activity: Option<Instant>,
 }
 impl Run {
     pub(super) fn prepare(
@@ -254,6 +255,7 @@ impl Run {
             bound: Bound::locate(e, source)?,
             observed: None,
             completed_through: 0,
+            activity: None,
         };
         run.observe_cursors(cursors);
         Ok(run)
@@ -269,6 +271,9 @@ impl Run {
     }
     pub(super) fn check(&self, e: &Client) -> Result<(), String> {
         self.bound.check(e)
+    }
+    pub(super) fn take_activity(&mut self) -> Option<Instant> {
+        self.activity.take()
     }
     pub(super) fn actor(&self, agent: &str, device: &str, owner: &str) -> Result<(), String> {
         if self.bound.scope.agent != agent
@@ -352,6 +357,7 @@ impl Run {
         )
         .await
         .map_err(|_| "agent_host_source_outcome_unknown")?;
+        self.activity = Some(Instant::now());
         self.check(e)?;
         if let Some(observed) = attempt.observed {
             self.observed = Some(observed);

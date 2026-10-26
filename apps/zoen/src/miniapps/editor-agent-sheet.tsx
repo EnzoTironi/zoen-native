@@ -1,6 +1,6 @@
 import * as Crypto from 'expo-crypto';
 import { BottomSheet, Host, RNHostView } from '@expo/ui';
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { AppState, Keyboard, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconButton } from '../components/primitives';
@@ -18,6 +18,8 @@ import { EditorAgentEnrollment } from './editor-agent-enrollment';
 import type { Persona } from '../core/generated/Persona';
 import { EditorAgentPermissions } from './editor-agent-permissions';
 import { editorAgentAdmission } from './editor-agent-admission';
+import type { AppRequestReviewTarget } from './app-request-review';
+import { useAppRequestReviewHandoff } from './use-app-request-review-handoff';
 
 const readyFallback = () => true;
 const noReadinessChanges = () => () => {};
@@ -27,10 +29,16 @@ export function EditorAgentAccess({
   itemId,
   spaceId,
   document,
+  reviewTarget = null,
+  onReviewConsumed,
+  onReviewFailure,
 }: {
   itemId: string;
   spaceId: string;
   document: MiniappDocumentController;
+  reviewTarget?: AppRequestReviewTarget | null;
+  onReviewConsumed?: () => void;
+  onReviewFailure?: () => void;
 }) {
   const ready = useSyncExternalStore(
     document.agentReadiness?.subscribe ?? noReadinessChanges,
@@ -104,9 +112,23 @@ export function EditorAgentAccess({
     };
   }, [store, spaceId, owner, session]);
   useEffect(() => {
+    // The session's own flush temporarily withdraws frame readiness. Its
+    // ticket/request checks still run after that barrier; this is no owner change.
+    if (session.getSnapshot().busy) return;
     session.invalidateTargets();
     if (ready) void session.refreshTargets();
   }, [ready, session]);
+  const reviewOpened = useCallback(() => setPane('prompt'), []);
+  useAppRequestReviewHandoff({
+    target: reviewTarget,
+    ready: ready && !!document.drawingReview && document.agentDocument?.kind === 'owned-scene',
+    store,
+    itemId,
+    session,
+    onConsumed: onReviewConsumed,
+    onFailure: onReviewFailure,
+    onOpen: reviewOpened,
+  });
   const visiblePane = state.visible ? pane : 'prompt';
   return (
     <>

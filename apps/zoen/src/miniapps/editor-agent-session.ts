@@ -6,6 +6,7 @@ import type { AppEditConflictKind } from '../core/generated/AppEditConflictKind'
 import type { AppEditTargets } from '../core/generated/AppEditTargets';
 import type { Persona } from '../core/generated/Persona';
 import { requestDecisionCommand, toolApprovalValid } from '../core/tool-request-decision.ts';
+import { matchesAppRequestReview, type AppRequestReviewTarget } from './app-request-review.ts';
 
 export type EditorAgentTicket = Readonly<{ owner: string; generation: number }>;
 export type EditorAgentHead = Readonly<{ version: number; sha256: string }>;
@@ -39,6 +40,7 @@ export type EditorAgentPort = Readonly<{
 }>;
 export type EditorAgentState = Readonly<{
   visible: boolean;
+  reviewTarget: AppRequestReviewTarget | null;
   draft: string;
   busy: boolean;
   loading: boolean;
@@ -58,6 +60,7 @@ export type EditorAgentState = Readonly<{
 export class EditorAgentSession {
   private state: EditorAgentState = {
     visible: false,
+    reviewTarget: null,
     draft: '',
     busy: false,
     loading: false,
@@ -143,14 +146,50 @@ export class EditorAgentSession {
   open = () => {
     if (this.retired || !this.owner || this.port.scope() !== this.owner) return;
     this.generation++;
-    this.update({ visible: true, error: null });
+    this.update({ visible: true, reviewTarget: null, error: null });
     void this.refresh();
     void this.refreshTargets();
+  };
+  /** Open one existing request using only current read views, never a new turn. */
+  openReview = async (target: AppRequestReviewTarget, check = () => {}): Promise<boolean> => {
+    if (
+      this.retired ||
+      !this.owner ||
+      this.owner !== target.scope ||
+      this.port.scope() !== this.owner ||
+      this.state.busy ||
+      this.attempt ||
+      this.state.uncertain
+    )
+      return false;
+    const generation = ++this.generation;
+    const current = () =>
+      !this.retired && this.generation === generation && this.port.scope() === this.owner;
+    try {
+      check();
+      const [requests, head] = await Promise.all([this.port.requests(), this.port.head()]);
+      check();
+      if (!current()) return false;
+      const request = requests.find((value) =>
+        matchesAppRequestReview(value, target, this.item, this.space),
+      );
+      if (!request || request.tool_approval?.version !== head.version) return false;
+      this.update({
+        visible: true,
+        reviewTarget: target,
+        requests: [request],
+        loading: false,
+        error: null,
+      });
+      return true;
+    } catch {
+      return false;
+    }
   };
   close = () => {
     this.generation++;
     this.targetReading++;
-    this.update({ visible: false, loading: false });
+    this.update({ visible: false, reviewTarget: null, loading: false });
   };
   retire = () => {
     this.retired = true;
@@ -159,6 +198,7 @@ export class EditorAgentSession {
     this.attempt = null;
     this.update({
       visible: false,
+      reviewTarget: null,
       draft: '',
       busy: false,
       loading: false,
@@ -175,7 +215,13 @@ export class EditorAgentSession {
     });
   };
   setDraft = (draft: string, ticket: EditorAgentTicket | null = this.ticket()) => {
-    if (this.accepts(ticket) && !this.retired && !this.state.busy && !this.attempt)
+    if (
+      this.accepts(ticket) &&
+      !this.retired &&
+      !this.state.busy &&
+      !this.attempt &&
+      !this.state.reviewTarget
+    )
       this.update({ draft });
   };
   invalidateTargets = () => {
@@ -234,6 +280,7 @@ export class EditorAgentSession {
   };
   selectAgent = (agentId: string, revision: string, ticket: EditorAgentTicket | null) => {
     if (
+      this.state.reviewTarget ||
       !this.accepts(ticket) ||
       this.state.busy ||
       this.attempt ||
@@ -323,6 +370,7 @@ export class EditorAgentSession {
     return work;
   };
   send = async (observed: EditorAgentTicket | null = this.ticket()): Promise<void> => {
+    if (this.state.reviewTarget) return;
     if (!this.accepts(observed) || this.state.busy || !this.state.draft.trim()) return;
     const target = this.state.target;
     if (!this.attempt && (!target || this.state.targetPhase !== 'ready')) return;

@@ -121,7 +121,7 @@ async fn run_media_dependencies_ws(
             .unwrap()
             .id
     });
-    let (expected, file_id) = {
+    let (expected, file_id, next_file_id) = {
         let mut engine = sender.lock();
         engine.set_registered(true).unwrap();
         let _ = engine.mls_key_packages_to_publish().unwrap();
@@ -132,6 +132,14 @@ async fn run_media_dependencies_ws(
             .iter()
             .find(|row| matches!(row.event.body, EventBody::ItemCreated { .. }))
             .unwrap()
+            .event
+            .client_id
+            .clone();
+        let next_file_id = rows
+            .iter()
+            .filter(|row| matches!(row.event.body, EventBody::ItemCreated { .. }))
+            .nth(1)
+            .expect("the second retained File intent")
             .event
             .client_id
             .clone();
@@ -148,7 +156,7 @@ async fn run_media_dependencies_ws(
             })
             .collect();
         assert_eq!(envelopes.len(), if terminal { 5 } else { 4 });
-        (envelopes, file_id)
+        (envelopes, file_id, next_file_id)
     };
     let (commands_tx, mut commands_rx) = mpsc::unbounded_channel();
     let (status, _) = watch::channel(NetStatus {
@@ -259,7 +267,11 @@ async fn run_media_dependencies_ws(
                                 }
                             }
                             assert!(matches!(answered.await.unwrap(), Ok(Reply::Link(None))));
-                            assert!(deferred.iter().any(|env| Some(env.client_id()) == later.as_deref()), "terminal refusal must itself wake the later ordinary head before another confirmation or Flush");
+                            assert_eq!(
+                                deferred.iter().map(Envelope::client_id).collect::<Vec<_>>(),
+                                [next_file_id.as_str()],
+                                "terminal refusal must itself wake the next surviving File head; the ordinary message stays behind its unconfirmed predecessor"
+                            );
                             for id in held_answers {
                                 reply(
                                     &mut socket,

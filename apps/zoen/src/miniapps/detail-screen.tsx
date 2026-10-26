@@ -19,12 +19,16 @@ import { useConversationCards } from './conversation-provider';
 import { EditorAgentAccess } from './editor-agent-sheet';
 import type { MiniappDocumentController } from './document-controller';
 import { AppPackageReleaseSheet } from './package-release-sheet';
+import { parseAppRequestReview } from './app-request-review';
 
 export function MiniappScreen({ manage = false }: { manage?: boolean }) {
-  const { id, version, sha256 } = useLocalSearchParams<{
+  const { id, version, sha256, reviewRequest, reviewHash, reviewScope } = useLocalSearchParams<{
     id: string;
     version?: string;
     sha256?: string;
+    reviewRequest?: string;
+    reviewHash?: string;
+    reviewScope?: string;
   }>();
   const historical = version !== undefined || sha256 !== undefined;
   const selectedHead = useMemo(() => selectedDeckHead(version, sha256), [version, sha256]);
@@ -42,6 +46,14 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
   const specs = useCoreQuery({ op: 'app_specs' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const reviewTarget = useMemo(
+    () => parseAppRequestReview({ reviewRequest, reviewHash, reviewScope }),
+    [reviewRequest, reviewHash, reviewScope],
+  );
+  const reviewConsumed = useCallback(() => {
+    router.setParams({ reviewRequest: undefined, reviewHash: undefined, reviewScope: undefined });
+  }, []);
+  const reviewFailed = useCallback(() => setError(t('agents.requestUnavailable')), []);
   const [message, setMessage] = useState<string | null>(null);
   const [document, setDocument] = useState<MiniappDocumentController | null>(null);
   const [leaving, setLeaving] = useState(false);
@@ -234,9 +246,16 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
         />
         {!historical &&
         ((isBinaryEditorId(spec.id) && binaryEditorFormat(spec.id).liveReview) ||
-          (spec.id === 'excalidraw' && document?.agentDocument?.kind === 'owned-scene')) &&
+          document?.agentDocument?.kind === 'owned-scene') &&
         document?.observedHead ? (
-          <EditorAgentAccess itemId={item.id} spaceId={item.space_id} document={document} />
+          <EditorAgentAccess
+            itemId={item.id}
+            spaceId={item.space_id}
+            document={document}
+            reviewTarget={reviewTarget}
+            onReviewConsumed={reviewConsumed}
+            onReviewFailure={reviewFailed}
+          />
         ) : null}
       </View>
     );

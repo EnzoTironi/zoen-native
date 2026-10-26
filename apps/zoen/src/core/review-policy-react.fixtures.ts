@@ -11,6 +11,9 @@ import * as decision from './tool-request-decision.ts';
 import * as review from './tool-review-renewal.ts';
 import * as policy from '../owner-policy/session.ts';
 import * as policyCore from '../owner-policy/core-port.ts';
+import { imageToolReviewValid } from './image-tool-review.ts';
+import * as siteSource from '../sites/source.ts';
+import * as appReview from '../miniapps/app-request-review.ts';
 import type { useToolReview } from '../agents/use-tool-review.ts';
 import type { useOwnerPolicy } from '../owner-policy/use-owner-policy.ts';
 import type { AgentRequestDto } from './generated/AgentRequestDto';
@@ -32,9 +35,17 @@ const compiled = {
   policy: compile(new URL('../owner-policy/use-owner-policy.ts', import.meta.url)),
 };
 for (const source of Object.values(compiled)) assert.match(source, /react\/compiler-runtime/);
+const presentation = {
+  card: compile(new URL('../agents/request-card.tsx', import.meta.url)),
+  recovery: compile(new URL('../agents/tool-review-recovery.tsx', import.meta.url)),
+  action: compile(new URL('../agents/app-request-review-action.tsx', import.meta.url)),
+};
+assert.match(presentation.recovery, /react\/compiler-runtime/);
+// RequestCard's existing try/finally fallback is checked against its baseline
+// by tool-review-ui.fixture; this consumer still runs its actual Babel output.
 /** Actual compiled hooks, sessions, ports and Store lifecycle. Only native/Core
  * boundaries are synthetic; no financial operation or external service is used. */
-export async function reviewPolicyReactFixture(kind: 'review' | 'policy') {
+export async function reviewPolicyReactFixture(kind: 'review' | 'policy' | 'card') {
   const root = createReactTestRoot();
   const driver = new Driver(),
     snapshot = draftSession();
@@ -98,7 +109,13 @@ export async function reviewPolicyReactFixture(kind: 'review' | 'policy') {
     if (command.op === 'requests') {
       const pending = requests;
       requests = null;
-      return pending ?? [structuredClone(request)];
+      if (pending) return pending;
+      const row = structuredClone(request);
+      if (kind === 'card' && Number(row.tool_approval!.expires_ms) <= Date.now()) {
+        row.status = 'Stale';
+        row.tool_approval!.review!.state = 'Available';
+      }
+      return [row];
     }
     if (command.op === 'find_account_policy_options') return null;
     if (command.op === 'request_account_policy_options') {
@@ -111,6 +128,29 @@ export async function reviewPolicyReactFixture(kind: 'review' | 'policy') {
   };
   const store = new ClientStore(driver);
   await store.open('account');
+  const buttons = new Map<string, Record<string, any>>();
+  const texts = new Map<string, React.ReactNode>();
+  const passthrough = ({ children }: { children?: React.ReactNode }) =>
+    React.createElement(React.Fragment, null, children);
+  function NativeButton(props: Record<string, any>) {
+    React.useLayoutEffect(() => {
+      buttons.set(props.label, props);
+      return () => {
+        if (buttons.get(props.label) === props) buttons.delete(props.label);
+      };
+    }, [props]);
+    return null;
+  }
+  function NativeText({ children }: { children?: React.ReactNode }) {
+    const id = React.useId();
+    React.useLayoutEffect(() => {
+      texts.set(id, children);
+      return () => {
+        texts.delete(id);
+      };
+    }, [id, children]);
+    return null;
+  }
   let foreground = 'active',
     focused = true;
   const appListeners = new Set<(next: string) => void>();
@@ -153,8 +193,12 @@ export async function reviewPolicyReactFixture(kind: 'review' | 'policy') {
   });
   const ports: Record<string, unknown> = {
     react: React,
+    'react/jsx-runtime': require('react/jsx-runtime'),
     'react/compiler-runtime': require('react/compiler-runtime'),
     'react-native': {
+      View: passthrough,
+      Pressable: passthrough,
+      Text: NativeText,
       AppState: {
         get currentState() {
           return foreground;
@@ -173,10 +217,30 @@ export async function reviewPolicyReactFixture(kind: 'review' | 'policy') {
       }),
     },
     '../core/account-scope': ownership,
+    '../core/account-scope.ts': ownership,
     '../core/tool-request-decision': decision,
     '../core/tool-review-renewal.ts': review,
     './core-port': policyCore,
     './session': policy,
+    '../theme': {
+      useTheme: () => ({
+        colors: { text: '#111', secondary: '#555', danger: '#a00', accent: '#07f' },
+      }),
+    },
+    '../i18n/index.ts': { t: (key: string) => key, formatLocale: 'en-US' },
+    '../components/primitives': { Surface: passthrough, Avatar: () => null, NativeButton },
+    '../components/dialogs': {
+      useDialogs: () => ({ confirm: async () => assert.fail('Expiry cannot request consent') }),
+    },
+    '../core/presentation': { money: () => '' },
+    '../core/image-tool-review': { imageToolReviewValid },
+    '../sites/source': siteSource,
+    './drawing-tool-review': {
+      DrawingToolReview: () => assert.fail('Read drawing has no mutation preview'),
+    },
+    './site-tool-review': {
+      SiteToolReview: () => assert.fail('Drawing cannot load a Site preview'),
+    },
   };
   const module = {
     exports: {} as {
@@ -184,17 +248,34 @@ export async function reviewPolicyReactFixture(kind: 'review' | 'policy') {
       useOwnerPolicy: typeof useOwnerPolicy;
     },
   };
-  runInNewContext(compiled[kind], {
-    setTimeout,
-    clearTimeout,
-    module,
-    exports: module.exports,
-    require(name: string) {
-      if (name.startsWith('@babel/runtime/helpers/')) return require(name);
-      assert.ok(name in ports, name);
-      return ports[name];
-    },
-  });
+  function load(source: string, target: { exports: Record<string, any> }) {
+    runInNewContext(source, {
+      setTimeout,
+      clearTimeout,
+      Date,
+      module: target,
+      exports: target.exports,
+      require(name: string) {
+        if (name.startsWith('@babel/runtime/helpers/')) return require(name);
+        assert.ok(name in ports, name);
+        return ports[name];
+      },
+    });
+  }
+  load(compiled[kind === 'card' ? 'review' : kind], module);
+  const card = { exports: {} as Record<string, any> };
+  if (kind === 'card') {
+    ports['../miniapps/app-request-review'] = appReview;
+    ports['../i18n'] = ports['../i18n/index.ts'];
+    const action = { exports: {} };
+    load(presentation.action, action);
+    ports['./app-request-review-action'] = action.exports;
+    ports['./use-tool-review'] = module.exports;
+    const recovery = { exports: {} };
+    load(presentation.recovery, recovery);
+    ports['./tool-review-recovery'] = recovery.exports;
+    load(presentation.card, card);
+  }
   let reviewController: ReturnType<typeof useToolReview> | null = null;
   let policyController: ReturnType<typeof useOwnerPolicy> | null = null;
   function ReviewSurface() {
@@ -217,6 +298,8 @@ export async function reviewPolicyReactFixture(kind: 'review' | 'policy') {
     calls,
     request,
     target,
+    buttons,
+    visibleText: () => Array.from(texts.values()).flat(Infinity).join(' '),
     errors: root.errors,
     review() {
       assert.ok(reviewController);
@@ -229,7 +312,11 @@ export async function reviewPolicyReactFixture(kind: 'review' | 'policy') {
     expectedPolicyScope: () =>
       policy.policyScopeKey(policyCore.policyAvailability(store, target).scope),
     render: () =>
-      root.render(React.createElement(kind === 'review' ? ReviewSurface : PolicySurface)),
+      root.render(
+        kind === 'card'
+          ? React.createElement(card.exports.RequestCard, { request, embedded: true })
+          : React.createElement(kind === 'review' ? ReviewSurface : PolicySurface),
+      ),
     act: root.act,
     read(pending: Promise<AgentRequestDto[]>) {
       requests = pending;

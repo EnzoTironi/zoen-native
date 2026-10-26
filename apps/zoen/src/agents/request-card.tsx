@@ -1,5 +1,5 @@
 import { t, formatLocale } from '../i18n/index.ts';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { router } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 import type { AgentRequestDto } from '../core/generated/AgentRequestDto';
@@ -17,6 +17,7 @@ import { Avatar, NativeButton, Surface } from '../components/primitives';
 import { useDialogs } from '../components/dialogs';
 import { ToolReviewRecovery } from './tool-review-recovery';
 import { DrawingToolReview } from './drawing-tool-review';
+import { AppRequestReviewAction } from './app-request-review-action';
 import type { DrawingReviewPort } from '../miniapps/drawing-review-types';
 import { accountScope, accountScopeKey } from '../core/account-scope.ts';
 import { SiteToolReview } from './site-tool-review';
@@ -39,6 +40,7 @@ export function RequestCard({
   embedded = false,
   onDecision,
   drawingReview,
+  reviewRequested = false,
 }: {
   request: AgentRequestDto;
   compact?: boolean;
@@ -47,6 +49,7 @@ export function RequestCard({
   embedded?: boolean;
   onDecision?: (command: DecisionCommand) => Promise<DecideOutcome>;
   drawingReview?: DrawingReviewPort;
+  reviewRequested?: boolean;
 }) {
   const client = useClient();
   const { store } = client;
@@ -55,12 +58,17 @@ export function RequestCard({
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
+  const [expiryRevision, redrawExpiry] = useState(0);
   const deciding = useRef(false);
   const tool = request.tool_approval;
   const siteNeedsReview = tool?.preview_kind === 'site';
   const drawingNeedsReview =
     tool?.preview_kind === 'scene' || tool?.canonical_tool === 'replace_scene';
   const drawingOwner = accountScopeKey(accountScope(store, client));
+  const reviewExpired = useCallback(() => {
+    if (drawingOwner && accountScopeKey(accountScope(store)) === drawingOwner)
+      redrawExpiry((revision) => revision + 1);
+  }, [store, drawingOwner]);
   const drawingKey = `${request.id}:${tool?.content_hash ?? ''}:${drawingOwner}:${drawingReview?.key ?? ''}`;
   const drawingLease = useRef<string | null>(null);
   const [reviewedDrawing, setReviewedDrawing] = useState<string | null>(null);
@@ -84,7 +92,13 @@ export function RequestCard({
   const imageRequest = tool?.canonical_tool === 'generate_image';
   const image = imageRequest && imageToolReviewValid(tool.image) ? tool.image : null;
   const toolValid = tool == null || toolApprovalValid(tool);
-  const toolExpired = tool != null && toolApprovalExpired(tool);
+  // The session's existing deadline observation invalidates this presentation
+  // calculation even when the canonical request object has not changed.
+  const toolExpiry = useMemo(
+    () => ({ revision: expiryRevision, expired: tool != null && toolApprovalExpired(tool) }),
+    [tool, expiryRevision],
+  );
+  const toolExpired = toolExpiry.expired;
   const itemId = imageRequest
     ? null
     : tool == null
@@ -260,6 +274,7 @@ export function RequestCard({
           contentHash={tool.content_hash}
           spaceId={request.space_id}
           onReady={drawingReady}
+          initialOpen={reviewRequested}
         />
       ) : null}
       {!compact ? (
@@ -294,19 +309,21 @@ export function RequestCard({
           {money(request.cost_cents)}
         </Text>
       ) : null}
-      <Text
-        accessibilityLiveRegion="polite"
-        style={{
-          color: request.status === 'Stale' ? colors.danger : colors.secondary,
-          fontWeight: '600',
-        }}
-      >
-        {historicalToolApproval
-          ? t('reviewRenewal.historicalApproval')
-          : tool == null && request.by_standing
-            ? t('agents.standingDecisionStatus', { status: statuses[request.status] })
-            : statuses[request.status]}
-      </Text>
+      {!(pending && toolExpired) ? (
+        <Text
+          accessibilityLiveRegion="polite"
+          style={{
+            color: request.status === 'Stale' ? colors.danger : colors.secondary,
+            fontWeight: '600',
+          }}
+        >
+          {historicalToolApproval
+            ? t('reviewRenewal.historicalApproval')
+            : tool == null && request.by_standing
+              ? t('agents.standingDecisionStatus', { status: statuses[request.status] })
+              : statuses[request.status]}
+        </Text>
+      ) : null}
       {!toolValid ? (
         <Text accessibilityRole="alert" style={{ color: colors.danger, lineHeight: 21 }}>
           {t('agents.toolApprovalUnavailable')}
@@ -324,10 +341,11 @@ export function RequestCard({
           {t('agents.permissionAppliesToTheExactContentOfThis')}
         </Text>
       ) : null}
-      {historicalToolApproval ? (
+      {tool != null && toolValid && request.agent.is_mine && (historicalToolApproval || pending) ? (
         <ToolReviewRecovery
           requestId={request.id}
           onResolved={onResolved}
+          onExpiry={reviewExpired}
           disabled={disabled || busy}
         />
       ) : null}
@@ -393,20 +411,26 @@ export function RequestCard({
                 void decide('Deny');
               }}
             />
-            <NativeButton
-              label={busy ? t('agents.saving') : t('agents.allowOnce')}
-              disabled={
-                !canDecide ||
-                request.status === 'Stale' ||
-                toolExpired ||
-                (siteNeedsReview && (!siteReviewed || compact)) ||
-                (drawingNeedsReview && (!drawingReviewed || compact)) ||
-                (imageRequest && !image)
-              }
-              onPress={() => {
-                void decide(tool == null ? 'Approve' : 'ApproveOnce');
-              }}
-            />
+            {drawingNeedsReview && !drawingReview ? (
+              !compact && !embedded ? (
+                <AppRequestReviewAction request={request} />
+              ) : null
+            ) : (
+              <NativeButton
+                label={busy ? t('agents.saving') : t('agents.allowOnce')}
+                disabled={
+                  !canDecide ||
+                  request.status === 'Stale' ||
+                  toolExpired ||
+                  (siteNeedsReview && (!siteReviewed || compact)) ||
+                  (drawingNeedsReview && (!drawingReviewed || compact)) ||
+                  (imageRequest && !image)
+                }
+                onPress={() => {
+                  void decide(tool == null ? 'Approve' : 'ApproveOnce');
+                }}
+              />
+            )}
           </>
         ) : null}
       </View>

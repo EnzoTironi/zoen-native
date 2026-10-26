@@ -14,6 +14,8 @@ use super::{
 mod fault_tests;
 #[cfg(test)]
 mod sealing_tests;
+mod verification;
+pub(super) use verification::VerificationCache;
 
 /// These are local read outcomes, never a terminal refusal or permission to
 /// reconstruct, discard, re-sign or retry an unreadable signed intent.
@@ -269,15 +271,15 @@ impl Engine {
         &self,
         head: &store::OutboxHead,
     ) -> Result<Event, OutboxHeadFailure> {
-        match self.store.outbox_get(&head.client_id) {
-            Ok(Some(event))
-                if event.client_id == head.client_id
-                    && event.space == head.space
-                    && event_log::verify_author(&event).is_ok() =>
-            {
-                Ok(event)
+        match self.store.outbox_original_json(&head.client_id) {
+            Ok(Some(json)) => {
+                let event = match self.net.outbox_verification.lock() {
+                    Ok(mut cache) => cache.read_original(head, json),
+                    Err(_) => VerificationCache::read_uncached(head, &json),
+                };
+                event.ok_or(OutboxHeadFailure::Corrupt)
             }
-            Ok(Some(_)) | Err(store::StoreError::Json(_)) => Err(OutboxHeadFailure::Corrupt),
+            Err(store::StoreError::Json(_)) => Err(OutboxHeadFailure::Corrupt),
             Ok(None) => Err(OutboxHeadFailure::Missing),
             Err(_) => Err(OutboxHeadFailure::Read),
         }

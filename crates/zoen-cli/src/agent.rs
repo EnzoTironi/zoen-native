@@ -62,6 +62,7 @@ mod tool_execution;
 pub(crate) use test_support::{exercise_deckcraft_dispatch, exercise_deckcraft_operation};
 use tool_execution::CanonicalToolAdmission;
 
+mod connection;
 mod source_mode;
 mod startup;
 pub(crate) use source_mode::Source;
@@ -243,9 +244,7 @@ pub async fn host(
     say(format_args!("agent @{} hosting", acct.handle));
 
     let deadline = for_secs.map(|s| Instant::now() + Duration::from_secs(s));
-    let mut backoff = Duration::from_secs(1);
-    let mut offline_since: Option<Instant> = None;
-    let mut last_activity = Instant::now();
+    let mut connection = connection::HostConnection::new(Instant::now());
     let mut failures = 0u32;
     loop {
         if deadline.is_some_and(|d| Instant::now() >= d) {
@@ -255,51 +254,28 @@ pub async fn host(
             }
             break;
         }
-        // Reconnect with backoff when the connection is down; a long-quiet session also
-        // resubscribes once in a while so a Space opened mid-subscribe isn't missed.
-        let online = *waker.online.lock().unwrap_or_else(|p| p.into_inner());
-        if online == Some(false) {
-            let since = *offline_since.get_or_insert_with(Instant::now);
-            if since.elapsed() >= backoff {
-                e.stop_sync();
-                let _ = e.start_sync(Some(waker.clone() as Arc<dyn CoreListener>));
-                offline_since = Some(Instant::now());
-                backoff = (backoff * 2).min(Duration::from_secs(60));
-            }
-        } else {
-            offline_since = None;
-            backoff = Duration::from_secs(1);
-            if last_activity.elapsed() > Duration::from_secs(10) {
-                e.stop_sync();
-                let _ = e.start_sync(Some(waker.clone() as Arc<dyn CoreListener>));
-                last_activity = Instant::now();
-            }
-        }
+        connection.maintain(e, &waker, Instant::now());
 
         if let Some(selected) = &selected {
             selected.check(e)?;
         }
-        let state = if scoped {
-            tokio::time::timeout(
-                deadline
-                    .expect("bounded source mode")
-                    .saturating_duration_since(Instant::now()),
-                e.agent_state(),
-            )
-            .await
-            .map_err(|_| "agent_host_source_state_unavailable")?
-        } else {
-            e.agent_state().await
-        };
+        let state =
+            if scoped {
+                Ok(connection::source_state(
+                    e,
+                    deadline.expect("bounded source mode"),
+                    e.agent_state(),
+                )
+                .await?)
+            } else {
+                e.agent_state().await
+            };
         let status = match state {
             Ok(s) => {
                 failures = 0;
                 s
             }
             Err(err) => {
-                if scoped {
-                    return Err("agent_host_source_state_unavailable".into());
-                }
                 // The relay refuses a revoked runtime device; the engine retries the rest.
                 failures += 1;
                 if failures >= MAX_STATE_FAILURES {
@@ -355,10 +331,13 @@ pub async fn host(
         // This branch precedes BOTH continuation discovery and the normal backlog
         // loop. Source mode never seeds/advances a cursor or emits a read watermark.
         if let Some(selected) = &mut selected {
-            if selected
+            let completed = selected
                 .tick(e, &cx, &def, deadline.expect("bounded source mode"))
-                .await?
-            {
+                .await?;
+            if let Some(at) = selected.take_activity() {
+                connection.activity(at);
+            }
+            if completed {
                 e.wait_until_settled(8000)
                     .await
                     .map_err(|_| "agent_host_source_reply_unsettled")?;
@@ -418,7 +397,7 @@ pub async fn host(
                 if t.seq <= from || skip(t) {
                     continue;
                 }
-                last_activity = Instant::now();
+                connection.activity(Instant::now());
                 let handled = turn(e, &cx, &def, &s.id, &tl[..i], t).await;
                 if handled == turn::Outcome::Deferred {
                     caught_up = false;

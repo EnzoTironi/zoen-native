@@ -9,6 +9,8 @@ use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Notify;
 use tokio_tungstenite::tungstenite::Message;
+mod auth;
+pub(super) use auth::AuthGate;
 
 #[derive(Default)]
 pub(super) struct Vault(Mutex<HashMap<String, Vec<u8>>>);
@@ -39,6 +41,7 @@ pub(super) enum Mode {
 }
 pub(super) struct Relay {
     pub url: String,
+    pub auth: Arc<AuthGate>,
     pub calls: Arc<Mutex<Vec<&'static str>>>,
     pub cursors: Arc<Mutex<Vec<(String, u64)>>>,
     pub delivered: Arc<Mutex<Option<(String, String, u64)>>>,
@@ -57,6 +60,8 @@ impl Drop for Relay {
 pub(super) async fn relay(mode: Mode) -> Relay {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
+    let auth = Arc::new(AuthGate::default());
+    let authentication = auth.clone();
     let calls = Arc::new(Mutex::new(Vec::new()));
     let cursors = Arc::new(Mutex::new(Vec::<(String, u64)>::new()));
     let delivered = Arc::new(Mutex::new(None::<(String, String, u64)>));
@@ -90,6 +95,7 @@ pub(super) async fn relay(mode: Mode) -> Relay {
             let (published_packages, claim_receipts) =
                 (published_packages.clone(), claim_receipts.clone());
             let (uploaded, devices) = (uploaded.clone(), devices.clone());
+            let authentication = authentication.clone();
             tokio::spawn(async move {
                 let mut first = [0];
                 if socket.peek(&mut first).await.unwrap() == 0 {
@@ -142,6 +148,7 @@ pub(super) async fn relay(mode: Mode) -> Relay {
                     &protocol::auth_message("source-fixture", "source-fixture"),
                     &sig
                 ));
+                authentication.before_ready().await;
                 devices.lock().unwrap().insert(device.clone());
                 ws.send(Message::Binary(
                     ServerFrame::Ready {
@@ -351,6 +358,7 @@ pub(super) async fn relay(mode: Mode) -> Relay {
     });
     Relay {
         url,
+        auth,
         calls,
         cursors,
         delivered,

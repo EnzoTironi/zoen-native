@@ -22,6 +22,18 @@ DOCUMENTS = frozenset({
 })
 SELF = "scripts/ci-documentation-scope.py"
 TEST = "scripts/tests/test_ci_documentation_scope.py"
+DISJOINT_TEST = "scripts/tests/test_ci_frontend_disjoint_scope.py"
+
+# This unchanged JS fixture reads the child App layout, not the ordinary root
+# layout. Admit only this reviewed reader/path pair; a basename collision is
+# not permission to ignore another changed input read by the same fixture.
+DISJOINT_FRONTEND_REFERENCES = {
+    ("miniapps/excalidraw-ui/test/native-host-navigation-fixture.mjs",
+     "apps/zoen/src/app/_layout.tsx"): (
+        "177d00b51ff5669e9ccd4f16c0853890c9e2115472b97fd926ebf12b887fb902",
+        "apps/zoen/src/app/miniapp/_layout.tsx",
+    ),
+}
 
 from ci_frontend_inputs import (
     FRONTEND_CONTRACTS, NON_INPUT_APP_LITERALS, RESOURCE_MANIFESTS, RUST_ROOTS,
@@ -53,6 +65,46 @@ def json_strings(value):
         yield value
 
 
+def regular_blob(tree, path):
+    entries = git("ls-tree", "--full-tree", "-z", tree, "--", path).split(b"\0")
+    metadata, separator, name = entries[0].partition(b"\t")
+    return (len(entries) == 2 and not entries[1] and separator == b"\t"
+            and name == path.encode() and metadata.split()[:2] == [b"100644", b"blob"])
+
+
+def verified_disjoint_readers(base, head, paths):
+    admitted = {}
+    for (reader, disjoint_path), (expected, consumed_path) in DISJOINT_FRONTEND_REFERENCES.items():
+        if disjoint_path not in paths:
+            continue
+        for tree in (base, head):
+            # A child-layout symlink could alias the changed root. Neither
+            # missing files nor aliases are the reviewed literal reference.
+            if (not regular_blob(tree, reader) or not regular_blob(tree, consumed_path)
+                    or hashlib.sha256(git("show", tree + ":" + reader)).hexdigest() != expected):
+                raise ValueError("Frontend disjoint reader contract drift: " + reader)
+        admitted.setdefault(reader, set()).add(disjoint_path)
+    return admitted
+
+
+def frontend_reference_readers(tree, paths, reader=None):
+    if not paths:
+        return set()
+    command = ["git", "grep", "-I", "-l", "-z", "-E"]
+    for path in paths:
+        for token in (path, PurePosixPath(path).name):
+            command += ["-e", r"(^|[^A-Za-z0-9_.-])" + re.escape(token) + r"([^A-Za-z0-9_.-]|$)"]
+    locations = [reader] if reader else [".", ":(exclude)apps/zoen/src/**",
+        ":(exclude)*.md", ":(exclude)" + SELF, ":(exclude)" + TEST,
+        ":(exclude)scripts/tests/test_ci_frontend_scope.py", ":(exclude)" + DISJOINT_TEST]
+    search = subprocess.run(command + [tree, "--", *locations],
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if search.returncode not in (0, 1):
+        raise ValueError("Cannot establish the cross-boundary input closure")
+    return {row.decode("utf-8").partition(":")[2]
+            for row in search.stdout.split(b"\0") if row}
+
+
 def validate_frontend(base, head, ancestor, paths):
     if not FRONTEND_CONTRACTS or not (set(RESOURCE_MANIFESTS) | NON_INPUT_APP_LITERALS).issubset(FRONTEND_CONTRACTS):
         raise ValueError("Incomplete frontend boundary contract")
@@ -60,6 +112,7 @@ def validate_frontend(base, head, ancestor, paths):
         raise ValueError("Stale or non-ancestral base requires full Rust")
     if len(paths) > 128 or not all(frontend_path(path) for path in paths):
         raise ValueError("Not exclusively reviewed app TypeScript source")
+    disjoint = verified_disjoint_readers(base, head, paths)
     names = {PurePosixPath(path).name for path in paths}
     for tree in (base, head):
         for path, expected in FRONTEND_CONTRACTS.items():
@@ -93,18 +146,10 @@ def validate_frontend(base, head, ancestor, paths):
                 raise ValueError("Frontend source is an embedded-resource input: " + path)
         # Cross-boundary readers and shared JSON can be outside the Cargo
         # directories. Frontend-to-frontend imports remain in the app lane.
-        command = ["git", "grep", "-I", "-l", "-E"]
-        for path in paths:
-            for token in (path, PurePosixPath(path).name):
-                command += ["-e", r"(^|[^A-Za-z0-9_.-])" + re.escape(token) + r"([^A-Za-z0-9_.-]|$)"]
-        search = subprocess.run(command + [tree, "--", ".", ":(exclude)apps/zoen/src/**",
-            ":(exclude)*.md", ":(exclude)" + SELF, ":(exclude)" + TEST,
-            ":(exclude)scripts/tests/test_ci_frontend_scope.py"],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if search.returncode == 0:
-            raise ValueError("A tracked cross-boundary input refers to frontend source")
-        if search.returncode != 1:
-            raise ValueError("Cannot establish the cross-boundary input closure")
+        for reader in frontend_reference_readers(tree, paths):
+            if reader not in disjoint or frontend_reference_readers(
+                    tree, [path for path in paths if path not in disjoint[reader]], reader):
+                raise ValueError("A tracked cross-boundary input refers to frontend source")
         command = ["git", "grep", "-I", "-l", "-z", "-F",
                    "-e", "apps/zoen/src", "-e", '"apps/zoen"',
                    "-e", "'apps/zoen'", "-e", '"apps"', "-e", "'apps'"]

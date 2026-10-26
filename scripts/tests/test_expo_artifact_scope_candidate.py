@@ -80,6 +80,26 @@ class CandidateTests(unittest.TestCase):
         self.full(result)
         self.assertIn("differs from the tested checkout", result["reason"])
 
+    def test_disjoint_root_reader_does_not_bypass_the_exact_merge_proof(self):
+        [((reader, root), (_, child))] = SCOPE.FRONTEND_PROOF.DISJOINT_FRONTEND_REFERENCES.items()
+        self.repo.write(reader, (ROOT / reader).read_text())
+        self.repo.write(child, (ROOT / child).read_text())
+        self.repo.write(root, "export const orientation = 'default';\n")
+        base = self.repo.commit("real pinned child-layout reader")
+        self.repo.write(root, "export const orientation = 'portrait';\n")
+        head = self.repo.commit("ordinary navigation stays portrait")
+        candidate = self.candidate(base, head)
+        # The frontend path must return before any Cargo metadata invocation.
+        result = SCOPE.classify(base, head, "pull_request", "/must-not-run-cargo", candidate)
+        self.assertFalse(result["run_android"], result)
+        self.assertTrue(result["run_android_js"], result)
+        self.assertTrue(result["run_client"] and result["run_release_web"], result)
+        self.assertEqual(result["tested_candidate"], candidate)
+        forged = self.candidate(base, head, tree=self.repo.git("rev-parse", base + "^{tree}"))
+        result = SCOPE.classify(base, head, "pull_request", "/must-not-run-cargo", forged)
+        self.full(result)
+        self.assertIn("canonical event merge", result["reason"])
+
     def test_forged_tree_reversed_extra_or_missing_parents_never_skip(self):
         head = self.commit_ui()
         tree = self.repo.git("rev-parse", self.base + "^{tree}")

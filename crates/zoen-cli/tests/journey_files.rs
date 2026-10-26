@@ -146,7 +146,7 @@ async fn pages_and_files_travel_byte_for_byte() {
     );
     let started = std::time::Instant::now();
     let mut batch_ms: Vec<u128> = vec![];
-    for (batch_number, batch) in expected.chunks(100).enumerate() {
+    for batch in expected.chunks(100) {
         let batch_started = std::time::Instant::now();
         let mut args = vec![
             "--timeout".to_string(),
@@ -163,11 +163,9 @@ async fn pages_and_files_travel_byte_for_byte() {
                 .map(|(rel, _)| src.join(rel).display().to_string()),
         );
         let a: Vec<&str> = args.iter().map(String::as_str).collect();
-        let diagnostics: &[(&str, &str)] = if batch_number == 0 {
-            &[("ZOEN_NET_DEBUG", "1")]
-        } else {
-            &[]
-        };
+        // Any synthetic batch can be the first stalled one. The normal World
+        // prints child diagnostics only on failure, without resetting its wait.
+        let diagnostics: &[(&str, &str)] = &[("ZOEN_NET_DEBUG", "1")];
         let out = w.zoen_env("ana", &a, diagnostics);
         assert_eq!(out.lines().count(), batch.len(), "{out}");
         // Only full batches compare fairly: a short tail spreads command startup over few pages.

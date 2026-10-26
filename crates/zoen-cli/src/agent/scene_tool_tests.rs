@@ -7,6 +7,7 @@ use zoen_agentd::citizen::{testing::ControlledToolBrain, BrainOut};
 
 mod fixture;
 mod negatives;
+mod pending_review;
 mod visual_review;
 mod visual_review_negatives;
 use fixture::{approve, fixture};

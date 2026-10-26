@@ -161,6 +161,12 @@ pub(super) async fn queued_messages_round_trip(
     let notices = Arc::new(RejectionListener::default());
     let engine = Arc::new(Mutex::new(engine));
     let (cmd, mut commands) = mpsc::unbounded_channel();
+    if matches!(catch_up, CatchUp::TransientOrder) {
+        let poke = cmd.clone();
+        lock(&engine).net.poke = Some(Box::new(move || {
+            let _ = poke.send(Cmd::Flush);
+        }));
+    }
     let (status, _) = watch::channel(NetStatus {
         state: ConnState::Connecting,
         synced: false,
@@ -265,7 +271,7 @@ pub(super) async fn queued_messages_round_trip(
             )
             .await;
         }
-        if matches!(catch_up, CatchUp::Initial) {
+        if matches!(catch_up, CatchUp::Initial | CatchUp::TransientOrder) {
             queue_phases::initial(
                 &mut socket,
                 &engine,
@@ -278,6 +284,7 @@ pub(super) async fn queued_messages_round_trip(
             .await;
         }
         let mut readable = HashSet::new();
+        let mut transient_copy = None;
         while readable.len() < 2 {
             match request(&mut socket).await {
                 ClientFrame::Publish { env }
@@ -310,6 +317,32 @@ pub(super) async fn queued_messages_round_trip(
                         )
                         .await;
                         continue;
+                    }
+                    if matches!(catch_up, CatchUp::TransientOrder) {
+                        if env.client_id() == cached.client_id {
+                            if let Some(original) = &transient_copy {
+                                assert_eq!(
+                                    &env, original,
+                                    "retry keeps the exact ciphertext and CID"
+                                );
+                            } else {
+                                transient_copy = Some(env.clone());
+                                reply(
+                                    &mut socket,
+                                    ServerFrame::Rejected {
+                                        space: space.into(),
+                                        client_id: env.client_id().into(),
+                                        reason: "transient rate-limit refusal".into(),
+                                        permanent: false,
+                                    },
+                                )
+                                .await;
+                                continue;
+                            }
+                        } else {
+                            assert!(readable.contains(&cached.client_id),
+                                "a newer queued message overtook its transiently refused predecessor");
+                        }
                     }
                     let (_, bytes) = env.sealed_data().unwrap();
                     let epoch = ::mls::application_epoch(bytes);
@@ -381,6 +414,12 @@ pub(super) async fn queued_messages_round_trip(
                 ClientFrame::Publish { .. } => {}
                 other => panic!("unexpected {other:?}"),
             }
+        }
+        if matches!(catch_up, CatchUp::TransientOrder) {
+            assert!(
+                transient_copy.is_some(),
+                "the transient refusal was exercised"
+            );
         }
         assert!(held_commit.is_none(), "the old-epoch gap was not exercised");
         // A response ordered after both event echoes confirms that the client

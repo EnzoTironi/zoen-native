@@ -85,6 +85,35 @@ test('compiled tool review discards old metadata resolving after same-ID cold re
   }
 });
 
+for (const status of ['Pending', 'Stale'] as const)
+  test(`actual Compiler ${status} drawing renewal stays scoped across device reopen`, async () => {
+    const f = await reviewPolicyReactFixture('review'),
+      gate = deferred<AgentRequestDto[]>();
+    try {
+      f.request.status = status;
+      f.request.tool_approval!.canonical_tool = 'read_scene';
+      await f.render();
+      const original = f.review().session.ticket(f.review().state);
+      assert.ok(original);
+      f.read(gate.promise);
+      let renewing: Promise<boolean> | undefined;
+      await f.act(() => {
+        renewing = f.review().session.renew(original);
+      });
+      await f.reopen('device');
+      const current = f.review().session.ticket(f.review().state);
+      assert.ok(current);
+      assert.notEqual(current.scope, original.scope);
+      await f.act(() => gate.resolve([structuredClone(f.request)]));
+      assert.equal(await renewing, false);
+      assert.equal(f.calls.filter((command) => command.op === 'decide_tool_request').length, 0);
+      assert.deepEqual(f.errors, []);
+    } finally {
+      gate.resolve([]);
+      await f.close();
+    }
+  });
+
 test('compiled policy hook rejects late original inquiry and retains fresh ambiguous state', async () => {
   const f = await reviewPolicyReactFixture('policy'),
     gate = deferred<OwnerPolicyOptionsStatus>();

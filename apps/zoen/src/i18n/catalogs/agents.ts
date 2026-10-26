@@ -71,6 +71,7 @@ export const agents = defineFeature(
     thisRequestHasNotReachedThisDeviceYet:
       'This request has not reached this device yet or does not belong to your chats.',
     reviewRequest: 'Review request',
+    reviewDrawing: 'Review',
     waitingForYourDecision: 'Waiting for your decision',
     theContentHasChanged: 'The content has changed',
     approved: 'Approved',
@@ -201,6 +202,7 @@ export const agents = defineFeature(
     thisRequestHasNotReachedThisDeviceYet:
       'Este pedido ainda não chegou neste aparelho ou não pertence às suas conversas.',
     reviewRequest: 'Revisar pedido',
+    reviewDrawing: 'Revisar',
     waitingForYourDecision: 'Aguardando sua decisão',
     theContentHasChanged: 'O conteúdo mudou',
     approved: 'Aprovado',
