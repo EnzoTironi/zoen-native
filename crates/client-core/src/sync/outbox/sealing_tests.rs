@@ -36,6 +36,13 @@ fn exercise_fault(fault: &str) -> std::result::Result<(), Box<dyn std::error::Er
     let first_key = format!("mls.sealed:{}", first.client_id);
     let next_key = format!("mls.sealed:{}", second.client_id);
     let other_key = format!("mls.sealed:{}", independent.client_id);
+    let head = f.engine.store.outbox_heads()?.remove(0);
+    assert_eq!(
+        f.engine
+            .read_outbox_head(&head)
+            .expect("authentic original"),
+        first
+    );
     let damaged = match fault {
         "json" => "{not JSON".to_string(),
         "signature" => {

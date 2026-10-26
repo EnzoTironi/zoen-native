@@ -106,18 +106,22 @@ impl Store {
     }
 
     pub fn outbox_get(&self, client_id: &str) -> Result<Option<Event>> {
-        let json: Option<String> = self
+        Ok(match self.outbox_original_json(client_id)? {
+            Some(json) => Some(serde_json::from_str(&json)?),
+            None => None,
+        })
+    }
+
+    /// The retained original bytes, never an authority reconstructed from SQL columns.
+    pub fn outbox_original_json(&self, client_id: &str) -> Result<Option<String>> {
+        Ok(self
             .conn
             .query_row(
                 "SELECT json FROM outbox WHERE client_id = ?1",
                 [client_id],
                 |r| r.get(0),
             )
-            .optional()?;
-        Ok(match json {
-            Some(j) => Some(serde_json::from_str(&j)?),
-            None => None,
-        })
+            .optional()?)
     }
 
     pub fn outbox_remove(&self, client_id: &str) -> Result<()> {
