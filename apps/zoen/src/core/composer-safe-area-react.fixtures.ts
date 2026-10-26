@@ -65,6 +65,7 @@ export async function composerSafeAreaFixture(searching = true, noResults = fals
     }, []);
     React.useLayoutEffect(() => {
       controls.set('message-input', props);
+      props.bindSend?.(props.onSend);
     }, [props]);
     return null;
   }
