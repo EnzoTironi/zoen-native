@@ -218,10 +218,17 @@ index f89b7c8..46696e5 100644
    scroll: SharedValue<number>;
    /** Visible viewport dimensions. */
 diff --git a/node_modules/react-native-keyboard-controller/src/components/KeyboardChatScrollView/useExtraContentPadding/index.ts b/node_modules/react-native-keyboard-controller/src/components/KeyboardChatScrollView/useExtraContentPadding/index.ts
-index e7584ed..10587b5 100644
+index e7584ed6..dca7ace2 100644
 --- a/node_modules/react-native-keyboard-controller/src/components/KeyboardChatScrollView/useExtraContentPadding/index.ts
 +++ b/node_modules/react-native-keyboard-controller/src/components/KeyboardChatScrollView/useExtraContentPadding/index.ts
-@@ -25,6 +25,7 @@ type UseExtraContentPaddingOptions = {
+@@ -1,5 +1,6 @@
+ import { useCallback } from "react";
+ import { Platform } from "react-native";
++import { useSharedValue } from "react-native-reanimated";
+
+ import { IS_FABRIC } from "../../../architecture";
+ import { useAnimatedReaction } from "../../../reanimated";
+@@ -25,6 +26,7 @@ type UseExtraContentPaddingOptions = {
    size: SharedValue<{ width: number; height: number }>;
    /** IOS only — when provided, sets contentOffset atomically with contentInset. */
    contentOffsetY?: SharedValue<number>;
@@ -229,7 +236,7 @@ index e7584ed..10587b5 100644
    inverted: boolean;
    keyboardLiftBehavior: KeyboardLiftBehavior;
    freeze: SharedValue<boolean>;
-@@ -56,6 +57,7 @@ function useExtraContentPadding(options: UseExtraContentPaddingOptions): void {
+@@ -56,11 +58,44 @@ function useExtraContentPadding(options: UseExtraContentPaddingOptions): void {
      layout,
      size,
      contentOffsetY,
@@ -237,25 +244,134 @@ index e7584ed..10587b5 100644
      inverted,
      keyboardLiftBehavior,
      freeze,
-@@ -68,6 +70,9 @@ function useExtraContentPadding(options: UseExtraContentPaddingOptions): void {
+   } = options;
+
++  const pending = useSharedValue<{
++    observed: number;
++    target: number;
++    revision: number | undefined;
++    contentHeight: number;
++    viewportHeight: number;
++    keyboard: number;
++    floor: number;
++  } | null>(null);
++
++  // A native move (including a user/search scroll) replaces our baseline.
++  // Merely emitting animatedProps is not a native scroll acknowledgement.
++  useAnimatedReaction(
++    () => ({
++      offset: scroll.value,
++      frozen: freeze.value,
++      keyboard: keyboardPadding.value,
++      floor: blankSpace.value,
++    }),
++    (current, previous) => {
++      if (
++        current.frozen ||
++        (previous &&
++          (current.offset !== previous.offset ||
++            current.keyboard !== previous.keyboard ||
++            current.floor !== previous.floor))
++      ) {
++        pending.set(null);
++      }
++    },
++  );
++
+   const scrollToTarget = useCallback(
+     (target: number) => {
+       "worklet";
+@@ -68,6 +103,18 @@ function useExtraContentPadding(options: UseExtraContentPaddingOptions): void {
        if (contentOffsetY && IS_FABRIC) {
          // eslint-disable-next-line react-compiler/react-compiler
          contentOffsetY.value = target;
 +        if (contentOffsetRevision) {
 +          contentOffsetRevision.value += 1;
 +        }
++        pending.set({
++          observed: scroll.value,
++          target,
++          revision: contentOffsetRevision?.value,
++          contentHeight: size.value.height,
++          viewportHeight: layout.value.height,
++          keyboard: keyboardPadding.value,
++          floor: blankSpace.value,
++        });
        } else if (OS === "android") {
          // Defer scrollTo so the animatedProps inset commit lands first;
          // otherwise the native ScrollView clamps to the old range.
-@@ -78,7 +83,7 @@ function useExtraContentPadding(options: UseExtraContentPaddingOptions): void {
+@@ -78,13 +125,24 @@ function useExtraContentPadding(options: UseExtraContentPaddingOptions): void {
          safeScrollTo(scrollViewRef, 0, target, false);
        }
      },
 -    [scrollViewRef, contentOffsetY],
-+    [scrollViewRef, contentOffsetY, contentOffsetRevision],
++    [
++      scrollViewRef,
++      contentOffsetY,
++      contentOffsetRevision,
++      pending,
++      scroll,
++      size,
++      layout,
++      keyboardPadding,
++      blankSpace,
++    ],
    );
- 
+
    useAnimatedReaction(
+     () => extraContentPadding.value,
+     (current, previous) => {
+       if (freeze.value || previous === null) {
++        pending.set(null);
+         return;
+       }
+
+@@ -123,15 +181,35 @@ function useExtraContentPadding(options: UseExtraContentPaddingOptions): void {
+         effectiveDelta < 0 &&
+         !atEnd
+       ) {
++        pending.set(null);
+         return;
+       }
+
+       if (!shouldShiftContent(keyboardLiftBehavior, atEnd)) {
++        pending.set(null);
+         return;
+       }
+
++      // Several composer layouts can coalesce before Fabric applies their props.
++      // Accumulate only our still-pending correction; a newer keyboard command,
++      // observed native movement or changed bounds makes native scroll authoritative.
++      const last = pending.get();
++      const baseline =
++        IS_FABRIC &&
++        contentOffsetY &&
++        last &&
++        last.observed === scroll.value &&
++        last.target === contentOffsetY.value &&
++        last.revision === contentOffsetRevision?.value &&
++        last.contentHeight === size.value.height &&
++        last.viewportHeight === layout.value.height &&
++        last.keyboard === keyboardPadding.value &&
++        last.floor === blankSpace.value
++          ? last.target
++          : scroll.value;
++
+       if (inverted) {
+-        const target = Math.max(scroll.value - effectiveDelta, -currentTotal);
++        const target = Math.max(baseline - effectiveDelta, -currentTotal);
+
+         scrollToTarget(target);
+       } else {
+@@ -143,7 +221,7 @@ function useExtraContentPadding(options: UseExtraContentPaddingOptions): void {
+         // shrinking padding makes `effectiveDelta` negative while `scroll.value`
+         // is already 0, so the target would go below the top of the content.
+         const target = Math.max(
+-          Math.min(scroll.value + effectiveDelta, maxScroll),
++          Math.min(baseline + effectiveDelta, maxScroll),
+           0,
+         );
+
 diff --git a/node_modules/react-native-keyboard-controller/src/components/ScrollViewWithBottomPadding/index.tsx b/node_modules/react-native-keyboard-controller/src/components/ScrollViewWithBottomPadding/index.tsx
 index 6902a73..7112c22 100644
 --- a/node_modules/react-native-keyboard-controller/src/components/ScrollViewWithBottomPadding/index.tsx
