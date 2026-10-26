@@ -340,6 +340,10 @@ async fn checked(
                 .resume_tool_ask(tc, &history, &inbound, &tools, ask, &admission)
                 .await
         }
+    } else if let Ok(Some(outcome)) =
+        JournalState::known_turn(cx.journal.as_path(), cx, space, t, def)
+    {
+        Ok(outcome)
     } else {
         match JournalState::begin_turn(cx.journal.as_path(), cx, space, t) {
             Ok(true) => {}
@@ -368,6 +372,21 @@ async fn checked(
                     selection,
                     "agent_host_source_reservation_refused",
                     format_args!("model witness refused: {error}"),
+                );
+                return false;
+            }
+        }
+        if tools.check_selection().is_err() {
+            return false;
+        }
+        if let Ok(outcome) = &result {
+            if let Err(error) =
+                JournalState::model_known(cx.journal.as_path(), cx, space, t, outcome, def)
+            {
+                turn_note(
+                    selection,
+                    "agent_host_source_checkpoint_refused",
+                    format_args!("model result checkpoint refused: {error}"),
                 );
                 return false;
             }

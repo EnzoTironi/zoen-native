@@ -172,7 +172,7 @@ impl JournalState {
                 // and conservative unknown-execution semantics remain unchanged.
                 if budget.registered { value["registered"] = true.into(); }
                 if budget.outcome_unknown { value["outcome_unknown"] = true.into(); }
-                if let Some(outcome) = budget.model_outcome { value["model_outcome"] = json!(outcome); }
+                if let Some(outcome) = &budget.model_outcome { value["model_outcome"] = json!(outcome); }
                 (request.clone(), value)
             })
             .collect();

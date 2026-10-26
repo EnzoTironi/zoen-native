@@ -57,7 +57,7 @@ impl AgentSpec {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[allow(clippy::large_enum_variant)]
 pub enum TurnOutcome {
     /// Nothing to say (or the agent is paused).
