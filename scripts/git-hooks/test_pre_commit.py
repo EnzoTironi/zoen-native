@@ -202,6 +202,22 @@ class StagedFileLimitTests(GitFixture, unittest.TestCase):
         self.assertEqual(self.hook().returncode, 0)
         self.assertEqual(self.audit().returncode, 0)
 
+    def test_excalidraw_generated_manifest_exception_is_exact(self):
+        import json
+        generated = "crates/miniapps/resources/excalidraw.manifest.json"
+        value = json.dumps({"fixture": "x" * 20_001}).encode()
+        self.write(generated, value)
+        self.assertEqual(self.hook().returncode, 0)
+        self.assertEqual(self.audit().returncode, 0)
+        for name in ("crates/miniapps/resources/authored.manifest.json",
+                     "miniapps/excalidraw-ui/source.manifest.json", "data.json"):
+            with self.subTest(name=name):
+                self.write(name, value)
+                self.assertIn(ascii(name).encode(), self.hook().stderr)
+                report = json.loads(self.audit().stdout)
+                self.assertNotIn(generated, [row["path"] for row in report["violations"]])
+                self.assertIn(name, [row["path"] for row in report["violations"]])
+
     def test_artifact_exceptions_do_not_cover_authored_neighbors(self):
         for name in (
             "crates/miniapps/resources/authored.html",

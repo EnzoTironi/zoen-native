@@ -37,7 +37,10 @@ GENERATED_FILES = {
     "crates/miniapps/resources/" + name + ".html"
     for name in ("countdown", "deckcraft", "excalidraw", "hike", "list", "maptap",
                  "pet", "poll", "recipe", "schedule")
-} | {"apps/zoen/modules/zoen-core/ios/EmojiKeyboard/ZoenEmojiKeyboardData.swift"}
+} | {
+    "crates/miniapps/resources/excalidraw.manifest.json",
+    "apps/zoen/modules/zoen-core/ios/EmojiKeyboard/ZoenEmojiKeyboardData.swift",
+}
 EXTERNAL_FILES = {
     "LICENSE", "LICENSES/GPL-3.0.txt",
     "miniapps/excalidraw-ui/THIRD-PARTY-LICENSES.txt",
