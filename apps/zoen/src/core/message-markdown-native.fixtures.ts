@@ -18,6 +18,7 @@ export function preparePackage(app: string, directory: string) {
     '015+composer-input-lifecycle',
     '016+composer-input-receipt',
     '017+composer-plain-paste-sizing',
+    '020+composer-public-codegen-spec',
   ].map((stage) => join(app, `patches/react-native-enriched-markdown+1.1.1+${stage}.patch`));
   const paths = new Set(
     patches.flatMap((patch) =>
@@ -70,9 +71,15 @@ export function preparePackage(app: string, directory: string) {
       readFileSync(join(pkg, 'ios/input/EnrichedMarkdownTextInput.mm'), 'utf8').includes(
         'zoenComposerBaseFontSize',
       ),
+    () =>
+      readFileSync(
+        join(pkg, 'lib/module/EnrichedMarkdownTextInputNativeComponent.ts'),
+        'utf8',
+      ).includes('composerBinding') &&
+      !existsSync(join(pkg, 'lib/module/EnrichedMarkdownTextInputNativeComponent.js')),
   ];
   for (const [index, patch] of patches.entries())
     if (!markers[index]!())
-      execFileSync('patch', ['--batch', '--forward', '-p1', '-i', patch], { cwd: directory });
+      execFileSync('patch', ['--batch', '--forward', '-E', '-p1', '-i', patch], { cwd: directory });
   return pkg;
 }
