@@ -26,6 +26,9 @@ const external = new Set([
   '../../../profile/profile-avatar',
   '../../../components/message-receipt',
   '../../../miniapps/rail',
+  '../../../inbox/chat-row',
+  '../../../inbox/use-inbox-actions',
+  '../../../inbox/action-feedback',
 ]);
 const compiled = await build({
   entryPoints: [fileURLToPath(new URL('../app/(tabs)/(chats)/chats.tsx', import.meta.url))],
@@ -125,6 +128,12 @@ async function fixture() {
     '../../../profile/profile-avatar': { ProfileAvatar: 'ProfileAvatar' },
     '../../../components/message-receipt': { MessageReceipt: 'MessageReceipt' },
     '../../../miniapps/rail': { MiniappRail: 'MiniappRail' },
+    // Inbox lifecycle/gestures are exercised by the real compiled inbox suites.
+    '../../../inbox/chat-row': { InboxChatRow: 'InboxChatRow' },
+    '../../../inbox/action-feedback': { InboxActionFeedback: () => null },
+    '../../../inbox/use-inbox-actions': {
+      useInboxActions: () => ({ enabled: false, state: {}, session: {}, ticket: null }),
+    },
   };
   const module = { exports: {} as { default(): Element } };
   runInNewContext(compiled.outputFiles[0]!.text, {

@@ -15,6 +15,7 @@ import * as initialEnd from './initial-timeline-end.ts';
 import * as activity from './live-activity.ts';
 import * as conversationScope from './conversation-scope.ts';
 import type { useChatController } from '../components/use-chat-controller.ts';
+import type { TimelinePage } from './generated/TimelinePage';
 import type { MessageSearchPage } from './generated/MessageSearchPage';
 
 const require = createRequire(import.meta.url);
@@ -39,11 +40,16 @@ export async function chatSearchReactFixture(qa = false) {
   const calls: any[] = [];
   const restoreRecords: string[] = [];
   const pending = deferred<MessageSearchPage>();
+  let timeline = async (): Promise<TimelinePage> => ({
+    entries: [],
+    has_more: false,
+    before: null,
+  });
   driver.opening = async () => structuredClone(snapshot);
   driver.operation = async (command) => {
     calls.push(structuredClone(command));
     if (command.op === 'snapshot') return structuredClone(snapshot);
-    if (command.op === 'timeline') return { entries: [], has_more: false, before: null };
+    if (command.op === 'timeline') return timeline();
     if (command.op === 'mark_read') return null;
     if (command.op === 'search_messages') return pending.promise;
     if (command.op === 'message') throw Error('Synthetic search result has no loaded message');
@@ -191,6 +197,9 @@ export async function chatSearchReactFixture(qa = false) {
     current() {
       assert.ok(current);
       return current;
+    },
+    timeline: (read: typeof timeline) => {
+      timeline = read;
     },
     render: () => root.render(React.createElement(Surface)),
     async reopen(change?: 'relay') {

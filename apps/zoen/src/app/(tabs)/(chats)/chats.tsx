@@ -1,13 +1,14 @@
-import { t, formatLocale } from '../../../i18n/index.ts';
-import { ProfileAvatar } from '../../../profile/profile-avatar';
+import { t } from '../../../i18n/index.ts';
 import { Stack, router } from 'expo-router';
 import { FlashList } from '@shopify/flash-list';
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useClient } from '../../../core/provider';
 import { useTheme } from '../../../theme';
-import { EmptyState, Icon } from '../../../components/primitives';
-import { MessageReceipt } from '../../../components/message-receipt';
+import { EmptyState } from '../../../components/primitives';
+import { InboxChatRow } from '../../../inbox/chat-row';
+import { useInboxActions } from '../../../inbox/use-inbox-actions';
+import { InboxActionFeedback } from '../../../inbox/action-feedback';
 import { ChatsActions } from '../../../components/chats-actions';
 import { useHome } from '../../../home/provider';
 import { MiniappRail } from '../../../miniapps/rail';
@@ -25,6 +26,7 @@ export default function Chats() {
   const { snapshot, store } = useClient();
   const { presentation: p } = useTheme();
   const home = useHome();
+  const inbox = useInboxActions();
   const { items } = home;
   const [filter, setFilter] = useState<string>('all');
   const [cardPending, setCardPending] = useState(false);
@@ -36,7 +38,7 @@ export default function Chats() {
             (filter === 'archived' ? chat.archived : !chat.archived) &&
             (filter === 'all' ||
               filter === 'archived' ||
-              (filter === 'unread' ? chat.unread > 0 : chat.kind === filter)),
+              (filter === 'unread' ? chat.unread > 0 || chat.manual_unread : chat.kind === filter)),
         )
         .sort(
           (a, b) =>
@@ -134,6 +136,7 @@ export default function Chats() {
               {filters.map((item) => (
                 <Pressable
                   key={item.id}
+                  testID={`inbox-filter-${item.id}`}
                   accessibilityRole="button"
                   accessibilityState={{ selected: filter === item.id }}
                   aria-pressed={process.env.EXPO_OS === 'web' ? filter === item.id : undefined}
@@ -180,139 +183,25 @@ export default function Chats() {
           />
         }
         renderItem={({ item: chat }) => (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={
-              chat.unread
-                ? t('chat.conversationUnreadLabel', {
-                    title: chat.title,
-                    count: chat.unread,
-                    preview: chat.last_preview,
-                  })
-                : t('chat.conversationLabel', { title: chat.title, preview: chat.last_preview })
-            }
-            onPress={() => router.push({ pathname: '/chat/[id]', params: { id: chat.id } })}
-            style={({ pressed }) => ({
-              flexDirection: 'row',
-              gap: 10,
-              paddingHorizontal: 16,
-              paddingVertical: 8,
-              minHeight: 76,
-              alignItems: 'center',
-              backgroundColor: pressed
-                ? p.chatList.highlighted
-                : chat.pinned
-                  ? `${p.chatList.pinned}CC`
-                  : 'transparent',
-            })}
-          >
-            <ProfileAvatar
-              person={chat.counterpart}
-              name={chat.title}
-              color={chat.counterpart?.tint_hex}
-              size={60}
-              agent={chat.counterpart?.kind === 'Agent'}
-            />
-            <View style={{ flex: 1, gap: 3 }}>
-              <View
-                style={{
-                  flexDirection: 'row',
-                  justifyContent: 'space-between',
-                  alignItems: 'baseline',
-                  gap: 8,
-                }}
-              >
-                <Text
-                  numberOfLines={1}
-                  style={{
-                    flex: 1,
-                    fontSize: 16,
-                    fontWeight: '600',
-                    color: p.chatList.title,
-                  }}
-                >
-                  {chat.title}
-                </Text>
-                {chat.last_author?.is_me && chat.last_delivery ? (
-                  <MessageReceipt
-                    delivery={chat.last_delivery}
-                    ownerKey={`${chat.id}:${chat.last_at_ms}`}
-                    ink={p.chatList.date}
-                    background={p.chatList.background}
-                  />
-                ) : null}
-                <Text style={{ fontSize: 14, color: p.chatList.date }}>
-                  {Number(chat.last_at_ms)
-                    ? new Date(Number(chat.last_at_ms)).toLocaleTimeString(formatLocale, {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })
-                    : ''}
-                </Text>
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Text
-                  numberOfLines={2}
-                  style={{ flex: 1, lineHeight: 19, fontSize: 15, color: p.chatList.message }}
-                >
-                  {chat.last_preview}
-                </Text>
-                {chat.unread ? (
-                  <View
-                    style={{
-                      backgroundColor: chat.muted ? p.chatList.mutedUnread : p.chatList.unread,
-                      minWidth: 20,
-                      height: 20,
-                      borderRadius: 10,
-                      paddingHorizontal: 6,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: chat.muted ? '#FFFFFF' : p.chatList.unreadText,
-                        fontSize: 12,
-                        fontWeight: '600',
-                        fontVariant: ['tabular-nums'],
-                      }}
-                    >
-                      {chat.unread > 99 ? '99+' : chat.unread}
-                    </Text>
-                  </View>
-                ) : chat.pinned ? (
-                  <Icon
-                    name={{ ios: 'pin.fill', android: 'push_pin' }}
-                    size={14}
-                    color={p.chatList.pinnedIcon}
-                  />
-                ) : chat.muted ? (
-                  <Icon
-                    name={{ ios: 'bell.slash.fill', android: 'notifications_off' }}
-                    size={14}
-                    color={p.chatList.pinnedIcon}
-                  />
-                ) : null}
-              </View>
-            </View>
-            <View
-              pointerEvents="none"
-              style={{
-                position: 'absolute',
-                left: 86,
-                right: 0,
-                bottom: 0,
-                height: StyleSheet.hairlineWidth,
-                backgroundColor: p.separator,
-              }}
-            />
-          </Pressable>
+          <InboxChatRow
+            chat={chat}
+            enabled={inbox.enabled && !home.editing}
+            pending={inbox.state.pending !== null}
+            onOpen={() => {
+              if (inbox.canOpen(chat.id))
+                router.push({ pathname: '/chat/[id]', params: { id: chat.id } });
+            }}
+            onAction={(action) => {
+              void inbox.session.run(chat, action, inbox.ticket);
+            }}
+          />
         )}
         refreshing={false}
         onRefresh={() => {
           void store.refresh();
         }}
       />
+      <InboxActionFeedback state={inbox.state} session={inbox.session} ticket={inbox.ticket} />
     </View>
   );
 }

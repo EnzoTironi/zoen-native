@@ -1,5 +1,7 @@
 import CoreGraphics
 import Foundation
+import AppKit
+import PencilKit
 
 @main struct PhotoEditorImageTests {
   enum Failure: Error { case invalid }
@@ -21,7 +23,55 @@ import Foundation
   static func refused(_ action: () throws -> Void) {
     do { try action(); preconditionFailure("Retired/invalid image operation was admitted") } catch { }
   }
-  static func main() throws {
+  @MainActor static func actualPencilKitRecrop() throws {
+    func overlay(_ size: CGSize, shade: CGFloat) throws -> CGImage {
+      let points = [CGPoint(x: 40, y: 40), CGPoint(x: 160, y: 100)].enumerated().map { index, point in
+        PKStrokePoint(location: point, timeOffset: TimeInterval(index), size: CGSize(width: 10, height: 10),
+          opacity: 1, force: 1, azimuth: 0, altitude: .pi / 2)
+      }
+      let stroke = PKStroke(ink: PKInk(.pen, color: NSColor(srgbRed: shade, green: 0, blue: 0, alpha: 1)),
+        path: PKStrokePath(controlPoints: points, creationDate: Date(timeIntervalSince1970: 0)))
+      let bounds = CGRect(x: 0, y: 0, width: 370, height: size.height * 370 / size.width)
+      let image = PKDrawing(strokes: [stroke]).image(from: bounds, scale: size.width / bounds.width)
+      var rect = CGRect(origin: .zero, size: image.size)
+      guard let cg = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) else { throw Failure.invalid }
+      return cg
+    }
+    // Same aspect as QA's 370x246.9133 fitted image, with fractional
+    // fitted bounds after the cropped quarter turn as well.
+    guard let context = CGContext(data: nil, width: 3000, height: 2002, bitsPerComponent: 8,
+      bytesPerRow: 3000 * 4, space: CGColorSpaceCreateDeviceRGB(),
+      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+          let original = context.makeImage() else { throw Failure.invalid }
+    let recipe = ZoenPhotoEditorImage(original)
+    defer { recipe.release() }
+    let first = try recipe.commitInk(overlay(CGSize(width: 3000, height: 2002), shade: 1))
+    let firstPixels = try pixels(first)
+    precondition(firstPixels.contains { $0 > 200 })
+    try recipe.crop(to: CGRect(x: 0.08, y: 0.06, width: 0.92, height: 0.93))
+    let turned = try recipe.rotate()
+    let before = try pixels(turned)
+    let ink = try overlay(CGSize(width: turned.width, height: turned.height), shade: 0.5)
+    // Real PencilKit emits extended-range RGB even for this SDR stroke. A
+    // context configured only from its .rgb model cannot rotate these bytes.
+    guard let space = ink.colorSpace else { throw Failure.invalid }
+    precondition(CGColorSpaceUsesExtendedRange(space))
+    let second = try recipe.commitInk(ink)
+    let secondPixels = try pixels(second)
+    precondition(secondPixels != before)
+    precondition(recipe.canReset)
+    let reset = try recipe.reset()
+    precondition(reset.width == 3000 && reset.height == 2002 && !recipe.canReset)
+    let resetPixels = try pixels(reset)
+    precondition(resetPixels.contains { $0 > 200 })
+    // Re-entering Crop and rendering Save bytes must remain admitted too.
+    try recipe.crop(to: CGRect(x: 0, y: 0, width: 1, height: 1))
+    let reopened = try pixels(recipe.rendered())
+    precondition(reopened == resetPixels)
+  }
+  @MainActor static func main() throws {
+    try actualPencilKitRecrop()
+
     // Odd, asymmetric dimensions expose half-pixel centering and turn direction.
     let odd = try image(Array(1...15), width: 5, height: 3)
     let rotations: [[UInt8]] = [Array(1...15),

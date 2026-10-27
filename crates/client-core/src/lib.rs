@@ -84,6 +84,7 @@ pub use recent_attachments::{
     RecentAttachment, RecentAttachmentKind, RecentAttachmentPage, RecentAttachmentReference,
     RecentAttachmentSourceBinding,
 };
+pub mod chat_layout;
 mod chat_mute;
 pub use universal_pages::UniversalSearchPage;
 mod message_drafts;
