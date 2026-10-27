@@ -194,3 +194,33 @@ async fn global_search_command_returns_real_pages_and_refuses_stale_edit_delete(
     assert!(remaining["next_cursor"].is_null());
     Ok(())
 }
+
+#[tokio::test]
+async fn search_request_payload_extraction_preserves_flat_wire_and_errors() -> TestResult {
+    let (core, account, space) = fixture()?;
+    core.send_message(space, "needle original".into())?;
+    let legacy = serde_json::json!({
+        "op": "universal_search", "query": "needle", "kinds": ["message"], "limit": 200
+    });
+    let paged = serde_json::json!({
+        "op": "universal_search_page", "query": "needle", "kinds": ["message"],
+        "cursor": null, "limit": 30, "expected_identity_id": account.identity_id,
+        "expected_device_id": account.device_id
+    });
+    let old: serde_json::Value =
+        serde_json::from_str(&core.client_request(legacy.to_string()).await?)?;
+    let new: serde_json::Value =
+        serde_json::from_str(&core.client_request(paged.to_string()).await?)?;
+    assert_eq!(old["hits"], new["hits"]);
+    assert_eq!(new["hits"].as_array().ok_or("hits missing")?.len(), 1);
+    assert!(new["next_cursor"].is_null());
+    for request in [legacy, paged] {
+        let mut unknown = request.clone();
+        unknown["unknown_field"] = true.into();
+        assert!(core.client_request(unknown.to_string()).await.is_err());
+        let op = request["op"].clone();
+        let nested = serde_json::json!({"op": op, "input": request});
+        assert!(core.client_request(nested.to_string()).await.is_err());
+    }
+    Ok(())
+}

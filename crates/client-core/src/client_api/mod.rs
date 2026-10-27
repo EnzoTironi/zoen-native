@@ -10,6 +10,7 @@ mod command;
 mod content_dispatch;
 mod conversation_dispatch;
 mod forwarding_dispatch;
+mod search;
 use command::Command;
 
 mod handle;
