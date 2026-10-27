@@ -52,10 +52,10 @@ import PencilKit
     let turned = try recipe.rotate()
     let before = try pixels(turned)
     let ink = try overlay(CGSize(width: turned.width, height: turned.height), shade: 0.5)
-    // Real PencilKit emits extended-range RGB even for this SDR stroke. A
-    // context configured only from its .rgb model cannot rotate these bytes.
+    // PencilKit's chosen RGB profile varies by OS (SDR on hosted macOS 15,
+    // extended-range on macOS 27). Both must preserve actual ink through recrop.
     guard let space = ink.colorSpace else { throw Failure.invalid }
-    precondition(CGColorSpaceUsesExtendedRange(space))
+    precondition(space.model == .rgb)
     let second = try recipe.commitInk(ink)
     let secondPixels = try pixels(second)
     precondition(secondPixels != before)
@@ -69,8 +69,38 @@ import PencilKit
     let reopened = try pixels(recipe.rendered())
     precondition(reopened == resetPixels)
   }
+  static func explicitExtendedRangeRecrop() throws {
+    // Exercise the production fallback regardless of PencilKit's OS profile.
+    guard let space = CGColorSpace(name: CGColorSpace.extendedSRGB),
+          let context = CGContext(data: nil, width: 2, height: 3, bitsPerComponent: 32,
+            bytesPerRow: 2 * 16, space: space,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+              | CGBitmapInfo.floatComponents.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
+          let red = CGColor(colorSpace: space, components: [1, 0, 0, 1]) else { throw Failure.invalid }
+    context.setFillColor(red)
+    context.fill(CGRect(x: 0, y: 0, width: 2, height: 3))
+    guard let ink = context.makeImage(), let profile = ink.colorSpace else { throw Failure.invalid }
+    precondition(CGColorSpaceUsesExtendedRange(profile) && ink.bitsPerComponent == 32)
+    let original = try image(Array(repeating: 0, count: 15), width: 5, height: 3)
+    let recipe = ZoenPhotoEditorImage(original)
+    defer { recipe.release() }
+    try recipe.crop(to: CGRect(x: 0.2, y: 1.0 / 3, width: 0.6, height: 2.0 / 3))
+    let turned = try recipe.rotate()
+    precondition(turned.width == 2 && turned.height == 3)
+    let committed = try recipe.commitInk(ink)
+    let visible = try pixels(committed)
+    precondition(visible == Array(repeating: 255, count: 6))
+    let restored = try recipe.reset()
+    let full = try pixels(restored)
+    precondition(full == [0,0,0,0,0, 0,255,255,255,0, 0,255,255,255,0])
+    precondition(!recipe.canReset)
+    try recipe.crop(to: CGRect(x: 0, y: 0, width: 1, height: 1))
+    let reopened = try pixels(recipe.rendered())
+    precondition(reopened == full)
+  }
   @MainActor static func main() throws {
     try actualPencilKitRecrop()
+    try explicitExtendedRangeRecrop()
 
     // Odd, asymmetric dimensions expose half-pixel centering and turn direction.
     let odd = try image(Array(1...15), width: 5, height: 3)

@@ -67,7 +67,9 @@ Codex proposed this narrow #200 optimization after #666 selected all four Rust
 shards for only `ZoenPhotoEditorImage.swift` and `PhotoEditorImageTests.swift`.
 The helper imports only Foundation/CoreGraphics. The maintained macOS fixture
 also imports AppKit/PencilKit for #666's real PKDrawing/extended-range RGB recrop
-reproduction; those imports are admitted only for that fixture. Both compile and link as
+reproduction; those imports are admitted only for that fixture. PencilKit's
+profile is OS-dependent, so a second explicit float/extended-RGB pixel case
+qualifies that fallback without weakening the real PencilKit recrop assertions. Both compile and link as
 an independent pixel executable, and have no verified Rust/resource consumer.
 The selector reuses the existing Cargo/resource pins and cross-boundary reader
 checks at both endpoints; unknown readers, imports, FFI declarations, mixed

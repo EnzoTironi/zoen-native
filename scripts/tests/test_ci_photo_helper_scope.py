@@ -41,6 +41,8 @@ class PhotoHelperScopeTests(FrontendRepositoryFixture):
         self.assertIn(b"import PencilKit", maintained)
         self.assertIn(b"PKDrawing(strokes:", maintained)
         self.assertIn(b"try actualPencilKitRecrop()", maintained)
+        self.assertIn(b"try explicitExtendedRangeRecrop()", maintained)
+        self.assertIn(b"CGColorSpace.extendedSRGB", maintained)
         self.edit_photo()
         result = self.classify()
         self.assertTrue(result["photo_helper_only"], result)
