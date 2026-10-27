@@ -2,6 +2,7 @@ import type { ReplySelection } from './generated/ReplySelection';
 import type { SpaceMemberContext } from './generated/SpaceMemberContext';
 import type { PageInputPort } from '../documents/page-input';
 import type { LogEventsPage } from './generated/LogEventsPage';
+import type { ChatLayoutResult } from './generated/ChatLayoutResult';
 import type { Command } from './generated/Command';
 import type { Snapshot } from './generated/Snapshot';
 import type { TimelinePage } from './generated/TimelinePage';
@@ -91,6 +92,7 @@ export type CoreEvent =
   | { kind: 'ephemeral'; spaceId: string; fromId: string; type: string; detail: string }
   | { kind: 'error'; message?: string };
 type Results = {
+  chat_layout: ChatLayoutResult;
   space_member_context: SpaceMemberContext;
   remove_member_reviewed: SpaceMemberContext;
   set_member_role_reviewed: SpaceMemberContext;
