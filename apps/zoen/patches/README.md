@@ -50,6 +50,11 @@ the pinned `patch-package@8.0.1`:
 4. `004+draft-checkpoint-commands`: the complete draft-checkpoint method section.
 5. `005+native-no-media`: parser admission and both native renderer/cache paths.
 6. `006+public-js-bindings`: input props plus Markdown JS/types/platform gates.
+7. `007+quote-source-map`: retain literal MD4C source spans through native attributed
+   text and its real selection menu, including genuine RN-generated event emitters.
+   Offsets use half-open UTF-16 units in the exact canonical Markdown revision.
+   Unmapped layout spacers/normalization refuse the entire quote before draft mutation;
+   this never substitutes rendered offsets or searches for repeated selected text.
 
 Each patch is an authored maintained file below 20,000 bytes. They are sequential
 diffs of complete package states, not arbitrary slices of a large diff. The two

@@ -5,6 +5,11 @@ import UIKit
 final class ZoenMessageContextController: UIViewController {
   let request: UUID
   let binding: String
+  let gestureId: String
+  var selectingText = false
+  var selectionAnnounced = false
+  var textSelectionState: [ZoenContextTextSelectionState] = []
+  var textSelectionInteraction: [(UIView, Bool)] = []
   let sourceGeneration: UInt64
   weak var child: UIView?
   weak var sourceWindow: UIWindow?
@@ -34,9 +39,9 @@ final class ZoenMessageContextController: UIViewController {
   var reduceMotion: Bool { configuration.reducedMotion || UIAccessibility.isReduceMotionEnabled }
 
   init(source: ZoenMessageContextSource, configuration: ZoenMessageContextConfiguration,
-       request: UUID, generation: UInt64, binding: String, child: UIView) {
+       request: UUID, generation: UInt64, binding: String, child: UIView, gestureId: String = "") {
     self.source = source; self.configuration = configuration; self.request = request
-    sourceGeneration = generation; self.binding = binding; self.child = child
+    sourceGeneration = generation; self.binding = binding; self.child = child; self.gestureId = gestureId
     super.init(nibName: nil, bundle: nil)
     NotificationCenter.default.addObserver(self, selector: #selector(background), name: UIApplication.willResignActiveNotification, object: nil)
     NotificationCenter.default.addObserver(self, selector: #selector(motionChanged), name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
@@ -162,6 +167,10 @@ final class ZoenMessageContextController: UIViewController {
     let safe = view.convert(window.bounds.inset(by: window.safeAreaInsets), from: window).intersection(view.bounds).insetBy(dx: 8, dy: 8)
     guard safe.contextFinite, source.bounds.contextFinite, source.bounds.width <= safe.width else { retire(); return }
     let original = source.convert(source.bounds, to: view)
+    if selectingText {
+      layoutTextSelection(safe: safe, original: original, source: source)
+      return
+    }
     let menuWidth = min(240, safe.width)
     let rowHeights = actionButtons.map { button in
       max(44, ceil(button.titleLabel?.sizeThatFits(CGSize(width: menuWidth - 78, height: .greatestFiniteMagnitude)).height ?? 22) + 22)
@@ -231,15 +240,16 @@ final class ZoenMessageContextController: UIViewController {
   func choose(_ value: String?) {
     guard isCurrent, !closing else { return }
     let allowed = Set(configuration.actions.map(\.id) + configuration.reactions.map { "reaction:\($0.emoji)" } + (configuration.moreLabel == nil ? [] : ["more"]))
-    guard value == nil || allowed.contains(value!) else { return }
+    guard value == nil || (!selectingText && allowed.contains(value!)) else { return }
+    if value == "select" { beginTextSelection(); return }
     selected = value
     beginClose(animated: true)
   }
-  func close() async {
+  func close(selectionResult: String? = nil) async {
     if finished { return }
     await withCheckedContinuation { waiter in
       waiters.append(waiter)
-      selected = nil
+      selected = selectionResult
       beginClose(animated: true)
     }
   }
@@ -290,9 +300,14 @@ final class ZoenMessageContextController: UIViewController {
     guard !finished else { return }
     let action = isCurrent ? selected : nil
     // isCurrent must be sampled BEFORE removal invalidates stage.controller.
+    restoreTextSelection()
     stage?.remove(self)
     if viewIfLoaded?.superview != nil || parent != nil { return }
     finished = true
+    if selectionAnnounced {
+      selectionAnnounced = false
+      source?.selectionPhase(self, active: false)
+    }
     source?.finished(self)
     returnAnimator = nil
     NotificationCenter.default.removeObserver(self)

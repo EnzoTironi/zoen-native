@@ -232,7 +232,7 @@ final class ZoenMessageContextSource: ExpoView {
           visible(in: window) else { throw Failure.unavailable }
     let config = try ZoenMessageContextConfiguration.decode(configuration)
     let controller = ZoenMessageContextController(source: self, configuration: config,
-      request: request, generation: generation, binding: binding, child: children[0])
+      request: request, generation: generation, binding: binding, child: children[0], gestureId: gestureId)
     presentation = controller
     do {
       let result: String? = try await withTaskCancellationHandler {
@@ -250,6 +250,23 @@ final class ZoenMessageContextSource: ExpoView {
       if presentation === controller { controller.retire() }
       throw error
     }
+  }
+  func selectionPhase(_ controller: ZoenMessageContextController, active: Bool) {
+    guard presentation === controller else { return }
+    gestureSequence += 1
+    onGesture(["binding": controller.binding, "gestureId": controller.gestureId,
+      "sequence": gestureSequence, "kind": "selection",
+      "selection": ["requestId": controller.request.uuidString, "active": active]])
+  }
+  func finishTextSelection(requestId: String, resultJSON: String?) async throws {
+    guard let request = UUID(uuidString: requestId), let presentation,
+          presentation.request == request, presentation.isCurrent,
+          presentation.selectingText, !presentation.closing else { throw Failure.changed }
+    if let resultJSON {
+      guard let data = resultJSON.data(using: .utf8), data.count <= 65_536,
+            (try? JSONSerialization.jsonObject(with: data)) is [String: Any] else { throw Failure.configuration }
+    }
+    await presentation.close(selectionResult: resultJSON.map { "select:" + $0 })
   }
   func dismiss(requestId: String) async {
     guard let request = UUID(uuidString: requestId) else { return }

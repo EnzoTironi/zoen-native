@@ -1,9 +1,15 @@
+import type { ReplySelection } from './generated/ReplySelection';
 import { homeOwnerFor, homeSpacesFor } from '../home/access.ts';
 import { NormalMessageDrafts, type NormalDraftScope } from './normal-message-drafts.ts';
 import type { ClientStore } from './store.ts';
 import type { TimelineEntry } from './types.ts';
 
-type DraftValue = { revision: string; text: string; reply_to: string | null };
+type DraftValue = {
+  revision: string;
+  text: string;
+  reply_to: string | null;
+  reply_quote?: ReplySelection | null;
+};
 export type NormalDraftChannel = Readonly<{
   scope: NormalDraftScope;
   controller: NormalMessageDrafts;
@@ -92,7 +98,7 @@ export class NormalMessageDraftService {
         native(scope)
           ? this.store.driver.request({ op: 'message_draft', ...target(scope) })
           : read(scope),
-      save: async (scope, expectedRevision, text, replyTo) => {
+      save: async (scope, expectedRevision, text, replyTo, replyQuote) => {
         if (native(scope))
           return this.store.driver.request({
             op: 'save_message_draft',
@@ -100,7 +106,9 @@ export class NormalMessageDraftService {
             expected_revision: expectedRevision,
             text,
             reply_to: replyTo,
+            reply_quote: replyQuote ?? null,
           });
+        if (replyQuote) throw new Error('Quoted replies require the signed-in native account.');
         const current = read(scope);
         if (current.revision !== expectedRevision) throw new Error('Draft changed.');
         if (current.text === text && current.reply_to === replyTo) return current;
