@@ -224,4 +224,5 @@ async fn expired_mute_is_absent_from_the_canonical_directory_and_unmute_preserve
     assert!(current.pinned && current.archived && !current.muted);
 }
 
+mod layout;
 mod timed;
