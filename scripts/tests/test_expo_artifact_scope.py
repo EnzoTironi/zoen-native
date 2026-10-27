@@ -249,7 +249,8 @@ class ScopeTests(unittest.TestCase):
         self.full(self.repo.classify())
 
     def test_contract_drift_in_either_endpoint_or_worktree_cannot_suppress_jobs(self):
-        for path in [".github/workflows/expo.yml", "scripts/build-expo-core.mjs"]:
+        for path in [".github/workflows/expo.yml", "scripts/build-expo-core.mjs",
+                     "scripts/install-android-sdk.py", "scripts/test-install-android-sdk.py"]:
             with self.subTest(path=path):
                 original = (ROOT / path).read_text()
                 comment = "#" if path.endswith(".yml") else "//"

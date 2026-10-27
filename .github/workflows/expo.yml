@@ -146,7 +146,8 @@ jobs:
       - name: Expo Android SDK, NDK and Rust toolchain
         if: env.ZOEN_ANDROID_FULL == 'true'
         run: |
-          sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0' 'ndk;27.1.12297006'
+          python3 scripts/test-install-android-sdk.py
+          python3 scripts/install-android-sdk.py --logs "$RUNNER_TEMP/android-sdk-install"
           rustup toolchain install 1.99.1 --profile minimal --target aarch64-linux-android,x86_64-linux-android
           rustup default 1.99.1
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
@@ -229,6 +230,7 @@ jobs:
         with:
           name: expo-android-release
           path: |
+            ${{ runner.temp }}/android-sdk-install/
             apps/zoen/android/app/build/outputs/apk/release/*.apk
             apps/zoen/modules/zoen-core/android/build/test-results/
             apps/zoen/modules/zoen-core/android/build/reports/tests/

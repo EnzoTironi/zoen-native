@@ -32,6 +32,8 @@ from ci_frontend_inputs import FRONTEND_CONTRACTS
 CONTRACTS = {path: FRONTEND_CONTRACTS[path] for path in (
     "scripts/expo-cargo-artifacts.mjs",
     ".github/workflows/expo.yml",
+    "scripts/install-android-sdk.py",
+    "scripts/test-install-android-sdk.py",
     "scripts/build-expo-core.mjs",
     "scripts/build-expo-web-core.mjs",
     "apps/zoen/package.json",
