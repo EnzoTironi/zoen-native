@@ -2,6 +2,8 @@
 use event_log::profile::{DeviceSigned, MAX_CIPHERTEXT};
 use protocol::SealedProfile;
 
+/// # Errors
+/// Refuses agreement keys for another device or without a valid identity signature.
 pub fn validate_agreement(
     identity: &str,
     device: &str,
@@ -17,6 +19,8 @@ pub fn validate_agreement(
     Ok(())
 }
 
+/// # Errors
+/// Refuses another identity/device, oversized ciphertext, a version outside SQL BIGINT or an invalid upload signature.
 pub fn validate_profile(
     identity: &str,
     device: &str,

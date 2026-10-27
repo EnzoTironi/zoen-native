@@ -10,12 +10,12 @@ pub(super) struct ScopedLock {
 
 impl ScopedLock {
     pub(super) fn exclusive(file: File) -> Result<Self, AnchorError> {
-        file.try_lock().map_err(lock_error)?;
+        file.try_lock().map_err(|error| lock_error(&error))?;
         Ok(Self { file, held: true })
     }
 
     pub(super) fn shared(file: File) -> Result<Self, AnchorError> {
-        file.try_lock_shared().map_err(lock_error)?;
+        file.try_lock_shared().map_err(|error| lock_error(&error))?;
         Ok(Self { file, held: true })
     }
 
@@ -38,7 +38,7 @@ impl Drop for ScopedLock {
     }
 }
 
-fn lock_error(error: TryLockError) -> AnchorError {
+fn lock_error(error: &TryLockError) -> AnchorError {
     match error {
         TryLockError::WouldBlock => AnchorError::Busy,
         TryLockError::Error(_) => AnchorError::Unavailable,

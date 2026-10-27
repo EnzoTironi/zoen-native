@@ -14,6 +14,7 @@ pub enum Failure {
     Content,
 }
 
+#[must_use]
 pub fn valid_sha(value: &str) -> bool {
     value.len() == 64
         && value
@@ -21,6 +22,7 @@ pub fn valid_sha(value: &str) -> bool {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
+#[must_use]
 pub fn valid_site(value: &str) -> bool {
     secret_id(value, "site_")
 }
@@ -42,6 +44,8 @@ fn valid_item_id(value: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 
+/// # Errors
+/// Refuses malformed mutation/source bounds, stale timestamps or invalid device signatures.
 pub fn authorize(signed: &SignedMutation, audience: &str, now_ms: i64) -> Result<(), Failure> {
     let mutation = &signed.mutation;
     if audience.is_empty()
@@ -86,6 +90,8 @@ pub fn authorize(signed: &SignedMutation, audience: &str, now_ms: i64) -> Result
     Ok(())
 }
 
+/// # Errors
+/// Refuses malformed inspection bounds, stale timestamps or invalid device signatures.
 pub fn authorize_inspection(
     signed: &SignedInspection,
     audience: &str,
@@ -119,6 +125,8 @@ pub fn authorize_inspection(
 
 /// Returns the immutable public object key only after exact byte verification.
 /// HTML stays opaque: transforming/sanitizing it would publish a different file.
+/// # Errors
+/// Refuses publish/unpublish body mismatch or bytes differing in size, encoding or hash from the exact selected source.
 pub fn verify_content(
     signed: &SignedMutation,
     html: Option<&[u8]>,

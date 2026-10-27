@@ -183,20 +183,23 @@ fn checkpoints_never_regress_but_equal_checkpoint_refreshes_live_hold() {
     .unwrap();
     apply(&mut mls, &mut holds, &same);
     assert_eq!(holds.get(&("owner".into(), "dev".into())), Some(&(7, 1000)));
-    assert!(transition(
-        &Effect::Checkpoint {
-            device: String::new(),
-            upto: 7
-        },
-        Some(Privacy::EndToEnd),
-        "owner",
-        10,
-        1000,
-        &people,
-        &holds
-    )
-    .unwrap()
-    .is_empty());
+    assert_eq!(
+        transition(
+            &Effect::Checkpoint {
+                device: String::new(),
+                upto: 7
+            },
+            Some(Privacy::EndToEnd),
+            "owner",
+            10,
+            1000,
+            &people,
+            &holds
+        )
+        .unwrap()
+        .len(),
+        0
+    );
 }
 
 #[test]

@@ -78,6 +78,8 @@ pub(super) fn sync_directory(path: &Path) -> Result<(), AnchorError> {
 }
 
 impl AnchorReader {
+    /// # Errors
+    /// Refuses invalid/inaccessible private state or deployment mismatch; writer opens also refuse an occupied writer lock.
     pub fn open(directory: &Path, deployment: Deployment) -> Result<Self, AnchorError> {
         if !deployment.valid()
             || !fs::symlink_metadata(directory)
@@ -153,6 +155,8 @@ impl AnchorReader {
         Ok(directory)
     }
 
+    /// # Errors
+    /// Refuses invalid/unavailable state or a still-prepared transition.
     pub fn checkpoint(&self) -> Result<Checkpoint, AnchorError> {
         let state = self.state()?;
         if state.prepared.is_some() {
@@ -161,6 +165,8 @@ impl AnchorReader {
         Ok(state.committed)
     }
 
+    /// # Errors
+    /// Refuses an occupied generation lock, prepared state or a checkpoint other than the committed tip.
     pub fn generation_guard(&self, expected: &Checkpoint) -> Result<GenerationGuard, AnchorError> {
         let lock = ScopedLock::shared(lock_file(&self.directory, "generation.lock")?)?;
         let state = self.state()?;
@@ -173,6 +179,8 @@ impl AnchorReader {
     /// Hold the generation of an exact retained effect while unrelated effects
     /// advance the tip. This is not a publication permit or a store checkpoint
     /// attestation; the caller must also validate its actual current store read.
+    /// # Errors
+    /// Refuses unavailable/invalid state, a different generation or a missing retained effect checkpoint.
     pub fn historical_generation_guard(
         &self,
         expected: &Checkpoint,
@@ -200,6 +208,8 @@ impl AnchorWriter {
     /// Only a freshly created owned directory can bootstrap. The Runtime must
     /// independently prove an unused namespace before invoking this method.
     /// Missing state in an existing directory is never adopted or regenerated.
+    /// # Errors
+    /// Refuses invalid deployment, pre-existing directories and any failed durable directory/file/state initialization.
     pub fn create(directory: &Path, deployment: Deployment) -> Result<Self, AnchorError> {
         let state = State::initial(deployment.clone()).ok_or(AnchorError::Invalid)?;
         let parent = directory.parent().ok_or(AnchorError::Invalid)?;
@@ -233,6 +243,8 @@ impl AnchorWriter {
         Self::open(directory, reader.deployment)
     }
 
+    /// # Errors
+    /// Refuses invalid/inaccessible private state or deployment mismatch; writer opens also refuse an occupied writer lock.
     pub fn open(directory: &Path, deployment: Deployment) -> Result<Self, AnchorError> {
         let reader = AnchorReader::open(directory, deployment)?;
         let writer = ScopedLock::exclusive(lock_file(directory, "writer.lock")?)?;
@@ -243,14 +255,19 @@ impl AnchorWriter {
         })
     }
 
+    #[must_use]
     pub fn reader(&self) -> AnchorReader {
         self.reader.clone()
     }
 
+    /// # Errors
+    /// Refuses unavailable or invalid authoritative anchor state.
     pub fn pending(&self) -> Result<Option<Prepared>, AnchorError> {
         Ok(self.reader.state()?.prepared)
     }
 
+    /// # Errors
+    /// Refuses unreconciled store observations, another prepared effect, invalid transition or failed generation lock/durable write.
     pub fn prepare(
         &mut self,
         effect: &str,
@@ -278,6 +295,8 @@ impl AnchorWriter {
     /// Reconcile actual store observations. Partial states stay PREPARED until
     /// the Runtime verifies/reconciles the original claim/admission; this method
     /// neither overwrites a store nor fabricates a provider/relay permission.
+    /// # Errors
+    /// Refuses unknown partial states, inconsistent history, unavailable locks or failed durable writes/releases; never fabricates a store commit.
     pub fn reconcile(
         &mut self,
         sql: &Checkpoint,
@@ -337,12 +356,13 @@ impl Drop for Temporary {
     }
 }
 
+static NEXT: AtomicU64 = AtomicU64::new(0);
+
 fn write(directory: &Path, state: &State) -> Result<(), AnchorError> {
     if !state.valid() {
         return Err(AnchorError::Invalid);
     }
     let bytes = serde_json::to_vec(state).map_err(|_| AnchorError::Invalid)?;
-    static NEXT: AtomicU64 = AtomicU64::new(0);
     let mut selected = None;
     for _ in 0..128 {
         let path = directory.join(format!(
