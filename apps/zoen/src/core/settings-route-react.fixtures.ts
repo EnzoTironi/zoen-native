@@ -9,6 +9,7 @@ import { Driver } from './store.fixtures.ts';
 import { mutedSnapshot } from './muted-chats.fixtures.ts';
 import * as devices from '../devices/session.ts';
 import * as blocked from '../profile/blocked-people.ts';
+import * as presentation from '../notifications/mute-presentation.ts';
 import * as muted from '../notifications/muted-chats.ts';
 import * as ownership from './account-scope.ts';
 import { telegramPresentation } from '../theme/telegram.ts';
@@ -32,6 +33,7 @@ const paths = {
     '../app/settings/muted-chats.tsx',
     '../notifications/use-muted-chats.ts',
     '../notifications/muted-chats-screen.tsx',
+    '../notifications/mute-duration-sheet.tsx',
   ],
 };
 const compiled = Object.fromEntries(
@@ -204,7 +206,8 @@ export async function settingsReactFixture(kind: SettingsKind) {
       Stack: { Screen: () => null },
       router: { push: (route: unknown) => routes.push(route) },
     },
-    '@expo/ui': { BottomSheet: Capture, RNHostView: children },
+    '@expo/ui': { BottomSheet: Capture, RNHostView: children, Host: children },
+    '@expo/ui/community/datetime-picker': { default: Capture },
   };
   const load = (index: number): any => {
     if (modules.has(index)) return modules.get(index);
@@ -223,6 +226,8 @@ export async function settingsReactFixture(kind: SettingsKind) {
       if (name === './session') return devices;
       if (name === './blocked-people') return blocked;
       if (name === './muted-chats') return muted;
+      if (name === './mute-presentation') return presentation;
+      if (name === './mute-duration-sheet') return load(3);
       if (
         name.endsWith('/use-devices') ||
         name.endsWith('/use-blocked-people') ||

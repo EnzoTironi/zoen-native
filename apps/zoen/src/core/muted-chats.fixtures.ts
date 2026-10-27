@@ -39,6 +39,9 @@ export function mutedFixture() {
       calls.push({ kind: 'read' });
       return read();
     },
+    mute: async () => {
+      throw new Error('Timed mutation port is not configured in legacy fixture');
+    },
     unmute: (id, owner) => {
       calls.push({ kind: 'write', id, owner });
       return write(id);

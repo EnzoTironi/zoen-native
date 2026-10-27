@@ -1,9 +1,14 @@
 import type { ClientStore } from '../core/store';
 import type { Snapshot } from '../core/generated/Snapshot';
+import type { ChatMuteMode } from '../core/generated/ChatMuteMode';
 import type { SpaceSummary } from '../core/generated/SpaceSummary';
 import { accountScope, accountScopeKey, type AccountScope } from '../core/account-scope.ts';
 
 export type MutedChat = Readonly<Pick<SpaceSummary, 'id' | 'title' | 'muted_until_ms'>>;
+export type MuteChoice =
+  | Exclude<ChatMuteMode, { kind: 'for' }>
+  | { kind: 'for'; duration_seconds: number };
+type FailedMute = { id: string; until: string | null | undefined };
 export type MutedChatTicket = Readonly<{ scope: string; revision: number }>;
 export type MutedChatsState = Readonly<{
   scope: string;
@@ -13,11 +18,18 @@ export type MutedChatsState = Readonly<{
   pending: string | null;
   readFailed: boolean;
   actionFailed: boolean;
+  clock_ms: string | null;
 }>;
 export interface MutedChatsPort {
   scope(): AccountScope | null;
   read(): Promise<Snapshot>;
   unmute(id: string, owner: AccountScope): Promise<unknown>;
+  mute(
+    id: string,
+    mode: ChatMuteMode,
+    observed: string | null,
+    owner: AccountScope,
+  ): Promise<unknown>;
 }
 export const emptyMutedChats: MutedChatsState = {
   scope: '',
@@ -27,11 +39,24 @@ export const emptyMutedChats: MutedChatsState = {
   pending: null,
   readFailed: false,
   actionFailed: false,
+  clock_ms: null,
 };
 export function createMutedChatsPort(store: ClientStore): MutedChatsPort {
   return {
     scope: () => accountScope(store),
     read: () => store.driver.request({ op: 'snapshot' }),
+    mute: (space_id, mode, expected_muted_until_ms, owner) => {
+      if (accountScopeKey(owner) !== accountScopeKey(accountScope(store)))
+        return Promise.reject(new Error('Account scope changed'));
+      return store.request({
+        op: 'set_chat_mute',
+        space_id,
+        mode,
+        expected_muted_until_ms,
+        expected_identity_id: owner.identity,
+        expected_device_id: owner.device,
+      });
+    },
     unmute: (space_id, owner) => {
       if (accountScopeKey(owner) !== accountScopeKey(accountScope(store)))
         return Promise.reject(new Error('Account scope changed'));
@@ -45,7 +70,7 @@ export function createMutedChatsPort(store: ClientStore): MutedChatsPort {
     },
   };
 }
-function project(snapshot: Snapshot, owner: AccountScope): readonly MutedChat[] {
+function project(snapshot: Snapshot, owner: AccountScope, spaceId?: string): readonly MutedChat[] {
   const account = snapshot?.account;
   if (
     !account ||
@@ -75,7 +100,11 @@ function project(snapshot: Snapshot, owner: AccountScope): readonly MutedChat[] 
     ids.add(chat.id);
   }
   return snapshot.conversations
-    .filter((chat) => chat.muted && chat.members.some((member) => member.id === owner.identity))
+    .filter(
+      (chat) =>
+        (spaceId ? chat.id === spaceId : chat.muted) &&
+        chat.members.some((member) => member.id === owner.identity),
+    )
     .map(({ id, title, muted_until_ms }) => Object.freeze({ id, title, muted_until_ms }));
 }
 const sameChat = (left: MutedChat, right: MutedChat) =>
@@ -92,8 +121,10 @@ export class MutedChatsSession {
   private readonly inFlight = new Map<string, { id: string }>();
   private readonly listeners = new Set<() => void>();
   private readonly port: MutedChatsPort;
-  constructor(port: MutedChatsPort) {
+  private readonly spaceId?: string;
+  constructor(port: MutedChatsPort, spaceId?: string) {
     this.port = port;
+    this.spaceId = spaceId;
   }
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => {
@@ -131,7 +162,7 @@ export class MutedChatsSession {
   private accepts(ticket: MutedChatTicket | null) {
     return Boolean(ticket && ticket.scope === this.state.scope && this.current(ticket.revision));
   }
-  async load(ticket: MutedChatTicket | null, failedAction: string | null = null) {
+  async load(ticket: MutedChatTicket | null, failedAction: FailedMute | null = null) {
     if (!this.accepts(ticket) || !this.owner) return;
     const owner = this.owner;
     const revision = ++this.revision;
@@ -145,11 +176,30 @@ export class MutedChatsSession {
     try {
       const snapshot = await this.port.read();
       if (!this.current(revision)) return;
-      const chats = project(snapshot, owner);
+      const chats = project(snapshot, owner, this.spaceId);
+      const actual = failedAction
+        ? (chats.find((chat) => chat.id === failedAction.id)?.muted_until_ms ?? null)
+        : null;
+      // No remaining effect after Core's fresh clock passes the requested window.
+      // This retires the intent; it does not claim the lost write was acknowledged.
+      const elapsed = Boolean(
+        failedAction?.until &&
+        failedAction.until !== '9223372036854775807' &&
+        snapshot.clock_ms &&
+        /^[0-9]+$/.test(snapshot.clock_ms) &&
+        /^[0-9]+$/.test(failedAction.until) &&
+        BigInt(failedAction.until) <= BigInt(snapshot.clock_ms) &&
+        actual === null,
+      );
       this.publish({
         phase: 'ready',
         chats,
-        actionFailed: Boolean(failedAction && chats.some((chat) => chat.id === failedAction)),
+        clock_ms: snapshot.clock_ms ?? null,
+        actionFailed: Boolean(
+          failedAction &&
+          !elapsed &&
+          (failedAction.until === undefined || actual !== failedAction.until),
+        ),
       });
     } catch {
       if (this.current(revision))
@@ -177,6 +227,17 @@ export class MutedChatsSession {
     );
   }
   async unmute(id: string, confirm: () => Promise<boolean>, ticket: MutedChatTicket | null) {
+    return this.change(id, confirm, ticket);
+  }
+  async mute(id: string, choice: MuteChoice, ticket: MutedChatTicket | null) {
+    return this.change(id, async () => true, ticket, choice);
+  }
+  private async change(
+    id: string,
+    confirm: () => Promise<boolean>,
+    ticket: MutedChatTicket | null,
+    choice?: MuteChoice,
+  ) {
     const chat = this.state.chats.find((entry) => entry.id === id);
     if (
       !this.accepts(ticket) ||
@@ -194,25 +255,47 @@ export class MutedChatsSession {
     const write = { id };
     let dispatched = false;
     let failed = false;
+    let target: string | null | undefined = choice ? undefined : null;
     this.publish({ pending: id, actionFailed: false });
     try {
       if (!(await confirm()) || !this.current(revision) || this.state.selected !== id) return;
       // Revalidate this exact reviewed chat; never replay stale pin/archive fields.
       const snapshot = await this.port.read();
       if (!this.current(revision) || this.state.selected !== id) return;
-      const current = project(snapshot, owner).find((entry) => entry.id === id);
+      const current = project(snapshot, owner, this.spaceId).find((entry) => entry.id === id);
       if (!current || !sameChat(chat, current)) {
         await this.load(this.ticket());
         return;
       }
-      this.inFlight.set(scope, write);
-      dispatched = true;
-      await this.port.unmute(id, owner);
+      if (choice) {
+        let mode: ChatMuteMode;
+        if (choice.kind === 'for') {
+          if (!snapshot.clock_ms || !/^[1-9][0-9]*$/.test(snapshot.clock_ms))
+            throw new Error('Canonical clock unavailable');
+          mode = { ...choice, from_ms: snapshot.clock_ms };
+          target = (BigInt(snapshot.clock_ms) + BigInt(choice.duration_seconds) * 1000n).toString();
+        } else {
+          mode = choice;
+          target =
+            mode.kind === 'forever'
+              ? '9223372036854775807'
+              : mode.kind === 'until'
+                ? mode.until_ms
+                : null;
+        }
+        this.inFlight.set(scope, write);
+        dispatched = true;
+        await this.port.mute(id, mode, current.muted_until_ms, owner);
+      } else {
+        this.inFlight.set(scope, write);
+        dispatched = true;
+        await this.port.unmute(id, owner);
+      }
     } catch {
       failed = true;
       if (!dispatched && this.current(revision)) {
         this.publish({ actionFailed: true });
-        await this.load(this.ticket(), id);
+        await this.load(this.ticket(), { id, until: target });
       }
     } finally {
       if (dispatched && this.inFlight.get(scope) === write) {
@@ -220,7 +303,7 @@ export class MutedChatsSession {
         if (this.current() && this.state.scope === scope) {
           // A newer read/foreground may have changed revision during the ACK.
           // Acceptance may precede a lost response; reconcile by read, never resend.
-          await this.load(this.ticket(), failed ? id : null);
+          await this.load(this.ticket(), failed ? { id, until: target } : null);
         }
       } else if (this.current(revision)) this.publish({ pending: null });
     }
