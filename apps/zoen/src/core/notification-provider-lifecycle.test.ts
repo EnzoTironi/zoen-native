@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
 import { build } from 'esbuild';
+import type { SpaceSummary } from './generated/SpaceSummary';
+import { mutedSnapshot } from './muted-chats.fixtures.ts';
 
 type State = 'active' | 'background' | 'inactive' | 'unknown' | null;
 type Call = { kind: string; value?: unknown };
@@ -43,13 +45,19 @@ function fixture(initial: State, platform = 'ios') {
   const calls: Call[] = [];
   const effects: (() => unknown)[] = [];
   const cleanups: (() => void)[] = [];
+  const storeListeners = new Set<() => void>();
   const changes = new Set<(state: State) => void>();
   let current = {
     mode: 'account',
     snapshot: {
-      account: { identity_id: 'synthetic-owner', device_id: 'synthetic-device' },
+      account: {
+        identity_id: 'synthetic-owner',
+        device_id: 'synthetic-device',
+        unlocked: true,
+        setup_pending: false,
+      },
       connection: { synced: true },
-      conversations: [],
+      conversations: [] as SpaceSummary[],
     },
     erasePending: false,
   };
@@ -64,7 +72,10 @@ function fixture(initial: State, platform = 'ios') {
   const store = {
     getSnapshot: () => current,
     registerDeviceCleanup: () => () => {},
-    subscribe: () => () => {},
+    subscribe: (fn: () => void) => {
+      storeListeners.add(fn);
+      return () => storeListeners.delete(fn);
+    },
     assertExternalNavigationAllowed() {},
     refresh: async () => {},
     driver: {
@@ -87,9 +98,15 @@ function fixture(initial: State, platform = 'ios') {
     listenNotificationEvents: () => () => {},
     installNotificationHandler: () => () => {},
     nativeNotificationPresentation: () => true,
-    requestNativeNotes: async () => {},
-    showLocalNote: async () => {},
-    updateBadge: async () => {},
+    requestNativeNotes: async () => {
+      calls.push({ kind: 'nativeNote' });
+    },
+    showLocalNote: async () => {
+      calls.push({ kind: 'localNote' });
+    },
+    updateBadge: async (value: number) => {
+      calls.push({ kind: 'badge', value });
+    },
     clearDeviceNotifications: async () => {},
   };
   const imports: Record<string, unknown> = {
@@ -144,7 +161,12 @@ function fixture(initial: State, platform = 'ios') {
         ...current,
         snapshot: {
           ...current.snapshot,
-          account: { identity_id: 'other-owner', device_id: 'other-device' },
+          account: {
+            identity_id: 'other-owner',
+            device_id: 'other-device',
+            unlocked: true,
+            setup_pending: false,
+          },
         },
       };
     },
@@ -152,6 +174,10 @@ function fixture(initial: State, platform = 'ios') {
       for (const cleanup of cleanups) cleanup();
     },
     listenerCount: () => changes.size,
+    conversations: (value: SpaceSummary[]) => {
+      current = { ...current, snapshot: { ...current.snapshot, conversations: value } };
+      for (const listener of storeListeners) listener();
+    },
   };
 }
 
@@ -216,6 +242,49 @@ test('web mount retains the non-native path without token work or an AppState li
     await f.flush();
     assert.deepEqual(f.calls, []);
     assert.equal(f.listenerCount(), 0);
+  } finally {
+    f.close();
+  }
+});
+
+test('manual unread contributes one badge unit without emitting a message alert or double-counting real unread', async () => {
+  const f = fixture('active');
+  try {
+    await f.flush();
+    f.enter('background');
+    const chat = { ...mutedSnapshot().conversations[0]!, muted: false, archived: false, unread: 0 };
+    chat.members = [{ ...chat.members[0]!, id: 'synthetic-owner' }];
+    chat.last_author = { ...chat.members[0]!, id: 'sender', is_me: false };
+    chat.event_count = '1';
+    f.conversations([{ ...chat, unread: 1 }]);
+    await f.flush();
+    assert.ok(
+      f.calls.some((call) => call.kind === 'nativeNote'),
+      'The same live provider can present a real incoming message',
+    );
+    f.conversations([chat]);
+    await f.flush();
+    f.calls.length = 0;
+    f.conversations([{ ...chat, manual_unread: true }]);
+    await f.flush();
+    assert.deepEqual(f.calls, [{ kind: 'badge', value: 1 }]);
+    f.enter('active');
+    await f.flush();
+    f.calls.length = 0;
+    f.conversations([{ ...chat, unread: 3, manual_unread: true }]);
+    await f.flush();
+    assert.deepEqual(f.calls, [{ kind: 'badge', value: 3 }]);
+    f.calls.length = 0;
+    f.conversations([
+      { ...chat, id: 'muted', manual_unread: true, muted: true },
+      { ...chat, id: 'archived', manual_unread: true, archived: true },
+    ]);
+    await f.flush();
+    assert.deepEqual(f.calls, [{ kind: 'badge', value: 0 }]);
+    f.calls.length = 0;
+    f.conversations([{ ...chat, manual_unread: false }]);
+    await f.flush();
+    assert.deepEqual(f.calls, [{ kind: 'badge', value: 0 }]);
   } finally {
     f.close();
   }

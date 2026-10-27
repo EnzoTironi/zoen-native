@@ -1,6 +1,7 @@
 import { InboxActionsSession, type InboxActionsPort } from '../inbox/actions-session.ts';
 import { mutedSnapshot, scope } from './muted-chats.fixtures.ts';
 import type { ChatLayoutInput } from './generated/ChatLayoutInput';
+import type { ChatLayoutState } from './generated/ChatLayoutState';
 import type { ChatLayoutResult } from './generated/ChatLayoutResult';
 import type { AccountScope } from './account-scope.ts';
 export { deferred } from './store.fixtures.ts';
@@ -14,7 +15,16 @@ export function inboxFixture() {
   chat.unread = 3;
   let owner: AccountScope | null = scope,
     sequence = 0;
-  let current = { pinned: false, archived: false, pin_revision: '0', archive_revision: '0' };
+  let current: ChatLayoutState = {
+    pinned: false,
+    archived: false,
+    pin_revision: '0',
+    archive_revision: '0',
+    manual_unread: false,
+    manual_unread_revision: '0',
+    read_through_seq: '10',
+    read_up_to_seq: '7',
+  };
   const receipts = new Map<string, NonNullable<ChatLayoutResult['receipt']>>();
   const calls: Array<
     | ChatLayoutInput
@@ -26,11 +36,26 @@ export function inboxFixture() {
     if (input.kind === 'read') return { current: { ...current }, receipt: null };
     if (input.kind === 'reconcile')
       return { current: { ...current }, receipt: receipts.get(input.operation_id) ?? null };
+    if (input.kind === 'mark_read') {
+      if (input.observed_manual_revision !== current.manual_unread_revision)
+        throw Error('Changed manual revision');
+      current = {
+        ...current,
+        manual_unread: false,
+        manual_unread_revision: 'read-cleared',
+        read_up_to_seq: input.through_seq,
+      };
+      chat.manual_unread = false;
+      chat.unread = 0;
+      return { current: { ...current }, receipt: null };
+    }
     const revision =
       input.kind === 'change'
         ? input.field === 'pinned'
           ? current.pin_revision
-          : current.archive_revision
+          : input.field === 'archived'
+            ? current.archive_revision
+            : current.manual_unread_revision
         : receipts.get(input.original_operation_id)?.revision;
     const original = input.kind === 'undo' ? receipts.get(input.original_operation_id) : null;
     const field = input.kind === 'change' ? input.field : original!.field;
@@ -50,12 +75,16 @@ export function inboxFixture() {
       value,
       revision: next,
       undo_of: original?.operation_id ?? null,
-      undo_available: input.kind === 'change',
+      undo_available: input.kind === 'change' && field !== 'manual_unread',
     };
     current = {
       ...current,
       [field]: value,
-      [field === 'pinned' ? 'pin_revision' : 'archive_revision']: next,
+      [field === 'pinned'
+        ? 'pin_revision'
+        : field === 'archived'
+          ? 'archive_revision'
+          : 'manual_unread_revision']: next,
     };
     chat[field] = value;
     receipts.set(input.operation_id, receipt);
@@ -87,10 +116,6 @@ export function inboxFixture() {
       calls.push({ kind: 'mute', id, value, observed });
       chat.muted = value;
       chat.muted_until_ms = value ? '9223372036854775807' : null;
-    },
-    read: async () => {
-      calls.push({ kind: 'read' });
-      chat.unread = 0;
     },
     refresh: async () => {
       calls.push({ kind: 'refresh' });
