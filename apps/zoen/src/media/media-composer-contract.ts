@@ -4,7 +4,7 @@ import { type ReactNode } from 'react';
 import type { ClientStore } from '../core/store.ts';
 import type { SemanticColors } from '../theme';
 import { type AttachmentComposerField } from './attachment-composer';
-import type { Recording } from './media-composer-shared';
+import type { Recording, StoppedCapture } from './media-composer-shared';
 import type { MediaDraftChannel } from './media-draft-channel.ts';
 import type { MediaDraftContent, MediaDraftDto } from './media-draft-types.ts';
 import type { MediaDriver } from './types.ts';
@@ -75,11 +75,7 @@ export type MediaComposerRuntime = {
   prepared: RefObject<boolean>;
   preparedUri: RefObject<string | undefined>;
   audioModeNeedsRestore: RefObject<boolean>;
-  stoppedCapture: RefObject<{
-    uri: string | undefined;
-    durationMs: number;
-    stopped: boolean;
-  } | null>;
+  stoppedCapture: RefObject<StoppedCapture | null>;
   recorder: AudioRecorder;
   setCaptureActive: Dispatch<SetStateAction<boolean>>;
   setCapturePaused: Dispatch<SetStateAction<boolean>>;
