@@ -24,8 +24,7 @@ export default function Agent() {
   const { data: agent, error, retry } = useCoreQuery({ op: 'agent_profile', agent_id: id });
   const standing = useCoreQuery({ op: 'standing_decisions' });
   const control = useAgentControl(id, mode === 'account' && !!agent?.persona.is_mine);
-  const controlUnavailable = control.state.busy || control.state.pending !== null;
-  const inviteTicket = control.session.ticket();
+  const lifecycleTicket = control.session.ticket();
   const activity = useCoreQuery({ op: 'agent_activity', agent_id: id });
   const [previewSpace, setPreviewSpace] = useState<string | null>(null);
   const selectedSpace = previewSpace ?? agent?.spaces[0]?.space_id;
@@ -292,17 +291,17 @@ export default function Agent() {
             <>
               <NativeButton
                 secondary
-                disabled={busy || !inviteTicket}
+                disabled={busy || !lifecycleTicket}
                 label={t('agents.shareAgent')}
                 onPress={() => {
-                  if (!inviteTicket || !control.session.accepts(inviteTicket)) return;
+                  if (!lifecycleTicket || !control.session.accepts(lifecycleTicket)) return;
                   void act(async () => {
                     const invite = await store.driver.request({
                       op: 'create_agent_invite',
                       agent_id: id,
                     });
                     // A late response must not open Share after lifecycle/owner retirement.
-                    if (!inviteTicket || !control.session.accepts(inviteTicket)) return;
+                    if (!lifecycleTicket || !control.session.accepts(lifecycleTicket)) return;
                     if (process.env.EXPO_OS === 'web') {
                       await Clipboard.setStringAsync(invite.link);
                       setMessage(t('agents.inviteLinkCopied'));
@@ -312,10 +311,10 @@ export default function Agent() {
               />
               <NativeButton
                 secondary
-                disabled={busy || !inviteTicket}
+                disabled={busy || !lifecycleTicket}
                 label={t('agents.disableInviteLink')}
                 onPress={() => {
-                  if (!inviteTicket || !control.session.accepts(inviteTicket)) return;
+                  if (!lifecycleTicket || !control.session.accepts(lifecycleTicket)) return;
                   void act(() => store.request({ op: 'revoke_agent_invite', agent_id: id }));
                 }}
               />
@@ -324,9 +323,10 @@ export default function Agent() {
           {control.state.status && control.state.status !== 'Revoked' ? (
             <NativeButton
               secondary
-              disabled={busy || controlUnavailable}
+              disabled={busy || !lifecycleTicket}
               label={t('agents.revokeAgent')}
               onPress={() => {
+                if (!lifecycleTicket || !control.session.accepts(lifecycleTicket)) return;
                 void dialogs
                   .confirm({
                     title: t('agents.revokeThisAgent'),
@@ -335,10 +335,8 @@ export default function Agent() {
                     destructive: true,
                   })
                   .then((accepted) => {
-                    if (accepted)
-                      void act(() =>
-                        store.request({ op: 'control_agent', agent_id: id, action: 'Revoke' }),
-                      );
+                    if (accepted && control.session.accepts(lifecycleTicket))
+                      void act(() => control.session.revoke(lifecycleTicket));
                   });
               }}
             />
