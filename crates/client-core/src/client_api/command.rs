@@ -286,27 +286,11 @@ pub(super) enum Command {
         kind: crate::RecentAttachmentKind,
         reference: crate::RecentAttachmentReference,
     },
-    SetChatPrefs {
-        space_id: String,
-        pinned: bool,
-        archived: bool,
-        muted: bool,
-        #[serde(default)]
-        #[cfg_attr(feature = "client-types", ts(optional))]
-        preserve_mute: Option<bool>,
-    },
-    SetChatMute {
-        space_id: String,
-        mode: crate::ChatMuteMode,
-        expected_muted_until_ms: Option<String>,
-        expected_identity_id: String,
-        expected_device_id: String,
-    },
-    SetChatMuted {
-        space_id: String,
-        muted: bool,
-        expected_identity_id: String,
-        expected_device_id: String,
+    SetChatPrefs(super::chat_preferences_dispatch::ChatPrefsInput),
+    SetChatMute(super::chat_preferences_dispatch::ChatMuteInput),
+    SetChatMuted(super::chat_preferences_dispatch::ChatMutedInput),
+    ChatLayout {
+        input: crate::chat_layout::ChatLayoutInput,
     },
     StartDirect {
         identity_id: String,

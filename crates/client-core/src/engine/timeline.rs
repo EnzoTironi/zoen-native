@@ -374,6 +374,7 @@ impl Engine {
             EventBody::ChatPrefsSet {
                 space: space.to_string(),
                 prefs,
+                operation: None,
             },
         )?;
         Ok(())

@@ -83,6 +83,7 @@ pub use recent_attachments::{
     RecentAttachment, RecentAttachmentKind, RecentAttachmentPage, RecentAttachmentReference,
     RecentAttachmentSourceBinding,
 };
+pub mod chat_layout;
 mod chat_mute;
 mod message_drafts;
 mod native_surfaces;

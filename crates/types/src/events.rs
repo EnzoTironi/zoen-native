@@ -59,11 +59,14 @@ pub enum EventBody {
         signal: crate::call_transport::CallTransportSignal,
     },
     /// How I keep one of my chats (pinned, archived, muted). Lives only in my Personal
-    /// Space, so it syncs across my own devices and nobody else ever sees it. The whole
+    /// Space. Replication across devices is a separate transport contract. The whole
     /// record is restated each time: the latest one wins.
     ChatPrefsSet {
         space: SpaceId,
         prefs: ChatPrefs,
+        /// Optional exact-operation receipt metadata; old preference events remain valid.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        operation: Option<ChatPrefsOperation>,
     },
     /// An edit, delete for everyone or reaction on an earlier message (see [`crate::annotation`]).
     MessageAnnotated {
@@ -188,6 +191,26 @@ pub enum EventBody {
 pub enum OwnerPolicyOutcome {
     Installed,
     Refused,
+}
+
+/// A layout field in the existing signed Personal preference event.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ChatPrefsField {
+    Pinned,
+    Archived,
+}
+
+/// Correlates one explicit local operation with its signed preference event.
+/// The event log supplies before/after values and revisions; there is no other ledger.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ChatPrefsOperation {
+    pub id: String,
+    pub field: ChatPrefsField,
+    pub previous_revision: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub undo_of: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
