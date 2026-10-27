@@ -182,17 +182,6 @@ mod tests {
 
     #[test]
     fn artifact_recipient_is_signed_optional_and_rejected_by_old_scoped_consumers() {
-        let old = format!(
-            r#"{{"item_id":"item","version":1,"sha256":"{}","request_id":"request","text_sha256":"{}"}}"#,
-            "ab".repeat(32),
-            "cd".repeat(32)
-        );
-        let mut scoped: ArtifactRequest = serde_json::from_str(&old).unwrap();
-        assert!(scoped.agent_id.is_none());
-        assert_eq!(serde_json::to_string(&scoped).unwrap(), old);
-        scoped.agent_id = Some("operator".into());
-        assert!(scoped.is_well_formed());
-        let json = serde_json::to_string(&scoped).unwrap();
         #[derive(Deserialize)]
         #[serde(deny_unknown_fields)]
         struct LegacyArtifact {
@@ -207,6 +196,17 @@ mod tests {
             #[serde(rename = "text_sha256")]
             _text: String,
         }
+        let old = format!(
+            r#"{{"item_id":"item","version":1,"sha256":"{}","request_id":"request","text_sha256":"{}"}}"#,
+            "ab".repeat(32),
+            "cd".repeat(32)
+        );
+        let mut scoped: ArtifactRequest = serde_json::from_str(&old).unwrap();
+        assert!(scoped.agent_id.is_none());
+        assert_eq!(serde_json::to_string(&scoped).unwrap(), old);
+        scoped.agent_id = Some("operator".into());
+        assert!(scoped.is_well_formed());
+        let json = serde_json::to_string(&scoped).unwrap();
         assert!(serde_json::from_str::<LegacyArtifact>(&old).is_ok());
         assert!(serde_json::from_str::<LegacyArtifact>(&json).is_err());
         scoped.agent_id = Some("../operator".into());
