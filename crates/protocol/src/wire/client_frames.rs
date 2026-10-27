@@ -154,6 +154,7 @@ fn request_to(op: &Op) -> pb_req::Op {
                 cert: d.cert.clone(),
             }),
         }),
+        Op::EnsureSavedMessages(genesis) => pb_req::Op::EnsureSavedMessages(genesis.clone()),
         Op::FetchLink { id } => pb_req::Op::FetchLink(id.clone()),
         Op::CompleteRead(r) => pb_req::Op::CompleteRead(r.clone()),
         Op::Devices => pb_req::Op::Devices(PbEmpty {}),
@@ -182,6 +183,7 @@ fn request_to(op: &Op) -> pb_req::Op {
 
 fn request_from(op: pb_req::Op) -> Result<Op, DecodeError> {
     Ok(match op {
+        pb_req::Op::EnsureSavedMessages(genesis) => Op::EnsureSavedMessages(genesis),
         pb_req::Op::Register(p) => Op::Register {
             profile: profile_from(p)?,
         },

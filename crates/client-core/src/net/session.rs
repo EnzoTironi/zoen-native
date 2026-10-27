@@ -94,39 +94,43 @@ async fn session_with_policy_and_retries(
     if let Err(e) = send(&mut sink, &hello).await {
         return Exit::Retry(e);
     }
-    let (nonce, relay, profiles, advertised_clock, complete_reads) = match recv(&mut stream).await {
-        Ok(ServerFrame::Challenge {
-            nonce,
-            relay,
-            capabilities,
-            protocol,
-            server_time_ms,
-        }) if protocol >= MIN_PROTOCOL_VERSION => (
-            nonce,
-            relay,
-            capabilities.iter().any(|c| c == "profiles"),
-            capabilities
-                .iter()
-                .any(|c| c == protocol::KEY_PACKAGE_CLAIM_CAPABILITY)
-                .then(|| {
-                    server_time_ms
-                        .and_then(KeyPackageClaimClock::from_server_ms)
-                        .map(ClaimClockSample::new)
-                })
-                .flatten(),
-            capabilities
-                .iter()
-                .any(|c| c == protocol::complete_reads::CAPABILITY),
-        ),
-        Ok(ServerFrame::Challenge { protocol, .. }) => {
-            return Exit::Blocked(format!(
-                "relay protocol {protocol} needs an upgrade before encrypted histories can sync"
-            ));
-        }
-        Ok(ServerFrame::Error { code, message }) => return refused(code, message, backoff),
-        Ok(other) => return Exit::Retry(format!("unexpected {other:?}")),
-        Err(e) => return Exit::Retry(e),
-    };
+    let (nonce, relay, profiles, advertised_clock, complete_reads, saved_messages) =
+        match recv(&mut stream).await {
+            Ok(ServerFrame::Challenge {
+                nonce,
+                relay,
+                capabilities,
+                protocol,
+                server_time_ms,
+            }) if protocol >= MIN_PROTOCOL_VERSION => (
+                nonce,
+                relay,
+                capabilities.iter().any(|c| c == "profiles"),
+                capabilities
+                    .iter()
+                    .any(|c| c == protocol::KEY_PACKAGE_CLAIM_CAPABILITY)
+                    .then(|| {
+                        server_time_ms
+                            .and_then(KeyPackageClaimClock::from_server_ms)
+                            .map(ClaimClockSample::new)
+                    })
+                    .flatten(),
+                capabilities
+                    .iter()
+                    .any(|c| c == protocol::complete_reads::CAPABILITY),
+                capabilities
+                    .iter()
+                    .any(|c| c == protocol::saved_messages::CAPABILITY),
+            ),
+            Ok(ServerFrame::Challenge { protocol, .. }) => {
+                return Exit::Blocked(format!(
+                    "relay protocol {protocol} needs an upgrade before encrypted histories can sync"
+                ));
+            }
+            Ok(ServerFrame::Error { code, message }) => return refused(code, message, backoff),
+            Ok(other) => return Exit::Retry(format!("unexpected {other:?}")),
+            Err(e) => return Exit::Retry(e),
+        };
     if let Err(e) = send(
         &mut sink,
         &ClientFrame::Auth {
@@ -172,6 +176,7 @@ async fn session_with_policy_and_retries(
     // succeeded. A Challenge alone must not establish an HTTP signature domain.
     let _ = engine!(|engine| engine.store.set_meta("relay_name", &relay));
     engine!(|engine| engine.profiles_session_start(profiles));
+    engine!(|engine| engine.net.saved_messages_supported = saved_messages);
     // Encrypted media moves over HTTP beside the socket, for as long as this session lives.
     let media_kick = Arc::new(tokio::sync::Notify::new());
     let _media = AbortOnDrop(tokio::spawn(crate::i18n::scope(

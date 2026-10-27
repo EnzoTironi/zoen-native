@@ -1,5 +1,6 @@
 import { t, formatLocale } from '../../../i18n/index.ts';
-import { ProfileAvatar } from '../../../profile/profile-avatar';
+import { ConversationAvatar } from '../../../saved-messages/conversation-avatar';
+import { conversationTitle } from '../../../saved-messages/presentation';
 import { Stack, router } from 'expo-router';
 import { FlashList } from '@shopify/flash-list';
 import { useMemo, useState } from 'react';
@@ -181,17 +182,27 @@ export default function Chats() {
         }
         renderItem={({ item: chat }) => (
           <Pressable
+            testID={chat.kind === 'saved' ? 'saved-messages-chat' : undefined}
             accessibilityRole="button"
             accessibilityLabel={
               chat.unread
                 ? t('chat.conversationUnreadLabel', {
-                    title: chat.title,
+                    title: conversationTitle(chat),
                     count: chat.unread,
                     preview: chat.last_preview,
                   })
-                : t('chat.conversationLabel', { title: chat.title, preview: chat.last_preview })
+                : t('chat.conversationLabel', {
+                    title: conversationTitle(chat),
+                    preview: chat.last_preview,
+                  })
             }
-            onPress={() => router.push({ pathname: '/chat/[id]', params: { id: chat.id } })}
+            onPress={() =>
+              router.push(
+                chat.kind === 'saved' && !chat.can_write
+                  ? '/saved-messages'
+                  : { pathname: '/chat/[id]', params: { id: chat.id } },
+              )
+            }
             style={({ pressed }) => ({
               flexDirection: 'row',
               gap: 10,
@@ -206,13 +217,7 @@ export default function Chats() {
                   : 'transparent',
             })}
           >
-            <ProfileAvatar
-              person={chat.counterpart}
-              name={chat.title}
-              color={chat.counterpart?.tint_hex}
-              size={60}
-              agent={chat.counterpart?.kind === 'Agent'}
-            />
+            <ConversationAvatar chat={chat} size={60} />
             <View style={{ flex: 1, gap: 3 }}>
               <View
                 style={{
@@ -231,7 +236,7 @@ export default function Chats() {
                     color: p.chatList.title,
                   }}
                 >
-                  {chat.title}
+                  {conversationTitle(chat)}
                 </Text>
                 {chat.last_author?.is_me && chat.last_delivery ? (
                   <MessageReceipt

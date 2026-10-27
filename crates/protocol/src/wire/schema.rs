@@ -59,7 +59,7 @@ pub struct PbReq {
     pub id: u64,
     #[prost(
         oneof = "pb_req::Op",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25"
     )]
     pub op: Option<pb_req::Op>,
 }
@@ -119,6 +119,8 @@ pub mod pb_req {
         RuntimeBinding(PbRuntimeBindingRequest),
         #[prost(message, tag = "24")]
         CompleteRead(crate::complete_reads::Request),
+        #[prost(message, tag = "25")]
+        EnsureSavedMessages(crate::saved_messages::Genesis),
     }
 }
 
@@ -521,7 +523,7 @@ pub struct PbRes {
     pub id: u64,
     #[prost(
         oneof = "pb_res::R",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18"
     )]
     pub r: Option<pb_res::R>,
 }
@@ -567,6 +569,8 @@ pub mod pb_res {
         CompletePage(crate::complete_reads::Page),
         #[prost(message, tag = "17")]
         AgentControl(crate::agent_control::Record),
+        #[prost(message, tag = "18")]
+        SavedMessages(crate::saved_messages::Receipt),
     }
 }
 

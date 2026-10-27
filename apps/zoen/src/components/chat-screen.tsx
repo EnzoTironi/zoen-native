@@ -10,6 +10,7 @@ import { EmptyState, Loading } from '../components/primitives';
 import { conversationQueryFits } from '../core/conversation-search';
 import { messageCard } from '../core/message-presentation';
 import { t } from '../i18n/index.ts';
+import { conversationTitle } from '../saved-messages/presentation';
 import { MiniappRail } from '../miniapps/rail';
 import type { useChatController } from './use-chat-controller';
 
@@ -82,7 +83,8 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
         id={id}
         scrollViewTag={nativeScrollTag}
         navigationMetrics={navigationMetrics}
-        title={chat.title}
+        title={conversationTitle(chat)}
+        saved={chat.kind === 'saved'}
         counterpart={chat.counterpart}
         activityLabel={activityLabel}
         search={{
@@ -337,8 +339,16 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
               onStartReachedThreshold={0.1}
               ListEmptyComponent={
                 <EmptyState
-                  title={t('chat.theStartOfSomethingGood')}
-                  detail={t('chat.writeTheFirstMessageInThisChat')}
+                  title={
+                    chat.kind === 'saved'
+                      ? t('settings.savedMessages')
+                      : t('chat.theStartOfSomethingGood')
+                  }
+                  detail={t(
+                    chat.kind === 'saved'
+                      ? 'settings.savedMessagesEmpty'
+                      : 'chat.writeTheFirstMessageInThisChat',
+                  )}
                 />
               }
               renderItem={({ item: { entry, activity, album }, index }) => (
@@ -349,7 +359,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
                   album={album}
                   previous={rows[index - 1]?.entry}
                   next={rows[index + 1]?.entry}
-                  groupChat={chat.kind !== 'Direct'}
+                  groupChat={chat.kind === 'Group' || chat.kind === 'Community'}
                   item={items.find((item) => item.id === messageCard(entry)?.item_id)}
                   highlighted={entry.id === selectedSearchId}
                   revealQuery={searchState.query}

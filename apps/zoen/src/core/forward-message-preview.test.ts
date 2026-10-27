@@ -12,6 +12,7 @@ import {
   ForwardMessageUnavailable,
   ForwardMessageChanged,
 } from './forward-message.ts';
+import { conversationTitle } from '../saved-messages/presentation.ts';
 import type { TimelineEntry } from './types';
 
 const require = createRequire(import.meta.url);
@@ -189,6 +190,7 @@ for (const mode of [
   'coldAccepted',
   'demo',
   'largeType',
+  'saved',
 ] as const)
   test(`compiled forwarding route: ${mode} preserves keyboard/media and canonical operation semantics`, async () => {
     const root = createReactTestRoot();
@@ -203,7 +205,12 @@ for (const mode of [
     const snapshot = {
       conversations: [
         { id: 'source', title: 'Source', can_write: true },
-        { id: 'target', title: 'Target', can_write: true },
+        {
+          id: 'target',
+          title: 'Target',
+          kind: mode === 'saved' ? 'saved' : 'Group',
+          can_write: true,
+        },
       ],
     };
     let canonical: any =
@@ -312,6 +319,8 @@ for (const mode of [
       '../../../theme': { useTheme: () => ({ colors: { text: '#111', secondary: '#777' } }) },
       '../../../i18n/index.ts': { t: (key: string) => key, formatLocale: 'en-US' },
       '../../../profile/profile-avatar': { ProfileAvatar: () => null },
+      '../../../saved-messages/conversation-avatar': { ConversationAvatar: () => null },
+      '../../../saved-messages/presentation': { conversationTitle },
       '../../../components/primitives': {
         NativeButton: host('Button'),
         EmptyState: host('Empty', true),
@@ -355,9 +364,19 @@ for (const mode of [
         assert.deepEqual(events, ['status', 'ack']);
         assert.equal(canonical, null);
       } else {
-        await root.act(() => views.get('forward-search').onChangeText('Target'));
+        await root.act(() =>
+          views.get('forward-search').onChangeText(mode === 'saved' ? 'Saved' : 'Target'),
+        );
         const list = views.get('List');
         assert.equal(list.keyboardShouldPersistTaps, 'handled');
+        if (mode === 'saved') {
+          assert.equal(list.data.length, 1);
+          assert.equal(list.data[0].id, 'target');
+          assert.equal(
+            list.renderItem({ item: list.data[0] }).props.accessibilityLabel,
+            'Saved Messages',
+          );
+        }
         assert.equal(list.keyboardDismissMode, 'interactive');
         await root.act(() => list.renderItem({ item: snapshot.conversations[1] }).props.onPress());
         assert.deepEqual(events, ['status', 'dismiss', 'status', 'review']);
@@ -387,7 +406,7 @@ for (const mode of [
           await root.act(() => views.get('forward-message-send').onPress());
           assert.deepEqual(
             events,
-            mode === 'success' || mode === 'largeType'
+            mode === 'success' || mode === 'largeType' || mode === 'saved'
               ? ['status', 'dismiss', 'status', 'review', 'send', 'ack', 'back']
               : ['status', 'dismiss', 'status', 'review', 'send', 'status', 'back'],
           );

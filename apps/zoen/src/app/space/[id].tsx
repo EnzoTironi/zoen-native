@@ -6,7 +6,7 @@ import { ProfileInfoRow, ProfileSection } from '../../profile/profile-section';
 import { peerInfo, profileTitleCollapseOffset } from '../../profile/telegram-profile-presentation';
 import { useProfilePhoto } from '../../profile/use-profile-photo';
 import { useCallback, useRef, useState } from 'react';
-import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { Redirect, Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Host, Column, Switch } from '@expo/ui';
 import { font, foregroundStyle, frame, padding } from '@expo/ui/swift-ui/modifiers';
 import { Pressable, ScrollView, Share, Text, View } from 'react-native';
@@ -20,6 +20,13 @@ import { MemberAdditionSheet } from '../../communities/member-addition-sheet';
 import { useTheme } from '../../theme';
 
 export default function Space() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const { snapshot } = useClient();
+  if (snapshot?.conversations.some((chat) => chat.id === id && chat.kind === 'saved'))
+    return <Redirect href={{ pathname: '/shared-media/[id]', params: { id } }} />;
+  return <SpaceContent />;
+}
+function SpaceContent() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { snapshot, store } = useClient();
   const members = useMemberActions(id);

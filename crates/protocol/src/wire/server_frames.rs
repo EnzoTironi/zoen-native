@@ -238,6 +238,7 @@ fn result_to(result: &Result<Reply, String>) -> pb_res::R {
                 })
                 .collect(),
         }),
+        Ok(Reply::SavedMessages(receipt)) => pb_res::R::SavedMessages(receipt.clone()),
         Ok(Reply::Link(sealed)) => pb_res::R::Link(PbLinkBox {
             id: String::new(),
             sealed: sealed.clone().unwrap_or_default(),
@@ -276,6 +277,7 @@ fn agent_state_to(a: &AgentStateRecord) -> PbAgentState {
 
 fn result_from(result: pb_res::R) -> Result<Result<Reply, String>, DecodeError> {
     Ok(match result {
+        pb_res::R::SavedMessages(receipt) => Ok(Reply::SavedMessages(receipt)),
         pb_res::R::Err(e) => Err(e),
         pb_res::R::Registered(p) => Ok(Reply::Registered(profile_from(p)?)),
         pb_res::R::Profiles(ps) => Ok(Reply::Profiles(

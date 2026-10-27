@@ -54,3 +54,5 @@ pub use events::{
 
 #[cfg(test)]
 mod tests;
+
+pub mod saved_messages;

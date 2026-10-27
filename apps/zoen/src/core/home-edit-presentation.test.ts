@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { conversationTitle } from '../saved-messages/presentation.ts';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import { test } from 'node:test';
@@ -23,7 +24,8 @@ const external = new Set([
   '../../../components/primitives',
   '../components/primitives',
   '../../../components/chats-actions',
-  '../../../profile/profile-avatar',
+  '../../../saved-messages/conversation-avatar',
+  '../../../saved-messages/presentation',
   '../../../components/message-receipt',
   '../../../miniapps/rail',
 ]);
@@ -122,7 +124,8 @@ async function fixture() {
     '../../../components/primitives': primitives,
     '../components/primitives': primitives,
     '../../../components/chats-actions': { ChatsActions: 'ChatsActions' },
-    '../../../profile/profile-avatar': { ProfileAvatar: 'ProfileAvatar' },
+    '../../../saved-messages/conversation-avatar': { ConversationAvatar: 'ConversationAvatar' },
+    '../../../saved-messages/presentation': { conversationTitle },
     '../../../components/message-receipt': { MessageReceipt: 'MessageReceipt' },
     '../../../miniapps/rail': { MiniappRail: 'MiniappRail' },
   };

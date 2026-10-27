@@ -66,7 +66,9 @@ export default function Person() {
   );
   const groups =
     snapshot?.conversations.filter(
-      (chat) => chat.kind !== 'Direct' && chat.members.some((member) => member.id === id),
+      (chat) =>
+        (chat.kind === 'Group' || chat.kind === 'Community') &&
+        chat.members.some((member) => member.id === id),
     ) ?? [];
   async function act(action: () => Promise<unknown>) {
     if (pending.current || !currentOwner()) return;

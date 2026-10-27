@@ -289,6 +289,10 @@ pub(super) enum Command {
         expected_identity_id: String,
         expected_device_id: String,
     },
+    SavedMessages {
+        expected_identity_id: String,
+        expected_device_id: String,
+    },
     StartDirect {
         identity_id: String,
     },

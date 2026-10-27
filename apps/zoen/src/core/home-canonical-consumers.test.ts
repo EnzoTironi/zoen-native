@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { conversationTitle } from '../saved-messages/presentation.ts';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
@@ -266,6 +267,7 @@ function renderScreen(
       return components(['ConversationRail', 'ConversationRailSpacer']);
     if (path.endsWith('/components/conversation-timeline-message'))
       return { ConversationTimelineMessage: 'ConversationMessage' };
+    if (path.endsWith('/saved-messages/presentation')) return { conversationTitle };
     if (path.endsWith('/components/chat-header')) return { ChatHeader: 'ChatHeader' };
     if (path.endsWith('/miniapps/rail')) return { MiniappRail: 'MiniappRail' };
     if (path.endsWith('/conversation-provider'))

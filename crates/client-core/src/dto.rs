@@ -42,6 +42,8 @@ pub enum SpaceKindDto {
     Direct,
     Group,
     Community,
+    #[serde(rename = "saved")]
+    Saved,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
