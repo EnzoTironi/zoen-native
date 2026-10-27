@@ -17,7 +17,7 @@ export type AgentControlPort = {
   ): Promise<void>;
   control(
     agent: string,
-    action: AgentLifecycleAction,
+    action: AgentControl,
     scope: AccountScope,
     revision: string,
   ): Promise<void>;
@@ -206,12 +206,18 @@ export class AgentControlSession {
     );
   }
   async change(ticket: AgentControlTicket) {
+    await this.dispatch(ticket, ticket.action);
+  }
+  async revoke(ticket: AgentControlTicket) {
+    await this.dispatch(ticket, 'Revoke');
+  }
+  private async dispatch(ticket: AgentControlTicket, action: AgentControl) {
     if (!this.accepts(ticket) || !this.scope) return;
     const scope = this.scope;
     // Consume before dispatch; double taps and queued stale handlers cannot send twice.
-    this.publish({ busy: true, pending: ticket.action });
+    this.publish({ busy: true, pending: action });
     try {
-      await this.port.control(this.agent, ticket.action, scope, ticket.revision);
+      await this.port.control(this.agent, action, scope, ticket.revision);
     } catch {
       // Delivery is unknown. Reconciliation is a status read, never an automatic retry.
     }
