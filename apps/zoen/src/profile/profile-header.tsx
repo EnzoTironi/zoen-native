@@ -101,7 +101,9 @@ export function ProfileHeader({
               style={({ pressed }) => ({
                 flex: 1,
                 minWidth: 0,
-                height: peerInfo.actionHeight,
+                minHeight: peerInfo.actionHeight,
+                paddingHorizontal: 4,
+                paddingBottom: 5,
                 borderRadius: peerInfo.corner,
                 alignItems: 'center',
                 backgroundColor: pressed ? p.list.highlighted : p.list.block,
@@ -118,8 +120,8 @@ export function ProfileHeader({
                 <Icon name={action.icon} size={26} color={p.list.accent} />
               </View>
               <Text
-                numberOfLines={1}
                 style={{
+                  alignSelf: 'stretch',
                   color: p.list.accent,
                   fontSize: peerInfo.actionFont,
                   lineHeight: 13,
