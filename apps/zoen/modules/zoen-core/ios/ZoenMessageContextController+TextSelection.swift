@@ -38,7 +38,6 @@ extension ZoenMessageContextController {
     }
     visit(source.contentHost)
     var enabled = Set(textSelectionInteraction.map { ObjectIdentifier($0.0) })
-    let hadText = !textSelectionState.isEmpty
     for text in textViews where !textSelectionState.contains(where: { $0.view === text }) {
       textSelectionState.append(ZoenContextTextSelectionState(view: text,
         selectable: text.isSelectable, editable: text.isEditable, range: text.selectedRange))
@@ -53,11 +52,15 @@ extension ZoenMessageContextController {
       text.isEditable = false
       text.isSelectable = true
     }
-    // Plain RN Text becomes the existing native markdown leaf in response to
-    // the phase event. Its later layout must receive selection interaction too.
-    if !hadText, let text = textViews.first {
+    // Preserve the original held segment/paragraph across extraction. A retired
+    // text leaf never retargets another segment; plain RN Text may mount only
+    // one unambiguous native leaf in response to the selection phase.
+    let target = ZoenMessageHeldParagraph.target(in: textViews, held: heldText, hadHeld: hadHeldText)
+    if !textSelectionInitialized, let text = target,
+       let range = ZoenMessageHeldParagraph.range(in: text, point: hadHeldText ? heldTextPoint : nil) {
+      textSelectionInitialized = true
       text.becomeFirstResponder()
-      text.selectAll(nil)
+      text.selectedRange = range
       UIAccessibility.post(notification: .layoutChanged, argument: text)
     }
   }
@@ -87,5 +90,30 @@ extension ZoenMessageContextController {
     for (view, enabled) in textSelectionInteraction { view.isUserInteractionEnabled = enabled }
     textSelectionState.removeAll()
     textSelectionInteraction.removeAll()
+  }
+}
+
+// UIKit supplies the caret offset in the original selected text view. NSString
+// paragraph boundaries use that same UTF-16 domain; never search duplicate text.
+@MainActor
+enum ZoenMessageHeldParagraph {
+  static func target(in views: [UITextView], held: UITextView?, hadHeld: Bool) -> UITextView? {
+    if hadHeld { return held.flatMap { text in views.contains(where: { $0 === text }) ? text : nil } }
+    return views.count == 1 ? views.first : nil
+  }
+  static func range(in text: UITextView, point: CGPoint?) -> NSRange? {
+    let value = text.text as NSString
+    guard value.length > 0 else { return nil }
+    let offset: Int
+    if let point {
+      guard point.x.isFinite, point.y.isFinite, let position = text.closestPosition(to: point) else { return nil }
+      offset = min(max(0, text.offset(from: text.beginningOfDocument, to: position)), value.length - 1)
+    } else { offset = 0 }
+    var paragraph = value.paragraphRange(for: NSRange(location: offset, length: 0))
+    while paragraph.length > 0,
+          let scalar = UnicodeScalar(value.character(at: NSMaxRange(paragraph) - 1)),
+          CharacterSet.newlines.contains(scalar) { paragraph.length -= 1 }
+    guard paragraph.length > 0, point != nil || paragraph.length == value.length else { return nil }
+    return paragraph
   }
 }

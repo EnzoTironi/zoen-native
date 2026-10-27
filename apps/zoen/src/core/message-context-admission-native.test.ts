@@ -1,6 +1,7 @@
+import { preparePackage } from './message-markdown-native.fixtures.ts';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -28,29 +29,18 @@ test(
     const app = fileURLToPath(new URL('../../', import.meta.url));
     const directory = mkdtempSync(join(tmpdir(), 'zoen-context-admission-'));
     try {
-      const relative = 'node_modules/react-native-enriched-markdown/ios/EnrichedMarkdownText.mm';
-      mkdirSync(join(directory, relative, '..'), { recursive: true });
-      cpSync(join(app, relative), join(directory, relative));
-      const marker = '- (NSNumber *)zoenMessageContextBodyAtPoint:';
-      if (!readFileSync(join(directory, relative), 'utf8').includes(marker)) {
-        execFileSync(
-          'patch',
-          [
-            '--batch',
-            '--forward',
-            '-p1',
-            '-i',
-            join(
-              app,
-              'patches/react-native-enriched-markdown+1.1.1+008+message-context-admission.patch',
-            ),
-          ],
-          { cwd: directory },
-        );
-      }
+      const pkg = preparePackage(app, directory);
+      const source = readFileSync(join(pkg, 'ios/views/EnrichedMarkdownInternalText.m'), 'utf8');
       writeFileSync(
         join(directory, 'admission.inc'),
-        method(readFileSync(join(directory, relative), 'utf8'), marker),
+        method(source, '- (NSNumber *)zoenMessageContextBodyAtPoint:'),
+      );
+      writeFileSync(
+        join(directory, 'admission-helper.inc'),
+        method(
+          readFileSync(join(pkg, 'ios/utils/ENRMMessageContextAdmission.h'), 'utf8'),
+          'static inline NSNumber *ENRMMessageContextBodyAtPoint(',
+        ),
       );
       writeFileSync(
         join(directory, 'classifier.inc'),

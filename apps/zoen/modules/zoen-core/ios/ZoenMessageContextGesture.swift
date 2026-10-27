@@ -9,6 +9,9 @@ import UIKit.UIGestureRecognizerSubclass
 final class ZoenMessageContextGesture: UIGestureRecognizer, UIGestureRecognizerDelegate {
   weak var source: ZoenMessageContextSource?
   private var observedGeneration: UInt64 = 0
+  private weak var heldTextView: UITextView?
+  private var hadHeldTextView = false
+  private var heldTextPoint = CGPoint.zero
   private var firstPoint = CGPoint.zero
   private var lastPoint = CGPoint.zero
   private var startedAt: CFTimeInterval = 0
@@ -50,6 +53,9 @@ final class ZoenMessageContextGesture: UIGestureRecognizer, UIGestureRecognizerD
           current.accessibilityTraits.contains(.link) { cancelAdmission(); return false }
     }
     if source !== found { cancelAdmission(); source = found }
+    heldTextView = path.compactMap { $0 as? UITextView }.first
+    hadHeldTextView = heldTextView != nil
+    heldTextPoint = heldTextView.map { touch.location(in: $0) } ?? .zero
     return true
   }
   override func canPrevent(_ preventedGestureRecognizer: UIGestureRecognizer) -> Bool {
@@ -69,8 +75,9 @@ final class ZoenMessageContextGesture: UIGestureRecognizer, UIGestureRecognizerD
     if singleTap != nil, firstTapBinding == source.binding, source.handlesTap {
       singleTap?.cancel(); singleTap = nil; firstTapBinding = nil
       doubleTap = true
+      let text = heldTextView, point = heldTextPoint, hadText = hadHeldTextView
       source.cancelSurfaceTouch()
-      source.dispatch(kind: "double")
+      source.dispatch(kind: "double", textView: text, textPoint: point, hadText: hadText)
       state = .began
       return
     }
@@ -131,9 +138,10 @@ final class ZoenMessageContextGesture: UIGestureRecognizer, UIGestureRecognizerD
     if progress >= 1 {
       held = true
       displayLink?.invalidate(); displayLink = nil
+      let text = heldTextView, point = heldTextPoint, hadText = hadHeldTextView
       source?.cancelSurfaceTouch()
       state = .began
-      source?.dispatch(kind: "hold")
+      source?.dispatch(kind: "hold", textView: text, textPoint: point, hadText: hadText)
     }
   }
   private var current: Bool {
@@ -149,6 +157,7 @@ final class ZoenMessageContextGesture: UIGestureRecognizer, UIGestureRecognizerD
     if state == .began || state == .changed { state = .cancelled }
     else if state == .possible && touchActive { state = .failed }
     held = false; doubleTap = false; touchActive = false
+    heldTextView = nil; hadHeldTextView = false; heldTextPoint = .zero
   }
   private func fail() {
     cancelAdmission()
@@ -159,6 +168,7 @@ final class ZoenMessageContextGesture: UIGestureRecognizer, UIGestureRecognizerD
     super.reset()
     displayLink?.invalidate(); displayLink = nil
     held = false; doubleTap = false; touchActive = false
+    heldTextView = nil; hadHeldTextView = false; heldTextPoint = .zero
     source?.resetPress(animated: true)
     // Keep only the bounded .16s semantic tap admission across recognizer reset.
   }
