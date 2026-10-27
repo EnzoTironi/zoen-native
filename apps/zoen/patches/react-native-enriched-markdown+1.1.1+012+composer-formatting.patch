@@ -1,0 +1,266 @@
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMFormattingStore.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMFormattingStore.mm
+--- a/node_modules/react-native-enriched-markdown/ios/input/ENRMFormattingStore.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMFormattingStore.mm
+@@ -252,7 +252,7 @@
+ 
+   for (NSUInteger idx = 0; idx < _ranges.count; idx++) {
+     ENRMFormattingRange *formattingRange = _ranges[idx];
+-    BOOL inheritsReplacement = formattingRange.type != ENRMInputStyleTypeLink;
++    BOOL inheritsReplacement = formattingRange.type != ENRMInputStyleTypeLink && formattingRange.type != ENRMInputStyleTypeLiteralEscape;
+     ENRMAdjustedRange adjusted = ENRMAdjustRangeForEdit(formattingRange.range, editLocation, deletedLength,
+                                                         insertedLength, inheritsReplacement, NO);
+     formattingRange.range = adjusted.range;
+@@ -288,7 +288,7 @@
+     while (next < _ranges.count && _ranges[next].range.location <= NSMaxRange(current.range)) {
+       ENRMFormattingRange *candidate = _ranges[next];
+       BOOL sameUrl = (current.url == candidate.url) || [current.url isEqualToString:candidate.url];
+-      if (candidate.type == current.type && sameUrl) {
++      if (candidate.type == current.type && sameUrl && current.type != ENRMInputStyleTypeLiteralEscape) {
+         NSUInteger mergedEnd = MAX(NSMaxRange(current.range), NSMaxRange(candidate.range));
+         current.range = NSMakeRange(current.range.location, mergedEnd - current.range.location);
+         [_ranges removeObjectAtIndex:next];
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMMarkdownSerializer.h b/node_modules/react-native-enriched-markdown/ios/input/ENRMMarkdownSerializer.h
+--- a/node_modules/react-native-enriched-markdown/ios/input/ENRMMarkdownSerializer.h
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMMarkdownSerializer.h
+@@ -20,5 +20,9 @@
+              blockPrefixProvider:(NSString *_Nullable (^_Nullable)(ENRMBlockRange *blockRange))prefixProvider;
+ 
+ @end
++@interface ENRMMarkdownSerializer (Composer)
+++ (NSString *)serializeComposerText:(NSString *)text ranges:(NSArray<ENRMFormattingRange *> *)ranges
++                       blockRanges:(NSArray<ENRMBlockRange *> *)blockRanges;
++@end
+ 
+ NS_ASSUME_NONNULL_END
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMMarkdownSerializer+Composer.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMMarkdownSerializer+Composer.mm
+new file mode 100644
+--- /dev/null
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMMarkdownSerializer+Composer.mm
+@@ -0,0 +1,72 @@
++#import "ENRMMarkdownSerializer.h"
++
++@implementation ENRMMarkdownSerializer (Composer)
+++ (NSString *)serializeComposerText:(NSString *)text ranges:(NSArray<ENRMFormattingRange *> *)ranges
++                       blockRanges:(NSArray<ENRMBlockRange *> *)blocks
++{
++  NSMutableArray<NSDictionary *> *events = [NSMutableArray new];
++  NSMutableArray<ENRMFormattingRange *> *normalized=[NSMutableArray new];
++  for(ENRMFormattingRange *range in ranges) {
++    if(range.type!=ENRMInputStyleTypeCode || NSMaxRange(range.range)>text.length){[normalized addObject:range];continue;}
++    NSUInteger start=range.range.location,end=NSMaxRange(range.range);
++    for(NSUInteger i=start;i<=end;i++)if(i==end || [text characterAtIndex:i]=='\n' || [text characterAtIndex:i]=='\r') {
++      if(i>start)[normalized addObject:[ENRMFormattingRange rangeWithType:range.type range:NSMakeRange(start,i-start)]];
++      start=i+1;
++    }
++  }
++  for (ENRMFormattingRange *r in normalized) {
++    if (!r.range.length || r.range.location > text.length || r.range.length > text.length-r.range.location) continue;
++    NSString *open = @"", *close = @"";
++    NSUInteger start=r.range.location,end=NSMaxRange(r.range);
++    if (r.type == ENRMInputStyleTypeCode) {
++      NSString *body=[text substringWithRange:r.range];
++      NSUInteger longest=0,run=0;
++      for (NSUInteger i=0;i<body.length;i++) {run=[body characterAtIndex:i]=='`' ? run+1:0;longest=MAX(longest,run);}
++      NSString *fence=[@"" stringByPaddingToLength:longest+1 withString:@"`" startingAtIndex:0];
++      BOOL pad=[body hasPrefix:@"`"] || [body hasSuffix:@"`"] ||
++        ([body hasPrefix:@" "] && [body hasSuffix:@" "] && [body stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet].length);
++      open=pad ? [fence stringByAppendingString:@" "]:fence;
++      close=pad ? [@" " stringByAppendingString:fence]:fence;
++    } else {
++      switch (r.type) {
++        case ENRMInputStyleTypeStrong:open=close=@"**";break;
++        case ENRMInputStyleTypeEmphasis:open=close=@"*";break;
++        case ENRMInputStyleTypeStrikethrough:open=close=@"~~";break;
++        case ENRMInputStyleTypeSpoiler:open=close=@"||";break;
++        case ENRMInputStyleTypeLink:open=@"[";close=[NSString stringWithFormat:@"](%@)",r.url ?: @""];break;
++        case ENRMInputStyleTypeLiteralEscape:open=@"\\";break;
++        default:continue;
++      }
++    }
++    [events addObject:@{@"at":@(start),@"end":@NO,@"type":@(r.type),@"token":open}];
++    [events addObject:@{@"at":@(end),@"end":@YES,@"type":@(r.type),@"token":close}];
++  }
++  [events sortUsingComparator:^NSComparisonResult(NSDictionary *a,NSDictionary *b) {
++    NSComparisonResult order=[a[@"at"] compare:b[@"at"]];if(order)return order;
++    if(![a[@"end"] isEqual:b[@"end"]])return [a[@"end"] boolValue] ? NSOrderedAscending:NSOrderedDescending;
++    NSInteger first=[a[@"type"] integerValue],second=[b[@"type"] integerValue];
++    if([a[@"end"] boolValue]){NSInteger tmp=first;first=second;second=tmp;}
++    return first<second ? NSOrderedAscending:first>second ? NSOrderedDescending:NSOrderedSame;
++  }];
++  NSMutableString *output=[NSMutableString new];NSUInteger position=0;
++  for(NSDictionary *event in events){NSUInteger next=[event[@"at"] unsignedIntegerValue];
++    if(next>position)[output appendString:[text substringWithRange:NSMakeRange(position,next-position)]];
++    [output appendString:event[@"token"]];position=next;
++  }
++  [output appendString:[text substringFromIndex:position]];
++  // Delimiters add no newlines, so block line positions remain those of text.
++  NSMutableArray<NSString *> *lines=[[output componentsSeparatedByString:@"\n"] mutableCopy];
++  for(ENRMBlockRange *block in blocks){
++    if(block.range.location>text.length || block.range.length>text.length-block.range.location)continue;
++    NSUInteger first=[[text substringToIndex:block.range.location] componentsSeparatedByString:@"\n"].count-1;
++    NSUInteger count=[[text substringWithRange:block.range] componentsSeparatedByString:@"\n"].count;
++    NSString *prefix=@"";
++    if(block.type==ENRMInputBlockTypeQuote)prefix=@"> ";
++    else if(ENRMHeadingLevelForBlockType(block.type))prefix=[[@"" stringByPaddingToLength:ENRMHeadingLevelForBlockType(block.type) withString:@"#" startingAtIndex:0] stringByAppendingString:@" "];
++    else if(block.type==ENRMInputBlockTypeUnorderedListItem)prefix=@"- ";
++    else if(block.type==ENRMInputBlockTypeOrderedListItem)prefix=[NSString stringWithFormat:@"%ld. ",(long)MAX(1,block.ordinal)];
++    for(NSUInteger i=first;i<MIN(lines.count,first+count);i++)lines[i]=[prefix stringByAppendingString:lines[i]];
++  }
++  return [lines componentsJoinedByString:@"\n"];
++}
++@end
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputFormatter.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputFormatter.mm
+--- a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputFormatter.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputFormatter.mm
+@@ -10,6 +10,30 @@
+ #import "ENRMStyleHandler.h"
+ #import "ENRMUnderlineStyleHandler.h"
+ #import "ENRMUnorderedListBlockHandler.h"
++
++@interface ENRMComposerCodeHandler : NSObject <ENRMStyleHandler>
++@end
++@implementation ENRMComposerCodeHandler
++- (ENRMInputStyleType)styleType { return ENRMInputStyleTypeCode; }
++- (ENRMStyleMergingConfig *)mergingConfig { return [ENRMStyleMergingConfig emptyConfig]; }
++- (UIFontDescriptorSymbolicTraits)fontTraits { return 0; }
++- (void)applyNonFontAttributesToTextStorage:(NSTextStorage *)storage range:(NSRange)range
++  formattingRange:(ENRMFormattingRange *)formattingRange style:(ENRMInputFormatterStyle *)style {}
++@end
++
++// Composer-only range types; generic parser/checkpoint paths never emit them.
++@interface ENRMComposerQuoteHandler : NSObject <ENRMBlockHandler>
++@end
++@implementation ENRMComposerQuoteHandler
++- (ENRMInputBlockType)blockType { return ENRMInputBlockTypeQuote; }
++- (BOOL)continuesOnNewline { return YES; }
++- (void)applyAttributesToParagraphStyle:(NSMutableParagraphStyle *)paragraph attributes:(NSMutableDictionary *)attributes
++  blockRange:(ENRMBlockRange *)block style:(ENRMInputFormatterStyle *)style {
++  paragraph.headIndent += 12; paragraph.firstLineHeadIndent = paragraph.headIndent;
++  paragraph.paragraphSpacingBefore = 4; paragraph.paragraphSpacing = 4;
++}
++- (NSString *)markdownLinePrefixForBlockRange:(ENRMBlockRange *)block { return @"> "; }
++@end
+ 
+ /// Sets `key` to `value` only on sub-runs whose value differs, recording each
+ /// written range in `changed` so the caller can invalidate just what changed.
+@@ -68,6 +92,7 @@
+ {
+   if (self = [super init]) {
+     NSArray<id<ENRMStyleHandler>> *handlers = @[
++      [[ENRMComposerCodeHandler alloc] init],
+       [[ENRMBoldStyleHandler alloc] init],
+       [[ENRMItalicStyleHandler alloc] init],
+       [[ENRMUnderlineStyleHandler alloc] init],
+@@ -88,6 +113,7 @@
+     }
+     blockMap[@(ENRMInputBlockTypeUnorderedListItem)] = [[ENRMUnorderedListBlockHandler alloc] init];
+     blockMap[@(ENRMInputBlockTypeOrderedListItem)] = [[ENRMOrderedListBlockHandler alloc] init];
++    blockMap[@(ENRMInputBlockTypeQuote)] = [[ENRMComposerQuoteHandler alloc] init];
+     _blockHandlers = [blockMap copy];
+   }
+   return self;
+@@ -198,6 +224,13 @@
+     }
+   }
+ 
++  // Code is a font family, not a bold/italic trait. Resolve it after the trait
++  // pass so the base font cannot silently overwrite the monospaced face.
++  for (ENRMFormattingRange *range in ranges) if (range.type == ENRMInputStyleTypeCode) {
++    NSRange clipped = NSIntersectionRange(range.range,scopeRange);
++    if(clipped.length) ENRMSetAttributeIfChanged(textStorage,NSFontAttributeName,
++      [UIFont monospacedSystemFontOfSize:style.baseFont.pointSize weight:UIFontWeightRegular],clipped,changed);
++  }
+   free(traitMap);
+ 
+   [textStorage endEditing];
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTypingAttributesController.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTypingAttributesController.mm
+--- a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTypingAttributesController.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTypingAttributesController.mm
+@@ -116,6 +116,8 @@
+   }
+ 
+   NSMutableDictionary *attrs = [_textView.typingAttributes mutableCopy];
++  if ([self isEffectiveStyleActive:ENRMInputStyleTypeCode atPosition:[_dataSource selectedRange].location])
++    font = [UIFont monospacedSystemFontOfSize:_formatterStyle.baseFont.pointSize weight:UIFontWeightRegular];
+   attrs[NSFontAttributeName] = font;
+   RCTUIColor *headingColor = headingLevel >= 1 ? [_formatterStyle headingColorForLevel:headingLevel] : nil;
+   attrs[NSForegroundColorAttributeName] = headingColor ?: _formatterStyle.baseTextColor;
+@@ -148,7 +150,9 @@
+   }
+ 
+   NSMutableDictionary *attrs = [_textView.typingAttributes mutableCopy];
+-  attrs[NSFontAttributeName] = [_formatterStyle fontForTraits:traits];
++  attrs[NSFontAttributeName] = [self isEffectiveStyleActive:ENRMInputStyleTypeCode atPosition:[_dataSource selectedRange].location]
++    ? [UIFont monospacedSystemFontOfSize:_formatterStyle.baseFont.pointSize weight:UIFontWeightRegular]
++    : [_formatterStyle fontForTraits:traits];
+   _textView.typingAttributes = attrs;
+ }
+ 
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput+ContextMenu.mm b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput+ContextMenu.mm
+--- a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput+ContextMenu.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput+ContextMenu.mm
+@@ -3,7 +3,23 @@
+ #import "EnrichedMarkdownTextInput+Internal.h"
+ #import "PasteboardUtils.h"
+ 
++@interface EnrichedMarkdownTextInput (ComposerFormattingHooks)
++- (BOOL)isComposerRichInput;
++- (void)performComposerFormatting:(dispatch_block_t)work;
++- (NSString *)composerCodeLabel;
++- (NSString *)composerQuoteLabel;
++- (void)toggleBlockType:(ENRMInputBlockType)type level:(NSInteger)level;
++- (void)toggleComposerCode;
++- (void)toggleComposerQuote;
++@end
++
+ @implementation EnrichedMarkdownTextInput (ContextMenu)
++- (void)toggleComposerCode {
++  if (([self respondsToSelector:@selector(isComposerRichInput)] && [self isComposerRichInput])) [self performComposerFormatting:^{ [self toggleInlineStyle:ENRMInputStyleTypeCode]; }];
++}
++- (void)toggleComposerQuote {
++  if (([self respondsToSelector:@selector(isComposerRichInput)] && [self isComposerRichInput])) [self performComposerFormatting:^{ [self toggleBlockType:ENRMInputBlockTypeQuote level:1]; }];
++}
+ 
+ - (void)copySelectedRangeAsMarkdown
+ {
+@@ -35,7 +51,7 @@
+   } formatItems[] = {
+       {fmtConfig.boldLabel, @"bold", ENRMInputStyleTypeStrong, fmtConfig.bold},
+       {fmtConfig.italicLabel, @"italic", ENRMInputStyleTypeEmphasis, fmtConfig.italic},
+-      {fmtConfig.underlineLabel, @"underline", ENRMInputStyleTypeUnderline, fmtConfig.underline},
++      {fmtConfig.underlineLabel, @"underline", ENRMInputStyleTypeUnderline, fmtConfig.underline && !([self respondsToSelector:@selector(isComposerRichInput)] && [self isComposerRichInput])},
+       {fmtConfig.strikethroughLabel, @"strikethrough", ENRMInputStyleTypeStrikethrough, fmtConfig.strikethrough},
+       {fmtConfig.spoilerLabel, @"eye.slash", ENRMInputStyleTypeSpoiler, fmtConfig.spoiler},
+       {fmtConfig.linkLabel, @"link", ENRMInputStyleTypeLink, fmtConfig.link},
+@@ -52,13 +68,17 @@
+                                            image:[UIImage systemImageNamed:formatItems[i].icon]
+                                       identifier:nil
+                                          handler:^(__kindof UIAction *_) {
+-                                           if (styleType == ENRMInputStyleTypeLink) {
+-                                             [weakSelf showLinkPrompt];
+-                                           } else {
+-                                             [weakSelf toggleInlineStyle:styleType];
+-                                           }
++                                           dispatch_block_t work = ^{
++                                             if (styleType == ENRMInputStyleTypeLink) [weakSelf showLinkPrompt];
++                                             else [weakSelf toggleInlineStyle:styleType];
++                                           };
++                                           if (([weakSelf respondsToSelector:@selector(isComposerRichInput)] && [weakSelf isComposerRichInput])) [weakSelf performComposerFormatting:work]; else work();
+                                          }];
+     [formatActions addObject:action];
++  }
++  if (([self respondsToSelector:@selector(isComposerRichInput)] && [self isComposerRichInput])) {
++    [formatActions addObject:[UIAction actionWithTitle:[self composerCodeLabel] image:[UIImage systemImageNamed:@"chevron.left.forwardslash.chevron.right"] identifier:nil handler:^(__kindof UIAction *action) { [weakSelf toggleComposerCode]; }]];
++    [formatActions addObject:[UIAction actionWithTitle:[self composerQuoteLabel] image:[UIImage systemImageNamed:@"text.quote"] identifier:nil handler:^(__kindof UIAction *action) { [weakSelf toggleComposerQuote]; }]];
+   }
+   UIMenu *formatMenu = [UIMenu menuWithTitle:menuConfig.formatLabel
+                                        image:[UIImage systemImageNamed:@"textformat"]
+@@ -143,7 +163,7 @@
+     } items[] = {
+         {fmtConfig.boldLabel, @selector(toggleBold), @"b", NSEventModifierFlagCommand, fmtConfig.bold},
+         {fmtConfig.italicLabel, @selector(toggleItalic), @"i", NSEventModifierFlagCommand, fmtConfig.italic},
+-        {fmtConfig.underlineLabel, @selector(toggleUnderline), @"u", NSEventModifierFlagCommand, fmtConfig.underline},
++        {fmtConfig.underlineLabel, @selector(toggleUnderline), @"u", NSEventModifierFlagCommand, fmtConfig.underline && !([self respondsToSelector:@selector(isComposerRichInput)] && [self isComposerRichInput])},
+         {fmtConfig.strikethroughLabel, @selector(toggleStrikethrough), @"", 0, fmtConfig.strikethrough},
+         {fmtConfig.spoilerLabel, @selector(toggleSpoiler), @"", 0, fmtConfig.spoiler},
+         {fmtConfig.linkLabel, @selector(showLinkPrompt), @"", 0, fmtConfig.link},
