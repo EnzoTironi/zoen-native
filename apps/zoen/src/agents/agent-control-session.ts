@@ -192,6 +192,14 @@ export class AgentControlSession {
     await this.refresh();
     if (this.current(ticket.generation)) this.publish({ busy: false });
   }
+  /** An admitted result belongs to its original owner/activation even after canonical refresh. */
+  continues(ticket: AgentControlTicket): boolean {
+    return (
+      this.current(ticket.generation) &&
+      ticket.scope === accountScopeKey(this.scope) &&
+      ticket.agent === this.agent
+    );
+  }
   /** A presentation action must retain this exact scope, activation and canonical observation. */
   accepts(ticket: AgentControlTicket) {
     const current = this.ticket();

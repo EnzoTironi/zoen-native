@@ -172,7 +172,7 @@ def git(*args):
                           stderr=subprocess.PIPE).stdout
 
 
-def classify(base, head, event):
+def classify(base, head, event, candidate=None):
     result = {"documentation_only": False, "frontend_only": False, "run_rust": True,
               "reason": "full-suite default", "paths": []}
     if event != "pull_request":
@@ -213,6 +213,12 @@ def classify(base, head, event):
             except ValueError:
                 pass  # Existing frontend/full fallback remains authoritative.
         if not all(path in DOCUMENTS for path in changes):
+            if candidate is not None:
+                # Judge the contribution to the tested merge, not an outdated
+                # branch snapshot. Parent IDs alone do not authenticate its tree.
+                from expo_artifact_candidate import tested_candidate
+                tested = tested_candidate(git, base, head, event, candidate)
+                return classify(base, tested, event)
             validate_frontend(base, head, ancestor, changes)
             result.update(frontend_only=True, run_rust=False,
                           reason="Verified frontend-only PR; client/Expo and local integrity remain selected")
@@ -274,8 +280,9 @@ def main():
     parser.add_argument("--head", required=True)
     parser.add_argument("--event", required=True)
     parser.add_argument("--check-documents", action="store_true")
+    parser.add_argument("--candidate")
     args = parser.parse_args()
-    result = classify(args.base, args.head, args.event)
+    result = classify(args.base, args.head, args.event, args.candidate)
     if args.check_documents:
         if not result["documentation_only"]:
             raise ValueError("Documentation lane is not applicable: " + result["reason"])
