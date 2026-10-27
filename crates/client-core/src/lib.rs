@@ -75,6 +75,7 @@ mod local_sealed;
 mod media;
 mod media_drafts;
 mod recent_attachments;
+mod universal_pages;
 pub use media_drafts::{
     MediaDraftAsset, MediaDraftAssetInput, MediaDraftDto, MediaDraftSaveResult, MediaDraftScope,
     MediaDraftSendResult,
@@ -84,6 +85,7 @@ pub use recent_attachments::{
     RecentAttachmentSourceBinding,
 };
 mod chat_mute;
+pub use universal_pages::UniversalSearchPage;
 mod message_drafts;
 mod native_surfaces;
 pub use chat_mute::ChatMuteMode;

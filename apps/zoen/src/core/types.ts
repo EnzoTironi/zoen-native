@@ -48,6 +48,7 @@ import type { AgentDefinitionUpdateDto } from './generated/AgentDefinitionUpdate
 import type { AgentEnrollmentPreviewDto } from './generated/AgentEnrollmentPreviewDto';
 import type { AgentEnrollmentDeliveryDto } from './generated/AgentEnrollmentDeliveryDto';
 import type { AgentEnrollmentStatusDto } from './generated/AgentEnrollmentStatusDto';
+import type { UniversalSearchPage } from './generated/UniversalSearchPage';
 import type { UniversalResults } from './generated/UniversalResults';
 import type { PageBlockDto } from './generated/PageBlockDto';
 import type { MediaDriver } from '../media/types';
@@ -215,6 +216,7 @@ type Results = {
   blocked_people: string[];
   message: TimelineEntry;
   universal_search: UniversalResults;
+  universal_search_page: UniversalSearchPage;
   new_mutation_id: string;
   page_parse_markdown: PageBlockDto[];
   page_block_markdown: string;
