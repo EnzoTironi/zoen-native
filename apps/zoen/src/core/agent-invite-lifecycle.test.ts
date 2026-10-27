@@ -50,6 +50,9 @@ async function fixture() {
     outcome: 'Observed',
   };
   let fail = false;
+  const controls: unknown[] = [];
+  const confirmations: unknown[] = [];
+  let confirmation: boolean | Promise<boolean> = false;
   const session = new AgentControlSession(
     {
       scope: () => scope,
@@ -57,7 +60,15 @@ async function fixture() {
         if (fail) throw Error('offline');
         return { ...record };
       },
-      control: async () => {},
+      control: async (agent, action, observedScope, revision) => {
+        controls.push({ agent, action, scope: observedScope, revision });
+        record = {
+          ...record,
+          status: 'Revoked',
+          revision: String(BigInt(revision) + 1n),
+          outcome: 'Confirmed',
+        };
+      },
       retry: async () => {},
     },
     'agent',
@@ -146,7 +157,14 @@ async function fixture() {
     '../../components/settings-rows': { SettingsRows: 'SettingsRows' },
     '../../components/navigation-scroll-view': { NavigationScrollView: 'NavigationScrollView' },
     '../../theme': { useTheme: () => ({ colors: {} }) },
-    '../../components/dialogs': { useDialogs: () => ({ confirm: async () => false }) },
+    '../../components/dialogs': {
+      useDialogs: () => ({
+        confirm: async (options: unknown) => {
+          confirmations.push(options);
+          return await confirmation;
+        },
+      }),
+    },
     '../../agents/use-agent-control': {
       useAgentControl: () => ({ session, state: session.getSnapshot() }),
     },
@@ -165,6 +183,11 @@ async function fixture() {
   });
   return {
     session,
+    controls,
+    confirmations,
+    confirm: (value: boolean | Promise<boolean>) => {
+      confirmation = value;
+    },
     reactivate: async () => {
       session.suspend();
       session.activate(scope);
@@ -283,4 +306,75 @@ test('an admitted invite response cannot borrow a new activation to open Share',
   await settle();
   assert.equal(f.requests.length, 1, 'the admitted request is neither replayed nor cancelled');
   assert.deepEqual(f.shares, []);
+});
+
+for (const status of ['Active', 'Paused'] as const) {
+  test(`compiled revoke confirms the exact ${status} canonical revision through the control session`, async () => {
+    const f = await fixture();
+    await f.observe({ status, revision: '7' });
+    f.confirm(true);
+    action(f.render(), 'revokeAgent').props.onPress();
+    await settle();
+    assert.equal(f.confirmations.length, 1);
+    assert.deepEqual(JSON.parse(JSON.stringify(f.controls)), [
+      {
+        agent: 'agent',
+        action: 'Revoke',
+        scope: { identity: 'owner', device: 'phone', relay: 'relay', epoch: 1 },
+        revision: '7',
+      },
+    ]);
+    assert.deepEqual(
+      f.requests,
+      [],
+      'the route must not bypass reviewed control with raw control_agent',
+    );
+    assert.equal(f.session.getSnapshot().status, 'Revoked');
+  });
+}
+
+test('cancelling revoke leaves the canonical agent unchanged', async () => {
+  const f = await fixture();
+  f.confirm(false);
+  action(f.render(), 'revokeAgent').props.onPress();
+  await settle();
+  assert.deepEqual(f.controls, []);
+  assert.deepEqual(f.requests, []);
+  assert.equal(f.session.getSnapshot().status, 'Active');
+});
+
+for (const changed of [
+  'reactivation',
+  'pause',
+  'owner',
+  'pending',
+  'revoked',
+  'observation',
+] as const) {
+  test(`revoke confirmation cannot outlive ${changed}`, async () => {
+    const f = await fixture(),
+      answer = deferred<boolean>();
+    f.confirm(answer.promise);
+    action(f.render(), 'revokeAgent').props.onPress();
+    assert.equal(f.confirmations.length, 1);
+    if (changed === 'reactivation') await f.reactivate();
+    else if (changed === 'owner') f.retireOwner();
+    else if (changed === 'pending')
+      await f.observe({ pending: 'Pause', outcome: 'Unknown', operation_id: 'b'.repeat(64) });
+    else if (changed === 'observation') await f.observe({});
+    else await f.observe({ status: changed === 'pause' ? 'Paused' : 'Revoked', revision: '2' });
+    answer.resolve(true);
+    await settle();
+    assert.deepEqual(f.requests, []);
+    assert.deepEqual(f.controls, []);
+  });
+}
+
+test('retained revoke press cannot open a confirmation in a new activation', async () => {
+  const f = await fixture(),
+    prior = f.render();
+  await f.reactivate();
+  action(prior, 'revokeAgent').props.onPress();
+  assert.deepEqual(f.confirmations, []);
+  assert.deepEqual(f.requests, []);
 });

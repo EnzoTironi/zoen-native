@@ -246,3 +246,30 @@ test('only an explicit current retry ticket resends the original durable intent 
   assert.equal(cold.getSnapshot().pending, null);
   assert.equal(cold.getSnapshot().status, 'Paused');
 });
+
+test('reviewed revoke preserves durable unknown across reopen and retries only the original operation', async () => {
+  const f = fixture();
+  const session = new AgentControlSession(f.port, 'agent');
+  session.activate(first);
+  await session.refresh();
+  const ticket = session.ticket()!;
+  await Promise.all([session.revoke(ticket), session.revoke(ticket)]);
+  assert.deepEqual(f.calls, ['Revoke:1']);
+  assert.equal(session.getSnapshot().status, 'Active');
+  assert.equal(session.getSnapshot().pending, 'Revoke');
+  session.retire();
+  const cold = new AgentControlSession(f.port, 'agent');
+  cold.activate(first);
+  await cold.refresh();
+  await cold.refresh();
+  assert.deepEqual(f.calls, ['Revoke:1'], 'reopen and refresh never replay revoke');
+  const retry = cold.retryTicket()!;
+  assert.equal(retry.action, 'Revoke');
+  assert.equal(retry.operationId, 'd'.repeat(64));
+  await Promise.all([cold.retry(retry), cold.retry(retry)]);
+  assert.deepEqual(f.calls, ['Revoke:1', `retry:Revoke:1:${'d'.repeat(64)}`]);
+  assert.equal(cold.getSnapshot().status, 'Revoked');
+  assert.equal(cold.getSnapshot().pending, null);
+  assert.equal(cold.ticket(), null);
+  assert.equal(cold.retryTicket(), null);
+});
