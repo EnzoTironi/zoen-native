@@ -149,6 +149,13 @@ pub(super) enum Command {
         #[serde(default = "page_size")]
         limit: u32,
     },
+    ReviewReplySelection {
+        expected_identity_id: String,
+        expected_device_id: String,
+        space_id: String,
+        thread_root_id: Option<String>,
+        selection: crate::ReplySelection,
+    },
     MessageDraft {
         expected_identity_id: String,
         expected_device_id: String,
@@ -163,6 +170,8 @@ pub(super) enum Command {
         expected_revision: String,
         text: String,
         reply_to: Option<String>,
+        #[serde(default)]
+        reply_quote: Option<crate::ReplySelection>,
     },
     SendMessageDraft {
         expected_identity_id: String,

@@ -20,6 +20,12 @@ use crate::{Client, CoreError};
 /// How much of the quoted message an inline reply carries to the UI.
 const QUOTE_CHARS: usize = 140;
 
+struct ReplyTarget<'a> {
+    to: &'a str,
+    thread: bool,
+    selection: Option<&'a crate::ReplySelection>,
+}
+
 /// A read of the existing artifact thread, never another comments store.
 #[derive(serde::Serialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
@@ -85,8 +91,21 @@ impl Engine {
         let EntryBody::Message { reply: Some(r), .. } = &e.body else {
             return (None, None);
         };
+        let thread = r.thread.then(|| r.to.clone());
+        if let Some(selection) = &r.quote {
+            let quote = self.space_state(&e.space).ok().and_then(|s| {
+                let source = s.entries.iter().find(|x| x.id() == selection.source_id)?;
+                Some(ReplyQuote {
+                    id: selection.source_id.clone(),
+                    author: self.persona(&source.author),
+                    text: selection.text.clone(),
+                    selection: Some(selection.as_ref().into()),
+                })
+            });
+            return (quote, thread);
+        }
         if r.thread {
-            return (None, Some(r.to.clone()));
+            return (None, thread);
         }
         let quote = self.space_state(&e.space).ok().and_then(|s| {
             let target = s.entries.iter().find(|x| x.id() == r.to)?;
@@ -94,6 +113,7 @@ impl Engine {
                 id: r.to.clone(),
                 author: self.persona(&target.author),
                 text: self.quote_text(target),
+                selection: None,
             })
         });
         (quote, None)
@@ -153,6 +173,55 @@ impl Engine {
         to: &str,
         thread: bool,
     ) -> R<TimelineEntry> {
+        self.reply_target(
+            space,
+            author,
+            text,
+            attaches,
+            ReplyTarget {
+                to,
+                thread,
+                selection: None,
+            },
+        )
+    }
+
+    pub(crate) fn reply_selected(
+        &mut self,
+        space: &str,
+        author: &str,
+        text: &str,
+        to: &str,
+        thread: bool,
+        selection: Option<&crate::ReplySelection>,
+    ) -> R<TimelineEntry> {
+        self.reply_target(
+            space,
+            author,
+            text,
+            None,
+            ReplyTarget {
+                to,
+                thread,
+                selection,
+            },
+        )
+    }
+
+    fn reply_target(
+        &mut self,
+        space: &str,
+        author: &str,
+        text: &str,
+        attaches: Option<String>,
+        target: ReplyTarget<'_>,
+    ) -> R<TimelineEntry> {
+        let ReplyTarget {
+            to,
+            thread,
+            selection,
+        } = target;
+        self.validate_reply_selection(space, Some(to), selection)?;
         if !self.state.writer(space, author) {
             return Err(CoreError::Forbidden {
                 reason: t(
@@ -167,7 +236,8 @@ impl Engine {
                 reason: t("mensagem vazia", "empty message"),
             });
         }
-        let reply = self.reply_ref(space, to, thread)?;
+        let mut reply = self.reply_ref(space, to, thread)?;
+        reply.quote = selection.map(|q| Box::new(q.signed()));
         let appended = self.append(
             space,
             author,
