@@ -253,7 +253,6 @@ export default function Thread() {
         }
       </ConversationViewport>
       {actions.panel}
-      {actions.quotePanel}
     </ConversationContainer>
   );
 }

@@ -13,7 +13,8 @@ export type MessageContextEmoji = '👍' | '❤️' | '😂' | '😮' | '😢' |
 export type MessageContextSelection =
   | MessageContextAction
   | `reaction:${MessageContextEmoji}`
-  | 'more';
+  | 'more'
+  | `select:${string}`;
 export type MessageContextTheme = Readonly<{
   background: string;
   highlight: string;
@@ -41,19 +42,30 @@ export type MessageContextNative = Readonly<{
     configuration: string,
   ): Promise<string | null>;
   dismissContext(requestId: string): Promise<void>;
+  finishTextSelection?(requestId: string, resultJSON: string | null): Promise<void>;
   consumeGesture(binding: string, gestureId: string): Promise<boolean>;
 }>;
 export type MessageContextGesture = Readonly<{
   binding: string;
   gestureId: string;
   sequence: number;
-  kind: 'tap' | 'hold' | 'double';
+  kind: 'tap' | 'hold' | 'double' | 'selection';
+  selection?: Readonly<{ requestId: string; active: boolean }>;
 }>;
 export type MessageContextRequest = Readonly<{
   binding: string;
   gestureId: string;
-  kind: MessageContextGesture['kind'] | 'accessibility';
+  kind: 'tap' | 'hold' | 'double' | 'accessibility';
+  textSelection?: MessageTextSelectionBinding;
   /** Exact row and native ref, checked again after keyboard/removal awaits. */
   current(): boolean;
   native: MessageContextNative;
+}>;
+
+export type MessageTextSelectionHandler = Readonly<{
+  started(): void;
+  review(text: string, sourceRangesJSON: string): Promise<string>;
+}>;
+export type MessageTextSelectionBinding = Readonly<{
+  bind(handler: MessageTextSelectionHandler): () => void;
 }>;

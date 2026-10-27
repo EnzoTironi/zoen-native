@@ -382,7 +382,6 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
         }
       </ConversationViewport>
       {actions.panel}
-      {actions.quotePanel}
     </ConversationContainer>
   );
 }

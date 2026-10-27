@@ -1,3 +1,4 @@
+import { selectedMessageQuote } from '../core/selected-message-quote';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { randomUUID } from 'expo-crypto';
 import { t } from '../i18n/index.ts';
@@ -48,7 +49,7 @@ export function ExtractedMessageActions({
       ['reply', t('chat.reply'), props.onReply],
       ['thread', t('chat.openReplies'), props.onThread],
       ['forward', t('chat.forward'), !entry.deleted ? props.onForward : undefined],
-      ['select', t('chat.selectText'), props.onSelectText],
+      ['select', t('chat.selectText'), request.textSelection ? props.onSelectText : undefined],
       ['copy', t('chat.copyText'), props.onCopy],
       ['share', t('media.share'), props.onShare],
       [
@@ -71,12 +72,24 @@ export function ExtractedMessageActions({
       latest.current.nativeSource === request &&
       !latest.current.pending &&
       latest.current.isCurrent?.() !== false;
+    let cancelQuote = () => {};
     function selected(value: MessageContextSelection) {
       const props = latest.current,
         entry = props.entry;
       if (!entry || !current() || !request?.current()) return;
       // Consume the presentation before invoking canonical code or navigation.
-      if (value.startsWith('reaction:')) {
+      if (value.startsWith('select:')) {
+        try {
+          const result = JSON.parse(value.slice(7));
+          const quote = selectedMessageQuote(entry, result.text, JSON.stringify(result.spans));
+          if (quote && quote.source_id === result.source_id && quote.revision === result.revision)
+            props.onQuote?.(entry, quote);
+        } catch {
+          /* Malformed native results never become draft state. */
+        }
+        cancelQuote();
+        props.onClose();
+      } else if (value.startsWith('reaction:')) {
         const selected = value.slice('reaction:'.length);
         props.onReact(
           entry.reactions.some((reaction) => reaction.mine && reaction.emoji === selected)
@@ -102,12 +115,28 @@ export function ExtractedMessageActions({
         run?.(entry);
       }
     }
+    const detachSelection = request.textSelection?.bind({
+      started: () => {
+        if (!current()) return;
+        cancelQuote();
+        const cancel = latest.current.onSelectText?.(entry);
+        if (typeof cancel === 'function') cancelQuote = cancel;
+      },
+      review: async (text, ranges) => {
+        if (!current() || !request.current() || !latest.current.onQuoteReview)
+          throw new Error('Selection retired');
+        const quote = await latest.current.onQuoteReview(entry, text, ranges);
+        if (!current() || !request.current()) throw new Error('Selection retired');
+        return JSON.stringify(quote);
+      },
+    });
     const owner = new MessageContextPresentation({
       request,
       current,
       id: randomUUID,
       selected,
       dismissed: () => {
+        cancelQuote();
         if (current() && request.current()) latest.current.onClose();
       },
     });
@@ -143,6 +172,8 @@ export function ExtractedMessageActions({
         }
       });
     return () => {
+      detachSelection?.();
+      cancelQuote();
       live = false;
       void owner.retire().catch(() => {});
     };

@@ -6,7 +6,7 @@ import { t } from '../i18n/index.ts';
 import { MessageMedia } from '../media/MediaAttachment';
 import { MessageContextSource } from './message-context-source';
 import { MessageInteraction, MessagePressable as Pressable } from './message-interaction';
-import { MessageMarkdown } from './message-markdown';
+import { MessageMarkdown, MessageTextSelectionLeaf } from './message-markdown';
 import { MessageReceipt } from './message-receipt';
 import { Icon } from './primitives';
 import { ServiceMessage } from './service-message';
@@ -180,16 +180,23 @@ export function renderAlbumMessagePart(context: MessageFace) {
                   maxWidth={Math.max(1, mediaWidth - 28)}
                 />
               ) : (
-                <Text
-                  testID={`message-caption-${entry.id}`}
-                  style={{
-                    color: ink,
-                    fontSize: p.typography.message.fontSize,
-                    lineHeight: Math.ceil(p.typography.message.fontSize * 1.3),
-                  }}
+                <MessageTextSelectionLeaf
+                  text={fileCaption!}
+                  color={ink}
+                  fontSize={p.typography.message.fontSize}
+                  maxWidth={Math.max(1, mediaWidth - 28)}
                 >
-                  {fileCaption}
-                </Text>
+                  <Text
+                    testID={`message-caption-${entry.id}`}
+                    style={{
+                      color: ink,
+                      fontSize: p.typography.message.fontSize,
+                      lineHeight: Math.ceil(p.typography.message.fontSize * 1.3),
+                    }}
+                  >
+                    {fileCaption}
+                  </Text>
+                </MessageTextSelectionLeaf>
               )}
             </Pressable>
           )}

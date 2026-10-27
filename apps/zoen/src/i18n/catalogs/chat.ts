@@ -6,7 +6,7 @@ export const chat = defineFeature(
     quoteSelection: 'Quote',
     quoteTextReplyOnly: 'Remove the quote to attach media.',
     quoteSelectionUnavailable:
-      'This selection cannot be quoted. Select text without layout separators.',
+      'This passage cannot be quoted. Try a smaller selection or reopen the message.',
     all: 'All',
     unread: 'Unread',
     today: 'Today',
@@ -225,7 +225,7 @@ export const chat = defineFeature(
     quoteSelection: 'Citar',
     quoteTextReplyOnly: 'Remova a citação para anexar mídia.',
     quoteSelectionUnavailable:
-      'Não foi possível citar este trecho. Selecione texto sem separadores de layout.',
+      'Não foi possível citar este trecho. Selecione um trecho menor ou reabra a mensagem.',
     all: 'Todas',
     unread: 'Não lidas',
     today: 'Hoje',

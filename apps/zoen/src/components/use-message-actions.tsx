@@ -8,6 +8,7 @@ import type { TimelineEntry } from '../core/types';
 import { useClient } from '../core/provider';
 import {
   messageCanEdit,
+  messageCanSelectText,
   messageCanInteract,
   messageCanRecoverMedia,
   messageCard,
@@ -391,7 +392,6 @@ export function useMessageActions({
     thread,
     profile,
     react,
-    quotePanel: quote.panel,
     panel:
       selection?.mode === 'participants' || selection?.mode === 'emoji' ? (
         <ReactionDetails
@@ -468,11 +468,13 @@ export function useMessageActions({
           onReply={() => {
             if (selected) reply(selected);
           }}
+          onQuoteReview={quote.review}
+          onQuote={quote.accept}
           onSelectText={
             process.env.EXPO_OS === 'ios' &&
             mode === 'account' &&
-            selected?.text_revision &&
-            messageText(selected).trim()
+            selection?.nativeSource?.textSelection &&
+            messageCanSelectText(selected)
               ? quote.open
               : undefined
           }
