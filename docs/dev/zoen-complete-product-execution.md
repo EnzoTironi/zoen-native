@@ -27,18 +27,16 @@ Implementar e validar em lotes verticais, com dono de integração e operador ú
 de QA. A medida de conclusão é a jornada aceita de ponta a ponta.
 
 O [checklist completo](../roadmap/README.md) e o [painel de revisão](../roadmap/index.html)
-ligam cada jornada às telas, lacunas e issues. Os PRs #631, #632 e #633 estão
-integrados; a fonte combinada atual é `477ac2f3`. O lote #632 concluiu a persistência
-de resultados conhecidos e a recuperação de ferramentas aceitas pelo recibo
-canônico, além da correção MLS. O lote #633 integrou carrossel, envio nativo,
-galeria, menus, áudio, Markdown, temas e controles de agentes.
+ligam cada jornada às telas, lacunas e issues. O catálogo continua como revisão
+datada de `477ac2f3`; suas imagens App718/Core707 são históricas.
 
-O App718 instalado tem fonte `b7ab2265` e reutiliza o Core707 `eb62cdaf`; ele ainda
-não contém o Core de #632. Seus testes e observações de Simulator conservam essa
-fronteira. Os casos de criação concluídos antes da pausa permanecem históricos.
+Os PRs [#635](https://github.com/EnzoTironi/zoen-native/pull/635), [#636](https://github.com/EnzoTironi/zoen-native/pull/636) e [#637](https://github.com/EnzoTironi/zoen-native/pull/637) foram integrados após #632/#633. Os issues [#217](https://github.com/EnzoTironi/zoen-native/issues/217), [#615](https://github.com/EnzoTironi/zoen-native/issues/615), [#622](https://github.com/EnzoTironi/zoen-native/issues/622) e [#440](https://github.com/EnzoTironi/zoen-native/issues/440) foram fechados nos recortes de paginação, reconexão autenticada/recuperação da mesma aprovação, ordem sob rate limit e AutoSky no artefato original v544, respectivamente; não encerram jornadas amplas.
+
+O App732 tem fonte `9f724c1e` e reutiliza Core/UniFFI genuíno de `c4b8f7ce` (F), que inclui #632, após igualdade dos inputs nativos. CLI `4ff0ca77` e relay `4057a0af`/schema40 mantêm proveniência própria. Build e assinatura passaram. A QA732 confirmou larguras nativas, empilhamento em fonte ampliada e um Cancelar preservando ambos os rascunhos, sem Enviar; o tamanho do texto foi restaurado. A [referência canônica do artefato](../../apps/zoen/acceptance/parts/artifacts/current-iphone-artifact.json) separa essas evidências; esse recorte não demonstra encaminhamento entregue, aceite físico ou jornada completa.
+
 iPhone físico, provedor real na jornada completa, backend público e lançamento
-continuam pendentes. O issue #170 registra responsáveis e execução; contagens
-de código ou testes não encerram uma jornada.
+continuam pendentes. Apps/criação permanecem pausados. O issue #170 registra
+responsáveis e execução; contagens de código ou testes não encerram uma jornada.
 
 | Lote | Entrega observável | Critério de saída |
 | --- | --- | --- |
