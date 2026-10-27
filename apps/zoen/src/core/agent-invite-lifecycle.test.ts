@@ -165,6 +165,11 @@ async function fixture() {
   });
   return {
     session,
+    reactivate: async () => {
+      session.suspend();
+      session.activate(scope);
+      await session.refresh();
+    },
     requests,
     shares,
     render: (): Element => {
@@ -248,5 +253,34 @@ test('late invite response cannot present Share after canonical revocation', asy
   pending.resolve({ link: 'https://example.test/synthetic-invite' });
   await settle();
   assert.equal(f.requests.length, 1, 'already admitted request is not replayed or cancelled');
+  assert.deepEqual(f.shares, []);
+});
+
+test('a retained invite callback cannot borrow a new focus activation ticket', async () => {
+  const f = await fixture(),
+    prior = f.render();
+  await f.reactivate();
+  assert.ok(f.session.ticket(), 'the new activation itself remains usable');
+  action(prior, 'shareAgent').props.onPress();
+  action(prior, 'disableInviteLink').props.onPress();
+  await settle();
+  assert.deepEqual(f.requests, []);
+  action(f.render(), 'shareAgent').props.onPress();
+  await settle();
+  assert.equal(f.requests.length, 1);
+  assert.equal(f.shares.length, 1);
+});
+
+test('an admitted invite response cannot borrow a new activation to open Share', async () => {
+  const f = await fixture(),
+    pending = deferred<{ link: string }>();
+  f.holdInvite(pending.promise);
+  action(f.render(), 'shareAgent').props.onPress();
+  await settle();
+  await f.reactivate();
+  assert.ok(f.session.ticket());
+  pending.resolve({ link: 'https://example.test/synthetic-invite' });
+  await settle();
+  assert.equal(f.requests.length, 1, 'the admitted request is neither replayed nor cancelled');
   assert.deepEqual(f.shares, []);
 });
