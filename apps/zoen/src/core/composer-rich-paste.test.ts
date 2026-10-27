@@ -59,6 +59,8 @@ test(
         'ENRMBlockRange',
         'ENRMMarkdownSerializer',
         'ENRMMarkdownSerializer+Composer',
+        'ENRMComposerRanges',
+        'ENRMComposerVariants',
         'ENRMFormattingStore',
         'ENRMRangeEditAdjustment',
         'ENRMBlockStore',
