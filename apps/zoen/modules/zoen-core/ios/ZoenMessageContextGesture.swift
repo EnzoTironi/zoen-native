@@ -43,7 +43,9 @@ final class ZoenMessageContextGesture: UIGestureRecognizer, UIGestureRecognizerD
     // recognizer implements. Nested links/media/controls keep their own input.
     for current in path where current !== found.children.first {
       if current.accessibilityIdentifier?.hasPrefix("message-context-control:") == true ||
-          current is UIControl || current is UITextView || current is UITextField ||
+          current is UIControl || current is UITextField ||
+          (current as? UITextView).map({ !ZoenMessageContextTextAdmission.allows($0,
+            point: touch.location(in: $0), boundary: found.contentHost) }) == true ||
           current.accessibilityTraits.contains(.button) || current.accessibilityTraits.contains(.adjustable) ||
           current.accessibilityTraits.contains(.link) { cancelAdmission(); return false }
     }
@@ -159,5 +161,27 @@ final class ZoenMessageContextGesture: UIGestureRecognizer, UIGestureRecognizerD
     held = false; doubleTap = false; touchActive = false
     source?.resetPress(animated: true)
     // Keep only the bounded .16s semantic tap admission across recognizer reset.
+  }
+}
+
+// The renderer owns hit-testing of attributed links, code, spoilers, tasks and
+// images. Unknown renderers and selectable/editable native text keep their input.
+@MainActor
+enum ZoenMessageContextTextAdmission {
+  static func allows(_ text: UITextView, point: CGPoint, boundary: UIView) -> Bool {
+    guard !text.isEditable, !text.isSelectable, text.isDescendant(of: boundary),
+          point.x.isFinite, point.y.isFinite, text.bounds.contains(point) else { return false }
+    let selector = NSSelectorFromString("zoenMessageContextBodyAtPoint:")
+    var ancestor = text.superview
+    while let renderer = ancestor, renderer !== boundary {
+      if renderer.responds(to: selector) {
+        let local = renderer.convert(point, from: text)
+        guard renderer.bounds.contains(local),
+              let result = renderer.perform(selector, with: NSValue(cgPoint: local))?.takeUnretainedValue() as? NSNumber else { return false }
+        return result.boolValue
+      }
+      ancestor = renderer.superview
+    }
+    return false
   }
 }
