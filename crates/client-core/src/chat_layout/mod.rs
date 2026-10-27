@@ -1,6 +1,7 @@
 //! Field-scoped local CAS and exact receipts in the existing signed Personal log.
 //! This is not a relay acknowledgement or a distributed preference transaction.
 mod history;
+mod read;
 use crate::{
     engine::{Engine, R},
     CoreError,
@@ -15,24 +16,28 @@ use types::{ChatPrefsField, ChatPrefsOperation, EventBody};
 pub enum ChatLayoutField {
     Pinned,
     Archived,
+    ManualUnread,
 }
 impl ChatLayoutField {
     fn persisted(self) -> ChatPrefsField {
         match self {
             Self::Pinned => ChatPrefsField::Pinned,
             Self::Archived => ChatPrefsField::Archived,
+            Self::ManualUnread => ChatPrefsField::ManualUnread,
         }
     }
     fn value(self, prefs: &types::ChatPrefs) -> bool {
         match self {
             Self::Pinned => prefs.pinned,
             Self::Archived => prefs.archived,
+            Self::ManualUnread => prefs.manual_unread,
         }
     }
     fn set(self, prefs: &mut types::ChatPrefs, value: bool) {
         match self {
             Self::Pinned => prefs.pinned = value,
             Self::Archived => prefs.archived = value,
+            Self::ManualUnread => prefs.manual_unread = value,
         }
     }
 }
@@ -41,6 +46,7 @@ impl From<ChatPrefsField> for ChatLayoutField {
         match value {
             ChatPrefsField::Pinned => Self::Pinned,
             ChatPrefsField::Archived => Self::Archived,
+            ChatPrefsField::ManualUnread => Self::ManualUnread,
         }
     }
 }
@@ -58,6 +64,11 @@ pub struct ChatLayoutScope {
 pub enum ChatLayoutInput {
     Read {
         scope: ChatLayoutScope,
+    },
+    MarkRead {
+        scope: ChatLayoutScope,
+        through_seq: Option<String>,
+        observed_manual_revision: String,
     },
     Change {
         scope: ChatLayoutScope,
@@ -84,6 +95,10 @@ pub struct ChatLayoutState {
     pub archived: bool,
     pub pin_revision: String,
     pub archive_revision: String,
+    pub manual_unread: bool,
+    pub manual_unread_revision: String,
+    pub read_through_seq: Option<String>,
+    pub read_up_to_seq: Option<String>,
 }
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
@@ -141,6 +156,7 @@ impl Engine {
     pub(crate) fn chat_layout(&mut self, input: &ChatLayoutInput) -> R<ChatLayoutResult> {
         let scope = match input {
             ChatLayoutInput::Read { scope }
+            | ChatLayoutInput::MarkRead { scope, .. }
             | ChatLayoutInput::Change { scope, .. }
             | ChatLayoutInput::Reconcile { scope, .. }
             | ChatLayoutInput::Undo { scope, .. } => scope,
@@ -153,13 +169,23 @@ impl Engine {
         let history = History::read(self)?;
         let state = history.current(&scope.space_id);
         match input {
-            ChatLayoutInput::Read { .. } => Ok(history.result(scope, None)),
+            ChatLayoutInput::Read { .. } => Ok(history.result(self, scope, None)),
+            ChatLayoutInput::MarkRead {
+                through_seq,
+                observed_manual_revision,
+                ..
+            } => {
+                revision(observed_manual_revision)?;
+                let through = read::through(through_seq.as_deref())?;
+                self.commit_chat_read(&scope.space_id, through, Some(observed_manual_revision))?;
+                Ok(History::read(self)?.result(self, scope, None))
+            }
             ChatLayoutInput::Reconcile {
                 operation_id: id, ..
             } => {
                 operation_id(id)?;
                 let receipt = history.operation(scope, id)?;
-                Ok(history.result(scope, receipt))
+                Ok(history.result(self, scope, receipt))
             }
             ChatLayoutInput::Change {
                 operation_id: id,
@@ -178,13 +204,13 @@ impl Engine {
                     {
                         return Err(invalid());
                     }
-                    return Ok(history.result(scope, Some(record)));
+                    return Ok(history.result(self, scope, Some(record)));
                 }
                 if state.revision(*field) != observed_revision {
                     return Err(stale());
                 }
                 if field.value(&state.prefs) == *value {
-                    return Ok(history.result(scope, None));
+                    return Ok(history.result(self, scope, None));
                 }
                 self.append_chat_layout(
                     scope,
@@ -210,7 +236,8 @@ impl Engine {
                 let original = history
                     .operation(scope, original_operation_id)?
                     .ok_or_else(stale)?;
-                if original.receipt.undo_of.is_some()
+                if original.receipt.field == ChatLayoutField::ManualUnread
+                    || original.receipt.undo_of.is_some()
                     || original.receipt.revision != *observed_revision
                 {
                     return Err(stale());
@@ -221,7 +248,7 @@ impl Engine {
                     {
                         return Err(invalid());
                     }
-                    return Ok(history.result(scope, Some(record)));
+                    return Ok(history.result(self, scope, Some(record)));
                 }
                 if state.revision(original.receipt.field) != observed_revision {
                     return Err(stale());
@@ -264,6 +291,6 @@ impl Engine {
         )?;
         let history = History::read(self)?;
         let receipt = history.operation(scope, &id)?.ok_or_else(invalid)?;
-        Ok(history.result(scope, Some(receipt)))
+        Ok(history.result(self, scope, Some(receipt)))
     }
 }

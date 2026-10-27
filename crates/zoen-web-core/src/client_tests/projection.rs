@@ -14,6 +14,7 @@ pub(super) fn conversation_metadata_comes_from_logs_and_only_my_personal_log_con
         3,
     )?;
     let prefs = types::ChatPrefs {
+        manual_unread: false,
         pinned: true,
         archived: true,
         muted_until_ms: Some(i64::MAX),

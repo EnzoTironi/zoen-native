@@ -82,7 +82,7 @@ impl Client {
                 &expected_identity_id,
                 &expected_device_id,
             )?),
-            ChatLayout { input } => encode(&self.lock().chat_layout(&input)?),
+            ChatLayout { input } => encode(&self.chat_layout_request(&input)?),
             _ => Err(invalid("Invalid chat preference command.")),
         }
     }
