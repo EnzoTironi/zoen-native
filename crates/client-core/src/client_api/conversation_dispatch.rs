@@ -15,9 +15,9 @@ impl Client {
             AgentControlRetry, AgentDefinitionDismiss, AgentDefinitionPreview, AgentDefinitionRead,
             AgentDefinitionReconcile, AgentDefinitionUpdate, AgentEnrollmentApprove,
             AgentEnrollmentDismiss, AgentEnrollmentPreview, AgentEnrollmentStatus, AgentStatus,
-            AppCurrentShareContext, AppEditTargets, CallHistory, ConfirmForward, ControlAgent,
-            CreateAgentInvite, CreateCommunity, CreateGroup, CreateInvite, DeleteMessage,
-            DismissForward, EditMessage, EncryptChat, FindAccountPolicyOptions,
+            AppCurrentShareContext, AppEditTargets, CallHistory, ChatLayout, ConfirmForward,
+            ControlAgent, CreateAgentInvite, CreateCommunity, CreateGroup, CreateInvite,
+            DeleteMessage, DismissForward, EditMessage, EncryptChat, FindAccountPolicyOptions,
             FindMemberCandidates, FindOwnerPolicyOptions, FindOwnerPolicySubmission, FindPeople,
             ForwardMessage, ForwardReview, ForwardStatus, InviteCall, JoinInvite, LeaveSpace,
             MarkRead, Message, MessageDraft, NewMutationId, OpenAgentLink, OwnerPolicyOptions,
@@ -227,9 +227,10 @@ impl Client {
                 kinds,
                 limit,
             } => encode(&self.universal_search(query, kinds, limit.min(100))?),
-            command @ (SetChatPrefs { .. } | SetChatMuted { .. } | SetChatMute { .. }) => {
-                self.dispatch_chat_preferences(command)
-            }
+            command @ (SetChatPrefs(..)
+            | SetChatMuted(..)
+            | SetChatMute(..)
+            | ChatLayout { .. }) => self.dispatch_chat_preferences(command),
             StartDirect { identity_id } => encode(&self.start_direct(identity_id)?),
             CreateGroup { title, member_ids } => encode(&self.create_group(title, member_ids)?),
             CreateCommunity { title } => encode(&self.create_community(title)?),
