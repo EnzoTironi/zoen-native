@@ -14,6 +14,10 @@ can_write: boolean, members: Array<Persona>,
  */
 counterpart: Persona | null, last_preview: string, last_author: Persona | null, last_at_ms: string, unread: number, 
 /**
+ * Local manual reminder; does not alter the actual unread-message count.
+ */
+manual_unread?: boolean, 
+/**
  * Ticks for the last message when I wrote it (the chat list shows them).
  */
 last_delivery: Delivery | null, 

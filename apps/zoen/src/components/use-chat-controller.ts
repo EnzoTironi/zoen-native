@@ -455,10 +455,12 @@ export function useChatController() {
     cards.loading,
   ]);
   const last = page?.entries.at(-1)?.id;
+  const manuallyUnread = Boolean(page && !last && chat?.manual_unread);
   useFocusEffect(
     useCallback(() => {
-      if (last) void store.request({ op: 'mark_read', space_id: id }).catch(() => {});
-    }, [last, id, store]),
+      if (last || manuallyUnread)
+        void store.request({ op: 'mark_read', space_id: id }).catch(() => {});
+    }, [last, manuallyUnread, id, store]),
   );
 
   async function send() {

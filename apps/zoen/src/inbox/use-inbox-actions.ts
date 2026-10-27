@@ -39,7 +39,6 @@ export function inboxActionsPort(store: ClientStore): InboxActionsPort {
         expected_device_id: owner.device,
       });
     },
-    read: (space_id) => store.request({ op: 'mark_read', space_id }),
     refresh: () => store.refresh(),
   };
 }

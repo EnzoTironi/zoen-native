@@ -62,28 +62,31 @@ export function ChatRowContent({ chat }: { chat: SpaceSummary }) {
           >
             {chat.last_preview}
           </Text>
-          {chat.unread ? (
+          {chat.unread || chat.manual_unread ? (
             <View
+              testID={`inbox-unread-${chat.id}`}
               style={{
                 backgroundColor: chat.muted ? p.chatList.mutedUnread : p.chatList.unread,
-                minWidth: 20,
-                height: 20,
+                minWidth: chat.unread ? 20 : 12,
+                height: chat.unread ? 20 : 12,
                 borderRadius: 10,
-                paddingHorizontal: 6,
+                paddingHorizontal: chat.unread ? 6 : 0,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <Text
-                style={{
-                  color: chat.muted ? '#FFFFFF' : p.chatList.unreadText,
-                  fontSize: 12,
-                  fontWeight: '600',
-                  fontVariant: ['tabular-nums'],
-                }}
-              >
-                {chat.unread > 99 ? '99+' : chat.unread}
-              </Text>
+              {chat.unread ? (
+                <Text
+                  style={{
+                    color: chat.muted ? '#FFFFFF' : p.chatList.unreadText,
+                    fontSize: 12,
+                    fontWeight: '600',
+                    fontVariant: ['tabular-nums'],
+                  }}
+                >
+                  {chat.unread > 99 ? '99+' : chat.unread}
+                </Text>
+              ) : null}
             </View>
           ) : chat.pinned ? (
             <Icon

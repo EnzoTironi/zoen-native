@@ -108,6 +108,11 @@ pub struct SpaceSummary {
     pub last_author: Option<Persona>,
     pub last_at_ms: i64,
     pub unread: u32,
+    /// Local manual reminder; does not alter the actual unread-message count.
+    #[serde(default)]
+    #[uniffi(default = false)]
+    #[cfg_attr(feature = "client-types", ts(optional = nullable))]
+    pub manual_unread: bool,
     /// Ticks for the last message when I wrote it (the chat list shows them).
     #[uniffi(default = None)]
     pub last_delivery: Option<Delivery>,

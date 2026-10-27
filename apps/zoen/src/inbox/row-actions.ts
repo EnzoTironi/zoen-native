@@ -12,16 +12,15 @@ export type RowAction = {
 };
 export function rowActions(chat: SpaceSummary): RowAction[] {
   return [
-    ...(chat.unread > 0
-      ? [
-          {
-            id: 'read' as const,
-            label: t('inboxActions.read'),
-            icon: { ios: 'envelope.open' as const, android: 'drafts' as const },
-            color: '#8E8E93',
-          },
-        ]
-      : []),
+    {
+      id: 'read',
+      label: t(chat.unread > 0 || chat.manual_unread ? 'inboxActions.read' : 'inboxActions.unread'),
+      icon: {
+        ios: chat.unread > 0 || chat.manual_unread ? 'envelope.open' : 'envelope.badge',
+        android: chat.unread > 0 || chat.manual_unread ? 'drafts' : 'mark_email_unread',
+      },
+      color: chat.unread > 0 || chat.manual_unread ? '#8E8E93' : '#1993FA',
+    },
     {
       id: 'pin',
       label: t(chat.pinned ? 'inboxActions.unpin' : 'inboxActions.pin'),
