@@ -31,6 +31,34 @@ class PhotoHelperScopeTests(FrontendRepositoryFixture):
         self.edit_photo()
         self.assertTrue(self.classify()["photo_helper_only"])
 
+    def test_current_666_pencilkit_fixture_is_used_without_substitution(self):
+        # setUp copies the maintained sources verbatim, including #666's actual
+        # PKDrawing/extended-range image reproduction, not a synthetic RGBA stand-in.
+        fixture = next(path for path in SCOPE.PHOTO_HELPER_PATHS if "/tests/" in path)
+        maintained = (SOURCE.parents[1] / fixture).read_bytes()
+        self.assertEqual(Path(fixture).read_bytes(), maintained)
+        self.assertIn(b"import AppKit", maintained)
+        self.assertIn(b"import PencilKit", maintained)
+        self.assertIn(b"PKDrawing(strokes:", maintained)
+        self.assertIn(b"try actualPencilKitRecrop()", maintained)
+        self.edit_photo()
+        result = self.classify()
+        self.assertTrue(result["photo_helper_only"], result)
+        self.assertFalse(result["run_rust"], result)
+        self.assertTrue(result["run_photo_helper"], result)
+
+    def test_reviewed_fixture_imports_never_expand_helper_or_admit_unknown_modules(self):
+        helper = next(path for path in SCOPE.PHOTO_HELPER_PATHS if "/ios/" in path)
+        fixture = next(path for path in SCOPE.PHOTO_HELPER_PATHS if "/tests/" in path)
+        for path, addition in ((helper, "\nimport PencilKit\n"),
+                               (fixture, "\nimport UIKit\n"),
+                               (fixture, "\nimport ZoenCore\n"),
+                               (fixture, '\n@_silgen_name("core_call") func coreCall()\n')):
+            with self.subTest(path=path, addition=addition):
+                self.git("reset", "--hard", self.base)
+                self.write(path, Path(path).read_text() + addition)
+                self.assert_full(self.classify())
+
     def test_any_other_input_keeps_all_rust(self):
         for path in ("Cargo.toml", "Cargo.lock", "crates/fixture/src/lib.rs",
                      "apps/zoen/modules/zoen-core/ios/Other.swift",

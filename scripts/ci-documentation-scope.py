@@ -107,10 +107,14 @@ def frontend_reference_readers(tree, paths, reader=None):
             for row in search.stdout.split(b"\0") if row}
 
 
-PHOTO_HELPER_PATHS = frozenset({
-    "apps/zoen/modules/zoen-core/ios/ZoenPhotoEditorImage.swift",
-    "apps/zoen/modules/zoen-core/tests/PhotoEditorImageTests.swift",
-})
+PHOTO_HELPER_IMPORTS = {
+    "apps/zoen/modules/zoen-core/ios/ZoenPhotoEditorImage.swift": (
+        frozenset({"Foundation", "CoreGraphics"}),),
+    "apps/zoen/modules/zoen-core/tests/PhotoEditorImageTests.swift": (
+        frozenset({"Foundation", "CoreGraphics"}),
+        frozenset({"Foundation", "CoreGraphics", "AppKit", "PencilKit"})),
+}
+PHOTO_HELPER_PATHS = frozenset(PHOTO_HELPER_IMPORTS)
 
 
 def validate_frontend(base, head, ancestor, paths, photo_helper=False):
@@ -136,7 +140,7 @@ def validate_frontend(base, head, ancestor, paths, photo_helper=False):
                 if not regular_blob(tree, path):
                     raise ValueError("Photo helper requires regular standalone Swift sources")
                 source = git("show", tree + ":" + path).decode("utf-8")
-                if set(re.findall(r"\bimport\s+([\w.]+)", source)) != {"Foundation", "CoreGraphics"}:
+                if frozenset(re.findall(r"\bimport\s+([\w.]+)", source)) not in PHOTO_HELPER_IMPORTS[path]:
                     raise ValueError("Photo helper imports are not standalone SDK modules")
                 if re.search(r"@_(?:silgen_name|cdecl)|\b(?:dlopen|dlsym|unsafeBitCast|ZoenCore)\b", source):
                     raise ValueError("Photo helper contains a Core/FFI boundary")
