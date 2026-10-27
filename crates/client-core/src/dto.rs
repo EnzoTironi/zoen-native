@@ -179,6 +179,11 @@ pub enum EntryKind {
 #[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct TimelineEntry {
+    /// Stable logical event identity of the currently visible source text.
+    #[uniffi(default = None)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "client-types", ts(optional))]
+    pub text_revision: Option<String>,
     pub id: String,
     pub seq: u64,
     pub author: Persona,
@@ -246,6 +251,10 @@ pub struct ReactionDto {
 #[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct ReplyQuote {
+    #[uniffi(default = None)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "client-types", ts(optional))]
+    pub selection: Option<crate::ReplySelection>,
     pub id: String,
     pub author: Persona,
     pub text: String,

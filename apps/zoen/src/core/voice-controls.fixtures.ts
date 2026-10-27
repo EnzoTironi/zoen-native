@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import type { RecordingStatus } from 'expo-audio';
 import { runInNewContext } from 'node:vm';
 import { SensitiveCacheWork } from '../media/cache-work.ts';
 import { VoiceDraftOwner, frozenVoicePreview } from '../media/voice-draft-owner.ts';
@@ -272,7 +273,9 @@ export function recording(editable = false, platform: 'ios' | 'web' = 'ios') {
   const cleanups = new Set<() => Promise<void>>();
   const work = new SensitiveCacheWork();
   function makeRecorder(name: string) {
-    const state = { isRecording: false, durationMillis: 4000 };
+    const state = { isRecording: false, durationMillis: 4000, canRecord: true };
+    let listener: (status: RecordingStatus) => void = () => {};
+    let resetUri: string | null = null;
     let released = false;
     let finalized = true;
     let uriAvailable = true;
@@ -285,6 +288,23 @@ export function recording(editable = false, platform: 'ios' | 'web' = 'ios') {
     }
     return {
       state,
+      emit: (status: RecordingStatus) => listener(status),
+      setListener: (value: typeof listener | undefined) => (listener = value ?? (() => {})),
+      finish(error = false, reset = false) {
+        finalized = true;
+        state.isRecording = false;
+        state.durationMillis = 0;
+        state.canRecord = !error;
+        if (reset) resetUri = 'file:///voice/reset.m4a';
+        listener({
+          id: name,
+          isFinished: true,
+          hasError: error,
+          error: error ? 'interrupted' : null,
+          url: error || reset ? null : `file:///voice/${name}.m4a`,
+          mediaServicesDidReset: reset,
+        });
+      },
       isFinalized: () => finalized,
       publishUriOnStop: () => (uriAvailable = false),
       stops: () => stops,
@@ -298,6 +318,7 @@ export function recording(editable = false, platform: 'ios' | 'web' = 'ios') {
         state.isRecording = false;
       },
       sdk: {
+        id: name,
         pause() {
           admitted();
           events.push(`pause:${name}`);
@@ -305,7 +326,7 @@ export function recording(editable = false, platform: 'ios' | 'web' = 'ios') {
         },
         get uri() {
           admitted();
-          return uriAvailable ? `file:///voice/${name}.m4a` : null;
+          return resetUri ?? (uriAvailable ? `file:///voice/${name}.m4a` : null);
         },
         getStatus() {
           admitted();
@@ -404,7 +425,10 @@ export function recording(editable = false, platform: 'ios' | 'web' = 'ios') {
         },
       },
       RecordingPresets: { HIGH_QUALITY: {} },
-      useAudioRecorder: () => activeRecorder.sdk,
+      useAudioRecorder: (_options: unknown, listener: (status: RecordingStatus) => void) => {
+        activeRecorder.setListener(listener);
+        return activeRecorder.sdk;
+      },
       useAudioRecorderState: () => activeRecorder.state,
       setAudioModeAsync: async (mode: { allowsRecording: boolean }) => {
         events.push(`mode:${mode.allowsRecording}`);
@@ -478,6 +502,9 @@ export function recording(editable = false, platform: 'ios' | 'web' = 'ios') {
     prepares: () => prepares,
     records: () => records,
     pauseRecorder: recorder.pause,
+    finishNative: recorder.finish,
+    emitNative: recorder.emit,
+    voicePort: voice,
     publishUriOnStop: recorder.publishUriOnStop,
     failRestore: (value: boolean) => (restoreFailure = value),
     failStop: (value: boolean) => (stopFailure = value),

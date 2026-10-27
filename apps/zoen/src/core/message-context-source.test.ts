@@ -1,3 +1,4 @@
+import { MessageTextSelectionSession } from '../components/message-text-selection.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
@@ -46,6 +47,7 @@ function fixture(options: { available?: boolean; staged?: boolean } = {}) {
   const module = { exports: {} as { MessageContextSource(props: any): Node | string } };
   const ports: Record<string, any> = {
     react: {
+      useSyncExternalStore: (_subscribe: unknown, read: () => unknown) => read(),
       useRef: (value: unknown) => (refs[cursor++] ??= { current: value }),
       useState: (initial: unknown) => {
         const index = stateCursor++;
@@ -94,8 +96,13 @@ function fixture(options: { available?: boolean; staged?: boolean } = {}) {
       requireNativeView: (_module: string, name: string) => name,
     },
     'expo-crypto': { randomUUID: () => `uuid-${++uuid}` },
+    './message-text-selection': { MessageTextSelectionSession },
     './message-context-control': { MessageContextControl: 'ContextControl' },
-    './message-context-ports': { MessageContextOwnsPress: owns, MessageContextStageEnabled: stage },
+    './message-context-ports': {
+      MessageContextOwnsPress: owns,
+      MessageContextStageEnabled: stage,
+      MessageTextSelection: {},
+    },
   };
   let backgroundSet = false;
   runInNewContext(compiled, {
@@ -106,7 +113,12 @@ function fixture(options: { available?: boolean; staged?: boolean } = {}) {
       return ports[path];
     },
   });
-  const native = { presentContext() {}, dismissContext() {}, consumeGesture: async () => true };
+  const native = {
+    presentContext() {},
+    dismissContext() {},
+    consumeGesture: async () => true,
+    finishTextSelection: async () => {},
+  };
   const render = (patch: object = {}) => {
     const outer = module.exports.MessageContextSource({
       ownerKey: 'scope:message',
@@ -174,7 +186,7 @@ test('one native Source contains the SAME bubble; only its physical plain-bubble
   assert.equal(node.type, 'MessageContextSource');
   assert.equal(node.props.children.type, f.owns);
   assert.equal(node.props.children.props.value, true);
-  assert.equal(node.props.children.props.children, 'same-live-bubble');
+  assert.equal(node.props.children.props.children.props.children, 'same-live-bubble');
   f.event(node);
   assert.equal(f.requests.length, 1);
   assert.equal(f.requests[0].native, f.native);
@@ -253,4 +265,38 @@ test('owner-keyed React lifetime preserves binding on updates and fences old sco
   f.event(replacement);
   assert.equal(f.requests.length, 2);
   assert.equal(f.requests[1].current(), true);
+});
+
+test('selection phase retains exact source binding, owns native touches, and restores the same bubble', () => {
+  const f = fixture();
+  let node = f.render({ handlesTap: false }) as Node;
+  f.event(node);
+  const request = f.requests[0];
+  let started = 0;
+  request.textSelection.bind({
+    started: () => {
+      started++;
+    },
+    review: async () => '{}',
+  });
+  f.event(node, {
+    kind: 'selection',
+    sequence: 2,
+    selection: { requestId: 'context', active: true },
+  });
+  node = f.render({ handlesTap: false }) as Node;
+  assert.equal(started, 1);
+  assert.equal(request.current(), true);
+  assert.equal(f.requests.length, 1);
+  assert.equal(node.props.children.props.value, true);
+  assert.equal(node.props.children.props.children.props.value.active, true);
+  assert.equal(node.props.children.props.children.props.children, 'same-live-bubble');
+  f.event(node, {
+    kind: 'selection',
+    sequence: 3,
+    selection: { requestId: 'context', active: false },
+  });
+  node = f.render({ handlesTap: false }) as Node;
+  assert.equal(node.props.children.props.value, false);
+  assert.equal(node.props.children.props.children.props.children, 'same-live-bubble');
 });

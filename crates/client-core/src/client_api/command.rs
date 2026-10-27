@@ -149,6 +149,13 @@ pub(super) enum Command {
         #[serde(default = "page_size")]
         limit: u32,
     },
+    ReviewReplySelection {
+        expected_identity_id: String,
+        expected_device_id: String,
+        space_id: String,
+        thread_root_id: Option<String>,
+        selection: crate::ReplySelection,
+    },
     MessageDraft {
         expected_identity_id: String,
         expected_device_id: String,
@@ -163,6 +170,8 @@ pub(super) enum Command {
         expected_revision: String,
         text: String,
         reply_to: Option<String>,
+        #[serde(default)]
+        reply_quote: Option<crate::ReplySelection>,
     },
     SendMessageDraft {
         expected_identity_id: String,
@@ -260,11 +269,8 @@ pub(super) enum Command {
         space_id: String,
         message_id: String,
     },
-    UniversalSearch {
-        query: String,
-        kinds: Vec<String>,
-        limit: u32,
-    },
+    UniversalSearchPage(super::search::SearchPageInput),
+    UniversalSearch(super::search::SearchInput),
     RecentAttachments {
         scope: crate::MediaDraftScope,
         kind: crate::RecentAttachmentKind,
@@ -277,17 +283,11 @@ pub(super) enum Command {
         kind: crate::RecentAttachmentKind,
         reference: crate::RecentAttachmentReference,
     },
-    SetChatPrefs {
-        space_id: String,
-        pinned: bool,
-        archived: bool,
-        muted: bool,
-    },
-    SetChatMuted {
-        space_id: String,
-        muted: bool,
-        expected_identity_id: String,
-        expected_device_id: String,
+    SetChatPrefs(super::chat_preferences_dispatch::ChatPrefsInput),
+    SetChatMute(super::chat_preferences_dispatch::ChatMuteInput),
+    SetChatMuted(super::chat_preferences_dispatch::ChatMutedInput),
+    ChatLayout {
+        input: crate::chat_layout::ChatLayoutInput,
     },
     SavedMessages {
         expected_identity_id: String,

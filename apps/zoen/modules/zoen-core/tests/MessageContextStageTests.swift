@@ -226,4 +226,106 @@ final class MessageContextStageTests: XCTestCase {
     XCTAssertNil(selected)
   }
 
+  func testTextSelectionKeepsOriginalHostAndQuoteResolvesOnlyAfterRestoration() async throws {
+    let f = try fixture(), request = UUID().uuidString
+    let text = UITextView(frame: f.child.bounds)
+    text.text = "Original attributed message"
+    text.isEditable = false; text.isSelectable = false
+    text.isUserInteractionEnabled = false
+    f.child.addSubview(text)
+    let config = try configuration(actions: [["id": "select", "label": "Select"], ["id": "reply", "label": "Reply"]])
+    let task = Task { try await f.source.present(requestId: request, expectedBinding: f.binding, gestureId: "", configuration: config) }
+    await Task.yield()
+    let controller = try XCTUnwrap(f.stage.controller)
+    controller.choose("select")
+    XCTAssertTrue(controller.selectingText)
+    XCTAssertFalse(controller.closing)
+    XCTAssertTrue(f.source.contentHost.superview === controller.preview)
+    XCTAssertTrue(text.superview === f.child)
+    XCTAssertTrue(text.isSelectable && text.isUserInteractionEnabled)
+    XCTAssertFalse(text.isEditable)
+    XCTAssertTrue(controller.actions.isHidden && controller.reactionScroll.isHidden)
+    controller.choose("reply")
+    controller.trackHeldTouch(.zero, origin: .zero, ended: true, cancelled: false)
+    controller.activateFocused()
+    XCTAssertFalse(controller.closing, "retired action callbacks cannot leave native text selection")
+    let result = "{\"selectionStart\":0,\"selectionEnd\":8}"
+    try await f.source.finishTextSelection(requestId: request, resultJSON: result)
+    let selected = try await task.value
+    XCTAssertEqual(selected, "select:" + result)
+    XCTAssertNil(f.stage.controller)
+    XCTAssertTrue(f.source.contentHost.superview === f.source)
+    XCTAssertTrue(text.superview === f.child)
+    XCTAssertFalse(text.isSelectable || text.isUserInteractionEnabled)
+    XCTAssertFalse(text.isEditable)
+    XCTAssertFalse(controller.selectionAnnounced)
+  }
+
+  func testTextSelectionCancelAndRetirementRestoreAndRejectLateQuote() async throws {
+    for retire in [false, true] {
+      let f = try fixture(), request = UUID().uuidString
+      let text = UITextView(frame: f.child.bounds)
+      text.text = "Retained text"; text.isEditable = false
+      f.child.addSubview(text)
+      let config = try configuration(actions: [["id": "select", "label": "Select"]])
+      let task = Task { try await f.source.present(requestId: request, expectedBinding: f.binding, gestureId: "", configuration: config) }
+      await Task.yield()
+      let controller = try XCTUnwrap(f.stage.controller)
+      controller.choose("select")
+      if retire { await f.stage.retireContexts() }
+      else { try await f.source.finishTextSelection(requestId: request, resultJSON: nil) }
+      let selected = try await task.value
+      XCTAssertNil(selected)
+      XCTAssertTrue(f.source.contentHost.superview === f.source)
+      XCTAssertFalse(controller.selectionAnnounced)
+      do {
+        try await f.source.finishTextSelection(requestId: request, resultJSON: "{}")
+        XCTFail("late Quote must reject after selection ownership is retired")
+      } catch { XCTAssertNil(f.stage.controller) }
+    }
+  }
+
+  func testTextSelectionRejectsWrongRequestAndInvalidResultWithoutConsumingSelection() async throws {
+    let f = try fixture(), request = UUID().uuidString
+    let text = UITextView(frame: f.child.bounds)
+    text.text = "Reviewed body"; f.child.addSubview(text)
+    let config = try configuration(actions: [["id": "select", "label": "Select"]])
+    let task = Task { try await f.source.present(requestId: request, expectedBinding: f.binding, gestureId: "", configuration: config) }
+    await Task.yield()
+    let controller = try XCTUnwrap(f.stage.controller)
+    controller.choose("select")
+    for (id, result) in [(UUID().uuidString, "{}"), (request, "[]"), (request, String(repeating: " ", count: 65_537))] {
+      do {
+        try await f.source.finishTextSelection(requestId: id, resultJSON: result)
+        XCTFail("invalid result must not consume the live selection")
+      } catch { XCTAssertTrue(controller.selectingText && !controller.closing) }
+    }
+    await f.source.dismiss(requestId: request)
+    let selected = try await task.value
+    XCTAssertNil(selected)
+  }
+
+  func testPlainTextSelectionAdmitsNativeLeafOnLaterLayoutWithoutReplacingExtractedHost() async throws {
+    let f = try fixture(), request = UUID().uuidString
+    let config = try configuration(actions: [["id": "select", "label": "Select"]])
+    let task = Task { try await f.source.present(requestId: request, expectedBinding: f.binding, gestureId: "", configuration: config) }
+    await Task.yield()
+    let controller = try XCTUnwrap(f.stage.controller)
+    controller.choose("select")
+    XCTAssertTrue(controller.selectingText)
+    XCTAssertTrue(controller.textSelectionState.isEmpty)
+    let text = UITextView(frame: f.child.bounds)
+    text.text = "Same body, native leaf"; text.isEditable = false; text.isSelectable = false
+    f.child.addSubview(text)
+    controller.reflow(animated: false)
+    XCTAssertTrue(text.isSelectable)
+    XCTAssertTrue(f.source.contentHost.superview === controller.preview)
+    XCTAssertTrue(f.source.children.first === f.child)
+    await f.source.dismiss(requestId: request)
+    let selected = try await task.value
+    XCTAssertNil(selected)
+    XCTAssertTrue(f.source.contentHost.superview === f.source)
+    XCTAssertFalse(text.isSelectable)
+  }
+
 }

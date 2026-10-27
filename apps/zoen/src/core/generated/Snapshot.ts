@@ -6,4 +6,8 @@ import type { ConnectionDto } from "./ConnectionDto";
 import type { Persona } from "./Persona";
 import type { SpaceSummary } from "./SpaceSummary";
 
-export type Snapshot = { account: AccountDto | null, me: Persona | null, connection: ConnectionDto, conversations: Array<SpaceSummary>, integrity_warnings: { [key in string]: string }, has_unreadable_local_history: boolean, requests: Array<AgentRequestDto>, agents: Array<AgentProfile>, };
+export type Snapshot = { 
+/**
+ * Checked Core wall-clock sample for exact relative mute intents, never a timer/store.
+ */
+clock_ms?: string, account: AccountDto | null, me: Persona | null, connection: ConnectionDto, conversations: Array<SpaceSummary>, integrity_warnings: { [key in string]: string }, has_unreadable_local_history: boolean, requests: Array<AgentRequestDto>, agents: Array<AgentProfile>, };

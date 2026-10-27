@@ -25,7 +25,7 @@ pub mod owner_budget;
 pub mod owner_policy_context;
 pub use annotation::Annotation;
 pub mod reply;
-pub use reply::{ArtifactRequest, ReplyRef};
+pub use reply::{ArtifactRequest, QuoteSpan, ReplyRef, SelectedQuote};
 mod app_share;
 pub use app_share::{AppCurrentShare, AppItemOrigin, AppShareRef};
 
@@ -48,8 +48,8 @@ pub use authority::{
 };
 mod events;
 pub use events::{
-    BackgroundSpec, ChainLink, ChatPrefs, Event, EventBody, MediaRef, OwnerPolicyOutcome,
-    ProfileKeyShare, Seen, EVENT_FORMAT, GENESIS_PREV,
+    BackgroundSpec, ChainLink, ChatPrefs, ChatPrefsField, ChatPrefsOperation, Event, EventBody,
+    MediaRef, OwnerPolicyOutcome, ProfileKeyShare, Seen, EVENT_FORMAT, GENESIS_PREV,
 };
 
 #[cfg(test)]

@@ -29,6 +29,9 @@ impl State {
                 return Projection::Refused;
             }
         }
+        if !context.selected_quote_valid(e) {
+            return Projection::Refused;
+        }
         if !self.call_transport_valid(e) {
             return Projection::Refused;
         }
@@ -158,6 +161,7 @@ impl State {
                         attaches: attaches.clone(),
                         reply: reply.clone(),
                         marks: MessageMarks {
+                            text_revision: Some(event_log::content_hash_of(e)),
                             forwarded: *forwarded,
                             media: media.clone(),
                             ..Default::default()
@@ -176,12 +180,15 @@ impl State {
                         text: text.clone(),
                         attaches: None,
                         reply: Some(reply.clone()),
-                        marks: MessageMarks::default(),
+                        marks: MessageMarks {
+                            text_revision: Some(event_log::content_hash_of(e)),
+                            ..Default::default()
+                        },
                     }));
                     s.last_at_ms = s.last_at_ms.max(e.at_ms);
                 }
             }
-            EventBody::ChatPrefsSet { space, prefs } => {
+            EventBody::ChatPrefsSet { space, prefs, .. } => {
                 // Only my own Personal Space carries prefs; anywhere else they mean nothing.
                 let mine = self.spaces.get(&e.space).is_some_and(|s| {
                     s.kind == SpaceKind::Personal && s.members.iter().any(|(m, _)| *m == e.author)
@@ -207,6 +214,7 @@ impl State {
                     {
                         if let Some(new_text) = marks.apply(author, &e.author, note) {
                             *text = new_text;
+                            marks.text_revision = Some(event_log::content_hash_of(e));
                             if marks.deleted {
                                 *attaches = None;
                             }

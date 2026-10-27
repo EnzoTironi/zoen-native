@@ -6,10 +6,13 @@
 
 mod app_edit_dispatch;
 mod app_resource_dispatch;
+mod chat_preferences_dispatch;
 mod command;
 mod content_dispatch;
 mod conversation_dispatch;
+mod draft_dispatch;
 mod forwarding_dispatch;
+mod search;
 use command::Command;
 
 mod handle;
@@ -33,6 +36,10 @@ const MAX_TIMELINE_PAGE: u32 = 200;
 #[derive(Serialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 struct Snapshot {
+    /// Checked Core wall-clock sample for exact relative mute intents, never a timer/store.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "client-types", ts(optional))]
+    clock_ms: Option<String>,
     account: Option<AccountDto>,
     me: Option<Persona>,
     connection: ConnectionDto,
@@ -88,6 +95,7 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
     Snapshot::export_all(&config)?;
     crate::SpaceMemberContext::export_all(&config)?;
     crate::ForwardReview::export_all(&config)?;
+    crate::chat_layout::ChatLayoutResult::export_all(&config)?;
     crate::MessageDraftDto::export_all(&config)?;
     crate::MessageDraftSendResult::export_all(&config)?;
     TimelinePage::export_all(&config)?;
@@ -139,6 +147,7 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
     crate::AgentEnrollmentDeliveryDto::export_all(&config)?;
     crate::AgentEnrollmentStatusDto::export_all(&config)?;
     crate::UniversalResults::export_all(&config)?;
+    crate::UniversalSearchPage::export_all(&config)?;
     Ok(())
 }
 
@@ -308,11 +317,16 @@ impl Client {
         // A broken signed log has no trusted membership to expose. Report only
         // its presence, without deriving names or audit access from bad events.
         let has_unreadable_local_history = !self.lock().broken_spaces.is_empty();
+        let clock = crate::chat_mute::clock_ms();
+        let conversations = self
+            .lock()
+            .spaces_at(clock.unwrap_or_else(crate::engine::now_ms));
         Snapshot {
+            clock_ms: clock.map(|n| n.to_string()),
             account: self.account(),
             me: self.me().ok(),
             connection: self.connection(),
-            conversations: self.spaces(),
+            conversations,
             integrity_warnings: self.client_integrity_warnings(),
             has_unreadable_local_history,
             requests: self.requests(),

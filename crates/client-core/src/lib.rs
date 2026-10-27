@@ -76,6 +76,7 @@ mod local_sealed;
 mod media;
 mod media_drafts;
 mod recent_attachments;
+mod universal_pages;
 pub use media_drafts::{
     MediaDraftAsset, MediaDraftAssetInput, MediaDraftDto, MediaDraftSaveResult, MediaDraftScope,
     MediaDraftSendResult,
@@ -84,8 +85,12 @@ pub use recent_attachments::{
     RecentAttachment, RecentAttachmentKind, RecentAttachmentPage, RecentAttachmentReference,
     RecentAttachmentSourceBinding,
 };
+pub mod chat_layout;
+mod chat_mute;
+pub use universal_pages::UniversalSearchPage;
 mod message_drafts;
 mod native_surfaces;
+pub use chat_mute::ChatMuteMode;
 pub use message_drafts::{MessageDraftDto, MessageDraftSendResult};
 mod pages;
 pub use files::FileDto;
@@ -107,6 +112,8 @@ mod net;
 mod profile;
 mod provider_auth;
 mod replies;
+mod selected_quotes;
+pub use selected_quotes::{QuoteSpan, ReplySelection};
 pub mod runtime_core;
 pub use profile::{PhotoChange, ProfileDto, ProfilePhotoBytes};
 mod sync;
@@ -614,17 +621,8 @@ impl Client {
 // Keep UniFFI module_path! identical to the existing crate-root exports.
 include!("client_conversations.rs");
 
-/// Formats cents as Brazilian reais ("R$ 1.348", "R$ 12,40").
-#[uniffi::export]
-pub fn format_brl(cents: i64) -> String {
-    engine::brl(cents)
-}
-
-/// Formats the existing plan/grant domain's BRL cents for the chosen locale.
-#[uniffi::export]
-pub fn format_money(cents: i64, locale: String) -> String {
-    i18n::money_in(i18n::Lang::from_tag(&locale), cents)
-}
+// Retain crate-root UniFFI names for native formatting helpers.
+include!("client_formatting.rs");
 
 /// Versão do núcleo (para a tela Sobre).
 #[uniffi::export]

@@ -13,6 +13,7 @@ import { useClient } from '../core/provider';
 import { useDialogs } from '../components/dialogs';
 import { PushCoordinator } from './coordinator';
 import { validLocalNotification } from './links';
+import { allowLocalNotification } from './local-admission';
 import { nativeNotificationPlatform } from './native-adapter';
 import { pushPlatform } from './configuration';
 import { backgroundPresentationJobs } from './presentation';
@@ -95,10 +96,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         ? chat
         : null;
     };
-    const clearHandler = installNotificationHandler((data) => {
-      const chat = canOpen(data);
-      return Boolean(chat && !chat.muted && !chat.archived);
-    });
+    const clearHandler = installNotificationHandler((data) =>
+      allowLocalNotification(store, data, deviceId),
+    );
     const stopToken = listenPushToken((token) => {
       void coordinator.receivedToken(token);
     });

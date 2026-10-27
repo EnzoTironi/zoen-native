@@ -1,8 +1,10 @@
+import { MessageTextSelectionSession } from './message-text-selection';
 import {
   useCallback,
   useEffect,
   useLayoutEffect,
   useImperativeHandle,
+  useSyncExternalStore,
   useRef,
   useState,
   use,
@@ -17,6 +19,7 @@ import {
   MessageContextOwnsPress,
   MessageContextStageEnabled,
   MessageContextStageCommands,
+  MessageTextSelection,
   type MessageContextStageHandle,
   type MessageContextGesture,
   type MessageContextNative,
@@ -107,29 +110,44 @@ function BoundMessageContextSource({
   });
   const latest = useRef(onGesture);
   const received = useRef({ binding, sequence: 0, gestureId: '' });
+  const [textSelection] = useState(() => new MessageTextSelectionSession());
+  const selection = useSyncExternalStore(
+    textSelection.subscribe,
+    textSelection.getSnapshot,
+    textSelection.getSnapshot,
+  );
+
   useLayoutEffect(() => {
+    textSelection.connect(async (requestId, payload) => {
+      const native = ref.current;
+      if (!native?.finishTextSelection) throw new Error('Native text selection unavailable');
+      await native.finishTextSelection(requestId, payload);
+    });
     latest.current = onGesture;
     const state = lifetime.current;
     Object.assign(state, { binding, live: true, active });
+    if (!active) textSelection.retire();
     return () => {
       state.live = false;
     };
-  }, [binding, active, onGesture]);
+  }, [binding, active, onGesture, textSelection]);
   useFocusEffect(
     useCallback(() => {
       const state = lifetime.current;
       state.focused = true;
       return () => {
         state.focused = false;
+        textSelection.retire();
       };
-    }, []),
+    }, [textSelection]),
   );
   useEffect(() => {
     const listener = AppState.addEventListener('change', (state) => {
       lifetime.current.foreground = state === 'active';
+      if (state !== 'active') textSelection.retire();
     });
     return () => listener.remove();
-  }, []);
+  }, [textSelection]);
   if (!NativeSource || !staged) return children;
   return (
     <NativeSource
@@ -153,6 +171,23 @@ function BoundMessageContextSource({
             ref.current === native
           );
         };
+        if (event.kind === 'selection') {
+          if (
+            !native ||
+            event.binding !== binding ||
+            !current() ||
+            event.gestureId !== received.current.gestureId ||
+            !Number.isSafeInteger(event.sequence) ||
+            event.sequence <= received.current.sequence ||
+            !event.selection ||
+            typeof event.selection.requestId !== 'string' ||
+            typeof event.selection.active !== 'boolean'
+          )
+            return;
+          received.current.sequence = event.sequence;
+          textSelection.phase(event.gestureId, event.selection.requestId, event.selection.active);
+          return;
+        }
         if (
           !native ||
           event.binding !== binding ||
@@ -168,6 +203,12 @@ function BoundMessageContextSource({
         received.current = { binding, sequence: event.sequence, gestureId: event.gestureId };
         latest.current({
           native,
+          textSelection: native.finishTextSelection
+            ? textSelection.binding(
+                event.gestureId,
+                () => current() && received.current.gestureId === event.gestureId,
+              )
+            : undefined,
           binding,
           gestureId: event.gestureId,
           kind: event.kind,
@@ -175,7 +216,13 @@ function BoundMessageContextSource({
         });
       }}
     >
-      <MessageContextOwnsPress value={handlesTap}>{children}</MessageContextOwnsPress>
+      <MessageContextOwnsPress value={handlesTap || selection.active}>
+        <MessageTextSelection
+          value={selection.active ? { ...selection, quote: textSelection.quote } : null}
+        >
+          {children}
+        </MessageTextSelection>
+      </MessageContextOwnsPress>
     </NativeSource>
   );
 }

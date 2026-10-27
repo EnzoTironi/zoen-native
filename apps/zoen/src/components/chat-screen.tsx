@@ -124,6 +124,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
                 !searchState.active && (normalDraft.replyTo || editing)
                   ? {
                       entry: editing ?? reply ?? undefined,
+                      quote: editing ? undefined : normalDraft.replyQuote,
                       onCancel: () => updateDraft({ type: 'cancel' }),
                     }
                   : undefined
@@ -213,7 +214,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
                           current.query.trim() &&
                           conversationQueryFits(current.query.trim())
                         )
-                          launchConversationAssistant(id, current.query.trim());
+                          launchConversationAssistant(id, current.query.trim(), store);
                       },
                     }
                   : undefined

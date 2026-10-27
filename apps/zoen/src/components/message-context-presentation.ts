@@ -44,7 +44,9 @@ export class MessageContextPresentation {
       );
       if (!this.current() || this.attempt !== attempt) return;
       this.attempt = null;
-      if (result === null || !attempt.allowed.has(result)) {
+      const quote =
+        attempt.allowed.has('select') && result?.startsWith('select:') && result.length <= 65543;
+      if (result === null || (!attempt.allowed.has(result) && !quote)) {
         this.options.dismissed?.();
         return;
       }

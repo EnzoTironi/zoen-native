@@ -15,20 +15,20 @@ impl Client {
             AgentControlRetry, AgentDefinitionDismiss, AgentDefinitionPreview, AgentDefinitionRead,
             AgentDefinitionReconcile, AgentDefinitionUpdate, AgentEnrollmentApprove,
             AgentEnrollmentDismiss, AgentEnrollmentPreview, AgentEnrollmentStatus, AgentStatus,
-            AppCurrentShareContext, AppEditTargets, CallHistory, ConfirmForward, ControlAgent,
-            CreateAgentInvite, CreateCommunity, CreateGroup, CreateInvite, DeleteMessage,
-            DismissForward, EditMessage, EncryptChat, FindAccountPolicyOptions,
+            AppCurrentShareContext, AppEditTargets, CallHistory, ChatLayout, ConfirmForward,
+            ControlAgent, CreateAgentInvite, CreateCommunity, CreateGroup, CreateInvite,
+            DeleteMessage, DismissForward, EditMessage, EncryptChat, FindAccountPolicyOptions,
             FindMemberCandidates, FindOwnerPolicyOptions, FindOwnerPolicySubmission, FindPeople,
             ForwardMessage, ForwardReview, ForwardStatus, InviteCall, JoinInvite, LeaveSpace,
             MarkRead, Message, MessageDraft, NewMutationId, OpenAgentLink, OwnerPolicyOptions,
             OwnerPolicyStatus, PageBlockMarkdown, PageParseMarkdown, PrepareOwnerPolicy,
             PreviewInvite, ProviderSignIn, React, RecoverFailedMediaDraft, RemoveMember,
             RemoveMemberReviewed, RequestAccountPolicyOptions, RequestAppEdit,
-            RequestOwnerPolicyOptions, RespondCall, ReviewOwnerPolicy, RevokeAgentInvite,
-            SaveMessageDraft, SavedMessages, SendMessage, SendMessageDraft, SetChatMuted,
-            SetChatPrefs, SetMemberRoleReviewed, SetTyping, ShareAppCurrent, Snapshot,
-            SpaceMemberContext, StartDirect, StartOwnerPolicyDirect, SubmitOwnerPolicy, Thread,
-            Timeline, UniversalSearch,
+            RequestOwnerPolicyOptions, RespondCall, ReviewOwnerPolicy, ReviewReplySelection,
+            RevokeAgentInvite, SaveMessageDraft, SavedMessages, SendMessage, SendMessageDraft,
+            SetChatMute, SetChatMuted, SetChatPrefs, SetMemberRoleReviewed, SetTyping,
+            ShareAppCurrent, Snapshot, SpaceMemberContext, StartDirect, StartOwnerPolicyDirect,
+            SubmitOwnerPolicy, Thread, Timeline, UniversalSearch, UniversalSearchPage,
         };
         match command {
             AppCurrentShareContext { scope } => encode(&self.app_current_share_context(scope)?),
@@ -146,57 +146,10 @@ impl Client {
                 before,
                 limit,
             )?),
-            MessageDraft {
-                expected_identity_id,
-                expected_device_id,
-                space_id,
-                thread_root_id,
-            } => {
-                let scope = crate::message_drafts::DraftScope {
-                    expected_identity_id,
-                    expected_device_id,
-                    space_id,
-                    thread_root_id,
-                };
-                encode(&self.lock().message_draft(&scope)?)
-            }
-            SaveMessageDraft {
-                expected_identity_id,
-                expected_device_id,
-                space_id,
-                thread_root_id,
-                expected_revision,
-                text,
-                reply_to,
-            } => {
-                let scope = crate::message_drafts::DraftScope {
-                    expected_identity_id,
-                    expected_device_id,
-                    space_id,
-                    thread_root_id,
-                };
-                encode(&self.lock().save_message_draft(
-                    &scope,
-                    &expected_revision,
-                    text,
-                    reply_to,
-                )?)
-            }
-            SendMessageDraft {
-                expected_identity_id,
-                expected_device_id,
-                space_id,
-                thread_root_id,
-                expected_revision,
-            } => {
-                let scope = crate::message_drafts::DraftScope {
-                    expected_identity_id,
-                    expected_device_id,
-                    space_id,
-                    thread_root_id,
-                };
-                encode(&self.lock().send_message_draft(&scope, &expected_revision)?)
-            }
+            command @ (MessageDraft { .. }
+            | SaveMessageDraft { .. }
+            | SendMessageDraft { .. }
+            | ReviewReplySelection { .. }) => self.dispatch_draft(command),
             RecoverFailedMediaDraft {
                 scope,
                 message_id,
@@ -269,33 +222,21 @@ impl Client {
                     })?;
                 encode(&entry)
             }
-            UniversalSearch {
-                query,
-                kinds,
-                limit,
-            } => encode(&self.universal_search(query, kinds, limit.min(100))?),
-            SetChatPrefs {
-                space_id,
-                pinned,
-                archived,
-                muted,
-            } => encode(&self.set_chat_prefs(
-                space_id,
-                pinned,
-                archived,
-                muted.then_some(i64::MAX),
+            UniversalSearchPage(input) => encode(&self.universal_search_page(
+                input.query,
+                input.kinds,
+                input.cursor,
+                input.limit,
+                input.expected_identity_id,
+                input.expected_device_id,
             )?),
-            SetChatMuted {
-                space_id,
-                muted,
-                expected_identity_id,
-                expected_device_id,
-            } => encode(&self.lock().set_chat_muted(
-                &space_id,
-                muted,
-                &expected_identity_id,
-                &expected_device_id,
-            )?),
+            UniversalSearch(input) => {
+                encode(&self.universal_search(input.query, input.kinds, input.limit.min(100))?)
+            }
+            command @ (SetChatPrefs(..)
+            | SetChatMuted(..)
+            | SetChatMute(..)
+            | ChatLayout { .. }) => self.dispatch_chat_preferences(command),
             SavedMessages {
                 expected_identity_id,
                 expected_device_id,
