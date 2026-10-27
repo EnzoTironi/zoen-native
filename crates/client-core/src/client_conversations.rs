@@ -21,7 +21,7 @@ impl Client {
     /// devices (their unread clears too) with one "read up to" watermark.
     pub fn mark_read(&self, space_id: String) -> Result<(), CoreError> {
         let (seq, synced) = {
-            let engine = self.lock();
+            let mut engine = self.lock();
             (
                 engine.mark_read(&space_id)?,
                 engine.net.synced.contains(&space_id),
@@ -43,14 +43,17 @@ impl Client {
         archived: bool,
         muted_until_ms: Option<i64>,
     ) -> Result<(), CoreError> {
-        self.lock().set_chat_prefs(
-            &space_id,
-            types::ChatPrefs {
-                pinned,
-                archived,
-                muted_until_ms,
-            },
-        )
+        let mut engine = self.lock();
+        let mut prefs = engine
+            .state
+            .chat_prefs
+            .get(&space_id)
+            .cloned()
+            .unwrap_or_default();
+        prefs.pinned = pinned;
+        prefs.archived = archived;
+        prefs.muted_until_ms = muted_until_ms;
+        engine.set_chat_prefs(&space_id, prefs)
     }
 
     /// Edits my message (only the author can).
