@@ -9,7 +9,8 @@ export const nativePushToken = async (): Promise<string> => {
   throw new Error(t('notifications.remoteBrowserNotificationsAreNotSetUpYet'));
 };
 export const listenPushToken = (_listener: (token: unknown) => void) => () => {};
-export const installNotificationHandler = (_allowLocal: (data: unknown) => boolean) => () => {};
+export const installNotificationHandler =
+  (_allowLocal: (data: unknown) => boolean | Promise<boolean>) => () => {};
 export const listenNotificationEvents =
   (_wake: (payload: PushWake) => void, _tap: (data: unknown) => void) => () => {};
 export const showLocalNote = async (_note: LocalNote) => {};

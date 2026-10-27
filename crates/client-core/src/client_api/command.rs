@@ -291,6 +291,16 @@ pub(super) enum Command {
         pinned: bool,
         archived: bool,
         muted: bool,
+        #[serde(default)]
+        #[cfg_attr(feature = "client-types", ts(optional))]
+        preserve_mute: Option<bool>,
+    },
+    SetChatMute {
+        space_id: String,
+        mode: crate::ChatMuteMode,
+        expected_muted_until_ms: Option<String>,
+        expected_identity_id: String,
+        expected_device_id: String,
     },
     SetChatMuted {
         space_id: String,

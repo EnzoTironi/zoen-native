@@ -95,12 +95,22 @@ export function listenPushToken(listener: (token: unknown) => void) {
   return () => subscription.remove();
 }
 
-export function installNotificationHandler(allowLocal: (data: unknown) => boolean) {
+export function installNotificationHandler(
+  allowLocal: (data: unknown) => boolean | Promise<boolean>,
+) {
+  let active = true;
   Notifications.setNotificationHandler({
     handleNotification: async (notification) => {
-      const local =
-        !isPushTrigger(notification.request.trigger) &&
-        allowLocal(notification.request.content.data);
+      let local = false;
+      try {
+        local =
+          active &&
+          !isPushTrigger(notification.request.trigger) &&
+          (await allowLocal(notification.request.content.data));
+      } catch {
+        // An unavailable canonical read never grants presentation.
+      }
+      local = active && local;
       return {
         shouldPlaySound: Boolean(local),
         shouldSetBadge: false,
@@ -109,7 +119,10 @@ export function installNotificationHandler(allowLocal: (data: unknown) => boolea
       };
     },
   });
-  return () => Notifications.setNotificationHandler(null);
+  return () => {
+    active = false;
+    Notifications.setNotificationHandler(null);
+  };
 }
 
 export function listenNotificationEvents(

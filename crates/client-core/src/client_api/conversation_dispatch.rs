@@ -25,10 +25,10 @@ impl Client {
             PreviewInvite, ProviderSignIn, React, RecoverFailedMediaDraft, RemoveMember,
             RemoveMemberReviewed, RequestAccountPolicyOptions, RequestAppEdit,
             RequestOwnerPolicyOptions, RespondCall, ReviewOwnerPolicy, ReviewReplySelection,
-            RevokeAgentInvite, SaveMessageDraft, SendMessage, SendMessageDraft, SetChatMuted,
-            SetChatPrefs, SetMemberRoleReviewed, SetTyping, ShareAppCurrent, Snapshot,
-            SpaceMemberContext, StartDirect, StartOwnerPolicyDirect, SubmitOwnerPolicy, Thread,
-            Timeline, UniversalSearch,
+            RevokeAgentInvite, SaveMessageDraft, SendMessage, SendMessageDraft, SetChatMute,
+            SetChatMuted, SetChatPrefs, SetMemberRoleReviewed, SetTyping, ShareAppCurrent,
+            Snapshot, SpaceMemberContext, StartDirect, StartOwnerPolicyDirect, SubmitOwnerPolicy,
+            Thread, Timeline, UniversalSearch,
         };
         match command {
             AppCurrentShareContext { scope } => encode(&self.app_current_share_context(scope)?),
@@ -227,28 +227,9 @@ impl Client {
                 kinds,
                 limit,
             } => encode(&self.universal_search(query, kinds, limit.min(100))?),
-            SetChatPrefs {
-                space_id,
-                pinned,
-                archived,
-                muted,
-            } => encode(&self.set_chat_prefs(
-                space_id,
-                pinned,
-                archived,
-                muted.then_some(i64::MAX),
-            )?),
-            SetChatMuted {
-                space_id,
-                muted,
-                expected_identity_id,
-                expected_device_id,
-            } => encode(&self.lock().set_chat_muted(
-                &space_id,
-                muted,
-                &expected_identity_id,
-                &expected_device_id,
-            )?),
+            command @ (SetChatPrefs { .. } | SetChatMuted { .. } | SetChatMute { .. }) => {
+                self.dispatch_chat_preferences(command)
+            }
             StartDirect { identity_id } => encode(&self.start_direct(identity_id)?),
             CreateGroup { title, member_ids } => encode(&self.create_group(title, member_ids)?),
             CreateCommunity { title } => encode(&self.create_community(title)?),

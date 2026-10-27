@@ -316,6 +316,16 @@ export function fixture(kind: keyof typeof sources, overrides: Record<string, un
     if (path.endsWith('core/provider')) return { useClient: () => ({ ...state, store }) };
     if (path.endsWith('core/query')) return { useCoreQuery: () => query };
     // This fixture tests the existing profile surface; member controls have their own real-port suite.
+    if (path.endsWith('notifications/use-muted-chats'))
+      return {
+        useMutedChats: () => ({
+          accountRequired: true,
+          state: { chats: [], scope: '', selected: null, clock_ms: null },
+          session: { ticket: () => null },
+        }),
+      };
+    if (path.endsWith('notifications/mute-duration-sheet'))
+      return { MuteDurationSheet: 'MuteDurationSheet' };
     if (path.endsWith('communities/use-member-actions'))
       return { useMemberActions: () => ({ available: false, session: {}, state: {} }) };
     if (path.endsWith('communities/member-addition-sheet'))

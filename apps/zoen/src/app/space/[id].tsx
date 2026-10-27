@@ -1,4 +1,6 @@
 import { t } from '../../i18n/index.ts';
+import { useMutedChats } from '../../notifications/use-muted-chats';
+import { MuteDurationSheet } from '../../notifications/mute-duration-sheet';
 import { IntegrityWarning } from '../../integrity/integrity-warning';
 import { ProfileAvatar } from '../../profile/profile-avatar';
 import { ProfileHeader } from '../../profile/profile-header';
@@ -23,6 +25,10 @@ export default function Space() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { snapshot, store } = useClient();
   const members = useMemberActions(id);
+  const mute = useMutedChats(id);
+  const muteTicket = mute.session.ticket(mute.state);
+  const muteChat = mute.state.chats.find((item) => item.id === id) ?? null;
+  const openMute = () => mute.session.select(id, muteTicket);
   const { presentation: p, scheme } = useTheme();
   const insets = useSafeAreaInsets();
   const { confirm } = useDialogs();
@@ -68,6 +74,11 @@ export default function Space() {
         detail={t('chat.thisChatIsNoLongerOnThisDevice')}
       />
     );
+  const muted = mute.accountRequired ? chat.muted : Boolean(muteChat?.muted_until_ms);
+  const muteDisabled =
+    busy ||
+    (!mute.accountRequired &&
+      (mute.state.phase !== 'ready' || mute.state.pending !== null || !muteChat));
   const selected = chat;
   const subtitle =
     chat.kind === 'Direct'
@@ -99,6 +110,7 @@ export default function Space() {
         space_id: id,
         pinned: current.pinned,
         muted: current.muted,
+        ...(key !== 'muted' ? { preserve_mute: true } : {}),
         archived: current.archived,
         [key]: value,
       });
@@ -162,12 +174,18 @@ export default function Space() {
             },
             {
               id: 'details-mute',
-              label: t(chat.muted ? 'peerInfo.unmute' : 'peerInfo.mute'),
-              icon: chat.muted
+              label: t(muted ? 'peerInfo.unmute' : 'peerInfo.mute'),
+              icon: muted
                 ? { ios: 'bell.slash.fill', android: 'notifications_off', web: 'notifications_off' }
                 : { ios: 'bell.fill', android: 'notifications', web: 'notifications' },
-              disabled: busy,
-              onPress: () => preference('muted', !chat.muted),
+              disabled: muteDisabled,
+              onPress: () => {
+                if (mute.accountRequired) preference('muted', !chat.muted);
+                else if (muted) {
+                  mute.session.select(id, muteTicket);
+                  void mute.session.mute(id, { kind: 'off' }, muteTicket);
+                } else openMute();
+              },
             },
             {
               id: 'details-search',
@@ -178,9 +196,14 @@ export default function Space() {
           ]}
         />
         <IntegrityWarning spaceId={id} />
-        {error ? (
+        {error || mute.state.actionFailed || mute.state.readFailed ? (
           <Text accessibilityRole="alert" selectable style={{ color: p.destructive }}>
-            {error}
+            {error ??
+              t(
+                mute.state.readFailed
+                  ? 'notifications.mutedReadFailed'
+                  : 'notifications.muteNotConfirmed',
+              )}
           </Text>
         ) : null}
         <ProfileSection>
@@ -219,9 +242,16 @@ export default function Space() {
               <Switch
                 testID="details-preference-muted"
                 label={t('chat.muteNotifications')}
-                value={chat.muted}
-                onValueChange={(value) => preference('muted', value)}
-                disabled={busy}
+                value={muted}
+                onValueChange={(value) => {
+                  if (mute.accountRequired) preference('muted', value);
+                  else if (value) openMute();
+                  else {
+                    mute.session.select(id, muteTicket);
+                    void mute.session.mute(id, { kind: 'off' }, muteTicket);
+                  }
+                }}
+                disabled={muteDisabled}
                 modifiers={preferenceModifiers}
               />
               <Switch
@@ -360,6 +390,20 @@ export default function Space() {
           {t('chat.historyEventTotal', { total: selected.event_count })}
         </Text>
       </ScrollView>
+      <MuteDurationSheet
+        key={`${mute.state.scope}:${mute.state.selected ?? ''}`}
+        chat={mute.state.selected === id ? muteChat : null}
+        clock={mute.state.clock_ms}
+        busy={mute.state.phase !== 'ready' || mute.state.pending !== null}
+        onDismiss={() => mute.session.select(null, muteTicket)}
+        onChange={(choice) => {
+          void mute.session.mute(id, choice, muteTicket);
+        }}
+        onUnmute={() => {
+          void mute.session.mute(id, { kind: 'off' }, muteTicket);
+        }}
+      />
+
       {chat.kind !== 'Direct' && members.available ? (
         <>
           <MemberActionsSheet session={members.session} state={members.state} />

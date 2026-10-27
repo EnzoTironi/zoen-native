@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
+import * as presentation from '../notifications/mute-presentation.ts';
 import * as flow from '../notifications/muted-chats.ts';
 import * as notificationSettings from '../notifications/settings-presentation.ts';
 import * as ownership from './account-scope.ts';
@@ -17,6 +18,7 @@ import { telegramPresentation } from '../theme/telegram.ts';
 export type Element = { type: any; props: Record<string, any> };
 const files = {
   hook: '../notifications/use-muted-chats.ts',
+  sheet: '../notifications/mute-duration-sheet.tsx',
   view: '../notifications/muted-chats-screen.tsx',
   route: '../app/settings/muted-chats.tsx',
   entry: '../components/notification-settings.tsx',
@@ -62,11 +64,11 @@ export function strings(value: unknown): string {
 export async function settle() {
   for (let n = 0; n < 30; ++n) await Promise.resolve();
 }
-export async function mutedUi(locale: 'en' | 'pt-BR' = 'en') {
+export async function mutedUi(locale: 'en' | 'pt-BR' = 'en', platform = 'ios') {
   const localization = createLocalization({ notifications, common, settings, chat, ownerPolicy }, [
     locale,
   ]);
-  const snapshot = mutedSnapshot(),
+  const snapshot = { ...mutedSnapshot(), clock_ms: '1800000000000' },
     driver = new Driver();
   driver.opening = async () => structuredClone(snapshot);
   const calls: any[] = [],
@@ -75,6 +77,23 @@ export async function mutedUi(locale: 'en' | 'pt-BR' = 'en') {
   driver.operation = async (command) => {
     calls.push(structuredClone(command));
     if (command.op === 'snapshot') return structuredClone(snapshot);
+    if (command.op === 'set_chat_mute') {
+      const mode = command.mode;
+      const until =
+        mode.kind === 'for'
+          ? String(BigInt(mode.from_ms) + BigInt(mode.duration_seconds) * 1000n)
+          : mode.kind === 'until'
+            ? mode.until_ms
+            : mode.kind === 'forever'
+              ? '9223372036854775807'
+              : null;
+      snapshot.conversations = snapshot.conversations.map((row) =>
+        row.id === command.space_id
+          ? { ...row, muted: until !== null, muted_until_ms: until }
+          : row,
+      );
+      return;
+    }
     if (command.op === 'set_chat_muted') {
       snapshot.conversations = snapshot.conversations.map((row) =>
         row.id === command.space_id ? { ...row, muted: false, muted_until_ms: null } : row,
@@ -115,7 +134,8 @@ export async function mutedUi(locale: 'en' | 'pt-BR' = 'en') {
       return {
         useState: (initial: unknown) => {
           const index = cursor++;
-          if (!(index in stateSlots)) stateSlots[index] = initial;
+          if (!(index in stateSlots))
+            stateSlots[index] = typeof initial === 'function' ? initial() : initial;
           return [
             stateSlots[index],
             (value: unknown) => {
@@ -136,7 +156,7 @@ export async function mutedUi(locale: 'en' | 'pt-BR' = 'en') {
     if (name === 'react-native')
       return {
         AppState: appState,
-        Platform: { OS: 'ios' },
+        Platform: { OS: platform },
         Linking: {},
         FlatList: 'FlatList',
         ScrollView: 'ScrollView',
@@ -168,12 +188,17 @@ export async function mutedUi(locale: 'en' | 'pt-BR' = 'en') {
       return { useClient: () => ({ ...store.getSnapshot(), store }) };
     if (name.endsWith('/account-scope')) return ownership;
     if (name === './muted-chats') return flow;
+    if (name === './mute-presentation') return presentation;
+    if (name === './mute-duration-sheet') return load('sheet');
+    if (name === '@expo/ui/community/datetime-picker')
+      return { __esModule: true, default: 'DateTimePicker' };
     if (name.endsWith('/use-muted-chats')) return load('hook');
     if (name.endsWith('/muted-chats-screen')) return load('view');
     if (name.endsWith('/i18n') || name.endsWith('/i18n/index.ts')) return localization;
     if (name.endsWith('/theme'))
       return {
         useTheme: () => ({
+          scheme: 'light',
           presentation: telegramPresentation('day'),
           colors: { text: '#111111', accent: '#007AFF' },
         }),
@@ -237,7 +262,14 @@ export async function mutedUi(locale: 'en' | 'pt-BR' = 'en') {
   const route = () => {
     const tree = render();
     const view = nodes(tree).find((node) => node.type === load('view').MutedChatsScreen)!;
-    return { props: view.props, tree: view.type(view.props) as Element };
+    const expanded = view.type(view.props) as Element;
+    const sheet = nodes(expanded).find((node) => node.type === load('sheet').MuteDurationSheet);
+    if (sheet) {
+      const actual = sheet.type(sheet.props);
+      sheet.type = actual.type;
+      sheet.props = actual.props;
+    }
+    return { props: view.props, tree: expanded };
   };
   return {
     store,
