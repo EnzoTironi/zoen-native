@@ -12,6 +12,7 @@ mod content_dispatch;
 mod conversation_dispatch;
 mod draft_dispatch;
 mod forwarding_dispatch;
+mod search;
 use command::Command;
 
 mod handle;
@@ -145,6 +146,7 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
     crate::AgentEnrollmentDeliveryDto::export_all(&config)?;
     crate::AgentEnrollmentStatusDto::export_all(&config)?;
     crate::UniversalResults::export_all(&config)?;
+    crate::UniversalSearchPage::export_all(&config)?;
     Ok(())
 }
 
