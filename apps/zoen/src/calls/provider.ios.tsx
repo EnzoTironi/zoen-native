@@ -1,5 +1,15 @@
 import { setAudioModeAsync, setIsAudioActiveAsync } from 'expo-audio';
-import { createContext, use, useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  use,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import Native from '../../modules/zoen-core/src/ZoenCoreModule';
 import { useClient } from '../core/provider';
 import { callAudioFocus } from '../media/call-audio-focus.ts';
@@ -22,17 +32,52 @@ const Context = createContext<Calls>({
 });
 
 export function NativeCallsProvider({ children }: { children: ReactNode }) {
-  const { store, snapshot, mode } = useClient();
+  const { store, snapshot, mode, phase } = useClient();
+  // Reopening can retain identity/device IDs; UI callbacks still belong to the original realm.
+  const sessionEpoch = store.sessionEpoch;
+  const mounted = useRef(true);
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const identity = snapshot?.account?.identity_id;
   const device = snapshot?.account?.device_id;
-  const [presentation, setPresentation] = useState<CallPresentation | null>(null);
-  const activeCall =
-    presentation?.identity_id === identity && presentation?.device_id === device
-      ? presentation
+  const [presentation, setPresentation] = useState<{
+    epoch: number;
+    call: CallPresentation;
+  } | null>(null);
+  const currentOwner = useCallback(() => {
+    const current = store.getSnapshot();
+    const account = current.snapshot?.account;
+    return mounted.current &&
+      !store.isSessionRetiring &&
+      store.sessionEpoch === sessionEpoch &&
+      current.phase === 'ready' &&
+      current.mode === 'account' &&
+      account?.unlocked === true &&
+      !account.setup_pending &&
+      account.identity_id === identity &&
+      account.device_id === device
+      ? account
       : null;
-  const available =
+  }, [store, sessionEpoch, identity, device]);
+  const ownerReady =
+    phase === 'ready' &&
+    !store.isSessionRetiring &&
     mode === 'account' &&
     snapshot?.account?.unlocked === true &&
+    !snapshot.account.setup_pending;
+  const activeCall =
+    ownerReady &&
+    presentation?.epoch === sessionEpoch &&
+    presentation.call.identity_id === identity &&
+    presentation.call.device_id === device
+      ? presentation.call
+      : null;
+  const available =
+    ownerReady &&
     typeof Native?.startCall === 'function' &&
     typeof Native?.callAudioReply === 'function';
   useEffect(() => {
@@ -73,29 +118,18 @@ export function NativeCallsProvider({ children }: { children: ReactNode }) {
       },
       current: () => native.callPresentation!(),
       owner() {
-        const current = store.getSnapshot();
-        return {
-          identity: current.mode === 'account' ? current.snapshot?.account?.identity_id : undefined,
-          device: current.snapshot?.account?.device_id,
-        };
+        const account = currentOwner();
+        return { identity: account?.identity_id, device: account?.device_id };
       },
-      changed: setPresentation,
+      changed: (call) => setPresentation(call ? { epoch: sessionEpoch, call } : null),
     });
-  }, [identity, device, store]);
+  }, [identity, device, store, sessionEpoch, currentOwner]);
   const value = useMemo<Calls>(
     () => ({
       available,
       activeCall,
       async showActiveCall() {
-        const current = store.getSnapshot();
-        if (
-          !activeCall ||
-          current.mode !== 'account' ||
-          current.snapshot?.account?.identity_id !== activeCall.identity_id ||
-          current.snapshot?.account?.device_id !== activeCall.device_id ||
-          !Native?.showCurrentCall
-        )
-          return;
+        if (!activeCall || !currentOwner() || !Native?.showCurrentCall) return;
         await Native.showCurrentCall(
           activeCall.identity_id,
           activeCall.device_id,
@@ -103,14 +137,8 @@ export function NativeCallsProvider({ children }: { children: ReactNode }) {
         );
       },
       async start(space, video) {
-        const now = store.getSnapshot();
-        if (
-          !available ||
-          now.mode !== 'account' ||
-          now.snapshot?.account?.identity_id !== identity ||
-          now.snapshot?.account?.device_id !== device
-        )
-          throw new Error('The call account changed.');
+        if (!currentOwner()) return;
+        if (!available) throw new Error('The call account changed.');
         if (activeCall?.space_id === space && Native?.showCurrentCall) {
           await Native.showCurrentCall(
             activeCall.identity_id,
@@ -122,7 +150,7 @@ export function NativeCallsProvider({ children }: { children: ReactNode }) {
         await Native!.startCall!(space, video);
       },
     }),
-    [available, activeCall, store, identity, device],
+    [available, activeCall, currentOwner],
   );
   return <Context value={value}>{children}</Context>;
 }
