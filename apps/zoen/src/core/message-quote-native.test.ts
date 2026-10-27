@@ -1,49 +1,12 @@
+import { preparePackage } from './message-markdown-native.fixtures.ts';
 import { createRequire } from 'node:module';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { execFileSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-
-function preparePackage(app: string, directory: string) {
-  const pkg = join(directory, 'node_modules/react-native-enriched-markdown');
-  const installed = join(app, 'node_modules/react-native-enriched-markdown');
-  const patch = join(
-    app,
-    'patches/react-native-enriched-markdown+1.1.1+007+quote-source-map.patch',
-  );
-  const paths = [
-    ...readFileSync(patch, 'utf8').matchAll(
-      /^diff --git a\/node_modules\/react-native-enriched-markdown\/(.+) b\//gm,
-    ),
-  ].map((match) => match[1]!);
-  for (const path of paths) {
-    if (!existsSync(join(installed, path))) continue;
-    mkdirSync(join(pkg, path, '..'), { recursive: true });
-    cpSync(join(installed, path), join(pkg, path));
-  }
-  for (const path of ['cpp/parser', 'cpp/md4c'])
-    cpSync(join(installed, path), join(pkg, path), { recursive: true });
-  for (const name of [
-    'EnrichedMarkdownNativeComponent.ts',
-    'EnrichedMarkdownTextNativeComponent.ts',
-    'EnrichedMarkdownTextInputNativeComponent.ts',
-  ]) {
-    const target = join(pkg, 'src', name);
-    if (!existsSync(target)) {
-      mkdirSync(join(pkg, 'src'), { recursive: true });
-      cpSync(join(installed, 'src', name), target);
-    }
-  }
-  if (!existsSync(join(pkg, 'ios/utils/ENRMQuoteRanges.m')))
-    execFileSync('patch', ['--batch', '--forward', '-p1', '-i', patch], {
-      cwd: directory,
-    });
-
-  return pkg;
-}
 
 // Qualify the maintained patch privately; installed/shared dependencies are read-only.
 test(

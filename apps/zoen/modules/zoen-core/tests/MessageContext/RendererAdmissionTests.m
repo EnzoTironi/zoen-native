@@ -30,6 +30,9 @@ static NSUInteger ENRMCharacterIndexAtPoint(FixtureText *text, CGPoint point) {
 @property CGRect bounds;
 - (CGPoint)convertPoint:(CGPoint)point toView:(FixtureText *)text;
 @end
+#define UIView Renderer
+#define UITextView FixtureText
+#import "admission-helper.inc"
 @implementation Renderer
 - (CGPoint)convertPoint:(CGPoint)point toView:(FixtureText *)text { return point; }
 #import "admission.inc"

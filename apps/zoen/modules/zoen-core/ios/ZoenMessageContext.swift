@@ -111,6 +111,10 @@ final class ZoenMessageContextSource: ExpoView {
   private(set) var presentation: ZoenMessageContextController?
   private var cancelledRequests: [UUID] = []
   private var lastGesture: UUID?
+  private weak var lastGestureText: UITextView?
+  private var lastGestureHadText = false
+  private var lastGestureTextPoint = CGPoint.zero
+  private var lastGestureTextGeneration: UInt64 = 0
   private var gestureSequence = 0
   var requestedBinding = ""
   var requestedActive = false
@@ -162,6 +166,9 @@ final class ZoenMessageContextSource: ExpoView {
   func retire() {
     generation &+= 1
     lastGesture = nil
+    lastGestureText = nil
+    lastGestureHadText = false
+    lastGestureTextPoint = .zero
     if nearestStage?.contextGesture.source === self { nearestStage?.contextGesture.cancelAdmission() }
     presentation?.retire()
     resetPress(animated: false)
@@ -170,10 +177,14 @@ final class ZoenMessageContextSource: ExpoView {
     active && presentation == nil && children.count == 1 && window != nil &&
       window?.windowScene?.activationState == .foregroundActive && nearestStage?.active == true && nearestStage?.controller == nil
   }
-  func dispatch(kind: String) {
+  func dispatch(kind: String, textView: UITextView? = nil, textPoint: CGPoint = .zero, hadText: Bool = false) {
     guard gestureAdmitted else { return }
     let gesture = UUID()
     lastGesture = gesture
+    lastGestureText = textView.flatMap { $0.isDescendant(of: contentHost) ? $0 : nil }
+    lastGestureHadText = hadText || textView != nil
+    lastGestureTextPoint = textPoint
+    lastGestureTextGeneration = generation
     gestureSequence += 1
     onGesture(["binding": binding, "gestureId": gesture.uuidString, "sequence": gestureSequence, "kind": kind])
   }
@@ -218,6 +229,9 @@ final class ZoenMessageContextSource: ExpoView {
     guard active, binding == expectedBinding, lastGesture?.uuidString == gestureId,
           gestureAdmitted, let window, visible(in: window) else { return false }
     lastGesture = nil
+    lastGestureText = nil
+    lastGestureHadText = false
+    lastGestureTextPoint = .zero
     return true
   }
   func present(requestId: String, expectedBinding: String, gestureId: String, configuration: String) async throws -> String? {
@@ -232,7 +246,7 @@ final class ZoenMessageContextSource: ExpoView {
           visible(in: window) else { throw Failure.unavailable }
     let config = try ZoenMessageContextConfiguration.decode(configuration)
     let controller = ZoenMessageContextController(source: self, configuration: config,
-      request: request, generation: generation, binding: binding, child: children[0], gestureId: gestureId)
+      request: request, generation: generation, binding: binding, child: children[0], gestureId: gestureId, heldText: !gestureId.isEmpty && lastGestureTextGeneration == generation ? lastGestureText : nil, heldTextPoint: lastGestureTextPoint, hadHeldText: !gestureId.isEmpty && lastGestureTextGeneration == generation && lastGestureHadText)
     presentation = controller
     do {
       let result: String? = try await withTaskCancellationHandler {
@@ -295,6 +309,9 @@ final class ZoenMessageContextSource: ExpoView {
     restore(controller)
     presentation = nil
     lastGesture = nil
+    lastGestureText = nil
+    lastGestureHadText = false
+    lastGestureTextPoint = .zero
   }
   private func visible(in window: UIWindow) -> Bool {
     var node: UIView? = self

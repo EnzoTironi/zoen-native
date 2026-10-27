@@ -6,6 +6,10 @@ final class ZoenMessageContextController: UIViewController {
   let request: UUID
   let binding: String
   let gestureId: String
+  weak var heldText: UITextView?
+  let heldTextPoint: CGPoint
+  let hadHeldText: Bool
+  var textSelectionInitialized = false
   var selectingText = false
   var selectionAnnounced = false
   var textSelectionState: [ZoenContextTextSelectionState] = []
@@ -39,8 +43,9 @@ final class ZoenMessageContextController: UIViewController {
   var reduceMotion: Bool { configuration.reducedMotion || UIAccessibility.isReduceMotionEnabled }
 
   init(source: ZoenMessageContextSource, configuration: ZoenMessageContextConfiguration,
-       request: UUID, generation: UInt64, binding: String, child: UIView, gestureId: String = "") {
+       request: UUID, generation: UInt64, binding: String, child: UIView, gestureId: String = "", heldText: UITextView? = nil, heldTextPoint: CGPoint = .zero, hadHeldText: Bool = false) {
     self.source = source; self.configuration = configuration; self.request = request
+    self.heldText = heldText; self.heldTextPoint = heldTextPoint; self.hadHeldText = hadHeldText || heldText != nil
     sourceGeneration = generation; self.binding = binding; self.child = child; self.gestureId = gestureId
     super.init(nibName: nil, bundle: nil)
     NotificationCenter.default.addObserver(self, selector: #selector(background), name: UIApplication.willResignActiveNotification, object: nil)
