@@ -280,6 +280,28 @@ impl Client {
             UniversalSearch(input) => {
                 encode(&self.universal_search(input.query, input.kinds, input.limit.min(100))?)
             }
+            SetChatPrefs {
+                space_id,
+                pinned,
+                archived,
+                muted,
+            } => encode(&self.set_chat_prefs(
+                space_id,
+                pinned,
+                archived,
+                muted.then_some(i64::MAX),
+            )?),
+            SetChatMuted {
+                space_id,
+                muted,
+                expected_identity_id,
+                expected_device_id,
+            } => encode(&self.lock().set_chat_muted(
+                &space_id,
+                muted,
+                &expected_identity_id,
+                &expected_device_id,
+            )?),
             StartDirect { identity_id } => encode(&self.start_direct(identity_id)?),
             CreateGroup { title, member_ids } => encode(&self.create_group(title, member_ids)?),
             CreateCommunity { title } => encode(&self.create_community(title)?),

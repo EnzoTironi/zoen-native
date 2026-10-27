@@ -198,7 +198,7 @@ async fn global_search_command_returns_real_pages_and_refuses_stale_edit_delete(
 #[tokio::test]
 async fn search_request_payload_extraction_preserves_flat_wire_and_errors() -> TestResult {
     let (core, account, space) = fixture()?;
-    core.send_message(space, "needle original".into())?;
+    core.send_message(space.clone(), "needle original".into())?;
     let legacy = serde_json::json!({
         "op": "universal_search", "query": "needle", "kinds": ["message"], "limit": 200
     });
@@ -222,5 +222,33 @@ async fn search_request_payload_extraction_preserves_flat_wire_and_errors() -> T
         let nested = serde_json::json!({"op": op, "input": request});
         assert!(core.client_request(nested.to_string()).await.is_err());
     }
+    core.client_request(
+        serde_json::json!({
+            "op": "set_chat_prefs", "space_id": space, "pinned": true,
+            "archived": true, "muted": true
+        })
+        .to_string(),
+    )
+    .await?;
+    let before = core
+        .spaces()
+        .into_iter()
+        .find(|entry| entry.id == space)
+        .ok_or("space missing")?;
+    assert!(before.pinned && before.archived && before.muted);
+    core.client_request(
+        serde_json::json!({
+            "op": "set_chat_muted", "space_id": space, "muted": false,
+            "expected_identity_id": account.identity_id, "expected_device_id": account.device_id
+        })
+        .to_string(),
+    )
+    .await?;
+    let after = core
+        .spaces()
+        .into_iter()
+        .find(|entry| entry.id == space)
+        .ok_or("space missing")?;
+    assert!(after.pinned && after.archived && !after.muted);
     Ok(())
 }
