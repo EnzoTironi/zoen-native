@@ -99,6 +99,7 @@ export async function inboxUi(locale: 'en' | 'pt-BR' = 'en') {
     }
     if (command.op === 'mark_read') {
       core.chat.unread = 0;
+      core.chat.manual_unread = false;
       return;
     }
     throw Error(`Unexpected operation ${command.op}`);

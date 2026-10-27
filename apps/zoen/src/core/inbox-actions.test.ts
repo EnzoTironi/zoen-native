@@ -143,7 +143,7 @@ test('retirement leaves an admitted Core action intact but suppresses late feedb
   assert.equal(f.session.getSnapshot().pending, null);
 });
 
-test('unmute uses the exact finite canonical deadline and mark-read uses its dedicated command', async () => {
+test('unmute preserves its observed finite deadline and scoped read uses a frozen canonical target', async () => {
   const f = inboxFixture();
   await f.run('mute');
   const mute = f.calls.find((c) => c.kind === 'mute')!;
@@ -151,10 +151,10 @@ test('unmute uses the exact finite canonical deadline and mark-read uses its ded
   await f.run('read');
   assert.equal(f.chat.unread, 0);
   assert.equal(f.chat.muted_until_ms, null);
-  assert.equal(
-    f.calls.some((c) => 'kind' in c && !['snapshot', 'read', 'refresh', 'mute'].includes(c.kind)),
-    false,
-  );
+  const read = f.calls.find((call) => call.kind === 'mark_read');
+  assert.ok(read && read.kind === 'mark_read');
+  assert.equal(read.through_seq, '10');
+  assert.equal(read.observed_manual_revision, '0');
 });
 
 test('read and mute preserve a prior authorized archive Undo; Undo preserves the newer mute state', async () => {

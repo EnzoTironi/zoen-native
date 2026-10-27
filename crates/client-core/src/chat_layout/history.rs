@@ -12,19 +12,25 @@ pub(super) struct Current {
     pub prefs: ChatPrefs,
     pin_revision: Option<String>,
     archive_revision: Option<String>,
+    manual_revision: Option<String>,
 }
 impl Current {
     pub fn revision(&self, field: ChatLayoutField) -> &str {
         match field {
             ChatLayoutField::Pinned => self.pin_revision.as_deref(),
             ChatLayoutField::Archived => self.archive_revision.as_deref(),
+            ChatLayoutField::ManualUnread => self.manual_revision.as_deref(),
         }
         .unwrap_or("0")
     }
-    fn dto(&self) -> ChatLayoutState {
+    fn dto(&self, engine: &Engine, space: &str) -> ChatLayoutState {
         ChatLayoutState {
             pinned: self.prefs.pinned,
             archived: self.prefs.archived,
+            manual_unread: self.prefs.manual_unread,
+            manual_unread_revision: self.revision(ChatLayoutField::ManualUnread).to_owned(),
+            read_through_seq: engine.read_target_seq(space).map(|n| n.to_string()),
+            read_up_to_seq: engine.read_up_to(space).map(|n| n.to_string()),
             pin_revision: self.revision(ChatLayoutField::Pinned).to_owned(),
             archive_revision: self.revision(ChatLayoutField::Archived).to_owned(),
         }
@@ -131,6 +137,9 @@ impl History {
             if current.prefs.archived != prefs.archived {
                 current.archive_revision = Some(event_revision);
             }
+            if current.prefs.manual_unread != prefs.manual_unread {
+                current.manual_revision = Some(event_log::content_hash_of(event));
+            }
             current.prefs = prefs.clone();
         }
         Ok(history)
@@ -142,6 +151,7 @@ impl History {
                 prefs: value.prefs.clone(),
                 pin_revision: value.pin_revision.clone(),
                 archive_revision: value.archive_revision.clone(),
+                manual_revision: value.manual_revision.clone(),
             })
     }
     pub fn operation(&self, scope: &ChatLayoutScope, id: &str) -> R<Option<&Recorded>> {
@@ -154,16 +164,22 @@ impl History {
             value => Ok(value),
         }
     }
-    pub fn result(&self, scope: &ChatLayoutScope, receipt: Option<&Recorded>) -> ChatLayoutResult {
+    pub fn result(
+        &self,
+        engine: &Engine,
+        scope: &ChatLayoutScope,
+        receipt: Option<&Recorded>,
+    ) -> ChatLayoutResult {
         let current = self.current(&scope.space_id);
         let receipt = receipt.map(|record| {
             let mut receipt = record.receipt.clone();
-            receipt.undo_available =
-                receipt.undo_of.is_none() && current.revision(receipt.field) == receipt.revision;
+            receipt.undo_available = receipt.field != ChatLayoutField::ManualUnread
+                && receipt.undo_of.is_none()
+                && current.revision(receipt.field) == receipt.revision;
             receipt
         });
         ChatLayoutResult {
-            current: current.dto(),
+            current: current.dto(engine, &scope.space_id),
             receipt,
         }
     }

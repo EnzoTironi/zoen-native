@@ -86,7 +86,16 @@ final class ZoenPhotoEditorImage {
     return try rotated(image, turns: turns)
   }
   private static func context(width: Int, height: Int, colorSpace: CGColorSpace?) -> CGContext? {
-    let space = (colorSpace?.model == .rgb ? colorSpace : nil) ?? CGColorSpaceCreateDeviceRGB()
+    let space: CGColorSpace
+    if let colorSpace, colorSpace.model == .rgb, !CGColorSpaceUsesExtendedRange(colorSpace) {
+      space = colorSpace
+    } else {
+      // PencilKit can return extended-range RGB even for SDR ink. That
+      // profile is incompatible with this bounded 8-bit output context;
+      // CoreGraphics converts it to sRGB while drawing, before rotation.
+      guard let standard = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
+      space = standard
+    }
     return CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
       space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
   }

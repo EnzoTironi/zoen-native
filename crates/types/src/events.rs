@@ -199,6 +199,7 @@ pub enum OwnerPolicyOutcome {
 pub enum ChatPrefsField {
     Pinned,
     Archived,
+    ManualUnread,
 }
 
 /// Correlates one explicit local operation with its signed preference event.
@@ -215,6 +216,9 @@ pub struct ChatPrefsOperation {
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
 pub struct ChatPrefs {
+    /// A private reminder, never a read watermark or a fabricated message count.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub manual_unread: bool,
     #[serde(default)]
     pub pinned: bool,
     #[serde(default)]
@@ -222,6 +226,10 @@ pub struct ChatPrefs {
     /// Muted until this time (ms since epoch); `i64::MAX` = always. Absent = not muted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub muted_until_ms: Option<i64>,
+}
+
+fn is_false(value: &bool) -> bool {
+    !value
 }
 
 /// One recipient's copy of a profile key: X25519 with a fresh ephemeral key, then

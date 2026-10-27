@@ -38,7 +38,7 @@ export default function Chats() {
             (filter === 'archived' ? chat.archived : !chat.archived) &&
             (filter === 'all' ||
               filter === 'archived' ||
-              (filter === 'unread' ? chat.unread > 0 : chat.kind === filter)),
+              (filter === 'unread' ? chat.unread > 0 || chat.manual_unread : chat.kind === filter)),
         )
         .sort(
           (a, b) =>

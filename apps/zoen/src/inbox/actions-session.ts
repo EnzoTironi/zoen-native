@@ -22,7 +22,6 @@ export interface InboxActionsPort {
   layout(input: ChatLayoutInput): Promise<ChatLayoutResult>;
   newId(): Promise<string>;
   mute(id: string, muted: boolean, observed: string | null, owner: AccountScope): Promise<unknown>;
-  read(id: string): Promise<unknown>;
   refresh(): Promise<unknown>;
 }
 const empty = (): InboxState => ({ scope: '', pending: null, undo: null, error: null });
@@ -130,9 +129,14 @@ export class InboxActionsSession {
     try {
       const fresh = this.chat(await this.port.snapshot(), chat.id, owner);
       if (!this.current(generation)) return;
-      if (action === 'pin' || action === 'archive') {
-        const field = action === 'pin' ? 'pinned' : 'archived',
-          value = !chat[field];
+      if (
+        action === 'pin' ||
+        action === 'archive' ||
+        (action === 'read' && !chat.unread && !chat.manual_unread)
+      ) {
+        const field =
+            action === 'pin' ? 'pinned' : action === 'archive' ? 'archived' : 'manual_unread',
+          value = field === 'manual_unread' ? true : !chat[field];
         const scope = this.scope(chat.id, owner);
         const observed = await this.port.layout({ kind: 'read', scope });
         if (!this.current(generation)) return;
@@ -152,7 +156,9 @@ export class InboxActionsSession {
             observed_revision:
               field === 'pinned'
                 ? observed.current.pin_revision
-                : observed.current.archive_revision,
+                : field === 'archived'
+                  ? observed.current.archive_revision
+                  : observed.current.manual_unread_revision,
           },
           generation,
         );
@@ -168,7 +174,7 @@ export class InboxActionsSession {
         )
           throw Error('Unconfirmed operation');
         if (!acknowledged) await this.port.refresh();
-        if (this.current(generation) && receipt.undo_available)
+        if (field !== 'manual_unread' && this.current(generation) && receipt.undo_available)
           this.publish({ undo: { id: chat.id, title: fresh.title, receipt } });
       } else if (action === 'mute') {
         const value = !chat.muted;
@@ -183,8 +189,27 @@ export class InboxActionsSession {
           }
         } else if (this.current(generation)) await this.port.refresh();
       } else if (action === 'read') {
-        if (fresh.unread > 0) await this.port.read(chat.id);
-        else if (this.current(generation)) await this.port.refresh();
+        const scope = this.scope(chat.id, owner);
+        const observed = await this.port.layout({ kind: 'read', scope });
+        if (!this.current(generation) || !this.port.member(chat.id)) return;
+        const through = observed.current.read_through_seq;
+        try {
+          await this.port.layout({
+            kind: 'mark_read',
+            scope,
+            through_seq: through,
+            observed_manual_revision: observed.current.manual_unread_revision,
+          });
+        } catch (error) {
+          if (!this.current(generation)) return;
+          const latest = await this.port.layout({ kind: 'read', scope });
+          if (
+            latest.current.manual_unread ||
+            (through !== null && BigInt(latest.current.read_up_to_seq ?? '0') < BigInt(through))
+          )
+            throw error;
+          if (this.current(generation)) await this.port.refresh();
+        }
       }
     } catch {
       if (this.current(generation)) {

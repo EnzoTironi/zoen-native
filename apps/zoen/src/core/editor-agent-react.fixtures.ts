@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import * as React from 'react';
 import { loadEditorAgent } from './editor-agent-compile.fixtures.ts';
 import { editorAgentTargets } from './editor-agent-targets.fixtures.ts';
+import { editorAgentControlPorts } from './editor-agent-controls.fixtures.ts';
 import { createReactTestRoot } from './react-test-root.fixtures.ts';
 import { ClientStore } from './store.ts';
 import { Driver, draftSession } from './store.fixtures.ts';
@@ -23,6 +24,7 @@ import { drawingReview, drawingReply } from './drawing-review.fixtures.ts';
 import * as enrollmentFlow from '../agent-enrollment/session.ts';
 import * as enrollmentPort from '../agent-enrollment/core-port.ts';
 import * as trust from '../agents/trust-confirmation.ts';
+import * as documentAuthority from '../documents/document-authority.ts';
 import * as admission from '../miniapps/editor-agent-admission.ts';
 import { editorAgentMembers, type AgentMemberMode } from './editor-agent-members.fixtures.ts';
 import { telegramPresentation } from '../theme/telegram.ts';
@@ -200,28 +202,9 @@ export async function editorAgentReactFixture(
     previewPort.observe({ zoen: { sceneSave: { itemId, ready: true, reviewPreview: 1 } } });
     document = { ...document, drawingReview: previewPort };
   }
-  const children = ({ children }: { children: React.ReactNode }) => children;
-  const visibility = React.createContext(true);
+  const { children, VisibleView, Capture } = editorAgentControlPorts(controls);
   const appListeners = new Set<(state: string) => void>();
   let appState = 'active';
-  function VisibleView(props: Control) {
-    const parent = React.useContext(visibility);
-    const hidden = [props.style].flat().some((style) => style?.display === 'none');
-    return React.createElement(visibility.Provider, { value: parent && !hidden }, props.children);
-  }
-  function Capture(props: Control) {
-    const visible = React.useContext(visibility);
-    const key = visible
-      ? (props.testID ?? (props.label ? `label:${props.label}` : undefined))
-      : undefined;
-    React.useLayoutEffect(() => {
-      if (key) controls.set(key, props);
-      return () => {
-        if (key && controls.get(key) === props) controls.delete(key);
-      };
-    }, [key, props]);
-    return null;
-  }
   function Sheet(props: Control) {
     React.useEffect(() => {
       sheetMounts++;
@@ -427,6 +410,8 @@ export async function editorAgentReactFixture(
     '../agent-enrollment/use-agent-enrollment.ts',
     {},
   );
+  common['../documents/document-authority.ts'] = documentAuthority;
+  common['./use-request-decision-lease'] = load('../agents/use-request-decision-lease.ts', {});
   if (options.visualReview) {
     common['./drawing-tool-review'] = load('../agents/drawing-tool-review.tsx', {});
     common['../agents/request-card'] = load('../agents/request-card.tsx', {

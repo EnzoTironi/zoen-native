@@ -2,4 +2,4 @@
 import type { ChatLayoutField } from "./ChatLayoutField";
 import type { ChatLayoutScope } from "./ChatLayoutScope";
 
-export type ChatLayoutInput = { "kind": "read", scope: ChatLayoutScope, } | { "kind": "change", scope: ChatLayoutScope, operation_id: string, field: ChatLayoutField, value: boolean, observed_revision: string, } | { "kind": "reconcile", scope: ChatLayoutScope, operation_id: string, } | { "kind": "undo", scope: ChatLayoutScope, operation_id: string, original_operation_id: string, observed_revision: string, };
+export type ChatLayoutInput = { "kind": "read", scope: ChatLayoutScope, } | { "kind": "mark_read", scope: ChatLayoutScope, through_seq: string | null, observed_manual_revision: string, } | { "kind": "change", scope: ChatLayoutScope, operation_id: string, field: ChatLayoutField, value: boolean, observed_revision: string, } | { "kind": "reconcile", scope: ChatLayoutScope, operation_id: string, } | { "kind": "undo", scope: ChatLayoutScope, operation_id: string, original_operation_id: string, observed_revision: string, };

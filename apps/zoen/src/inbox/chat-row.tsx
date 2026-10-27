@@ -48,10 +48,15 @@ export function InboxChatRow({
               count: chat.unread,
               preview: chat.last_preview,
             })
-          : t('chat.conversationLabel', {
-              title: conversationTitle(chat),
-              preview: chat.last_preview,
-            })
+          : chat.manual_unread
+            ? t('inboxActions.manuallyUnreadLabel', {
+                title: conversationTitle(chat),
+                preview: chat.last_preview,
+              })
+            : t('chat.conversationLabel', {
+                title: conversationTitle(chat),
+                preview: chat.last_preview,
+              })
       }
       accessibilityState={{ busy: pending }}
       accessibilityActions={actions.map((action) => ({ name: action.id, label: action.label }))}
