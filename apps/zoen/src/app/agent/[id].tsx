@@ -34,20 +34,22 @@ export default function Agent() {
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  async function act(action: () => Promise<unknown>) {
-    if (busy) return;
+  async function act(action: () => Promise<unknown>, current: () => boolean = () => true) {
+    if (busy || !current()) return;
     setBusy(true);
     setFailure(null);
     setMessage(null);
     try {
       await action();
+      if (!current()) return;
       void control.session.refresh();
       retry();
       standing.retry();
       activity.retry();
       previews.retry();
     } catch (reason) {
-      setFailure(reason instanceof Error ? reason.message : t('agents.thisCouldNotBeCompleted'));
+      if (current())
+        setFailure(reason instanceof Error ? reason.message : t('agents.thisCouldNotBeCompleted'));
     } finally {
       setBusy(false);
     }
@@ -143,11 +145,12 @@ export default function Agent() {
           {levels.map((level) => (
             <Pressable
               key={level.value}
-              disabled={busy || !agent.persona.is_mine}
+              disabled={busy || !agent.persona.is_mine || !lifecycleTicket}
               accessibilityRole="radio"
               aria-checked={space.level === level.value}
               onPress={() => {
-                if (space.level === level.value) return;
+                if (space.level === level.value || !lifecycleTicket) return;
+                const current = () => !!control.session.accepts(lifecycleTicket);
                 void act(async () => {
                   if (
                     !(await confirmAgentTrust(
@@ -159,15 +162,17 @@ export default function Agent() {
                     ))
                   )
                     return;
+                  if (!current()) return;
                   await store.request({
                     op: 'set_trust',
                     agent_id: id,
                     space_id: space.space_id,
                     level: level.value,
                   });
+                  if (!current()) return;
                   setPreviewSpace(space.space_id);
                   setMessage(t('agents.autonomyUpdatedInThisChat'));
-                });
+                }, current);
               }}
               style={{ flexDirection: 'row', gap: 12, paddingVertical: 9 }}
             >
