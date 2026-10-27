@@ -43,11 +43,12 @@ export function MuteDurationSheet({
         testID="muted-chat-sheet"
         isPresented={Boolean(chat)}
         onDismiss={onDismiss}
-        snapPoints={['half', 'full']}
+        snapPoints={custom ? ['full'] : ['half', 'full']}
         containerColor={p.list.background}
       >
         <RNHostView>
           <ScrollView
+            style={{ flex: 1 }}
             contentInsetAdjustmentBehavior="automatic"
             contentContainerStyle={{ gap: 20, paddingVertical: 16, paddingBottom: 32 }}
           >

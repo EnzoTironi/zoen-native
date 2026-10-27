@@ -16,28 +16,23 @@ import { KeyboardAvoidingView, KeyboardController } from 'react-native-keyboard-
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { homeOwnerFor, homeSpacesFor } from '../home/access';
 import { GlobalSearchActions } from '../core/global-search-actions';
-import type { ClientStore } from '../core/store';
-import { useCoreQuery } from '../core/query';
+import { searchScope, useSearchResults } from '../core/use-search-results';
 import { useClient } from '../core/provider';
 import type { UniversalHit } from '../core/generated/UniversalHit';
 import { useTheme } from '../theme';
 import { EmptyState, Loading, NativeButton } from '../components/primitives';
 
 const plain = (text: string) => text.replace(/\[\[|\]\]/g, '');
-function context(store: ClientStore, space?: string) {
-  const state = store.getSnapshot();
-  const owner = homeOwnerFor(state);
-  const spaces = homeSpacesFor(state);
-  return !owner || store.isSessionRetiring || (space && !spaces.has(space))
-    ? null
-    : JSON.stringify([store.sessionEpoch, owner, [...spaces].sort(), space ?? null]);
-}
 
 export default function Search() {
   const params = useLocalSearchParams<{ space?: string; query?: string }>();
   const { store } = useClient();
-  const scope = context(store, params.space);
-  const owner = JSON.stringify([store.sessionEpoch, homeOwnerFor(store.getSnapshot())]);
+  const scope = searchScope(store, params.space);
+  const owner = JSON.stringify([
+    store.sessionEpoch,
+    homeOwnerFor(store.getSnapshot()),
+    store.getSnapshot().snapshot?.account?.relay_url ?? null,
+  ]);
   const [initialOwner] = useState(owner);
   return (
     <SearchBody
@@ -62,28 +57,26 @@ function SearchBody({
   const insets = useSafeAreaInsets();
   const { store } = useClient();
   const { colors } = useTheme();
-  const [query, setQuery] = useState(initial ?? '');
-  const [term, setTerm] = useState(query);
+  const { search, state: results } = useSearchResults(store, scope, space, initial);
+  const query = results.query;
   const actions = useMemo(
-    () => new GlobalSearchActions(() => scope !== null && context(store, space) === scope, query),
-    [scope, space, query, store],
+    () =>
+      new GlobalSearchActions(
+        () =>
+          scope !== null && searchScope(store, space) === scope && results === search.getSnapshot(),
+        query,
+      ),
+    [scope, space, query, store, search, results],
   );
   const operation = useSyncExternalStore(
     actions.subscribe,
     actions.getSnapshot,
     actions.getSnapshot,
   );
-  const [more, setMore] = useState<{
-    owner: GlobalSearchActions;
-    base: string;
-    hits: UniversalHit[];
-    cursor: string | null;
-  } | null>(null);
   useLayoutEffect(() => () => actions.blur(), [actions]);
   useFocusEffect(
     useCallback(() => {
       actions.focus();
-      setMore(null);
       const unsubscribe = store.subscribe(() => actions.refresh());
       return () => {
         unsubscribe();
@@ -93,27 +86,14 @@ function SearchBody({
   );
   const opening = operation.pending;
   useEffect(() => {
-    const timer = setTimeout(() => setTerm(query.trim()), 200);
+    if (!results.active || results.loading || results.completed || results.error || !query.trim())
+      return;
+    const timer = setTimeout(() => void search.search(), 200);
     return () => clearTimeout(timer);
-  }, [query]);
-  const global = useCoreQuery(
-    scope && term && !space ? { op: 'universal_search', query: term, kinds: [], limit: 30 } : null,
-    scope ?? '',
-  );
-  const scoped = useCoreQuery(
-    scope && term && space
-      ? { op: 'search_messages', space_id: space, query: term, cursor: null, limit: 30 }
-      : null,
-    scope ?? '',
-  );
-  const settling = query.trim() !== term;
-  const result = space ? scoped : global;
-  const first = settling ? null : result.data;
-  const base = JSON.stringify([scope, space, term, first]);
-  const extra = more?.owner === actions && more.base === base ? more : null;
-  const hits = [...(first?.hits ?? []), ...(extra?.hits ?? [])];
-  const cursor = first ? (extra ? extra.cursor : scoped.data?.next_cursor) : null;
-  const error = operation.error ?? (!settling ? result.error : null);
+  }, [search, query, results.active, results.loading, results.completed, results.error]);
+  const hits = scope ? results.hits : [];
+  const queryFits = search.fitsQuery(query.trim());
+  const error = !queryFits ? t('chat.searchQueryTooLong') : (operation.error ?? results.error);
   function open(hit: UniversalHit) {
     void actions.run(
       async () => {
@@ -158,13 +138,13 @@ function SearchBody({
   }
   const empty = !scope ? (
     <EmptyState title={t('chat.chatUnavailable')} />
-  ) : !term && !settling ? (
+  ) : !query.trim() ? (
     <EmptyState
       title={t('chat.findWhatStayedInTheConversation')}
       detail={t('chat.searchUsesTheHistoryAvailableOnThisDevice')}
       icon={{ ios: 'magnifyingglass', android: 'search', web: 'search' }}
     />
-  ) : settling || (!first && !error) ? (
+  ) : !results.completed && !error ? (
     <Loading />
   ) : error ? null : (
     <EmptyState title={t('chat.noResults')} detail={t('chat.tryAnotherWordOrName')} />
@@ -181,7 +161,9 @@ function SearchBody({
         accessibilityLabel={t('chat.search')}
         autoFocus
         value={query}
-        onChangeText={setQuery}
+        onChangeText={(value) => {
+          if (search.isCurrent()) search.setQuery(value);
+        }}
         autoCorrect={false}
         returnKeyType="search"
         placeholder={space ? t('chat.messagesInThisChat') : t('chat.peopleMessagesPages')}
@@ -213,9 +195,10 @@ function SearchBody({
               <NativeButton
                 secondary
                 label={t('chat.tryAgain2')}
+                disabled={!queryFits}
                 onPress={() => {
                   actions.clearError();
-                  result.retry();
+                  if (results === search.getSnapshot() && search.isCurrent()) void search.search();
                 }}
               />
             </View>
@@ -269,31 +252,14 @@ function SearchBody({
           </Pressable>
         )}
         ListFooterComponent={
-          space && cursor ? (
+          results.cursor ? (
             <View style={{ padding: 20 }}>
               <NativeButton
                 secondary
-                disabled={opening}
+                disabled={opening || results.loading || !results.completed}
                 label={t('chat.moreResults')}
                 onPress={() => {
-                  void actions.run(
-                    () =>
-                      store.driver.request({
-                        op: 'search_messages',
-                        space_id: space,
-                        query: term,
-                        cursor,
-                        limit: 30,
-                      }),
-                    (page) =>
-                      setMore({
-                        owner: actions,
-                        base,
-                        hits: [...(extra?.hits ?? []), ...page.hits],
-                        cursor: page.next_cursor,
-                      }),
-                    t('chat.theSearchHasChangedTryAgain'),
-                  );
+                  void search.loadMore(results);
                 }}
               />
             </View>

@@ -28,7 +28,7 @@ impl Client {
             RevokeAgentInvite, SaveMessageDraft, SendMessage, SendMessageDraft, SetChatMute,
             SetChatMuted, SetChatPrefs, SetMemberRoleReviewed, SetTyping, ShareAppCurrent,
             Snapshot, SpaceMemberContext, StartDirect, StartOwnerPolicyDirect, SubmitOwnerPolicy,
-            Thread, Timeline, UniversalSearch,
+            Thread, Timeline, UniversalSearch, UniversalSearchPage,
         };
         match command {
             AppCurrentShareContext { scope } => encode(&self.app_current_share_context(scope)?),
@@ -222,11 +222,17 @@ impl Client {
                     })?;
                 encode(&entry)
             }
-            UniversalSearch {
-                query,
-                kinds,
-                limit,
-            } => encode(&self.universal_search(query, kinds, limit.min(100))?),
+            UniversalSearchPage(input) => encode(&self.universal_search_page(
+                input.query,
+                input.kinds,
+                input.cursor,
+                input.limit,
+                input.expected_identity_id,
+                input.expected_device_id,
+            )?),
+            UniversalSearch(input) => {
+                encode(&self.universal_search(input.query, input.kinds, input.limit.min(100))?)
+            }
             command @ (SetChatPrefs(..)
             | SetChatMuted(..)
             | SetChatMute(..)
