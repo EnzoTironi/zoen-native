@@ -21,16 +21,24 @@ impl Engine {
     }
 
     pub fn spaces(&self) -> Vec<SpaceSummary> {
+        self.spaces_at(now_ms())
+    }
+
+    pub(crate) fn spaces_at(&self, now: i64) -> Vec<SpaceSummary> {
         let mut out: Vec<SpaceSummary> = self
             .space_order
             .iter()
-            .filter_map(|id| self.space_summary(id).ok())
+            .filter_map(|id| self.space_summary_at(id, now).ok())
             .collect();
         out.sort_by_key(|s| std::cmp::Reverse(s.last_at_ms));
         out
     }
 
     pub fn space_summary(&self, id: &str) -> R<SpaceSummary> {
+        self.space_summary_at(id, now_ms())
+    }
+
+    pub(crate) fn space_summary_at(&self, id: &str, now: i64) -> R<SpaceSummary> {
         let s = self.space_state(id)?;
         let kind = match s.kind {
             SpaceKind::Direct => SpaceKindDto::Direct,
@@ -67,7 +75,7 @@ impl Engine {
             .filter(|r| r.space == id && r.status == ReqStatus::Pending)
             .count() as u32;
         let prefs = self.state.chat_prefs.get(id).cloned().unwrap_or_default();
-        let muted = prefs.muted_until_ms.is_some_and(|until| until > now_ms());
+        let muted = prefs.muted_until_ms.is_some_and(|until| until > now);
         Ok(SpaceSummary {
             pinned: prefs.pinned,
             archived: prefs.archived,
@@ -340,13 +348,7 @@ impl Engine {
         identity: &str,
         device: &str,
     ) -> R<()> {
-        self.native_surface_owner(identity, device)?;
-        self.space_state(space)?;
-        if !self.is_member(space, identity) {
-            return Err(CoreError::Forbidden {
-                reason: t("o acesso à conversa mudou", "conversation access changed"),
-            });
-        }
+        self.chat_mute_owner(space, identity, device)?;
         let mut prefs = self
             .state
             .chat_prefs

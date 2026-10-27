@@ -23,16 +23,18 @@ struct Fixture {
     identity: String,
     device: String,
     space: String,
+    vault: Arc<Vault>,
 }
 impl Fixture {
     fn at(path: String) -> Self {
         let client = Client::open(path, "en".into()).unwrap();
+        let vault = Arc::new(Vault::default());
         client
             .create_account(
                 "Mute owner".into(),
                 "mute_owner".into(),
                 "http://127.0.0.1:1".into(),
-                Arc::new(Vault::default()),
+                vault.clone(),
             )
             .unwrap();
         let account = client.account().unwrap();
@@ -44,6 +46,7 @@ impl Fixture {
             identity: account.identity_id,
             device: account.device_id,
             space,
+            vault,
         }
     }
     fn new() -> Self {
@@ -220,3 +223,5 @@ async fn expired_mute_is_absent_from_the_canonical_directory_and_unmute_preserve
     let current = f.summary();
     assert!(current.pinned && current.archived && !current.muted);
 }
+
+mod timed;
