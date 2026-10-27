@@ -17,6 +17,9 @@ export function preparePackage(app: string, directory: string) {
     '014+composer-input-owner',
     '015+composer-input-lifecycle',
     '016+composer-input-receipt',
+    '018+composer-range-normalization',
+    '019+composer-inline-variants',
+    '021+composer-format-availability',
   ].map((stage) => join(app, `patches/react-native-enriched-markdown+1.1.1+${stage}.patch`));
   const paths = new Set(
     patches.flatMap((patch) =>
@@ -65,6 +68,9 @@ export function preparePackage(app: string, directory: string) {
         'composerMode',
       ),
     () => existsSync(join(pkg, 'ios/input/ENRMComposerInputState.m')),
+    () => existsSync(join(pkg, 'ios/input/ENRMComposerRanges.mm')),
+    () => existsSync(join(pkg, 'ios/input/ENRMComposerVariants.mm')),
+    () => existsSync(join(pkg, 'ios/input/ENRMComposerAvailability.mm')),
   ];
   for (const [index, patch] of patches.entries())
     if (!markers[index]!())
