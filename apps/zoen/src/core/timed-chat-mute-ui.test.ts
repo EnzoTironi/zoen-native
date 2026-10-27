@@ -61,6 +61,7 @@ for (const locale of ['en', 'pt-BR'] as const) {
       route = f.route();
       const apply = nodes(route.tree).find((n) => n.props.testID === 'mute-until-apply')!;
       assert.equal(apply.props.disabled, false);
+      assert.equal(apply.props.wrapLabel, true);
       assert.equal(apply.props.label.includes('%{'), false);
       apply.props.onPress();
       await settle();

@@ -96,6 +96,7 @@ export function MuteDurationSheet({
                     ) : null}
                     <NativeButton
                       testID="mute-until-apply"
+                      wrapLabel
                       label={t('notifications.muteUntil', {
                         date: date.toLocaleString(formatLocale, {
                           dateStyle: 'short',
