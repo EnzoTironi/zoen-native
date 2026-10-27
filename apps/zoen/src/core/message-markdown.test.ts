@@ -72,6 +72,7 @@ const nativePorts = new Set([
   'react-native',
   'react-native-enriched-markdown',
   '../theme',
+  './message-context-ports',
   'expo-clipboard',
   'expo-haptics',
   '../i18n/index.ts',
@@ -137,6 +138,7 @@ function fixture(
     require(name: string) {
       if (name === 'react')
         return {
+          use: () => null,
           memo: (value: unknown) => value,
           useMemo: (read: () => unknown, deps: unknown[]) => {
             const owner = slot();
@@ -191,6 +193,7 @@ function fixture(
       if (name === '../i18n/index.ts') return localization;
       if (name === 'react-native-enriched-markdown')
         return { EnrichedMarkdownText: 'NativeMarkdownText' };
+      if (name === './message-context-ports') return { MessageTextSelection: {} };
       if (name === '../theme') return { useTheme: () => ({ colors }) };
       throw new Error(`Unexpected native port ${name}`);
     },

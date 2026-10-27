@@ -1,0 +1,30 @@
+diff --git a/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdownText.mm b/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdownText.mm
+index ac29c51..6f6445d 100644
+--- a/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdownText.mm
++++ b/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdownText.mm
+@@ -829,6 +829,25 @@ - (void)prepareForRecycle
+   return EnrichedMarkdownText.class;
+ }
+
++// The ancestor message context may own only non-interactive rendered body.
++// Use the renderer's own TextKit hit testing so links/code/spoilers keep their input.
++#if !TARGET_OS_OSX
++- (NSNumber *)zoenMessageContextBodyAtPoint:(NSValue *)value
++{
++  if (![value isKindOfClass:[NSValue class]] || strcmp(value.objCType, @encode(CGPoint)) != 0 ||
++      !_textView || _textView.editable || _textView.selectable || _textView.hidden) {
++    return @NO;
++  }
++  CGPoint point = value.CGPointValue;
++  if (!CGRectContainsPoint(self.bounds, point))
++    return @NO;
++  CGPoint textPoint = [self convertPoint:point toView:_textView];
++  if (!CGRectContainsPoint(_textView.bounds, textPoint))
++    return @NO;
++  return @(!isPointOnInteractiveElement(_textView, textPoint, YES, YES));
++}
++#endif
++
+ - (facebook::react::SharedTouchEventEmitter)touchEventEmitterAtPoint:(CGPoint)point
+ {
+   if (_textView) {

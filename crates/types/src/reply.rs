@@ -57,6 +57,25 @@ impl ArtifactRequest {
     }
 }
 
+/// Exact literal selection from a signed source revision. Coordinates are half-open
+/// UTF-16 source units, ordered and nonoverlapping. Syntax gaps are allowed; omitted
+/// visible text is not. Zoen bounds: 4096 excerpt units and 128 spans.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct SelectedQuote {
+    pub source_id: String,
+    pub revision: String,
+    pub spans: Vec<QuoteSpan>,
+    pub text: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct QuoteSpan {
+    pub start_utf16: u32,
+    pub end_utf16: u32,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct ReplyRef {
     /// Event hash of the message being answered (the thread root for thread replies).
@@ -66,6 +85,8 @@ pub struct ReplyRef {
     pub thread: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub artifact: Option<ArtifactRequest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quote: Option<Box<SelectedQuote>>,
 }
 
 impl ReplyRef {
@@ -74,6 +95,7 @@ impl ReplyRef {
             to: to.into(),
             thread: false,
             artifact: None,
+            quote: None,
         }
     }
     pub fn thread(root: impl Into<String>) -> Self {
@@ -81,6 +103,7 @@ impl ReplyRef {
             to: root.into(),
             thread: true,
             artifact: None,
+            quote: None,
         }
     }
 }
@@ -230,5 +253,32 @@ mod tests {
         .unwrap();
         let OldBody::MessagePosted { text } = serde_json::from_str(&json).unwrap();
         assert_eq!(text, "sim");
+    }
+}
+
+#[cfg(test)]
+mod selected_quote_tests {
+    use super::*;
+    #[test]
+    fn optional_quote_preserves_legacy_signed_reply_bytes() -> Result<(), serde_json::Error> {
+        assert_eq!(
+            serde_json::to_string(&ReplyRef::inline("root"))?,
+            r#"{"to":"root","thread":false}"#
+        );
+        let mut reference = ReplyRef::inline("root");
+        reference.quote = Some(Box::new(SelectedQuote {
+            source_id: "root".into(),
+            revision: "edit".into(),
+            spans: vec![QuoteSpan {
+                start_utf16: 3,
+                end_utf16: 5,
+            }],
+            text: "😀".into(),
+        }));
+        let bytes = serde_json::to_vec(&reference)?;
+        assert_eq!(serde_json::from_slice::<ReplyRef>(&bytes)?, reference);
+        let legacy: ReplyRef = serde_json::from_str(r#"{"to":"root","thread":false}"#)?;
+        assert!(legacy.quote.is_none());
+        Ok(())
     }
 }

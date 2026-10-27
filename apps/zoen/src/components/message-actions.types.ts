@@ -1,3 +1,4 @@
+import type { ReplySelection } from '../core/generated/ReplySelection';
 import type { ReactNode } from 'react';
 import type { TimelineEntry } from '../core/types';
 import type { MessageContextRequest } from './message-context-ports';
@@ -19,6 +20,9 @@ export type MessageActionsProps = Readonly<{
   onReply: (entry: TimelineEntry) => void;
   onThread: (entry: TimelineEntry) => void;
   onForward?: (entry: TimelineEntry) => void;
+  onSelectText?: (entry: TimelineEntry) => void | (() => void);
+  onQuoteReview?: (entry: TimelineEntry, text: string, ranges: string) => Promise<ReplySelection>;
+  onQuote?: (entry: TimelineEntry, selection: ReplySelection) => void;
   onCopy?: (entry: TimelineEntry) => void;
   onEdit?: (entry: TimelineEntry) => void;
   onRecover?: (entry: TimelineEntry) => void;

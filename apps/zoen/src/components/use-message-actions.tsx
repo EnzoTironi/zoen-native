@@ -1,3 +1,5 @@
+import type { ReplySelection } from '../core/generated/ReplySelection';
+import { useMessageQuoteSelection } from './use-message-quote-selection';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
@@ -6,6 +8,7 @@ import type { TimelineEntry } from '../core/types';
 import { useClient } from '../core/provider';
 import {
   messageCanEdit,
+  messageCanSelectText,
   messageCanInteract,
   messageCanRecoverMedia,
   messageCard,
@@ -31,11 +34,13 @@ export function useMessageActions({
   onReply,
   onEdit,
   onThread,
+  threadRootId = null,
 }: {
   spaceId: string;
   entries: readonly TimelineEntry[];
   disabled?: boolean;
-  onReply: (entry: TimelineEntry) => void;
+  threadRootId?: string | null;
+  onReply: (entry: TimelineEntry, selection?: ReplySelection) => void;
   onEdit: (entry: TimelineEntry) => void;
   onThread?: (entry: TimelineEntry) => void;
 }) {
@@ -116,6 +121,13 @@ export function useMessageActions({
       return value && messageCanInteract(value) ? value : undefined;
     },
     [scope, spaceId, store],
+  );
+  const quote = useMessageQuoteSelection(
+    current,
+    onReply,
+    `${scope}:${store.sessionEpoch}`,
+    spaceId,
+    threadRootId,
   );
   useEffect(
     () =>
@@ -456,6 +468,16 @@ export function useMessageActions({
           onReply={() => {
             if (selected) reply(selected);
           }}
+          onQuoteReview={quote.review}
+          onQuote={quote.accept}
+          onSelectText={
+            process.env.EXPO_OS === 'ios' &&
+            mode === 'account' &&
+            selection?.nativeSource?.textSelection &&
+            messageCanSelectText(selected)
+              ? quote.open
+              : undefined
+          }
           onThread={() => {
             if (selected) thread(selected);
           }}

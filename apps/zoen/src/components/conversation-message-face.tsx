@@ -7,7 +7,7 @@ import { ProfileAvatar } from '../profile/profile-avatar';
 import { MessageContextControl, MessageContextSource } from './message-context-source';
 import { MessageBubbleGraphic } from './message-graphics';
 import { MessageInteraction, MessagePressable as Pressable } from './message-interaction';
-import { MessageMarkdown } from './message-markdown';
+import { MessageMarkdown, MessageTextSelectionLeaf } from './message-markdown';
 import type { useConversationMessage } from './use-conversation-message';
 type MessageFace = ReturnType<typeof useConversationMessage>;
 
@@ -286,39 +286,50 @@ export function renderConversationMessage(context: MessageFace) {
                         />
                       </View>
                     ) : (
-                      <Text
-                        testID={`message-body-${entry.id}`}
-                        onTextLayout={
-                          revealAnchor
-                            ? (event) => {
-                                if (!attachment) onTextLayout(event);
-                                revealAnchor.onTextLayout(event);
-                              }
-                            : attachment
-                              ? undefined
-                              : onTextLayout
-                        }
-                        onLayout={
-                          revealAnchor
-                            ? (event) => {
-                                if (!attachment) onTextFrame(event);
-                                revealAnchor.onLayout(event);
-                              }
-                            : attachment
-                              ? undefined
-                              : onTextFrame
-                        }
-                        style={{
-                          color: attachment && !appCard ? colors.text : ink,
-                          fontSize: messageFontSize,
-                          lineHeight: attachment ? Math.ceil(messageFontSize * 1.3) : undefined,
-                          fontStyle: entry.deleted ? 'italic' : 'normal',
-                          paddingHorizontal: appCard ? 11 : attachment ? 12 : 0,
-                          paddingVertical: appCard ? 6 : attachment ? 8 : 0,
-                        }}
+                      <MessageTextSelectionLeaf
+                        text={text}
+                        color={attachment && !appCard ? colors.text : ink}
+                        fontSize={emojiFont ?? messageFontSize}
+                        maxWidth={Math.max(
+                          1,
+                          attachment ? attachmentWidth - (appCard ? 22 : 24) : textMaxWidth - 28,
+                        )}
+                        onLayout={revealAnchor?.onLayout}
                       >
-                        {text}
-                      </Text>
+                        <Text
+                          testID={`message-body-${entry.id}`}
+                          onTextLayout={
+                            revealAnchor
+                              ? (event) => {
+                                  if (!attachment) onTextLayout(event);
+                                  revealAnchor.onTextLayout(event);
+                                }
+                              : attachment
+                                ? undefined
+                                : onTextLayout
+                          }
+                          onLayout={
+                            revealAnchor
+                              ? (event) => {
+                                  if (!attachment) onTextFrame(event);
+                                  revealAnchor.onLayout(event);
+                                }
+                              : attachment
+                                ? undefined
+                                : onTextFrame
+                          }
+                          style={{
+                            color: attachment && !appCard ? colors.text : ink,
+                            fontSize: messageFontSize,
+                            lineHeight: attachment ? Math.ceil(messageFontSize * 1.3) : undefined,
+                            fontStyle: entry.deleted ? 'italic' : 'normal',
+                            paddingHorizontal: appCard ? 11 : attachment ? 12 : 0,
+                            paddingVertical: appCard ? 6 : attachment ? 8 : 0,
+                          }}
+                        >
+                          {text}
+                        </Text>
+                      </MessageTextSelectionLeaf>
                     )
                   ) : null}
                   {albumContent ? (
@@ -372,17 +383,24 @@ export function renderConversationMessage(context: MessageFace) {
                           maxWidth={Math.max(1, mediaWidth - 28)}
                         />
                       ) : (
-                        <Text
-                          onLayout={revealAnchor?.onLayout}
-                          onTextLayout={revealAnchor?.onTextLayout}
-                          style={{
-                            color: ink,
-                            fontSize: p.typography.message.fontSize,
-                            lineHeight: Math.ceil(p.typography.message.fontSize * 1.3),
-                          }}
+                        <MessageTextSelectionLeaf
+                          text={fileCaption!}
+                          color={ink}
+                          fontSize={p.typography.message.fontSize}
+                          maxWidth={Math.max(1, mediaWidth - 28)}
                         >
-                          {fileCaption}
-                        </Text>
+                          <Text
+                            onLayout={revealAnchor?.onLayout}
+                            onTextLayout={revealAnchor?.onTextLayout}
+                            style={{
+                              color: ink,
+                              fontSize: p.typography.message.fontSize,
+                              lineHeight: Math.ceil(p.typography.message.fontSize * 1.3),
+                            }}
+                          >
+                            {fileCaption}
+                          </Text>
+                        </MessageTextSelectionLeaf>
                       )}
                     </Pressable>
                   ) : null}

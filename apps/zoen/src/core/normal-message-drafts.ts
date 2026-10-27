@@ -1,3 +1,4 @@
+import type { ReplySelection } from './generated/ReplySelection';
 import type { TimelineEntry } from './types';
 
 export type NormalDraftScope = Readonly<{
@@ -14,6 +15,7 @@ export type NormalDraftSnapshot = Readonly<{
   revision: string;
   text: string;
   reply_to: string | null;
+  reply_quote?: ReplySelection | null;
 }>;
 export type NormalDraftPort = {
   load(scope: NormalDraftScope): Promise<NormalDraftSnapshot>;
@@ -22,6 +24,7 @@ export type NormalDraftPort = {
     expectedRevision: string,
     text: string,
     replyTo: string | null,
+    replyQuote?: ReplySelection | null,
   ): Promise<NormalDraftSnapshot>;
   send(
     scope: NormalDraftScope,
@@ -40,6 +43,7 @@ export type NormalDraftState = Readonly<{
   scope: NormalDraftScope;
   text: string;
   replyTo: string | null;
+  replyQuote: ReplySelection | null;
   textRevision: number;
   replyRevision: number;
   persistedRevision: string;
@@ -49,7 +53,7 @@ export type NormalDraftState = Readonly<{
   sending: boolean;
   error: NormalDraftFailure | null;
 }>;
-type Content = { text: string; reply_to: string | null };
+type Content = { text: string; reply_to: string | null; reply_quote?: ReplySelection | null };
 type SendIntent = Content & {
   textRevision: number;
   replyRevision: number;
@@ -65,10 +69,14 @@ type DraftRecord = {
   intent: SendIntent | null;
 };
 const emptySnapshot = (): NormalDraftSnapshot => ({ revision: '0', text: '', reply_to: null });
-const sameContent = (a: Content, b: Content) => a.text === b.text && a.reply_to === b.reply_to;
+const sameContent = (a: Content, b: Content) =>
+  a.text === b.text &&
+  a.reply_to === b.reply_to &&
+  JSON.stringify(a.reply_quote ?? null) === JSON.stringify(b.reply_quote ?? null);
 const content = (state: NormalDraftState): Content => ({
   text: state.text,
   reply_to: state.replyTo,
+  ...(state.replyQuote ? { reply_quote: state.replyQuote } : {}),
 });
 const keyFor = (scope: NormalDraftScope) =>
   JSON.stringify([
@@ -88,7 +96,12 @@ function checked(value: NormalDraftSnapshot): NormalDraftSnapshot {
     (value.reply_to !== null && typeof value.reply_to !== 'string')
   )
     throw new Error('Invalid message draft response');
-  return { revision: value.revision, text: value.text, reply_to: value.reply_to };
+  return {
+    revision: value.revision,
+    text: value.text,
+    reply_to: value.reply_to,
+    ...(value.reply_quote ? { reply_quote: value.reply_quote } : {}),
+  };
 }
 
 /** Session-owned, memory-only projection. The native port owns durable ciphertext.
@@ -122,6 +135,7 @@ export class NormalMessageDrafts {
         scope: captured,
         text: '',
         replyTo: null,
+        replyQuote: null,
         textRevision: 0,
         replyRevision: 0,
         persistedRevision: '0',
@@ -176,6 +190,7 @@ export class NormalMessageDrafts {
           loaded: true,
           text: value.text,
           replyTo: value.reply_to,
+          replyQuote: value.reply_quote ?? null,
           persistedRevision: value.revision,
           error: null,
         });
@@ -208,10 +223,22 @@ export class NormalMessageDrafts {
     this.schedule(record);
     return true;
   }
-  setReply(scope: NormalDraftScope, replyTo: string | null): boolean {
+  setReply(
+    scope: NormalDraftScope,
+    replyTo: string | null,
+    replyQuote: ReplySelection | null = null,
+  ): boolean {
     const record = this.record(scope);
     if (this.retirement || !record.state.loaded) return false;
-    this.publish(record, { replyTo, replyRevision: record.state.replyRevision + 1 });
+    if (replyQuote && replyQuote.source_id !== replyTo) return false;
+    const frozenQuote = replyQuote
+      ? { ...replyQuote, spans: replyQuote.spans.map((span) => ({ ...span })) }
+      : null;
+    this.publish(record, {
+      replyTo,
+      replyQuote: frozenQuote,
+      replyRevision: record.state.replyRevision + 1,
+    });
     this.schedule(record);
     return true;
   }
@@ -264,7 +291,13 @@ export class NormalMessageDrafts {
     this.publish(record, { saving: true });
     try {
       const value = checked(
-        await this.port.save(record.state.scope, baseline.revision, target.text, target.reply_to),
+        await this.port.save(
+          record.state.scope,
+          baseline.revision,
+          target.text,
+          target.reply_to,
+          target.reply_quote ?? null,
+        ),
       );
       this.requireDraining();
       if (!sameContent(value, target)) throw new Error('Message draft save changed its intent');
@@ -382,6 +415,8 @@ export class NormalMessageDrafts {
           text: record.state.textRevision === intent.textRevision ? '' : record.state.text,
           replyTo:
             record.state.replyRevision === intent.replyRevision ? null : record.state.replyTo,
+          replyQuote:
+            record.state.replyRevision === intent.replyRevision ? null : record.state.replyQuote,
           persistedRevision: record.persisted.revision,
           error: null,
         });
@@ -434,6 +469,7 @@ export class NormalMessageDrafts {
           ...record.state,
           text: '',
           replyTo: null,
+          replyQuote: null,
           persistedRevision: '0',
           loaded: false,
           loading: false,

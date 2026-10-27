@@ -15,6 +15,7 @@ const code = (
     bundle: true,
     format: 'cjs',
     platform: 'node',
+    define: { 'process.env.EXPO_OS': '"ios"' },
     jsx: 'automatic',
     write: false,
     plugins: [
@@ -134,6 +135,10 @@ function fixture() {
         confirm: async () => true,
         inform: (...value: unknown[]) => calls.push(value),
       }),
+    },
+    // Quote ownership/rendered selection has its own real compiled-hook suite.
+    './use-message-quote-selection': {
+      useMessageQuoteSelection: () => ({ open() {}, panel: null }),
     },
     './message-actions': { MessageActions: 'MessageActions' },
     './reaction-details': { ReactionDetails: 'ReactionDetails' },

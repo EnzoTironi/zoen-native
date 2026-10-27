@@ -122,6 +122,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
                 !searchState.active && (normalDraft.replyTo || editing)
                   ? {
                       entry: editing ?? reply ?? undefined,
+                      quote: editing ? undefined : normalDraft.replyQuote,
                       onCancel: () => updateDraft({ type: 'cancel' }),
                     }
                   : undefined

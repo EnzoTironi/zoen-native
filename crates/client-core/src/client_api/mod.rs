@@ -9,6 +9,7 @@ mod app_resource_dispatch;
 mod command;
 mod content_dispatch;
 mod conversation_dispatch;
+mod draft_dispatch;
 mod forwarding_dispatch;
 use command::Command;
 
