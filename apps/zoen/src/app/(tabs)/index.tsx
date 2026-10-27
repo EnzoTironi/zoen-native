@@ -139,7 +139,6 @@ export default function Home() {
               <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>
                 {t('home.pendingReviews', { count: home.pendingRequestCount })}
               </Text>
-              <Text style={{ color: colors.secondary, fontSize: 15 }}>{t('home.review')}</Text>
             </View>
             <Icon
               name={{ ios: 'chevron.right', android: 'chevron_right' }}
