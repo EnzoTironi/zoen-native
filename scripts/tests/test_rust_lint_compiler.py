@@ -74,6 +74,26 @@ class CompilerLintTests(unittest.TestCase):
             "clippy::iter_cloned_collect",
         )
 
+    def test_unused_result_is_rejected(self):
+        self.require_rejection(
+            'pub fn ignored() { std::fs::remove_file("fixture"); }',
+            "unused_must_use",
+        )
+
+    def test_unsafe_operation_requires_explicit_block(self):
+        self.require_rejection(
+            '/// # Safety\n/// The pointer must be valid.\n'
+            'pub unsafe fn read(value: *const u8) -> u8 { *value }',
+            "E0133",
+        )
+
+    def test_unsafe_block_requires_documented_justification(self):
+        self.require_rejection(
+            '/// # Safety\n/// The pointer must be valid.\n'
+            'pub unsafe fn read(value: *const u8) -> u8 { unsafe { *value } }',
+            "clippy::undocumented_unsafe_blocks",
+        )
+
     def test_test_function_assertions_are_distinct_from_production(self):
         status, codes, stderr = self.compile(
             '#[cfg(test)]\nmod tests {\n#[test]\nfn assertion() { '

@@ -22,6 +22,9 @@ pub struct GroupInfoSummary {
 
 /// Verify the signature, complete public tree, device certificates and group.
 /// A publication must also be signed by its outer envelope's device.
+///
+/// # Errors
+/// Refuses invalid size, encoding, group, suite, tree, signature or certified device credentials.
 pub fn verify_group_info(
     space: &str,
     data: &[u8],

@@ -1,4 +1,4 @@
-//! # mls: end-to-end Spaces on OpenMLS (ADR 0026)
+//! # mls: end-to-end Spaces on `OpenMLS` (ADR 0026)
 //!
 //! One [`Device`] is one MLS leaf. Its signature key is the device's Ed25519 key, and its
 //! credential is a [`Leaf`]: identity, device and the identity's certificate over it.
@@ -66,12 +66,13 @@ pub(crate) fn mls(e: impl std::fmt::Debug) -> MlsError {
     MlsError::Mls(format!("{e:?}"))
 }
 
-/// The verified leaf of a member, or `Credential` when it doesn't verify.
 /// How a single leaf (one device of an identity) is named in a commit's removals.
+#[must_use]
 pub fn leaf_name(identity: &str, device: &str) -> String {
     format!("{identity}/{device}")
 }
 
+/// The verified leaf of a member, or `Credential` when it does not verify.
 pub(crate) fn leaf_of(credential: &Credential, signature_key: &[u8]) -> Result<Leaf, MlsError> {
     let basic = BasicCredential::try_from(credential.clone()).map_err(|_| MlsError::Credential)?;
     Leaf::verified(basic.identity(), signature_key).ok_or(MlsError::Credential)
@@ -79,6 +80,9 @@ pub(crate) fn leaf_of(credential: &Credential, signature_key: &[u8]) -> Result<L
 
 /// Checks a key package someone published and returns whose device it is. The relay
 /// uses this to refuse packages that don't name the device publishing them.
+///
+/// # Errors
+/// Refuses malformed, invalidly signed or wrong-suite key packages and unverified credentials.
 pub fn key_package_leaf(bytes: &[u8]) -> Result<Leaf, MlsError> {
     let kp = validate_key_package(&RustCrypto::default(), bytes)?;
     leaf_of(
@@ -88,6 +92,9 @@ pub fn key_package_leaf(bytes: &[u8]) -> Result<Leaf, MlsError> {
 }
 
 /// A verified publication's device and signed expiry, for replay receipts on the relay.
+///
+/// # Errors
+/// Refuses invalid packages or credentials, excessive lifetimes and out-of-range expiry.
 pub fn key_package_publication(bytes: &[u8]) -> Result<(Leaf, i64), MlsError> {
     let kp = validate_key_package(&RustCrypto::default(), bytes)?;
     if !kp.life_time().has_acceptable_range() {
@@ -102,9 +109,10 @@ pub fn key_package_publication(bytes: &[u8]) -> Result<(Leaf, i64), MlsError> {
     Ok((leaf, expires))
 }
 
-/// The epoch a sealed commit was made at, from the clear framing of its PrivateMessage.
+/// The epoch a sealed commit was made at, from the clear framing of its `PrivateMessage`.
 /// `None` for anything that isn't a commit. The relay sequences at most one commit per
 /// epoch with this; it never needs a key.
+#[must_use]
 pub fn commit_epoch(data: &[u8]) -> Option<u64> {
     let msg = MlsMessageIn::tls_deserialize_exact(data).ok()?;
     let msg = msg.try_into_protocol_message().ok()?;
@@ -114,6 +122,7 @@ pub fn commit_epoch(data: &[u8]) -> Option<u64> {
 /// The epoch an application message was sealed at, from its clear framing. `None` for
 /// anything else. The relay refuses one sealed at an epoch the group has left: members
 /// keep no past epochs, so nobody could open it.
+#[must_use]
 pub fn application_epoch(data: &[u8]) -> Option<u64> {
     let msg = MlsMessageIn::tls_deserialize_exact(data).ok()?;
     let msg = msg.try_into_protocol_message().ok()?;
