@@ -1,0 +1,100 @@
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerInputState.h b/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerInputState.h
+new file mode 100644
+--- /dev/null
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerInputState.h
+@@ -0,0 +1,21 @@
++#pragma once
++#import <Foundation/Foundation.h>
++
++NS_ASSUME_NONNULL_BEGIN
++// UI ownership and event acknowledgement only. Text/styles remain in the one
++// native editor; the application owns the canonical durable message draft.
++@interface ENRMComposerInputState : NSObject
++@property (nonatomic, readonly) NSString *binding;
++@property (nonatomic, readonly) uint64_t eventCount;
++@property (nonatomic, readonly) BOOL richText;
++@property (nonatomic, assign) BOOL enabled;
++@property (nonatomic, readonly) NSUInteger undoDepth;
++- (void)beginUndoInManager:(NSUndoManager *)manager markdown:(NSString *)markdown selection:(NSRange)selection;
++- (void)endUndoWithMarkdown:(NSString *)markdown composing:(BOOL)composing
++                   restore:(void (^)(NSString *markdown, NSRange selection, NSString *binding))restore;
++- (BOOL)bind:(NSString *)binding richText:(BOOL)richText;
++- (BOOL)shouldApplyValue:(NSString *)value acknowledged:(double)ack current:(nullable NSString *)current force:(BOOL)force;
++- (nullable NSDictionary *)receiptForMarkdown:(NSString *)markdown;
++- (BOOL)matches:(NSString *)binding eventCount:(uint64_t)eventCount;
++@end
++NS_ASSUME_NONNULL_END
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerInputState.m b/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerInputState.m
+new file mode 100644
+--- /dev/null
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerInputState.m
+@@ -0,0 +1,69 @@
++#import "ENRMComposerInputState.h"
++#import <math.h>
++
++@implementation ENRMComposerInputState {
++  NSString *_binding;
++  uint64_t _eventCount;
++  BOOL _richText;
++  NSUInteger _undoDepth;
++  NSString *_undoText, *_undoBinding;
++  NSRange _undoSelection;
++  NSUndoManager *_undoManager;
++  BOOL _undoDisabled;
++}
++@synthesize binding = _binding;
++@synthesize eventCount = _eventCount;
++@synthesize richText = _richText;
++@synthesize undoDepth = _undoDepth;
++- (instancetype)init {
++  if ((self = [super init])) { _binding = @""; _enabled = YES; }
++  return self;
++}
++- (BOOL)bind:(NSString *)binding richText:(BOOL)richText {
++  BOOL changed = ![_binding isEqualToString:binding] || _richText != richText;
++  if (![_binding isEqualToString:binding]) {
++    _eventCount = 0;
++    _undoText = nil;
++  }
++  _binding = [binding copy]; _richText = richText;
++  return changed;
++}
++- (BOOL)shouldApplyValue:(NSString *)value acknowledged:(double)ack current:(NSString *)current force:(BOOL)force {
++  if (!_binding.length || !isfinite(ack) || ack < 0 || floor(ack) != ack || ack > 9007199254740991.0) return NO;
++  if (!force && ack < _eventCount) return NO;
++  return force || ![value isEqualToString:current];
++}
++- (NSDictionary *)receiptForMarkdown:(NSString *)markdown {
++  if (!_binding.length || !_enabled || _eventCount >= 9007199254740991ULL) return nil;
++  _eventCount += 1;
++  return @{@"text": markdown, @"eventCount": @(_eventCount), @"binding": _binding};
++}
++- (BOOL)matches:(NSString *)binding eventCount:(uint64_t)eventCount {
++  return _enabled && _binding.length && [_binding isEqualToString:binding] && _eventCount == eventCount;
++}
++- (void)beginUndoInManager:(NSUndoManager *)manager markdown:(NSString *)markdown selection:(NSRange)selection {
++  if (!_binding.length || !_enabled || _undoDepth++ != 0) return;
++  if (!_undoText) {
++    _undoText = [markdown copy]; _undoBinding = _binding; _undoSelection = selection;
++  }
++  _undoManager = manager;
++  if (manager.isUndoRegistrationEnabled) {
++    [manager disableUndoRegistration]; _undoDisabled = YES;
++  }
++}
++- (void)endUndoWithMarkdown:(NSString *)markdown composing:(BOOL)composing
++                   restore:(void (^)(NSString *, NSRange, NSString *))restore {
++  if (!_undoDepth || --_undoDepth != 0) return;
++  NSUndoManager *manager = _undoManager;
++  if (_undoDisabled) { [manager enableUndoRegistration]; _undoDisabled = NO; }
++  _undoManager = nil;
++  if (composing) return;
++  NSString *before = _undoText, *binding = _undoBinding;
++  NSRange selection = _undoSelection;
++  _undoText = nil;
++  if (!before || ![_binding isEqual:binding] || [before isEqual:markdown]) return;
++  [manager registerUndoWithTarget:self handler:^(ENRMComposerInputState *state) {
++    if (state.enabled && [state.binding isEqual:binding]) restore(before, selection, binding);
++  }];
++}
++@end

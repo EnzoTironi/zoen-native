@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type Ref,
+  type ComponentType,
 } from 'react';
 import {
   findNodeHandle,
@@ -16,16 +17,30 @@ import {
   type TextInputProps,
 } from 'react-native';
 import ZoenCore from '../../modules/zoen-core/src/ZoenCoreModule';
+import { ComposerRichInput } from './composer-rich-input';
+import { randomUUID } from 'expo-crypto';
 import Animated, { makeMutable, useEvent } from 'react-native-reanimated';
 import { createComposerFitting, type ComposerFittingSnapshot } from '../core/composer-fitting';
 import { useAttachmentKeyboardField } from '../media/attachment-keyboard-context';
 
-const Input =
-  process.env.EXPO_OS === 'ios' ? Animated.createAnimatedComponent(TextInput) : TextInput;
+type ComposerInputProps = TextInputProps & {
+  ref?: Ref<TextInputInstance>;
+  composerBinding?: string;
+  composerRichText?: boolean;
+  composerEventCount?: number;
+};
+const richInput = process.env.EXPO_OS === 'ios' && ZoenCore?.composerFormattingVersion === 1;
+const Input = (
+  richInput
+    ? Animated.createAnimatedComponent(ComposerRichInput)
+    : process.env.EXPO_OS === 'ios'
+      ? Animated.createAnimatedComponent(TextInput)
+      : TextInput
+) as ComponentType<ComposerInputProps>;
 type NativeText = { text: string; eventCount: number };
 type FieldProps = TextInputProps & { onSend?: () => void };
 function createOwner(context: string) {
-  return { context, nativeText: makeMutable<NativeText | null>(null) };
+  return { context, binding: randomUUID(), nativeText: makeMutable<NativeText | null>(null) };
 }
 
 /** Keep one editor mounted while its normal, edit, search and caption values change. */
@@ -33,12 +48,14 @@ export function ComposerTextField({
   inputRef,
   bindSend,
   context,
+  richText = true,
   onSend,
   ...props
 }: FieldProps & {
   inputRef?: Ref<TextInputInstance>;
   bindSend?: (send: () => void) => void;
   context: string;
+  richText?: boolean;
 }) {
   const field = useRef<TextInputInstance | null>(null);
   const owner = useMemo(() => createOwner(context), [context]);
@@ -55,15 +72,20 @@ export function ComposerTextField({
   // owns persistence, Send, acceptance and newer typing.
   const nativeText = owner.nativeText;
   const applied = useRef<{ owner: object; eventCount: number } | null>(null);
+  const [sendAcknowledgement, setSendAcknowledgement] = useState<{
+    owner: object;
+    eventCount: number;
+  } | null>(null);
   const delivery = useRef<{ owner: object; text: string; accepted: boolean } | null>(null);
-  const observeNativeText = useEvent<{ text: string; eventCount: number }>(
+  const observeNativeText = useEvent<{ text: string; eventCount: number; binding?: string }>(
     (event) => {
       'worklet';
+      if (richInput && event.binding !== owner.binding) return;
       const previous = nativeText.get();
       if (previous && previous.eventCount >= event.eventCount) return;
       nativeText.set({ text: event.text, eventCount: event.eventCount });
     },
-    ['onChange'],
+    [richInput ? 'onChangeMarkdown' : 'onChange'],
     true,
   );
   useLayoutEffect(() => {
@@ -78,6 +100,7 @@ export function ComposerTextField({
         (applied.current?.owner !== owner || captured.eventCount > applied.current.eventCount)
       ) {
         applied.current = { owner, eventCount: captured.eventCount };
+        setSendAcknowledgement({ owner, eventCount: captured.eventCount });
         active.onChangeText?.(captured.text);
       }
       events()?.onSend?.();
@@ -149,7 +172,13 @@ export function ComposerTextField({
   const ref = useCallback(
     (node: TextInputInstance | null) => {
       field.current = node;
-      setTag(process.env.EXPO_OS === 'ios' && node ? (findNodeHandle(node) ?? null) : null);
+      const nativeNode =
+        node && 'getNativeRef' in node
+          ? (node as unknown as { getNativeRef(): TextInputInstance }).getNativeRef()
+          : node;
+      setTag(
+        process.env.EXPO_OS === 'ios' && nativeNode ? (findNodeHandle(nativeNode) ?? null) : null,
+      );
     },
     [setTag],
   );
@@ -169,6 +198,14 @@ export function ComposerTextField({
       // Reanimated's placeholder must not replace TextInput's _onChange path.
       {...(process.env.EXPO_OS === 'ios' ? { onNativeChange: observeNativeText } : {})}
       {...props}
+      {...(richInput
+        ? {
+            composerBinding: owner.binding,
+            composerRichText: richText,
+            composerEventCount:
+              sendAcknowledgement?.owner === owner ? sendAcknowledgement.eventCount : 0,
+          }
+        : {})}
       ref={ref}
       onChangeText={(text) => {
         const active = events();

@@ -1,0 +1,130 @@
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMClipboardCoordinator.h b/node_modules/react-native-enriched-markdown/ios/input/ENRMClipboardCoordinator.h
+--- a/node_modules/react-native-enriched-markdown/ios/input/ENRMClipboardCoordinator.h
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMClipboardCoordinator.h
+@@ -16,6 +16,7 @@
+ @end
+ 
+ @interface ENRMClipboardCoordinator : NSObject
++@property (nonatomic, assign) BOOL composerMode;
+ 
+ - (instancetype)initWithFormattingStore:(ENRMFormattingStore *)formattingStore
+                              blockStore:(ENRMBlockStore *)blockStore
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMClipboardCoordinator.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMClipboardCoordinator.mm
+--- a/node_modules/react-native-enriched-markdown/ios/input/ENRMClipboardCoordinator.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMClipboardCoordinator.mm
+@@ -28,6 +28,7 @@
+ 
+ - (NSArray<ENRMFormattingRange *> *)allRangesIncludingTransient
+ {
++  if (_composerMode) return _formattingStore.allRanges;
+   NSArray<ENRMFormattingRange *> *transient = [_transientRangeProvider allTransientFormattingRanges];
+   if (transient.count == 0) {
+     return _formattingStore.allRanges;
+@@ -41,6 +42,7 @@
+                      ranges:(NSArray<ENRMFormattingRange *> *)ranges
+                 blockRanges:(NSArray<ENRMBlockRange *> *)blockRanges
+ {
++  if (_composerMode) return [ENRMMarkdownSerializer serializeComposerText:text ranges:ranges blockRanges:blockRanges];
+   ENRMInputFormatter *formatter = _formatter;
+   return [ENRMMarkdownSerializer serializePlainText:text
+                                              ranges:ranges
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTextView.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTextView.mm
+--- a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTextView.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTextView.mm
+@@ -114,6 +114,13 @@
+ 
+ - (void)deleteBackward
+ {
++  if ([self.markdownTextInput isComposerRichInput]) {
++    if (![self.markdownTextInput draftNativeMutationWillBegin]) return;
++    @try {
++      if (![self.markdownTextInput handleBackspaceAtDocumentStart]) [super deleteBackward];
++    } @finally { [self.markdownTextInput draftNativeMutationDidEnd]; }
++    return;
++  }
+   // Backspace at the very start of the document doesn't fire the text-change
+   // delegate (nothing precedes the caret), so removing/outdenting the first
+   // line's list marker has to be handled here.
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputLinkPrompt.h b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputLinkPrompt.h
+--- a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputLinkPrompt.h
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputLinkPrompt.h
+@@ -6,4 +6,8 @@
+ 
+ void ENRMShowLinkPrompt(RCTUIView *sourceView, NSString *_Nullable existingURL, void (^completion)(NSString *url));
+ 
++void ENRMShowComposerLinkPrompt(RCTUIView *sourceView, NSString *_Nullable existingURL,
++  NSString *title, NSString *confirmTitle, NSString *cancelTitle,
++  void (^completion)(NSString *_Nullable url));
++
+ NS_ASSUME_NONNULL_END
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputLinkPrompt.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputLinkPrompt.mm
+--- a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputLinkPrompt.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputLinkPrompt.mm
+@@ -3,12 +3,10 @@
+ static const CGFloat kMacOSURLFieldWidth = 260;
+ static const CGFloat kMacOSURLFieldHeight = 24;
+ 
+-void ENRMShowLinkPrompt(RCTUIView *sourceView, NSString *existingURL, void (^completion)(NSString *url))
++void ENRMShowComposerLinkPrompt(RCTUIView *sourceView, NSString *existingURL,
++  NSString *title, NSString *confirmTitle, NSString *cancelTitle, void (^completion)(NSString *url))
+ {
+   BOOL isEditing = existingURL.length > 0;
+-  NSString *title = isEditing ? @"Edit Link" : @"Add Link";
+-  NSString *confirmTitle = isEditing ? @"Update" : @"Add";
+-
+ #if !TARGET_OS_OSX
+   UIAlertController *alert = [UIAlertController alertControllerWithTitle:title
+                                                                  message:nil
+@@ -22,19 +20,24 @@
+     textField.autocorrectionType = UITextAutocorrectionTypeNo;
+   }];
+ 
++  __block id observer = nil;
++  void (^finish)(NSString *) = ^(NSString *url) {
++    if (observer) { [NSNotificationCenter.defaultCenter removeObserver:observer]; observer = nil; }
++    completion(url);
++  };
+   UIAlertAction *confirmAction = [UIAlertAction actionWithTitle:confirmTitle
+                                                           style:UIAlertActionStyleDefault
+                                                         handler:^(UIAlertAction *action) {
+                                                           NSString *url = alert.textFields.firstObject.text;
+-                                                          completion(url);
++                                                          finish(url);
+                                                         }];
+   confirmAction.enabled = isEditing;
+ 
+-  [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
++  [alert addAction:[UIAlertAction actionWithTitle:cancelTitle style:UIAlertActionStyleCancel handler:^(UIAlertAction *action) { finish(nil); }]];
+   [alert addAction:confirmAction];
+ 
+   UITextField *urlField = alert.textFields.firstObject;
+-  [NSNotificationCenter.defaultCenter
++  observer = [NSNotificationCenter.defaultCenter
+       addObserverForName:UITextFieldTextDidChangeNotification
+                   object:urlField
+                    queue:NSOperationQueue.mainQueue
+@@ -50,7 +53,7 @@
+   alert.messageText = title;
+   alert.informativeText = @"Enter the URL for the link.";
+   [alert addButtonWithTitle:confirmTitle];
+-  [alert addButtonWithTitle:@"Cancel"];
++  [alert addButtonWithTitle:cancelTitle];
+ 
+   NSTextField *urlField =
+       [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, kMacOSURLFieldWidth, kMacOSURLFieldHeight)];
+@@ -65,7 +68,14 @@
+                     if (url.length > 0) {
+                       completion(url);
+                     }
+-                  }
++                  } else { completion(nil); }
+                 }];
+ #endif
+ }
++
++void ENRMShowLinkPrompt(RCTUIView *sourceView, NSString *existingURL, void (^completion)(NSString *url))
++{
++  BOOL editing = existingURL.length > 0;
++  ENRMShowComposerLinkPrompt(sourceView, existingURL, editing ? @"Edit Link" : @"Add Link",
++    editing ? @"Update" : @"Add", @"Cancel", ^(NSString *url) { if (url) completion(url); });
++}

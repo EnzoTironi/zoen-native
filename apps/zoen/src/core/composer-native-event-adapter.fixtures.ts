@@ -76,11 +76,15 @@ export async function nativeEventAdapter() {
   const body = generate(callbacks[0]).code;
   return {
     registrations,
-    connect(props: Record<string, unknown>, worklet: (...args: any[]) => unknown) {
+    connect(
+      props: Record<string, unknown>,
+      worklet: (...args: any[]) => unknown,
+      eventName = 'onChange',
+    ) {
       const component = {
         props: {
           onNativeChange: {
-            workletEventHandler: new handlers.WorkletEventHandler(worklet, ['onChange']),
+            workletEventHandler: new handlers.WorkletEventHandler(worklet, [eventName]),
           },
           ...props,
         },

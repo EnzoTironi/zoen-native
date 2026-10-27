@@ -1,0 +1,356 @@
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.h b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.h
+--- a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.h
++++ b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.h
+@@ -11,6 +11,11 @@
+ 
+ @interface EnrichedMarkdownTextInput : RCTViewComponentView <ENRMDraftSnapshotProducer>
+ @property (nonatomic, readonly) ENRMEditSession *editSession;
++- (BOOL)isComposerRichInput;
++- (void)performComposerFormatting:(dispatch_block_t)mutation;
++- (NSString *)composerCodeLabel;
++- (NSString *)composerQuoteLabel;
++- (nullable NSString *)zoenComposerCanonicalText;
+ - (CGSize)measureSize:(CGFloat)maxWidth;
+ - (nullable NSString *)markdownForSelectedRange;
+ - (void)copyToClipboard;
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
+--- a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
+@@ -13,6 +13,8 @@
+ #import "ENRMFormattingRange.h"
+ #import "ENRMFormattingStore.h"
+ #import "ENRMInputEventEmitter.h"
++#import "ENRMComposerInputState.h"
++#import "ENRMMarkdownSerializer.h"
+ #import "ENRMInputFormatter.h"
+ #import "ENRMInputLayoutManager.h"
+ #import "ENRMInputLinkPrompt.h"
+@@ -74,6 +76,10 @@
+ 
+ @implementation EnrichedMarkdownTextInput {
+   ENRMPlatformTextView *_textView;
++  ENRMComposerInputState *_composer;
++  BOOL _composerSubmitOnReturn, _composerConfigurationRejected;
++  NSString *_composerCodeLabel, *_composerQuoteLabel, *_composerLinkTitle, *_composerLinkConfirm, *_composerCancelLabel;
++
+   BOOL _draftRequired, _draftRestoring, _draftCompositionPending, _draftSealed, _draftDiscardFrozen, _draftRetaining, _draftBinding;
+   NSUInteger _draftNativeDepth, _draftSemanticDepth;
+   uint64_t _draftSequence;
+@@ -411,6 +417,12 @@
+   }
+   const auto &oldViewProps = *std::static_pointer_cast<EnrichedMarkdownTextInputProps const>(_props);
+   const auto &newViewProps = *std::static_pointer_cast<EnrichedMarkdownTextInputProps const>(props);
++  _composerConfigurationRejected = !newViewProps.composerBinding.empty() && !newViewProps.draftCheckpointToken.empty();
++  if (_composerConfigurationRejected) {
++    _textView.editable = NO;
++    [super updateProps:props oldProps:oldProps];
++    return;
++  }
+ 
+   if (newViewProps.draftCheckpointToken.empty() && !_draftRequired && newViewProps.editable != oldViewProps.editable) {
+     _textView.editable = newViewProps.editable;
+@@ -546,7 +558,7 @@
+     writingDirectionChanged = YES;
+   }
+ 
+-  if (newViewProps.defaultValue != oldViewProps.defaultValue) {
++  if (newViewProps.composerBinding.empty() && newViewProps.defaultValue != oldViewProps.defaultValue) {
+     if (!newViewProps.defaultValue.empty() && oldViewProps.defaultValue.empty()) {
+       NSString *markdown = [NSString stringWithUTF8String:newViewProps.defaultValue.c_str()];
+       [self importMarkdown:markdown];
+@@ -577,6 +589,46 @@
+     [self unbindDraftCheckpoint];
+     _textView.editable=NO;
+   }
++  if (!_composer) _composer = [ENRMComposerInputState new];
++  NSString *binding = [NSString stringWithUTF8String:newViewProps.composerBinding.c_str()];
++  BOOL newOwner = ![_composer.binding isEqual:binding];
++  BOOL previousRichText = _composer.richText;
++  BOOL modeChanged = [_composer bind:binding richText:newViewProps.composerRichText];
++  _composer.enabled = newViewProps.editable;
++  _composerSubmitOnReturn = newViewProps.composerSubmitOnReturn;
++#if !TARGET_OS_OSX
++  if (binding.length) {
++    _textView.returnKeyType = _composerSubmitOnReturn ? UIReturnKeySearch : UIReturnKeyDefault;
++    _textView.keyboardAppearance = newViewProps.composerKeyboardAppearance == "dark"
++      ? UIKeyboardAppearanceDark : UIKeyboardAppearanceLight;
++    _textView.autocorrectionType = newViewProps.composerRichText ? UITextAutocorrectionTypeDefault : UITextAutocorrectionTypeNo;
++  }
++#endif
++  _clipboardCoordinator.composerMode = binding.length && newViewProps.composerRichText;
++  _composerCodeLabel = [NSString stringWithUTF8String:newViewProps.composerCodeLabel.c_str()];
++  _composerQuoteLabel = [NSString stringWithUTF8String:newViewProps.composerQuoteLabel.c_str()];
++  _composerLinkTitle = [NSString stringWithUTF8String:newViewProps.composerLinkTitle.c_str()];
++  _composerLinkConfirm = [NSString stringWithUTF8String:newViewProps.composerLinkConfirm.c_str()];
++  _composerCancelLabel = [NSString stringWithUTF8String:newViewProps.composerCancelLabel.c_str()];
++  _inputSelectionMenuConfig.format = newViewProps.selectionMenuConfig.format &&
++    (!binding.length || newViewProps.composerRichText);
++  if (binding.length) {
++    NSString *value = [NSString stringWithUTF8String:newViewProps.composerValue.c_str()];
++    if (newOwner) {
++      [_textView.undoManager removeAllActions];
++    }
++    if ([_composer shouldApplyValue:value acknowledged:newViewProps.composerMostRecentEventCount
++                            current:modeChanged ? nil : [self currentMarkdown] force:newOwner]) {
++      [self importMarkdown:value];
++      if (!newOwner && modeChanged) [_textView.undoManager removeAllActions];
++    } else if (modeChanged && !newOwner) {
++      // A mode prop cannot authorize overwriting a newer native edit.
++      [_composer bind:binding richText:previousRichText];
++    }
++    _clipboardCoordinator.composerMode = _composer.richText;
++    _inputSelectionMenuConfig.format = newViewProps.selectionMenuConfig.format && _composer.richText;
++    _textView.editable = newViewProps.editable;
++  }
+   [super updateProps:props oldProps:oldProps];
+ }
+ 
+@@ -708,13 +760,61 @@
+   _placeholderLabel.hidden = hasText || hasBlock;
+ }
+ 
++
++- (BOOL)isComposerRichInput { return _composer.binding.length && _composer.richText; }
++- (NSString *)composerCodeLabel { return _composerCodeLabel ?: @""; }
++- (NSString *)composerQuoteLabel { return _composerQuoteLabel ?: @""; }
++- (NSString *)zoenComposerCanonicalText { return _composer.binding.length ? [self currentMarkdown] : nil; }
++- (NSDictionary *)composerReceiptForMarkdown:(NSString *)markdown { return [_composer receiptForMarkdown:markdown]; }
++
++- (void)composerMutationWillBegin
++{
++  if (_draftRestoring) return;
++  [_composer beginUndoInManager:_textView.undoManager markdown:[self currentMarkdown] selection:_textView.selectedRange];
++}
++- (void)composerRestore:(NSString *)markdown selection:(NSRange)selection binding:(NSString *)binding
++{
++  if (![_composer.binding isEqual:binding] || ![self draftMayMutate]) return;
++  [self performComposerFormatting:^{
++    [self importMarkdown:markdown];
++    NSUInteger length = ENRMGetPlainText(self->_textView).length;
++    self->_textView.selectedRange = NSMakeRange(MIN(selection.location, length),
++      MIN(selection.length, length - MIN(selection.location, length)));
++    [self->_inputEventEmitter emitFormattingChanged];
++    [self->_inputEventEmitter emitOnChangeSelection];
++    [self requestHeightUpdate];
++  }];
++}
++- (void)composerMutationDidEnd
++{
++  if (_draftRestoring) return;
++  BOOL composing = NO;
++#if !TARGET_OS_OSX
++  composing = _textView.markedTextRange != nil;
++#endif
++  __weak EnrichedMarkdownTextInput *weakSelf = self;
++  [_composer endUndoWithMarkdown:[self currentMarkdown] composing:composing
++    restore:^(NSString *markdown, NSRange selection, NSString *binding) {
++      [weakSelf composerRestore:markdown selection:selection binding:binding];
++    }];
++}
++- (void)performComposerFormatting:(dispatch_block_t)mutation
++{
++  if (![self draftMayMutate]) return;
++  [self composerMutationWillBegin];
++  @try { mutation(); } @finally { [self composerMutationDidEnd]; }
++}
++
+ #pragma mark - Markdown import
+ 
+ - (void)importMarkdown:(NSString *)markdown
+ {
+   _draftRestoring=YES;
+   ENRMInputParser *parser = [[ENRMInputParser alloc] init];
+-  ENRMParseResult *parsed = [parser parseToPlainTextAndRanges:markdown];
++  ENRMParseResult *parsed = [self isComposerRichInput] ? [parser parseComposerMarkdown:markdown]
++    : [parser parseToPlainTextAndRanges:markdown];
++  BOOL plainComposer = _composer.binding.length && !_composer.richText;
++  NSString *importedText = plainComposer ? markdown : parsed.plainText;
+ 
+   [_editSession enterPhase:ENRMEditPhaseImporting];
+ 
+@@ -723,19 +823,19 @@
+   // previous cursor) onto all text set via .text. Reset before import so
+   // setValue does not indent non-list lines with the old list depth.
+   [self resetBaseTypingAttributes];
+-  ENRMSetPlainText(_textView, parsed.plainText);
++  if (![ENRMGetPlainText(_textView) isEqual:importedText]) ENRMSetPlainText(_textView, importedText);
+   [_editSession enterPhase:ENRMEditPhaseImporting];
+ 
+-  [_formattingStore setRanges:parsed.formattingRanges];
+-  [_blockStore setRanges:parsed.blockRanges];
+-  _lastTextLength = parsed.plainText.length;
++  [_formattingStore setRanges:plainComposer ? @[] : parsed.formattingRanges];
++  [_blockStore setRanges:plainComposer ? @[] : parsed.blockRanges];
++  _lastTextLength = importedText.length;
+   _lastSelectedRange = _textView.selectedRange;
+ 
+   [_editSession exitPhase];
+   [self applyFormatting];
+   [self updatePlaceholderVisibility];
+ 
+-  if (parsed.plainText.length == 0) {
++  if (importedText.length == 0) {
+     [self resetBaseTypingAttributes];
+   }
+   _draftRestoring=NO;
+@@ -749,6 +849,10 @@
+ {
+   // Every known semantic replacement enters admission before text or stores change.
+   if (![self draftMayMutate]) return;
++  if (_composer.binding.length && _composer.undoDepth == 0) {
++    [self performComposerFormatting:^{ [self replaceTextInRange:selection withText:text
++      formattingRanges:ranges blockRanges:blockRanges]; }]; return;
++  }
+   if (_draftRequired) _draftSemanticDepth++;
+   NSUInteger editLocation = selection.location;
+ 
+@@ -831,7 +935,7 @@
+   NSString *core = [markdown substringWithRange:NSMakeRange(lead, markdown.length - lead - trail)];
+ 
+   ENRMInputParser *parser = [[ENRMInputParser alloc] init];
+-  ENRMParseResult *parsed = [parser parseToPlainTextAndRanges:core];
++  ENRMParseResult *parsed = [self isComposerRichInput] ? [parser parseComposerMarkdown:core] : [parser parseToPlainTextAndRanges:core];
+ 
+   if (lead == 0 && trail == 0) {
+     [self replaceTextInRange:_textView.selectedRange
+@@ -1022,6 +1126,10 @@
+ - (void)toggleInlineStyle:(ENRMInputStyleType)styleType
+ {
+   if(![self draftMayMutate])return;
++  if (_composer.binding.length && (!_composer.richText || styleType == ENRMInputStyleTypeUnderline)) return;
++  if (_composer.binding.length && _composer.undoDepth == 0) {
++    [self performComposerFormatting:^{ [self toggleInlineStyle:styleType]; }]; return;
++  }
+   id<ENRMStyleHandler> handler = [_formatter handlerForStyleType:styleType];
+   if (!handler) {
+     return;
+@@ -1058,6 +1166,9 @@
+ - (void)toggleBlockType:(ENRMInputBlockType)type level:(NSInteger)level
+ {
+   if(![self draftMayMutate])return;
++  if (_composer.binding.length && _composer.undoDepth == 0) {
++    [self performComposerFormatting:^{ [self toggleBlockType:type level:level]; }]; return;
++  }
+   NSString *text = ENRMGetPlainText(_textView);
+   BOOL alreadyActive = [_blockCoordinator toggleBlockType:type
+                                                     level:level
+@@ -1393,6 +1504,10 @@
+ - (void)setLink:(NSString *)url
+ {
+   if(![self draftMayMutate])return;
++  if (_composer.binding.length && !_composer.richText) return;
++  if (_composer.binding.length && _composer.undoDepth == 0) {
++    [self performComposerFormatting:^{ [self setLink:url]; }]; return;
++  }
+   NSRange selection = _textView.selectedRange;
+   if (![_linkCoordinator setLinkURL:url atCursor:selection.location selection:selection]) {
+     return;
+@@ -1462,6 +1577,10 @@
+ - (void)removeLink
+ {
+   if(![self draftMayMutate])return;
++  if (_composer.binding.length && !_composer.richText) return;
++  if (_composer.binding.length && _composer.undoDepth == 0) {
++    [self performComposerFormatting:^{ [self removeLink]; }]; return;
++  }
+   if (![_linkCoordinator removeLinkAtPosition:_textView.selectedRange.location]) {
+     return;
+   }
+@@ -1475,7 +1594,21 @@
+   NSString *existingURL = activeLink != nil ? activeLink.url : nil;
+ 
+   __weak EnrichedMarkdownTextInput *weakSelf = self;
+-  ENRMShowLinkPrompt(self, existingURL, ^(NSString *url) { [weakSelf setLink:url]; });
++  if (!_composer.binding.length) {
++    ENRMShowLinkPrompt(self, existingURL, ^(NSString *url) { [weakSelf setLink:url]; }); return;
++  }
++  if (![self isComposerRichInput] || ![self draftMayMutate]) return;
++  NSString *binding = _composer.binding;
++  uint64_t count = _composer.eventCount;
++  NSRange selection = _textView.selectedRange;
++  ENRMShowComposerLinkPrompt(self, existingURL, _composerLinkTitle, _composerLinkConfirm,
++    _composerCancelLabel, ^(NSString *url) {
++      EnrichedMarkdownTextInput *owner = weakSelf;
++      if (!owner || ![owner->_composer matches:binding eventCount:count] || !owner.window) return;
++      owner->_textView.selectedRange = selection;
++      if (url) [owner performComposerFormatting:^{ [owner setLink:url]; }];
++      [owner->_textView becomeFirstResponder];
++    });
+ }
+ 
+ /// Serializes plain text with inline + block formatting, resolving each block's
+@@ -1591,9 +1724,11 @@
+ 
+ - (NSString *)currentMarkdown
+ {
+-  return [self serializeText:ENRMGetPlainText(_textView)
+-                      ranges:[self allRangesIncludingTransient]
+-                 blockRanges:_blockStore.allRanges];
++  NSString *text = ENRMGetPlainText(_textView);
++  if (_composer.binding.length) return _composer.richText
++    ? [ENRMMarkdownSerializer serializeComposerText:text ranges:_formattingStore.allRanges blockRanges:_blockStore.allRanges]
++    : text;
++  return [self serializeText:text ranges:[self allRangesIncludingTransient] blockRanges:_blockStore.allRanges];
+ }
+ 
+ - (NSArray<ENRMFormattingRange *> *)allRangesIncludingTransient
+@@ -1933,6 +2068,7 @@
+ {
+   if(![self draftMayMutate])return NO;
+   [_inputEventEmitter emitOnKeyPress:text];
++  if (_composer.binding.length && _composerSubmitOnReturn && [text isEqual:@"\n"]) return NO;
+   if ([self deleteLinkForReplacementRange:range replacementText:text]) {
+     return NO;
+   }
+@@ -2261,7 +2397,7 @@
+ 
+ - (BOOL)draftMayMutate
+ {
+-  return !_draftSealed && !_draftDiscardFrozen && !_draftBinding && (!_draftRequired || (_draftSink && !_draftFailure));
++  return !_composerConfigurationRejected && (!_composer.binding.length || _composer.enabled) && !_draftSealed && !_draftDiscardFrozen && !_draftBinding && (!_draftRequired || (_draftSink && !_draftFailure));
+ }
+ 
+ - (BOOL)bindDraftCheckpointToken:(NSString *)token error:(NSError **)error
+@@ -2323,6 +2459,7 @@
+ - (BOOL)draftNativeMutationWillBegin
+ {
+   if(![self draftMayMutate])return NO;
++  [self composerMutationWillBegin];
+   if(_draftRequired) {
+     if(_draftNativeDepth==0 && !_draftCompositionPending) _draftModel=[self draftLiveModel];
+     _draftNativeDepth++;
+@@ -2332,6 +2469,7 @@
+ 
+ - (void)draftNativeMutationDidEnd
+ {
++  [self composerMutationDidEnd];
+   if(!_draftRequired)return;
+   if(_draftNativeDepth) _draftNativeDepth--;
+   // replaceRange: is also used inside explicit paste/cut replacements. Their
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputEventEmitter.h b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputEventEmitter.h
+--- a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputEventEmitter.h
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputEventEmitter.h
+@@ -20,6 +20,7 @@
+ - (NSString *)plainText;
+ - (NSString *)currentMarkdown;
+ - (CGRect)computeCaretRect;
++- (nullable NSDictionary *)composerReceiptForMarkdown:(NSString *)markdown;
+ 
+ @end
+ 
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputEventEmitter.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputEventEmitter.mm
+--- a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputEventEmitter.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputEventEmitter.mm
+@@ -111,7 +111,11 @@
+ {
+   ENRM_GUARD_EMITTER(emitter);
+   NSString *markdown = [_dataSource currentMarkdown];
+-  emitter->onChangeMarkdown({.value = std::string([markdown UTF8String] ?: "")});
++  NSDictionary *receipt = [_dataSource composerReceiptForMarkdown:markdown];
++  emitter->onChangeMarkdown({.value = std::string([markdown UTF8String] ?: ""),
++    .text = std::string([markdown UTF8String] ?: ""),
++    .binding = std::string([receipt[@"binding"] UTF8String] ?: ""),
++    .eventCount = [receipt[@"eventCount"] doubleValue]});
+ }
+ 
+ - (void)emitOnChangeSelection

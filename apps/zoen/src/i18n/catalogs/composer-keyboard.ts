@@ -2,6 +2,10 @@ import { defineFeature } from '../catalog.ts';
 
 export const composerKeyboard = defineFeature(
   {
+    format: 'Format',
+    code: 'Code',
+    quote: 'Quote',
+    link: 'Link',
     keyboard: 'Keyboard',
     emoji: 'Emoji',
     delete: 'Delete emoji',
@@ -17,6 +21,10 @@ export const composerKeyboard = defineFeature(
     flags: 'Flags',
   },
   {
+    format: 'Formatar',
+    code: 'Código',
+    quote: 'Citação',
+    link: 'Link',
     keyboard: 'Teclado',
     emoji: 'Emojis',
     delete: 'Apagar emoji',
