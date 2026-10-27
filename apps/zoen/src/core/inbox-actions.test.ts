@@ -156,3 +156,16 @@ test('unmute uses the exact finite canonical deadline and mark-read uses its ded
     false,
   );
 });
+
+test('read and mute preserve a prior authorized archive Undo; Undo preserves the newer mute state', async () => {
+  const f = inboxFixture();
+  await f.run('archive');
+  const original = f.session.getSnapshot().undo!;
+  await f.run('read');
+  await f.run('mute');
+  assert.equal(f.session.getSnapshot().undo, original);
+  assert.equal(f.chat.muted_until_ms, null);
+  await f.undo();
+  assert.equal(f.chat.archived, false);
+  assert.equal(f.chat.muted_until_ms, null);
+});

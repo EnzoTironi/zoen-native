@@ -122,7 +122,11 @@ export class InboxActionsSession {
       return;
     const generation = ++this.generation,
       owner = this.owner;
-    this.publish({ pending: chat.id, error: null, undo: null });
+    this.publish({
+      pending: chat.id,
+      error: null,
+      ...(action === 'pin' || action === 'archive' ? { undo: null } : {}),
+    });
     try {
       const fresh = this.chat(await this.port.snapshot(), chat.id, owner);
       if (!this.current(generation)) return;
