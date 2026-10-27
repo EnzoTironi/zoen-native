@@ -10,10 +10,10 @@ fn removal_during_external_recovery_holds_both_peers_until_the_removal_commit(
         device: Signer::generate()?,
         key: Signer::generate()?.secret(),
     };
-    let (ce, cm, cf) = (db(), db(), db());
-    let (old, removed, recovered) = (e.open(&ce), m.open(&cm), fresh.open(&cf));
+    let (ce, cm, cf) = (db()?, db()?, db()?);
+    let (old, removed, recovered) = (e.open(&ce)?, m.open(&cm)?, fresh.open(&cf)?);
     let both = roster(&[&e, &m]);
-    let context = pair(&old, &removed, &both);
+    let context = pair(&old, &removed, &both)?;
     let external = recovered.recover(SPACE, &context, &both).unwrap();
     assert!(recovered.committed_leaves(SPACE).unwrap().is_none());
     let current = roster(&[&e]);
@@ -88,10 +88,10 @@ fn two_lost_members_recover_from_public_context_without_a_surviving_device(
     let (e, m) = (Person::new()?, Person::new()?);
     let both = roster(&[&e, &m]);
     let info = {
-        let (ce, cm) = (db(), db());
-        let (enzo, marina) = (e.open(&ce), m.open(&cm));
+        let (ce, cm) = (db()?, db()?);
+        let (enzo, marina) = (e.open(&ce)?, m.open(&cm)?);
         enzo.create_group(SPACE).unwrap();
-        let c = add(&enzo, &marina);
+        let c = add(&enzo, &marina)?;
         enzo.open(SPACE, &c.commit, &both, enzo.leaf()).unwrap();
         marina.join(SPACE, &c.welcome.unwrap(), &both).unwrap();
         c.group_info
@@ -104,8 +104,8 @@ fn two_lost_members_recover_from_public_context_without_a_surviving_device(
         })
     };
     let (fresh_e, fresh_m) = (replacement(&e)?, replacement(&m)?);
-    let (ce, cm) = (db(), db());
-    let (enzo, marina) = (fresh_e.open(&ce), fresh_m.open(&cm));
+    let (ce, cm) = (db()?, db()?);
+    let (enzo, marina) = (fresh_e.open(&ce)?, fresh_m.open(&cm)?);
     let first = enzo.recover(SPACE, &info, &both).unwrap();
     assert_eq!(commit_epoch(&first.commit), Some(1));
     assert!(enzo.seal(SPACE, b"before confirmation").is_err());
@@ -147,17 +147,17 @@ fn two_lost_members_recover_from_public_context_without_a_surviving_device(
 fn recovery_refuses_removed_members_wrong_groups_and_invalid_context(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (e, m) = (Person::new()?, Person::new()?);
-    let (ce, cm) = (db(), db());
-    let enzo = e.open(&ce);
+    let (ce, cm) = (db()?, db()?);
+    let enzo = e.open(&ce)?;
     enzo.create_group(SPACE).unwrap();
-    let c = add(&enzo, &m.open(&cm));
+    let c = add(&enzo, &m.open(&cm)?)?;
     let fresh = Person {
         identity: Signer::from_secret(&m.identity.secret()),
         device: Signer::generate()?,
         key: Signer::generate()?.secret(),
     };
-    let fresh_db = db();
-    let replacement = fresh.open(&fresh_db);
+    let fresh_db = db()?;
+    let replacement = fresh.open(&fresh_db)?;
     assert!(matches!(
         replacement.recover(SPACE, &c.group_info, &roster(&[&e])),
         Err(MlsError::Unlisted(_))
@@ -178,8 +178,8 @@ fn recovery_refuses_removed_members_wrong_groups_and_invalid_context(
 fn recovery_marker_survives_reopen_and_failed_staging_rolls_back_the_group(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let old = Person::new()?;
-    let c = db();
-    let device = old.open(&c);
+    let c = db()?;
+    let device = old.open(&c)?;
     device.create_group(SPACE).unwrap();
     let context = device
         .commit(SPACE, &[], &BTreeSet::new())
@@ -190,25 +190,25 @@ fn recovery_marker_survives_reopen_and_failed_staging_rolls_back_the_group(
         device: Signer::generate()?,
         key: Signer::generate()?.secret(),
     };
-    let restored = db();
+    let restored = db()?;
     restored.execute_batch("CREATE TRIGGER fail_recovery BEFORE INSERT ON mls_recovery_pending BEGIN SELECT RAISE(ABORT, 'injected disk write failure'); END;").unwrap();
     let both = roster(&[&old]);
     assert!(fresh
-        .open(&restored)
+        .open(&restored)?
         .recover(SPACE, &context, &both)
         .is_err());
     assert!(
-        !fresh.open(&restored).has_group(SPACE),
+        !fresh.open(&restored)?.has_group(SPACE),
         "failure must roll back operational OpenMLS state"
     );
     restored
         .execute_batch("DROP TRIGGER fail_recovery")
         .unwrap();
     let commit = fresh
-        .open(&restored)
+        .open(&restored)?
         .recover(SPACE, &context, &both)
         .unwrap();
-    let reopened = fresh.open(&restored);
+    let reopened = fresh.open(&restored)?;
     assert_eq!(reopened.group_state(SPACE).unwrap(), GroupState::Pending);
     assert!(reopened.pending(SPACE));
     assert!(reopened.seal(SPACE, b"held after restart").is_err());
@@ -234,14 +234,16 @@ fn recovery_marker_survives_reopen_and_failed_staging_rolls_back_the_group(
 #[test]
 fn state_survives_reopen() -> Result<(), Box<dyn std::error::Error>> {
     let (e, m) = (Person::new()?, Person::new()?);
-    let (ce, cm) = (db(), db());
+    let (ce, cm) = (db()?, db()?);
     let both = roster(&[&e, &m]);
-    pair(&e.open(&ce), &m.open(&cm), &both);
-    let msg = e.open(&ce).seal(SPACE, b"after restart").unwrap();
-    let marina = m.open(&cm);
+    pair(&e.open(&ce)?, &m.open(&cm)?, &both)?;
+    let msg = e.open(&ce)?.seal(SPACE, b"after restart").unwrap();
+    let marina = m.open(&cm)?;
     assert!(marina.has_group(SPACE));
     assert!(matches!(
-        marina.open(SPACE, &msg, &both, e.open(&ce).leaf()).unwrap(),
+        marina
+            .open(SPACE, &msg, &both, e.open(&ce)?.leaf())
+            .unwrap(),
         Opened::Application { .. }
     ));
     Ok(())
@@ -275,12 +277,12 @@ fn failed_application_authentication_preserves_state_across_cold_reopen(
     let database = Database(
         std::env::temp_dir().join(format!("zoen-mls-auth-rejection-{}.sqlite", m.device.id())),
     );
-    let ce = db();
+    let ce = db()?;
     let mut cm = Connection::open(&database.0).unwrap();
     migrate(&mut cm).unwrap();
-    let enzo = e.open(&ce);
+    let enzo = e.open(&ce)?;
     let both = roster(&[&e, &m]);
-    pair(&enzo, &m.open(&cm), &both);
+    pair(&enzo, &m.open(&cm)?, &both)?;
     let plaintext = b"The original ciphertext remains readable after rejection";
     let valid = enzo.seal(SPACE, plaintext).unwrap();
     let mut tampered = valid.clone();
@@ -289,7 +291,7 @@ fn failed_application_authentication_preserves_state_across_cold_reopen(
     assert!(application_epoch(&tampered).is_some());
     let before = group_rows(&cm);
     let checkpoint = {
-        let marina = m.open(&cm);
+        let marina = m.open(&cm)?;
         let checkpoint = marina.checkpoint(SPACE).unwrap();
         assert!(matches!(
             marina.open(SPACE, &tampered, &both, enzo.leaf()),
@@ -305,7 +307,7 @@ fn failed_application_authentication_preserves_state_across_cold_reopen(
     let cm = Connection::open(&database.0).unwrap();
     assert_eq!(group_rows(&cm), before);
     {
-        let marina = m.open(&cm);
+        let marina = m.open(&cm)?;
         assert_eq!(marina.checkpoint(SPACE).unwrap(), checkpoint);
         assert!(matches!(
             marina.open(SPACE, &valid, &both, enzo.leaf()).unwrap(),
@@ -316,7 +318,7 @@ fn failed_application_authentication_preserves_state_across_cold_reopen(
     drop(cm);
 
     let cm = Connection::open(&database.0).unwrap();
-    let marina = m.open(&cm);
+    let marina = m.open(&cm)?;
     assert!(matches!(
         marina.open(SPACE, &valid, &both, enzo.leaf()),
         Err(MlsError::Mls(_))
