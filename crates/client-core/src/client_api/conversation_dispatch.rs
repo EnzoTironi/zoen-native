@@ -24,11 +24,11 @@ impl Client {
             OwnerPolicyStatus, PageBlockMarkdown, PageParseMarkdown, PrepareOwnerPolicy,
             PreviewInvite, ProviderSignIn, React, RecoverFailedMediaDraft, RemoveMember,
             RemoveMemberReviewed, RequestAccountPolicyOptions, RequestAppEdit,
-            RequestOwnerPolicyOptions, RespondCall, ReviewOwnerPolicy, RevokeAgentInvite,
-            SaveMessageDraft, SendMessage, SendMessageDraft, SetChatMuted, SetChatPrefs,
-            SetMemberRoleReviewed, SetTyping, ShareAppCurrent, Snapshot, SpaceMemberContext,
-            StartDirect, StartOwnerPolicyDirect, SubmitOwnerPolicy, Thread, Timeline,
-            UniversalSearch,
+            RequestOwnerPolicyOptions, RespondCall, ReviewOwnerPolicy, ReviewReplySelection,
+            RevokeAgentInvite, SaveMessageDraft, SendMessage, SendMessageDraft, SetChatMuted,
+            SetChatPrefs, SetMemberRoleReviewed, SetTyping, ShareAppCurrent, Snapshot,
+            SpaceMemberContext, StartDirect, StartOwnerPolicyDirect, SubmitOwnerPolicy, Thread,
+            Timeline, UniversalSearch,
         };
         match command {
             AppCurrentShareContext { scope } => encode(&self.app_current_share_context(scope)?),
@@ -146,57 +146,10 @@ impl Client {
                 before,
                 limit,
             )?),
-            MessageDraft {
-                expected_identity_id,
-                expected_device_id,
-                space_id,
-                thread_root_id,
-            } => {
-                let scope = crate::message_drafts::DraftScope {
-                    expected_identity_id,
-                    expected_device_id,
-                    space_id,
-                    thread_root_id,
-                };
-                encode(&self.lock().message_draft(&scope)?)
-            }
-            SaveMessageDraft {
-                expected_identity_id,
-                expected_device_id,
-                space_id,
-                thread_root_id,
-                expected_revision,
-                text,
-                reply_to,
-            } => {
-                let scope = crate::message_drafts::DraftScope {
-                    expected_identity_id,
-                    expected_device_id,
-                    space_id,
-                    thread_root_id,
-                };
-                encode(&self.lock().save_message_draft(
-                    &scope,
-                    &expected_revision,
-                    text,
-                    reply_to,
-                )?)
-            }
-            SendMessageDraft {
-                expected_identity_id,
-                expected_device_id,
-                space_id,
-                thread_root_id,
-                expected_revision,
-            } => {
-                let scope = crate::message_drafts::DraftScope {
-                    expected_identity_id,
-                    expected_device_id,
-                    space_id,
-                    thread_root_id,
-                };
-                encode(&self.lock().send_message_draft(&scope, &expected_revision)?)
-            }
+            command @ (MessageDraft { .. }
+            | SaveMessageDraft { .. }
+            | SendMessageDraft { .. }
+            | ReviewReplySelection { .. }) => self.dispatch_draft(command),
             RecoverFailedMediaDraft {
                 scope,
                 message_id,

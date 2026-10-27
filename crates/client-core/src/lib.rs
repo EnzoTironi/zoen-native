@@ -106,6 +106,8 @@ mod net;
 mod profile;
 mod provider_auth;
 mod replies;
+mod selected_quotes;
+pub use selected_quotes::{QuoteSpan, ReplySelection};
 pub mod runtime_core;
 pub use profile::{PhotoChange, ProfileDto, ProfilePhotoBytes};
 mod sync;

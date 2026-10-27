@@ -50,6 +50,7 @@ enum Mode {
 /// Only this module can construct the event-bound read. Its document is derived
 /// from a verified log prefix and locally authenticated, bounded payload bytes.
 pub(crate) struct BeforeEvent {
+    selected_quote_valid: bool,
     event: String,
     ordered_address: Option<(u64, String, String)>,
     scope_valid: bool,
@@ -74,44 +75,7 @@ fn binding(event: &Event) -> R<String> {
     ))?)
 }
 
-impl BeforeEvent {
-    pub(crate) fn share_head(&self) -> Option<&crate::app_current_share::SharedVersionInfo> {
-        self.share_head.as_ref()
-    }
-    pub(crate) fn app_share_refs_valid(&self) -> bool {
-        self.app_share_refs_valid
-    }
-    pub(crate) fn scope_valid(&self) -> bool {
-        self.scope_valid
-    }
-
-    pub(crate) fn matches(&self, event: &Event) -> bool {
-        binding(event).is_ok_and(|hash| self.event == hash)
-            && self
-                .ordered_address
-                .as_ref()
-                .is_none_or(|(seq, prev, hash)| {
-                    *seq == event.seq && prev == &event.prev && hash == &event.hash
-                })
-    }
-
-    pub(crate) fn plan(&self) -> &PlanRead {
-        &self.plan
-    }
-
-    pub(crate) fn ordered(&self) -> bool {
-        !matches!(self.mode, Mode::Pending)
-    }
-
-    pub(crate) fn creation_origin(&self, event: &Event, item: &str) -> PlanOrigin {
-        match self.mode {
-            Mode::Confirmed | Mode::Local => {
-                PlanOrigin::Explicit(source(&event.space, item, event, true).event_id)
-            }
-            Mode::Pending => PlanOrigin::Pending,
-        }
-    }
-}
+mod before;
 
 /// One replay owns its payload snapshot. Repeated decisions reuse a fold until
 /// that Item's ordered history changes; no page-session or network reader enters it.
@@ -353,6 +317,13 @@ impl<'a> PlanReplay<'a> {
             PlanRead::Changed
         };
         Ok(BeforeEvent {
+            selected_quote_valid: crate::selected_quotes::received_valid(
+                state,
+                event,
+                self.logs
+                    .get(&event.space)
+                    .map_or(&[], |log| &log.events()[..end]),
+            ),
             share_head: crate::app_current_share::readable_head(
                 self.logs
                     .get(&event.space)

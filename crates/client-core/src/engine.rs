@@ -150,6 +150,7 @@ pub(crate) struct Entry {
 /// What later `MessageAnnotated` events did to a message.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct MessageMarks {
+    pub text_revision: Option<String>,
     pub edited: bool,
     pub deleted: bool,
     pub forwarded: bool,
