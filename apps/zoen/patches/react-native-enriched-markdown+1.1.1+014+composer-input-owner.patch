@@ -25,23 +25,30 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
  #import "ENRMInputFormatter.h"
  #import "ENRMInputLayoutManager.h"
  #import "ENRMInputLinkPrompt.h"
-@@ -74,6 +76,10 @@
+@@ -74,6 +76,11 @@
  
  @implementation EnrichedMarkdownTextInput {
    ENRMPlatformTextView *_textView;
 +  ENRMComposerInputState *_composer;
 +  BOOL _composerSubmitOnReturn, _composerConfigurationRejected;
++  dispatch_block_t _composerCancelLink;
 +  NSString *_composerCodeLabel, *_composerQuoteLabel, *_composerLinkTitle, *_composerLinkConfirm, *_composerCancelLabel;
 +
    BOOL _draftRequired, _draftRestoring, _draftCompositionPending, _draftSealed, _draftDiscardFrozen, _draftRetaining, _draftBinding;
    NSUInteger _draftNativeDepth, _draftSemanticDepth;
    uint64_t _draftSequence;
-@@ -411,6 +417,12 @@
+@@ -411,6 +418,18 @@
    }
    const auto &oldViewProps = *std::static_pointer_cast<EnrichedMarkdownTextInputProps const>(_props);
    const auto &newViewProps = *std::static_pointer_cast<EnrichedMarkdownTextInputProps const>(props);
 +  _composerConfigurationRejected = !newViewProps.composerBinding.empty() && !newViewProps.draftCheckpointToken.empty();
 +  if (_composerConfigurationRejected) {
++    _composer.enabled = NO;
++    if (_composerCancelLink) {
++      dispatch_block_t cancel = _composerCancelLink;
++      _composerCancelLink = nil;
++      cancel();
++    }
 +    _textView.editable = NO;
 +    [super updateProps:props oldProps:oldProps];
 +    return;
@@ -49,7 +56,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
  
    if (newViewProps.draftCheckpointToken.empty() && !_draftRequired && newViewProps.editable != oldViewProps.editable) {
      _textView.editable = newViewProps.editable;
-@@ -546,7 +558,7 @@
+@@ -546,7 +565,7 @@
      writingDirectionChanged = YES;
    }
  
@@ -58,7 +65,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
      if (!newViewProps.defaultValue.empty() && oldViewProps.defaultValue.empty()) {
        NSString *markdown = [NSString stringWithUTF8String:newViewProps.defaultValue.c_str()];
        [self importMarkdown:markdown];
-@@ -577,6 +589,46 @@
+@@ -577,6 +596,56 @@
      [self unbindDraftCheckpoint];
      _textView.editable=NO;
    }
@@ -68,6 +75,11 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
 +  BOOL previousRichText = _composer.richText;
 +  BOOL modeChanged = [_composer bind:binding richText:newViewProps.composerRichText];
 +  _composer.enabled = newViewProps.editable;
++  if ((newOwner || !_composer.enabled) && _composerCancelLink) {
++    dispatch_block_t cancel = _composerCancelLink;
++    _composerCancelLink = nil;
++    cancel();
++  }
 +  _composerSubmitOnReturn = newViewProps.composerSubmitOnReturn;
 +#if !TARGET_OS_OSX
 +  if (binding.length) {
@@ -93,6 +105,11 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
 +    if ([_composer shouldApplyValue:value acknowledged:newViewProps.composerMostRecentEventCount
 +                            current:modeChanged ? nil : [self currentMarkdown] force:newOwner]) {
 +      [self importMarkdown:value];
++      if (_composerCancelLink) {
++        dispatch_block_t cancel = _composerCancelLink;
++        _composerCancelLink = nil;
++        cancel();
++      }
 +      if (!newOwner && modeChanged) [_textView.undoManager removeAllActions];
 +    } else if (modeChanged && !newOwner) {
 +      // A mode prop cannot authorize overwriting a newer native edit.
@@ -105,7 +122,19 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    [super updateProps:props oldProps:oldProps];
  }
  
-@@ -708,13 +760,61 @@
+@@ -619,6 +688,11 @@
+ {
+   [super didMoveToWindow];
+ 
++  if (!self.window && _composerCancelLink) {
++    dispatch_block_t cancel = _composerCancelLink;
++    _composerCancelLink = nil;
++    cancel();
++  }
+   if (self.window) {
+     // Don't override the contentView frame set by RCTViewComponentView.
+     ENRMRefreshTextViewLayout(_textView);
+@@ -708,13 +782,61 @@
    _placeholderLabel.hidden = hasText || hasBlock;
  }
  
@@ -168,7 +197,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
  
    [_editSession enterPhase:ENRMEditPhaseImporting];
  
-@@ -723,19 +823,19 @@
+@@ -723,19 +845,19 @@
    // previous cursor) onto all text set via .text. Reset before import so
    // setValue does not indent non-list lines with the old list depth.
    [self resetBaseTypingAttributes];
@@ -193,7 +222,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
      [self resetBaseTypingAttributes];
    }
    _draftRestoring=NO;
-@@ -749,6 +849,10 @@
+@@ -749,6 +871,10 @@
  {
    // Every known semantic replacement enters admission before text or stores change.
    if (![self draftMayMutate]) return;
@@ -204,7 +233,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    if (_draftRequired) _draftSemanticDepth++;
    NSUInteger editLocation = selection.location;
  
-@@ -831,7 +935,7 @@
+@@ -831,7 +957,7 @@
    NSString *core = [markdown substringWithRange:NSMakeRange(lead, markdown.length - lead - trail)];
  
    ENRMInputParser *parser = [[ENRMInputParser alloc] init];
@@ -213,7 +242,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
  
    if (lead == 0 && trail == 0) {
      [self replaceTextInRange:_textView.selectedRange
-@@ -1022,6 +1126,10 @@
+@@ -1022,6 +1148,10 @@
  - (void)toggleInlineStyle:(ENRMInputStyleType)styleType
  {
    if(![self draftMayMutate])return;
@@ -224,7 +253,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    id<ENRMStyleHandler> handler = [_formatter handlerForStyleType:styleType];
    if (!handler) {
      return;
-@@ -1058,6 +1166,9 @@
+@@ -1058,6 +1188,9 @@
  - (void)toggleBlockType:(ENRMInputBlockType)type level:(NSInteger)level
  {
    if(![self draftMayMutate])return;
@@ -234,7 +263,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    NSString *text = ENRMGetPlainText(_textView);
    BOOL alreadyActive = [_blockCoordinator toggleBlockType:type
                                                      level:level
-@@ -1393,6 +1504,10 @@
+@@ -1393,6 +1526,10 @@
  - (void)setLink:(NSString *)url
  {
    if(![self draftMayMutate])return;
@@ -245,7 +274,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    NSRange selection = _textView.selectedRange;
    if (![_linkCoordinator setLinkURL:url atCursor:selection.location selection:selection]) {
      return;
-@@ -1462,6 +1577,10 @@
+@@ -1462,6 +1599,10 @@
  - (void)removeLink
  {
    if(![self draftMayMutate])return;
@@ -256,7 +285,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    if (![_linkCoordinator removeLinkAtPosition:_textView.selectedRange.location]) {
      return;
    }
-@@ -1475,7 +1594,21 @@
+@@ -1475,7 +1616,30 @@
    NSString *existingURL = activeLink != nil ? activeLink.url : nil;
  
    __weak EnrichedMarkdownTextInput *weakSelf = self;
@@ -267,11 +296,20 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
 +  if (![self isComposerRichInput] || ![self draftMayMutate]) return;
 +  NSString *binding = _composer.binding;
 +  uint64_t count = _composer.eventCount;
++  NSString *markdown = [self currentMarkdown];
 +  NSRange selection = _textView.selectedRange;
-+  ENRMShowComposerLinkPrompt(self, existingURL, _composerLinkTitle, _composerLinkConfirm,
++  if (_composerCancelLink) {
++    dispatch_block_t cancel = _composerCancelLink;
++    _composerCancelLink = nil;
++    cancel();
++  }
++  _composerCancelLink = ENRMShowComposerLinkPrompt(self, existingURL, _composerLinkTitle, _composerLinkConfirm,
 +    _composerCancelLabel, ^(NSString *url) {
 +      EnrichedMarkdownTextInput *owner = weakSelf;
-+      if (!owner || ![owner->_composer matches:binding eventCount:count] || !owner.window) return;
++      if (!owner) return;
++      owner->_composerCancelLink = nil;
++      if (![owner->_composer matches:binding eventCount:count] || !owner.window ||
++          ![[owner currentMarkdown] isEqual:markdown]) return;
 +      owner->_textView.selectedRange = selection;
 +      if (url) [owner performComposerFormatting:^{ [owner setLink:url]; }];
 +      [owner->_textView becomeFirstResponder];
@@ -279,7 +317,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
  }
  
  /// Serializes plain text with inline + block formatting, resolving each block's
-@@ -1591,9 +1724,11 @@
+@@ -1591,9 +1755,11 @@
  
  - (NSString *)currentMarkdown
  {
@@ -294,7 +332,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
  }
  
  - (NSArray<ENRMFormattingRange *> *)allRangesIncludingTransient
-@@ -1933,6 +2068,7 @@
+@@ -1933,6 +2099,7 @@
  {
    if(![self draftMayMutate])return NO;
    [_inputEventEmitter emitOnKeyPress:text];
@@ -302,7 +340,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    if ([self deleteLinkForReplacementRange:range replacementText:text]) {
      return NO;
    }
-@@ -2261,7 +2397,7 @@
+@@ -2261,7 +2428,7 @@
  
  - (BOOL)draftMayMutate
  {
@@ -311,7 +349,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
  }
  
  - (BOOL)bindDraftCheckpointToken:(NSString *)token error:(NSError **)error
-@@ -2323,6 +2459,7 @@
+@@ -2323,6 +2490,7 @@
  - (BOOL)draftNativeMutationWillBegin
  {
    if(![self draftMayMutate])return NO;
@@ -319,7 +357,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    if(_draftRequired) {
      if(_draftNativeDepth==0 && !_draftCompositionPending) _draftModel=[self draftLiveModel];
      _draftNativeDepth++;
-@@ -2332,6 +2469,7 @@
+@@ -2332,6 +2500,7 @@
  
  - (void)draftNativeMutationDidEnd
  {

@@ -52,7 +52,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputLink
  
  void ENRMShowLinkPrompt(RCTUIView *sourceView, NSString *_Nullable existingURL, void (^completion)(NSString *url));
  
-+void ENRMShowComposerLinkPrompt(RCTUIView *sourceView, NSString *_Nullable existingURL,
++dispatch_block_t ENRMShowComposerLinkPrompt(RCTUIView *sourceView, NSString *_Nullable existingURL,
 +  NSString *title, NSString *confirmTitle, NSString *cancelTitle,
 +  void (^completion)(NSString *_Nullable url));
 +
@@ -65,7 +65,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputLink
  static const CGFloat kMacOSURLFieldHeight = 24;
  
 -void ENRMShowLinkPrompt(RCTUIView *sourceView, NSString *existingURL, void (^completion)(NSString *url))
-+void ENRMShowComposerLinkPrompt(RCTUIView *sourceView, NSString *existingURL,
++dispatch_block_t ENRMShowComposerLinkPrompt(RCTUIView *sourceView, NSString *existingURL,
 +  NSString *title, NSString *confirmTitle, NSString *cancelTitle, void (^completion)(NSString *url))
  {
    BOOL isEditing = existingURL.length > 0;
@@ -75,12 +75,15 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputLink
  #if !TARGET_OS_OSX
    UIAlertController *alert = [UIAlertController alertControllerWithTitle:title
                                                                   message:nil
-@@ -22,19 +20,24 @@
+@@ -22,19 +20,27 @@
      textField.autocorrectionType = UITextAutocorrectionTypeNo;
    }];
  
 +  __block id observer = nil;
++  __block BOOL finished = NO;
 +  void (^finish)(NSString *) = ^(NSString *url) {
++    if (finished) return;
++    finished = YES;
 +    if (observer) { [NSNotificationCenter.defaultCenter removeObserver:observer]; observer = nil; }
 +    completion(url);
 +  };
@@ -103,7 +106,18 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputLink
        addObserverForName:UITextFieldTextDidChangeNotification
                    object:urlField
                     queue:NSOperationQueue.mainQueue
-@@ -50,7 +53,7 @@
+@@ -45,12 +51,18 @@
+     presenter = presenter.presentedViewController;
+   }
+   [presenter presentViewController:alert animated:YES completion:nil];
++  __weak UIAlertController *weakAlert = alert;
++  return [^{
++    if (finished) return;
++    finish(nil);
++    [weakAlert dismissViewControllerAnimated:NO completion:nil];
++  } copy];
+ #else
+   NSAlert *alert = [[NSAlert alloc] init];
    alert.messageText = title;
    alert.informativeText = @"Enter the URL for the link.";
    [alert addButtonWithTitle:confirmTitle];
@@ -112,13 +126,14 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputLink
  
    NSTextField *urlField =
        [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, kMacOSURLFieldWidth, kMacOSURLFieldHeight)];
-@@ -65,7 +68,14 @@
+@@ -65,7 +77,15 @@
                      if (url.length > 0) {
                        completion(url);
                      }
 -                  }
 +                  } else { completion(nil); }
                  }];
++  return [^{ [sourceView.window endSheet:alert.window returnCode:NSAlertSecondButtonReturn]; } copy];
  #endif
  }
 +
